@@ -280,7 +280,13 @@ pub(crate) mod tests {
             !game.client.connection_open,
             "connection must close on invalid registry"
         );
-        let mode = &game.client.title.0.as_ref().expect("the disconnect screen").mode;
+        let mode = &game
+            .client
+            .title
+            .0
+            .as_ref()
+            .expect("the disconnect screen")
+            .mode;
         assert!(matches!(
             mode,
             sunrise_client_lib::title::Mode::Multiplayer(
@@ -299,10 +305,8 @@ pub(crate) mod tests {
             let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(pipe, "InvalidBiomeJoin").unwrap();
             game.connection_starts("example.invalid:25565", "InvalidBiomeJoin", false);
-            let invalid = registries_with_biome(
-                &game.client.remote.as_ref().unwrap().registries,
-                "..:bad",
-            );
+            let invalid =
+                registries_with_biome(&game.client.remote.as_ref().unwrap().registries, "..:bad");
             push_events(
                 game,
                 [
@@ -333,10 +337,8 @@ pub(crate) mod tests {
                 &game.client.remote.as_ref().unwrap().registries,
                 "test:marsh",
             );
-            let invalid = registries_with_biome(
-                &game.client.remote.as_ref().unwrap().registries,
-                "..:bad",
-            );
+            let invalid =
+                registries_with_biome(&game.client.remote.as_ref().unwrap().registries, "..:bad");
             push_events(
                 game,
                 [

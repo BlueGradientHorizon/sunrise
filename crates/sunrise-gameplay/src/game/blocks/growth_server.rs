@@ -28,11 +28,7 @@ impl ServerGame<'_> {
     /// `GrowingPlantHeadBlock.getMaxAgeState` (age 25) with
     /// `block.growing_plant.crop`, the level hears a `block_change`, and the
     /// shears wear by one. True when it cropped (SUCCESS).
-    pub fn shears_crop(
-        &mut self,
-        pos: [i32; 3],
-        stack: &ItemStack,
-    ) -> Result<bool> {
+    pub fn shears_crop(&mut self, pos: [i32; 3], stack: &ItemStack) -> Result<bool> {
         if !self.stack_shears(stack, SHEARS_TRIM) {
             return Ok(false);
         }

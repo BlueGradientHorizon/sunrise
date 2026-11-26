@@ -1,13 +1,15 @@
 #![cfg(any())]
 
 //! Configuration admission through the serving Game and its payload executors.
+#[cfg(test)]
+use mod_api::ModEntry;
 use mod_api::{
     ConfigurationTask, ConfigurationTaskContext, ConfigurationTaskError, Hooks, IPayloadContext,
     IPayloadHandler, Identifier, PayloadBytes, PayloadContextError, PayloadId, Registrar,
     ServerHost,
 };
 #[cfg(test)]
-use mod_api::ModEntry;
+use std::time::Instant;
 use std::{
     sync::{
         Arc, Mutex,
@@ -15,8 +17,6 @@ use std::{
     },
     time::Duration,
 };
-#[cfg(test)]
-use std::time::Instant;
 const CHANNEL: &str = "task_fixture:value";
 const PEER_NAMES: [&str; 2] = ["ConfigPeerA", "ConfigPeerB"];
 fn kind(name: &str) -> Identifier {

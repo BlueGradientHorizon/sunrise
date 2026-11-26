@@ -527,7 +527,9 @@ fn the_acting_guest_is_read_with_its_holder() {
                 assert_eq!(call.causing.as_ref().map(|read| read.id), Some(zombie));
             }
             let mark = game
-                .as_guest(13, |g| mark.get_existing(g, Holder::Player(13), |value| value.copied()))
+                .as_guest(13, |g| {
+                    mark.get_existing(g, Holder::Player(13), |value| value.copied())
+                })
                 .unwrap();
             assert_eq!(mark, Ok(Some(4)));
         });

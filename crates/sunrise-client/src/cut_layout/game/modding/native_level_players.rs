@@ -1,6 +1,5 @@
 #![cfg(test)]
 
-
 #[cfg(test)]
 mod tests {
     use super::super::native_guest_turn_tests::{place_host, with_guests};

@@ -104,7 +104,8 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         self.guest_replace_menu(conn, false, |game| {
-            let Some(window) = game.server
+            let Some(window) = game
+                .server
                 .lan
                 .as_mut()
                 .and_then(|host| host.hub.open_merchant_window(conn, title))
@@ -487,7 +488,10 @@ impl crate::game::ServerGame<'_> {
                 .and_then(|p| p.merchant.as_ref())
                 .map(|m| m.window);
             if let Some(window) = window {
-                self.reply_menu_click(conn, sunrise_gameplay_common::game::lan_menu_data::ClickReply::Close(window));
+                self.reply_menu_click(
+                    conn,
+                    sunrise_gameplay_common::game::lan_menu_data::ClickReply::Close(window),
+                );
             }
         }
     }
@@ -735,13 +739,17 @@ impl crate::game::ServerGame<'_> {
             );
         }
         if close {
-            self.reply_menu_click(conn, sunrise_gameplay_common::game::lan_menu_data::ClickReply::Close(window));
+            self.reply_menu_click(
+                conn,
+                sunrise_gameplay_common::game::lan_menu_data::ClickReply::Close(window),
+            );
         }
     }
     /// `ServerPlayer.tick`: broadcast menu changes before checking `stillValid`.
     #[cfg(test)]
     pub(in crate::game) fn lan_merchant_tick(&mut self) {
-        let conns: Vec<u32> = self.server
+        let conns: Vec<u32> = self
+            .server
             .lan
             .as_ref()
             .map(|host| {
@@ -1180,6 +1188,5 @@ pub mod tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
 
 use sunrise_gameplay_common::game::stacked_on_other::StackedOnOtherGameExt1 as _;

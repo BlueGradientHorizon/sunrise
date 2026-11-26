@@ -2476,9 +2476,7 @@ pub fn placement_refusal_into_api(
     }
 }
 
-pub fn api_game_rule_value(
-    value: sunrise_game_data::gamerules::Value,
-) -> mod_api::GameRuleValue {
+pub fn api_game_rule_value(value: sunrise_game_data::gamerules::Value) -> mod_api::GameRuleValue {
     use sunrise_game_data::gamerules::Value;
     match value {
         Value::Bool(value) => mod_api::GameRuleValue::Bool(value),

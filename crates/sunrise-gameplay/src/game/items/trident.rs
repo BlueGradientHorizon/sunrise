@@ -509,8 +509,7 @@ impl crate::game::ServerGame<'_> {
                 i = at;
             }
             // A removal the listener queued: nothing ticks, nothing hears a Post.
-            if self.removal_pending(&target) || self.common.persist.removals.contains(&target)
-            {
+            if self.removal_pending(&target) || self.common.persist.removals.contains(&target) {
                 i += 1;
                 continue;
             }
@@ -735,12 +734,11 @@ impl crate::game::ServerGame<'_> {
                         attack.projectile = Some(t.id as i32);
                         attack.projectile_kind = sunrise_sim::health::DirectEntity::Arrow;
                         attack.projectile_type = Some("minecraft:trident");
-                        attack.enchantment_direct =
-                            Some(sunrise_sim::health::EnchantmentActor {
-                                id: t.id as i32,
-                                kind: "minecraft:trident".into(),
-                                motion: None,
-                            });
+                        attack.enchantment_direct = Some(sunrise_sim::health::EnchantmentActor {
+                            id: t.id as i32,
+                            kind: "minecraft:trident".into(),
+                            motion: None,
+                        });
                         self.set_projectile_weapon(&mut attack, Some(&t.stack));
                         // ThrownTrident.getDamage: `EnchantmentHelper.modifyDamage` on 8
                         // (Impaling hits `#sensitive_to_impaling`, the aquatic tag).

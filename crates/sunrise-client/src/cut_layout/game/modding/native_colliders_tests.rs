@@ -6,8 +6,8 @@ use sunrise_core::{
     geometry::Vec3,
     nbt::{Compound, Tag},
 };
-use sunrise_gameplay_common::game::{Dim, GameGameExt1 as _};
 use sunrise_gameplay_common::game::native_collider_state::SAVE_KEY;
+use sunrise_gameplay_common::game::{Dim, GameGameExt1 as _};
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::entities::ItemEntity;

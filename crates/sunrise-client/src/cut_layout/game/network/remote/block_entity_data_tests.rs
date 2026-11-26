@@ -224,4 +224,3 @@ fn block_entity_data_received_after_merge() {
         });
     });
 }
-

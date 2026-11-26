@@ -1,12 +1,12 @@
 //! The colour `MapItem.update` takes from a block: the state's own `MapColor` id, which the
 //! block's `map_color` parts may change (`IBlockExtension.getMapColor`).
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::api_values::block_state::block_listens;
 use std::{
     collections::HashSet,
     sync::{Arc, Mutex, OnceLock},
 };
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::api_values::block_state::block_listens;
 use sunrise_world::registry::BlockStateId;
 
 /// The highest `MapColor` id; the ids run from 0 (`NONE`).
@@ -46,7 +46,8 @@ impl ServerGame<'_> {
     /// `map_color_at` for the default state of the block `name` at `pos`; `fallback` when the
     /// game has no such block.
     pub(super) fn default_map_color(&self, name: &str, fallback: u8, pos: BlockPos) -> u8 {
-        self.common.pack
+        self.common
+            .pack
             .assets
             .registry
             .default_state(name)

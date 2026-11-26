@@ -231,11 +231,11 @@ fn ghosts(
 #[test]
 #[ignore = "daily"]
 fn clicked_multi_display_recipe_sends_exact_ghost_and_ordinary_placement_sends_none() {
-    use sunrise_sim::recipe_book::{BookType, PacketNames, ghost_from_display};
     use sunrise_protocol::packets::{
         play::Serverbound as S,
         recipes::{PlaceRecipe, RecipeDisplay},
     };
+    use sunrise_sim::recipe_book::{BookType, PacketNames, ghost_from_display};
     let mut resources = None;
     let (mut game, rx) = game(&mut resources);
     assert!(game.run_command("setblock 12 100 11 minecraft:crafting_table"));
@@ -258,7 +258,8 @@ fn clicked_multi_display_recipe_sends_exact_ghost_and_ordinary_placement_sends_n
         .expect("crafting table window open");
     let _ = ghosts(&rx);
 
-    let cloning_ids = game.stations()
+    let cloning_ids = game
+        .stations()
         .recipe_index
         .display_ids("minecraft:map_cloning");
     assert_eq!(cloning_ids.len(), 8);
@@ -335,15 +336,13 @@ fn clicked_multi_display_recipe_sends_exact_ghost_and_ordinary_placement_sends_n
     assert!(ghosts(&rx).is_empty());
 
     // Ordinary placement moves real items into the crafting grid and emits no ghost packet.
-    let crafting_display = game.stations()
+    let crafting_display = game
+        .stations()
         .recipe_index
         .display_ids("minecraft:crafting_table")
         .start;
     game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
-        g.inventory[0] = Some(ItemStack::new(
-            "minecraft:oak_planks",
-            4,
-        ));
+        g.inventory[0] = Some(ItemStack::new("minecraft:oak_planks", 4));
     });
     game.lan_guest_packet(
         2,
@@ -423,10 +422,7 @@ fn a_recipe_click_listener_replacing_the_menu_stops_the_placement() {
                 g.recipe_book
                     .recipes
                     .insert("minecraft:crafting_table".into());
-                g.inventory[0] = Some(ItemStack::new(
-                    "minecraft:oak_planks",
-                    4,
-                ));
+                g.inventory[0] = Some(ItemStack::new("minecraft:oak_planks", 4));
             });
             game.lan_open_crafting(12, [3, 64, 6]);
             let window = game
@@ -439,7 +435,8 @@ fn a_recipe_click_listener_replacing_the_menu_stops_the_placement() {
                 .and_then(|m| m.crafting.table.as_ref().map(|(w, ..)| *w))
                 .expect("crafting table window open");
             let _ = ghosts(&rx);
-            let display = game.stations()
+            let display = game
+                .stations()
                 .recipe_index
                 .display_ids("minecraft:crafting_table")
                 .start;

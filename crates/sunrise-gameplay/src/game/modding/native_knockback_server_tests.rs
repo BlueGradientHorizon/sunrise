@@ -238,11 +238,13 @@ fn knockback_fires_and_lends_views_when_stacks_have_unprojectable_components_or_
         assert_eq!(push(game), Vec3::ZERO);
         log.lock().unwrap().cancel = false;
 
-        game.common.inventory[game.common.selected] = Some(ItemStack::new("unknown:missing_blade", 1));
+        game.common.inventory[game.common.selected] =
+            Some(ItemStack::new("unknown:missing_blade", 1));
         game.offhand = Some(ItemStack::new("minecraft:shield", 1));
         assert_eq!(push(game), Vec3::new(0.8, 0.0, 0.0));
 
-        game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:iron_sword", 0));
+        game.common.inventory[game.common.selected] =
+            Some(ItemStack::new("minecraft:iron_sword", 0));
         game.offhand = Some(ItemStack::new("minecraft:air", 1));
         assert_eq!(push(game), Vec3::new(0.8, 0.0, 0.0));
     });

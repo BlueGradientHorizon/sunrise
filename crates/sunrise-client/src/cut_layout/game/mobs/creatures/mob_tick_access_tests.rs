@@ -1,8 +1,6 @@
 //! #795, the mob slice: a handle fired inside a mob's own tick resolves the
 //! mob the tick holds out of the game, without a copy or a placeholder.
-use mod_api::{
-    Despawn, EntityTickPreEvent, HostSide, ModEntry, ServerHost,
-};
+use mod_api::{Despawn, EntityTickPreEvent, HostSide, ModEntry, ServerHost};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU32, Ordering},
@@ -699,8 +697,7 @@ fn named_mobs_and_projectiles_yield_only_for_subscribed_phase() {
                 PROJECTILE_HANDBACKS.with(|count| count.set(0));
                 game.tick_mobs().unwrap();
                 mob_yields = BORROWED_MOB_YIELDS.with(std::cell::Cell::get);
-                projectile_handbacks =
-                    PROJECTILE_HANDBACKS.with(std::cell::Cell::get);
+                projectile_handbacks = PROJECTILE_HANDBACKS.with(std::cell::Cell::get);
             });
         });
         assert_eq!(
@@ -825,7 +822,8 @@ fn mob_equipment_change_fires_before_post_and_skips_canceled_ticks() {
                 ]
             );
             assert!(
-                game.common.mobs
+                game.common
+                    .mobs
                     .iter()
                     .find(|m| m.id == 71)
                     .unwrap()
@@ -921,10 +919,15 @@ fn an_equipped_mob_discarded_by_despawn_does_not_report_equipment() {
                 ));
             }
             game.tick_creature_entities().unwrap();
-            assert_eq!(game.common.mobs.iter().map(|m| m.id).collect::<Vec<_>>(), [72]);
+            assert_eq!(
+                game.common.mobs.iter().map(|m| m.id).collect::<Vec<_>>(),
+                [72]
+            );
             assert_eq!(*heard.lock().unwrap(), [72]);
         });
     });
 }
 
-use sunrise_gameplay::game::server_side::creatures_server::{BORROWED_MOB_YIELDS, PROJECTILE_HANDBACKS};
+use sunrise_gameplay::game::server_side::creatures_server::{
+    BORROWED_MOB_YIELDS, PROJECTILE_HANDBACKS,
+};

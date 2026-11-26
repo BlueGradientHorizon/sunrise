@@ -248,7 +248,15 @@ fn failed_join_placement_does_not_populate_user_cache() {
                     [0.5, 64.0, 0.5],
                 );
                 assert!(
-                    !game.server.lan.as_ref().unwrap().hub.guest(conn).unwrap().placed,
+                    !game
+                        .server
+                        .lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .guest(conn)
+                        .unwrap()
+                        .placed,
                     "join must fail to place when the target level cannot open"
                 );
                 assert!(
@@ -274,7 +282,16 @@ fn failed_join_placement_does_not_populate_user_cache() {
                     &[],
                     [0.5, 64.0, 0.5],
                 );
-                assert!(game.server.lan.as_ref().unwrap().hub.guest(conn).unwrap().placed);
+                assert!(
+                    game.server
+                        .lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .guest(conn)
+                        .unwrap()
+                        .placed
+                );
                 let cached = game
                     .server
                     .user_cache

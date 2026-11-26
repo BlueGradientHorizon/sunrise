@@ -6,54 +6,6 @@ use {crate::game::*, sunrise_gameplay_common::game::*};
 #[path = "runtime/activity.rs"]
 pub mod activity;
 #[cfg(feature = "client")]
-#[path = "interface/pack_layers.rs"]
-pub(in crate::game) mod pack_layers;
-#[cfg(feature = "client")]
-#[path = "mobs/part_shearing_client.rs"]
-pub(in crate::game) mod part_shearing_client;
-#[cfg(feature = "client")]
-#[path = "modding/native_level_tick_rate.rs"]
-pub(in crate::game) mod native_level_tick_rate;
-#[cfg(feature = "client")]
-#[path = "modding/native_render_hooks.rs"]
-pub(in crate::game) mod native_render_hooks;
-#[cfg(feature = "client")]
-#[path = "modding/native_section_dirty.rs"]
-pub(in crate::game) mod native_section_dirty;
-#[path = "modding/native_entity_previous_client.rs"]
-pub(in crate::game) mod native_entity_previous_client;
-#[path = "modding/native_datapack_values_client.rs"]
-pub(in crate::game) mod native_datapack_values_client;
-#[cfg(feature = "client")]
-#[path = "modding/hotbar_items.rs"]
-pub(in crate::game) mod hotbar_items;
-#[path = "entities/stock_layer_mask.rs"]
-pub(in crate::game) mod stock_layer_mask;
-#[cfg(all(test, feature = "client"))]
-#[path = "modding/native_chunk_snapshot_client_tests.rs"]
-mod native_chunk_snapshot_client_tests;
-#[cfg(all(test, feature = "client"))]
-#[path = "modding/native_block_tables_tests.rs"]
-mod native_block_tables_tests;
-#[cfg(all(test, feature = "client"))]
-#[path = "modding/gui_canvas_items_tests.rs"]
-pub(in crate::game) mod gui_canvas_items_tests;
-#[cfg(all(test, feature = "client"))]
-#[path = "modding/frame_view_retained_draw_tests.rs"]
-mod frame_view_retained_draw_tests;
-#[cfg(all(test, feature = "client"))]
-#[path = "modding/native_entity_previous_tests_client.rs"]
-mod native_entity_previous_tests_client;
-#[cfg(all(test, feature = "client"))]
-#[path = "modding/native_configs/lifecycle_tests_client.rs"]
-mod native_configs_lifecycle_tests_client;
-#[cfg(all(test, feature = "client"))]
-#[path = "modding/native_render_hooks_tests.rs"]
-mod native_render_hooks_tests;
-#[cfg(all(test, feature = "client"))]
-#[path = "interface/world_text_frame_tests.rs"]
-mod world_text_frame_tests;
-#[cfg(feature = "client")]
 #[path = "interface/advancements/mod_client.rs"]
 pub(in crate::game) mod advancements_client;
 #[cfg(feature = "client")]
@@ -233,6 +185,9 @@ pub(in crate::game) mod fov;
 #[cfg(feature = "client")]
 #[path = "interface/frame_geometry.rs"]
 pub(in crate::game) mod frame_geometry;
+#[cfg(all(test, feature = "client"))]
+#[path = "modding/frame_view_retained_draw_tests.rs"]
+mod frame_view_retained_draw_tests;
 #[cfg(feature = "friends")]
 #[path = "network/friends.rs"]
 pub(in crate::game) mod friends;
@@ -256,6 +211,9 @@ pub(in crate::game) mod general_draw;
 pub(in crate::game) mod glowing;
 #[path = "blocks/growth.rs"]
 pub(in crate::game) mod growth;
+#[cfg(all(test, feature = "client"))]
+#[path = "modding/gui_canvas_items_tests.rs"]
+pub(in crate::game) mod gui_canvas_items_tests;
 #[cfg(feature = "client")]
 #[path = "modding/gui_clips.rs"]
 pub(in crate::game) mod gui_clips;
@@ -270,6 +228,9 @@ pub(in crate::game) mod headless;
 #[cfg(feature = "client")]
 #[path = "items/held_items_client.rs"]
 pub(in crate::game) mod held_items_client;
+#[cfg(feature = "client")]
+#[path = "modding/hotbar_items.rs"]
+pub(in crate::game) mod hotbar_items;
 #[cfg(feature = "client")]
 #[path = "interface/hud_editor.rs"]
 pub(in crate::game) mod hud_editor;
@@ -384,6 +345,9 @@ pub mod native_block_entity_draw;
 #[cfg(feature = "client")]
 #[path = "modding/native_block_sprites.rs"]
 pub(in crate::game) mod native_block_sprites;
+#[cfg(all(test, feature = "client"))]
+#[path = "modding/native_block_tables_tests.rs"]
+mod native_block_tables_tests;
 #[cfg(feature = "client")]
 #[path = "modding/native_book_net_client.rs"]
 pub(in crate::game) mod native_book_net_client;
@@ -396,6 +360,9 @@ pub(in crate::game) mod native_book_receive;
 #[cfg(feature = "client")]
 #[path = "modding/native_book_settings_client.rs"]
 pub(in crate::game) mod native_book_settings_client;
+#[cfg(all(test, feature = "client"))]
+#[path = "modding/native_chunk_snapshot_client_tests.rs"]
+mod native_chunk_snapshot_client_tests;
 #[cfg(feature = "client")]
 #[path = "modding/native_claimed_items.rs"]
 pub(in crate::game) mod native_claimed_items;
@@ -414,14 +381,16 @@ pub mod native_client_services;
 #[cfg(feature = "client")]
 #[path = "modding/native_client_session.rs"]
 pub mod native_client_session;
-#[cfg(feature = "client")]
-#[path = "modding/native_player_attack_client.rs"]
-pub(in crate::game) mod native_player_attack_client;
+#[cfg(all(test, feature = "client"))]
+#[path = "modding/native_configs/lifecycle_tests_client.rs"]
+mod native_configs_lifecycle_tests_client;
 #[path = "modding/native_connection_groups.rs"]
 pub mod native_connection_groups;
 #[cfg(feature = "client")]
 #[path = "modding/native_custom_geometry.rs"]
 pub(in crate::game) mod native_custom_geometry;
+#[path = "modding/native_datapack_values_client.rs"]
+pub(in crate::game) mod native_datapack_values_client;
 #[path = "modding/native_disconnect.rs"]
 pub(in crate::game) mod native_disconnect;
 #[cfg(feature = "client")]
@@ -434,6 +403,11 @@ pub(in crate::game) mod native_dynamic_textures;
 #[cfg(feature = "client")]
 #[path = "modding/native_entity_layers.rs"]
 pub mod native_entity_layers;
+#[path = "modding/native_entity_previous_client.rs"]
+pub(in crate::game) mod native_entity_previous_client;
+#[cfg(all(test, feature = "client"))]
+#[path = "modding/native_entity_previous_tests_client.rs"]
+mod native_entity_previous_tests_client;
 #[cfg(all(feature = "client", any(test, feature = "test-support")))]
 #[path = "modding/native_entity_refs_fixture_mount.rs"]
 pub mod native_entity_refs;
@@ -446,6 +420,32 @@ pub mod native_entity_renderers;
 #[cfg(feature = "client")]
 #[path = "modding/native_fluid_render.rs"]
 pub(in crate::game) mod native_fluid_render;
+#[cfg(feature = "client")]
+#[path = "modding/native_level_tick_rate.rs"]
+pub(in crate::game) mod native_level_tick_rate;
+#[cfg(feature = "client")]
+#[path = "modding/native_player_attack_client.rs"]
+pub(in crate::game) mod native_player_attack_client;
+#[cfg(feature = "client")]
+#[path = "modding/native_render_hooks.rs"]
+pub(in crate::game) mod native_render_hooks;
+#[cfg(all(test, feature = "client"))]
+#[path = "modding/native_render_hooks_tests.rs"]
+mod native_render_hooks_tests;
+#[cfg(feature = "client")]
+#[path = "modding/native_section_dirty.rs"]
+pub(in crate::game) mod native_section_dirty;
+#[cfg(feature = "client")]
+#[path = "interface/pack_layers.rs"]
+pub(in crate::game) mod pack_layers;
+#[cfg(feature = "client")]
+#[path = "mobs/part_shearing_client.rs"]
+pub(in crate::game) mod part_shearing_client;
+#[path = "entities/stock_layer_mask.rs"]
+pub(in crate::game) mod stock_layer_mask;
+#[cfg(all(test, feature = "client"))]
+#[path = "interface/world_text_frame_tests.rs"]
+mod world_text_frame_tests;
 #[cfg(feature = "client")]
 pub use crate::game::native_hooks as native_hooks_client;
 #[path = "modding/native_hotbar_slot.rs"]
@@ -1019,6 +1019,9 @@ pub(in crate::game) mod native_biome_colors;
 #[path = "modding/native_block_sounds_client.rs"]
 pub(in crate::game) mod native_block_sounds_client;
 #[cfg(feature = "client")]
+#[path = "modding/native_client_scoreboard.rs"]
+pub(in crate::game) mod native_client_scoreboard;
+#[cfg(feature = "client")]
 #[path = "modding/native_colliders_client.rs"]
 pub(in crate::game) mod native_colliders_client;
 #[cfg(feature = "client")]
@@ -1051,9 +1054,6 @@ pub(in crate::game) mod native_mob_refs_client;
 #[cfg(feature = "client")]
 #[path = "modding/native_passages_client.rs"]
 pub(in crate::game) mod native_passages_client;
-#[cfg(feature = "client")]
-#[path = "modding/native_client_scoreboard.rs"]
-pub(in crate::game) mod native_client_scoreboard;
 #[cfg(feature = "client")]
 #[path = "modding/native_server_client.rs"]
 pub(in crate::game) mod native_server_client;
@@ -1228,7 +1228,8 @@ pub struct ClientState {
     pub(in crate::game::client_side) world_renderer_ready: bool,
     pub(in crate::game::client_side) instance_groups:
         std::cell::RefCell<native_instance_groups::InstanceGroupStorage>,
-    pub(in crate::game) prepared_items: std::cell::RefCell<native_instance_groups::PreparedItemStorage>,
+    pub(in crate::game) prepared_items:
+        std::cell::RefCell<native_instance_groups::PreparedItemStorage>,
     pub(in crate::game::client_side) standalone_geometry:
         native_block_entity_draw::StandaloneGeometry,
     /// `FogRenderer`'s evolving state.
@@ -1614,7 +1615,8 @@ pub struct ClientState {
     pub(in crate::game::client_side) text_display_vertices: usize,
     pub(in crate::game) skin_slots: sunrise_client::skins::SkinSlots,
     /// What `apply_player_skin_override` resolved for the selected dynamic texture.
-    pub(in crate::game) player_skin_slot: Option<crate::game::native_hooks::resolve_player_skin::PlayerSkinSlot>,
+    pub(in crate::game) player_skin_slot:
+        Option<crate::game::native_hooks::resolve_player_skin::PlayerSkinSlot>,
     pub(in crate::game::client_side) skin_profiles: RefCell<sunrise_client::skins::Resolver>,
     pub chat_ui: chat::ChatUiState,
     pub(in crate::game::client_side) map_slots: super::atlas_slots::AtlasSlots<i32>,
@@ -1940,7 +1942,9 @@ impl ClientState {
     ) -> Box<Self> {
         let hud_layer_bounds = if is_client {
             use sunrise_client::gui_layers::{VanillaGuiLayer, order};
-            Vec::with_capacity(order().map_or(VanillaGuiLayer::ALL.len(), |order| order.slots().len()))
+            Vec::with_capacity(
+                order().map_or(VanillaGuiLayer::ALL.len(), |order| order.slots().len()),
+            )
         } else {
             Vec::new()
         };

@@ -584,7 +584,11 @@ impl crate::game::ClientGame<'_> {
                 .any(|p| p.id == entity_id)
             || self.common.tridents.iter().any(|t| t.id == entity_id)
             || self.common.rockets.iter().any(|f| f.id == entity_id)
-            || self.common.hook.as_ref().is_some_and(|h| h.id() == entity_id)
+            || self
+                .common
+                .hook
+                .as_ref()
+                .is_some_and(|h| h.id() == entity_id)
             || self.client.remote_hooks.iter().any(|h| h.id() == entity_id)
             || self.common.potions.has_thrown(entity_id)
             || self
@@ -608,6 +612,6 @@ impl crate::game::ClientGame<'_> {
 
 use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt as _;
 
-use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
 use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
 use sunrise_gameplay_common::game::native_entity_motion_values::NativeEntityMotionValuesGameExt1 as _;

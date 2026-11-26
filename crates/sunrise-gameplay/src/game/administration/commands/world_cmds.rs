@@ -3,14 +3,14 @@
 use super::{Arg, Context, R, Target, err, wrap_degrees};
 use crate::game::living_attributes::AttributeWrite;
 use sunrise_core::random::RandomSource;
-use sunrise_world::attribute_map::ValueKind;
-use sunrise_world::damage_source::Catalog as DamageCatalog;
 use sunrise_game_data::text::Text;
 use sunrise_level::sim_settings::SOUND_SOURCES;
 use sunrise_sim::{
     mobs::{DamageKind, MobEvent, Who, finalize},
     scoreboard_cmd::{Holder, Tracker},
 };
+use sunrise_world::attribute_map::ValueKind;
+use sunrise_world::damage_source::Catalog as DamageCatalog;
 
 /// Queue bookkeeping for synchronous command damage, preserving prior requests
 /// and unrelated events. The existing game policy handles each extracted request.
@@ -190,7 +190,10 @@ impl crate::game::ServerGame<'_> {
     ) -> bool {
         // Resolve the damage registry at the shared command/API boundary before
         // any target-specific path can mutate state or map it to a DamageKind.
-        if !amount.is_finite() || amount < 0.0 || self.common.health_resources.damage.id(ty).is_none() {
+        if !amount.is_finite()
+            || amount < 0.0
+            || self.common.health_resources.damage.id(ty).is_none()
+        {
             return false;
         }
         let attacker = cause.and_then(|t| self.network_entity_id(t));
@@ -214,13 +217,14 @@ impl crate::game::ServerGame<'_> {
                 .unwrap_or(0),
         );
         attack.direct_type = direct.map(|target| self.target_type(target));
-        attack.enchantment_direct = direct.zip(attack.direct).map(|(target, id)| {
-            sunrise_sim::health::EnchantmentActor {
-                id,
-                kind: self.target_type(target).into(),
-                motion: None,
-            }
-        });
+        attack.enchantment_direct =
+            direct
+                .zip(attack.direct)
+                .map(|(target, id)| sunrise_sim::health::EnchantmentActor {
+                    id,
+                    kind: self.target_type(target).into(),
+                    motion: None,
+                });
         match direct {
             Some(Target::Projectile(id)) => {
                 if let Some(shot) = self

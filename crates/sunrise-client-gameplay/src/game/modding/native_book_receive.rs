@@ -208,7 +208,12 @@ impl crate::game::ClientGame<'_> {
             } => {
                 if self.native_book_placement_window().as_ref()
                     != self.common.native_net.placement.client.window()
-                    || !self.common.native_net.placement.client.accepts_ghost(&catalog)
+                    || !self
+                        .common
+                        .native_net
+                        .placement
+                        .client
+                        .accepts_ghost(&catalog)
                 {
                     log::warn!(
                         "[recipe book] ignored stale ghost for {} in window {}",

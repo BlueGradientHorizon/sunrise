@@ -31,16 +31,18 @@ impl crate::game::ServerGame<'_> {
         if items[index].health <= 0 {
             let at = items[index].position;
             let deferred = self
-                .server.item_destroyed_damage
+                .server
+                .item_destroyed_damage
                 .take_if(|(destroyed_id, _)| *destroyed_id == id)
                 .map(|(_, ty)| ty);
             if let Some(ty) = deferred {
                 self.common.put_back_dropped(items);
-                let contents = if let Some(k) = self.common.dropped.iter().position(|item| item.id == id) {
-                    self.destroy_item_entity_drops(k, &ty)
-                } else {
-                    Vec::new()
-                };
+                let contents =
+                    if let Some(k) = self.common.dropped.iter().position(|item| item.id == id) {
+                        self.destroy_item_entity_drops(k, &ty)
+                    } else {
+                        Vec::new()
+                    };
                 if let Some(k) = self.common.dropped.iter().position(|item| item.id == id) {
                     self.common.dropped.remove(k);
                 }
@@ -71,9 +73,8 @@ impl crate::game::ServerGame<'_> {
         let entity_id = |target| match target {
             Some(Target::Player) => self.own_entity_id(),
             Some(Target::Guest(conn)) => self.command_guest(conn).map_or(0, |g| g.entity_id),
-            Some(target) => {
-                sunrise_gameplay_common::game::commands_common::target_id(target).map_or(0, |id| id as i32)
-            }
+            Some(target) => sunrise_gameplay_common::game::commands_common::target_id(target)
+                .map_or(0, |id| id as i32),
             None => 0,
         };
         let causing_id = entity_id(causing);

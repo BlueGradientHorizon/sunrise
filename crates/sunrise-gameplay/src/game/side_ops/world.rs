@@ -2,10 +2,7 @@
 impl SideOps for crate::game::server_side::ServerState {
     type Game<'g> = crate::game::ServerGame<'g>;
 
-    fn side_parked_block_ticks<'a>(
-        game: &'a Self::Game<'_>,
-        dimension: &str,
-    ) -> Option<&'a Ticks> {
+    fn side_parked_block_ticks<'a>(game: &'a Self::Game<'_>, dimension: &str) -> Option<&'a Ticks> {
         game.server.levels.0.parked_block_ticks_of(dimension)
     }
     fn side_parked_border(&self, dim: Dim) -> Option<&sunrise_level::worldborder::WorldBorder> {

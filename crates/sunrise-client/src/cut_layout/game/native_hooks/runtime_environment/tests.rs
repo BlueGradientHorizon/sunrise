@@ -1,13 +1,13 @@
 //! Bootstrap capture, mod registration and the real Game hosts.
 use mod_api::{Dist, Hooks, Host, ModEntry, PackageInfo, RegistrationContext, RuntimeEnvironment};
 use std::sync::{Arc, Mutex};
+#[cfg(test)]
+use sunrise_gameplay_common::game::Options;
 use sunrise_mod_package::selection::LaunchArguments;
 use {
     sunrise_gameplay_common::game::execution_role::ExecutionRole,
     sunrise_gameplay_common::game::mods,
 };
-#[cfg(test)]
-use sunrise_gameplay_common::game::Options;
 
 #[derive(Default)]
 struct Observed {

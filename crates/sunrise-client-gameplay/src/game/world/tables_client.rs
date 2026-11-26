@@ -159,7 +159,10 @@ impl crate::game::ClientGame<'_> {
         state: BlockStateId,
         pos: [i32; 3],
     ) -> Option<(String, u32)> {
-        let sprite = Self::particle_atlas_sprite(Self::block_particle_sprite(&self.client.client_pack, state)?);
+        let sprite = Self::particle_atlas_sprite(Self::block_particle_sprite(
+            &self.client.client_pack,
+            state,
+        )?);
         let tint = self.terrain_particle_tint(state, pos).unwrap_or(0xFFFFFF);
         Some((sprite, tint))
     }

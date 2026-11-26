@@ -130,7 +130,10 @@ impl ServerGame<'_> {
         vehicle: u32,
         mut matches: impl FnMut(i64, u32) -> bool,
     ) -> bool {
-        let acting = self.server.lan_acting.filter(|_| self.common.player.is_some());
+        let acting = self
+            .server
+            .lan_acting
+            .filter(|_| self.common.player.is_some());
         let mut acting_listed = false;
         for g in self.placed_seat_guests() {
             let rides = if acting == Some(g.conn) {
@@ -153,7 +156,8 @@ impl ServerGame<'_> {
     }
 
     fn placed_seat_guests(&self) -> impl Iterator<Item = &Guest> {
-        self.server.lan
+        self.server
+            .lan
             .iter()
             .flat_map(|h| h.hub.guests.iter())
             .filter(move |g| g.placed && g.dimension == self.dim.id())

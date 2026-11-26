@@ -30,9 +30,7 @@ pub(super) fn meta_hub() -> sunrise_sim::lan::hub::Hub {
 }
 
 /// A hub with no players that syncs `sync`'s registries, for `mob_meta`.
-pub(super) fn meta_hub_with(
-    sync: sunrise_sim::lan::data::SyncData,
-) -> sunrise_sim::lan::hub::Hub {
+pub(super) fn meta_hub_with(sync: sunrise_sim::lan::data::SyncData) -> sunrise_sim::lan::hub::Hub {
     use sunrise_sim::lan::{Lan, NetConfig, chunks::ChunkEncoder, hub};
     let sync = std::sync::Arc::new(sync);
     let config = NetConfig {

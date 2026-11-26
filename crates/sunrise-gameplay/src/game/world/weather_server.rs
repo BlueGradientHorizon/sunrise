@@ -3,7 +3,11 @@ use super::Dim;
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn tick_level_weather(&mut self, dim: Dim) {
         let parameters = self.common.world.weather;
-        let advance = self.common.ui.rules.bool_at(sunrise_game_data::gamerules::vanilla::ADVANCE_WEATHER);
+        let advance = self
+            .common
+            .ui
+            .rules
+            .bool_at(sunrise_game_data::gamerules::vanilla::ADVANCE_WEATHER);
         let world = if dim == self.common.dim {
             &mut self.common.world
         } else if let Some(parked) = self.server.levels.0.parked_mut(dim) {

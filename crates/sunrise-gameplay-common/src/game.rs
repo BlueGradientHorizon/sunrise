@@ -238,23 +238,6 @@ pub fn pack_files(world_tables: &Option<WorldTables>) -> sunrise_world::loot::Pa
 
 #[path = "game/modding/api_values.rs"]
 pub mod api_values;
-#[path = "game/administration/test_registry_tables.rs"]
-pub mod test_registry_tables;
-#[path = "game/modding/native_structure_processors.rs"]
-pub mod native_structure_processors;
-#[path = "game/modding/native_rule_tests.rs"]
-pub mod native_rule_tests;
-#[path = "game/modding/native_placement_modifiers.rs"]
-pub mod native_placement_modifiers;
-#[path = "game/modding/native_chunk_snapshot.rs"]
-pub mod native_chunk_snapshot;
-#[path = "game/modding/native_entity_previous_common.rs"]
-pub mod native_entity_previous_common;
-#[path = "game/modding/native_datapack_values_common.rs"]
-pub mod native_datapack_values;
-#[cfg(test)]
-#[path = "game/modding/native_living_travel_moved_tests.rs"]
-mod native_living_travel_moved_tests;
 #[path = "game/world/autosave.rs"]
 pub mod autosave;
 #[path = "game/blocks/banners.rs"]
@@ -341,10 +324,27 @@ pub mod integrated_common;
 pub mod item_snapshot;
 #[path = "game/runtime/memory_common.rs"]
 pub mod memory_common;
+#[path = "game/modding/native_chunk_snapshot.rs"]
+pub mod native_chunk_snapshot;
+#[path = "game/modding/native_datapack_values_common.rs"]
+pub mod native_datapack_values;
+#[path = "game/modding/native_entity_previous_common.rs"]
+pub mod native_entity_previous_common;
+#[cfg(test)]
+#[path = "game/modding/native_living_travel_moved_tests.rs"]
+mod native_living_travel_moved_tests;
+#[path = "game/modding/native_placement_modifiers.rs"]
+pub mod native_placement_modifiers;
+#[path = "game/modding/native_rule_tests.rs"]
+pub mod native_rule_tests;
+#[path = "game/modding/native_structure_processors.rs"]
+pub mod native_structure_processors;
 #[path = "game/items/stack_names.rs"]
 pub mod stack_names;
 #[path = "game/world/tables.rs"]
 pub mod tables;
+#[path = "game/administration/test_registry_tables.rs"]
+pub mod test_registry_tables;
 #[path = "game/world/world_entry_common.rs"]
 pub mod world_entry_common;
 #[allow(unused_imports)]
@@ -2453,7 +2453,9 @@ impl crate::game::CommonGame<'_> {
 pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The level's dimension type: a mod's or a data pack's own when it has one, else the
     /// built-in level's.
-    fn dimension_type<'__loan>(&'__loan self) -> &'__loan sunrise_world::dimension_type::DimensionFacts
+    fn dimension_type<'__loan>(
+        &'__loan self,
+    ) -> &'__loan sunrise_world::dimension_type::DimensionFacts
     where
         '__sg: '__loan,
     {
@@ -3095,7 +3097,14 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         stack: &ItemStack,
         hit: &Hit,
         sneaking: bool,
-    ) -> Option<(BlockStateId, String, Option<String>, u32, String, TransformKind)> {
+    ) -> Option<(
+        BlockStateId,
+        String,
+        Option<String>,
+        u32,
+        String,
+        TransformKind,
+    )> {
         let blocking = self
             .offhand
             .as_ref()
@@ -3119,7 +3128,14 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         stack: &ItemStack,
         hit: &Hit,
         context: TransformContext<'_>,
-    ) -> Option<(BlockStateId, String, Option<String>, u32, String, TransformKind)> {
+    ) -> Option<(
+        BlockStateId,
+        String,
+        Option<String>,
+        u32,
+        String,
+        TransformKind,
+    )> {
         use sunrise_sim::block_transform::Around;
         let TransformContext {
             world,
@@ -3716,7 +3732,12 @@ pub fn in_own_process(name: &str, body: impl FnOnce()) {
     }
     let mut command = std::process::Command::new(std::env::current_exe().unwrap());
     command
-        .args([name.as_ref(), "--exact", "--include-ignored", "--test-threads=1"])
+        .args([
+            name.as_ref(),
+            "--exact",
+            "--include-ignored",
+            "--test-threads=1",
+        ])
         .env(OWN_PROCESS, name.as_ref());
     let out = test_fixtures::output_within(&mut command, &name, "isolated");
     let report = format!(

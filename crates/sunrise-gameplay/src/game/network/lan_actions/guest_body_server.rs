@@ -842,11 +842,7 @@ impl mod_api::InsideEntityAccess for GamePlayerInsideAccess<'_, '_> {
 
     #[inline]
     fn fire_ticks(&self) -> i32 {
-        self.game
-            .common
-            .player
-            .as_ref()
-            .map_or(0, |p| p.fire_ticks)
+        self.game.common.player.as_ref().map_or(0, |p| p.fire_ticks)
     }
 
     #[inline]

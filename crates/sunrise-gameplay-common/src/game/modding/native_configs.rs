@@ -180,7 +180,10 @@ pub trait NativeConfigsGameExt1<'__sg>:
         // initial snapshot.
         for config in configs.iter().filter(|c| kinds.contains(&c.kind)) {
             let common = self.common_mut();
-            if let Some(snapshot) = common.native_configs.open(config, &common.config_root, world) {
+            if let Some(snapshot) = common
+                .native_configs
+                .open(config, &common.config_root, world)
+            {
                 config.notify_snapshot(ConfigEvent::Loading(self), &snapshot);
             }
         }

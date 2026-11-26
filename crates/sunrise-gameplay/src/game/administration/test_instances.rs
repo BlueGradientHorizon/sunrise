@@ -90,7 +90,8 @@ impl crate::game::ServerGame<'_> {
         };
         let mut instance_ids: Vec<String> = tables.test_instances.keys().cloned().collect();
         instance_ids.sort();
-        self.common.ui
+        self.common
+            .ui
             .registries
             .by_registry
             .entry("minecraft:test_instance".into())
@@ -98,7 +99,8 @@ impl crate::game::ServerGame<'_> {
             .ids = instance_ids;
         let mut env_ids: Vec<String> = tables.test_environments.keys().cloned().collect();
         env_ids.sort();
-        self.common.ui
+        self.common
+            .ui
             .registries
             .by_registry
             .entry("minecraft:test_environment".into())

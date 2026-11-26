@@ -1,9 +1,9 @@
 //! A real LAN join: the virtual host a player reports is its accepted handshake's host,
 //! after `player_handshake` listeners rewrite it.
 #![cfg(any())]
-use mod_api::{Flow, Hooks, PlayerHandshakeEvent, ServerHost, VirtualHost};
 #[cfg(test)]
 use mod_api::ModEntry;
+use mod_api::{Flow, Hooks, PlayerHandshakeEvent, ServerHost, VirtualHost};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 #[cfg(test)]

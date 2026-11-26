@@ -130,21 +130,22 @@ mod tests {
             with_game(|game| {
                 zombie(game, 900, 2.0);
                 zombie(game, 901, -2.0);
-                game.crystals.push(sunrise_gameplay_common::game::dragon_common::Crystal {
-                    attachment_lifetime: Default::default(),
-                    join: Default::default(),
-                    id: CRYSTAL,
-                    position: Vec3::new(1.0, 1.0, 0.0),
-                    previous: Vec3::new(1.0, 1.0, 0.0),
-                    rotation: [0.0, 0.0],
-                    fire: 0,
-                    show_bottom: false,
-                    time: 0,
-                    beam: None,
-                    invulnerable: false,
-                    fall: (false, 0.0),
-                    size_answer: None,
-                });
+                game.crystals
+                    .push(sunrise_gameplay_common::game::dragon_common::Crystal {
+                        attachment_lifetime: Default::default(),
+                        join: Default::default(),
+                        id: CRYSTAL,
+                        position: Vec3::new(1.0, 1.0, 0.0),
+                        previous: Vec3::new(1.0, 1.0, 0.0),
+                        rotation: [0.0, 0.0],
+                        fire: 0,
+                        show_bottom: false,
+                        time: 0,
+                        beam: None,
+                        invulnerable: false,
+                        fall: (false, 0.0),
+                        size_answer: None,
+                    });
                 explode(game);
             });
         });

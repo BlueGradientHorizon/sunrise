@@ -4,7 +4,9 @@ use super::{Atlas, body_with_variants, cem_key, cem_texture};
 use crate::fast_hash::FxHashMap;
 use crate::mobs::{Mob, Part, anim, cem};
 use crate::mobs_render::{ClientMobData, ClientMobModels, ClientMobVisuals};
-use mod_api::{__private::frame_model_part, FrameModel, FrameModelEdit, FrameModelPart, FrameModelPoseEdit};
+use mod_api::{
+    __private::frame_model_part, FrameModel, FrameModelEdit, FrameModelPart, FrameModelPoseEdit,
+};
 use std::{borrow::Cow, sync::Arc};
 
 /// The exact body selected for one draw, with an owned pack snapshot rather than a read lock.

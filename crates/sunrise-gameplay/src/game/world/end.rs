@@ -12,13 +12,9 @@ use sunrise_game_data::Result;
 use sunrise_gameplay_common::game::end_state::{Arriving, END_SPAWN, GatewayArrival, GatewayJob};
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
-use sunrise_sim::{
-    mobs::Who,
-    projectiles::{ProjectileKind},
-    world_spawn::PlayerSpawnFinder,
-};
 #[cfg(test)]
 use sunrise_sim::projectiles::Projectile;
+use sunrise_sim::{mobs::Who, projectiles::ProjectileKind, world_spawn::PlayerSpawnFinder};
 
 /// `TicketType.PORTAL`'s timeout, in ticks.
 pub(in crate::game) const PORTAL_TICKET: u32 = 300;

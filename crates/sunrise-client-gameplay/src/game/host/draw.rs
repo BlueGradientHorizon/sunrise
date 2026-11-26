@@ -697,7 +697,9 @@ impl FrameGraphContext for GameFrameGraphContext<'_, '_> {
             ));
         }
         let mut recorded =
-            sunrise_client_render::gfx::mod_frame_graph::RecordedFramePass::from_descriptor(desc, owner);
+            sunrise_client_render::gfx::mod_frame_graph::RecordedFramePass::from_descriptor(
+                desc, owner,
+            );
         {
             let mut ctx = GameOffscreenDrawContext {
                 game: self.game,

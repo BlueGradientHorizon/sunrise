@@ -97,7 +97,6 @@ pub struct GuestCrafting {
     pub machine: MenuOwner<Option<(i32, Box<Menu>)>>,
 }
 
-
 /// ServerboundContainerClickPacket's input.
 pub(in crate::game) fn input(id: i32) -> Input {
     match id {
@@ -330,7 +329,8 @@ impl crate::game::ServerGame<'_> {
         if award_recipes {
             let recipes = self.award_furnace_recipes(pos, at);
             // The extracting player learns what the furnace used, before `item_smelted`.
-            let conn = self.server
+            let conn = self
+                .server
                 .lan
                 .as_ref()
                 .and_then(|host| host.hub.guests.iter().find(|g| g.uuid == uuid))
@@ -1340,7 +1340,11 @@ impl crate::game::ServerGame<'_> {
         );
     }
 
-    pub(in crate::game) fn lan_route_place_recipe(&mut self, conn: u32, intent: RecipePlacementIntent<'_>) {
+    pub(in crate::game) fn lan_route_place_recipe(
+        &mut self,
+        conn: u32,
+        intent: RecipePlacementIntent<'_>,
+    ) {
         let Some((player, name, container, id, use_max, generation, dimension)) = (|| {
             let host = self.server.lan.as_ref()?;
             let gi = host.hub.guests.iter().position(|g| g.conn == conn)?;
@@ -1501,7 +1505,8 @@ impl crate::game::ServerGame<'_> {
         let conn = self.server.lan.as_ref()?.hub.guests.get(gi)?.conn;
         // AbstractFurnaceMenu.handlePlacement: the current furnace's slots,
         // rather than the separate crafting-table menu, own cooking inputs.
-        let furnace = self.server
+        let furnace = self
+            .server
             .lan
             .as_ref()?
             .hub
@@ -1527,7 +1532,8 @@ impl crate::game::ServerGame<'_> {
             });
         if let Some((pos, kind, items)) = furnace {
             // Opening need not have created the click/drag cache yet.
-            let mut menu = self.server
+            let mut menu = self
+                .server
                 .lan
                 .as_mut()?
                 .menus
@@ -1549,7 +1555,11 @@ impl crate::game::ServerGame<'_> {
                 for k in 0..3 {
                     f.items[k] = menu.slot(k).cloned();
                 }
-                f.input_clicked(&self.common.loop_context, server_world_recipes!(self), items[0].clone());
+                f.input_clicked(
+                    &self.common.loop_context,
+                    server_world_recipes!(self),
+                    items[0].clone(),
+                );
             }
             if changed {
                 self.container_changed(pos);
@@ -2177,7 +2187,8 @@ impl crate::game::ServerGame<'_> {
         }
         // A writable listener may have replaced the menu while the answers were collected:
         // they belong to the original level's menu instance only.
-        let still = self.server
+        let still = self
+            .server
             .lan
             .as_ref()
             .and_then(|host| host.hub.guests.iter().position(|g| g.conn == conn))
@@ -2187,12 +2198,18 @@ impl crate::game::ServerGame<'_> {
                     && g.menu.as_ref().is_some_and(|m| m.window == window)
             });
         if let Some(gi) = still {
-            self.server.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
-                if let Some(m) = g.menu.as_mut() {
-                    m.links.clear();
-                    m.links.extend(scratch.links.iter().copied());
-                }
-            });
+            self.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(gi, |g| {
+                    if let Some(m) = g.menu.as_mut() {
+                        m.links.clear();
+                        m.links.extend(scratch.links.iter().copied());
+                    }
+                });
         }
         self.server.link_scratch = scratch;
     }
@@ -2299,7 +2316,8 @@ impl crate::game::ServerGame<'_> {
 
     /// `CraftingMenu.slotsChanged` for one guest's mod crafting menu.
     pub(in crate::game) fn lan_mod_crafting_tick_one(&mut self, conn: u32) {
-        let Some(gi) = self.server
+        let Some(gi) = self
+            .server
             .lan
             .as_ref()
             .and_then(|host| host.hub.guests.connection_index(conn))
@@ -2363,7 +2381,10 @@ impl crate::game::ServerGame<'_> {
         }) else {
             return;
         };
-        self.reply_menu_click(conn, sunrise_gameplay_common::game::lan_menu_data::ClickReply::Close(window));
+        self.reply_menu_click(
+            conn,
+            sunrise_gameplay_common::game::lan_menu_data::ClickReply::Close(window),
+        );
     }
 
     /// The whole crafting table menu for the client (`sendAllDataToRemote`).
@@ -2411,8 +2432,6 @@ impl crate::game::ServerGame<'_> {
             .as_ref()?;
         Some(menu.slot_count() - 36)
     }
-
-
 
     /// Retire a game-owned menu on the guest record, even when their active
     /// cursor is temporarily in `Game` during a guest turn.

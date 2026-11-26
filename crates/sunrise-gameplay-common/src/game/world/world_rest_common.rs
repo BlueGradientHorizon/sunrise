@@ -45,7 +45,12 @@ impl RestPresentation for ServerRestPresentation {
     type ClientTables = ();
     type Output = ();
 
-    fn mob_types(&self, root: &Path, _: &ItemDefaults, catalog: &Arc<Attributes>) -> Result<MobTypes> {
+    fn mob_types(
+        &self,
+        root: &Path,
+        _: &ItemDefaults,
+        catalog: &Arc<Attributes>,
+    ) -> Result<MobTypes> {
         MobTypes::load_for_server(root, catalog)
     }
     fn mob_tables(&self, _: &ResourceRoot, _: &HashMap<String, Arc<MobType>>) -> Result<()> {
@@ -88,9 +93,10 @@ pub fn load_world_rest<P: RestPresentation + Sync>(
         "sunrise-content".into(),
         resource_root.data_changes().clone(),
     );
-    let store = sunrise_level::datapack::DataStore::load(
-        &sunrise_level::datapack::DataPacks::new(&[&content]),
-    );
+    let store =
+        sunrise_level::datapack::DataStore::load(&sunrise_level::datapack::DataPacks::new(&[
+            &content,
+        ]));
     let files = store.files.into_iter().collect::<Vec<_>>();
     let overlay = &sunrise_world::loot::PackOverlay {
         conditions,
@@ -289,15 +295,15 @@ pub fn load_world_rest<P: RestPresentation + Sync>(
     let models = transformers?;
     let nether_environment = nether_environment?;
     let end_environment = end_environment?;
-    let prepared_tests =
-        sunrise_sim::lan::data::PackRegistryDefinitions::load_prepared_game_tests(
-            root,
-            item_defaults,
-        );
-    let (test_environments, test_instances) = crate::game::test_registry_tables::build_game_test_tables(
-        &prepared_tests,
-        &mod_api::GameTestFunctions::default(),
+    let prepared_tests = sunrise_sim::lan::data::PackRegistryDefinitions::load_prepared_game_tests(
+        root,
+        item_defaults,
     );
+    let (test_environments, test_instances) =
+        crate::game::test_registry_tables::build_game_test_tables(
+            &prepared_tests,
+            &mod_api::GameTestFunctions::default(),
+        );
     log::info!(
         "Sunrise: resources loaded in {:.1}s; {} block states, {} items, {} biomes; {} worker threads",
         started.elapsed().as_secs_f32(),

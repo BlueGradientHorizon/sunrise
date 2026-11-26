@@ -16,18 +16,19 @@ fn candidate_registry_folders_do_not_choose_between_two_declared_registries() {
     )]);
     let base = sunrise_world::conditions::LoadConditions::new([]);
     let mut view = sunrise_gameplay_common::game::load_conditions::RegistryView::default();
-    let candidate = sunrise_gameplay_common::game::load_conditions::admit_datapack_registries_for_test(
-        root.path(),
-        &sunrise_world::loot::PackOverlay {
-            conditions: &base,
-            ..Default::default()
-        },
-        &mut view,
-        &declarations,
-        &files,
-        &mut mod_api::__private::NoVanillaValueDecoder,
-    )
-    .unwrap();
+    let candidate =
+        sunrise_gameplay_common::game::load_conditions::admit_datapack_registries_for_test(
+            root.path(),
+            &sunrise_world::loot::PackOverlay {
+                conditions: &base,
+                ..Default::default()
+            },
+            &mut view,
+            &declarations,
+            &files,
+            &mut mod_api::__private::NoVanillaValueDecoder,
+        )
+        .unwrap();
     let conditions = view.conditions(&base);
     for registry in keys {
         assert_eq!(candidate.entries(registry).unwrap(), ["test:nested/added"]);
@@ -143,10 +144,10 @@ fn reload_conditions_read_candidate_registries_and_bound_tags() {
                 .unwrap();
                 request.save_root = root.to_owned();
                 game.load_world(request).unwrap();
-                let item_tags =
-                    |game: &sunrise_gameplay::game::ServerGame<'_>, tag: mod_api::TagKey| {
-                        mod_api::Tags::items(game, tag.typed())
-                    };
+                let item_tags = |game: &sunrise_gameplay::game::ServerGame<'_>,
+                                 tag: mod_api::TagKey| {
+                    mod_api::Tags::items(game, tag.typed())
+                };
                 let key = |path: &str| {
                     mod_api::__private::tag_key(
                         &mod_api::Identifier::parse(&format!("reload_conditions:{path}")).unwrap(),
@@ -183,42 +184,41 @@ fn reload_conditions_read_candidate_registries_and_bound_tags() {
                             .is_some()
                     })
                 };
-                let check_stages =
-                    |game: &sunrise_gameplay::game::ServerGame<'_>, admitted: bool| {
-                        let level = game.level(game.dim.id()).unwrap();
-                        for (registry, entry, power) in STAGES {
-                            let registry = format!("reload_conditions:{registry}");
-                            let entry = format!("reload_conditions:{entry}");
-                            let mut ids = Vec::new();
-                            assert_eq!(
-                                level.visit_datapack_entries(game, &registry, &mut |id| {
-                                    ids.push(id.to_owned());
-                                    std::ops::ControlFlow::Continue(())
-                                }),
-                                Ok(std::ops::ControlFlow::Continue(()))
-                            );
-                            assert_eq!(
-                                ids,
-                                if admitted {
-                                    vec![entry.clone()]
-                                } else {
-                                    Vec::new()
-                                }
-                            );
-                            let mut value = None;
-                            let read =
-                                level.datapack_read(game, &registry, &entry, &mut |decoded| {
-                                    value = decoded.get("power").cloned();
-                                });
+                let check_stages = |game: &sunrise_gameplay::game::ServerGame<'_>,
+                                    admitted: bool| {
+                    let level = game.level(game.dim.id()).unwrap();
+                    for (registry, entry, power) in STAGES {
+                        let registry = format!("reload_conditions:{registry}");
+                        let entry = format!("reload_conditions:{entry}");
+                        let mut ids = Vec::new();
+                        assert_eq!(
+                            level.visit_datapack_entries(game, &registry, &mut |id| {
+                                ids.push(id.to_owned());
+                                std::ops::ControlFlow::Continue(())
+                            }),
+                            Ok(std::ops::ControlFlow::Continue(()))
+                        );
+                        assert_eq!(
+                            ids,
                             if admitted {
-                                assert_eq!(read, Ok(()));
-                                assert_eq!(value, Some(mod_api::DatapackValue::Int(power)));
+                                vec![entry.clone()]
                             } else {
-                                assert_eq!(read, Err(mod_api::DatapackReadError::MissingEntry));
-                                assert_eq!(value, None);
+                                Vec::new()
                             }
+                        );
+                        let mut value = None;
+                        let read = level.datapack_read(game, &registry, &entry, &mut |decoded| {
+                            value = decoded.get("power").cloned();
+                        });
+                        if admitted {
+                            assert_eq!(read, Ok(()));
+                            assert_eq!(value, Some(mod_api::DatapackValue::Int(power)));
+                        } else {
+                            assert_eq!(read, Err(mod_api::DatapackReadError::MissingEntry));
+                            assert_eq!(value, None);
                         }
-                    };
+                    }
+                };
                 assert_eq!(item_tags(game, flag), flag_members);
                 check_stages(game, false);
                 assert_eq!(answers(game), [false, false, true]);

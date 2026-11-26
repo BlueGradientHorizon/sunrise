@@ -1,6 +1,5 @@
 #![cfg(test)]
 
-
 #[cfg(test)]
 pub(crate) mod player_leave_tests {
     use mod_api::{Hooks, PlayerBedLeaveEvent, PlayerLoggedOutEvent, Registrar, ServerHost};

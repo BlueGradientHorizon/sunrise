@@ -20,11 +20,7 @@ pub(in crate::game) use sunrise_gameplay_common::painting_variants::{
 /// that `normal` points to.
 impl crate::game::ServerGame<'_> {
     /// `HangingEntityItem.useOn` for a painting against `hit`'s face.
-    pub fn place_painting(
-        &mut self,
-        hit: &Hit,
-        stack: &ItemStack,
-    ) -> bool {
+    pub fn place_painting(&mut self, hit: &Hit, stack: &ItemStack) -> bool {
         if &*stack.item != "minecraft:painting" {
             return false;
         }

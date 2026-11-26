@@ -14,11 +14,7 @@ pub(crate) mod tests {
 
     use mod_api::client::first_person::Hand;
 
-    use mod_api::{
-        EntityRef, Identifier, ItemPart, WorldEpoch,
-    };
-
-    
+    use mod_api::{EntityRef, Identifier, ItemPart, WorldEpoch};
 
     use sunrise_core::geometry::Vec3;
 

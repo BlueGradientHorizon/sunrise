@@ -218,7 +218,8 @@ impl crate::game::ServerGame<'_> {
         if mod_api::__private::fluid_id(fluid).is_none() {
             return Ok(false);
         }
-        let tables = sunrise_gameplay_common::game::native_block_tables::BlockTables::of(&self.common);
+        let tables =
+            sunrise_gameplay_common::game::native_block_tables::BlockTables::of(&self.common);
         let sound = match pickup {
             true => tables.fluid_pickup_sound(fluid),
             false => tables.fluid_empty_sound(fluid),

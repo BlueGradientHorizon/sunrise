@@ -4,9 +4,9 @@ use crate::game::{commands_common::Target, native_server::PlayerRead};
 use core::ops::ControlFlow;
 use mod_api::{
     BlockCapabilitySite, BlockEntityRef, BlockFace, BlockSide, CollisionFlags, Compound,
-    DatapackRegistrySet, DimensionKey, EntityReadError, EntityRef, EntityResidency, EntityTypeKey, EquipmentSlot,
-    ItemEntityRef, LevelReadError, LevelRef, LivingRef, MainHand, MenuRef, PlayerRef, SupportType,
-    WorldEpoch, client::first_person::Hand,
+    DatapackRegistrySet, DimensionKey, EntityReadError, EntityRef, EntityResidency, EntityTypeKey,
+    EquipmentSlot, ItemEntityRef, LevelReadError, LevelRef, LivingRef, MainHand, MenuRef,
+    PlayerRef, SupportType, WorldEpoch, client::first_person::Hand,
 };
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
@@ -65,12 +65,18 @@ pub trait ModapiModdingSideGameExt<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     #[inline(always)]
-    fn side_client_entity_custom_name(&self, entity: EntityRef) -> Option<Option<sunrise_game_data::text::Text>> {
+    fn side_client_entity_custom_name(
+        &self,
+        entity: EntityRef,
+    ) -> Option<Option<sunrise_game_data::text::Text>> {
         <Self::State as SideOps>::side_client_entity_custom_name(self, entity)
     }
 
     #[inline(always)]
-    fn side_native_client_entity_body_target(&self, entity: EntityRef) -> Result<Target, EntityReadError> {
+    fn side_native_client_entity_body_target(
+        &self,
+        entity: EntityRef,
+    ) -> Result<Target, EntityReadError> {
         <Self::State as SideOps>::side_native_client_entity_body_target(self, entity)
     }
 

@@ -656,7 +656,12 @@ impl crate::game::ServerGame<'_> {
         level
             .player_books
             .entry((owner, book.clone()))
-            .or_insert_with(|| (player, self.common.level.recipe_book.custom.stored(book.as_str())));
+            .or_insert_with(|| {
+                (
+                    player,
+                    self.common.level.recipe_book.custom.stored(book.as_str()),
+                )
+            });
         true
     }
 
@@ -1015,11 +1020,11 @@ impl crate::game::ServerGame<'_> {
             }
         }
 
-
         let mut clean_groups = Vec::new();
         for (pos @ (x, y, z), was) in level.connection_groups {
             self.common.world.set_connection_group_stored(x, y, z, was);
-            if self.common
+            if self
+                .common
                 .world
                 .connection_group_log
                 .as_ref()
@@ -1028,7 +1033,6 @@ impl crate::game::ServerGame<'_> {
                 clean_groups.push((pos, was));
             }
         }
-
 
         let mut rows = HashMap::<Pos, (ReplayEntity, bool)>::new();
         for after in level.after.iter_mut().rev() {
@@ -1041,7 +1045,10 @@ impl crate::game::ServerGame<'_> {
                             if matches!(step.creation, BlockEntityCreation::Staged { .. })
                                 || step.removed.is_some() =>
                         {
-                            entry.insert((ReplayEntity::take(&mut self.common.world, step.pos), false))
+                            entry.insert((
+                                ReplayEntity::take(&mut self.common.world, step.pos),
+                                false,
+                            ))
                         }
                         Entry::Vacant(_) => continue,
                     };
@@ -1080,7 +1087,9 @@ impl crate::game::ServerGame<'_> {
         }
         for (&pos, &placement) in &ordered {
             let (x, y, z) = pos;
-            self.common.world.set_stored(x, y, z, level.blocks[&pos].state);
+            self.common
+                .world
+                .set_stored(x, y, z, level.blocks[&pos].state);
             if let Some((row, _)) = rows.remove(&pos) {
                 row.install(&mut self.common.world, pos, placement);
             }
@@ -1104,9 +1113,6 @@ impl crate::game::ServerGame<'_> {
         let mut menu_lifecycle = Vec::new();
         for after in level.after {
             match after {
-
-
-
                 After::MenuOpen(..) => menu_lifecycle.push(after),
                 After::MenuClick(ref reply) if reply.closes_menu() => menu_lifecycle.push(after),
 
@@ -1154,8 +1160,6 @@ impl crate::game::ServerGame<'_> {
                     let pos = step.pos;
                     let clears_group = step.replay.clear_connection_group;
                     if !told.insert(Err(pos)) {
-
-
                         if clears_group && explicit_group_since_block.remove(&pos) {
                             self.common.world.invalidate_replaced_group(pos);
                         }
@@ -1174,8 +1178,6 @@ impl crate::game::ServerGame<'_> {
                         continue;
                     };
 
-
-
                     let absent_after_writes = self.common.world.block_entities.get(&pos).is_none()
                         && level.removed_block_entities.contains_key(&pos);
                     let b = self.common.res.behaviours();
@@ -1192,10 +1194,6 @@ impl crate::game::ServerGame<'_> {
                         self.restore_removed_block_entity(pos, *entity, generation);
                     }
                     if now != was {
-
-
-
-
                         if clear_connection_group && net_keeps_group {
                             self.common.world.invalidate_replaced_group(pos);
                         }
@@ -1214,18 +1212,10 @@ impl crate::game::ServerGame<'_> {
                                 self.common.world.block_entities.remove(&key);
                                 self.restore_removed_block_entity(key, *entity, generation);
                             } else if absent_after_writes {
-
-
-
-
-
                                 self.common.world.block_entities.remove(&key);
                             }
                         }
                     } else if clear_connection_group {
-
-
-
                         self.common.world.invalidate_replaced_group(pos);
                     }
                 }
@@ -1745,9 +1735,15 @@ impl crate::game::ServerGame<'_> {
                     self.common.level.recipe_book.custom.restore(key, kept);
                 }
                 Some(PlayerStorageHome::Guest(index)) => {
-                    self.server.lan.as_mut().expect("resolved guest").hub.guests.update(index, |g| {
-                        g.recipe_book.custom.restore(key, kept);
-                    });
+                    self.server
+                        .lan
+                        .as_mut()
+                        .expect("resolved guest")
+                        .hub
+                        .guests
+                        .update(index, |g| {
+                            g.recipe_book.custom.restore(key, kept);
+                        });
                 }
                 None => {}
             }
@@ -1852,7 +1848,9 @@ impl crate::game::ServerGame<'_> {
                     Some(PlayerStorageHome::Game) => self.common.level.recipe_book.custom.get(key),
                     Some(PlayerStorageHome::Guest(index)) => {
                         self.server.lan.as_ref().expect("resolved guest").hub.guests[index]
-                            .recipe_book.custom.get(key)
+                            .recipe_book
+                            .custom
+                            .get(key)
                     }
                     None => return,
                 };
@@ -2231,7 +2229,9 @@ impl crate::game::ServerGame<'_> {
         while let Some((step, removed)) = self.commit_step(frame, next, true) {
             match step {
                 entities::Step::Tell(announcement) if next < joined && announcement.is_join() => {}
-                entities::Step::Tell(announcement) => self.tell_announcement(announcement, &removed),
+                entities::Step::Tell(announcement) => {
+                    self.tell_announcement(announcement, &removed)
+                }
                 entities::Step::Remove(removals) => self.remove_committed(removals),
             }
             next += 1;

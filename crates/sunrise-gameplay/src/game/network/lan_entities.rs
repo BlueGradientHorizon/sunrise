@@ -643,7 +643,6 @@ impl ServerGame<'_> {
 }
 
 impl ServerGame<'_> {
-
     /// `ClientboundAddEntityPacket(Entity, ServerEntity, int)`: the entity's
     /// own UUID (`Entity.getUUID`), the one `/data`, saves and UUID
     /// selectors use, so a client can name it back (the crosshair UUID that
@@ -974,7 +973,10 @@ impl ServerGame<'_> {
             // to the next tick's send_changes so impact updates (e.g. point-blank wall
             // collision) arrive after the client's first tick has completed.
             if !hub.tracks(p.id as i32)
-                && crate::game::native_entity_refs::entity_section_accessible(chunks, at(p.position))
+                && crate::game::native_entity_refs::entity_section_accessible(
+                    chunks,
+                    at(p.position),
+                )
                 && let Some(a) = p.arrow.as_deref()
                 && let (Some(spawn_pos), Some(spawn_vel), Some((pitch, yaw))) =
                     (a.spawn_pos, a.spawn_velocity, a.spawn_rot)

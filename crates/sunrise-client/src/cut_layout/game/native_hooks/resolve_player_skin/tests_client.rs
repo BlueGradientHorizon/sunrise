@@ -58,10 +58,22 @@ fn live_skin_selection_reaches_the_hand_body_and_preview_and_restores_vanilla() 
                 };
                 {
                     let _call = edit_texture();
-                    game.create_dynamic_texture(&wide, 64, 64, 1, &[255, 0, 0, 255].repeat(64 * 64))
-                        .unwrap();
-                    game.create_dynamic_texture(&slim, 64, 64, 1, &[0, 0, 255, 255].repeat(64 * 64))
-                        .unwrap();
+                    game.create_dynamic_texture(
+                        &wide,
+                        64,
+                        64,
+                        1,
+                        &[255, 0, 0, 255].repeat(64 * 64),
+                    )
+                    .unwrap();
+                    game.create_dynamic_texture(
+                        &slim,
+                        64,
+                        64,
+                        1,
+                        &[0, 0, 255, 255].repeat(64 * 64),
+                    )
+                    .unwrap();
                     game.create_dynamic_texture(&wrong_size, 32, 64, 1, &[255; 32 * 64 * 4])
                         .unwrap();
                 }

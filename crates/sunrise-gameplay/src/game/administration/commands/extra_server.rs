@@ -313,7 +313,12 @@ impl crate::game::ServerGame<'_> {
     }
     /// `VersionCommand`.
     pub(in crate::game::server_side) fn cmd_version(&mut self) -> R<i32> {
-        if !self.server.command_source.as_ref().is_some_and(|s| s.silent) {
+        if !self
+            .server
+            .command_source
+            .as_ref()
+            .is_some_and(|s| s.silent)
+        {
             self.command_system_message(Text::translate("commands.version.header", &[]));
             for line in self.common.version_lines() {
                 self.command_system_message(line);

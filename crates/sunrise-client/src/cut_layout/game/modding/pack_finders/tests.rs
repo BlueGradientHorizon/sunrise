@@ -5,16 +5,14 @@ use std::{fs, io::Write, path::PathBuf};
 use sunrise_client_gameplay::game::client_side::pack_discovery_client::into_resource_pack;
 use sunrise_client_render::packs;
 use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::pack_discovery::{
+    HookId, ModsState, PackDiscoveryContext, PackFinderError, PackPosition, PackRegistration,
+    PackSource, PackType, Registry, ResourceSource, Source, StartupDiscovery, data_packs,
+    data_repository, discover,
+};
 use sunrise_gameplay_common::game::pack_finders_common::CommonGameExt1;
 use sunrise_level::datapack::{DataPacks, DataStore, FunctionLine};
 use sunrise_level::pack_meta::{RESOURCE_FORMAT, SelectionModel};
-use {
-    sunrise_gameplay_common::game::pack_discovery::{
-        HookId, ModsState, PackDiscoveryContext, PackFinderError, PackPosition, PackRegistration,
-        PackSource, PackType, Registry, ResourceSource, Source, StartupDiscovery, data_packs,
-        data_repository, discover,
-    },
-};
 
 const ASSET_PACK: &str = "assets/packmod/resourcepacks/optional";
 const DATA_PACK: &str = "data/packmod/datapacks/optional";

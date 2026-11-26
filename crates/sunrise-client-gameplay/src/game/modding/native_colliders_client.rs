@@ -93,9 +93,7 @@ impl ClientGame<'_> {
     }
 
     /// The colliders of the client's current level, where they stand now.
-    pub fn client_placed_moving_colliders(
-        &mut self,
-    ) -> sunrise_world::moving_colliders::Prepared {
+    pub fn client_placed_moving_colliders(&mut self) -> sunrise_world::moving_colliders::Prepared {
         use sunrise_world::moving_colliders::{Placed, Prepared};
         let level = self.common.dim;
         let mut any = false;

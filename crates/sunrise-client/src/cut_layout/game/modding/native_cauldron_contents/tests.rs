@@ -1,8 +1,6 @@
 use mod_api::{Hooks, Host};
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
-use {
-    sunrise_gameplay_common::game::native_cauldron_contents::cauldron_contents,
-};
+use sunrise_gameplay_common::game::native_cauldron_contents::cauldron_contents;
 
 #[test]
 #[ignore = "daily"]
@@ -131,4 +129,3 @@ fn registered_contents_and_rebuilt_tables_are_read_through_public_host() {
         });
     });
 }
-

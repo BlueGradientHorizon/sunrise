@@ -2,12 +2,12 @@
 #[cfg(test)]
 pub(crate) mod tests {
     use std::sync::Arc;
+    use sunrise_gameplay_common::game::piston_carry::{
+        ATTACHMENTS_KEY, Attachments, BlockPos, CARRIED_KEY, ChunkExtras, Direction, MovingPiston,
+        Tag,
+    };
     use sunrise_items::items::ItemStack;
     use sunrise_level::{chunk::Chunk, containers::BlockEntity};
-    use sunrise_gameplay_common::game::piston_carry::{
-            ATTACHMENTS_KEY, Attachments, BlockPos, CARRIED_KEY, ChunkExtras, Direction,
-            MovingPiston, Tag,
-        };
 
     #[test]
     #[ignore = "daily"]

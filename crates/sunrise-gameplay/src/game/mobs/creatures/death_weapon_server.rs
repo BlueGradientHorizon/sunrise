@@ -535,12 +535,7 @@ impl crate::game::ServerGame<'_> {
         } else {
             victim
         };
-        f64::from(self.evaluate_weapon_damage(
-            weapon,
-            Some(victim),
-            ctx,
-            base_f64 as f32,
-        ))
+        f64::from(self.evaluate_weapon_damage(weapon, Some(victim), ctx, base_f64 as f32))
     }
 }
 

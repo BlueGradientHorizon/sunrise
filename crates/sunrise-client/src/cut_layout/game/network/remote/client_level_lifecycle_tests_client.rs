@@ -208,9 +208,9 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                 );
                 let next_set = DatapackRegistrySet::from_candidate(candidate(29));
                 let (tx, rx) = ingress::channel(1024, |_| 1).unwrap();
-                tx.send(Event::Reconfiguring(Box::new(
-                    PhaseChange::dummy_for_test(),
-                )))
+                tx.send(Event::Reconfiguring(
+                    Box::new(PhaseChange::dummy_for_test()),
+                ))
                 .unwrap();
                 // The next configuration has already accepted all its registry fragments
                 // and queued the handoff before the game can unload the retiring level.
@@ -219,15 +219,12 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                     datapacks: receiver(&next_set),
                 })
                 .unwrap();
-                game.client
-                    .remote
-                    .as_mut()
-                    .unwrap()
-                    .backlog
-                    .extend(rx.take_turn().into_iter().map(|receipt| {
+                game.client.remote.as_mut().unwrap().backlog.extend(
+                    rx.take_turn().into_iter().map(|receipt| {
                         let (event, credit) = receipt.into_parts();
                         Received::Event(event, credit)
-                    }));
+                    }),
+                );
                 game.poll_remote_events(true).unwrap();
                 let remote = game.client.remote.as_ref().unwrap();
                 assert!(remote.reconfiguring.is_some());
@@ -281,9 +278,9 @@ fn client_level_notices_pair_across_replacement_reconfiguration_leave_and_quit()
                 })
                 .unwrap();
                 assert_eq!(reloaded_power, Some(31));
-                tx.send(Event::Reconfiguring(Box::new(
-                    PhaseChange::dummy_for_test(),
-                )))
+                tx.send(Event::Reconfiguring(
+                    Box::new(PhaseChange::dummy_for_test()),
+                ))
                 .unwrap();
                 let (event, credit) = rx.try_recv_owned().unwrap().into_parts();
                 game.client

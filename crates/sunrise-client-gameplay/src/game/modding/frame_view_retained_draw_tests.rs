@@ -591,12 +591,9 @@ fn posed_instance_group_draws_under_pose_and_rejects_stale_or_disabled() {
             g.write(game, 0, &[copy]).unwrap();
             g
         };
-        game.client
-            .instance_groups
-            .borrow_mut()
-            .retire_disabled(&std::collections::BTreeSet::from([
-                "disabled_group_owner".into()
-            ]));
+        game.client.instance_groups.borrow_mut().retire_disabled(
+            &std::collections::BTreeSet::from(["disabled_group_owner".into()]),
+        );
         let mut after_disable = BlockEntityDraw::posed_with_view(
             view,
             0xF0F0,

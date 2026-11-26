@@ -1,12 +1,10 @@
 #![cfg(any())]
 
+#[cfg(test)]
+use mod_api::{HandlerThread, Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes};
 use mod_api::{
     PayloadContextError, PayloadDirection, PayloadId, PayloadProtocol, PayloadWork,
     PayloadWorkStatus, Registrar,
-};
-#[cfg(test)]
-use mod_api::{
-    HandlerThread, Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes,
 };
 use std::sync::{
     Arc,

@@ -279,7 +279,11 @@ fn added_issuer_actor_missing_guest_and_restoration_controls() {
             .is_none()
     );
     assert!(matches!(
-        summary_line(None, SummaryKind::Success { broadcast: true }, Text::literal("GUI path")),
+        summary_line(
+            None,
+            SummaryKind::Success { broadcast: true },
+            Text::literal("GUI path")
+        ),
         Out::Console { .. }
     ));
 }

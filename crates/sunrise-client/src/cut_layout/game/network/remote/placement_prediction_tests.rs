@@ -7,10 +7,8 @@ use sunrise_client_gameplay::game::client_side::remote_client::session_state::Re
 use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_gameplay_common::game::remote::dry_level::{DryLevel, DryLevelGameExt2 as _};
-use {
-    sunrise_gameplay_common::game::remote::{
-        BlockEntity, BlockStateId, C, Chunk, Holder, ItemStack, Tag, play,
-    },
+use sunrise_gameplay_common::game::remote::{
+    BlockEntity, BlockStateId, C, Chunk, Holder, ItemStack, Tag, play,
 };
 use {
     crate::game::server_side::native_entity_refs::tests::with_game_role_client,
@@ -1137,7 +1135,6 @@ fn blocks_answer_a_held_item_s_click_on_the_client_as_vanilla() {
         assert!(!click(game, "minecraft:shears").consumes_action());
     });
 }
-
 
 #[cfg(test)]
 use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;

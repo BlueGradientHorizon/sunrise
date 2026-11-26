@@ -355,7 +355,10 @@ impl HintToast {
         self.slots
     }
 
-    pub(in crate::game::client_side) fn update(&mut self, clock: ToastClock) -> (Option<bool>, bool) {
+    pub(in crate::game::client_side) fn update(
+        &mut self,
+        clock: ToastClock,
+    ) -> (Option<bool>, bool) {
         let (sound, finished) = self.slide.update_on(clock, |fully| {
             self.wanted && (self.hint != Hint::SocialInteractions || social_hint_progress(fully).0)
         });

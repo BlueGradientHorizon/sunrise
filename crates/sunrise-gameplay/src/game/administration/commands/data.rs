@@ -483,14 +483,16 @@ impl crate::game::ServerGame<'_> {
             |row| self.capture_block_entity_payload(key, &name, row, items),
         );
         // Over the NBT it was loaded from, as the chunk save and a loot roll read it.
-        Some(sunrise_gameplay_common::game::spill_common::live_full_metadata(
-            &self.common.world,
-            key,
-            e,
-            &name,
-            items,
-            current,
-        ))
+        Some(
+            sunrise_gameplay_common::game::spill_common::live_full_metadata(
+                &self.common.world,
+                key,
+                e,
+                &name,
+                items,
+                current,
+            ),
+        )
     }
     /// `BlockEntity.loadWithComponents` for the block entity at `key` from its full saved
     /// `tag` (id and position included): false when the tag doesn't decode.
@@ -943,12 +945,7 @@ impl crate::game::ServerGame<'_> {
     // ---- /summon ---------------------------------------------------------
 
     /// The `summon <entity> <pos> <nbt>` form.
-    pub fn summon_with_nbt(
-        &mut self,
-        kind: &str,
-        pos: [f64; 3],
-        nbt: &str,
-    ) -> R<Option<Target>> {
+    pub fn summon_with_nbt(&mut self, kind: &str, pos: [f64; 3], nbt: &str) -> R<Option<Target>> {
         let (tag, _) = parse_snbt(nbt).map_err(|e| err("argument.nbt.invalid", &[&e]))?;
         let Tag::Compound(nbt) = tag else {
             return Err(err("argument.nbt.expected.compound", &[]));

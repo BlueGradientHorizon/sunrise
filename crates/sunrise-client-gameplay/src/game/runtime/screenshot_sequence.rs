@@ -443,7 +443,15 @@ mod tests {
                 assert_eq!(angles.load(Ordering::Relaxed), 2);
                 assert_eq!(positions.load(Ordering::Relaxed), 2);
                 assert!(game.client.screenshot_sequence.0.is_none());
-                assert!(game.client.renderer.0.as_ref().unwrap().screenshot.is_none());
+                assert!(
+                    game.client
+                        .renderer
+                        .0
+                        .as_ref()
+                        .unwrap()
+                        .screenshot
+                        .is_none()
+                );
                 assert!(
                     game.client
                         .renderer

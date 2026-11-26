@@ -72,15 +72,18 @@ impl ServerGame<'_> {
             self.try_initialize_world_spawn(true)?;
         }
         if dedicated {
-            self.common.spawn = self
-                .common.level
-                .world_spawn
-                .map(|[x, y, z]| Vec3::new(f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5));
+            self.common.spawn =
+                self.common.level.world_spawn.map(|[x, y, z]| {
+                    Vec3::new(f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5)
+                });
         }
         Ok(())
     }
 
-    pub(in crate::game::server_side) fn try_initialize_world_spawn(&mut self, wait: bool) -> Result<bool> {
+    pub(in crate::game::server_side) fn try_initialize_world_spawn(
+        &mut self,
+        wait: bool,
+    ) -> Result<bool> {
         let Some([x, y, z]) = self.find_world_spawn(wait)? else {
             return Ok(false);
         };
@@ -93,7 +96,8 @@ impl ServerGame<'_> {
         // A personal spawnpoint must not replace the world's spawn.
         self.common.level.world_spawn.get_or_insert([x, y, z]);
         if !self.server.spawn_hook_cancelled
-            && sunrise_sim::save::WorldGen::read(&self.server.world_root).is_some_and(|g| g.bonus_chest)
+            && sunrise_sim::save::WorldGen::read(&self.server.world_root)
+                .is_some_and(|g| g.bonus_chest)
         {
             self.place_bonus_chest([x, y, z])?;
         }
@@ -102,7 +106,10 @@ impl ServerGame<'_> {
     /// MinecraftServer.setInitialSpawn: the first chunk of the spiral with a
     /// valid respawn column gives the world spawn, else the origin chunk's
     /// centre at the spawn height. None while a chunk to test is loading.
-    pub(in crate::game::server_side) fn find_world_spawn(&mut self, wait: bool) -> Result<Option<[i32; 3]>> {
+    pub(in crate::game::server_side) fn find_world_spawn(
+        &mut self,
+        wait: bool,
+    ) -> Result<Option<[i32; 3]>> {
         if !self.server.spawn_hook_fired {
             self.server.spawn_hook_fired = true;
             let mut position = self.common.level.world_spawn.unwrap_or([0, 0, 0]);
@@ -360,7 +367,10 @@ mod tests {
     use mod_api::{ChunkLoadEvent, Hooks, LevelLoadEvent, ModEntry, ServerHost};
     use std::sync::{Arc, Mutex};
     use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;
-    use sunrise_sim::{save::WorldPreset, world_options::{FlatSettings, WorldOptions}};
+    use sunrise_sim::{
+        save::WorldPreset,
+        world_options::{FlatSettings, WorldOptions},
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -424,7 +434,6 @@ mod tests {
                     assert!(prepared.level.world_spawn.is_none());
                     game.native_lifecycle_open_started();
                     game.finish_open_world(prepared).unwrap();
-
 
                     assert_eq!(game.common.level.world_spawn, Some([0, -60, 0]));
                     assert!(

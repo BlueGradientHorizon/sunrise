@@ -15,8 +15,8 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_gameplay_common::game::general::record_from_compound;
 #[cfg(test)]
 use sunrise_gameplay_common::game::general::{
-        Entity, GeneralEntityRecord, GeneralTypeEnvelope, Vec3, format,
-    };
+    Entity, GeneralEntityRecord, GeneralTypeEnvelope, Vec3, format,
+};
 
 /// The fixture counter: an attachment with a codec, so a saved row resumes
 /// its count and a quarantined record keeps it in its bytes.

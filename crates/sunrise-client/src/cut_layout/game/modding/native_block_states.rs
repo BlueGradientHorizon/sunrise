@@ -3,10 +3,10 @@
 mod tests {
     use mod_api::{FluidDefinition, FluidStateError, FluidTypeProperties, HostBlockStates};
     use sunrise_gameplay_common::game::native_block_states::{
-            Arc, BlockRegistry, BlockStateId, FluidState, ItemStack, Registries, StateConstraint,
-            StateMatchError, block_registries, description_id, match_state_properties,
-            parse, serialize,
-        };
+        Arc, BlockRegistry, BlockStateId, FluidState, ItemStack, Registries, StateConstraint,
+        StateMatchError, block_registries, description_id, match_state_properties, parse,
+        serialize,
+    };
 
     /// Air, a stair with two properties (its default `facing=north,half=bottom`)
     /// and wheat with an integer `age`, as `parse` reads them.
@@ -1194,6 +1194,5 @@ mod crafting_remainder_tests {
     }
 }
 use sunrise_gameplay_common::game::tables::GameItems as _;
-
 
 use sunrise_gameplay_common::game::native_block_states::NativeBlockStatesGameExt1 as _;

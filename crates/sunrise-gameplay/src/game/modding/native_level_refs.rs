@@ -255,11 +255,13 @@ impl<'g> ServerGame<'g> {
         };
         let wanted = |id: &str| names.iter().any(|name| name == id);
         Some(
-            sunrise_gameplay_common::structures::structures_reaching_in(world, &locator, pos, &wanted)
-                .into_iter()
-                .filter(|(_, in_piece)| !piece || *in_piece)
-                .map(|(name, _)| name)
-                .collect(),
+            sunrise_gameplay_common::structures::structures_reaching_in(
+                world, &locator, pos, &wanted,
+            )
+            .into_iter()
+            .filter(|(_, in_piece)| !piece || *in_piece)
+            .map(|(name, _)| name)
+            .collect(),
         )
     }
 
@@ -392,7 +394,10 @@ impl<'g> ServerGame<'g> {
         #[cfg(any(test, feature = "test-support"))]
         let ready = {
             let fixture_activation = mod_api::__private::game::TicketActivation::for_test_scope();
-            match fixture_activation.as_ref().or(self.server.ticket_activation) {
+            match fixture_activation
+                .as_ref()
+                .or(self.server.ticket_activation)
+            {
                 Some(activation) => activation.validate(self, level, loaded),
                 None => loaded,
             }
@@ -527,7 +532,13 @@ impl<'g> ServerGame<'g> {
     /// server shutdown reads as stale.
     pub(in crate::game) fn server_level_handle_current(&self, level: LevelRef) -> bool {
         self.common.native_lifecycle.epoch() == Some(level.epoch())
-            && level.generation() == self.server.levels.0.runtime.generation_of(level.dimension_id())
+            && level.generation()
+                == self
+                    .server
+                    .levels
+                    .0
+                    .runtime
+                    .generation_of(level.dimension_id())
             && !(self.common.is_logical_server()
                 && self.server.levels.0.active_closed
                 && level.dimension() == self.common.dim.key())

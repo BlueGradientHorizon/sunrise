@@ -105,4 +105,3 @@ fn client_tick_cancellation_skips_one_tick_and_countdown_continues() {
         });
     });
 }
-

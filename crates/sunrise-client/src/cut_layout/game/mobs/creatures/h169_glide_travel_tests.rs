@@ -1,6 +1,6 @@
 use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::game::tables::GameItems;
 use sunrise_gameplay_common::game::creatures::{Vec3, source_damage_type};
+use sunrise_gameplay_common::game::tables::GameItems;
 pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     with_role_game(
         sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,

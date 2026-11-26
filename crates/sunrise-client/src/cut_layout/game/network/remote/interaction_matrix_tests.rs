@@ -248,5 +248,3 @@ fn native_interaction_shared_matrix() {
         },
     );
 }
-
-

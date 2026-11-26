@@ -14,7 +14,9 @@ use sunrise_sim::{
 };
 
 /// A guest with a three-slot mod menu open on a block, and the catalogue & display its client would send.
-fn open_mod_menu(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> ((i32, i32, i32), sync::CatalogIdentity, sync::DisplayId) {
+fn open_mod_menu(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+) -> ((i32, i32, i32), sync::CatalogIdentity, sync::DisplayId) {
     open_mod_menu_named(game, "review:menu")
 }
 
@@ -244,7 +246,15 @@ fn observed_mod_click_supplies_grid_once_and_second_click_acts_on_changed_grid()
                 .unwrap();
             assert_eq!(second.item.as_ref(), "minecraft:iron_ore");
             assert_eq!(second.count, 2);
-            let left = game.server.lan.as_ref().unwrap().hub.guest(12).unwrap().inventory[9]
+            let left = game
+                .server
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .guest(12)
+                .unwrap()
+                .inventory[9]
                 .as_ref()
                 .unwrap()
                 .count;
@@ -328,7 +338,15 @@ fn a_recipe_sources_listener_that_breaks_the_backing_refuses_the_placement() {
                 game.world.block_entities.get(&pos),
                 Some(BlockEntity::Mod(_))
             ));
-            let left = game.server.lan.as_ref().unwrap().hub.guest(12).unwrap().inventory[9]
+            let left = game
+                .server
+                .lan
+                .as_ref()
+                .unwrap()
+                .hub
+                .guest(12)
+                .unwrap()
+                .inventory[9]
                 .as_ref()
                 .unwrap()
                 .count;
@@ -341,11 +359,11 @@ fn a_recipe_sources_listener_that_breaks_the_backing_refuses_the_placement() {
 #[ignore = "daily"]
 fn panicking_recipe_book_place_discards_answer_disables_only_that_callback_and_keeps_other_menus_running()
  {
+    use sunrise_protocol::packets::play::Clientbound as C;
     use sunrise_sim::recipe_book::{
         BookFlags, settings_codec,
         settings_sync::{CHANNEL, Message},
     };
-    use sunrise_protocol::packets::play::Clientbound as C;
 
     struct TwoMenuMod {
         panic_calls: std::sync::Arc<std::sync::atomic::AtomicUsize>,
@@ -530,11 +548,11 @@ fn panicking_recipe_book_place_discards_answer_disables_only_that_callback_and_k
 fn committed_book_settings_are_coalesced_before_a_listener_rewrites_them() {
     use mod_api::{RecipeBookIdentity, RecipeBookSettings};
     use std::sync::{Arc, Mutex};
+    use sunrise_protocol::packets::play::Clientbound as C;
     use sunrise_sim::recipe_book::{
         BookFlags, CustomBooks, settings_codec,
         settings_sync::{CHANNEL, Message},
     };
-    use sunrise_protocol::packets::play::Clientbound as C;
 
     const COMMITTED: BookFlags = BookFlags {
         open: true,
@@ -768,8 +786,8 @@ fn drain_clientbound(
 fn placement_frames_in(
     packets: &[sunrise_protocol::packets::play::Clientbound],
 ) -> Vec<sync::Frame> {
-    use sunrise_sim::recipe_book::{settings_codec, settings_sync::Message};
     use sunrise_protocol::packets::play::Clientbound as C;
+    use sunrise_sim::recipe_book::{settings_codec, settings_sync::Message};
     packets
         .iter()
         .filter_map(|packet| match packet {
@@ -849,14 +867,23 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
                         .generation();
                     catalog.generation = generation;
                     {
-                        let mut server = sunrise_gameplay_common::game::native_book_placement::Server::new(1);
+                        let mut server =
+                            sunrise_gameplay_common::game::native_book_placement::Server::new(1);
                         server.peer.hello(1, sync::schema()).unwrap();
                         server.peer.publish(catalog.clone()).unwrap();
                         server.displays.insert("review:recipe".into(), 1);
                         game.native_net.placement.servers.insert(12, server);
                     }
                     let (tx, rx) = std::sync::mpsc::channel();
-                    let uuid = game.server.lan.as_ref().unwrap().hub.guest(12).unwrap().uuid;
+                    let uuid = game
+                        .server
+                        .lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .guest(12)
+                        .unwrap()
+                        .uuid;
                     game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                         g.sender = sunrise_sim::lan::PlayerSender::new(tx, Default::default());
                         g.recipe_book.recipes.insert("review:recipe".into());
@@ -1047,7 +1074,14 @@ fn a_listening_part_places_the_recipe_through_the_real_stage() {
                     );
                     assert!(drain_placement_frames(&rx).is_empty());
                     assert_eq!(
-                        game.server.lan.as_ref().unwrap().hub.guest(12).unwrap().inventory[9]
+                        game.server
+                            .lan
+                            .as_ref()
+                            .unwrap()
+                            .hub
+                            .guest(12)
+                            .unwrap()
+                            .inventory[9]
                             .as_ref()
                             .unwrap()
                             .count,
@@ -1183,7 +1217,8 @@ fn mod_book_router_places_without_ack_and_ghosts_selected_variant() {
                         .generation();
                     catalog.generation = generation;
                     {
-                        let mut server = sunrise_gameplay_common::game::native_book_placement::Server::new(1);
+                        let mut server =
+                            sunrise_gameplay_common::game::native_book_placement::Server::new(1);
                         server.peer.hello(1, sync::schema()).unwrap();
                         server.peer.publish(catalog.clone()).unwrap();
                         server.displays.insert("review:recipe".into(), 2);
@@ -1199,7 +1234,12 @@ fn mod_book_router_places_without_ack_and_ghosts_selected_variant() {
                         ));
                     });
                     // Prime initial container snapshot so sync_containers reports real changes.
-                    game.server.lan.as_mut().unwrap().hub.sync_containers(&game.common.world);
+                    game.server
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .sync_containers(&game.common.world);
                     let _ = drain_clientbound(&rx);
 
                     // Ordinary placement updates real slots, leaves unrelated fuel slot 1 intact,
@@ -1227,7 +1267,12 @@ fn mod_book_router_places_without_ack_and_ghosts_selected_variant() {
                             .map(|s| (s.item.as_ref(), s.count)),
                         Some(("minecraft:coal", 2))
                     );
-                    game.server.lan.as_mut().unwrap().hub.sync_containers(&game.common.world);
+                    game.server
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .sync_containers(&game.common.world);
                     let sync_packets = drain_clientbound(&rx);
                     assert!(sync_packets.iter().any(|p| matches!(
                         p,
@@ -1337,7 +1382,14 @@ fn mod_book_router_places_without_ack_and_ghosts_selected_variant() {
                     assert!(drain_placement_frames(&rx).is_empty());
                     assert!(game.world.block_entities.get(&pos).unwrap().slots()[0].is_none());
                     assert_eq!(
-                        game.server.lan.as_ref().unwrap().hub.guest(12).unwrap().inventory[9]
+                        game.server
+                            .lan
+                            .as_ref()
+                            .unwrap()
+                            .hub
+                            .guest(12)
+                            .unwrap()
+                            .inventory[9]
                             .as_ref()
                             .unwrap()
                             .count,

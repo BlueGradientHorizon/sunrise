@@ -7,7 +7,6 @@ use sunrise_level::datapack::Function;
 #[cfg(test)]
 pub(crate) mod tests {
 
-    
     use sunrise_gameplay_common::game::tables::GameItems;
 
     use super::*;
@@ -354,7 +353,11 @@ pub(crate) mod tests {
             .typed::<mod_api::BlockKey>();
             let live_stone = mod_platform::__private::part_tests::block_key("minecraft:stone");
             assert_eq!(
-                sunrise_gameplay_common::game::native_tags::block_in_tag(Some(game.items()), live_stone, candidate),
+                sunrise_gameplay_common::game::native_tags::block_in_tag(
+                    Some(game.items()),
+                    live_stone,
+                    candidate
+                ),
                 Some(true)
             );
             sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new(
@@ -369,7 +372,11 @@ pub(crate) mod tests {
             sunrise_gameplay_common::game::api_values::resolve_block_definitions(&registry)
                 .unwrap();
             let stone = mod_platform::__private::part_tests::block_key("minecraft:stone");
-            let old_tag = sunrise_gameplay_common::game::native_tags::block_in_tag(Some(game.items()), stone, candidate);
+            let old_tag = sunrise_gameplay_common::game::native_tags::block_in_tag(
+                Some(game.items()),
+                stone,
+                candidate,
+            );
             let old_context = game.loop_context.clone();
             let old_root = game.options.resources.clone();
             let old_data = game.pack.data_source.clone();
@@ -407,7 +414,11 @@ pub(crate) mod tests {
             assert_eq!(game.damage_tag_generation, old_generation);
             assert_eq!(game.server.fns.0.enabled, old_enabled);
             assert_eq!(
-                sunrise_gameplay_common::game::native_tags::block_in_tag(Some(game.items()), stone, candidate),
+                sunrise_gameplay_common::game::native_tags::block_in_tag(
+                    Some(game.items()),
+                    stone,
+                    candidate
+                ),
                 old_tag
             );
             game.save_datapack_settings();

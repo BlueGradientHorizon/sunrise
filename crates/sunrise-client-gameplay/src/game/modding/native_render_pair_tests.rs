@@ -163,7 +163,10 @@ fn with_pair(heard: &Arc<Mutex<Heard>>, check: impl FnOnce(&mut crate::game::Cli
 }
 
 #[cfg(test)]
-fn with_player_pair(heard: &Arc<Mutex<Heard>>, check: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
+fn with_player_pair(
+    heard: &Arc<Mutex<Heard>>,
+    check: impl FnOnce(&mut crate::game::ClientGame<'_>),
+) {
     with_pair(heard, |game| {
         game.init_remote_for_replay().unwrap();
         check(game);

@@ -754,10 +754,12 @@ pub(crate) mod tests {
 
                     // 1. Vanilla effect on player: first add and unchanged reapplication both fire
                     //    the global bus event pre-mutation, with source and old/new snapshots.
-                    assert!(game.add_player_effect_from(
-                        EffectInstance::new("speed", 200, 0),
-                        cow_source,
-                    ));
+                    assert!(
+                        game.add_player_effect_from(
+                            EffectInstance::new("speed", 200, 0),
+                            cow_source,
+                        )
+                    );
                     assert!(!game.add_player_effect(EffectInstance::new("speed", 100, 0)));
                     assert_eq!(
                         std::mem::take(&mut *log.lock().unwrap()),
@@ -1886,11 +1888,8 @@ pub(crate) mod tick_effects_tests {
                 villager.extra.bed = Some([2, 64, 1]);
                 game.mobs.push(villager);
                 game.player = Some(
-                    sunrise_sim::motion::PlayerMotion::new(
-                        game.motion,
-                        Vec3::new(2.5, 64.0, 2.5),
-                    )
-                    .unwrap(),
+                    sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(2.5, 64.0, 2.5))
+                        .unwrap(),
                 );
                 assert!(!game.village_centers().is_empty());
 

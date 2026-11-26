@@ -117,12 +117,9 @@ pub(crate) mod sweep_tests {
         )
     }
 
-
     use sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS;
 
     use sunrise_gameplay_common::game::native_hooks::entity_inside::sweep_tests::InsidePart;
-
-    
 
     use sunrise_gameplay_common::game::native_hooks::entity_inside::sweep_tests::arrow_shot;
 
@@ -133,8 +130,6 @@ pub(crate) mod sweep_tests {
     use sunrise_gameplay::game::native_hooks::entity_inside::sweep_tests::sweep_game_player;
 
     use sunrise_gameplay::game::native_hooks::entity_inside::sweep_tests::sweep_game_player_live;
-
-    
 
     /// A listening part is told mid-walk, in walk order, and its typed writes reach
     /// the player in this tick: both pushes add, and the wither effect event lands

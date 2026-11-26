@@ -14,7 +14,8 @@ impl crate::game::ServerGame<'_> {
     /// Install the block menu for a guest's use or a direct BlockEntityRef open.
     pub fn open_block_menu(&mut self, conn: u32, pos: (i32, i32, i32)) -> MenuOpen {
         let generation = self.common.world.block_entities.generation(&pos);
-        let name = &self.common
+        let name = &self
+            .common
             .res
             .facts()
             .get(self.common.world.block(pos.0, pos.1, pos.2))
@@ -128,8 +129,9 @@ impl crate::game::ServerGame<'_> {
             let Some(host) = self.server.lan.as_ref() else {
                 return MenuOpen::Refused;
             };
-            let message = sunrise_game_data::text::Text::translate("container.spectatorCantOpen", &[])
-                .with_color(sunrise_game_data::text::RED);
+            let message =
+                sunrise_game_data::text::Text::translate("container.spectatorCantOpen", &[])
+                    .with_color(sunrise_game_data::text::RED);
             host.hub.send_to(
                 conn,
                 &C::SystemChat(play::SystemChat {
@@ -187,7 +189,8 @@ impl crate::game::ServerGame<'_> {
         if !sunrise_level::containers::menu_reaches(&guest.brand, menu) {
             return MenuOpen::Refused;
         }
-        let sends_menu_extra = matches!(slots, Slots::Block(k) if self.common.mod_menu_at(k).is_some());
+        let sends_menu_extra =
+            matches!(slots, Slots::Block(k) if self.common.mod_menu_at(k).is_some());
         let required_rev = if let Some(kind) = sunrise_level::containers::mod_menu_type(menu) {
             if !kind.player_inventory || kind.slots == 0 {
                 sunrise_protocol::menu_extra::LIVE_DATA_REVISION
@@ -637,7 +640,12 @@ impl crate::game::ServerGame<'_> {
         {
             host.hub.finish_close_container(conn, generation);
         }
-        if let Some(menus) = self.server.lan.as_mut().and_then(|host| host.menus.get_mut(&conn)) {
+        if let Some(menus) = self
+            .server
+            .lan
+            .as_mut()
+            .and_then(|host| host.menus.get_mut(&conn))
+        {
             menus.closing = false;
         }
         window
@@ -727,7 +735,10 @@ impl crate::game::ServerGame<'_> {
         if let Some(window) = self.server.lan.as_ref().and_then(|host| {
             super::super::native_menus::open_menu_of(host, conn).map(|(window, ..)| window)
         }) {
-            self.reply_menu_click(conn, sunrise_gameplay_common::game::lan_menu_data::ClickReply::Close(window));
+            self.reply_menu_click(
+                conn,
+                sunrise_gameplay_common::game::lan_menu_data::ClickReply::Close(window),
+            );
         }
     }
 

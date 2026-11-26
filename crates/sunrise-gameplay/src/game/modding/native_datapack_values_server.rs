@@ -47,7 +47,13 @@ impl<'g> DatapackValuesSide<'g> for ServerGame<'g> {
             return Ok(false);
         }
         if self.server.lan_acting.is_some() {
-            if self.server.lan_building_boxes.0.iter(dim).any(&mut obstructs) {
+            if self
+                .server
+                .lan_building_boxes
+                .0
+                .iter(dim)
+                .any(&mut obstructs)
+            {
                 return Ok(false);
             }
         } else if let Some(host) = self.server.lan.as_ref()

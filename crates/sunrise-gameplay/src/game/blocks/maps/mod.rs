@@ -751,8 +751,11 @@ impl ServerGame<'_> {
                                 if y > min_y && f.fluid != Fluid::None {
                                     let mut solid = y - 1;
                                     loop {
-                                        let below =
-                                            self.common.res.facts().get(self.common.world.block(x, solid, z));
+                                        let below = self
+                                            .common
+                                            .res
+                                            .facts()
+                                            .get(self.common.world.block(x, solid, z));
                                         solid -= 1;
                                         water_depth += 1;
                                         if solid <= min_y || below.fluid == Fluid::None {

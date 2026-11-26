@@ -10,10 +10,10 @@ pub use sunrise_sim::advancements;
 pub mod ambience;
 pub mod animate_tick;
 pub use sunrise_sim::api_text;
-pub use sunrise_sim::entities::arrows;
 pub use sunrise_sim::bed_geometry;
 pub use sunrise_sim::block_contact;
 pub use sunrise_sim::block_sounds;
+pub use sunrise_sim::entities::arrows;
 pub use sunrise_sim::item_damage;
 pub use sunrise_sim::mod_packet_builders;
 #[cfg(test)]

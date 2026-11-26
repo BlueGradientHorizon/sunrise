@@ -4,8 +4,7 @@
 use crate::game::{
     ClientGame,
     client_side::{
-        native_entity_refs::tests::with_client_game,
-        remote_client::RemoteDimensionEntry,
+        native_entity_refs::tests::with_client_game, remote_client::RemoteDimensionEntry,
     },
 };
 use std::sync::{Arc, Mutex};

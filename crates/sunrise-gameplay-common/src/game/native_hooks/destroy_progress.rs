@@ -9,7 +9,9 @@ pub trait GameHooks<'g>: crate::game::SideGame<'g> {
         state: BlockStateId,
         progress: &mut Option<f32>,
     ) {
-        crate::game::native_hooks::fire::FireHooks::fire_destroy_progress(self, player, pos, state, progress);
+        crate::game::native_hooks::fire::FireHooks::fire_destroy_progress(
+            self, player, pos, state, progress,
+        );
     }
 }
 

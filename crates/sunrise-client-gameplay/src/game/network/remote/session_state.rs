@@ -311,9 +311,8 @@ pub struct Remote {
     pub(in crate::game) heard_level: Option<String>,
     pub datapacks: sunrise_sim::datapack_net::Receiver,
     /// Decoded vanilla codec values for [`Self::datapacks`], swapped on join and reload.
-    pub datapack_vanilla_values: Option<
-        Arc<sunrise_gameplay_common::game::native_datapack_values::DatapackVanillaValues>,
-    >,
+    pub datapack_vanilla_values:
+        Option<Arc<sunrise_gameplay_common::game::native_datapack_values::DatapackVanillaValues>>,
     /// The constructor's level is visible by name during Load, before Minecraft.setLevel.
     pub constructing_level: Option<ConstructingClientLevel>,
     /// `ClientPacketListener.levelLoadTracker`: the loading screen after a login

@@ -1,6 +1,6 @@
 #![cfg(test)]
-use sunrise_items::items::ItemStack;
 use sunrise_gameplay_common::game::tables::GameItems as _;
+use sunrise_items::items::ItemStack;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 

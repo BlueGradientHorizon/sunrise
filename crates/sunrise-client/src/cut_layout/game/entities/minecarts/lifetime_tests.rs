@@ -1,16 +1,14 @@
+#[cfg(test)]
+use crate::game::minecarts::*;
 use std::sync::Mutex;
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::game::minecarts::{
+    Arc, CartKind, InteractTarget, Keys, Minecart, SEAT, Vec3,
+};
 use sunrise_items::items::ItemStack;
 use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
 };
-use {
-    sunrise_gameplay_common::game::minecarts::{
-        Arc, CartKind, InteractTarget, Keys, Minecart, SEAT, Vec3,
-    },
-};
-#[cfg(test)]
-use crate::game::minecarts::*;
 
 #[test]
 #[ignore = "daily"]

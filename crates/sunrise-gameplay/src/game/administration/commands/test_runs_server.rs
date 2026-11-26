@@ -65,7 +65,12 @@ impl crate::game::ServerGame<'_> {
     }
     /// `CommandSourceStack.sendFailure`.
     pub(in crate::game::server_side) fn test_failure(&mut self, message: Text) {
-        if self.server.command_source.as_ref().is_some_and(|s| s.silent) {
+        if self
+            .server
+            .command_source
+            .as_ref()
+            .is_some_and(|s| s.silent)
+        {
             return;
         }
         self.send_command_output(

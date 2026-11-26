@@ -1,6 +1,6 @@
 use super::{stock_layer_mask::StockLayerMask, *};
-use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_client::mobs::render;
+use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_sim::mobs::anim;
 
 impl render::RenderDataSource for crate::game::ClientGame<'_> {
@@ -142,7 +142,10 @@ impl crate::game::ClientGame<'_> {
             .remote
             .as_ref()
             .filter(|remote| !remote.variants.is_empty())
-            .map_or_else(|| self.common.res.variants(), |remote| remote.variants.as_ref())
+            .map_or_else(
+                || self.common.res.variants(),
+                |remote| remote.variants.as_ref(),
+            )
     }
 
     /// Lends the live pose to listeners at the shared humanoid seam.

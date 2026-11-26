@@ -1,5 +1,5 @@
-use crate::game::ServerGame;
 use super::*;
+use crate::game::ServerGame;
 
 impl ServerGame<'_> {
     /// `ServerLevel.levelEvent` or `globalLevelEvent` (`global`) is about to send event `id`.

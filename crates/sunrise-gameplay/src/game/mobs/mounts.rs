@@ -346,7 +346,11 @@ impl ServerGame<'_> {
                 | Species::Nautilus
                 | Species::ZombieNautilus
         );
-        if !self.held_shears(ability::SHEARS_REMOVE_ARMOR) || !saddleable || m.is_baby() || !m.alive() {
+        if !self.held_shears(ability::SHEARS_REMOVE_ARMOR)
+            || !saddleable
+            || m.is_baby()
+            || !m.alive()
+        {
             return None;
         }
         let id = m.id;
@@ -376,8 +380,7 @@ impl ServerGame<'_> {
                 "body",
                 sunrise_sim::mobs::species::vanilla_id(m.species()),
             )
-        })
-        {
+        }) {
             return None;
         }
         let saddle = m.saddle_item()?;

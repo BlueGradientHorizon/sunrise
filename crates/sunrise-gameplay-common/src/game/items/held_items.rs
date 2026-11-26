@@ -1610,8 +1610,6 @@ use crate::game::side_ops::player::PlayerSideGameExt as _;
 
 use crate::game::tables::GameItems as _;
 
-
-
 use crate::game::game_mode_common::GameModeCommonGameExt1 as _;
 
 use crate::game::item_abilities::ItemAbilitiesGameExt1 as _;

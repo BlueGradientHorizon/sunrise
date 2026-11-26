@@ -1,8 +1,5 @@
 #![cfg(test)]
 
-
-
-
 #[cfg(test)]
 mod tests {
     use mod_api::client::first_person::Hand;

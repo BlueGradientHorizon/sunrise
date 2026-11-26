@@ -285,12 +285,12 @@ pub mod tests {
 
     #[cfg(test)]
     use super::*;
+    #[cfg(test)]
+    use std::sync::Mutex;
     use std::sync::{
         Arc,
         atomic::{AtomicI32, AtomicUsize},
     };
-    #[cfg(test)]
-    use std::sync::Mutex;
     use sunrise_protocol::packets::configuration::ClientInformation;
     use sunrise_sim::lan::{Joined, PlayerSender, guest::Guest};
 

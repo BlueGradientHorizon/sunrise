@@ -9,13 +9,13 @@ use sunrise_sim::save::PendingContainerLoot;
 
 impl ServerGame<'_> {
     pub fn block_loot_pending(&self, key: (i32, i32, i32)) -> bool {
-        self.common.world
+        self.common
+            .world
             .chunks
             .get(&(key.0 >> 4, key.2 >> 4))
             .and_then(|chunk| chunk.saved.as_ref())
             .is_some_and(|saved| saved.pending_loot.contains_key(&key))
     }
-
 
     pub fn loot_inventory_item(
         &mut self,

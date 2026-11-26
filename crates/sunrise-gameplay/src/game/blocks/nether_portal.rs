@@ -199,7 +199,10 @@ pub(in crate::game::server_side) fn projectile_box(
     p: &sunrise_sim::projectiles::Projectile,
 ) -> (f32, f32) {
     if is_arrow(p) {
-        (sunrise_sim::entities::arrows::WIDTH, sunrise_sim::entities::arrows::HEIGHT)
+        (
+            sunrise_sim::entities::arrows::WIDTH,
+            sunrise_sim::entities::arrows::HEIGHT,
+        )
     } else {
         let size = p.kind.size() as f32;
         (size, size)
@@ -1409,10 +1412,12 @@ impl crate::game::ServerGame<'_> {
         ) {
             let mut tag = self.command_target_nbt(target)?;
             if let Err(error) =
-            super::persist::write_attachments(&mut tag, id, &self.common.entity_attachments)
-        {
-            log::error!("Sunrise: portal transfer attachment encode failed for entity {id}: {error}");
-        }
+                super::persist::write_attachments(&mut tag, id, &self.common.entity_attachments)
+            {
+                log::error!(
+                    "Sunrise: portal transfer attachment encode failed for entity {id}: {error}"
+                );
+            }
             let state = self.take_transferred_entity_state(id);
             // Remove only the resident body: no death, drops, or discard effects.
             match target {
@@ -1521,7 +1526,9 @@ impl crate::game::ServerGame<'_> {
         if let Err(error) =
             super::persist::write_attachments(&mut tag, id, &self.common.entity_attachments)
         {
-            log::error!("Sunrise: portal transfer attachment encode failed for entity {id}: {error}");
+            log::error!(
+                "Sunrise: portal transfer attachment encode failed for entity {id}: {error}"
+            );
         }
         let state = self.take_transferred_entity_state(id);
         match list {
@@ -1670,7 +1677,11 @@ impl crate::game::ServerGame<'_> {
 
     /// Whether a portal arrival still needs this level, without collecting its chunks.
     pub(in crate::game) fn has_portal_arrivals(&self, dim: Dim) -> bool {
-        self.server.portals.arrivals.iter().any(|a| a.plan.dim == dim)
+        self.server
+            .portals
+            .arrivals
+            .iter()
+            .any(|a| a.plan.dim == dim)
     }
     /// The chunks of the arrivals still waiting to land in `dim`, for the
     /// streaming `extra` areas that light them: vanilla's portal ticket

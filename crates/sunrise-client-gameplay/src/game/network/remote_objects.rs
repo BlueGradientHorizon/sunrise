@@ -681,7 +681,13 @@ mod tests {
             game.client.particles.0.requested = Some(Vec::new());
             let mut smoke = || {
                 game.tick_remote_objects(|_, p| p, |_, yaw| yaw, |_| false);
-                let asked = game.client.particles.0.requested.replace(Vec::new()).unwrap();
+                let asked = game
+                    .client
+                    .particles
+                    .0
+                    .requested
+                    .replace(Vec::new())
+                    .unwrap();
                 asked
                     .iter()
                     .filter(|(options, ..)| options.ty == ParticleType::Smoke)

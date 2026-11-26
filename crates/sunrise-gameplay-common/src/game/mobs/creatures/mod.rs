@@ -36,8 +36,8 @@ pub use sunrise_items::{
 };
 #[allow(unused_imports)]
 pub use sunrise_sim::{
-    entities::arrows::EntityHit,
     crafting::Recipes,
+    entities::arrows::EntityHit,
     health::{Attack, HurtSource, Hurting, Knock},
     mobs::{
         Damage, DamageKind, Mob, MobEvent, MobWorld, PlayerView, Seen, SpawnSetup, Species, Who,

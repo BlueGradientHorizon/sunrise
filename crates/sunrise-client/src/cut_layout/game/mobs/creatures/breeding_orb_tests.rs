@@ -1,7 +1,5 @@
 use sunrise_core::random::RandomSource;
-use {
-    sunrise_gameplay_common::game::creatures::{Mob, Vec3},
-};
+use sunrise_gameplay_common::game::creatures::{Mob, Vec3};
 
 /// `Animal.finalizeSpawnChildFromBreeding`: one fresh orb of the parent's
 /// 1-to-7 roll, never split (4 is not 3 + 1) or merged (#11388).

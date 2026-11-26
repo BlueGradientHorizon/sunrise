@@ -87,7 +87,12 @@ pub fn sweep_displacement(
 /// Removes the part of `velocity` that points into a shove along `normal`. An upward shove
 /// raises vertical velocity to the collider's own vertical speed `collider_rise` but never
 /// lowers it, so a body already rising faster keeps its speed.
-pub fn cancel_shove_velocity(velocity: Vec3, normal: Vec3, upward: f64, collider_rise: f64) -> Vec3 {
+pub fn cancel_shove_velocity(
+    velocity: Vec3,
+    normal: Vec3,
+    upward: f64,
+    collider_rise: f64,
+) -> Vec3 {
     let inward = velocity.dot(normal);
     if inward >= 0.0 {
         return velocity;

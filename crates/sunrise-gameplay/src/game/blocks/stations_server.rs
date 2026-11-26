@@ -357,14 +357,16 @@ impl ServerGame<'_> {
             if post && mod_api::__private::listened(mod_api::HookId::PotionBrewPost) {
                 let mut stacks = b.items.clone();
                 self.native_potion_brew_post(at, &mut stacks);
-                if let Some(BlockEntity::Brewing(b)) = self.common.world.block_entities.get_mut(&pos)
+                if let Some(BlockEntity::Brewing(b)) =
+                    self.common.world.block_entities.get_mut(&pos)
                 {
                     b.items = stacks;
                 }
             }
             if let Some(ingredient) = ingredient {
                 let rest = self.crafting_remainder(&ingredient);
-                if let Some(BlockEntity::Brewing(b)) = self.common.world.block_entities.get_mut(&pos)
+                if let Some(BlockEntity::Brewing(b)) =
+                    self.common.world.block_entities.get_mut(&pos)
                 {
                     b.finish_brew(ingredient, rest, &mut out);
                 }

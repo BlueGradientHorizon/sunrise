@@ -18,7 +18,10 @@ pub trait ToolModificationGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         state: Option<BlockStateId>,
         by_player: bool,
     ) -> Option<BlockStateId> {
-        let block = self.common().world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
+        let block = self
+            .common()
+            .world
+            .block(hit.pos[0], hit.pos[1], hit.pos[2]);
         if !mod_api::__private::listened(mod_api::HookId::BlockToolModification)
             && !crate::game::api_values::block_state::block_listens(
                 mod_api::HookId::ToolModifiedState,
@@ -54,7 +57,10 @@ pub trait ToolModificationGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         stack: &ItemStack,
         by_player: bool,
     ) -> sunrise_game_data::Result<Option<BlockStateId>> {
-        let clicked = self.common().world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
+        let clicked = self
+            .common()
+            .world
+            .block(hit.pos[0], hit.pos[1], hit.pos[2]);
         let name = self.common().res.facts().get(clicked).name.clone();
         let lights = super::item_abilities::ability::FIRESTARTER_LIGHT;
         let vanilla =

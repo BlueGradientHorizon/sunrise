@@ -155,11 +155,9 @@ impl adv::World for View<'_, '_> {
     /// The same `saveWithFullMetadata` a loot roll's `match_block` reads: the live block
     /// entity over the NBT it was loaded from, else its saved row.
     fn block_entity_nbt(&self, p: [i32; 3]) -> Option<sunrise_core::nbt::Tag> {
-        self.0
-            .block_entity_nbt(p)
-            .or_else(|| {
-                sunrise_gameplay_common::game::spill_common::saved_full_metadata(&self.0.world, p)
-            })
+        self.0.block_entity_nbt(p).or_else(|| {
+            sunrise_gameplay_common::game::spill_common::saved_full_metadata(&self.0.world, p)
+        })
     }
     fn in_tag(&self, registry: &str, tag: &str, id: &str) -> bool {
         let tags = TagSources {
@@ -824,13 +822,10 @@ impl crate::game::ServerGame<'_> {
                     (id.to_owned(), amplifier, duration)
                 })
                 .collect(),
-            components: sunrise_sim::mobs::finalize::variant_component_in(
-                m,
-                self.world_variants(),
-            )
-            .map(|(id, value)| (id.to_owned(), value))
-            .into_iter()
-            .collect(),
+            components: sunrise_sim::mobs::finalize::variant_component_in(m, self.world_variants())
+                .map(|(id, value)| (id.to_owned(), value))
+                .into_iter()
+                .collect(),
             custom_name: m.custom_name_text.as_ref().map(Text::component),
             passengers,
             nbt,
@@ -840,11 +835,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `SimpleCriterionTrigger.trigger`: test each open criterion of the
     /// trigger and award what it completes.
-    pub fn trigger(
-        &mut self,
-        name: &str,
-        mut test: impl FnMut(&Value, &dyn adv::World) -> bool,
-    ) {
+    pub fn trigger(&mut self, name: &str, mut test: impl FnMut(&Value, &dyn adv::World) -> bool) {
         self.trigger_custom(name, |c, view| test(&c.conditions, view));
     }
     /// `SimpleCriterionTrigger.trigger` with access to each loaded [`adv::Criterion`].

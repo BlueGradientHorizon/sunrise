@@ -6,10 +6,7 @@
 //! random result.
 use sunrise_gameplay_common::game::Resources;
 #[cfg(test)]
-use {
-    crate::game::*,
-    sunrise_gameplay_common::game::RandomSource,
-};
+use {crate::game::*, sunrise_gameplay_common::game::RandomSource};
 fn game(
     resources: &mut Option<std::sync::Arc<Resources>>,
 ) -> sunrise_gameplay::game::ServerGame<'_> {

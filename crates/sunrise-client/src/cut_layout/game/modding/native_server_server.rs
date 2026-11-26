@@ -930,7 +930,6 @@ pub(crate) mod tests {
 #[cfg(test)]
 pub(crate) mod fake_action_tests {
 
-    
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1;
     use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;

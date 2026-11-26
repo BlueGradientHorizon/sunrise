@@ -416,5 +416,4 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
     });
 }
 
-
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

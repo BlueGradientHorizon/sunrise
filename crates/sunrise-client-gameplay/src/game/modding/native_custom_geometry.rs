@@ -144,7 +144,8 @@ impl sunrise_client::gfx::world_primitives::FrameHooks for GameWorldStageDriver<
     }
 
     fn prepared_primitives(&self) -> sunrise_client::gfx::world_primitives::Batch<'_> {
-        self.draw.batch_with(&self.game.client.client_pack.render.mod_pipelines)
+        self.draw
+            .batch_with(&self.game.client.client_pack.render.mod_pipelines)
     }
 
     fn on_after_level(&mut self, sections: &[mod_api::RenderableSection], oit_on: bool) {
@@ -264,7 +265,9 @@ impl ClientGame<'_> {
         };
         draw.set_model_cut(entities.len() as u32);
         // Seconds of game time, wrapping every hour (72,000 ticks) so f32 keeps sub-tick steps.
-        draw.set_time(((self.common.world.game_time.rem_euclid(72_000) as f64 + alpha) / 20.0) as f32);
+        draw.set_time(
+            ((self.common.world.game_time.rem_euclid(72_000) as f64 + alpha) / 20.0) as f32,
+        );
         let view = mod_api::WorldRenderView::new(
             frame_camera,
             self.world_camera_entity_eye(),
@@ -313,7 +316,9 @@ impl ClientGame<'_> {
             self.mark_translucent_entity(entities.len(), "minecraft:name_tag");
             entities.extend_from_slice(world);
         }
-        self.client.see_through_vertices.extend_from_slice(see_through);
+        self.client
+            .see_through_vertices
+            .extend_from_slice(see_through);
     }
     /// A mod's label as `SubmitNodeCollection.submitNameTag` draws a name: 0.5 above `at`,
     /// facing the camera, 0.025 blocks a font pixel. See-through, twice: opaque white text in
@@ -438,7 +443,10 @@ impl ClientGame<'_> {
         gpu.mesh_replace(mod_api::content::crash::current_native_mod(), mesh, desc)
     }
     /// Free retained `mesh`'s GPU buffers and retire the handle.
-    pub(in crate::game) fn mesh_release(&self, mesh: mod_api::MeshRef) -> Result<(), mod_api::MeshError> {
+    pub(in crate::game) fn mesh_release(
+        &self,
+        mesh: mod_api::MeshRef,
+    ) -> Result<(), mod_api::MeshError> {
         let gpu = self.mod_gpu().ok_or(mod_api::MeshError::Unavailable)?;
         gpu.mesh_release(mod_api::content::crash::current_native_mod(), mesh)
     }
@@ -644,7 +652,12 @@ impl ClientGame<'_> {
             .ok_or(PipelineDrawError::Pipeline(
                 mod_api::RenderPipelineError::Invalid,
             ))?;
-        let writes_depth = self.client.client_pack.render.mod_pipelines.writes_depth(slot);
+        let writes_depth = self
+            .client
+            .client_pack
+            .render
+            .mod_pipelines
+            .writes_depth(slot);
         self.resolve_bindings_against(
             layout,
             pc_size,
@@ -833,7 +846,12 @@ impl ClientGame<'_> {
                                     .strip_prefix("minecraft:")
                                     .map(str::to_owned)
                                     .unwrap_or_else(|| id.to_string());
-                                if !self.client.client_pack.render.sprite_layers.contains_key(&sprite_key)
+                                if !self
+                                    .client
+                                    .client_pack
+                                    .render
+                                    .sprite_layers
+                                    .contains_key(&sprite_key)
                                     && !self.client.gui.atlas.sprites.contains_key(&sprite_key)
                                 {
                                     return Err(PipelineDrawError::InvalidBinding);
@@ -1180,9 +1198,15 @@ impl ClientGame<'_> {
             .mod_pipelines
             .slot(pipeline)
             .map_err(PipelineDrawError::Pipeline)?;
-        let vertex_bindings = self.client.client_pack.render.mod_pipelines.vertex_bindings(slot).ok_or(
-            PipelineDrawError::Pipeline(mod_api::RenderPipelineError::Invalid),
-        )?;
+        let vertex_bindings = self
+            .client
+            .client_pack
+            .render
+            .mod_pipelines
+            .vertex_bindings(slot)
+            .ok_or(PipelineDrawError::Pipeline(
+                mod_api::RenderPipelineError::Invalid,
+            ))?;
         let base_topology = self
             .client
             .client_pack
@@ -1224,9 +1248,15 @@ impl ClientGame<'_> {
         topology: mod_api::PrimitiveTopology,
         draw: &mod_api::IndirectDraw<'_>,
     ) -> Result<sunrise_client::gfx::mod_pipelines::IndirectSource, PipelineDrawError> {
-        let vertex_bindings = self.client.client_pack.render.mod_pipelines.vertex_bindings(slot).ok_or(
-            PipelineDrawError::Pipeline(mod_api::RenderPipelineError::Invalid),
-        )?;
+        let vertex_bindings = self
+            .client
+            .client_pack
+            .render
+            .mod_pipelines
+            .vertex_bindings(slot)
+            .ok_or(PipelineDrawError::Pipeline(
+                mod_api::RenderPipelineError::Invalid,
+            ))?;
         let gpu = self
             .mod_gpu()
             .ok_or(PipelineDrawError::Mesh(mod_api::MeshError::Unavailable))?;
@@ -1302,9 +1332,15 @@ impl ClientGame<'_> {
             .mod_pipelines
             .slot(pipeline)
             .map_err(PipelineDrawError::Pipeline)?;
-        let vertex_bindings = self.client.client_pack.render.mod_pipelines.vertex_bindings(slot).ok_or(
-            PipelineDrawError::Pipeline(mod_api::RenderPipelineError::Invalid),
-        )?;
+        let vertex_bindings = self
+            .client
+            .client_pack
+            .render
+            .mod_pipelines
+            .vertex_bindings(slot)
+            .ok_or(PipelineDrawError::Pipeline(
+                mod_api::RenderPipelineError::Invalid,
+            ))?;
         let base_topology = self
             .client
             .client_pack
@@ -1511,9 +1547,15 @@ impl ClientGame<'_> {
             .mod_pipelines
             .slot(pipeline)
             .map_err(PipelineDrawError::Pipeline)?;
-        let vertex_bindings = self.client.client_pack.render.mod_pipelines.vertex_bindings(slot).ok_or(
-            PipelineDrawError::Pipeline(mod_api::RenderPipelineError::Invalid),
-        )?;
+        let vertex_bindings = self
+            .client
+            .client_pack
+            .render
+            .mod_pipelines
+            .vertex_bindings(slot)
+            .ok_or(PipelineDrawError::Pipeline(
+                mod_api::RenderPipelineError::Invalid,
+            ))?;
         let topology = self
             .client
             .client_pack
@@ -1643,9 +1685,15 @@ impl ClientGame<'_> {
             .mod_pipelines
             .slot(pipeline)
             .map_err(PipelineDrawError::Pipeline)?;
-        let vertex_bindings = self.client.client_pack.render.mod_pipelines.vertex_bindings(slot).ok_or(
-            PipelineDrawError::Pipeline(mod_api::RenderPipelineError::Invalid),
-        )?;
+        let vertex_bindings = self
+            .client
+            .client_pack
+            .render
+            .mod_pipelines
+            .vertex_bindings(slot)
+            .ok_or(PipelineDrawError::Pipeline(
+                mod_api::RenderPipelineError::Invalid,
+            ))?;
         let topology = self
             .client
             .client_pack
@@ -1931,11 +1979,19 @@ impl ClientGame<'_> {
             true
         };
         if cached.is_some() {
-            draw.submit_validated_model(batch, instances, self.client.view_frustum.as_ref(), stage_copy);
+            draw.submit_validated_model(
+                batch,
+                instances,
+                self.client.view_frustum.as_ref(),
+                stage_copy,
+            );
         } else {
-            draw.submit_model(batch, instances, self.client.view_frustum.as_ref(), |copy| {
-                stage_copy(0, copy)
-            });
+            draw.submit_model(
+                batch,
+                instances,
+                self.client.view_frustum.as_ref(),
+                |copy| stage_copy(0, copy),
+            );
         }
         Ok(())
     }
@@ -2143,7 +2199,11 @@ fn submit_opaque_model_copy(
             }
         }
     }
-    crate::game::client_side::minecarts_client::scale_tint_alpha(&mut entities[start..], shown(), tint);
+    crate::game::client_side::minecarts_client::scale_tint_alpha(
+        &mut entities[start..],
+        shown(),
+        tint,
+    );
     sunrise_client::gfx::EntityQuadScope::new(entities, capacity, reserved_quads)
         .retain_valid_since(start);
 }
@@ -2485,7 +2545,10 @@ mod tests {
                 .unwrap();
             let mut entities = Vec::new();
             game.commit_model_instances(&mut draw, camera, &mut entities);
-            assert!(game.client.prepared_model_draws.borrow().is_empty(), "no GPU copy");
+            assert!(
+                game.client.prepared_model_draws.borrow().is_empty(),
+                "no GPU copy"
+            );
             let slot = mod_api::__private::game::Fields::fields(&model).slot;
             let faces = game
                 .client
@@ -2630,7 +2693,8 @@ mod tests {
                     let slot = mod_api::__private::game::Fields::fields(&model).slot;
                     assert!(!game.model_faces(slot).unwrap().is_empty());
                     assert_eq!(
-                        game.client.standalone_geometry
+                        game.client
+                            .standalone_geometry
                             .instance_slot(slot)
                             .unwrap()
                             .special,
@@ -2649,7 +2713,13 @@ mod tests {
             || {
                 super::super::native_entity_refs::tests::with_client_game(|game| {
                     let colours = |name: &str| {
-                        let state = game.common.pack.assets.registry.default_state(name).unwrap();
+                        let state = game
+                            .common
+                            .pack
+                            .assets
+                            .registry
+                            .default_state(name)
+                            .unwrap();
                         let model = game.native_block_state_model(state).unwrap();
                         let slot = mod_api::__private::game::Fields::fields(&model).slot;
                         let faces = game.model_faces(slot).unwrap();
@@ -2808,7 +2878,10 @@ mod tests {
             context(game, &mut draw).draw_instance_group(group).unwrap();
             game.resolve_submitted_groups(&mut draw);
             assert_eq!(bytes(), before);
-            assert_eq!(game.client.prepared_model_draws.borrow().len() * stride, stride);
+            assert_eq!(
+                game.client.prepared_model_draws.borrow().len() * stride,
+                stride
+            );
             assert_eq!(expected, render(game));
             let mut changed = near;
             changed.tint = 0xFFFF_2040;
@@ -2827,7 +2900,10 @@ mod tests {
             context(game, &mut draw).draw_instance_group(group).unwrap();
             game.resolve_submitted_groups(&mut draw);
             assert_eq!(rewritten, render(game));
-            assert_eq!(game.client.prepared_model_draws.borrow().len() * stride, stride);
+            assert_eq!(
+                game.client.prepared_model_draws.borrow().len() * stride,
+                stride
+            );
             let pose = [
                 0.5, 0.0, 0.0, 0.125, 0.0, 0.5, 0.0, 0.25, 0.0, 0.0, 0.5, 0.0,
             ];
@@ -2856,7 +2932,10 @@ mod tests {
             context(game, &mut draw).draw_instance_group(group).unwrap();
             game.resolve_submitted_groups(&mut draw);
             assert_eq!(transformed, render(game));
-            assert_eq!(game.client.prepared_model_draws.borrow().len() * stride, stride);
+            assert_eq!(
+                game.client.prepared_model_draws.borrow().len() * stride,
+                stride
+            );
             let mut outside = pose;
             outside[3] = 40.0;
             group.set_len(game, 0).unwrap();
@@ -3104,7 +3183,11 @@ mod tests {
                 released.set_len(game, 1).unwrap();
                 game.create_group(model, 1).unwrap()
             };
-            game.client.settings.mods.disabled.insert("group-owner".into());
+            game.client
+                .settings
+                .mods
+                .disabled
+                .insert("group-owner".into());
             game.sync_native_switches();
             let mut draw = WorldGeometry::default();
             assert_eq!(
@@ -3325,7 +3408,10 @@ mod tests {
                 .unwrap();
             let mut entities = Vec::new();
             game.commit_model_instances(&mut draw, camera, &mut entities);
-            assert!(game.client.prepared_model_draws.borrow().is_empty(), "no GPU copy");
+            assert!(
+                game.client.prepared_model_draws.borrow().is_empty(),
+                "no GPU copy"
+            );
             assert!(!entities.is_empty());
             assert!(entities.iter().all(
                 |v| v.layer & 0xFFFF == sunrise_client::gfx::TERRAIN_MODEL_TRANSLUCENT_OVERLAY
@@ -3688,7 +3774,8 @@ mod tests {
             );
             game.refresh_debug_renderers();
             assert_eq!(game.client.debug_renderers.0.len(), 1);
-            game.client.debug_renderers_version = Some(game.client.debug_entries.0.enabled_version());
+            game.client.debug_renderers_version =
+                Some(game.client.debug_entries.0.enabled_version());
             let mut draw = WorldGeometry::default();
             let frame_camera = test_camera([0.0; 3], Mat4::IDENTITY);
             let sections = [mod_api::RenderableSection::new(
@@ -3966,7 +4053,8 @@ mod tests {
             );
             game.refresh_debug_renderers();
             assert_eq!(game.client.debug_renderers.0.len(), 1);
-            game.client.debug_renderers_version = Some(game.client.debug_entries.0.enabled_version());
+            game.client.debug_renderers_version =
+                Some(game.client.debug_entries.0.enabled_version());
 
             let camera_view = Mat4::from_translation(Vec3::new(1.0, -2.0, 3.0));
             let camera_proj = Mat4::from_scale(Vec3::new(0.5, 0.75, 1.25));

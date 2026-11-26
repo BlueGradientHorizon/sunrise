@@ -3,12 +3,12 @@
 //! with content-only packages loaded separately.
 #[allow(unused_imports)]
 pub use super::{execution_role::ExecutionRole, registration_capability_coverage as coverage};
+#[cfg(test)]
+mod content_admission_tests;
 pub(in crate::game) mod menu_books;
 pub mod package_files;
 pub mod runtime_files;
 pub mod standalone;
-#[cfg(test)]
-mod content_admission_tests;
 #[allow(unused_imports)]
 pub use mod_api::__private::{DeclarationKind, DeclarationRefusal, DeclarationSink, game::*};
 #[allow(unused_imports)]
@@ -170,8 +170,7 @@ pub struct ModsState {
     pub datapack_registries: Option<Arc<mod_api::DatapackRegistrySet>>,
     /// Decoded vanilla codec values (`IntProvider`, `BlockStateProvider`, `BlockPredicate`,
     /// `HolderSet`) for [`Self::datapack_registries`], swapped atomically on load and `/reload`.
-    pub datapack_vanilla_values:
-        Option<Arc<super::native_datapack_values::DatapackVanillaValues>>,
+    pub datapack_vanilla_values: Option<Arc<super::native_datapack_values::DatapackVanillaValues>>,
 }
 
 impl ModsState {

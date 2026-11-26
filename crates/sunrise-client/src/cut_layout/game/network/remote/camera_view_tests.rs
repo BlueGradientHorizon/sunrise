@@ -575,4 +575,3 @@ pub(crate) fn framed(
     .unwrap();
     seen.expect("no frame was built")
 }
-

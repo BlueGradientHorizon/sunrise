@@ -186,7 +186,10 @@ pub fn stage_client_reload<V, E: From<ReloadStageError>>(
         },
         |id, converter| {
             <ClientReloadContext as ReloadContextNew>::new(reload_files(
-                "assets", &[&pack], id, converter,
+                "assets",
+                &[&pack],
+                id,
+                converter,
             ))
         },
         ClientReloadListener::prepare,

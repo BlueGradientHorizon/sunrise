@@ -7,7 +7,6 @@ mod submit_order_tests;
 
 use super::Screen;
 use std::path::Path;
-use sunrise_gameplay_common::game::native_server;
 use sunrise_client::{
     chat::{
         Chat, ChatAction, ChatScreen, ChatSource, Commands, QUEUE_EXPAND_ID, SYSTEM_INDICATOR,
@@ -19,6 +18,7 @@ use sunrise_client::{
 use sunrise_command::{ArgType, Dispatcher, MOD_COMMAND};
 use sunrise_game_data::text::{ClickEvent, Style, Text};
 use sunrise_gameplay_common::game::chat_common::{block_properties, command_export, resource_ids};
+use sunrise_gameplay_common::game::native_server;
 
 /// The tree the chat parses and completes with: `Remote::chat_tree`, which is
 /// a server's, once it has sent one (ClientPacketListener.commands), else the
@@ -200,15 +200,11 @@ impl crate::game::ClientGame<'_> {
                 *executor = None;
             }
         }
-        self.client.native_client_commands
+        self.client
+            .native_client_commands
             .install(client_dispatcher, executors);
         let mut tree_with_mods = base.clone_with_unmerged_redirects();
-        native_server::register_dispatcher(
-            &mut tree_with_mods,
-            &tree,
-            MOD_COMMAND,
-            &arguments,
-        );
+        native_server::register_dispatcher(&mut tree_with_mods, &tree, MOD_COMMAND, &arguments);
         with_studio_commands(&with_native_commands(&tree_with_mods, &["studio"])).with_profiler()
     }
 }
@@ -627,7 +623,12 @@ impl crate::game::ClientGame<'_> {
             && self.client.screen == Screen::Playing
             && !self.screen_over_playing()
         {
-            let draft = self.client.chat_ui.chat_draft.as_ref().map(|draft| draft.text.clone());
+            let draft = self
+                .client
+                .chat_ui
+                .chat_draft
+                .as_ref()
+                .map(|draft| draft.text.clone());
             self.begin_chat_screen(draft.as_deref().unwrap_or(""), draft.is_some());
             self.client.chat_ui.in_bed_chat = self.client.screen == Screen::Chat;
         }
@@ -760,7 +761,9 @@ impl crate::game::ClientGame<'_> {
         if self.pvp_chat().search
             && match key {
                 KeyCode::KeyF => ctrl,
-                KeyCode::Enter | KeyCode::NumpadEnter => self.client.pvp.chat_search_aside.is_some(),
+                KeyCode::Enter | KeyCode::NumpadEnter => {
+                    self.client.pvp.chat_search_aside.is_some()
+                }
                 _ => false,
             }
         {
@@ -807,7 +810,8 @@ impl crate::game::ClientGame<'_> {
                 // ChatScreen.keyPressed: handleChatInput runs with the screen still open,
                 // then `closeOnSubmit` closes it. InBedChatScreen sends without closing
                 // (`closeOnSubmit` is false): the box empties and the screen stays.
-                let close_on_submit = !(self.client.chat_ui.in_bed_chat && self.common.sleeping.is_some());
+                let close_on_submit =
+                    !(self.client.chat_ui.in_bed_chat && self.common.sleeping.is_some());
                 self.client.chat_ui.chat_screen = Some(screen);
                 if !message.is_empty() {
                     self.handle_chat_input(&message);
@@ -1099,7 +1103,9 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         if self.client.settings.chat_links_prompt {
-            self.open_screen_overlay("link_prompt", |game| game.client.link_prompt = Some(url.into()));
+            self.open_screen_overlay("link_prompt", |game| {
+                game.client.link_prompt = Some(url.into())
+            });
         } else {
             super::packs::open_uri(&url);
         }
@@ -1241,7 +1247,8 @@ impl crate::game::ClientGame<'_> {
         let next = if let Some((text, _)) = self.client.pvp.chat_search_aside.take() {
             text
         } else {
-            self.client.pvp.chat_search_aside = Some((screen.value().to_owned(), screen.is_draft()));
+            self.client.pvp.chat_search_aside =
+                Some((screen.value().to_owned(), screen.is_draft()));
             String::new()
         };
         let m = Measure(&self.client.gui.atlas.font);
@@ -1255,7 +1262,10 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn draw_chat(&mut self, batch: &mut HudBatch) {
         let focused = self.client.screen == Screen::Chat;
         let options = self.pvp_chat();
-        self.client.chat_ui.chat.set_qol(&self.client.gui.atlas, options.qol());
+        self.client
+            .chat_ui
+            .chat
+            .set_qol(&self.client.gui.atlas, options.qol());
         // A search ends with its option; a chat closed some other way ends it in keep_chat_draft.
         if self.client.chat_ui.chat_screen.is_none() {
             // The chat went without closing (leaving the world): nothing to give back.
@@ -1271,7 +1281,10 @@ impl crate::game::ClientGame<'_> {
             .as_ref()
             .filter(|_| searching)
             .map(|s| s.value());
-        self.client.chat_ui.chat.set_search(&self.client.gui.atlas, query);
+        self.client
+            .chat_ui
+            .chat
+            .set_search(&self.client.gui.atlas, query);
         self.client.chat_ui.chat.search_prompt = searching;
         // `ChatComponent`'s queue row: the messages Chat Delay holds back.
         self.client.chat_ui.chat.queue = self.chat_queue_len();
@@ -1738,7 +1751,6 @@ impl LinkPrompt {
     }
 }
 
-
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
@@ -1878,11 +1890,8 @@ pub(in crate::game) mod tests {
         let commands = [mod_api::Command::new("xmode <mode:word>")];
         let arguments = native_server::command_arguments();
         let mut slots = std::collections::HashMap::new();
-        let (tree, _, problems) = native_server::client_command_tree(
-            &commands,
-            &arguments,
-            Some(&mut slots),
-        );
+        let (tree, _, problems) =
+            native_server::client_command_tree(&commands, &arguments, Some(&mut slots));
         assert!(problems.is_empty(), "{problems:?}");
         let mut client_dispatcher = Dispatcher::new();
         native_server::register_command_nodes(
@@ -1959,12 +1968,7 @@ pub(in crate::game) mod tests {
         assert!(problems.is_empty(), "{problems:?}");
 
         let mut display = server.clone_with_unmerged_redirects();
-        native_server::register_dispatcher(
-            &mut display,
-            &tree,
-            MOD_COMMAND,
-            &arguments,
-        );
+        native_server::register_dispatcher(&mut display, &tree, MOD_COMMAND, &arguments);
         let reg = Registries::default();
 
         // Direct path displays both server and client branches.
@@ -2375,10 +2379,10 @@ mod link_and_path_tests {
     use crate::game::native_entity_refs::tests::{
         fixture_root, with_client_game, with_game_role_client,
     };
-    use sunrise_gameplay_common::game::execution_role::ExecutionRole;
     use mod_api::{ClientHost, ClientTickPreEvent, Hooks, ModEntry, OpenLinkError, OpenPathError};
     use mod_platform::testing::with_mods;
     use std::sync::{Arc, Mutex};
+    use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 
     /// A mod that asks for a link from its client tick and keeps the answer.
     struct Asker {
@@ -2455,7 +2459,10 @@ mod link_and_path_tests {
     fn a_mod_link_must_be_http_or_https() {
         with_client_game(|game| {
             game.common.options.headless = true;
-            (game.client.settings.chat_links, game.client.settings.chat_links_prompt) = (false, false);
+            (
+                game.client.settings.chat_links,
+                game.client.settings.chat_links_prompt,
+            ) = (false, false);
             assert_eq!(game.confirm_link("HTTPS://Example.com", false), Ok(()));
             assert!(game.client.link_prompt.is_some());
             game.answer_link_prompt(false);
@@ -2495,21 +2502,17 @@ mod link_and_path_tests {
             ExecutionRole::IntegratedServer,
             ExecutionRole::DedicatedServer,
         ] {
-            with_game_role_client(
-                fixture_root(),
-                role,
-                |game| {
-                    assert_eq!(
-                        game.confirm_link("https://example.com", false),
-                        Err(OpenLinkError::Unavailable)
-                    );
-                    assert!(game.client.link_prompt.is_none());
-                    assert_eq!(
-                        game.open_path(Path::new(".")),
-                        Err(OpenPathError::Unavailable)
-                    );
-                },
-            );
+            with_game_role_client(fixture_root(), role, |game| {
+                assert_eq!(
+                    game.confirm_link("https://example.com", false),
+                    Err(OpenLinkError::Unavailable)
+                );
+                assert!(game.client.link_prompt.is_none());
+                assert_eq!(
+                    game.open_path(Path::new(".")),
+                    Err(OpenPathError::Unavailable)
+                );
+            });
         }
     }
 }

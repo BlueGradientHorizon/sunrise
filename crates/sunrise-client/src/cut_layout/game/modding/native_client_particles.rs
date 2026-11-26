@@ -2,8 +2,6 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
-    
-
     use mod_api::{ClientHost, FireworkExplosion, FireworkShape};
 
     use mod_api::FireworksRequest;

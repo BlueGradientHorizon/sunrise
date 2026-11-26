@@ -184,15 +184,16 @@ pub(crate) mod tests {
                     Some(Value::Bool(true))
                 );
                 assert_eq!(options.rules.get("keep_inventory"), Some(Value::Bool(true)));
-                let request = sunrise_gameplay::game::server_side::world_loading::WorldRequest::new(
-                    "test",
-                    None,
-                    None,
-                    true,
-                    Some(options.as_ref()),
-                    options.rules.registry().clone(),
-                )
-                .unwrap();
+                let request =
+                    sunrise_gameplay::game::server_side::world_loading::WorldRequest::new(
+                        "test",
+                        None,
+                        None,
+                        true,
+                        Some(options.as_ref()),
+                        options.rules.registry().clone(),
+                    )
+                    .unwrap();
                 assert!(Arc::ptr_eq(
                     &request.rule_registry,
                     options.rules.registry()

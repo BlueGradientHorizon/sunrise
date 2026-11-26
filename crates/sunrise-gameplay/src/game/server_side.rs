@@ -6,43 +6,43 @@ use {crate::game::*, sunrise_gameplay_common::game::*};
 mod server_macros;
 #[path = "world/creation_packs.rs"]
 pub mod creation_packs;
-#[path = "world/world_border_server.rs"]
-pub(in crate::game) mod world_border;
-#[path = "modding/native_chunk_requests.rs"]
-pub(in crate::game) mod native_chunk_requests;
-#[path = "modding/native_saved_chunks.rs"]
-pub(in crate::game) mod native_saved_chunks;
-#[path = "modding/native_player_post_effects.rs"]
-pub(in crate::game) mod native_player_post_effects;
-#[path = "modding/native_entity_previous_server.rs"]
-pub(in crate::game) mod native_entity_previous_server;
-#[path = "modding/native_detached_generation.rs"]
-pub(in crate::game) mod native_detached_generation;
-#[path = "modding/native_datapack_values_server.rs"]
-pub(in crate::game) mod native_datapack_values_server;
-#[path = "modding/native_mob_attack.rs"]
-pub(in crate::game) mod native_mob_attack;
 #[cfg(test)]
 #[path = "interface/fluid_passage_tests.rs"]
 mod fluid_passage_tests;
 #[cfg(test)]
+#[path = "modding/native_block_metadata_reads_tests.rs"]
+mod native_block_metadata_reads_tests;
+#[path = "modding/native_chunk_requests.rs"]
+pub(in crate::game) mod native_chunk_requests;
+#[cfg(test)]
 #[path = "modding/native_chunk_snapshot_server_tests.rs"]
 mod native_chunk_snapshot_server_tests;
 #[cfg(test)]
-#[path = "modding/native_block_metadata_reads_tests.rs"]
-mod native_block_metadata_reads_tests;
+#[path = "modding/native_command_entity_tests.rs"]
+mod native_command_entity_tests;
+#[cfg(test)]
+#[path = "modding/native_convention_tags_tests.rs"]
+mod native_convention_tags_tests;
+#[path = "modding/native_datapack_values_server.rs"]
+pub(in crate::game) mod native_datapack_values_server;
+#[path = "modding/native_detached_generation.rs"]
+pub(in crate::game) mod native_detached_generation;
+#[path = "modding/native_entity_previous_server.rs"]
+pub(in crate::game) mod native_entity_previous_server;
 #[cfg(test)]
 #[path = "modding/native_entity_previous_tests_server.rs"]
 mod native_entity_previous_tests_server;
 #[cfg(test)]
-#[path = "modding/native_convention_tags_tests.rs"]
-mod native_convention_tags_tests;
-#[cfg(test)]
 #[path = "modding/native_heal_motion_view_tests.rs"]
 mod native_heal_motion_view_tests;
-#[cfg(test)]
-#[path = "modding/native_command_entity_tests.rs"]
-mod native_command_entity_tests;
+#[path = "modding/native_mob_attack.rs"]
+pub(in crate::game) mod native_mob_attack;
+#[path = "modding/native_player_post_effects.rs"]
+pub(in crate::game) mod native_player_post_effects;
+#[path = "modding/native_saved_chunks.rs"]
+pub(in crate::game) mod native_saved_chunks;
+#[path = "world/world_border_server.rs"]
+pub(in crate::game) mod world_border;
 
 #[path = "network/lan_actions/acting_state.rs"]
 pub(in crate::game) mod acting_state;
@@ -1173,7 +1173,8 @@ pub struct ServerState {
     /// Non-blocking server chunk load/generation requests (`native_chunk_requests.rs`).
     pub(in crate::game) async_chunk_requests: native_chunk_requests::AsyncChunkRequests,
     /// Open-state flags for `SavedChunkReader` handles per dimension (`native_saved_chunks.rs`).
-    pub(in crate::game) saved_chunk_readers: std::cell::RefCell<HashMap<Dim, Arc<std::sync::atomic::AtomicBool>>>,
+    pub(in crate::game) saved_chunk_readers:
+        std::cell::RefCell<HashMap<Dim, Arc<std::sync::atomic::AtomicBool>>>,
     /// Open detached chunk generators handed out by `LevelRef::detached_generator`.
     pub(in crate::game) detached_generators: native_detached_generation::DetachedGenerators,
     /// Scheduled end of the server tick (`MinecraftServer.haveTime`).
@@ -1847,7 +1848,9 @@ impl<'a> ServerGame<'a> {
         let loop_context = if item_data.origin() == role.data_load_origin() {
             item_data.captured_loop_context(loop_side)
         } else {
-            let registered = sunrise_gameplay_common::game::native_hooks::mod_settings::registered_setting_keys()
+            let registered =
+                sunrise_gameplay_common::game::native_hooks::mod_settings::registered_setting_keys(
+                )
                 .filter(|(owner, _)| server_owners.contains(owner));
             item_data.loop_context_with_registered(loop_side, [], registered)
         };

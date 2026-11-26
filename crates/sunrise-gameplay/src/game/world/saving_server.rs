@@ -123,7 +123,11 @@ impl ServerGame<'_> {
             }
         }
         let keys: Vec<_> = self.common.world.modified.iter().copied().collect();
-        if let Err(error) = self.server.save.0.save_attachments(&self.common.world.attachments)
+        if let Err(error) = self
+            .server
+            .save
+            .0
+            .save_attachments(&self.common.world.attachments)
             && !error.is::<sunrise_mod_runtime::attachments::AttachmentEncodeError>()
         {
             return Err(error);

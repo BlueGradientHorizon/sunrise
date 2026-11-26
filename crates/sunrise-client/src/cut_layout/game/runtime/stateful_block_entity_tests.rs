@@ -460,7 +460,6 @@ fn admitted_minecraft_and_custom_blocks_share_stateful_tables_capabilities_and_m
 
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
 
-
 use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

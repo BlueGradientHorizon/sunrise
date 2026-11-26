@@ -1,9 +1,9 @@
 #![cfg(any())]
 
 //! Physical sender identity and action ordering through the real server main inbox.
-use mod_api::{PayloadDirection, PayloadId, PayloadProtocol, Registrar};
 #[cfg(test)]
 use mod_api::{HandlerThread, Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes};
+use mod_api::{PayloadDirection, PayloadId, PayloadProtocol, Registrar};
 use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},

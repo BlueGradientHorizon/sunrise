@@ -326,14 +326,17 @@ pub fn prepare_game_boot(
     let blocks = fixture_block_names(root);
     register_game_keys(blocks.iter().cloned(), register);
     if !mod_api::__private::content_owners_published() {
-        let context = <mod_api::RegistrationContext as
-            mod_api::__private::game::RegistrationContextNew>::new();
+        let context =
+            <mod_api::RegistrationContext as mod_api::__private::game::RegistrationContextNew>::new(
+            );
         let owners: std::collections::HashMap<_, _> = context
             .mods()
             .iter()
             .flat_map(|package| {
                 let owner = package.served_by().unwrap_or_else(|| package.id());
-                package.namespaces().map(move |namespace| (namespace, owner))
+                package
+                    .namespaces()
+                    .map(move |namespace| (namespace, owner))
             })
             .collect();
         mod_api::__private::install_content_owners(
@@ -343,14 +346,16 @@ pub fn prepare_game_boot(
             }),
             [],
             [],
-            sunrise_level::containers::mod_menu_types().iter().map(|menu| {
-                let owner = context
-                    .mods()
-                    .get(menu.owner)
-                    .and_then(|package| package.served_by())
-                    .unwrap_or(menu.owner);
-                (menu.id, owner)
-            }),
+            sunrise_level::containers::mod_menu_types()
+                .iter()
+                .map(|menu| {
+                    let owner = context
+                        .mods()
+                        .get(menu.owner)
+                        .and_then(|package| package.served_by())
+                        .unwrap_or(menu.owner);
+                    (menu.id, owner)
+                }),
         );
     }
     assert!(

@@ -4,7 +4,6 @@ use sunrise_items::items::ItemStack;
 pub(crate) mod tests {
 
     use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
-    
 
     use sunrise_core::use_animation::UseAnimation;
 

@@ -210,18 +210,23 @@ impl crate::game::ServerGame<'_> {
             }
             let mut path = active.clone();
             path.push(key);
-            self.server.chat_broadcasts.queue.push_back(QueuedBroadcast {
-                sender,
-                name: name.to_owned(),
-                shown: shown.to_owned(),
-                line,
-                bound: bound.clone(),
-                delivery: match delivery {
-                    ChatDelivery::Player(message) => QueuedDelivery::Player(message.clone()),
-                    ChatDelivery::Disguised(content) => QueuedDelivery::Disguised(content.clone()),
-                },
-                path,
-            });
+            self.server
+                .chat_broadcasts
+                .queue
+                .push_back(QueuedBroadcast {
+                    sender,
+                    name: name.to_owned(),
+                    shown: shown.to_owned(),
+                    line,
+                    bound: bound.clone(),
+                    delivery: match delivery {
+                        ChatDelivery::Player(message) => QueuedDelivery::Player(message.clone()),
+                        ChatDelivery::Disguised(content) => {
+                            QueuedDelivery::Disguised(content.clone())
+                        }
+                    },
+                    path,
+                });
             return;
         }
         self.server.chat_broadcasts.active = Some(vec![key]);

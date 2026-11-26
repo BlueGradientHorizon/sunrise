@@ -896,7 +896,12 @@ pub enum After {
     PlacementEffect(Box<sunrise_world::level::ticks::PlacementEffect>),
     WitherPattern(sunrise_sim::block_pattern::PatternMatch, Vec<[i32; 3]>),
     UpdatePlacedBlockEntity(Pos, u64),
-    BlockGameEvent(&'static str, [i32; 3], Option<sunrise_sim::mobs::Who>, BlockStateId),
+    BlockGameEvent(
+        &'static str,
+        [i32; 3],
+        Option<sunrise_sim::mobs::Who>,
+        BlockStateId,
+    ),
     DestroyBlockGameEvent {
         pos: [i32; 3],
         state: BlockStateId,
@@ -936,7 +941,12 @@ pub enum After {
         eye: [f64; 3],
     },
     PlayerEquip(u128, String, Option<ItemStack>),
-    RecipeBookSettings(JournaledPlayer, PlayerRef, RecipeBookTypeKey, Option<BookFlags>),
+    RecipeBookSettings(
+        JournaledPlayer,
+        PlayerRef,
+        RecipeBookTypeKey,
+        Option<BookFlags>,
+    ),
     /// An item split off an item entity, dropped where it is (`Block.popResource`'s delay).
     Spawn([f64; 3], ItemStack),
     /// The item entity with this id was emptied: removed, unless it holds items again.

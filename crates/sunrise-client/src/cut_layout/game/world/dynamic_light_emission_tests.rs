@@ -474,7 +474,9 @@ fn an_edit_pending_when_its_level_parks_uses_that_levels_dynamic_emission() {
                 .unwrap();
             assert!(depth.take().is_empty());
             game.enter_level(Dim::Nether).unwrap();
-            game.server.levels.0
+            game.server
+                .levels
+                .0
                 .parked_mut(Dim::Overworld)
                 .unwrap()
                 .streaming
@@ -495,7 +497,9 @@ fn an_edit_pending_when_its_level_parks_uses_that_levels_dynamic_emission() {
 #[test]
 #[ignore = "daily"]
 fn a_full_read_prepares_a_saved_columns_dynamic_light() {
-    use sunrise_level::{chunk_streamer::ChunkStreamer, level_loading::Status, testgen::TestTerrain};
+    use sunrise_level::{
+        chunk_streamer::ChunkStreamer, level_loading::Status, testgen::TestTerrain,
+    };
     use sunrise_sim::save::{Persistent, SaveDir};
 
     with_lights(
@@ -531,7 +535,8 @@ fn a_full_read_prepares_a_saved_columns_dynamic_light() {
             assert!(!game.world.chunks.contains_key(&column));
             assert!(game.test_load_full_column(column));
             assert_eq!(
-                game.server.streaming
+                game.server
+                    .streaming
                     .latest_status(&game.world, column.0, column.1),
                 Some(Status::Full)
             );
@@ -637,7 +642,6 @@ fn a_light_update_asks_the_part_again_on_the_client() {
         },
     );
 }
-
 
 use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;
 

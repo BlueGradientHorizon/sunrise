@@ -184,14 +184,16 @@ impl crate::game::ServerGame<'_> {
             Some(entity) => {
                 let items = self.common.res.items();
                 let current = self.encode_live_block_entity(key, entity, block, items);
-                Some(sunrise_gameplay_common::game::spill_common::live_full_metadata(
-                    &self.common.world,
-                    key,
-                    entity,
-                    block,
-                    items,
-                    current,
-                ))
+                Some(
+                    sunrise_gameplay_common::game::spill_common::live_full_metadata(
+                        &self.common.world,
+                        key,
+                        entity,
+                        block,
+                        items,
+                        current,
+                    ),
+                )
             }
             None => {
                 sunrise_gameplay_common::game::spill_common::saved_entity(&self.common.world, pos)

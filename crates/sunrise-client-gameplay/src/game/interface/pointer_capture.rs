@@ -181,7 +181,11 @@ impl crate::game::ClientGame<'_> {
         if !capture {
             self.client.screen_grab = false;
         }
-        if capture && !self.client.captured && !self.client.screen_grab && !cfg!(target_os = "macos") {
+        if capture
+            && !self.client.captured
+            && !self.client.screen_grab
+            && !cfg!(target_os = "macos")
+        {
             // MouseHandler.grabMouse: KeyMapping.setAll unless
             // InputQuirks.RESTORE_KEY_STATE_AFTER_MOUSE_GRAB is off (macOS).
             self.restore_held_keys();
@@ -336,7 +340,8 @@ impl crate::game::ClientGame<'_> {
     /// asked for if the request is still waiting.
     pub(in crate::game) fn pointer_grabbed(&self) -> bool {
         self.calling_mod_owns_screen()
-            && self.client
+            && self
+                .client
                 .pointer_grab_request
                 .get()
                 .unwrap_or_else(|| self.mod_screen_grabs_pointer())
@@ -349,10 +354,14 @@ impl crate::game::ClientGame<'_> {
     /// which every screen change and focus loss run.
     pub(in crate::game) fn apply_pointer_grab_request(&mut self) {
         let request = self.client.pointer_grab_request.take();
-        let owner_off = self.client.native_mod_screen.as_deref().is_some_and(|owner| {
-            mod_api::__private::mod_index(owner)
-                .is_some_and(|i| !mod_api::__private::mod_index_on(i))
-        });
+        let owner_off = self
+            .client
+            .native_mod_screen
+            .as_deref()
+            .is_some_and(|owner| {
+                mod_api::__private::mod_index(owner)
+                    .is_some_and(|i| !mod_api::__private::mod_index_on(i))
+            });
         if self.client.screen_grab && (owner_off || request == Some(false)) {
             self.capture(false);
         } else if request == Some(true) && !owner_off && self.client.screen == Screen::Mod {
@@ -393,7 +402,10 @@ impl crate::game::ClientGame<'_> {
             self.close_container_client();
         }
         self.set_screen(Screen::Playing);
-        if self.client.screen == Screen::Playing && self.client.title.0.is_none() && !self.screen_over_playing() {
+        if self.client.screen == Screen::Playing
+            && self.client.title.0.is_none()
+            && !self.screen_over_playing()
+        {
             self.capture(true);
             if self.client.captured {
                 self.common.clicks.miss_time = 10000;

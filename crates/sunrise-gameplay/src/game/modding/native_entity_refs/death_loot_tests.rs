@@ -1,23 +1,29 @@
+use crate::game::ServerGame;
+use crate::game::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game};
 use mod_api::{
     DeathLootError, EntityRef, Identifier, LivingRef, LootDamageSource,
     prelude::{EntitiesHost as _, PlayersHost as _},
 };
-use sunrise_items::items::ItemStack;
-use crate::game::ServerGame;
-use crate::game::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game};
 use std::sync::Arc;
-use sunrise_sim::{mobs::Mob, motion::PlayerMotion};
 use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, RandomSource as _},
 };
+use sunrise_items::items::ItemStack;
+use sunrise_sim::{mobs::Mob, motion::PlayerMotion};
 use sunrise_world::loot::{LootData, PackOverlay};
 
 #[test]
 #[ignore = "daily"]
 fn rolls_live_death_context_without_dropping() {
     if run_fresh_cases(
-        concat!(module_path!(), "::rolls_live_death_context_without_dropping").split_once("::").unwrap().1,
+        concat!(
+            module_path!(),
+            "::rolls_live_death_context_without_dropping"
+        )
+        .split_once("::")
+        .unwrap()
+        .1,
         "SUNRISE_ROLL_DEATH_LOOT_CHILD",
         &["entity_context"],
     ) {
@@ -193,7 +199,8 @@ fn rolls_live_death_context_without_dropping() {
         );
         assert_eq!(game.world.random.next_long(), expected_next);
 
-        game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+        game.options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
         assert_eq!(
             victim.roll_death_loot(game, None, source, None),
             Err(DeathLootError::Unavailable)

@@ -128,10 +128,10 @@ pub(crate) mod general_handle_tests {
 
 #[cfg(test)]
 pub(crate) mod tests {
-    
+
     pub use sunrise_gameplay::game::native_entity_refs::tests::{
-        bind_local_player, collect_all_entities, collect_entities_in, collect_game_entities_in, lever_on, piston_pulls_above,
-        prepare_entity_ticking_neighborhood,
+        bind_local_player, collect_all_entities, collect_entities_in, collect_game_entities_in,
+        lever_on, piston_pulls_above, prepare_entity_ticking_neighborhood,
     };
     use sunrise_gameplay_common::game::GameGameExt1;
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;

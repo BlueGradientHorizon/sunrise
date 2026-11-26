@@ -155,4 +155,3 @@ fn client_placement_predicts_signal_fire_from_a_block_part() {
         );
     });
 }
-

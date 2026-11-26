@@ -2,8 +2,8 @@
 use super::{Dim, Result, ServerGame};
 use mod_api::LevelRef;
 use sunrise_level::worldborder::WorldBorder;
-use sunrise_sim::lan::hub::Hub;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
+use sunrise_sim::lan::hub::Hub;
 
 /// A command's level in place or an unvalidated handle supplied by a mod.
 #[derive(Clone, Copy)]
@@ -47,7 +47,9 @@ impl ServerGame<'_> {
                     &mut self.common.border
                 } else {
                     &mut self
-                        .server.levels.0
+                        .server
+                        .levels
+                        .0
                         .parked_mut_of(dimension)
                         .ok_or("level is not resident")?
                         .border
@@ -66,7 +68,8 @@ impl ServerGame<'_> {
         match target {
             BorderTarget::Handle(level) => Some(level),
             BorderTarget::InPlace if self.is_logical_server() => self
-                .common.native_lifecycle
+                .common
+                .native_lifecycle
                 .epoch()
                 .map(|epoch| self.level_ref(epoch, self.common.dim.key())),
             BorderTarget::InPlace => None,
@@ -187,8 +190,13 @@ impl ServerGame<'_> {
             return;
         }
         let dist = self.common.border.distance(px, pz) + self.common.border.safe_zone;
-        if dist < 0.0 && self.common.border.damage_per_block > 0.0 && self.common.ticks.is_multiple_of(10) {
-            let amount = (-dist * self.common.border.damage_per_block).floor().max(1.0) as f32;
+        if dist < 0.0
+            && self.common.border.damage_per_block > 0.0
+            && self.common.ticks.is_multiple_of(10)
+        {
+            let amount = (-dist * self.common.border.damage_per_block)
+                .floor()
+                .max(1.0) as f32;
             self.hurt_player_by("minecraft:outside_border", amount);
         }
     }

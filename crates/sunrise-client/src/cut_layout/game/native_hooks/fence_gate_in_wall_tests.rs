@@ -97,4 +97,3 @@ fn a_gate_asks_its_neighbours_parts_for_wall_height() {
         });
     });
 }
-

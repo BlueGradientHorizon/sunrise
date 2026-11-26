@@ -144,4 +144,3 @@ fn a_part_keeps_the_stack_in_the_slot() {
         });
     });
 }
-

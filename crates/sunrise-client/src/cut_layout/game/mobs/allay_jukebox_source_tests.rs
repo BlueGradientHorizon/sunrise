@@ -7,8 +7,8 @@ use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
-use sunrise_level::chunk::Chunk;
 use sunrise_gameplay_common::game::{Options, Progress, execution_role};
+use sunrise_level::chunk::Chunk;
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,

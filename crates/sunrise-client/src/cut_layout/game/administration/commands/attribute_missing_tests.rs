@@ -5,8 +5,8 @@
 //! modifier is added or removed. The same id on an attribute the player does
 //! have still works.
 use std::sync::Arc;
-use sunrise_sim::motion::PlayerMotion;
 use sunrise_gameplay_common::game::Vec3;
+use sunrise_sim::motion::PlayerMotion;
 
 pub(crate) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,

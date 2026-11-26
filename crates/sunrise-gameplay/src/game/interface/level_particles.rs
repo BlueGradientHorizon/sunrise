@@ -13,12 +13,7 @@ impl ServerGame<'_> {
     /// (an end portal opening, the dragon's death roar): here, and sent to
     /// every guest whatever their dimension, each at their own position
     /// (`Hub::global_level_event`).
-    pub(in crate::game) fn global_level_event(
-        &mut self,
-        id: i32,
-        pos: [i32; 3],
-        data: i32,
-    ) {
+    pub(in crate::game) fn global_level_event(&mut self, id: i32, pos: [i32; 3], data: i32) {
         let global = self
             .common
             .ui

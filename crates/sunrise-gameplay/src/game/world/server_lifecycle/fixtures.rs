@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 
 use crate::game::{native_entity_refs::tests::with_game, server_lifecycle::ServerRunOutcome};
 use mod_api::{Hooks, ModEntry, ServerHost};
@@ -151,7 +154,12 @@ fn world_saved_panic_during_shutdown() {
                     save::Level::read(root.path()).unwrap().name,
                     "saved despite listener panic"
                 );
-                let saved = game.server.save.0.load(0, 0, registry, world_biomes!(game)).unwrap();
+                let saved = game
+                    .server
+                    .save
+                    .0
+                    .load(0, 0, registry, world_biomes!(game))
+                    .unwrap();
                 assert_eq!(saved.block(1, 64, 1), stone);
                 assert!(game.server.session_lock.0.is_none());
 
@@ -355,7 +363,6 @@ fn datapack_dimensions_open_prepare_save_and_close_in_creation_order() {
                         .unwrap();
                         request.save_root = root.path().to_path_buf();
 
-
                         request.stem_order = Some(&[
                             "test:last",
                             "minecraft:the_nether",
@@ -392,7 +399,6 @@ fn datapack_dimensions_open_prepare_save_and_close_in_creation_order() {
                                 &order[..=i]
                             );
                         }
-
 
                         for id in order {
                             game.enter_level(Dim::from_id(id)).unwrap();
@@ -453,8 +459,6 @@ fn per_level_close_failure_skips_only_that_levels_unload() {
                 game.native_lifecycle_open_started();
                 game.open_configured_levels(&[Dim::Overworld, Dim::Nether, Dim::End])
                     .unwrap();
-
-
 
                 let bad_save = Arc::new(sunrise_sim::save::SaveDir::new(
                     root.path().join("broken_nether"),

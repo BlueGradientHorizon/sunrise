@@ -1,7 +1,6 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    
 
     /// `Entity.getOnPos(1.0E-5F)` keeps a fence's, a wall's or a fence gate's
     /// own cell while the feet rest on its 1.5-block collision; on a full block

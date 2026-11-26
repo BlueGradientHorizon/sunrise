@@ -562,7 +562,8 @@ impl crate::game::ServerGame<'_> {
                         // silent and drops its source (`handleError` with
                         // `forked`); one that is not a `CommandSyntaxException`
                         // still reaches `Commands.performCommand`.
-                        let (keep, _) = match self.with_source(s.clone(), |g| g.condition(c, want)) {
+                        let (keep, _) = match self.with_source(s.clone(), |g| g.condition(c, want))
+                        {
                             Ok(v) => v,
                             Err(e) if !e.unexpected => continue,
                             Err(e) => return Err(e),

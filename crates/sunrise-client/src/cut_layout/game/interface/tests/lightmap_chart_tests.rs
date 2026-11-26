@@ -3,8 +3,8 @@
 //! chart is on screen (`Game::debug_shows_lightmap`, given to `Renderer::set_lightmap_readback`
 //! each frame).
 use sunrise_client::debug_keys::KeyAction;
-use winit::keyboard::KeyCode;
 use sunrise_gameplay_common::game::Screen;
+use winit::keyboard::KeyCode;
 
 /// F3+4 pressed: F3 held, 4 pressed and released, F3 released.
 fn f3_and_4(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {

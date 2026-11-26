@@ -1,9 +1,9 @@
 //! Frame tests for pack-driven world text with and without Improved Transparency.
 use super::lightmap_expression_tests::{corner_of as corner, frame};
 use super::{native_entity_refs::tests::with_client_game, resource_tables_client::UiResources};
-use sunrise_gameplay_common::game::test_fixtures::run_fresh_cases;
 use crate::game::native_hooks::particle_count_tests::frame_scene;
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::game::test_fixtures::run_fresh_cases;
 use sunrise_protocol::entity_data::Value;
 
 const NAME: &str = "game::client_side::world_text_frame_tests::a_packs_text_draws_world_text_with_and_without_improved_transparency";
@@ -212,7 +212,14 @@ fn a_world_view_draws_the_name_tag() {
         let pack = super::pack_clouds_frame_tests::pack(&TEXT);
         game.client.gui = UiResources::load(&pack, std::path::Path::new("")).unwrap();
         let _event_loop = frame_scene(game);
-        assert!(game.client.renderer.0.as_ref().unwrap().draws_pack_world_text());
+        assert!(
+            game.client
+                .renderer
+                .0
+                .as_ref()
+                .unwrap()
+                .draws_pack_world_text()
+        );
         let sy = game.world.shape.column().section_index(65).unwrap() as i32;
         game.client.settings.chunk_fade = 0.0;
         game.client

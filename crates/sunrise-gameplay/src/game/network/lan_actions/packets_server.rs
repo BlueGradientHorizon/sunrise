@@ -200,7 +200,12 @@ impl crate::game::ServerGame<'_> {
         if !mod_api::__private::has_part_hook(mod_api::HookId::MenuClicked) {
             return false;
         }
-        let Some(guest) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(guest) = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+        else {
             return false;
         };
         if guest.menu.is_none() && click.container == 0 {
@@ -232,7 +237,12 @@ impl crate::game::ServerGame<'_> {
             mode: click.input,
             handled: &mut skip_default,
         });
-        let Some(guest) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(guest) = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+        else {
             return true;
         };
         if guest.dead || guest.disconnect_pending || guest.menu_generation != generation {
@@ -277,7 +287,12 @@ impl crate::game::ServerGame<'_> {
         if !mod_api::__private::menu_listens(mod_api::HookId::MenuClicked, INVENTORY_MENU) {
             return false;
         }
-        let Some(guest) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(guest) = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+        else {
             return false;
         };
         let slots = sunrise_sim::menu::Kind::Inventory.slot_count();
@@ -295,7 +310,12 @@ impl crate::game::ServerGame<'_> {
             mode: click.input,
             handled: &mut skip_default,
         });
-        let Some(guest) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(guest) = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+        else {
             return true;
         };
         if guest.dead
@@ -1436,12 +1456,8 @@ impl crate::game::ServerGame<'_> {
                         .sum();
                     let range = g.reach() + 1.0;
                     let within = d2 < range * range;
-                    if !g.within_interaction_range_of(
-                        g.server.lan_acting_uuid,
-                        p.pos,
-                        1.0,
-                        within,
-                    ) {
+                    if !g.within_interaction_range_of(g.server.lan_acting_uuid, p.pos, 1.0, within)
+                    {
                         return None;
                     }
                     // The block's item, a part's in its place, then the block

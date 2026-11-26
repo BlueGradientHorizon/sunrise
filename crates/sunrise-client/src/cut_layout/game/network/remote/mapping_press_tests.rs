@@ -122,7 +122,8 @@ fn a_mod_shortens_the_right_click_delay_of_a_held_use() {
         assert!(!ClientInputClientHost::set_right_click_delay(game, 0));
     });
     with_pressing_game(|game, packets, _| {
-        game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:snowball", 16));
+        game.common.inventory[game.common.selected] =
+            Some(ItemStack::new("minecraft:snowball", 16));
         let use_mapping = game.vanilla_key_mapping("key.use").unwrap();
         assert_eq!(use_mapping.set_down(game, true), Ok(()));
         game.remote_handle_input();

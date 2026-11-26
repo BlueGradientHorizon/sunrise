@@ -704,7 +704,10 @@ impl ServerGame<'_> {
         let mut main_backings = Vec::with_capacity(opening.kind.slots);
         let mut limits = Vec::with_capacity(opening.kind.slots);
         for slot in 0..opening.kind.slots {
-            match opening.slots.held_block_slot(&self.common.world, guest, slot) {
+            match opening
+                .slots
+                .held_block_slot(&self.common.world, guest, slot)
+            {
                 Some((bpos, bslot)) => {
                     if !seen_main.insert((bpos, bslot))
                         || self.common.world.block_entities.get(&bpos).is_none()

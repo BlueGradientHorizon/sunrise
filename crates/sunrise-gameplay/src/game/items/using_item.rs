@@ -91,8 +91,12 @@ impl crate::game::ServerGame<'_> {
         // a refused use stops for the stack it began with, without a release;
         // one that goes on takes the hand's stack as its own (`useItem = held`).
         if let Some(began) = self.common.use_start.item.take() {
-            if !self.can_continue_using(&began, &stack, Some(self.own_entity_id()), self.common.hand)
-            {
+            if !self.can_continue_using(
+                &began,
+                &stack,
+                Some(self.own_entity_id()),
+                self.common.hand,
+            ) {
                 self.stop_using_item(&began);
                 return;
             }
@@ -375,7 +379,6 @@ impl crate::game::ServerGame<'_> {
         )
     }
 }
-
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 use sunrise_gameplay_common::game::native_hooks::can_continue_using::GameHooks as _;

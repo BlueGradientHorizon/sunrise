@@ -9,7 +9,10 @@ impl SideOps for crate::game::client_side::ClientState {
     fn side_remote_world_clock_ids(&self) -> Option<Vec<String>> {
         let remote = self.remote.as_ref()?;
         Some(
-            remote.registries.registries.get("minecraft:world_clock")
+            remote
+                .registries
+                .registries
+                .get("minecraft:world_clock")
                 .map_or_else(Vec::new, |entries| {
                     entries.iter().map(|(name, _)| name.clone()).collect()
                 }),

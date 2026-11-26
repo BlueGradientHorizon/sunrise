@@ -1,11 +1,11 @@
 use super::*;
+use mod_api::Host;
 use mod_api::{
     DatapackEntry, DatapackField, DatapackFieldKind, DatapackReadError as E, DatapackRegistrySync,
     LevelRef, Registrar, RegistrationContext, WorldEpoch,
 };
-use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
-use mod_api::Host;
 use std::ops::ControlFlow;
+use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
 struct SyncedRegistryMod;
 #[mod_api::__subscriptions]
 impl Hooks for SyncedRegistryMod {
@@ -41,7 +41,6 @@ fn assert_spell_ids(host: &dyn Host, level: LevelRef, expected: &[&str]) {
 #[test]
 #[ignore = "daily"]
 fn native_datapack_host_reads_enforce_level_session_and_generation() {
-
     if run_fresh_cases(
         "game::server_side::server_reload::tests::datapack_publication_tests::datapack_host_read_tests::native_datapack_host_reads_enforce_level_session_and_generation",
         "SUNRISE_DATAPACK_HOST_READ_CHILD",
@@ -54,25 +53,25 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
         vec![ModEntry::new("registry_test", Box::new(SyncedRegistryMod))].into(),
         || {
             let candidate = |power: i64| {
-                    mod_api::DatapackCandidate::build(
-                        mod_api::__private::datapack_registry_declarations(),
-                        &[
-                            (
-                                "data/registry_test/registry_test/spell/fire.json".into(),
-                                vec![(
-                                    "pack".to_owned(),
-                                    format!(r#"{{"power":{power}}}"#).into_bytes(),
-                                )],
-                            ),
-                            (
-                                "data/addon/registry_test/spell/ice.json".into(),
-                                vec![("pack".to_owned(), br#"{"power":3}"#.to_vec())],
-                            ),
-                        ],
-                        &mut mod_api::__private::NoVanillaValueDecoder,
-                    )
-                    .unwrap()
-                };
+                mod_api::DatapackCandidate::build(
+                    mod_api::__private::datapack_registry_declarations(),
+                    &[
+                        (
+                            "data/registry_test/registry_test/spell/fire.json".into(),
+                            vec![(
+                                "pack".to_owned(),
+                                format!(r#"{{"power":{power}}}"#).into_bytes(),
+                            )],
+                        ),
+                        (
+                            "data/addon/registry_test/spell/ice.json".into(),
+                            vec![("pack".to_owned(), br#"{"power":3}"#.to_vec())],
+                        ),
+                    ],
+                    &mut mod_api::__private::NoVanillaValueDecoder,
+                )
+                .unwrap()
+            };
             with_game(|game| {
                 game.load_world(request(scratch.path())).unwrap();
                 game.mods.datapack_registries = Some(std::sync::Arc::new(
@@ -82,7 +81,6 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
                 assert_spell_ids(game, level, &["addon:ice", "registry_test:fire"]);
                 assert_eq!(
                     level.visit_datapack_entries(game, "registry_test:spell", &mut |id| {
-
                         assert_eq!(id, "addon:ice");
                         ControlFlow::Break(())
                     }),

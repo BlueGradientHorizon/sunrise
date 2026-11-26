@@ -1065,7 +1065,11 @@ impl crate::game::ClientGame<'_> {
     }
     /// `AreaEffectCloud.clientTick` for each cloud a server tracks.
     pub(in crate::game::client_side) fn tick_remote_clouds(&mut self) {
-        let level = ParticleLevel::new(&self.common.world, self.common.res.facts(), self.common.collision);
+        let level = ParticleLevel::new(
+            &self.common.world,
+            self.common.res.facts(),
+            self.common.collision,
+        );
         for c in &mut self.client.remote_clouds {
             cloud_client_tick(
                 &mut self.client.particles.0,

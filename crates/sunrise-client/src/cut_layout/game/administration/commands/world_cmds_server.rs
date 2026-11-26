@@ -397,5 +397,3 @@ pub(crate) mod vehicle_damage_command_tests {
 #[cfg(test)]
 #[path = "effect_attribute_tests_server.rs"]
 pub(crate) mod effect_attribute_tests;
-
-

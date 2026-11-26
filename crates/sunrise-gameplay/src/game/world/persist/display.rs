@@ -83,7 +83,13 @@ impl crate::game::ServerGame<'_> {
             "minecraft:block_display" => DisplayContents::Block(
                 tag.get("block_state")
                     .and_then(|value| self.state_from_nbt(value))
-                    .or_else(|| self.common.pack.assets.registry.default_state("minecraft:air"))
+                    .or_else(|| {
+                        self.common
+                            .pack
+                            .assets
+                            .registry
+                            .default_state("minecraft:air")
+                    })
                     .unwrap_or(BlockStateId(0)),
             ),
             "minecraft:item_display" => DisplayContents::Item {

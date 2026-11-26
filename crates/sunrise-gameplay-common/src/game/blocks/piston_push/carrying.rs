@@ -3,8 +3,8 @@
 //! client carry/shove prediction lives in `piston_push_client.rs`.
 #[path = "shoving.rs"]
 pub mod shoving;
-pub use shoving::{SweepKind, cancel_shove_velocity, collect_sweeps, sweep_displacement};
 use super::*;
+pub use shoving::{SweepKind, cancel_shove_velocity, collect_sweeps, sweep_displacement};
 use sunrise_core::geometry::{Axis, COLLISION_EPSILON, oriented::OrientedCollider};
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_world::moving_colliders::{self, Prepared};

@@ -242,12 +242,11 @@ impl crate::game::ServerGame<'_> {
         // A ghast's fireball or a wind charge: turned along the guest's own
         // view (ServerGamePacketListenerImpl.handleInteract, then
         // Player.attack's AIM_DEFLECT).
-        if let Some(i) = self
-            .creatures
-            .projectiles
-            .iter()
-            .position(|p| p.id != 0 && p.id as i32 == id && sunrise_gameplay_common::game::deflect_common::attackable(p))
-        {
+        if let Some(i) = self.creatures.projectiles.iter().position(|p| {
+            p.id != 0
+                && p.id as i32 == id
+                && sunrise_gameplay_common::game::deflect_common::attackable(p)
+        }) {
             let deflected = self.as_guest_at(gi, conn, |g| {
                 if packet && !g.within_interaction_range(i) {
                     return false;
@@ -272,7 +271,12 @@ impl crate::game::ServerGame<'_> {
             .mobs
             .iter()
             .position(|m| m.id as i32 == id && m.alive())
-            .filter(|_| self.common.dragon.as_ref().is_none_or(|d| d.id as i32 != id))
+            .filter(|_| {
+                self.common
+                    .dragon
+                    .as_ref()
+                    .is_none_or(|d| d.id as i32 != id)
+            })
         {
             let Some(host) = self.server.lan.as_ref() else {
                 return Err(ActionRefused::Stale);
@@ -311,14 +315,21 @@ impl crate::game::ServerGame<'_> {
             return Err(ActionRefused::Stale);
         };
         let (old_yaw, old_pitch) = (host.hub.guests[gi].yaw, host.hub.guests[gi].pitch);
-        let boat = self.common.boats.iter().position(|boat| boat.id as i32 == id);
+        let boat = self
+            .common
+            .boats
+            .iter()
+            .position(|boat| boat.id as i32 == id);
         let tnt = self
             .common
             .tnts
             .iter()
             .find(|tnt| tnt.id as i32 == id)
             .map(|tnt| tnt.id);
-        let general = match u32::try_from(id).ok().and_then(|id| self.common.general_row(id)) {
+        let general = match u32::try_from(id)
+            .ok()
+            .and_then(|id| self.common.general_row(id))
+        {
             Some(row) => {
                 let catalog = sunrise_gameplay_common::game::general::general_type_catalog();
                 if !catalog.pickable(row.type_slot) {
@@ -580,9 +591,15 @@ impl crate::game::ServerGame<'_> {
         }
         let (spectator, spawn_egg) = (g.spectator(), held.item.ends_with("_spawn_egg"));
         if let Some((yaw, pitch)) = rotation {
-            self.server.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
-                snap_use_item_rotation(&mut g.yaw, &mut g.pitch, yaw, pitch);
-            });
+            self.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update(gi, |g| {
+                    snap_use_item_rotation(&mut g.yaw, &mut g.pitch, yaw, pitch);
+                });
         }
         // ServerPlayerGameMode.useItem returns PASS for spectators, after the turn.
         if spectator {
@@ -892,7 +909,6 @@ impl crate::game::ServerGame<'_> {
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
-
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
@@ -942,10 +958,10 @@ mod tests {
     #[ignore = "daily"]
     fn use_item_non_finite_angles_preserve_previous_axis_and_wrap_finite_ones() {
         use crate::game::lan::world_spawn_sync_tests::host_for;
-        use sunrise_gameplay_common::game::test_fixtures::run_fresh_cases;
         use mod_api::PlayPacketRequest;
-        use sunrise_sim::mod_packet_builders::encode_play_packet;
+        use sunrise_gameplay_common::game::test_fixtures::run_fresh_cases;
         use sunrise_protocol::{ids::play::serverbound as sb, packets::play::Serverbound};
+        use sunrise_sim::mod_packet_builders::encode_play_packet;
 
         if run_fresh_cases(
             concat!(

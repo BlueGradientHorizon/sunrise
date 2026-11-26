@@ -396,7 +396,6 @@ fn a_cancelled_start_destroys_nothing() {
     });
 }
 
-
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

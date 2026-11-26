@@ -611,8 +611,10 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn a_level_hook_set_block_replaces_whole_states_and_their_block_entities() {
         use super::super::native_entity_refs::tests::{with_client_game, with_game};
-        use sunrise_gameplay_common::game::{GameGameExt1 as _, SideGame, mod_api_host::LevelTicks};
         use mod_api::{BlockUpdateFlags, LevelWriteHost};
+        use sunrise_gameplay_common::game::{
+            GameGameExt1 as _, SideGame, mod_api_host::LevelTicks,
+        };
         use sunrise_world::chunk::BlockState;
 
         fn write<'g>(
@@ -691,11 +693,12 @@ pub(crate) mod tests {
                 game.world.block_entities.get(&(1, 64, 0)),
                 Some(BlockEntity::Chest(_))
             ));
-
         });
 
         with_client_game(|game| {
-            game.world.chunks.insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let registry = game.pack.assets.registry;
             let grown = registry
                 .resolve(&BlockState {
@@ -704,7 +707,11 @@ pub(crate) mod tests {
                 })
                 .unwrap();
             game.world.set(0, 64, 0, grown).unwrap();
-            let api_stone = registry.default_state("minecraft:stone").unwrap().try_into_api().unwrap();
+            let api_stone = registry
+                .default_state("minecraft:stone")
+                .unwrap()
+                .try_into_api()
+                .unwrap();
             assert!(!write(game, [0, 64, 0], api_stone, flags));
             assert_eq!(game.world.block(0, 64, 0), grown);
         });

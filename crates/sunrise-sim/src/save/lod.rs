@@ -498,7 +498,13 @@ impl<G: ChunkGenerator> ChunkGenerator for Persistent<G> {
         worker: &mut G::Worker,
         x: i32,
         z: i32,
-    ) -> std::result::Result<(sunrise_level::chunk_streamer::Proto, Option<Box<SavedProto>>), String> {
+    ) -> std::result::Result<
+        (
+            sunrise_level::chunk_streamer::Proto,
+            Option<Box<SavedProto>>,
+        ),
+        String,
+    > {
         let mut proto = self.inner.proto(worker, x, z)?;
         let Some(saved) = self
             .save

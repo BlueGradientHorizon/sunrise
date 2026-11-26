@@ -246,7 +246,8 @@ pub(crate) mod tests {
                 })
                 .unwrap(),
             );
-            game.client.reload_overlay = Some(sunrise_client_gameplay::game::client_side::packs::ReloadOverlay::default());
+            game.client.reload_overlay =
+                Some(sunrise_client_gameplay::game::client_side::packs::ReloadOverlay::default());
             assert!(visible(game), "staging");
             game.client.pack_reload.0 = None;
             assert!(visible(game), "fading out after the reload");

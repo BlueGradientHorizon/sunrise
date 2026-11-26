@@ -1,7 +1,11 @@
 use super::clouds_reload_tests::{INNER, a_reload_fails_and_drops_the_selection, write_pack};
-use sunrise_client_gameplay::game::{ClientGame, client_side::model_baking_completed_tests::reload};
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
-use sunrise_client_gameplay::game::client_side::native_entity_refs::tests::{run_fresh_cases, test_window};
+use sunrise_client_gameplay::game::client_side::native_entity_refs::tests::{
+    run_fresh_cases, test_window,
+};
+use sunrise_client_gameplay::game::{
+    ClientGame, client_side::model_baking_completed_tests::reload,
+};
 
 const NAME: &str = "game::client_side::packs::core_shaders_reload_tests::a_pack_whose_core_shader_a_required_pipeline_refuses_fails_the_load";
 const CASE: &str = "SUNRISE_CORE_SHADERS_RELOAD_CASE";
@@ -79,7 +83,10 @@ fn a_pack_whose_core_shader_a_required_pipeline_refuses_fails_the_load() {
         with_client_game(|game| {
             game.client.settings.resource_packs = vec!["file/inner".into(), "file/broken".into()];
             reload(game);
-            assert_eq!(game.client.settings.resource_packs, ["file/inner", "file/broken"]);
+            assert_eq!(
+                game.client.settings.resource_packs,
+                ["file/inner", "file/broken"]
+            );
             assert!(game.client.gui.atlas.sky_shader.is_some());
             assert!(game.client.gui.atlas.text_shaders.gui.is_some());
         });
@@ -116,19 +123,28 @@ fn the_device_refusing_a_drawn_pipeline_fails_the_reload() {
         let atlas = |game: &ClientGame<'_>| game.client.gui.atlas.sky_shader.is_some();
         game.client.settings.resource_packs = vec!["file/inner".into(), "file/taken".into()];
         reload(game);
-        assert_eq!(game.client.settings.resource_packs, ["file/inner", "file/taken"]);
+        assert_eq!(
+            game.client.settings.resource_packs,
+            ["file/inner", "file/taken"]
+        );
         assert!(atlas(game));
         game.client.settings.resource_packs = vec!["file/inner".into(), "file/vec3".into()];
         reload(game);
-        assert_eq!(game.client.settings.resource_packs, ["file/inner", "file/vec3"]);
+        assert_eq!(
+            game.client.settings.resource_packs,
+            ["file/inner", "file/vec3"]
+        );
         assert!(atlas(game), "the atlas keeps the pack's sky program");
         game.client.settings.resource_packs = vec!["file/inner".into(), "file/refused".into()];
         reload(game);
         assert!(game.client.settings.resource_packs.is_empty());
         assert!(!atlas(game), "the working pack's sky went too");
         assert!(
-            game.client.toast_manager
-                .system_mut(sunrise_client_gameplay::game::toast_manager::SystemToastId::PackLoadFailure)
+            game.client
+                .toast_manager
+                .system_mut(
+                    sunrise_client_gameplay::game::toast_manager::SystemToastId::PackLoadFailure
+                )
                 .is_some(),
             "resourcePack.load_fail"
         );

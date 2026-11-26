@@ -291,7 +291,6 @@ fn the_fire_odds_read_takes_the_parts_answer_then_vanillas_table() {
     });
 }
 
-
 use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

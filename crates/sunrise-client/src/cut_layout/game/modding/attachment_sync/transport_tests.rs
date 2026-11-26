@@ -1,9 +1,9 @@
 //! Attachment sync on the negotiated route (#813 step 4a), over the real integrated memory
 //! connection and LAN TCP: who is sent values, in which order, what a rollback and a stale
 //! epoch send, and what an oversized message does to the connection.
-use mod_api::{AttachmentCodec, AttachmentKey};
 #[cfg(any())]
 use mod_api::{AttachmentAccess, AttachmentHolder, Attachments, Host};
+use mod_api::{AttachmentCodec, AttachmentKey};
 #[cfg(any())]
 use std::{
     sync::atomic::{AtomicUsize, Ordering},

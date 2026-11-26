@@ -849,9 +849,7 @@ fn a_declining_liquid_parts_writes_stay_for_the_next_part_and_commit() {
     mod_platform::testing::with_mods(mods, || {
         with_level(|game, level| {
             let dandelion = state(game, "minecraft:dandelion");
-            game.world
-                .set(AT[0], AT[1], AT[2], dandelion)
-                .unwrap();
+            game.world.set(AT[0], AT[1], AT[2], dandelion).unwrap();
             game.storage_transaction(|game, tx| {
                 assert_eq!(
                     game.level_place_fluid(level, AT, key("minecraft:water"), None, true, tx),

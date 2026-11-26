@@ -652,18 +652,16 @@ impl crate::game::ClientGame<'_> {
         layouts.begin_frame(&self.client.gui.atlas);
         let background = self.client.settings.text_background(0.25);
         let faded = self.client.settings.faded_text_alpha(0.25);
-        let pack_text = (self.client.renderer.0.as_ref()).is_some_and(|r| r.draws_pack_world_text());
+        let pack_text =
+            (self.client.renderer.0.as_ref()).is_some_and(|r| r.draws_pack_world_text());
         let hooks = !mod_api::__private::mods().is_empty();
         // Asked once a frame: with no listener, no line is posed or copied.
         let do_render =
             hooks && mod_api::__private::listened(mod_api::HookId::RenderNameTagDoRender);
         let mut content = String::new();
-        for mut tag in self.collect_name_tags(
-            camera,
-            alpha,
-            hooks,
-            self.client.view_frustum.as_ref(),
-        ) {
+        for mut tag in
+            self.collect_name_tags(camera, alpha, hooks, self.client.view_frustum.as_ref())
+        {
             if do_render {
                 self.name_tag_do_render(&mut tag, camera, alpha, out, &mut content);
                 if tag.lines.is_empty() {

@@ -144,7 +144,10 @@ pub trait SideOps: Sized {
     fn side_parked_border(&self, _dim: Dim) -> Option<&sunrise_level::worldborder::WorldBorder> {
         None
     }
-    fn side_constructing_dimension_facts(&self, _level: mod_api::LevelRef) -> Option<Option<&DimensionFacts>> {
+    fn side_constructing_dimension_facts(
+        &self,
+        _level: mod_api::LevelRef,
+    ) -> Option<Option<&DimensionFacts>> {
         None
     }
     fn side_parked_world(&self, dimension: &str) -> Option<&World>;

@@ -56,4 +56,3 @@ fn remote_player_use_animation_dispatches_once() {
         });
     });
 }
-

@@ -32,12 +32,17 @@ impl SideOps for crate::game::client_side::ClientState {
         self.remote.as_ref().map(|r| r.sea_level)
     }
     fn side_remote_named_clock_time(&self, name: &str) -> Option<i64> {
-        self.remote.as_ref().map(|remote| remote.named_clock_time(name))
+        self.remote
+            .as_ref()
+            .map(|remote| remote.named_clock_time(name))
     }
     fn side_remote_environment(&self) -> Option<&Environment> {
         self.remote.as_ref()?.level_environment.as_deref()
     }
-    fn side_constructing_dimension_facts(&self, level: mod_api::LevelRef) -> Option<Option<&DimensionFacts>> {
+    fn side_constructing_dimension_facts(
+        &self,
+        level: mod_api::LevelRef,
+    ) -> Option<Option<&DimensionFacts>> {
         Some(self.remote.as_ref()?.constructing(level)?.facts.as_deref())
     }
     fn side_remote_dimension_context(&self) -> Option<(&str, Option<&DimensionFacts>)> {

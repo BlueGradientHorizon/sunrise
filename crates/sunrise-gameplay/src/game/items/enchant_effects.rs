@@ -20,8 +20,7 @@ use sunrise_core::{
 };
 use sunrise_gameplay_common::game::{
     commands_common::CommandsCommonGameExt2 as _,
-    native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
-    tables::WorldTablesExt as _,
+    native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _, tables::WorldTablesExt as _,
     weather::WeatherGameExt as _,
 };
 use sunrise_items::{
@@ -422,12 +421,7 @@ impl ServerGame<'_> {
                 .get_mut(index)
                 .map(|mob| effect(&mut mob.random));
         }
-        if let Some(dragon) = self
-            .common
-            .dragon
-            .as_mut()
-            .filter(|dragon| dragon.id == id)
-        {
+        if let Some(dragon) = self.common.dragon.as_mut().filter(|dragon| dragon.id == id) {
             return Some(effect(&mut dragon.random));
         }
         if let Some(stand) = self
@@ -975,9 +969,10 @@ impl ServerGame<'_> {
                     hit_state,
                     ..Default::default()
                 };
-                if entry.get("requirements").is_none_or(|r| {
-                    table.condition(r, *level, &ctx, &mut self.common.world.random)
-                }) {
+                if entry
+                    .get("requirements")
+                    .is_none_or(|r| table.condition(r, *level, &ctx, &mut self.common.world.random))
+                {
                     let invocation = EntityEffectUse {
                         stack,
                         holder,
@@ -1413,7 +1408,11 @@ impl ServerGame<'_> {
     }
 
     /// `AbstractArrow` uses the drawn pickup stack as the tool and stores piercing as a byte.
-    pub(in crate::game) fn projectile_pierce(&mut self, weapon: &ItemStack, ammo: &ItemStack) -> u8 {
+    pub(in crate::game) fn projectile_pierce(
+        &mut self,
+        weapon: &ItemStack,
+        ammo: &ItemStack,
+    ) -> u8 {
         if !self.common.is_logical_server() {
             return 0;
         }
@@ -1610,7 +1609,8 @@ impl ServerGame<'_> {
                 }
             }
             Target::Mob(id) => {
-                let mob = &self.common.mobs[self.common.mob_index.find_ref(&self.common.mobs, id)?];
+                let mob =
+                    &self.common.mobs[self.common.mob_index.find_ref(&self.common.mobs, id)?];
                 TickBody {
                     position: mob.position,
                     movement: mob.position.subtract(mob.previous),
@@ -1654,13 +1654,7 @@ impl ServerGame<'_> {
         })
     }
 
-    pub fn play_enchantment_sound(
-        &mut self,
-        effect: &Value,
-        level: u32,
-        actor: u32,
-        at: [f64; 3],
-    ) {
+    pub fn play_enchantment_sound(&mut self, effect: &Value, level: u32, actor: u32, at: [f64; 3]) {
         if self.entity_silent(actor) {
             return;
         }
@@ -1798,8 +1792,7 @@ impl ServerGame<'_> {
                     {
                         return;
                     }
-                    if let Some(stand) =
-                        stand_by_hint_mut(&mut self.common.armor_stands, index, id)
+                    if let Some(stand) = stand_by_hint_mut(&mut self.common.armor_stands, index, id)
                     {
                         stand.enchantment_equipment[i] = to;
                     }

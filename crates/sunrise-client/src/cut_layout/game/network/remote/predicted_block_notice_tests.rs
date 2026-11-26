@@ -4,9 +4,7 @@ use std::sync::{Arc, Mutex};
 use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::game::remote::dry_level::DryLevel;
-use {
-    sunrise_gameplay_common::game::remote::{BlockStateId, C, Chunk, play},
-};
+use sunrise_gameplay_common::game::remote::{BlockStateId, C, Chunk, play};
 use {
     crate::game::server_side::native_entity_refs::tests::with_client_game,
     sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
@@ -282,4 +280,3 @@ fn unapplied_guesses_are_unheard() {
         assert!(seen.0.lock().unwrap().is_empty());
     });
 }
-

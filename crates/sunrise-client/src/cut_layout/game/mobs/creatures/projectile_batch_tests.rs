@@ -1,14 +1,12 @@
 use mod_api::{Flow, Hooks, ProjectileImpactEvent, ServerHost};
 use std::sync::{Mutex, atomic::Ordering};
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+use sunrise_gameplay_common::game::creatures::{Arc, Projectile, ProjectileKind, Vec3};
 use sunrise_level::chunk::Chunk;
 use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
 };
 use sunrise_sim::join_seq::JoinSeq;
-use {
-    sunrise_gameplay_common::game::creatures::{Arc, Projectile, ProjectileKind, Vec3},
-};
 use {
     crate::game::server_side::native_projectiles::impact_probe::{Action, with_probe},
     sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
@@ -85,7 +83,6 @@ impl Hooks for CancelImpacts {
         }
         Flow::Continue
     }
-
 
     fn projectile_impact(
         &self,
@@ -812,7 +809,6 @@ impl Hooks for WindContinuationObserver {
         }
         Flow::Continue
     }
-
 }
 
 pub(crate) fn load_wind_continuation_witness_26_3() -> String {

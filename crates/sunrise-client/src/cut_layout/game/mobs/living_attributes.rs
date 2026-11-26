@@ -23,7 +23,10 @@ pub(crate) mod tests {
     use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
 
     fn detect_test_mob_equipment(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
-        let items = match (&game.common.server_items, game.server.world_tables.0.as_ref()) {
+        let items = match (
+            &game.common.server_items,
+            game.server.world_tables.0.as_ref(),
+        ) {
             (Some(items), _) => &**items,
             (None, Some(tables)) => &tables.items,
             (None, None) => game.common.res.items(),

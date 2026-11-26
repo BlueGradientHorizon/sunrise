@@ -96,11 +96,7 @@ impl SlotMoves {
     /// Where menu slot `slot` will be from the next build: the last move,
     /// pending or committed, else its declaration. `declared` is the screen's
     /// declaration (`OpenNativeScreen::declared_slot`), None for no such slot.
-    pub fn latest(
-        &self,
-        slot: usize,
-        declared: Option<Option<[f32; 2]>>,
-    ) -> Option<[f32; 2]> {
+    pub fn latest(&self, slot: usize, declared: Option<Option<[f32; 2]>>) -> Option<[f32; 2]> {
         let declared = declared?;
         let pending = self.pending.borrow().get(&slot).copied();
         match pending {

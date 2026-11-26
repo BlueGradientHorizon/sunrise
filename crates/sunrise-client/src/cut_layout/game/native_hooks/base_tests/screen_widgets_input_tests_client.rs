@@ -425,7 +425,13 @@ fn release_drag_and_wheel_cancellation_preserve_input_bookkeeping() {
 #[ignore = "daily"]
 fn hover_moves_fire_before_drag_and_a_screen_grab_ends_with_the_screen() {
     if run_fresh_cases(
-        concat!(module_path!(), "::hover_moves_fire_before_drag_and_a_screen_grab_ends_with_the_screen").split_once("::").unwrap().1,
+        concat!(
+            module_path!(),
+            "::hover_moves_fire_before_drag_and_a_screen_grab_ends_with_the_screen"
+        )
+        .split_once("::")
+        .unwrap()
+        .1,
         "SUNRISE_SCREEN_POINTER_GRAB_CHILD",
         &["grab"],
     ) {
@@ -478,7 +484,11 @@ fn hover_moves_fire_before_drag_and_a_screen_grab_ends_with_the_screen() {
         assert!(game.test_set_pointer_grab(true));
         assert!(game.test_pointer_grabbed(), "reported at once");
         game.test_apply_pointer_grab_request();
-        assert!(game.client.captured && game.test_mod_screen_grabs_pointer() && game.test_pointer_grabbed());
+        assert!(
+            game.client.captured
+                && game.test_mod_screen_grabs_pointer()
+                && game.test_pointer_grabbed()
+        );
         let turn = game.test_pointer_accumulated();
         game.test_grabbed_pointer_motion([3.5, -2.0]);
         game.test_grabbed_pointer_motion([0.0, 0.0]);
@@ -486,7 +496,11 @@ fn hover_moves_fire_before_drag_and_a_screen_grab_ends_with_the_screen() {
             take(state),
             [Seen::Motion("input_route".into(), [3.5, -2.0])]
         );
-        assert_eq!(game.test_pointer_accumulated(), turn, "the camera does not turn");
+        assert_eq!(
+            game.test_pointer_accumulated(),
+            turn,
+            "the camera does not turn"
+        );
         let held = game.cursor();
         move_mouse(game, id, 340.0, 140.0);
         send_mouse_button(game, id, MouseButton::Left, true);
@@ -539,7 +553,13 @@ fn hover_moves_fire_before_drag_and_a_screen_grab_ends_with_the_screen() {
 fn dropped_files_reach_a_mod_screen_whole_and_in_order() {
     use std::path::PathBuf;
     if run_fresh_cases(
-        concat!(module_path!(), "::dropped_files_reach_a_mod_screen_whole_and_in_order").split_once("::").unwrap().1,
+        concat!(
+            module_path!(),
+            "::dropped_files_reach_a_mod_screen_whole_and_in_order"
+        )
+        .split_once("::")
+        .unwrap()
+        .1,
         "SUNRISE_SCREEN_FILES_DROPPED_CHILD",
         &["drop"],
     ) {
@@ -603,7 +623,13 @@ fn not_utf8_path() -> std::path::PathBuf {
 #[ignore = "daily"]
 fn a_drop_reaches_its_screen_before_a_click_that_closes_it() {
     if run_fresh_cases(
-        concat!(module_path!(), "::a_drop_reaches_its_screen_before_a_click_that_closes_it").split_once("::").unwrap().1,
+        concat!(
+            module_path!(),
+            "::a_drop_reaches_its_screen_before_a_click_that_closes_it"
+        )
+        .split_once("::")
+        .unwrap()
+        .1,
         "SUNRISE_SCREEN_FILES_DROPPED_CLOSE_CHILD",
         &["drop"],
     ) {
@@ -644,7 +670,13 @@ fn a_drop_reaches_its_screen_before_a_click_that_closes_it() {
 #[ignore = "daily"]
 fn a_pointer_grab_is_refused_on_another_mods_screen() {
     if run_fresh_cases(
-        concat!(module_path!(), "::a_pointer_grab_is_refused_on_another_mods_screen").split_once("::").unwrap().1,
+        concat!(
+            module_path!(),
+            "::a_pointer_grab_is_refused_on_another_mods_screen"
+        )
+        .split_once("::")
+        .unwrap()
+        .1,
         "SUNRISE_SCREEN_GRAB_OTHER_MOD_CHILD",
         &["grab"],
     ) {
@@ -655,7 +687,11 @@ fn a_pointer_grab_is_refused_on_another_mods_screen() {
         assert!(!game.test_set_pointer_grab(true));
         assert!(!game.test_pointer_grabbed());
         game.test_apply_pointer_grab_request();
-        assert!(!game.test_screen_grab() && !game.client.captured && game.mod_screen() == Some("input_route"));
+        assert!(
+            !game.test_screen_grab()
+                && !game.client.captured
+                && game.mod_screen() == Some("input_route")
+        );
     });
 }
 
@@ -663,7 +699,13 @@ fn a_pointer_grab_is_refused_on_another_mods_screen() {
 #[ignore = "daily"]
 fn a_pointer_grab_is_refused_with_no_screen_open() {
     if run_fresh_cases(
-        concat!(module_path!(), "::a_pointer_grab_is_refused_with_no_screen_open").split_once("::").unwrap().1,
+        concat!(
+            module_path!(),
+            "::a_pointer_grab_is_refused_with_no_screen_open"
+        )
+        .split_once("::")
+        .unwrap()
+        .1,
         "SUNRISE_SCREEN_GRAB_NO_SCREEN_CHILD",
         &["grab"],
     ) {
@@ -682,7 +724,13 @@ fn a_pointer_grab_is_refused_with_no_screen_open() {
 #[ignore = "daily"]
 fn a_pointer_grab_is_refused_while_the_window_is_unfocused() {
     if run_fresh_cases(
-        concat!(module_path!(), "::a_pointer_grab_is_refused_while_the_window_is_unfocused").split_once("::").unwrap().1,
+        concat!(
+            module_path!(),
+            "::a_pointer_grab_is_refused_while_the_window_is_unfocused"
+        )
+        .split_once("::")
+        .unwrap()
+        .1,
         "SUNRISE_SCREEN_GRAB_UNFOCUSED_CHILD",
         &["grab"],
     ) {

@@ -523,10 +523,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// ClientPacketListener.handleMovePlayer.
-    pub fn remote_teleport(
-        &mut self,
-        p: &play::PlayerPosition,
-    ) -> Result<()> {
+    pub fn remote_teleport(&mut self, p: &play::PlayerPosition) -> Result<()> {
         use play::relative as rel;
         let (had_player, current) = self
             .common

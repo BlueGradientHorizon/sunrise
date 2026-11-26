@@ -1,9 +1,9 @@
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::creatures::{BlockPos, Vec3, Who};
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
-use sunrise_gameplay_common::game::creatures::{BlockPos, Vec3, Who};
 use {
     crate::game::load_resources, crate::settings::Settings, sunrise_gameplay_common::game::Options,
     sunrise_gameplay_common::game::Progress,

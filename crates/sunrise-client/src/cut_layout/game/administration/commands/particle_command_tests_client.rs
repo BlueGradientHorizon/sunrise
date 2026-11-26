@@ -59,7 +59,10 @@ fn block_particles_of_air_reach_the_player_and_draw_nothing() {
     assert_eq!(server.server.pending_particles.len(), 1);
     let queued = server.server.pending_particles.remove(0);
     let ServerParticleData::Block(state) = queued.particle.data else {
-        panic!("expected block particle data, got {:?}", queued.particle.data);
+        panic!(
+            "expected block particle data, got {:?}",
+            queued.particle.data
+        );
     };
     crate::game::native_entity_refs::tests::with_client_game(|client| {
         let _server = logged_client(client);
@@ -106,7 +109,10 @@ fn a_block_marker_of_air_draws_the_missing_texture() {
     assert_eq!(server.server.pending_particles.len(), 1);
     let queued = server.server.pending_particles.remove(0);
     let ServerParticleData::Block(state) = queued.particle.data else {
-        panic!("expected block particle data, got {:?}", queued.particle.data);
+        panic!(
+            "expected block particle data, got {:?}",
+            queued.particle.data
+        );
     };
     crate::game::native_entity_refs::tests::with_client_game(|client| {
         let _server = logged_client(client);

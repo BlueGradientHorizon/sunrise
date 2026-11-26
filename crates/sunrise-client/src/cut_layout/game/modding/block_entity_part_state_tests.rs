@@ -1048,7 +1048,6 @@ fn part_state_counts_ticks_across_chunk_reload() {
 
 use sunrise_gameplay_common::game::side_ops::events::EventsSideGameExt as _;
 
-
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;

@@ -6,7 +6,8 @@ use sunrise_sim::mobs::Mob;
 use {
     crate::game::*,
     sunrise_gameplay_common::game::{
-        Arc, HashMap, Instant, Options, PathBuf, PlayerMotion, Progress, Vec3, World, execution_role,
+        Arc, HashMap, Instant, Options, PathBuf, PlayerMotion, Progress, Vec3, World,
+        execution_role,
     },
 };
 
@@ -246,7 +247,10 @@ fn dead_guest_leaves_at_e_but_reaches_a_registered_selector() {
         Box::new(FallenMod),
     )]
     .into();
-    mod_api::testing::rebuild_parts(|| sunrise_gameplay_common::game::api_values::install_parts(&mods)).unwrap();
+    mod_api::testing::rebuild_parts(|| {
+        sunrise_gameplay_common::game::api_values::install_parts(&mods)
+    })
+    .unwrap();
     mod_platform::testing::with_mods(mods, || {
         sunrise_gameplay::game::native_guest_turn_tests::with_guests(|game| {
             game.build_registries();
@@ -290,7 +294,6 @@ fn dead_guest_leaves_at_e_but_reaches_a_registered_selector() {
         });
     });
 }
-
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 

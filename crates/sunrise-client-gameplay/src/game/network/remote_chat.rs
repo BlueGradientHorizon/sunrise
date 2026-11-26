@@ -282,10 +282,7 @@ impl crate::game::ClientGame<'_> {
     /// all with the same time, salt and last seen (without a chat session the
     /// signature list is empty, as in vanilla); any other command goes as the
     /// unsigned packet.
-    pub fn send_command(
-        &mut self,
-        command: &str,
-    ) -> Result<Option<ClientCommandOutcome>, String> {
+    pub fn send_command(&mut self, command: &str) -> Result<Option<ClientCommandOutcome>, String> {
         self.submit_client_command(command, PendingClientCommandKind::Signed, None)
     }
 

@@ -9,15 +9,13 @@ use std::collections::{HashMap, HashSet};
 use sunrise_game_data::text::Text;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_gameplay::game::server_side::persist::ChunkKey;
-use sunrise_gameplay_common::game::test_fixtures::{collect_entity_visit, fixture_resident_column};
-use {
-    sunrise_gameplay_common::game::general::{
-        GeneralEntityRecord, GeneralRow, GeneralTypeEnvelope, Tag, Target, Vec3, format, limits,
-        nbt_size, record_from_compound,
-    },
-};
 #[cfg(test)]
 use sunrise_gameplay_common::game::general::Entity;
+use sunrise_gameplay_common::game::general::{
+    GeneralEntityRecord, GeneralRow, GeneralTypeEnvelope, Tag, Target, Vec3, format, limits,
+    nbt_size, record_from_compound,
+};
+use sunrise_gameplay_common::game::test_fixtures::{collect_entity_visit, fixture_resident_column};
 
 /// Declares the fixture's two types: `mymod:robot`, which saves, and
 /// `mymod:ghost`, which never does.
@@ -1101,7 +1099,9 @@ fn with_types_and_guests(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGa
     let _phase = mod_platform::__private::RegistrationGuard::open();
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("mymod", Box::new(Declare))].into();
     mod_platform::testing::with_mods(mods, || {
-        sunrise_gameplay::game::native_guest_turn_tests::with_guests(|game| resident_origin(game, test))
+        sunrise_gameplay::game::native_guest_turn_tests::with_guests(|game| {
+            resident_origin(game, test)
+        })
     });
 }
 

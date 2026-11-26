@@ -6,11 +6,7 @@ type ExitFault = Box<dyn std::any::Any + Send>;
 impl crate::game::ServerGame<'_> {
     /// `as_guest`, with the system messages the guest's action earns (the
     /// `player::sendSystemMessage` of a packet handler) sent to that guest.
-    pub fn as_guest_messaged<R>(
-        &mut self,
-        conn: u32,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> Option<R> {
+    pub fn as_guest_messaged<R>(&mut self, conn: u32, f: impl FnOnce(&mut Self) -> R) -> Option<R> {
         // The outer capture comes back even when `f` panics (a native callback can), so later
         // feedback isn't trapped in this guest's capture. What the guest was already told still
         // reaches them before the panic goes on, after `as_guest` has restored the swap.
@@ -1013,7 +1009,11 @@ impl crate::game::ServerGame<'_> {
             }
         };
         swap_inventory(self);
-        let result = f(self.server.lan.as_mut()?, server_world_items!(self), &self.common.world);
+        let result = f(
+            self.server.lan.as_mut()?,
+            server_world_items!(self),
+            &self.common.world,
+        );
         swap_inventory(self);
         result
     }

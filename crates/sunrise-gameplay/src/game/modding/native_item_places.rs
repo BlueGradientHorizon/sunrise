@@ -1032,18 +1032,18 @@ impl ServerGame<'_> {
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
     use sunrise_gameplay_common::game::TryIntoApi;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
     use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;
     use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;
 
     use super::super::BlockEntity;
     use mod_api::HostTransaction;
     use mod_api::ServerHost;
-    use mod_api::{ItemResource, MenuRef, TransactionError};
     use mod_api::{ENTITY_ITEMS, ItemPlace};
+    use mod_api::{ItemResource, MenuRef, TransactionError};
+    use std::sync::Arc;
     use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
     use sunrise_gameplay_common::game::tables::GameItems as _;
-    use std::sync::Arc;
     use sunrise_items::items::ItemStack;
     use sunrise_sim::lan::{NetConfig, hub::HubConfig};
 

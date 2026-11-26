@@ -200,4 +200,3 @@ fn a_block_part_hears_a_piston_destroy_it_before_the_move_overwrites_its_cells()
         })
     });
 }
-

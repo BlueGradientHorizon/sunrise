@@ -226,8 +226,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn parked_owners_rebind_and_route_without_trial_dimension_swaps() {
-        use sunrise_gameplay_common::game::Dim;
         use mod_api::EntityReadError;
+        use sunrise_gameplay_common::game::Dim;
         with_game(|game| {
             fixture_resident_column(&mut game.common.world, (0, 0));
             game.reset_entity_residency();

@@ -1834,7 +1834,12 @@ impl crate::game::ServerGame<'_> {
         fire: bool,
         damage_type: &'a str,
     ) -> ExplosionStart<'a> {
-        let entity = |id| Some(mod_api::EntityRef::new(self.common.native_lifecycle.epoch()?, id));
+        let entity = |id| {
+            Some(mod_api::EntityRef::new(
+                self.common.native_lifecycle.epoch()?,
+                id,
+            ))
+        };
         ExplosionStart::from(mod_api::__private::built::ExplosionStart {
             dimension: self.common.dim.key(),
             center,

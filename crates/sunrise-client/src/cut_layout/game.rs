@@ -9,30 +9,30 @@ pub(crate) use sunrise_client_gameplay::game::client_side::test_key_codes::{
 pub(crate) use sunrise_client_gameplay::hud_gates::{block_outline_drawn, debug_crosshair_drawn};
 #[path = "../benchmark_retention.rs"]
 pub(crate) mod benchmark_retention;
-#[cfg(all(test, feature = "client"))]
-#[path = "game/network/remote_mob_data/frog_variant_meta_tests.rs"]
-mod frog_variant_meta_tests;
-#[cfg(test)]
-#[path = "game/modding/quiet_write_tests.rs"]
-mod quiet_write_tests;
 #[cfg(test)]
 #[path = "game/modding/container_loot_table_tests.rs"]
 mod container_loot_table_tests;
 #[cfg(all(test, feature = "client"))]
-#[path = "game/modding/native_player_post_effects_tests.rs"]
-mod native_player_post_effects_tests;
-#[cfg(all(test, feature = "client"))]
-#[path = "game/modding/native_living_model_posed_tests.rs"]
-mod native_living_model_posed_tests;
-#[cfg(all(test, feature = "client"))]
-#[path = "game/modding/native_datapack_values_tests.rs"]
-mod native_datapack_values_tests;
+#[path = "game/network/remote_mob_data/frog_variant_meta_tests.rs"]
+mod frog_variant_meta_tests;
 #[cfg(all(test, feature = "client"))]
 #[path = "game/modding/inventory_menu_parts_tests.rs"]
 mod inventory_menu_parts_tests;
 #[cfg(all(test, feature = "client"))]
+#[path = "game/modding/native_datapack_values_tests.rs"]
+mod native_datapack_values_tests;
+#[cfg(all(test, feature = "client"))]
+#[path = "game/modding/native_living_model_posed_tests.rs"]
+mod native_living_model_posed_tests;
+#[cfg(all(test, feature = "client"))]
+#[path = "game/modding/native_player_post_effects_tests.rs"]
+mod native_player_post_effects_tests;
+#[cfg(all(test, feature = "client"))]
 #[path = "game/interface/pack_layer_frame_tests.rs"]
 mod pack_layer_frame_tests;
+#[cfg(test)]
+#[path = "game/modding/quiet_write_tests.rs"]
+mod quiet_write_tests;
 #[cfg(any(test, not(feature = "client")))]
 #[path = "../server_startup_settings.rs"]
 mod server_startup_settings;
@@ -488,7 +488,8 @@ pub(crate) fn run_with(
     let mut options = Options::read(options, read_auth)?;
     #[cfg(feature = "client")]
     {
-        options.read_creation_packs = Some(sunrise_gameplay::game::creation_packs::read_creation_packs);
+        options.read_creation_packs =
+            Some(sunrise_gameplay::game::creation_packs::read_creation_packs);
     }
     #[cfg(not(feature = "client"))]
     if !options.execution_role.is_dedicated_server() {
@@ -728,7 +729,15 @@ pub(crate) fn run_with(
     let serve_integrated: sunrise_gameplay_common::game::integrated_link::Serve =
         |res, pack, options, settings, launch, flags, tasks, ready, resolver| {
             serve_with_ticket_activation(
-                res, pack, options, settings, launch, flags, tasks, ready, resolver,
+                res,
+                pack,
+                options,
+                settings,
+                launch,
+                flags,
+                tasks,
+                ready,
+                resolver,
                 crate::entry::ticket_activation(),
             )
         };

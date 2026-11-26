@@ -3,7 +3,9 @@ use sunrise_core::{geometry::Aabb, position::BlockPos};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_gameplay_common::game::transactions::BlockEntityCreation;
 use sunrise_gameplay_common::game_master_blocks::is_game_master_block;
-use sunrise_world::level::{Behaviours, BucketContent, LevelAccess as _, LevelEvent, PlayerEffect, Ticks};
+use sunrise_world::level::{
+    Behaviours, BucketContent, LevelAccess as _, LevelEvent, PlayerEffect, Ticks,
+};
 use {crate::game::*, sunrise_gameplay_common::game::*};
 use {
     sunrise_game_data::Result, sunrise_items::items::ItemStack,
@@ -104,7 +106,11 @@ impl crate::game::ServerGame<'_> {
 
     fn break_block_precanceled(&mut self, pos: [i32; 3], state: BlockStateId) -> Result<bool> {
         Ok(!self.debug_stick_can_destroy(pos)?
-            || !self.common.res.items().can_destroy_block(self.common.held(), self.common.creative)
+            || !self
+                .common
+                .res
+                .items()
+                .can_destroy_block(self.common.held(), self.common.creative)
             || self.block_action_restricted(pos)
             || (!self.common.can_use_game_master_blocks()
                 && is_game_master_block(&self.common.res.facts().get(state).name)))
@@ -141,7 +147,8 @@ impl crate::game::ServerGame<'_> {
     ) -> Result<bool> {
         let [x, y, z] = pos;
         if !self.common.world.is_loaded_at(x, y, z)
-            && !(self.native_authoritative() && self.load_full_chunk(None, (x >> 4, z >> 4)).is_ok())
+            && !(self.native_authoritative()
+                && self.load_full_chunk(None, (x >> 4, z >> 4)).is_ok())
         {
             return Ok(false);
         }
@@ -149,28 +156,38 @@ impl crate::game::ServerGame<'_> {
         let mut canceled = self.break_block_precanceled(pos, state)?;
         let mut exp_to_drop = None;
         let dim = self.common.dim;
-        let outstanding = self.server.active_player_breaks.iter().any(|active| {
-            active.dim == dim && active.pos == pos
-        });
+        let outstanding = self
+            .server
+            .active_player_breaks
+            .iter()
+            .any(|active| active.dim == dim && active.pos == pos);
         let removed_by_nested = if self.native_authoritative()
             && !outstanding
             && (!canceled || mod_api::__private::listened(mod_api::HookId::BreakBlock))
         {
             let depth = self.server.active_player_breaks.len();
-            self.server.active_player_breaks.push(crate::game::server_side::ActivePlayerBreak {
-                dim,
-                pos,
-                removed_by_nested: false,
-            });
+            self.server
+                .active_player_breaks
+                .push(crate::game::server_side::ActivePlayerBreak {
+                    dim,
+                    pos,
+                    removed_by_nested: false,
+                });
             let guard = ActiveBreakGuard { game: self, depth };
-            guard.game.native_break_block(pos, state, &mut canceled, &mut exp_to_drop);
+            guard
+                .game
+                .native_break_block(pos, state, &mut canceled, &mut exp_to_drop);
             guard.game.server.active_player_breaks[depth].removed_by_nested
         } else {
             false
         };
         if canceled
             || removed_by_nested
-            || self.common.res.behaviours().is_air(self.common.world.block(x, y, z))
+            || self
+                .common
+                .res
+                .behaviours()
+                .is_air(self.common.world.block(x, y, z))
         {
             return Ok(false);
         }
@@ -1032,7 +1049,11 @@ impl crate::game::ServerGame<'_> {
                         f64::from(pos.y) + 0.5,
                         f64::from(pos.z) + 0.5,
                     ];
-                    let name = if matches!(source, Some(sunrise_world::level::LevelSoundSource::BlockPlacement { .. })) || sound.contains(':') {
+                    let name = if matches!(
+                        source,
+                        Some(sunrise_world::level::LevelSoundSource::BlockPlacement { .. })
+                    ) || sound.contains(':')
+                    {
                         sound.to_string()
                     } else {
                         format!("minecraft:{sound}")
@@ -1296,7 +1317,11 @@ impl crate::game::ServerGame<'_> {
                     let mut viewed = self.viewed_tickets();
                     if self.server.streaming.has_async_requests() {
                         viewed.extend(self.server.streaming.async_requests().map(|center| {
-                            sunrise_sim::ticket_levels::ViewedTicket { center, radius: 0, ticking: false }
+                            sunrise_sim::ticket_levels::ViewedTicket {
+                                center,
+                                radius: 0,
+                                ticking: false,
+                            }
                         }));
                         viewed.sort_unstable();
                         viewed.dedup();
@@ -2505,7 +2530,13 @@ impl crate::game::ServerGame<'_> {
             player_collision,
             biomes: world_biomes!(self.common),
             biome_keys: (self.server.serving.is_some() || self.common.options.dedicated.is_some())
-                .then(|| self.server.world_tables.0.as_ref().map(|t| &*t.data_maps.biome_keys))
+                .then(|| {
+                    self.server
+                        .world_tables
+                        .0
+                        .as_ref()
+                        .map(|t| &*t.data_maps.biome_keys)
+                })
                 .flatten(),
             biome_zoom: self.server.streaming.biome_zoom,
             seed: self.common.level.seed,

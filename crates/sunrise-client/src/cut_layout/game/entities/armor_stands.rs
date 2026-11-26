@@ -498,4 +498,3 @@ pub(crate) mod postbaseline_lodestone_controls {
     }
 }
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
-

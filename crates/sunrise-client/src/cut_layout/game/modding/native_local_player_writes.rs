@@ -1,8 +1,5 @@
 #![cfg(test)]
 
-
-
-
 #[cfg(test)]
 mod tests {
 
@@ -153,16 +150,15 @@ mod tests {
                 );
 
                 use sunrise_protocol::packets::play::{AddEntity, Clientbound, SetPassengers};
-                let set_passengers =
-                    |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
-                     vehicle,
-                     passengers| {
-                        game.handle_packet(Clientbound::SetPassengers(SetPassengers {
-                            vehicle,
-                            passengers,
-                        }))
-                        .unwrap();
-                    };
+                let set_passengers = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                                      vehicle,
+                                      passengers| {
+                    game.handle_packet(Clientbound::SetPassengers(SetPassengers {
+                        vehicle,
+                        passengers,
+                    }))
+                    .unwrap();
+                };
                 game.spawn_entity(43, "minecraft:pig", [0.5, 64.0, 0.5], [55.0, 0.0, 55.0]);
                 let index = game
                     .common

@@ -4,8 +4,8 @@
 use crate::settings::Settings;
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
-use sunrise_level::chunk::Chunk;
 use sunrise_gameplay_common::game::{Options, Progress, execution_role};
+use sunrise_level::chunk::Chunk;
 
 const ORB: &str = "00000000-0000-0000-0000-0000000000a7";
 const STAND: &str = "00000000-0000-0000-0000-0000000000a8";

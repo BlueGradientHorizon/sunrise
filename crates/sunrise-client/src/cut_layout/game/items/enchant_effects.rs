@@ -2,8 +2,8 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
-    use crate::game::server_side::damage_item_tests::{Rule, with_wear_part};
     use super::super::native_entity_refs::tests::with_game;
+    use crate::game::server_side::damage_item_tests::{Rule, with_wear_part};
     use sunrise_command::args::GameMode;
     use sunrise_core::{
         geometry::Vec3,

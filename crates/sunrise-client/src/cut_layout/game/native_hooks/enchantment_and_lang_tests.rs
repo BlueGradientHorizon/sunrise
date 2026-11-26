@@ -143,10 +143,12 @@ fn a_server_host_reads_enchantment_definitions() {
                     host.item_key(&mod_api::Identifier::parse(id).unwrap())
                         .unwrap()
                 };
-                assert!(host.enchantment_supports(
-                    "minecraft:sharpness",
-                    key("minecraft:diamond_sword")
-                ));
+                assert!(
+                    host.enchantment_supports(
+                        "minecraft:sharpness",
+                        key("minecraft:diamond_sword")
+                    )
+                );
                 assert!(!host.enchantment_supports("minecraft:sharpness", key("minecraft:stick")));
                 assert!(
                     !host.enchantment_supports("missing:unknown", key("minecraft:diamond_sword"))

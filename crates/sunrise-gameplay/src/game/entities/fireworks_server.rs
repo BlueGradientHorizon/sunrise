@@ -756,7 +756,11 @@ impl crate::game::ServerGame<'_> {
     }
     /// One tick of `r`, a clone of the resident rocket at `index`. Returns whether the
     /// rocket stays in the list; one that explodes or was removed has left it.
-    pub(in crate::game::server_side) fn tick_rocket(&mut self, index: usize, mut r: Rocket) -> bool {
+    pub(in crate::game::server_side) fn tick_rocket(
+        &mut self,
+        index: usize,
+        mut r: Rocket,
+    ) -> bool {
         let (id, join) = (r.id, r.join);
         let hit = self.with_entity_held_out(id, |game| game.advance_rocket(&mut r));
         let deflected = matches!(hit, ProjectileHit::Entity { who: Who::Mob(id), .. }
@@ -909,4 +913,3 @@ use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
 use sunrise_gameplay_common::game::fireworks::FireworksGameExt1 as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
-

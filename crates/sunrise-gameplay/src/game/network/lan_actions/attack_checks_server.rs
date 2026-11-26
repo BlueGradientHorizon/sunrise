@@ -70,7 +70,12 @@ impl crate::game::ServerGame<'_> {
     /// `FireworkRocketEntity` and an `AbstractArrow` that is not attackable, where
     /// `Player.attack` ends before anything.
     pub(super) fn cannot_attack(&self, id: i32) -> bool {
-        if self.common.falling.iter().any(|block| block.id as i32 == id) {
+        if self
+            .common
+            .falling
+            .iter()
+            .any(|block| block.id as i32 == id)
+        {
             return true;
         }
         let Some(target) = self.level_entity(id) else {

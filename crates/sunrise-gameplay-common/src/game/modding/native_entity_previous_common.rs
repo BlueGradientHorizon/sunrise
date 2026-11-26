@@ -1,7 +1,7 @@
 //! Shared helpers for previous-tick entity position, rotation and alive queries (`Entity.xo`,
 //! `yo`, `zo`, `yRotO`, `xRotO`, `Entity.isAlive`) used by server and client adapters.
-use crate::game::commands_common::{CommandsCommonGameExt1 as _, CommandsCommonGameExt2 as _};
 use crate::game::commands_common::Target;
+use crate::game::commands_common::{CommandsCommonGameExt1 as _, CommandsCommonGameExt2 as _};
 use crate::game::dragon_common::DragonCommonGameExt1 as _;
 use crate::game::entity::Entity;
 use crate::game::native_living_body::NativeLivingBodyGameExt1 as _;
@@ -42,7 +42,9 @@ pub fn list_join_by_id<T: Entity + Joined, const DIRECT: bool>(
     list: &JoinList<T, DIRECT>,
     id: u32,
 ) -> Option<JoinSeq> {
-    list.iter().find(|body| body.id() == id).map(Joined::join_seq)
+    list.iter()
+        .find(|body| body.id() == id)
+        .map(Joined::join_seq)
 }
 
 pub trait NativeEntityPreviousCommonGameExt<'__sg>: crate::game::SideGame<'__sg> {

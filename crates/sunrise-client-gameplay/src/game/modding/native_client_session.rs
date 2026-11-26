@@ -57,7 +57,10 @@ impl crate::game::ClientGame<'_> {
     /// The locator bar's tracked waypoints; None outside a logged-in client world.
     pub(in crate::game) fn native_client_waypoints(&self) -> Option<mod_api::ClientWaypoints> {
         self.native_session()?;
-        Some(waypoints(&self.client.waypoints, self.camera_entity_position()))
+        Some(waypoints(
+            &self.client.waypoints,
+            self.camera_entity_position(),
+        ))
     }
 
     /// The listed players' skins as the Tab overlay draws them; None outside a logged-in

@@ -253,7 +253,9 @@ impl crate::game::ClientGame<'_> {
         if !part.owner().is_enabled() {
             return default;
         }
-        let Ok(api_stack) = sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(stack) else {
+        let Ok(api_stack) =
+            sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(stack)
+        else {
             return default;
         };
         part.owner()
@@ -1149,7 +1151,12 @@ mod tests {
                     game.resolve_client_item_extensions();
                     assert!(!game.client.gui.atlas.sprites.is_empty());
                     assert!(
-                        game.client.armor_stand_assets.0.extensions.textures.is_empty(),
+                        game.client
+                            .armor_stand_assets
+                            .0
+                            .extensions
+                            .textures
+                            .is_empty(),
                         "no sprite was requested"
                     );
                     let game = &*game;

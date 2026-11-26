@@ -1,8 +1,8 @@
 #![cfg(test)]
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
+use sunrise_gameplay_common::game::lan_actions::C;
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_sim::lan::{Joined, Out, PlayerSender, guest::Guest};
-use sunrise_gameplay_common::game::lan_actions::C;
 
 pub(in crate::game) fn observer(
     conn: u32,

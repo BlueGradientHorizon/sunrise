@@ -428,9 +428,14 @@ fn extracted_living_signs_death_time_and_hurt_overlay_are_literal() {
         mob.previous_head_pitch = 15.0;
         mob.custom_name = Some("Dinnerbone".into());
         let frame = |mob: &Mob| {
-            sunrise_client_gameplay::game::native_mob_draw::entity_render_state(mob, 96, 0.5, glam::DVec3::ZERO)
-                .living
-                .unwrap()
+            sunrise_client_gameplay::game::native_mob_draw::entity_render_state(
+                mob,
+                96,
+                0.5,
+                glam::DVec3::ZERO,
+            )
+            .living
+            .unwrap()
         };
         let living = frame(&mob);
         assert_eq!((living.y_rot, living.x_rot), (-30.0, -15.0));

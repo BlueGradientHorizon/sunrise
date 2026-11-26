@@ -124,13 +124,7 @@ impl EntitySections {
     /// that is a crossing. One not filed in this level yet (it changed level, or its join is
     /// still to be told) is filed where it was, `from` when the boundary knows it, so a move
     /// before its join is told is a crossing too; otherwise it is filed untold.
-    pub fn moved(
-        &mut self,
-        scope: Scope,
-        id: u32,
-        from: Option<[f64; 3]>,
-        to: [f64; 3],
-    ) -> bool {
+    pub fn moved(&mut self, scope: Scope, id: u32, from: Option<[f64; 3]>, to: [f64; 3]) -> bool {
         let new = section_of(to);
         let old = match self.table(scope).entry(id) {
             Entry::Occupied(mut entry) => {

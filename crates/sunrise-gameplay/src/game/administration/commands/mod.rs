@@ -42,8 +42,8 @@ use sunrise_game_data::{
     gamerules::{self, Value},
     text::Text,
 };
-use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_gameplay_common::game::api_values::block_edit::block_predicate_matches_state;
+use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_world::registry::BlockStateId;
 
 #[allow(unused_imports)]

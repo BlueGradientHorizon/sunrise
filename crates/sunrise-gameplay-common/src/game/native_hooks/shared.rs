@@ -138,10 +138,7 @@ pub fn use_totem(
 
 /// `native_living_death_protection` for the damage code: a mod's protector from outside the
 /// hands, once neither hand protected.
-pub fn death_protection_source(
-    level: DamageLevel<'_>,
-    hurting: Hurting<'_>,
-) -> Option<ItemStack> {
+pub fn death_protection_source(level: DamageLevel<'_>, hurting: Hurting<'_>) -> Option<ItemStack> {
     if !mod_api::__private::listened(mod_api::HookId::LivingDeathProtection) {
         return None;
     }
@@ -950,7 +947,9 @@ pub fn config_dir(game_dir: &Path) -> std::io::Result<PathBuf> {
     Ok(dir)
 }
 
-pub fn client_packet_view(packet: &sunrise_protocol::packets::play::Clientbound) -> ClientPacket<'_> {
+pub fn client_packet_view(
+    packet: &sunrise_protocol::packets::play::Clientbound,
+) -> ClientPacket<'_> {
     use mod_api::Identifier;
     use std::sync::LazyLock;
     use sunrise_protocol::packets::play::Clientbound;
@@ -1010,11 +1009,9 @@ pub fn packet_view<'a>(
 
 use crate::game::side_ops::events::EventsSideGameExt as _;
 
-
 use crate::game::GameGameExt1 as _;
 
 use crate::game::held_items::HeldItemsGameExt1 as _;
-
 
 use crate::game::native_hooks::block_use_item_on::GameHooks as _;
 use crate::game::native_hooks::block_use_without_item::GameHooks as _;

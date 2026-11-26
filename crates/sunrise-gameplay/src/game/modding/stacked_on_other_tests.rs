@@ -2496,10 +2496,7 @@ pub mod item_part_tests {
                         );
                         assert_eq!(
                             smelted_events(),
-                            [
-                                (ingot.to_owned(), 1, 1),
-                                (ingot.to_owned(), 1, 1),
-                            ]
+                            [(ingot.to_owned(), 1, 1), (ingot.to_owned(), 1, 1),]
                         );
                     });
                 });
@@ -3472,7 +3469,6 @@ pub mod item_part_tests {
 
 #[cfg(test)]
 use sunrise_gameplay_common::game::tables::GameItems as _;
-
 
 #[cfg(test)]
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;

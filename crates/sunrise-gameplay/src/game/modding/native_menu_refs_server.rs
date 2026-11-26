@@ -490,7 +490,15 @@ impl crate::game::ServerGame<'_> {
         amount: u32,
     ) -> Option<(bool, bool, u32)> {
         let (_, _, locked) = self.menu_places_of(conn)?;
-        let size = self.server.lan.as_ref()?.hub.guest(conn)?.menu.as_ref()?.size;
+        let size = self
+            .server
+            .lan
+            .as_ref()?
+            .hub
+            .guest(conn)?
+            .menu
+            .as_ref()?
+            .size;
         Some(self.place_menu_rules(conn, size, locked, slot, resource, amount))
     }
 
@@ -726,14 +734,12 @@ impl crate::game::ServerGame<'_> {
             })
             .get(n)
             .and_then(Option::as_ref),
-            MenuSlotBacking::Player(n @ 36..40) => {
-                (if acting {
-                    &self.common.armor
-                } else {
-                    &guest.armor
-                })[39 - n]
-                    .as_ref()
-            }
+            MenuSlotBacking::Player(n @ 36..40) => (if acting {
+                &self.common.armor
+            } else {
+                &guest.armor
+            })[39 - n]
+                .as_ref(),
             MenuSlotBacking::Player(_) => (if acting {
                 &self.common.offhand
             } else {

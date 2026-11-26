@@ -94,7 +94,10 @@ impl crate::game::ServerGame<'_> {
 
     /// `ItemEntity.setNeverPickUp`: the infinite-delay sentinel 32767.
     pub(in crate::game) fn item_entity_set_never_pickup(&mut self, item: ItemEntityRef) -> bool {
-        self.item_entity_set_pickup_delay(item, sunrise_sim::entities::ItemEntity::INFINITE_PICKUP_DELAY)
+        self.item_entity_set_pickup_delay(
+            item,
+            sunrise_sim::entities::ItemEntity::INFINITE_PICKUP_DELAY,
+        )
     }
 
     /// `ItemEntity.getAge`, including negative lifetime sentinels.

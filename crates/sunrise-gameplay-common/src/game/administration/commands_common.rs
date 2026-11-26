@@ -592,10 +592,10 @@ impl Component {
         stack: &ItemStack,
     ) -> Vec<Option<ItemStack>> {
         if self == Self::Bundle {
-            return sunrise_items::bundle::contents_of(catalog, stack).map_or_else(
-                Vec::new,
-                |inside| inside.iter().cloned().map(Some).collect(),
-            );
+            return sunrise_items::bundle::contents_of(catalog, stack)
+                .map_or_else(Vec::new, |inside| {
+                    inside.iter().cloned().map(Some).collect()
+                });
         }
         let Some(data) = stack.data() else {
             return Vec::new();

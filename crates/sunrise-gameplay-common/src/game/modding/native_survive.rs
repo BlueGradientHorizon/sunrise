@@ -177,9 +177,12 @@ impl<'g, G: crate::game::SideGame<'g>> FireOddsBase for SurvivalReadLevel<'_, 'g
         at: mod_api::BlockSide,
         entity_removed: bool,
     ) -> Option<mod_api::BlockCapabilitySite> {
-        self.read
-            .game
-            .side_read_level_capability_site(self.read.world(), self.read.level, at, entity_removed)
+        self.read.game.side_read_level_capability_site(
+            self.read.world(),
+            self.read.level,
+            at,
+            entity_removed,
+        )
     }
 }
 

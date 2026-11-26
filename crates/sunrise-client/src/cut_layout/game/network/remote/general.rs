@@ -20,8 +20,6 @@ pub(crate) mod tests {
 
     use sunrise_mod_runtime::attachments::{Attachments, Holder};
 
-    
-
     use sunrise_protocol::packets::play::{self, Clientbound as C};
 
     #[test]
@@ -426,84 +424,85 @@ pub(crate) mod tests {
             crate::game::client_side::item_entities_client::thrown_items_tests::with_remote_game(
                 |game| {
                     game.handle_packet(C::Login(play::Login {
-                    player_id: 7,
-                    hardcore: false,
-                    levels: vec!["minecraft:overworld".into()],
-                    max_players: 20,
-                    chunk_radius: 8,
-                    simulation_distance: 8,
-                    reduced_debug_info: false,
-                    show_death_screen: true,
-                    limited_crafting: false,
-                    spawn: play::SpawnInfo {
-                        dimension_type: 0,
-                        dimension: "minecraft:overworld".into(),
-                        seed: 1,
-                        game_type: 0,
-                        previous_game_type: None,
-                        debug: false,
-                        flat: false,
-                        last_death: None,
-                        portal_cooldown: 0,
-                        sea_level: 63,
-                    },
-                    online_mode: false,
-                    enforces_secure_chat: false,
-                }))
-                .unwrap();
-                game.handle_packet(C::PlayerPosition(play::PlayerPosition {
-                    teleport: 1,
-                    position: [0.5, 70.0, 0.5],
-                    delta: [0.0; 3],
-                    yaw: 0.0,
-                    pitch: 0.0,
-                    relatives: 0,
-                }))
-                .unwrap();
-                game.handle_packet(spawn(12, "mymod:missile", [0.5, 70.0, 0.5]))
+                        player_id: 7,
+                        hardcore: false,
+                        levels: vec!["minecraft:overworld".into()],
+                        max_players: 20,
+                        chunk_radius: 8,
+                        simulation_distance: 8,
+                        reduced_debug_info: false,
+                        show_death_screen: true,
+                        limited_crafting: false,
+                        spawn: play::SpawnInfo {
+                            dimension_type: 0,
+                            dimension: "minecraft:overworld".into(),
+                            seed: 1,
+                            game_type: 0,
+                            previous_game_type: None,
+                            debug: false,
+                            flat: false,
+                            last_death: None,
+                            portal_cooldown: 0,
+                            sea_level: 63,
+                        },
+                        online_mode: false,
+                        enforces_secure_chat: false,
+                    }))
                     .unwrap();
-                let row = game.entity(12).unwrap();
-                let data = |values: Vec<(u8, i32, Value)>| {
-                    C::SetEntityData(play::SetEntityData { id: 12, values })
-                };
-                let named = |name: Option<&str>, visible: bool| {
-                    data(vec![
-                        (
-                            2,
-                            serializer::OPTIONAL_COMPONENT,
-                            Value::OptText(name.map(|n| Tag::String(n.into()))),
-                        ),
-                        (3, serializer::BOOLEAN, Value::Bool(visible)),
-                    ])
-                };
+                    game.handle_packet(C::PlayerPosition(play::PlayerPosition {
+                        teleport: 1,
+                        position: [0.5, 70.0, 0.5],
+                        delta: [0.0; 3],
+                        yaw: 0.0,
+                        pitch: 0.0,
+                        relatives: 0,
+                    }))
+                    .unwrap();
+                    game.handle_packet(spawn(12, "mymod:missile", [0.5, 70.0, 0.5]))
+                        .unwrap();
+                    let row = game.entity(12).unwrap();
+                    let data = |values: Vec<(u8, i32, Value)>| {
+                        C::SetEntityData(play::SetEntityData { id: 12, values })
+                    };
+                    let named = |name: Option<&str>, visible: bool| {
+                        data(vec![
+                            (
+                                2,
+                                serializer::OPTIONAL_COMPONENT,
+                                Value::OptText(name.map(|n| Tag::String(n.into()))),
+                            ),
+                            (3, serializer::BOOLEAN, Value::Bool(visible)),
+                        ])
+                    };
 
-                // Before any data: no name, not visible.
-                assert_eq!(row.custom_name(game).unwrap(), None);
-                assert_eq!(row.custom_name_visible(game), Some(false));
-                assert_ne!(row.name(game).as_deref(), Some("Grumbles"));
+                    // Before any data: no name, not visible.
+                    assert_eq!(row.custom_name(game).unwrap(), None);
+                    assert_eq!(row.custom_name_visible(game), Some(false));
+                    assert_ne!(row.name(game).as_deref(), Some("Grumbles"));
 
-                game.handle_packet(named(Some("Grumbles"), true)).unwrap();
-                assert_eq!(row.name(game).as_deref(), Some("Grumbles"));
-                assert_eq!(
-                    row.custom_name(game).unwrap(),
-                    Some(mod_api::Text::literal("Grumbles"))
-                );
-                assert_eq!(row.custom_name_visible(game), Some(true));
+                    game.handle_packet(named(Some("Grumbles"), true)).unwrap();
+                    assert_eq!(row.name(game).as_deref(), Some("Grumbles"));
+                    assert_eq!(
+                        row.custom_name(game).unwrap(),
+                        Some(mod_api::Text::literal("Grumbles"))
+                    );
+                    assert_eq!(row.custom_name_visible(game), Some(true));
 
-                game.handle_packet(named(Some("Rumbles"), false)).unwrap();
-                assert_eq!(row.name(game).as_deref(), Some("Rumbles"));
-                assert_eq!(
-                    row.custom_name(game).unwrap(),
-                    Some(mod_api::Text::literal("Rumbles"))
-                );
-                assert_eq!(row.custom_name_visible(game), Some(false));
+                    game.handle_packet(named(Some("Rumbles"), false)).unwrap();
+                    assert_eq!(row.name(game).as_deref(), Some("Rumbles"));
+                    assert_eq!(
+                        row.custom_name(game).unwrap(),
+                        Some(mod_api::Text::literal("Rumbles"))
+                    );
+                    assert_eq!(row.custom_name_visible(game), Some(false));
 
-                game.handle_packet(named(None, false)).unwrap();
-                assert_ne!(row.name(game).as_deref(), Some("Rumbles"));
-                assert_eq!(rows(game)[&12].custom_name, None);
-                assert_eq!(row.custom_name(game).unwrap(), None);
-                assert_eq!(row.custom_name_visible(game), Some(false));
-            })
+                    game.handle_packet(named(None, false)).unwrap();
+                    assert_ne!(row.name(game).as_deref(), Some("Rumbles"));
+                    assert_eq!(rows(game)[&12].custom_name, None);
+                    assert_eq!(row.custom_name(game).unwrap(), None);
+                    assert_eq!(row.custom_name_visible(game), Some(false));
+                },
+            )
         });
     }
     #[test]

@@ -4,7 +4,8 @@
 //! a client's copy, and only on the level in place.
 use super::{Insertion, MoveIn, TakeAsk, TakeAttempt};
 use mod_api::{
-    BlockSide, ItemResource, ItemStackView, LevelReadError, LevelRef, StorageSlot, TransactionContext,
+    BlockSide, ItemResource, ItemStackView, LevelReadError, LevelRef, StorageSlot,
+    TransactionContext,
 };
 use sunrise_gameplay_common::game::{
     machine_containers::{Containers, Kind, PlacementAttempt, View},

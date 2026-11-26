@@ -1,7 +1,6 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-
     pub fn copy_dir(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
         std::fs::create_dir_all(to)?;
         for entry in std::fs::read_dir(from)? {

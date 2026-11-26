@@ -4,15 +4,13 @@ use mod_api::{
     StatType,
 };
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use sunrise_gameplay_common::game::cauldron_interactions::{
+    Arc, Items, Registrar, clear, install, snapshot,
+};
 use sunrise_gameplay_common::hit::Hit;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::cauldron::{Outcome, interactions::Entry};
 use sunrise_sim::first_person_sim::Hand;
-use {
-    sunrise_gameplay_common::game::cauldron_interactions::{
-        Arc, Items, Registrar, clear, install, snapshot,
-    },
-};
 use {
     sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
     sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
@@ -360,13 +358,14 @@ pub(crate) fn setup_common<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
     item: &str,
     count: u32,
 ) {
-    game.world
-        .chunks
-        .insert((0, 0), Arc::new({
+    game.world.chunks.insert(
+        (0, 0),
+        Arc::new({
             let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
             chunk.lit = true;
             chunk
-        }));
+        }),
+    );
     let state = sunrise_world::chunk::BlockState {
         name: block.into(),
         properties: level

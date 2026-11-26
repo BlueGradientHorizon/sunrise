@@ -1856,7 +1856,10 @@ impl crate::game::ClientGame<'_> {
                         ClientCommandOutcome::Failed => None,
                         ClientCommandOutcome::Success(result) => Some((true, result)),
                     };
-                    return ok(command_reply(self.client.chat_ui.chat.recent_lines(5), outcome));
+                    return ok(command_reply(
+                        self.client.chat_ui.chat.recent_lines(5),
+                        outcome,
+                    ));
                 }
                 // Single player's console is its server thread's.
                 if let Some(server) = &self.client.integrated {
@@ -2570,7 +2573,6 @@ impl crate::game::ClientGame<'_> {
         }))
     }
 }
-
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
 

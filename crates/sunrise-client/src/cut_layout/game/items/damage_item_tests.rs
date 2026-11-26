@@ -385,5 +385,4 @@ fn a_mod_wears_a_stack_nobody_holds_as_vanilla_does() {
     });
 }
 
-
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

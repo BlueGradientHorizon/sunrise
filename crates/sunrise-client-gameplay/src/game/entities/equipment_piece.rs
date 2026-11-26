@@ -181,11 +181,9 @@ impl crate::game::ClientGame<'_> {
                 else {
                     continue;
                 };
-                let Some(key) = render::equipment_model_key(
-                    mob,
-                    layer,
-                    self.client_res().client_mob_models(),
-                ) else {
+                let Some(key) =
+                    render::equipment_model_key(mob, layer, self.client_res().client_mob_models())
+                else {
                     continue;
                 };
                 // The mob renderer resolves CEM textures before applying their emissive overlay.

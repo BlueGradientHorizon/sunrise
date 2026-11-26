@@ -1,16 +1,14 @@
 //! Acceptance tests through the registered native command dispatcher and real server selectors.
 
+#[cfg(test)]
+use crate::game::native_server::*;
 use mod_api::{CommandArgumentValue as Value, CommandInvocation};
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
-use sunrise_sim::mobs::Mob;
-use {
-    sunrise_gameplay_common::game::native_server::{
-        ArgType, Dispatcher, HashMap, command_tree, json, register_dispatcher,
-    },
+use sunrise_gameplay_common::game::native_server::{
+    ArgType, Dispatcher, HashMap, command_tree, json, register_dispatcher,
 };
-#[cfg(test)]
-use crate::game::native_server::*;
+use sunrise_sim::mobs::Mob;
 
 pub(crate) struct SelectorCommands(pub(crate) Arc<Mutex<Vec<CommandInvocation>>>);
 

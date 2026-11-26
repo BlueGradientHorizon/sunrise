@@ -112,9 +112,9 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 pub(in crate::game) mod tests {
     use super::keeps_song;
     use crate::game::client_side::native_entity_refs::tests::with_client_game;
+    use sunrise_core::nbt::Tag;
     use sunrise_game_data::text::Text;
     use sunrise_gameplay_common::game::tables::GameItems as _;
-    use sunrise_core::nbt::Tag;
     use sunrise_protocol::registry::Dynamic;
 
     #[test]

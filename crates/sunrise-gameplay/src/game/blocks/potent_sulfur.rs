@@ -88,7 +88,10 @@ impl ServerGame<'_> {
         if near.is_empty() {
             return;
         }
-        let reached: Vec<_> = near.into_iter().map(|j| self.common.mobs[j as usize].id).collect();
+        let reached: Vec<_> = near
+            .into_iter()
+            .map(|j| self.common.mobs[j as usize].id)
+            .collect();
         for id in reached {
             let mut nausea = EffectInstance::new("nausea", EFFECT_DURATION_IN_TICKS, 0);
             nausea.ambient = true;

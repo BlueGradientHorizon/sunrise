@@ -473,7 +473,11 @@ impl crate::game::ClientGame<'_> {
                     .init_children(&self.client.gui.atlas, w, h)
                     .into_iter()
                     .map(|(action, rect, key)| {
-                        (action, rect, Some(mod_api::Text::translate(key, Vec::new())))
+                        (
+                            action,
+                            rect,
+                            Some(mod_api::Text::translate(key, Vec::new())),
+                        )
                     })
                     .collect()
             }

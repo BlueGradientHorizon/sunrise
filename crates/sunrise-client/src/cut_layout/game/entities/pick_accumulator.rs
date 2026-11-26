@@ -1,7 +1,7 @@
 #![cfg(test)]
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 use sunrise_gameplay_common::game::pick_ray::PickAccumulator;
 use sunrise_gameplay_common::game::pick_ray::PickCandidate;
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
 

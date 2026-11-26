@@ -1,8 +1,8 @@
 //! Client-side entity state reads and client fire-immunity writes.
 use super::commands_common::Target;
 use mod_api::{EntityRef, EntityTypeKey, MobCategory};
-use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
 use sunrise_gameplay_common::game::entity_sizes_common::synced_pose;
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 use sunrise_gameplay_common::game::native_entity_state_common::{
     Body, NativeEntityStateCommonGameExt1 as _,
@@ -49,7 +49,11 @@ impl crate::game::ClientGame<'_> {
         let name = mod_api::__private::entity_type_key_id(key)?;
         Some(match &*name {
             "minecraft:ender_dragon" => MobCategory::Monster,
-            name => self.common.res.mob_types().get(name)
+            name => self
+                .common
+                .res
+                .mob_types()
+                .get(name)
                 .map_or(MobCategory::Misc, |kind| mob_category(&kind.category)),
         })
     }
@@ -219,11 +223,13 @@ impl crate::game::ClientGame<'_> {
     }
 
     pub(in crate::game) fn entity_is_sprinting(&self, entity: EntityRef) -> Option<bool> {
-        Some(match self.native_target_body(self.native_entity_read_target(entity)?)? {
-            Body::Player(player) => player.sprinting,
-            Body::Mob(mob) => mob.extra.sprinting,
-            Body::Other(_) => false,
-        })
+        Some(
+            match self.native_target_body(self.native_entity_read_target(entity)?)? {
+                Body::Player(player) => player.sprinting,
+                Body::Mob(mob) => mob.extra.sprinting,
+                Body::Other(_) => false,
+            },
+        )
     }
 
     pub(in crate::game) fn entity_is_in_lava(&self, entity: EntityRef) -> Option<bool> {
@@ -237,7 +243,13 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn entity_invulnerable_time(&self, entity: EntityRef) -> Option<i32> {
         match self.native_entity_read_target(entity)? {
             Target::Player => Some(self.common.player.as_ref()?.health.invulnerable_time),
-            Target::Mob(id) => Some(self.common.mobs.iter().find(|m| m.id == id)?.invulnerable_time),
+            Target::Mob(id) => Some(
+                self.common
+                    .mobs
+                    .iter()
+                    .find(|m| m.id == id)?
+                    .invulnerable_time,
+            ),
             _ => None,
         }
     }

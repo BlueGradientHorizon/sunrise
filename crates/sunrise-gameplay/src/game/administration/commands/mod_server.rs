@@ -1,7 +1,6 @@
 use super::{Dim, vehicle_teleport::TeleportMotion};
 use crate::game::commands::OtherEntity;
 use crate::game::commands::R;
-use mod_api::CommandFeedback;
 use crate::game::commands::Target;
 use crate::game::commands::err;
 use crate::game::commands::format_double;
@@ -11,6 +10,7 @@ use crate::game::commands::target_entity_mut;
 use crate::game::commands::texts;
 use crate::game::commands::without_knots;
 use crate::game::commands::wrap_degrees;
+use mod_api::CommandFeedback;
 use sunrise_command::{
     Arg, CommandError, Context,
     args::{Coordinates, GameMode, ItemInput, Selector},
@@ -131,9 +131,9 @@ impl crate::game::ServerGame<'_> {
         let rules = &self.common.ui.rules;
         let ops = rules.bool_at(sunrise_game_data::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
         // `source != server`: RCON is a source of its own and is logged.
-        let console_source =
-            (self.server.console_broadcast.is_some() || self.native_console_source())
-                && !self.server.rcon_source;
+        let console_source = (self.server.console_broadcast.is_some()
+            || self.native_console_source())
+            && !self.server.rcon_source;
         let log = !console_source
             && rules.bool_at(sunrise_game_data::gamerules::vanilla::LOG_ADMIN_COMMANDS);
         if !ops && !log {
@@ -597,9 +597,10 @@ impl crate::game::ServerGame<'_> {
                 let message = self.resolve_chat_message(&raw);
                 let name = self.source_display_name();
                 let sender = match self.source_entity() {
-                    Some(Target::Player) => {
-                        self.server.lan_acting_uuid.unwrap_or_else(|| self.own_uuid())
-                    }
+                    Some(Target::Player) => self
+                        .server
+                        .lan_acting_uuid
+                        .unwrap_or_else(|| self.own_uuid()),
                     Some(Target::Guest(conn)) => {
                         self.command_guest(conn).map_or(0, |guest| guest.uuid)
                     }
@@ -688,7 +689,12 @@ impl crate::game::ServerGame<'_> {
     /// `CommandSourceStack.sendSystemMessage`: no success-feedback rule. Unlike `sendSuccess`
     /// and `sendFailure`, it addresses the executing player when there is one.
     pub(in crate::game) fn command_system_message(&mut self, message: Text) {
-        if self.server.command_source.as_ref().is_some_and(|s| s.silent) {
+        if self
+            .server
+            .command_source
+            .as_ref()
+            .is_some_and(|s| s.silent)
+        {
             return;
         }
         if self.native_console_source() {
@@ -1132,7 +1138,12 @@ impl crate::game::ServerGame<'_> {
     }
     /// CommandSourceStack.sendFailure: red text.
     pub(in crate::game) fn command_failure(&mut self, message: Text) {
-        if self.server.command_source.as_ref().is_some_and(|s| s.silent) {
+        if self
+            .server
+            .command_source
+            .as_ref()
+            .is_some_and(|s| s.silent)
+        {
             return;
         }
         if let Some(block) = self.server.command_source.as_ref().and_then(|s| s.block) {
@@ -1302,7 +1313,11 @@ impl crate::game::ServerGame<'_> {
         &mut self,
         f: impl FnOnce(&mut Self) -> T,
     ) -> T {
-        let origin = self.server.command_source.as_ref().map(|s| s.origin_dimension);
+        let origin = self
+            .server
+            .command_source
+            .as_ref()
+            .map(|s| s.origin_dimension);
         let back = origin.and_then(|dim| self.enter_command_level(dim));
         let out = f(self);
         if let Some(back) = back {
@@ -1311,9 +1326,7 @@ impl crate::game::ServerGame<'_> {
         out
     }
     pub(in crate::game) fn can_kill_target_in_level(&self, t: Target) -> bool {
-        if self.target_removed(&t)
-            || self.common.persist.preparing_vehicle_removals.contains(&t)
-        {
+        if self.target_removed(&t) || self.common.persist.preparing_vehicle_removals.contains(&t) {
             return false;
         }
         match t {
@@ -1758,7 +1771,12 @@ impl crate::game::ServerGame<'_> {
     /// minecart origin is read in its own level (`source.origin_dimension`),
     /// which `execute in` does not move.
     pub(in crate::game) fn send_success(&mut self, message: Text, broadcast: bool) {
-        if self.server.command_source.as_ref().is_some_and(|s| s.silent) {
+        if self
+            .server
+            .command_source
+            .as_ref()
+            .is_some_and(|s| s.silent)
+        {
             return;
         }
         let admins = broadcast.then(|| message.clone());

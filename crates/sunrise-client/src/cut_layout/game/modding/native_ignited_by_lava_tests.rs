@@ -66,4 +66,3 @@ fn a_block_part_decides_whether_lava_lights_it() {
         })
     });
 }
-

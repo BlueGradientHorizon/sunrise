@@ -222,4 +222,3 @@ pub(crate) fn place(
     };
     assert!(game.use_hand(Some(&hit)).unwrap());
 }
-

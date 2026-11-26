@@ -47,4 +47,3 @@ impl crate::game::ServerGame<'_> {
         Some(result)
     }
 }
-

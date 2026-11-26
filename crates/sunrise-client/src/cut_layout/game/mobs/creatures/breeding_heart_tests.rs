@@ -1,6 +1,4 @@
-use {
-    sunrise_gameplay_common::game::creatures::{Mob, Vec3},
-};
+use sunrise_gameplay_common::game::creatures::{Mob, Vec3};
 /// `Turtle.TurtleBreedGoal.breed` overrides `Animal.breed`, so a bred turtle
 /// never runs `finalizeSpawnChildFromBreeding`'s heart burst (entity event
 /// 18); `Frog.spawnChildFromBreeding` still does.

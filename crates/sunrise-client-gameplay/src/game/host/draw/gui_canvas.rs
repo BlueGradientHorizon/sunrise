@@ -2,7 +2,6 @@
 
 use super::text_layout::LabelLayout;
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::api_values::{TryIntoEngine, stack_value};
 use mod_api::{
     GuiBlitRegion, GuiCanvas, GuiDrawError, GuiSpriteRegion, GuiVertex, ItemStack, Text,
     TextLayoutSize, TextLayoutSpec,
@@ -16,6 +15,7 @@ use sunrise_client::{
     items::ItemStack as EngineStack,
     skins::HeadSkinJournal,
 };
+use sunrise_gameplay_common::game::api_values::{TryIntoEngine, stack_value};
 
 pub(in crate::game) struct GameGuiCanvas<'a, 'g> {
     batch: &'a mut HudBatch,
@@ -527,7 +527,9 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
         check_blit_region(dst, uv, tex)?;
         // A live dynamic texture first, then the resource stack, as one id space; an id in
         // neither is refused here, and only one released after this call draws the missing texture.
-        let dynamic = self.game.and_then(|game| game.client.dynamic_textures.get(id));
+        let dynamic = self
+            .game
+            .and_then(|game| game.client.dynamic_textures.get(id));
         if dynamic.is_none() && !self.atlas.has_texture(id) {
             return Err(GuiDrawError::UnknownTexture);
         }
@@ -565,9 +567,9 @@ impl GuiCanvas for GameGuiCanvas<'_, '_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_client::hud::{Blend as HudBlend, Rect};
-    use sunrise_assets::resource_source::ResourceSource;
     use std::panic::{AssertUnwindSafe, catch_unwind};
+    use sunrise_assets::resource_source::ResourceSource;
+    use sunrise_client::hud::{Blend as HudBlend, Rect};
 
     /// The multiply rounds to the nearest byte for every pair of channels, and white is neutral.
     #[test]

@@ -1,8 +1,8 @@
 #![cfg(test)]
 pub(crate) mod tests {
-    use mod_api::{ClientHost, ClientTickPreEvent, Hooks, HudMode};
     #[cfg(test)]
     use mod_api::ModEntry;
+    use mod_api::{ClientHost, ClientTickPreEvent, Hooks, HudMode};
     #[cfg(test)]
     use mod_platform::testing::with_mods;
 

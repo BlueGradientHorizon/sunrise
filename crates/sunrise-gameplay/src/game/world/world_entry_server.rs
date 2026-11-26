@@ -117,7 +117,10 @@ impl crate::game::ServerGame<'_> {
         let native = if mod_api::__private::mods().is_empty() {
             None
         } else {
-            match lan::sync::server_data_load(&self.common.options.resources, &self.common.res.core.item_data) {
+            match lan::sync::server_data_load(
+                &self.common.options.resources,
+                &self.common.res.core.item_data,
+            ) {
                 Ok(context) => Some(context),
                 Err(error) => {
                     log::warn!("Sunrise: server loot inventory unavailable: {error}");
@@ -166,7 +169,10 @@ impl crate::game::ServerGame<'_> {
         self.common.adv.tree = staged.advancements;
         self.common.adv.reset_tree();
         self.load_server_loot();
-        self.server.data_map_registries = self.server.world_tables.0
+        self.server.data_map_registries = self
+            .server
+            .world_tables
+            .0
             .as_ref()
             .map_or_else(Vec::new, |t| t.data_maps.registries());
         self.install_block_maps();
@@ -191,7 +197,9 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         let registries = &tables.packed_registries;
-        self.common.res.set_transformers(tables.transformers.clone());
+        self.common
+            .res
+            .set_transformers(tables.transformers.clone());
         trial_spawner::install(
             registries
                 .validated("minecraft:trial_spawner")
@@ -215,7 +223,9 @@ impl crate::game::ServerGame<'_> {
     /// boot a game without opening a world.
     #[cfg(any(test, feature = "test-support"))]
     pub fn install_root_block_transformers(&self) {
-        let dir = self.common.options
+        let dir = self
+            .common
+            .options
             .resources
             .join("data/minecraft/block_transformer");
         let Ok(entries) = std::fs::read_dir(&dir) else {
@@ -464,7 +474,8 @@ impl crate::game::ServerGame<'_> {
         );
         view.ids.insert(
             "minecraft:block".into(),
-            self.common.res
+            self.common
+                .res
                 .facts()
                 .states
                 .iter()
@@ -487,12 +498,10 @@ impl crate::game::ServerGame<'_> {
                              view: &mut load_conditions::RegistryView|
          -> Result<()> {
             let ids = view.ids.get(registry);
-            let tags = sunrise_sim::lan::data::registry_tag_bindings(
-                root,
-                &tag_files,
-                registry,
-                |id| ids.is_some_and(|ids| ids.contains(id)),
-            )?;
+            let tags =
+                sunrise_sim::lan::data::registry_tag_bindings(root, &tag_files, registry, |id| {
+                    ids.is_some_and(|ids| ids.contains(id))
+                })?;
             if registry == "minecraft:timeline" {
                 timeline_tags = tags.clone();
             }
@@ -635,8 +644,9 @@ impl crate::game::ServerGame<'_> {
         // Painting.create's candidates: the world's painting_variant registry (the
         // root's variants under the packs' winners) and `#minecraft:placeable` over it.
         let painting_variants = {
-            let all = packed_registry_definitions
-                .painting_variants(sunrise_gameplay_common::painting_variants::PaintingVariants::load(root).all);
+            let all = packed_registry_definitions.painting_variants(
+                sunrise_gameplay_common::painting_variants::PaintingVariants::load(root).all,
+            );
             let mut tags = sunrise_sim::lan::data::registry_tag_bindings(
                 root,
                 &tag_files,
@@ -798,7 +808,12 @@ impl crate::game::ServerGame<'_> {
         // hold its files so it is read once.
         let _recipe_files = sunrise_world::json_folder::read(&root.join("data/minecraft/recipe"));
         let sources = if reload {
-            lan::sync::prepare_server_sources(root, &self.common.res.core.item_data, &items, &overlay)
+            lan::sync::prepare_server_sources(
+                root,
+                &self.common.res.core.item_data,
+                &items,
+                &overlay,
+            )
         } else {
             lan::sync::load_sources(
                 root,
@@ -838,7 +853,13 @@ impl crate::game::ServerGame<'_> {
         let providers = providers?;
         // Bind the world-owned registries' ordered tags against the admitted entries
         // (including datapack and mod biomes, enchantments, structures, and world clocks).
-        sunrise_gameplay_common::game::world_entry::bind_world_registry_tags(&mut items, root, &tag_files, &overlay, &biomes.table)?;
+        sunrise_gameplay_common::game::world_entry::bind_world_registry_tags(
+            &mut items,
+            root,
+            &tag_files,
+            &overlay,
+            &biomes.table,
+        )?;
         if reload {
             items.retain_unbound_tags(self.items());
         }
@@ -868,10 +889,9 @@ impl crate::game::ServerGame<'_> {
             None => (None, None),
         };
         let datapack_set = datapack_registries.as_ref();
-        let registries =
-            WorldRegistries::new([], datapack_set, &items, root, &overlay)
-                .with_candidate(&view, &pack_tags)
-                .with_biome_keys(biomes.table.registered_keys());
+        let registries = WorldRegistries::new([], datapack_set, &items, root, &overlay)
+            .with_candidate(&view, &pack_tags)
+            .with_biome_keys(biomes.table.registered_keys());
         let causes_suffocation = items
             .block_tags
             .get("minecraft:causes_suffocation")
@@ -962,7 +982,9 @@ impl crate::game::ServerGame<'_> {
         // The API's key order is live state as well: do not change it for a
         // candidate refused by the condition readers.
         api_values::resolve_enchantment_registry(&items)?;
-        let serializers = self.common.mods
+        let serializers = self
+            .common
+            .mods
             .loot_modifier_serializers
             .get_or_init(global_loot_modifiers::Serializers::capture);
         let (modifiers, loot_modifier_manager) = serializers.prepare(
@@ -979,7 +1001,10 @@ impl crate::game::ServerGame<'_> {
         } else {
             let mut functions = mod_api::GameTestFunctions::default();
             self.native_register_game_tests(&mut functions);
-            sunrise_gameplay_common::game::test_registry_tables::build_game_test_tables(&packed_registry_definitions, &functions)
+            sunrise_gameplay_common::game::test_registry_tables::build_game_test_tables(
+                &packed_registry_definitions,
+                &functions,
+            )
         };
         Ok(super::condition_reload_state::StagedWorldTables {
             tables: Some(WorldTables {

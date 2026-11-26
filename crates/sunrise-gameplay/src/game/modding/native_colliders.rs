@@ -119,7 +119,9 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         if let Some(state) = ColliderState::from_nbt(saved) {
-            self.common.entity_attachments.insert_collider(id, self.common.dim, state);
+            self.common
+                .entity_attachments
+                .insert_collider(id, self.common.dim, state);
         } else {
             log::warn!("Sunrise: dropped a malformed saved collider of entity {id}");
         }

@@ -32,10 +32,7 @@ impl crate::game::ClientGame<'_> {
 
     /// `ConnectScreen`'s Cancel: a server's (single player's server isn't
     /// joined through `ConnectScreen`), until the login is done.
-    pub fn connect_cancel(
-        &self,
-        (w, h): (f32, f32),
-    ) -> Option<(f32, f32)> {
+    pub fn connect_cancel(&self, (w, h): (f32, f32)) -> Option<(f32, f32)> {
         let r = self.client.remote.as_ref()?;
         (self.common.player.is_none() && !r.joined && self.client.integrated.is_none())
             .then(|| sunrise_client::level_loading::connect_cancel(w, h))

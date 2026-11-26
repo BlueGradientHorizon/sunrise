@@ -44,7 +44,8 @@ impl crate::game::ClientGame<'_> {
 
     /// The atlas origin of the `destroy_stage_*` sprite drawn for `stage`, if the atlas has it.
     pub(in crate::game) fn crack_origin(&self, stage: u32) -> Option<[f32; 2]> {
-        let name = crack_stage_names(self.client.settings.improved_transparency).get(stage as usize)?;
+        let name =
+            crack_stage_names(self.client.settings.improved_transparency).get(stage as usize)?;
         let r = self.client.gui.atlas.sprites.get(*name)?;
         Some([r.u0, r.v0])
     }
@@ -119,7 +120,9 @@ impl crate::game::ClientGame<'_> {
                     light,
                     eye.map(|c| c.floor() as i32),
                     m,
-                    sunrise_client::block_entity_render::diffuse_lights(self.common.dim == Dim::Nether),
+                    sunrise_client::block_entity_render::diffuse_lights(
+                        self.common.dim == Dim::Nether,
+                    ),
                     std::mem::take(out),
                 )
                 .with_quad_budget(

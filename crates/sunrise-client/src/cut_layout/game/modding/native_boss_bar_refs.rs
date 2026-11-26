@@ -1,7 +1,7 @@
 #![cfg(test)]
-use sunrise_sim::lan::playerdata::uuid_ints;
 #[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+use sunrise_sim::lan::playerdata::uuid_ints;
 
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
 

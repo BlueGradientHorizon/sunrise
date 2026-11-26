@@ -325,7 +325,11 @@ impl crate::game::ServerGame<'_> {
         Ok(())
     }
 
-    pub fn tick_integrated_unpaused(&mut self, flags: &Flags, smoothed_tick_ms: &mut f32) -> Result<()> {
+    pub fn tick_integrated_unpaused(
+        &mut self,
+        flags: &Flags,
+        smoothed_tick_ms: &mut f32,
+    ) -> Result<()> {
         let cpu = sunrise_level::spans::thread_cpu();
         let started = Instant::now();
         self.tick_server_measured(false)?;
@@ -342,8 +346,7 @@ impl crate::game::ServerGame<'_> {
         flags
             .smoothed_tick_ms
             .store(smoothed_tick_ms.to_bits(), Ordering::Relaxed);
-        if let (Some(terrain), Ok(mut terrains)) =
-            (self.common.end.locator(), flags.terrain.lock())
+        if let (Some(terrain), Ok(mut terrains)) = (self.common.end.locator(), flags.terrain.lock())
         {
             terrains.insert(self.common.dim.id(), terrain);
         }
@@ -491,7 +494,9 @@ impl crate::game::ServerGame<'_> {
         startup::time("server.prepare_levels", || self.prepare_levels())?;
         view.finish(Stage::LoadInitialChunks);
         startup::time("server.settle_spawn", || self.settle_player_spawn())?;
-        startup::time("server.initial_save", || self.save_world_after_players(false))?;
+        startup::time("server.initial_save", || {
+            self.save_world_after_players(false)
+        })?;
         Ok((pipe, self.common.level.name.clone()))
     }
 

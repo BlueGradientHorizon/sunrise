@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 mod refused_entity_unload {
     use super::*;
-    use sunrise_gameplay::game::native_entity_refs::tests::{fixture_root, with_game_at};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::{Duration, Instant};
+    use sunrise_gameplay::game::native_entity_refs::tests::{fixture_root, with_game_at};
     use sunrise_mod_runtime::attachments::{
         AttachmentCodec, AttachmentError, AttachmentType, Attachments, Holder,
     };
@@ -62,7 +62,10 @@ mod refused_entity_unload {
         request
     }
 
-    fn pump_until(game: &mut sunrise_gameplay::game::ServerGame<'_>, done: impl Fn(&sunrise_gameplay::game::ServerGame<'_>) -> bool) {
+    fn pump_until(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        done: impl Fn(&sunrise_gameplay::game::ServerGame<'_>) -> bool,
+    ) {
         let deadline = Instant::now() + Duration::from_secs(120);
         while !done(game) || game.server.streaming.busy() {
             assert!(Instant::now() < deadline, "streaming did not settle");
@@ -118,7 +121,9 @@ mod refused_entity_unload {
                 assert!(game.entity(id).is_some(), "and the entity in it");
                 game.server.save.0.flush().unwrap();
                 assert!(
-                    game.server.save.0
+                    game.server
+                        .save
+                        .0
                         .load_entities(CHUNK.0, CHUNK.1)
                         .unwrap()
                         .is_empty(),

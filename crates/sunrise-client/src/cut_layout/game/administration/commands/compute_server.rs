@@ -1,17 +1,17 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    
+
     use sunrise_gameplay::game::commands::compute::ComputeContext;
     use sunrise_gameplay_common::game::commands_common::Target;
 
     #[test]
     #[ignore = "daily"]
     fn published_predicates_and_nested_provider_shorthand_evaluate() {
+        use crate::game::*;
         use serde_json::json;
         use std::{path::PathBuf, sync::Arc, time::Instant};
         use sunrise_assets::resource_source::ResourceRoot;
-        use crate::game::*;
 
         let root = PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES")

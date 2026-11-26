@@ -14,7 +14,11 @@ fn retain_visual(host: &dyn ClientHost, text: &Text) -> Vec<VisualTextCharacter>
 fn visual_read_uses_live_translations_styles_and_bidi_outside_drawing() {
     sunrise_gameplay_common::game::in_own_process(
         "game::native_hooks::client_visual_text::tests::visual_read_uses_live_translations_styles_and_bidi_outside_drawing",
-        || crate::game::native_entity_refs::tests::with_client_game(|game| check_visual_reads(game)),
+        || {
+            crate::game::native_entity_refs::tests::with_client_game(|game| {
+                check_visual_reads(game)
+            })
+        },
     );
 }
 
@@ -25,7 +29,10 @@ fn check_visual_reads(host: &dyn ClientHost) {
     let mut line = Text::translate("fixture.greet", vec![argument]);
     line.style.color = Some("gold".into());
     sunrise_game_data::lang::scoped(
-        sunrise_game_data::lang::Language::of("test", [("fixture.greet".into(), "Hello, %s!".into())]),
+        sunrise_game_data::lang::Language::of(
+            "test",
+            [("fixture.greet".into(), "Hello, %s!".into())],
+        ),
         || {
             let output = retain_visual(host, &line);
             assert_eq!(

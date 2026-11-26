@@ -94,7 +94,8 @@ impl crate::game::ClientGame<'_> {
         let available = path.exists()
             && !sunrise_client::shader_pack_list::unsupported(&dir, picked)
             && path.file_name().is_none_or(|f| {
-                !shader_packs::active_pack(&f.to_string_lossy(), &self.client.settings.mods).is_empty()
+                !shader_packs::active_pack(&f.to_string_lossy(), &self.client.settings.mods)
+                    .is_empty()
             });
         let outcome = if available {
             native_shaders::outcome(&path)
@@ -111,7 +112,13 @@ impl crate::game::ClientGame<'_> {
             .0
             .as_ref()
             .map(|r| r.requested_frame(&self.client.settings.sunrise, request));
-        if !look_again(&mut self.client.frame_attempted, wanted, path, outcome, shape.hdr) {
+        if !look_again(
+            &mut self.client.frame_attempted,
+            wanted,
+            path,
+            outcome,
+            shape.hdr,
+        ) {
             return;
         }
         let Some(renderer) = &mut self.client.renderer.0 else {

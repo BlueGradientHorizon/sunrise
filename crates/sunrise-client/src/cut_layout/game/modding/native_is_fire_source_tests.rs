@@ -64,4 +64,3 @@ fn a_block_part_decides_whether_it_keeps_a_fire_burning() {
         })
     });
 }
-

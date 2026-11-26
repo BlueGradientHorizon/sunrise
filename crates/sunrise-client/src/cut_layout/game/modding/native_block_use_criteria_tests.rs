@@ -239,11 +239,8 @@ fn block_use_refusals_grant_nothing() {
 #[ignore = "daily"]
 fn block_use_resolves_saved_event_block_without_requiring_the_location_neighbour() {
     use sunrise_level::{
-        chunk::Light,
-        chunk_streamer::ChunkStreamer as Streaming,
-        containers::BlockEntity,
-        level_loading::Status,
-        testgen::TestTerrain,
+        chunk::Light, chunk_streamer::ChunkStreamer as Streaming, containers::BlockEntity,
+        level_loading::Status, testgen::TestTerrain,
     };
     use sunrise_sim::save::{Persistent, SaveDir};
 
@@ -291,7 +288,9 @@ fn block_use_resolves_saved_event_block_without_requiring_the_location_neighbour
             assert!(!g.world.chunks.contains_key(&column));
             assert_eq!(p.trigger_item_used_on_block(g, at, &original), Ok(()));
             assert_eq!(
-                g.server.streaming.latest_status(&g.world, column.0, column.1),
+                g.server
+                    .streaming
+                    .latest_status(&g.world, column.0, column.1),
                 Some(Status::Full)
             );
             assert!(g.world.chunks.get(&column).unwrap().lit);
@@ -370,7 +369,11 @@ fn an_already_acting_guest_is_reached_in_their_own_level_and_the_outer_level_ret
             let seen = g.for_player(Target::Guest(12), |g| g.dim);
             assert_eq!(seen, Some(Dim::Nether));
             assert_eq!(g.dim, outer, "the outer level is restored");
-            assert_eq!(g.server.lan_acting, Some(12), "no second body swap came and went");
+            assert_eq!(
+                g.server.lan_acting,
+                Some(12),
+                "no second body swap came and went"
+            );
             g.server.lan_acting = None;
         },
     );

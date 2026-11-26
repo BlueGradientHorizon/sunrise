@@ -1,7 +1,7 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    
+
     use sunrise_gameplay_common::game::api_values::TryIntoEngine;
 
     /// `Language.isDefaultRightToLeft` (#5354): false for English, true once a pack's language

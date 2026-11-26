@@ -1,6 +1,5 @@
 #![cfg(test)]
 
-
 #[cfg(test)]
 pub(crate) mod tests {
     use mod_api::{BlockEntityPart, BlockEntitySaveAdditionalEvent, Hooks, LevelHost, ModEntry};

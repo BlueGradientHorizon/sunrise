@@ -1,6 +1,6 @@
-pub use mod_api::ShaderPackState;
-pub use mod_api::NameTagLine;
 pub use mod_api::ExperienceOrbRef;
+pub use mod_api::NameTagLine;
+pub use mod_api::ShaderPackState;
 mod client_visual_text;
 
 use self::screen_view::{screen_view_for_mod, screen_view_with_id};
@@ -8,12 +8,12 @@ use crate::game::client_side::key_codes::{glfw_button, glfw_modifiers};
 #[allow(unused_imports)]
 use crate::game::client_side::native_panel_recipes::RecipePage;
 use crate::game::client_side::screen_build::ObservedScreen;
+use mod_api::CameraType;
 use mod_api::{
     self, Answered, ClientModifiers, EntityRef, PlayerRef, RecipeBookCategory, ScreenId,
     ScreenOpening, ScreenTarget,
 };
-pub use mod_api::{BlockRim, ColoredLight, PanelEvent, ScreenView, EnchantmentEffects};
-use mod_api::CameraType;
+pub use mod_api::{BlockRim, ColoredLight, EnchantmentEffects, PanelEvent, ScreenView};
 use mod_api::{FluidStack, LogicalSide, TriState};
 use std::{sync::Arc, time::Duration};
 use sunrise_client::{
@@ -23,10 +23,13 @@ use sunrise_client::{
     music::{Music, MusicLayer},
 };
 use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+pub use sunrise_gameplay_common::game::native_hooks::ExecutionRole;
 pub use sunrise_gameplay_common::game::native_hooks::NativeRecipeView;
 use sunrise_gameplay_common::game::native_hooks::client_packet_view;
 #[cfg(test)]
 use sunrise_gameplay_common::game::native_hooks::mod_menu;
+use sunrise_gameplay_common::game::native_hooks::mod_settings::ModSettingsGameExt as _;
 use sunrise_gameplay_common::game::native_hooks::screen_chars::chars_to_type;
 use sunrise_gameplay_common::game::native_hooks::serverbound_packet_view;
 use sunrise_gameplay_common::game::native_hooks::sound_and_shader_helpers::sound_id;
@@ -36,80 +39,76 @@ pub use sunrise_gameplay_common::game::native_hooks::{
     BlockStateDefinitionRegistration, BlockTintSources, BlockUpdateFlags, BonemealAsk,
     BonemealCheck, BonemealSource, CauldronFluidContents, CauldronInteractions, ChunkRef,
     ClientMiningPrediction, ClientPacket, ClientPayload, ClientReloadListeners, ClockAdjustment,
-    ColorResolvers, Compound, ConnectionKind, ConnectsToCall, ContainerLootFilled,
-    CreativeCache, DAMAGE_HOOKS, DamageContainer, DamageHooks, DamageLevel, DataMapType,
-    DebugEntry, DebugRenderer, Despawn, Direction, EffectKey,
-    EnchantmentInfo, EntityLayers, EntityRenderers, ExplosionStart, FluidKind, FrameModel,
-    FrameModelEdit, FxHashMap, GameLevel, GameMode, GameRuleValue, GameTests,
-    GuiLayerRegistrar, HandDrawContext, HandRender, HitLevel, HurtSource, Hurting, Identifier,
-    Ingredient, InsideEffects, InteractionAttempt, InteractionKey, ItemAfterVerticalCollisionCall,
-    ItemClick, ItemEntityRef, ItemFished, ItemModelRegistration, ItemTintSourceRegistration,
-    JsonAnimationTypeRegistration, Knock, LayerDefinitionRegistration, LevelAccess, LevelDimension,
-    LevelRef, LevelView, LifecycleContext, LiveDamageContainer, LiveDamageRead, LivingRef,
-    LoadConditions, LootDrops, MOD_MENUS, MapDecorationType, MobRef, ModBlockEntity,
-    ModBlockEntityFields, ModGameExt1, ModelLoaderRegistration, NativeHookHost,
+    ColorResolvers, Compound, ConnectionKind, ConnectsToCall, ContainerLootFilled, CreativeCache,
+    DAMAGE_HOOKS, DamageContainer, DamageHooks, DamageLevel, DataMapType, DebugEntry,
+    DebugRenderer, Despawn, Direction, EffectKey, EnchantmentInfo, EntityLayers, EntityRenderers,
+    ExplosionStart, FluidKind, FrameModel, FrameModelEdit, FxHashMap, GameLevel, GameMode,
+    GameRuleValue, GameTests, GuiLayerRegistrar, HandDrawContext, HandRender, HitLevel, HurtSource,
+    Hurting, Identifier, Ingredient, InsideEffects, InteractionAttempt, InteractionKey,
+    ItemAfterVerticalCollisionCall, ItemClick, ItemEntityRef, ItemFished, ItemModelRegistration,
+    ItemTintSourceRegistration, JsonAnimationTypeRegistration, Knock, LayerDefinitionRegistration,
+    LevelAccess, LevelDimension, LevelRef, LevelView, LifecycleContext, LiveDamageContainer,
+    LiveDamageRead, LivingRef, LoadConditions, LootDrops, MOD_MENUS, MapDecorationType, MobRef,
+    ModBlockEntity, ModBlockEntityFields, ModGameExt1, ModelLoaderRegistration, NativeHookHost,
     NativeRecipeLayout, NeighbourUpdate, NoteBlockChange, ParticleGroupRegistration,
     ParticleOptions, ParticleProviders, ParticleType, Path, PathBuf, PathComputationType,
     PermissionLevel, PhantomSpawnResult, Placement, PlacementContext, PoiTypeExtensions,
-    PortalShape, PresetEditorFactoryRegistration, RailShape,
-    RangeSelectPropertyRegistration, ScheduleResult, Screen,
-    ScreenWidgets, ScreenshotImage, SelectPropertyRegistration, ServerReloadListeners,
-    ServerTickPhase, SharedGameExt1, ShieldBlock, SkullModel, SleepProblem, SpawnEntry,
-    SpecialModelRenderers, SpriteSourceRegistration, StandaloneModelRegistration, Suggestion, Tag,
-    TextureAtlasRegistration, TickPriority, Ticks, ToolUse, TooltipElement,
+    PortalShape, PresetEditorFactoryRegistration, RailShape, RangeSelectPropertyRegistration,
+    ScheduleResult, Screen, ScreenWidgets, ScreenshotImage, SelectPropertyRegistration,
+    ServerReloadListeners, ServerTickPhase, SharedGameExt1, ShieldBlock, SkullModel, SleepProblem,
+    SpawnEntry, SpecialModelRenderers, SpriteSourceRegistration, StandaloneModelRegistration,
+    Suggestion, Tag, TextureAtlasRegistration, TickPriority, Ticks, ToolUse, TooltipElement,
     TryIntoApi, TryIntoEngine, UpdateShapeCall, UseAnimation, UsePhase, Victim,
-    VillagerProfessions, Who, add_pack_finders, add_section_geometry,
-    add_server_reload_listeners, adjacent_block_path_type, affect_neighbors_after_removal,
-    animal_tame, anvil_update, apply_enchantments, apply_menu_button_cursor,
-    armor_hurt, arrow_nock, authoritative_world_for_mods, baby_entity_spawn,
-    beacon_color_multiplier, block_drops, block_entity_load_additional, block_entity_neighbors,
-    block_entity_on_load_routes_tests, block_entity_on_load_tests, block_entity_read,
-    block_entity_save_additional, block_entity_save_additional_tests, block_entity_type_add_blocks,
-    block_grow_feature, block_landing, block_path_type, block_sticky, block_tool_modification,
-    block_use_item_on, block_use_result, block_use_without_item, bonemeal, bounce_restitution,
-    camera_math, can_be_connected_to, can_be_hydrated, can_continue_sleeping,
-    can_drop_from_explosion, can_entity_destroy, can_equip, can_harvest_block, can_perform_action,
-    can_place_item, can_player_sleep, can_sustain_plant, chat_recipient,
-    chunk_ticket_level_updated, chunk_watch, client_information_updated, client_pause_read,
-    clone_item_stack, config_dir, connects_to, console_line,
-    container_loot_filled, crafting_remainder, create_fluid_source, create_skull_models,
-    create_spawn_position, creator_mod_id, crop_grow, custom_click_action, custom_spawners,
-    damage_item, damage_post, damage_pre, data_maps_updated, default_components_bound,
-    dimension_id, dispense_method, effect_particle_modification, empty_contents,
-    enchant_power_bonus, enchanted_block_loot, enchanted_entity_loot, enchantment_level_set,
-    enchantments, enderman_anger, engine_reduction, entity_change_block_pre, entity_constructing,
-    entity_entering_section, entity_inside, entity_interact_specific, entity_invulnerability_check,
-    entity_mob_griefing, entity_place, entity_size, entity_struck_by_lightning,
-    entity_travel_to_dimension, execution_role, exp_drop, explosion_detonate, explosion_knockback,
-    explosion_notice_containment, explosion_resistance, explosion_start, extend_poi_types,
-    falling_tick, farmland_trample, fence_gate_in_wall, finalize_spawn, fire_behaviour, fire_odds,
-    fishing_medium, flags, fluid_place_block, fluid_rules, fluid_tick, friction, fs,
-    game_rule_changed, game_shutting_down, grindstone_place, grindstone_take, hand_pose_matrix,
-    hurt_server_args, ignited_by_lava, incoming_damage, incoming_tests, ingredient_test,
-    install_block_contact_hooks, install_client_hooks, invulnerability_check, is_fertile,
-    is_fire_source, is_not_replaceable_by_pick_action, is_pathfindable, is_piglin_currency,
-    is_possible_to_respawn_in, is_primary_item_for, item_after_vertical_collision, item_attack,
-    item_container, item_crafted, item_destroyed, item_fallthrough, item_fished, item_interact_mob,
-    item_smelted, item_stacked_on_other, item_toss, knockback, level_helpers, level_save,
-    level_sounds, level_tick_tests, level_world, light_emission,
-    living_breathe, living_change_target, living_conversion_post, living_conversion_pre,
-    living_damage_post, living_damage_pre, living_death, living_death_message, living_death_post,
-    living_destroy_block, living_drops, living_experience_drop, living_get_projectile,
-    living_shield_block, living_use_totem, living_visibility, loot, makes_piglins_neutral,
-    map_decoration_types, math, menu_links, menu_slot_changed, menu_slot_rules, menu_slot_take,
-    menu_transfer, minecart_pass, mob_effect_events, mob_kind, mob_source, mob_spawn_checks,
-    mob_split, mod_api_host, mod_data_root, mod_list, mod_mismatch, mod_particles_ok,
-    mod_settings, must_survive, native_add_section_geometry,
-    native_block_entity_on_load, native_block_entity_type_add_blocks,
+    VillagerProfessions, Who, add_pack_finders, add_section_geometry, add_server_reload_listeners,
+    adjacent_block_path_type, affect_neighbors_after_removal, animal_tame, anvil_update,
+    apply_enchantments, apply_menu_button_cursor, armor_hurt, arrow_nock,
+    authoritative_world_for_mods, baby_entity_spawn, beacon_color_multiplier, block_drops,
+    block_entity_load_additional, block_entity_neighbors, block_entity_on_load_routes_tests,
+    block_entity_on_load_tests, block_entity_read, block_entity_save_additional,
+    block_entity_save_additional_tests, block_entity_type_add_blocks, block_grow_feature,
+    block_landing, block_path_type, block_sticky, block_tool_modification, block_use_item_on,
+    block_use_result, block_use_without_item, bonemeal, bounce_restitution, camera_math,
+    can_be_connected_to, can_be_hydrated, can_continue_sleeping, can_drop_from_explosion,
+    can_entity_destroy, can_equip, can_harvest_block, can_perform_action, can_place_item,
+    can_player_sleep, can_sustain_plant, chat_recipient, chunk_ticket_level_updated, chunk_watch,
+    client_information_updated, client_pause_read, clone_item_stack, config_dir, connects_to,
+    console_line, container_loot_filled, crafting_remainder, create_fluid_source,
+    create_skull_models, create_spawn_position, creator_mod_id, crop_grow, custom_click_action,
+    custom_spawners, damage_item, damage_post, damage_pre, data_maps_updated,
+    default_components_bound, dimension_id, dispense_method, effect_particle_modification,
+    empty_contents, enchant_power_bonus, enchanted_block_loot, enchanted_entity_loot,
+    enchantment_level_set, enchantments, enderman_anger, engine_reduction, entity_change_block_pre,
+    entity_constructing, entity_entering_section, entity_inside, entity_interact_specific,
+    entity_invulnerability_check, entity_mob_griefing, entity_place, entity_size,
+    entity_struck_by_lightning, entity_travel_to_dimension, execution_role, exp_drop,
+    explosion_detonate, explosion_knockback, explosion_notice_containment, explosion_resistance,
+    explosion_start, extend_poi_types, falling_tick, farmland_trample, fence_gate_in_wall,
+    finalize_spawn, fire_behaviour, fire_odds, fishing_medium, flags, fluid_place_block,
+    fluid_rules, fluid_tick, friction, fs, game_rule_changed, game_shutting_down, grindstone_place,
+    grindstone_take, hand_pose_matrix, hurt_server_args, ignited_by_lava, incoming_damage,
+    incoming_tests, ingredient_test, install_block_contact_hooks, install_client_hooks,
+    invulnerability_check, is_fertile, is_fire_source, is_not_replaceable_by_pick_action,
+    is_pathfindable, is_piglin_currency, is_possible_to_respawn_in, is_primary_item_for,
+    item_after_vertical_collision, item_attack, item_container, item_crafted, item_destroyed,
+    item_fallthrough, item_fished, item_interact_mob, item_smelted, item_stacked_on_other,
+    item_toss, knockback, level_helpers, level_save, level_sounds, level_tick_tests, level_world,
+    light_emission, living_breathe, living_change_target, living_conversion_post,
+    living_conversion_pre, living_damage_post, living_damage_pre, living_death,
+    living_death_message, living_death_post, living_destroy_block, living_drops,
+    living_experience_drop, living_get_projectile, living_shield_block, living_use_totem,
+    living_visibility, loot, makes_piglins_neutral, map_decoration_types, math, menu_links,
+    menu_slot_changed, menu_slot_rules, menu_slot_take, menu_transfer, minecart_pass,
+    mob_effect_events, mob_kind, mob_source, mob_spawn_checks, mob_split, mod_api_host,
+    mod_data_root, mod_list, mod_mismatch, mod_particles_ok, mod_settings, must_survive,
+    native_add_section_geometry, native_block_entity_on_load, native_block_entity_type_add_blocks,
     native_block_entity_update_tag, native_blocks, native_can_place_item, native_component_types,
-    native_create_skull_models, native_extend_poi_types, native_items,
-    native_map_decoration_types, native_menu_button, native_menu_quick_move, native_menu_slot_take,
-    native_note_block_change, native_piston_push_reaction, native_potential_spawns,
-    native_register_block_state_models, native_register_block_tint_sources,
-    native_register_cauldron_fluid_content, native_register_cauldron_interaction,
-    native_register_color_resolvers, native_register_debug_entries,
-    native_register_debug_renderers, native_register_dimension_transition_screen,
-    native_register_entity_renderers,
+    native_create_skull_models, native_extend_poi_types, native_items, native_map_decoration_types,
+    native_menu_button, native_menu_quick_move, native_menu_slot_take, native_note_block_change,
+    native_piston_push_reaction, native_potential_spawns, native_register_block_state_models,
+    native_register_block_tint_sources, native_register_cauldron_fluid_content,
+    native_register_cauldron_interaction, native_register_color_resolvers,
+    native_register_debug_entries, native_register_debug_renderers,
+    native_register_dimension_transition_screen, native_register_entity_renderers,
     native_register_entity_spectator_shaders, native_register_fluid_models,
     native_register_item_models, native_register_item_tint_sources,
     native_register_json_animation_types, native_register_layer_definitions,
@@ -133,25 +132,21 @@ pub use sunrise_gameplay_common::game::native_hooks::{
     recipe_result, recipe_sources, register_block_state_models, register_block_tint_sources,
     register_cauldron_fluid_content, register_cauldron_interaction, register_color_resolvers,
     register_debug_entries, register_debug_renderers, register_dimension_transition_screen,
-    register_entity_renderers,
-    register_entity_spectator_shaders, register_fluid_models, register_game_tests,
-    register_item_models, register_item_tint_sources, register_json_animation_types,
-    register_layer_definitions, register_load_conditions, register_model_loaders,
-    register_particle_groups, register_particle_providers,
+    register_entity_renderers, register_entity_spectator_shaders, register_fluid_models,
+    register_game_tests, register_item_models, register_item_tint_sources,
+    register_json_animation_types, register_layer_definitions, register_load_conditions,
+    register_model_loaders, register_particle_groups, register_particle_providers,
     register_range_select_item_model_property, register_render_pipelines,
     register_select_item_model_property, register_special_model_renderer, register_sprite_sources,
     register_texture_atlases, register_villager_professions, registered_potions, remove_block,
     respawn_position, right_click_item, runtime_environment, screen_chars, server_chat,
     server_tick_rate_changed, set_placed_by, shield_block, should_check_weak_power,
     should_redstone_wire_connect_to, sound_and_shader_helpers, spread_players_teleport,
-    startup_math_profile, stateful_block_entity, supported, supports_enchantment,
-    sweep_attack, tags_updated, teleport_command, tool_modified_state, translate,
-    use_item_on_block, use_totem, vanilla_game_event, wind_burst, with_property,
-    world_for_mods, xp_orb_targeting, xp_repair_ratio,
+    startup_math_profile, stateful_block_entity, supported, supports_enchantment, sweep_attack,
+    tags_updated, teleport_command, tool_modified_state, translate, use_item_on_block, use_totem,
+    vanilla_game_event, wind_burst, with_property, world_for_mods, xp_orb_targeting,
+    xp_repair_ratio,
 };
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-use sunrise_gameplay_common::game::native_hooks::mod_settings::ModSettingsGameExt as _;
-pub use sunrise_gameplay_common::game::native_hooks::ExecutionRole;
 #[cfg(feature = "test-support")]
 pub use sunrise_gameplay_common::game::native_hooks::{block_entity_for_block, item_fall_on_tests};
 #[cfg(all(feature = "test-support", not(test)))]
@@ -192,7 +187,6 @@ pub(in crate::game) mod build_creative_mode_tab_contents;
 
 #[path = "can_start_swimming_client.rs"]
 pub(in crate::game) mod can_start_swimming;
-
 
 #[path = "camera_read_client.rs"]
 pub(in crate::game) mod camera_read;
@@ -1818,11 +1812,13 @@ impl crate::game::ClientGame<'_> {
         !cancel
     }
     pub(in crate::game) fn tick_rate(&self) -> Option<mod_api::ClientTickRate> {
-        self.native_client_level().is_some().then(|| mod_api::ClientTickRate {
-            tick_rate: self.common.clock.rate(),
-            frozen: self.common.clock.frozen(),
-            frozen_ticks_to_run: self.common.clock.step_state().remaining,
-        })
+        self.native_client_level()
+            .is_some()
+            .then(|| mod_api::ClientTickRate {
+                tick_rate: self.common.clock.rate(),
+                frozen: self.common.clock.frozen(),
+                frozen_ticks_to_run: self.common.clock.step_state().remaining,
+            })
     }
 
     /// Client tick target duration in ms (`Minecraft.getTickTargetMillis`), after mod hooks.
@@ -2086,7 +2082,8 @@ impl crate::game::ClientGame<'_> {
                 label: spec.label.clone(),
                 tooltip: spec.tooltip.clone(),
                 value: ui_setting_value(spec, self.live_setting(owner, spec)),
-                category: mod_api::__private::setting_category(mod_id, &spec.key).map(str::to_owned),
+                category: mod_api::__private::setting_category(mod_id, &spec.key)
+                    .map(str::to_owned),
             })
             .collect()
     }
@@ -2150,7 +2147,11 @@ impl crate::game::ClientGame<'_> {
         else {
             return;
         };
-        if let Some(setting) = page.settings.iter_mut().find(|setting| setting.key == spec.key) {
+        if let Some(setting) = page
+            .settings
+            .iter_mut()
+            .find(|setting| setting.key == spec.key)
+        {
             setting.value = ui_setting_value(spec, value);
         }
     }

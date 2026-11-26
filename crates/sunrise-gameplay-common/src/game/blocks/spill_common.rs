@@ -97,9 +97,9 @@ pub fn live_full_metadata(
         .map(|(_, original)| original)
         .filter(|original| block_entity_nbt::id(original) == block_entity_nbt::id(&current));
     match original {
-        Some(original) => sunrise_sim::save::overlay_block_entity_source(
-            original, entity, block, &current, items,
-        ),
+        Some(original) => {
+            sunrise_sim::save::overlay_block_entity_source(original, entity, block, &current, items)
+        }
         None => current,
     }
 }
@@ -667,10 +667,7 @@ pub fn saved_entity(
 }
 
 /// The saved block entity's metadata omits the chunk's `keepPacked`.
-pub fn saved_full_metadata(
-    world: &sunrise_level::world::World,
-    pos: [i32; 3],
-) -> Option<Tag> {
+pub fn saved_full_metadata(world: &sunrise_level::world::World, pos: [i32; 3]) -> Option<Tag> {
     let mut tag = saved_entity(world, pos)?;
     if let Tag::Compound(fields) = &mut tag {
         fields.remove(&"keepPacked".into());
@@ -1236,7 +1233,8 @@ impl GameLevel<'_> {
             && mod_api::__private::has_part_hook(mod_api::HookId::PreRemoveSideEffects)
             && let Some((lease, BlockEntity::Mod(entity))) = self.world.block_entities.take(&key)
         {
-            let data = super::native_hooks::block_entity_read::ResidentReadBlockEntity::stored(&entity);
+            let data =
+                super::native_hooks::block_entity_read::ResidentReadBlockEntity::stored(&entity);
             self.native_pre_remove_side_effects(
                 pos,
                 old,

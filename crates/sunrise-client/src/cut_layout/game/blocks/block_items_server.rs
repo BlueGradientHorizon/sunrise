@@ -706,6 +706,5 @@ use sunrise_gameplay_common::game::block_items::BlockItemsGameExt1 as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
-
 #[cfg(test)]
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

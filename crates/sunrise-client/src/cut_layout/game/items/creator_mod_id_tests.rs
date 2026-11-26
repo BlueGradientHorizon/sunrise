@@ -65,5 +65,4 @@ fn a_part_names_the_mod_that_made_the_stack() {
     });
 }
 
-
 use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1 as _;

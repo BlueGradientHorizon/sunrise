@@ -1,11 +1,11 @@
 use sunrise_core::position::ChunkPos;
+use sunrise_gameplay_common::game::{Arc, Vec3};
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
 use {
     crate::game::load_resources, crate::settings::Settings, sunrise_gameplay_common::game::Options,
     sunrise_gameplay_common::game::Progress,
 };
-use sunrise_gameplay_common::game::{Arc, Vec3};
 
 fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

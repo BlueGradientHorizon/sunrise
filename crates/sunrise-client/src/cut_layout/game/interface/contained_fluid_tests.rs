@@ -215,4 +215,3 @@ fn a_mod_container_draws_the_fluid_its_part_reports_isolated() {
         );
     });
 }
-

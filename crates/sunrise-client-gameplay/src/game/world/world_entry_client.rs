@@ -62,7 +62,10 @@ impl crate::game::ClientGame<'_> {
         self.client.creation_read_started = false;
         let (dir, packs) = title.creation_packs().unwrap_or_default();
         use sunrise_gameplay_common::game::integrated_link::CreationPackRead;
-        let outcome = self.common.options.read_creation_packs
+        let outcome = self
+            .common
+            .options
+            .read_creation_packs
             .ok_or("world creation validation is not configured")
             .map_err(str::to_owned)
             .and_then(|read| {
@@ -81,13 +84,8 @@ impl crate::game::ClientGame<'_> {
             match outcome {
                 Ok(()) => title.finish_preparing(),
 
-
                 Err(e) => {
                     log::warn!("Sunrise: preparing world creation failed: {e}");
-
-
-
-
 
                     if !title.pack_validation_failed() {
                         title.finish_preparing();

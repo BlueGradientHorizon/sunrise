@@ -522,7 +522,8 @@ impl crate::game::ServerGame<'_> {
             .command_source
             .clone()
             .unwrap_or_else(|| self.player_source());
-        let recipient = if self.server.console_broadcast.is_some() || source.native_output.is_some() {
+        let recipient = if self.server.console_broadcast.is_some() || source.native_output.is_some()
+        {
             None
         } else {
             self.server
@@ -703,7 +704,9 @@ impl crate::game::ServerGame<'_> {
             self.feedback(starting);
         } else {
             let context = self
-                .server.game_tests.0
+                .server
+                .game_tests
+                .0
                 .runner
                 .as_ref()
                 .and_then(|r| r.summary_source.clone());
@@ -1798,18 +1801,19 @@ pub mod tests {
                         }
                         game.reload_datapacks(false, &[]).unwrap();
                         // Exercise the real runner's environment lifecycle without spawning a structure.
-                        let run_batch = |game: &mut crate::game::ServerGame<'_>, dimension, name: &str| {
-                            game.track_and_start_batches(
-                                vec![Batch {
-                                    index: 0,
-                                    environment: format!("example:{name}"),
-                                    inline_environment: None,
-                                    dimension,
-                                    infos: Vec::new(),
-                                }],
-                                RunnerOptions::new(false, None, false),
-                            );
-                        };
+                        let run_batch =
+                            |game: &mut crate::game::ServerGame<'_>, dimension, name: &str| {
+                                game.track_and_start_batches(
+                                    vec![Batch {
+                                        index: 0,
+                                        environment: format!("example:{name}"),
+                                        inline_environment: None,
+                                        dimension,
+                                        infos: Vec::new(),
+                                    }],
+                                    RunnerOptions::new(false, None, false),
+                                );
+                            };
                         let parameters = |game: &crate::game::ServerGame<'_>| {
                             let w = &game.world.weather;
                             (
@@ -1823,7 +1827,9 @@ pub mod tests {
                         game.world.weather.raining = true;
                         game.world.weather.thundering = true;
                         game.world.weather.set_levels(1.0, 1.0);
-                        game.server.levels.0
+                        game.server
+                            .levels
+                            .0
                             .parked_mut(Dim::Nether)
                             .unwrap()
                             .world

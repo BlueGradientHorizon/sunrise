@@ -264,8 +264,7 @@ fn a_pack_test_instance_runs_and_applies_its_pack_test_environment() {
         }
     }
     game.player = Some(
-        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(24.5, 100.0, 8.5))
-            .unwrap(),
+        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(24.5, 100.0, 8.5)).unwrap(),
     );
     game.world.weather.raining = false;
     game.world.weather.thundering = false;

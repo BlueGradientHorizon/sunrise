@@ -32,10 +32,7 @@ impl Resources {
             .clone()
     }
     /// Publish the open world's `block_transformer` registry, replacing the last world's.
-    pub fn set_transformers(
-        &self,
-        transformers: Arc<sunrise_sim::block_transform::Transformers>,
-    ) {
+    pub fn set_transformers(&self, transformers: Arc<sunrise_sim::block_transform::Transformers>) {
         *self
             .rest()
             .transformers

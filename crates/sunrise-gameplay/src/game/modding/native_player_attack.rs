@@ -185,11 +185,7 @@ pub(in crate::game) mod tests {
     use sunrise_items::items::ItemStack;
 
     /// A zombie `id` standing at `at`, and its handle.
-    pub(in crate::game) fn zombie(
-        game: &mut ServerGame<'_>,
-        id: u32,
-        at: [f64; 3],
-    ) -> EntityRef {
+    pub(in crate::game) fn zombie(game: &mut ServerGame<'_>, id: u32, at: [f64; 3]) -> EntityRef {
         let kind = game
             .common
             .res

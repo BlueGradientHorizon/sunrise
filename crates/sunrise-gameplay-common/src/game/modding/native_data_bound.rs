@@ -17,9 +17,7 @@ pub mod tests {
         ModifyDefaultComponentsEvent, ReloadContext, TagsUpdateCause, TagsUpdatedEvent,
     };
     use std::sync::{Arc, Mutex};
-    use sunrise_protocol::packets::{
-        play::{self, Clientbound as C},
-    };
+    use sunrise_protocol::packets::play::{self, Clientbound as C};
 
     pub struct Probe(pub Arc<Mutex<Vec<(&'static str, TagsUpdateCause)>>>);
     #[mod_api::__subscriptions]

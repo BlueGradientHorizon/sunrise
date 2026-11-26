@@ -647,4 +647,3 @@ pub(crate) fn with_consumer_game(
         });
     });
 }
-

@@ -9,7 +9,11 @@ impl crate::game::CommonGame<'_> {
         pos: crate::game::native_menu_data::ContainerPos,
         menu: &str,
     ) -> Option<&str> {
-        let block = &self.res.facts().get(self.world.block(pos.0, pos.1, pos.2)).name;
+        let block = &self
+            .res
+            .facts()
+            .get(self.world.block(pos.0, pos.1, pos.2))
+            .name;
         let container = mod_api::__private::parts_installation::block_container(block)?;
         let (opens, _) = crate::game::native_hooks::mod_menu(container.menu.as_deref()?)?;
         (opens == menu).then_some(block.as_ref())

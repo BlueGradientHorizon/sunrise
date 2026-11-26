@@ -108,10 +108,7 @@ pub(crate) mod tests {
             let named = NamedDamage::registered(&catalog, id).unwrap();
             assert_eq!((named.name, named.tags), (id, tags));
             let kind = crate::game::ServerGame::damage_kind(&catalog, id);
-            assert_eq!(
-                source_damage_type(Damage::of(kind)),
-                id
-            );
+            assert_eq!(source_damage_type(Damage::of(kind)), id);
         }
         assert_eq!(NamedDamage::registered(&catalog, "demo:missing"), None);
     }

@@ -6,7 +6,8 @@ mod tests {
     use mod_api::{LevelRef, WorldEpoch};
     use std::sync::{Arc, Mutex};
     use sunrise_gameplay_common::game::{
-        Dim, native_entity_refs_common::NativeEntityRefsCommonGameExt1, weather::WeatherGameExt as _,
+        Dim, native_entity_refs_common::NativeEntityRefsCommonGameExt1,
+        weather::WeatherGameExt as _,
     };
     use sunrise_level::world::Weather;
 

@@ -3,14 +3,12 @@
 //! at once through `World::edit_runs`, with what `fill ... strict` does for
 //! the block entities and the watched blocks of each block changed.
 use crate::game::ServerGame;
-use mod_api::{BlockEdit, BlockEditError};
 use mod_api::Heightmap;
+use mod_api::{BlockEdit, BlockEditError};
 use std::sync::Arc;
 use sunrise_gameplay_common::game::block_edits_common::Tracked;
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay_common::game::block_edits_common::{
-    column_height,
-};
+pub(in crate::game) use sunrise_gameplay_common::game::block_edits_common::column_height;
 use sunrise_gameplay_common::game::transactions::{
     ReplayEntity, StrictBlockStep, StrictBlockSteps,
 };
@@ -373,8 +371,8 @@ mod tests {
     #[ignore = "daily"]
     fn mixed_bulk_and_ordinary_writes_publish_only_on_outer_commit() {
         use crate::game::native_entity_refs::tests::with_game;
-        use sunrise_gameplay_common::game::api_values::TryIntoApi as _;
         use mod_api::BlockUpdateFlags;
+        use sunrise_gameplay_common::game::api_values::TryIntoApi as _;
         use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
         use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
@@ -477,9 +475,9 @@ mod tests {
     #[ignore = "daily"]
     fn swapped_dimension_bulk_edits_use_only_their_own_level_journal() {
         use crate::game::native_entity_refs::tests::with_game;
-        use sunrise_gameplay_common::game::{Dim, api_values::TryIntoApi as _};
         use mod_api::BlockUpdateFlags;
         use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+        use sunrise_gameplay_common::game::{Dim, api_values::TryIntoApi as _};
 
         with_game(|game| {
             game.world
@@ -569,7 +567,9 @@ mod tests {
             assert!(game.world.modified.is_empty());
             assert!(game.world.bulk_log.is_empty());
             assert_eq!(
-                game.server.levels.0
+                game.server
+                    .levels
+                    .0
                     .parked_world(Dim::Nether)
                     .unwrap()
                     .block(1, 64, 0),

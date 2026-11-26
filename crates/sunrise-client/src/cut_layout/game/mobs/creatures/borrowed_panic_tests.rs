@@ -3,10 +3,10 @@ use std::sync::{
     Mutex,
     atomic::{AtomicUsize, Ordering},
 };
-use sunrise_mod_runtime::attachments::{AttachmentType, Holder};
 use sunrise_gameplay_common::game::creatures::{
     Arc, Dim, Mob, MobEvent, MobOutputBatch, NormalMobActions, Result, Vec3,
 };
+use sunrise_mod_runtime::attachments::{AttachmentType, Holder};
 use {
     sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
     sunrise_gameplay::game::native_entity_refs::tests::with_game,
@@ -675,7 +675,6 @@ impl mod_api::Hooks for Consumer {
         }
         self.probe.eggs.lock().unwrap().push(event.entity);
     }
-
 
     fn entity_tick_post(
         &self,

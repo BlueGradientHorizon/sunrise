@@ -78,7 +78,10 @@ impl ClientGame<'_> {
             original: &prepared.original,
             sound: &mut sound,
         });
-        self.client.audio.0.finish_prepared(prepared.instance, sound)
+        self.client
+            .audio
+            .0
+            .finish_prepared(prepared.instance, sound)
     }
 
     /// Fires `play_sound` for every start the audio made without the game (a helper the game.
@@ -98,7 +101,10 @@ impl ClientGame<'_> {
                 original: &prepared.original,
                 sound: &mut sound,
             });
-            self.client.audio.0.set_live_answer(prepared.instance, sound);
+            self.client
+                .audio
+                .0
+                .set_live_answer(prepared.instance, sound);
         }
     }
 }

@@ -218,25 +218,23 @@ mod tests {
         native_client_session::tests::logged_client,
         native_entity_refs::tests::{run_with_game_stack, with_client_game},
     };
-    use sunrise_gameplay_common::game::{
-        api_values::TryIntoApi, mods::resolve_particle_providers,
-        native_hooks::native_register_particle_providers,
-    };
     use mod_api::{
         __private::game::RegistrationContextNew, BlockState, CustomParticle, ModEntry,
         ParticleProvider, ParticleSpawn, ParticleTickView, RegisterParticleProvidersEvent,
         Registrar, RegistrationContext,
     };
-    use std::{
-        sync::{
-            Arc, Mutex, OnceLock,
-            atomic::{AtomicBool, AtomicUsize, Ordering},
-        },
+    use std::sync::{
+        Arc, Mutex, OnceLock,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     };
     use sunrise_assets::resource_source::{Resource, ResourceSource};
     use sunrise_client::particles::ExplosionParticle;
-    use sunrise_level::chunk::Chunk;
     use sunrise_core::random::{LegacyRandom, RandomSource};
+    use sunrise_gameplay_common::game::{
+        api_values::TryIntoApi, mods::resolve_particle_providers,
+        native_hooks::native_register_particle_providers,
+    };
+    use sunrise_level::chunk::Chunk;
     use sunrise_protocol::{
         connection::Pipe,
         entity_data::{MOD_PARTICLE_ID, Particle, ParticleData},

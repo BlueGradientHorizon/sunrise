@@ -48,7 +48,10 @@ impl ServerGame<'_> {
         );
         let candidate = self.stage_world_tables(&stack, false, &resources)?;
         if let Some(tables) = candidate.tables {
-            tables.biomes.overrides.validate_fill_layers(self.common.pack.assets.registry)?;
+            tables
+                .biomes
+                .overrides
+                .validate_fill_layers(self.common.pack.assets.registry)?;
         }
         Ok(())
     }
@@ -66,8 +69,11 @@ mod tests {
         let folder = tempfile::tempdir().unwrap();
         let pack = folder.path().join("bad_song");
         std::fs::create_dir_all(pack.join("data/test/jukebox_song")).unwrap();
-        std::fs::write(pack.join("pack.mcmeta"), r#"{"pack":{"description":"fixture"}}"#)
-            .unwrap();
+        std::fs::write(
+            pack.join("pack.mcmeta"),
+            r#"{"pack":{"description":"fixture"}}"#,
+        )
+        .unwrap();
         std::fs::write(pack.join("data/test/jukebox_song/empty.json"), "{}").unwrap();
         with_game(|game| {
             let read = |selected: &[String]| {
@@ -86,4 +92,3 @@ mod tests {
         });
     }
 }
-

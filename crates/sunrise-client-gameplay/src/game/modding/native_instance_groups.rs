@@ -1,6 +1,6 @@
 //! Retained copies feed the same per-view submission route as transient batches.
-use crate::game::ClientGame;
 use super::native_block_entity_draw::BlockEntityDraw;
+use crate::game::ClientGame;
 use mod_api::__private::game::Fields;
 use mod_api::{
     GroupError, InstanceGroupRef, InstanceGroups, ItemDisplayContext, ModelError, ModelInstance,
@@ -537,7 +537,10 @@ impl PreparedItemStorage {
         self.items.clear();
     }
 
-    pub(in crate::game) fn retire_disabled(&mut self, disabled: &std::collections::BTreeSet<String>) {
+    pub(in crate::game) fn retire_disabled(
+        &mut self,
+        disabled: &std::collections::BTreeSet<String>,
+    ) {
         for slot in &mut self.items {
             if slot
                 .as_ref()

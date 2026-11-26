@@ -16,8 +16,6 @@ pub(crate) mod tests {
 
     use sunrise_gameplay::game::server_side::mounts::tests::mount;
 
-    
-
     use super::*;
 
     #[test]

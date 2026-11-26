@@ -3,7 +3,10 @@ use crate::game::toast_manager::SystemToastId;
 use crate::game::toast_manager::Toast;
 use crate::game::toast_manager::ToastManager;
 use crate::game::toast_manager::VisibleToast;
-use sunrise_client::{hud::HudBatch, toasts::{SystemToast, ToastClock}};
+use sunrise_client::{
+    hud::HudBatch,
+    toasts::{SystemToast, ToastClock},
+};
 
 impl ClientGame<'_> {
     pub(in crate::game::client_side) fn add_or_update_system_toast(
@@ -27,7 +30,9 @@ impl ClientGame<'_> {
             return false;
         }
         let clock = ToastClock::of(self.common.clock.still());
-        self.client.toast_manager.post(clock, Toast::System(id, toast));
+        self.client
+            .toast_manager
+            .post(clock, Toast::System(id, toast));
         true
     }
     /// `ToastManager.extractRenderState`: F1 hides the draw, not the update.
@@ -41,7 +46,8 @@ impl ClientGame<'_> {
         self.add_hook_panic_toasts();
         self.update_tutorial_toasts();
         let multiplier = self.client.settings.notification_display_time;
-        let (visibility_sound, challenge_sound) = self.client.toast_manager.update(clock, multiplier);
+        let (visibility_sound, challenge_sound) =
+            self.client.toast_manager.update(clock, multiplier);
         if let Some(show) = visibility_sound {
             let event = if show {
                 "minecraft:ui.toast.in"

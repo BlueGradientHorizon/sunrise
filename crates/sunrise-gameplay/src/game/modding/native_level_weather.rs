@@ -49,7 +49,10 @@ impl ServerGame<'_> {
         } else if level.dimension() == self.dim.key() {
             Some(&mut self.common.world)
         } else {
-            self.server.levels.0.parked_world_mut_of(level.dimension_id())
+            self.server
+                .levels
+                .0
+                .parked_world_mut_of(level.dimension_id())
         };
         let Some(world) = world else {
             let mod_id = mod_api::content::crash::current_native_mod().unwrap_or("unknown");

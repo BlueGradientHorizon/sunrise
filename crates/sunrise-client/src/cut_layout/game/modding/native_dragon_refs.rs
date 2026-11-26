@@ -15,10 +15,12 @@ mod tests {
     use super::*;
     use mod_api::{EntityReadError, MobRef, WorldEpoch};
     use std::ops::ControlFlow;
-    use sunrise_gameplay_common::game::test_fixtures::{collect_entity_visit, fixture_resident_column};
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Tag;
     use sunrise_gameplay_common::game::Dim;
+    use sunrise_gameplay_common::game::test_fixtures::{
+        collect_entity_visit, fixture_resident_column,
+    };
     use sunrise_protocol::entity_data::{Value, serializer};
     use sunrise_sim::{entities::ArmorStand, mobs::Mob};
 
@@ -318,7 +320,8 @@ mod tests {
         game: &G,
         dragon: EntityRef,
     ) {
-        let parts = collect_entity_visit(|visit| dragon.visit_parts(game.as_host(), visit)).unwrap();
+        let parts =
+            collect_entity_visit(|visit| dragon.visit_parts(game.as_host(), visit)).unwrap();
         let ids: Vec<u32> = parts.iter().map(|part| part.id()).collect();
         assert_eq!(ids, (dragon.id() + 1..=dragon.id() + 8).collect::<Vec<_>>());
         assert_eq!(game.entity_is_multipart(dragon), Some(true));

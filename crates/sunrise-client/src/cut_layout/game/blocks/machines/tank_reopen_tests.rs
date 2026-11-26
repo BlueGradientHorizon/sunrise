@@ -202,5 +202,4 @@ fn a_committed_mod_tank_survives_a_world_save_close_and_reopen() {
 
 use sunrise_gameplay_common::game::side_ops::events::EventsSideGameExt as _;
 
-
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -6,9 +6,7 @@ use super::tests::with_mod_menu_game;
 use std::sync::Arc;
 use sunrise_core::nbt::Tag;
 use sunrise_game_data::text::{RED, Text};
-use sunrise_gameplay::game::{
-    ServerGame, server_side::native_menus::tests::mod_menu_guest,
-};
+use sunrise_gameplay::game::{ServerGame, server_side::native_menus::tests::mod_menu_guest};
 use sunrise_gameplay_common::game::{
     lan_actions::MenuOpen,
     server_side::native_menus::tests::{MOD_MENU, sent},
@@ -29,12 +27,12 @@ const LUCKY: &[u8] = br#"{"pools":[{"rolls":1,"bonus_rolls":1,"entries":[{"type"
 
 /// A nine-slot mod container at `KEY` whose table `test:lucky` has not rolled, opened by a
 /// Sunrise guest with a luck of 3, on a server with no player of its own.
-fn with_pending_container(
-    test: impl FnOnce(&mut ServerGame<'_>, &std::sync::mpsc::Receiver<Out>),
-) {
+fn with_pending_container(test: impl FnOnce(&mut ServerGame<'_>, &std::sync::mpsc::Receiver<Out>)) {
     with_mod_menu_game(|game| {
         let (rx, _) = mod_menu_guest(game);
-        game.world.chunks.insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         let stone = game
             .pack
             .assets

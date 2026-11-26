@@ -195,13 +195,14 @@ impl ClientGame<'_> {
         };
         let old = &self.client.client_pack.context;
         let tables = Arc::new(old.mesh.tables.with_visibility(visibility.clone()));
-        self.client.client_pack.context = Arc::new(sunrise_client_render::streaming::WorkerContext {
-            chunk: old.chunk.clone(),
-            mesh: sunrise_client_render::streaming::MeshWorkerContext {
-                tables,
-                ..old.mesh.clone()
-            },
-        });
+        self.client.client_pack.context =
+            Arc::new(sunrise_client_render::streaming::WorkerContext {
+                chunk: old.chunk.clone(),
+                mesh: sunrise_client_render::streaming::MeshWorkerContext {
+                    tables,
+                    ..old.mesh.clone()
+                },
+            });
         self.client_res()
             .block_entity_render()
             .set_visibility(visibility);

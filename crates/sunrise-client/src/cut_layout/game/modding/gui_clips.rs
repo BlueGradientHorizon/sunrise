@@ -76,15 +76,9 @@ mod dispatch_tests {
                 .into();
                 let mut batch = HudBatch::scratch([320, 240]);
                 with_mods(mods, || {
-                    crate::game::server_side::native_entity_refs::tests::with_client_game(
-                        |game| {
-                            game.component_hover_effect(
-                                &mut batch,
-                                &text.spans[0].style,
-                                (40.0, 30.0),
-                            );
-                        },
-                    );
+                    crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
+                        game.component_hover_effect(&mut batch, &text.spans[0].style, (40.0, 30.0));
+                    });
                 });
                 assert_eq!(batch.vertices.len(), 30);
                 for (quad, color) in batch.vertices.as_chunks::<6>().0.iter().zip([

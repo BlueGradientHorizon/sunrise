@@ -1,14 +1,11 @@
 use crate::game::server_side::dragon::thorns_tests::thorny;
 use sunrise_gameplay_common::game::dragon_common::Dragon;
-use sunrise_sim::mobs::{Damage, DamageKind, Mob, Who, finalize as f};
-use {
-    crate::game::*,
-    sunrise_gameplay_common::game::execution_role,
-};
 #[cfg(test)]
 use sunrise_gameplay_common::game::{
     Instant, Options, PathBuf, PlayerMotion, Progress, Vec3, World,
 };
+use sunrise_sim::mobs::{Damage, DamageKind, Mob, Who, finalize as f};
+use {crate::game::*, sunrise_gameplay_common::game::execution_role};
 use {
     sunrise_gameplay_common::game::dragon_common::FightWho,
     sunrise_gameplay_common::game::dragon_common::SPECIAL,

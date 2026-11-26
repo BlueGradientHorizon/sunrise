@@ -98,4 +98,3 @@ fn the_block_beside_a_fence_answers_whether_it_connects() {
         })
     });
 }
-

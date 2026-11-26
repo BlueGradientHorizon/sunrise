@@ -243,7 +243,8 @@ impl crate::game::ClientGame<'_> {
             false,
         );
         // `ClipContext.Block.VISUAL` with no fluids.
-        let tables = sunrise_gameplay_common::game::native_block_tables::BlockTables::of(&self.common);
+        let tables =
+            sunrise_gameplay_common::game::native_block_tables::BlockTables::of(&self.common);
         let mut rays = ColliderRays {
             scene: SceneCollisions {
                 world: &self.common.world,
@@ -475,7 +476,8 @@ impl crate::game::ClientGame<'_> {
     /// Build the avatar for a newly installed local body, before any frame can read it.
     pub(in crate::game) fn ensure_player_model(&mut self) {
         if self.client.player_model.is_none()
-            && let (Some(p), Some(kind)) = (&self.common.player, self.client_res().player_type().clone())
+            && let (Some(p), Some(kind)) =
+                (&self.common.player, self.client_res().player_type().clone())
         {
             let mut model = Mob::new(0, kind, p.position, self.common.yaw);
             // The first position packet sets the look, not LivingEntity.yBodyRot.
@@ -737,7 +739,10 @@ impl crate::game::ClientGame<'_> {
         fov: f32,
         roll: f32,
     ) {
-        self.client.studio.freecam.activate(position, yaw, pitch, fov);
+        self.client
+            .studio
+            .freecam
+            .activate(position, yaw, pitch, fov);
         self.client.studio.freecam.roll = roll;
     }
 
@@ -758,8 +763,7 @@ impl crate::game::ClientGame<'_> {
                 .turn((xo * 0.15) as f32, (yo * 0.15) as f32);
             return;
         }
-        if self.common.player.is_some()
-            && mod_api::__private::listened(mod_api::HookId::PlayerTurn)
+        if self.common.player.is_some() && mod_api::__private::listened(mod_api::HookId::PlayerTurn)
         {
             let (orig_x, orig_y) = (xo, yo);
             self.native_player_turn(self.own_entity_id(), self.own_uuid(), &mut xo, &mut yo);

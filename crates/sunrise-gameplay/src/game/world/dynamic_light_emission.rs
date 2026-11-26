@@ -22,7 +22,8 @@ impl crate::game::ServerGame<'_> {
             let (x, z, _) = self.common.world.loaded_chunks[i];
             let key = (x, z);
             if self
-                .common.world
+                .common
+                .world
                 .chunks
                 .get(&key)
                 .is_some_and(|chunk| chunk.dynamic_pending)

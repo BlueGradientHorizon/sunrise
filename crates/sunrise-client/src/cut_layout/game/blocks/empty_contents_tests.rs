@@ -270,5 +270,4 @@ fn a_player_pours_through_the_part_and_keeps_an_empty_bucket() {
     });
 }
 
-
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

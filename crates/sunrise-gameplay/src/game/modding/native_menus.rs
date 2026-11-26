@@ -145,7 +145,11 @@ impl crate::game::ServerGame<'_> {
         self.in_menu_owner_level(conn, |game| game.install_native_menu(conn, open))?
     }
 
-    pub(in crate::game) fn install_pending_menu_open(&mut self, conn: u32, request: PendingMenuOpen) {
+    pub(in crate::game) fn install_pending_menu_open(
+        &mut self,
+        conn: u32,
+        request: PendingMenuOpen,
+    ) {
         let opened = self.in_menu_owner_level(conn, |game| match request {
             PendingMenuOpen::Native(open) => game.install_native_menu(conn, open).is_some(),
             PendingMenuOpen::ModMenu(open) => {

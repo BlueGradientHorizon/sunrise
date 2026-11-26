@@ -855,8 +855,12 @@ impl ServerGame<'_> {
         }
         let cause = src.cause;
         if self.common.is_logical_server() {
-            let entity =
-                |id| Some(mod_api::EntityRef::new(self.common.native_lifecycle.epoch()?, id));
+            let entity = |id| {
+                Some(mod_api::EntityRef::new(
+                    self.common.native_lifecycle.epoch()?,
+                    id,
+                ))
+            };
             let start = mod_api::ExplosionStart::from(mod_api::__private::built::ExplosionStart {
                 dimension: self.common.dim.key(),
                 center,

@@ -2,8 +2,6 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
-    
-
     use mod_api::BlockEdit;
     use mod_api::BlockRun;
 

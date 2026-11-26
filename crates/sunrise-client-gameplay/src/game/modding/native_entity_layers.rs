@@ -80,7 +80,10 @@ const fn mask_of(layers: &[StockLayer]) -> StockLayerMask {
 const PLAYER_STOCK_MASK: StockLayerMask = mask_of(&PLAYER_STOCK_LAYERS);
 
 /// Stock layers supported by `kind`'s vanilla renderer, resolved once at resource load.
-fn stock_layers_for_mob(kind: &Arc<MobType>, data: &dyn render::RenderDataSource) -> Vec<StockLayer> {
+fn stock_layers_for_mob(
+    kind: &Arc<MobType>,
+    data: &dyn render::RenderDataSource,
+) -> Vec<StockLayer> {
     let mob = Mob::new(0, kind.clone(), sunrise_core::geometry::Vec3::ZERO, 0.0);
     let mut out = Vec::new();
     if kind.species == Species::SnowGolem {

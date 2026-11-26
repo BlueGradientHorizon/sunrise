@@ -454,7 +454,16 @@ impl crate::game::ServerGame<'_> {
         &mut self,
         conn: u32,
     ) -> Option<&mut sunrise_sim::nether_portal::PortalState> {
-        Some(&mut self.server.lan.as_mut()?.play.entry(conn).or_default().portal)
+        Some(
+            &mut self
+                .server
+                .lan
+                .as_mut()?
+                .play
+                .entry(conn)
+                .or_default()
+                .portal,
+        )
     }
 
     /// The player's `portalCooldown`, 0 for one without a record.
@@ -766,7 +775,12 @@ impl crate::game::ServerGame<'_> {
         {
             let ready = self.guest_portal_cooldown(conn) == 0;
             if ready {
-                let Some(player) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+                let Some(player) = self
+                    .server
+                    .lan
+                    .as_ref()
+                    .and_then(|host| host.hub.guest(conn))
+                else {
                     return;
                 };
                 let (id, name) = (player.uuid, player.name.clone());
@@ -775,7 +789,11 @@ impl crate::game::ServerGame<'_> {
                 if cancel {
                     return;
                 }
-                if !self.server_player_travel_allowed(conn, self.common.dim, TravelCause::EndGateway) {
+                if !self.server_player_travel_allowed(
+                    conn,
+                    self.common.dim,
+                    TravelCause::EndGateway,
+                ) {
                     return;
                 }
             }
@@ -895,15 +913,11 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The player moves to `target`'s level at the approximate exit while its chunks load.
-    pub fn start_server_trip(
-        &mut self,
-        conn: u32,
-        target: Dim,
-        plan: Option<Plan>,
-    ) {
+    pub fn start_server_trip(&mut self, conn: u32, target: Dim, plan: Option<Plan>) {
         // A player changing level carries no mob a mod seated on it: it gets off here.
         if target != self.common.dim
-            && let Some(carrier) = self.server
+            && let Some(carrier) = self
+                .server
                 .lan
                 .as_ref()
                 .and_then(|host| host.hub.guest(conn))
@@ -1895,13 +1909,10 @@ mod transfer_lifetime_tests {
 pub mod credits_respawn_tests {
     use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::ANCHOR;
 
-
     use sunrise_level::chunk::Chunk;
-    use sunrise_protocol::{
-        packets::{
-            configuration::ClientInformation,
-            play::{self, Clientbound as C, Serverbound as S},
-        },
+    use sunrise_protocol::packets::{
+        configuration::ClientInformation,
+        play::{self, Clientbound as C, Serverbound as S},
     };
     use sunrise_sim::lan::{
         guest::{Guest, InboxItem, SPECTATOR},

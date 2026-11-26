@@ -52,10 +52,7 @@ fn meta_hub_with(sync: SyncData) -> sunrise_sim::lan::hub::Hub {
     )
 }
 
-fn sent(
-    m: &sunrise_sim::mobs::Mob,
-    hub: &sunrise_sim::lan::hub::Hub,
-) -> Vec<(u8, i32, Value)> {
+fn sent(m: &sunrise_sim::mobs::Mob, hub: &sunrise_sim::lan::hub::Hub) -> Vec<(u8, i32, Value)> {
     let (mut meta, mut defaults) = (Vec::new(), Vec::new());
     mob_meta(m, hub, None, 0, &mut meta, &mut defaults);
     let default = defaults.iter().find(|(index, _, _)| *index == 18);

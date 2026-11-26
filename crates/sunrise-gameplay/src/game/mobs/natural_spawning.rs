@@ -22,8 +22,9 @@ use sunrise_sim::mobs::{
     seen_grid::SeenGrid,
     spawn_rules::{Reason, SpawnLevel},
     spawn_selection::{
-        self, Category, Counted, Heightmap, NaturalLevel, PlayerSquares, SpawnBuffers, SpawnCluster,
-        SpawnCost, SpawnPlayer, SpawnRequest, SpawnState, StructureAt, StructureSpawns,
+        self, Category, Counted, Heightmap, NaturalLevel, PlayerSquares, SpawnBuffers,
+        SpawnCluster, SpawnCost, SpawnPlayer, SpawnRequest, SpawnState, StructureAt,
+        StructureSpawns,
     },
 };
 use sunrise_sim::vanillagen::{GeneratedMob, VanillaTerrain};
@@ -1860,8 +1861,7 @@ impl<'a> crate::game::ServerGame<'a> {
                         ids.get(&rider).copied()
                     };
                     if resolved == Some(body_id)
-                        && let Some(chicken) =
-                            self.common.mobs.iter_mut().find(|m| m.id == chicken)
+                        && let Some(chicken) = self.common.mobs.iter_mut().find(|m| m.id == chicken)
                     {
                         chicken.extra.jockey = true;
                         chicken.extra.rider = Some(body_id);
@@ -1880,11 +1880,9 @@ impl<'a> crate::game::ServerGame<'a> {
                     let mob = if join.is_joined() {
                         self.common.mobs.locate(*join).map(|i| &self.common.mobs[i])
                     } else {
-                        self.common
-                            .persist
-                            .off_level
-                            .get(id)
-                            .and_then(sunrise_gameplay_common::game::entity_memory::OffLevel::as_mob)
+                        self.common.persist.off_level.get(id).and_then(
+                            sunrise_gameplay_common::game::entity_memory::OffLevel::as_mob,
+                        )
                     };
                     mob.map(|mob| (mob, Some(*id)))
                 }
@@ -2997,8 +2995,7 @@ mod tests {
             }));
             let start = [2.5, 70.0, 2.5];
             let cart_kind = "minecraft:spawner_minecart";
-            let Some(Target::Cart(id)) =
-                game.summon_with_nbt(cart_kind, start, "{}").unwrap()
+            let Some(Target::Cart(id)) = game.summon_with_nbt(cart_kind, start, "{}").unwrap()
             else {
                 panic!("spawner minecart joined");
             };

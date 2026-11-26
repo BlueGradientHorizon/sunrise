@@ -41,7 +41,8 @@ impl ServerGame<'_> {
         // The hub may already have the new button map while native advancement
         // hooks are still ahead of UpdateRecipes. Do not open on an unpublished map.
         if kind == Kind::Stonecutter
-            && self.server
+            && self
+                .server
                 .lan
                 .as_ref()
                 .is_some_and(|host| host.hub.native_reload_pending)
@@ -54,7 +55,8 @@ impl ServerGame<'_> {
         }
         self.guest_replace_menu(conn, false, |game| {
             let title = sunrise_protocol::text::translatable(station.kind.title_key(), &[]);
-            let Some(window) = game.server
+            let Some(window) = game
+                .server
                 .lan
                 .as_mut()
                 .and_then(|host| host.hub.open_window(conn, menu_type, title))
@@ -64,7 +66,8 @@ impl ServerGame<'_> {
             let mut menu = Box::new(Menu::new(kind));
             menu.set_registry_id(Some(menu_type));
             if kind == Kind::Stonecutter {
-                menu.stone.server_buttons = game.server
+                menu.stone.server_buttons = game
+                    .server
                     .lan
                     .as_ref()
                     .map(|host| host.hub.sync_data().stonecutter_buttons.clone());
@@ -75,7 +78,8 @@ impl ServerGame<'_> {
             menu.item_smithed_hook = kind == Kind::Smithing && hooked;
             if kind == Kind::Enchanting {
                 // Player.enchantmentSeed, made when first needed.
-                let needs_seed = game.server
+                let needs_seed = game
+                    .server
                     .lan
                     .as_ref()
                     .and_then(|host| host.hub.guests.iter().find(|g| g.conn == conn))
@@ -327,7 +331,8 @@ impl ServerGame<'_> {
         }
         self.guest_replace_menu(conn, false, |game| {
             let title = sunrise_protocol::text::translatable("container.lectern", &[]);
-            let Some(window) = game.server
+            let Some(window) = game
+                .server
                 .lan
                 .as_mut()
                 .and_then(|host| host.hub.open_window(conn, "minecraft:lectern", title))
@@ -1170,11 +1175,15 @@ impl ServerGame<'_> {
         let (window, beacon, pos) = (gs.window, gs.kind == StationKind::Beacon, gs.pos);
         let invalid = !self.lan_station_valid(g, gs);
         if invalid {
-            self.reply_menu_click(conn, sunrise_gameplay_common::game::lan_menu_data::ClickReply::Close(window));
+            self.reply_menu_click(
+                conn,
+                sunrise_gameplay_common::game::lan_menu_data::ClickReply::Close(window),
+            );
         } else if beacon {
             // The beacon's data slots follow its block entity.
             let data = self.beacon_data(pos);
-            if let Some(gs) = self.server
+            if let Some(gs) = self
+                .server
                 .lan
                 .as_mut()
                 .and_then(|host| host.menus.get_mut(&conn))
@@ -1211,7 +1220,10 @@ impl ServerGame<'_> {
         if self.lan_lectern_valid(g, key) {
             self.lan_send_lectern(conn, false);
         } else {
-            self.reply_menu_click(conn, sunrise_gameplay_common::game::lan_menu_data::ClickReply::Close(window));
+            self.reply_menu_click(
+                conn,
+                sunrise_gameplay_common::game::lan_menu_data::ClickReply::Close(window),
+            );
         }
     }
 }

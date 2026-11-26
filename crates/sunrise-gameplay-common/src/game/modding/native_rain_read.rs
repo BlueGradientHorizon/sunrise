@@ -113,17 +113,18 @@ pub trait NativeRainReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     where
         '__sg: 'a,
     {
-        use sunrise_world::dimension_type::{CardinalLight, Skybox};
-        use sunrise_world::worldgen::value_provider::IntProvider;
         use crate::game::side_ops::world::SideOps as _;
         use sunrise_world::dimension_type::DimensionFacts;
+        use sunrise_world::dimension_type::{CardinalLight, Skybox};
+        use sunrise_world::worldgen::value_provider::IntProvider;
         let key = sunrise_core::LevelKey::parse(level.dimension_id()).ok()?;
-        let facts = if let Some(pending) = self.side_state().side_constructing_dimension_facts(level) {
-            pending.unwrap_or_else(|| DimensionFacts::of_builtin_level(key))
-        } else {
-            self.native_level_read_world(level)?;
-            self.dimension_facts_for(key)
-        };
+        let facts =
+            if let Some(pending) = self.side_state().side_constructing_dimension_facts(level) {
+                pending.unwrap_or_else(|| DimensionFacts::of_builtin_level(key))
+            } else {
+                self.native_level_read_world(level)?;
+                self.dimension_facts_for(key)
+            };
         Some(LevelDimensionType {
             id: &facts.id,
             min_y: facts.height.min_y,

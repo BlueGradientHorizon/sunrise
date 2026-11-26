@@ -492,11 +492,17 @@ impl crate::game::ClientGame<'_> {
         // The reload's mod listeners register here, on the thread that owns
         // the game, before the staging worker starts: each listener keeps its
         // registering mod for crash attribution.
-        let max_atlas_size = self.client.renderer.0.as_ref().map_or(
-            sunrise_client::hud::MAX_ATLAS_SIZE,
-            |renderer| renderer.device.limits().max_texture_dimension_2d,
-        );
-        let captured = self.common.capture_candidate_settings(&self.common.options.resources)
+        let max_atlas_size = self
+            .client
+            .renderer
+            .0
+            .as_ref()
+            .map_or(sunrise_client::hud::MAX_ATLAS_SIZE, |renderer| {
+                renderer.device.limits().max_texture_dimension_2d
+            });
+        let captured = self
+            .common
+            .capture_candidate_settings(&self.common.options.resources)
             .map_err(|error| std::io::Error::other(error.to_string()))?;
         let client_listeners = self.register_client_reload_listeners(&captured);
         let texture_atlases = super::client_reload::collect_texture_atlases();
@@ -625,18 +631,19 @@ impl crate::game::ClientGame<'_> {
             None => self.common.prepare_loop_context(&root)?,
         };
         let professions = self.prepare_client_professions()?;
-        let item_extensions =
-            Self::prepare_client_item_extensions(&gui, &mut self.client.client_item_extension_owners);
+        let item_extensions = Self::prepare_client_item_extensions(
+            &gui,
+            &mut self.client.client_item_extension_owners,
+        );
         // A reload from the title can apply before the start's world-rest worker is done.
         self.common.join_world_rest()?;
         let tab_modifiers = sunrise_client::polytone_creative_tabs::TabModifier::read_all(&root);
-        let standalone_geometry =
-            super::native_block_entity_draw::StandaloneGeometry::new(
-                &pack,
-                &client_pack,
-                &gui,
-                Some(self.client_res().block_entity_render()),
-            );
+        let standalone_geometry = super::native_block_entity_draw::StandaloneGeometry::new(
+            &pack,
+            &client_pack,
+            &gui,
+            Some(self.client_res().block_entity_render()),
+        );
         self.client.native_shaders.pick_hdr.get_mut().forget();
         // Keep the working GPU resources, and hand its window surface over.
         if let Some(renderer) = &mut self.client.renderer.0 {
@@ -934,7 +941,11 @@ fn stage_pack_with_emissive(
                     },
                 );
                 (
-                    sunrise_client::assets::RenderAssets::load_with_emissive(&resource_root, assets, emissive_sprites),
+                    sunrise_client::assets::RenderAssets::load_with_emissive(
+                        &resource_root,
+                        assets,
+                        emissive_sprites,
+                    ),
                     atlas.join(),
                     panorama.join(),
                     small

@@ -203,5 +203,3 @@ pub(in crate::game) fn vanilla_structure_tags(root: &std::path::Path) -> &'stati
 pub fn text_of(v: &Value) -> Text {
     sunrise_game_data::scoreboard::comp_text(v)
 }
-
-

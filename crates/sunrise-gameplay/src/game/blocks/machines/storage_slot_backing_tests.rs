@@ -13,8 +13,7 @@ use sunrise_core::{
     position::BlockPos,
 };
 use sunrise_gameplay_common::game::{
-    GameGameExt1 as _, Resources,
-    chat_common::ChatCommonGameExt1 as _,
+    GameGameExt1 as _, Resources, chat_common::ChatCommonGameExt1 as _,
     native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
     native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _,
     native_server::NativeServerGameExt1 as _,
@@ -65,7 +64,13 @@ fn host_game<'a>(resources: &'a mut Option<Arc<Resources>>) -> ServerGame<'a> {
 
     let mut game = game(resources);
     open_to_lan(&mut game);
-    game.server.lan.as_mut().unwrap().hub.guests.push(guest(GUEST));
+    game.server
+        .lan
+        .as_mut()
+        .unwrap()
+        .hub
+        .guests
+        .push(guest(GUEST));
     game
 }
 
@@ -230,7 +235,11 @@ fn an_open_double_chest_menu_backs_each_slot_as_its_sides_do_until_it_closes() {
     let menu = opened.unwrap();
     // Closed: the handle outlives the menu but reaches nothing it showed.
     game.guest_close_all(GUEST);
-    assert!(game.server.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
+    assert!(
+        game.server.lan.as_ref().unwrap().hub.guests[0]
+            .menu
+            .is_none()
+    );
     for slot in [0, 54] {
         assert_eq!(menu.slot_backing(&game, slot), None, "menu slot {slot}");
         assert_eq!(

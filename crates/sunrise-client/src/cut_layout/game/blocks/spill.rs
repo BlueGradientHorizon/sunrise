@@ -152,8 +152,6 @@ pub(crate) mod tests {
 
     use sunrise_world::level::removal;
 
-    
-
     fn removal_outputs(
         mode: u8,
         check: impl FnOnce(&mut GameLevel<'_>, &mut sunrise_core::random::LevelRandom),

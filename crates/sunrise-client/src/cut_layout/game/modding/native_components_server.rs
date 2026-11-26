@@ -1,6 +1,5 @@
 #![cfg(test)]
 
-
 #[cfg(test)]
 pub(crate) mod item_resource_property_tests {
     use crate::game::native_components::item_resource_property_tests::engine;

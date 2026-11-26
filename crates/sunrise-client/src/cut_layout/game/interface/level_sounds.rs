@@ -1,6 +1,5 @@
 #![cfg(test)]
 
-
 #[cfg(test)]
 pub(crate) mod tests {
     use super::super::native_entity_refs::tests::with_game;
@@ -106,7 +105,8 @@ pub(crate) mod tests {
             let (mut nearby, rx_nearby) = guest(22, 22, at);
             nearby.dimension = nether.id().into();
             let (caller, rx_caller) = guest(23, 23, at);
-            game.server.lan
+            game.server
+                .lan
                 .as_mut()
                 .unwrap()
                 .hub

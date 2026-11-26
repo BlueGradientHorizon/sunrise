@@ -3,8 +3,8 @@ use mod_api::prelude::ItemsHost;
 use mod_api::{BuildCreativeModeTabContentsEvent, Hooks, HostSide};
 use mod_api::{Compound, Tag};
 use mod_api::{
-    CreativeModeTabs, CreativeTabEditError, CreativeTabList,
-    CreativeTabPermissions, CreativeTabPlacement, CreativeTabReadError, CreativeTabVisibility,
+    CreativeModeTabs, CreativeTabEditError, CreativeTabList, CreativeTabPermissions,
+    CreativeTabPlacement, CreativeTabReadError, CreativeTabVisibility,
 };
 use std::sync::Arc;
 use std::sync::Mutex;

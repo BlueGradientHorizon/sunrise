@@ -1,7 +1,6 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-
     use sunrise_protocol::{
         buf::Reader,
         packets::play::Clientbound as C,

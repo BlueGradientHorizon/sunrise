@@ -2,12 +2,12 @@
 //! on the server (a LAN guest's window 0) and in the client's prediction, every mod's Part with
 //! any refusal standing, `menu_clicked`, and `recipe_book_place` taking the 2×2 grid's placement
 //! over. The fixtures need prepared resources.
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use mod_api::{
     Flow, Hooks, MenuClickedEvent, MenuContainer, MenuPart, MenuSlotRulesEvent, ModEntry, Mods,
     RecipeBookPlaceEvent, Registrar, ServerHost,
 };
 use std::cell::{Cell, RefCell};
-use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use sunrise_client_gameplay::game::ClientGame;
 use sunrise_gameplay::game::{ServerGame, native_guest_turn_tests::with_guests};
 use sunrise_gameplay_common::game::tables::GameItems as _;
@@ -105,7 +105,11 @@ fn with_inventory_mods(
 ) {
     with_inventory_mods_scope(mods, || {
         with_guests(|game| {
-            assert!(game.server.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
+            assert!(
+                game.server.lan.as_ref().unwrap().hub.guests[0]
+                    .menu
+                    .is_none()
+            );
             test(game);
         })
     });
@@ -186,7 +190,11 @@ fn refused_on_both_sides(cases: &[(Held, (usize, i32, Input))]) {
         }
     });
     with_guests(|server| {
-        assert!(server.server.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
+        assert!(
+            server.server.lan.as_ref().unwrap().hub.guests[0]
+                .menu
+                .is_none()
+        );
         for (before, click) in cases {
             assert_eq!(served(server, before, *click), *before, "served {click:?}");
         }
@@ -269,14 +277,20 @@ fn an_inventory_part_that_places_nothing_refuses_the_2x2_grid_a_recipe() {
     with_inventory_mods(vec![("grid", no_placement)], |game| {
         let index = game.stations().recipe_index.clone();
         let planks = index.first_display("minecraft:oak_planks").unwrap();
-        game.server.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-            guest.dimension = "minecraft:overworld".into();
-            guest.loaded = true;
-            guest
-                .recipe_book
-                .add_recipes(&index, &["minecraft:oak_planks".to_owned()]);
-            guest.inventory[0] = stack("minecraft:oak_log", 3);
-        });
+        game.server
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .update(0, |guest| {
+                guest.dimension = "minecraft:overworld".into();
+                guest.loaded = true;
+                guest
+                    .recipe_book
+                    .add_recipes(&index, &["minecraft:oak_planks".to_owned()]);
+                guest.inventory[0] = stack("minecraft:oak_log", 3);
+            });
         game.lan_guest_packet(
             12,
             Serverbound::PlaceRecipe(PlaceRecipe {

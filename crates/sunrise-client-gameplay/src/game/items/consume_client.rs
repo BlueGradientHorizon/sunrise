@@ -15,7 +15,13 @@ impl EmissionWorld for ClientEmitter<'_, '_> {
     type Random = ();
     type Source = EntityRandom;
     fn random_source(&mut self, (): ()) -> &mut EntityRandom {
-        &mut self.0.common.player.as_mut().expect("emitting player").random
+        &mut self
+            .0
+            .common
+            .player
+            .as_mut()
+            .expect("emitting player")
+            .random
     }
     fn spawn_item_particles(&mut self, stack: ItemStack, count: i32) -> Result<(), Infallible> {
         self.0.eat_particles(&stack, count.max(0) as u32);

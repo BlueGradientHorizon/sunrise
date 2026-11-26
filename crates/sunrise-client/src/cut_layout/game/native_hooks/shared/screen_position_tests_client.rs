@@ -1068,4 +1068,3 @@ fn player_slots_follow_the_container_slots_in_menu_order() {
     assert_eq!(bare.visible_slots().collect::<Vec<_>>(), [base]);
     assert_eq!(set(&bare, 1, Some([26.0, 18.0])), Ok(()));
 }
-

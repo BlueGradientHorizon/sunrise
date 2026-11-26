@@ -648,7 +648,10 @@ impl crate::game::ServerGame<'_> {
                 i += 1;
                 continue;
             }
-            let (id, kind) = (self.common.item_frames[i].id, self.common.item_frames[i].kind());
+            let (id, kind) = (
+                self.common.item_frames[i].id,
+                self.common.item_frames[i].kind(),
+            );
             // ServerLevel.tick skips an entity that `isRemoved`, here one whose removal is queued.
             let target = super::commands::Target::Frame(id);
             if self.target_removed(&target) || !self.native_tick_pre_one(&mut round, id, kind) {

@@ -1,6 +1,4 @@
-use {
-    sunrise_gameplay_common::game::creatures::{Mob, MobWorld, Species, Vec3, breeding_credit},
-};
+use sunrise_gameplay_common::game::creatures::{Mob, MobWorld, Species, Vec3, breeding_credit};
 
 use sunrise_core::random::LegacyRandom;
 use sunrise_sim::mobs::{

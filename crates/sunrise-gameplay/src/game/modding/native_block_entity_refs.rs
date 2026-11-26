@@ -21,10 +21,7 @@ use sunrise_sim::save;
 use sunrise_world::registry::BlockStateId;
 
 impl ServerGame<'_> {
-    pub fn block_entity_sync(
-        &mut self,
-        entity: BlockEntityRef,
-    ) -> Result<(), LevelWriteError> {
+    pub fn block_entity_sync(&mut self, entity: BlockEntityRef) -> Result<(), LevelWriteError> {
         if !self.common.is_logical_server() {
             return Err(LevelWriteError::Unavailable);
         }
@@ -657,10 +654,11 @@ impl ServerGame<'_> {
             self.sculk_unregister_listener(effects.pos);
         }
         if effects.gateway {
-            self.server
-                .be_anims
-                .gateway_servers
-                .remove(&[effects.pos.0, effects.pos.1, effects.pos.2]);
+            self.server.be_anims.gateway_servers.remove(&[
+                effects.pos.0,
+                effects.pos.1,
+                effects.pos.2,
+            ]);
         }
         let at = BlockPos::new(effects.pos.0, effects.pos.1, effects.pos.2);
         // (iii) BlockEntity.setRemoved subclass effects: JukeboxBlockEntity stops its

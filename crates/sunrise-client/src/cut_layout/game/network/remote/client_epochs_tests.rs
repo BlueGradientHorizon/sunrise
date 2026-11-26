@@ -101,8 +101,8 @@ fn client_epochs_follow_level_replacement_and_logout() {
 #[ignore = "daily"]
 fn a_dimension_change_replaces_a_signed_world_border() {
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
-    use sunrise_level::worldborder::WorldBorder;
     use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
+    use sunrise_level::worldborder::WorldBorder;
     use sunrise_protocol::packets::play::{self, Clientbound as C};
 
     sunrise_gameplay_common::game::in_own_process(

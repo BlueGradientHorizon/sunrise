@@ -2,10 +2,7 @@
 //! `canBeHydrated`) through the game's level, on an authoritative server only.
 use mod_api::{BlockPart, CanBeHydratedEvent, Hooks, IsFertileEvent, LevelHost, Registrar};
 use sunrise_world::level::LevelAccess;
-use {
-    crate::game::*,
-    sunrise_gameplay_common::game::BlockPos,
-};
+use {crate::game::*, sunrise_gameplay_common::game::BlockPos};
 
 #[derive(Clone)]
 struct Farmland;
@@ -80,4 +77,3 @@ fn a_farmland_part_answers_fertility_and_hydration() {
         });
     });
 }
-

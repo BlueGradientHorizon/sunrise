@@ -972,9 +972,17 @@ impl crate::game::ServerGame<'_> {
                     if !kept && !m.removed && !m.alive() {
                         let split = m.death_time >= 20
                             && m.extra.size > 1
-                            && matches!(m.species(), Species::Slime | Species::MagmaCube | Species::SulfurCube);
+                            && matches!(
+                                m.species(),
+                                Species::Slime | Species::MagmaCube | Species::SulfurCube
+                            );
                         if m.death_time >= 20 {
-                            gone.push((m.id, m.position, f64::from(m.width()), f64::from(m.height())));
+                            gone.push((
+                                m.id,
+                                m.position,
+                                f64::from(m.width()),
+                                f64::from(m.height()),
+                            ));
                         }
                         if split || !m.extra.effects.is_empty() {
                             removal = Some((m.join, split));
@@ -1142,7 +1150,9 @@ impl crate::game::ServerGame<'_> {
                 let mut vehicle_removal = None;
                 if let Some((join, split)) = removal {
                     if removing_vehicle.is_some_and(|id| {
-                        self.common.mob_object(id).is_some_and(|mob| mob.join == join)
+                        self.common
+                            .mob_object(id)
+                            .is_some_and(|mob| mob.join == join)
                     }) {
                         vehicle_removal = Some((join, split));
                     } else {
@@ -1222,7 +1232,9 @@ impl crate::game::ServerGame<'_> {
                         }
                         Pause::AfterDamage(_) => {
                             if self.common.mobs[i].has_protected_hurt()
-                                || sunrise_sim::mobs::creaking::has_pending_hurt(&self.common.mobs[i])
+                                || sunrise_sim::mobs::creaking::has_pending_hurt(
+                                    &self.common.mobs[i],
+                                )
                             {
                                 // The earlier emissions (e.g. drowning bubbles) precede this hurt.
                                 let before_hurt = events.split_off(resume_from);
@@ -1766,7 +1778,8 @@ impl mod_api::InsideEntityAccess for GameMobInsideAccess<'_, '_> {
                 {
                     let at = m.position.components();
                     let pitch = 2.0 + m.random.next_float() * 0.4;
-                    self.game.server_play_sound("minecraft:entity.generic.burn", at, 0.4, pitch);
+                    self.game
+                        .server_play_sound("minecraft:entity.generic.burn", at, 0.4, pitch);
                 }
             }
         }

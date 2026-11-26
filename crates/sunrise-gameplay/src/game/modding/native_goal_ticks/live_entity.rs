@@ -315,9 +315,9 @@ impl GoalCx<'_, '_> {
             )
         })? {
             Ok(mod_api::ClipOutcome::Hit(hit)) => Some(hit),
-            Ok(mod_api::ClipOutcome::Miss) => Some(
-                sunrise_gameplay_common::game::native_entity_refs_common::miss_hit(from, to),
-            ),
+            Ok(mod_api::ClipOutcome::Miss) => {
+                Some(sunrise_gameplay_common::game::native_entity_refs_common::miss_hit(from, to))
+            }
             _ => None,
         }
     }

@@ -457,9 +457,7 @@ pub(crate) use crate::game::server_side::native_components_server::item_resource
             // leaving 28/64 room and drawing 1 + floor(9 * 12 / 16) = 7 pixels.
             let mut outer = ItemStack::new("minecraft:blue_bundle", 1);
             outer.data_mut().bundle_contents = vec![bundle_stack];
-            let outer_bar = ItemResource::of(&test_snapshot(&outer))
-                .bar(game)
-                .unwrap();
+            let outer_bar = ItemResource::of(&test_snapshot(&outer)).bar(game).unwrap();
             assert_eq!((outer_bar.width, outer_bar.color), (7, 0x7087FF));
             assert_eq!(
                 sunrise_client::bundle::Contents::room_in_stack(items, &outer, &stone),
@@ -474,10 +472,9 @@ pub(crate) use crate::game::server_side::native_components_server::item_resource
             // An outer bundle holding the emptied inner bundle counts only its 1/16 overhead.
             let mut outer_empty_inner = ItemStack::new("minecraft:blue_bundle", 1);
             outer_empty_inner.data_mut().bundle_contents = vec![emptied];
-            let inner_empty_bar =
-                ItemResource::of(&test_snapshot(&outer_empty_inner))
-                    .bar(game)
-                    .unwrap();
+            let inner_empty_bar = ItemResource::of(&test_snapshot(&outer_empty_inner))
+                .bar(game)
+                .unwrap();
             assert_eq!(
                 (inner_empty_bar.width, inner_empty_bar.color),
                 (1, 0x7087FF)
@@ -609,9 +606,7 @@ pub(crate) mod combat_query_tests {
     use sunrise_sim::motion::PlayerMotion;
     use {
         crate::game::native_components::*,
-        sunrise_gameplay_common::game::native_components::{
-            ItemStack, stack_attack_bonus_preview,
-        },
+        sunrise_gameplay_common::game::native_components::{ItemStack, stack_attack_bonus_preview},
     };
 
     fn actor(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> mod_api::LivingRef {
@@ -957,7 +952,6 @@ pub(crate) mod combat_query_tests {
         });
     }
 }
-
 
 use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1 as _;
 

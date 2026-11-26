@@ -454,5 +454,4 @@ fn a_loved_coin_from_the_ground_is_admired_and_bartered_isolated() {
     let _ = std::fs::remove_dir_all(&scratch);
 }
 
-
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

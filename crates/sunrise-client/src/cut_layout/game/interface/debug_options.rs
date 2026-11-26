@@ -21,7 +21,6 @@ pub(crate) mod tests {
     fn title_game<'a>(
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
     ) -> sunrise_client_gameplay::game::ClientGame<'a> {
-        
         let root = std::path::PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES").expect("prepared resources required"),
         );

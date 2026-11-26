@@ -105,4 +105,3 @@ fn a_random_tick_part_reads_a_neighbours_weathering_facts_through_the_level() {
         });
     });
 }
-

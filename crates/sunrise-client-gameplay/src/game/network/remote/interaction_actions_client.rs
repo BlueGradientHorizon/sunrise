@@ -229,10 +229,12 @@ impl crate::game::ClientGame<'_> {
         let Some((target, body)) = self.remote_tracking_body(id) else {
             return;
         };
-        self.client
-            .particles
-            .0
-            .tracking_emitter(ParticleOptions::simple(particle), target, body, None);
+        self.client.particles.0.tracking_emitter(
+            ParticleOptions::simple(particle),
+            target,
+            body,
+            None,
+        );
     }
     /// Run BlockItem.place on a disposable level for a click: where it placed
     /// and the blocks it set. The real level supplies collision shapes and

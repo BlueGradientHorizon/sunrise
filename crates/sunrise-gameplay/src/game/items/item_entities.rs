@@ -446,8 +446,7 @@ impl crate::game::ServerGame<'_> {
             }
             // `Entity.discard` calls `ServerLevel.EntityCallbacks.onTrackingEnd` within
             // this turn. Restore surviving drops for the leave hook even without a Post.
-            if tell_post
-                || (expiry_discarded && leave_hook && !self.common.persist.live.is_empty())
+            if tell_post || (expiry_discarded && leave_hook && !self.common.persist.live.is_empty())
             {
                 let id = items[i].id;
                 let given = self.give_items_back(items, &mut pass, i, round, |game, round| {

@@ -205,7 +205,8 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let sweep = self.sweep_attack_position(scale, crit, &target_kind);
-        let knockback_attack = scale > 0.9 && self.common.player.as_ref().is_some_and(|p| p.sprinting);
+        let knockback_attack =
+            scale > 0.9 && self.common.player.as_ref().is_some_and(|p| p.sprinting);
         let player = self.common.player.as_ref();
         let from = player.map(|p| [p.position.x, p.position.y, p.position.z]);
         if knockback_attack && let Some(at) = from {

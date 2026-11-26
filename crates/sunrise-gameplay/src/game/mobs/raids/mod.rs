@@ -2,8 +2,8 @@
 //! their waves, boss bar, victory and the raiders' bookkeeping. The rules are
 //! `sunrise_client::patrol` and `sunrise_client::raid`; this is the game's
 //! side of them.
-use crate::game::ServerGame;
 use super::Dim;
+use crate::game::ServerGame;
 use std::collections::{HashMap, HashSet};
 use sunrise_core::nbt::Tag;
 use sunrise_core::{

@@ -45,10 +45,7 @@ pub struct RegisteredEntityRenderer {
 }
 
 impl RegisteredEntityRenderer {
-    pub fn new(
-        renderer: Arc<dyn EntityRenderer>,
-        owner: Option<CallbackOwner>,
-    ) -> Self {
+    pub fn new(renderer: Arc<dyn EntityRenderer>, owner: Option<CallbackOwner>) -> Self {
         Self { renderer, owner }
     }
 

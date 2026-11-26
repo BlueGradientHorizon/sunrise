@@ -956,9 +956,6 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
-
-
-
 use sunrise_gameplay_common::game::api_values_common::ApiValuesCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::equip_answers::EquipAnswersGameExt1 as _;

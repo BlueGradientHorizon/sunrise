@@ -146,9 +146,8 @@ impl WorldBiomeRegistry {
                 .collect(),
             omitted.clone(),
         );
-        let mut overrides =
-            sunrise_sim::vanillagen::biome_modifiers_over_packs(&dir, &overrides)?
-                .unwrap_or(overrides);
+        let mut overrides = sunrise_sim::vanillagen::biome_modifiers_over_packs(&dir, &overrides)?
+            .unwrap_or(overrides);
         let mut final_files = files.clone();
         final_files.extend(
             overrides
@@ -206,4 +205,3 @@ impl WorldBiomeRegistry {
         self.differs_from_preload
     }
 }
-

@@ -2,12 +2,10 @@ use crate::game::client_side::villager_client_client::receive;
 use std::sync::Arc;
 use sunrise_client::mobs::render;
 use sunrise_gameplay_common::game::lan_meta_fixture::profession_hub;
-use sunrise_sim::mobs::MobTypes;
-use {
-    sunrise_gameplay_common::game::villager_client::{
-        Builtin, Mob, ResolvedProfessions, Value, server_meta,
-    },
+use sunrise_gameplay_common::game::villager_client::{
+    Builtin, Mob, ResolvedProfessions, Value, server_meta,
 };
+use sunrise_sim::mobs::MobTypes;
 fn table() -> ResolvedProfessions {
     ordered_table(&["test:engineer"])
 }

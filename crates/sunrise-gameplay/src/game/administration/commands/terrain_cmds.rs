@@ -621,7 +621,11 @@ pub(in crate::game) mod loot_location_shape_tests {
         assert!(check(&valid, [-4, 200, -4]));
         assert!(!check(&valid, [8, 200, 4]));
         for (key, matching, mismatching) in [
-            ("biomes", json!("minecraft:plains"), json!("minecraft:desert")),
+            (
+                "biomes",
+                json!("minecraft:plains"),
+                json!("minecraft:desert"),
+            ),
             ("light", json!({"light":12}), json!({"light":15})),
             (
                 "dimension",

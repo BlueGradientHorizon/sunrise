@@ -76,7 +76,12 @@ impl ClientGame<'_> {
                     if age.is_multiple_of(10) {
                         let sniffer = Some((id, self.common.mobs[i].kind.id.as_str()));
                         let hit = self
-                            .selected_block_sound(ground, below, sniffer, mod_api::BlockSoundCause::Dig)
+                            .selected_block_sound(
+                                ground,
+                                below,
+                                sniffer,
+                                mod_api::BlockSoundCause::Dig,
+                            )
                             .event;
                         self.play_audio(hit.as_str(), Some(at), 0.5, 0.5);
                     }

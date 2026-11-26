@@ -3,9 +3,9 @@
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use serde_json::Value as JsonValue;
 use sunrise_command::args::GameMode;
+use sunrise_gameplay_common::game::remote::{C, Chunk, Empty, S, Screen, Vec3, play};
 use sunrise_gameplay_common::game_modes::mode_from_id;
 use sunrise_protocol::connection::ConnReader;
-use sunrise_gameplay_common::game::remote::{C, Chunk, Empty, S, Screen, Vec3, play};
 
 pub(crate) const SELF_UUID: u128 = 0xdf71_dcc7_da3b_3506_b229_6d1f_589e_2569;
 pub(crate) const SELF_NAME: &str = "BX0W";

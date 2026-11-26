@@ -2,9 +2,9 @@
 //! any entity from its compound as `/summon` does through [`LevelRef::summon`], and move, show or remove
 //! the entities Sunrise keeps without simulating them (displays, markers,
 //! interactions); `native_display_refs.rs` poses displays.
+use super::commands::Target;
 #[cfg(test)]
 use super::commands::{data::summon_position_ok, place_summoned};
-use super::commands::Target;
 use mod_api::{EntityRef, LevelRef, LevelWriteError};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Compound;
@@ -591,7 +591,8 @@ impl crate::game::ServerGame<'_> {
             }
         }
         self.common.persist.joined_seq = self.common.persist.joined_seq.max(observed);
-        self.common.persist
+        self.common
+            .persist
             .admitted_joins
             .retain(|&(seq, _)| seq > self.common.persist.joined_seq);
     }

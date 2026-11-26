@@ -842,9 +842,12 @@ impl crate::game::ClientGame<'_> {
         laps.lap("eg_name_tags");
         // Entity shadows (EntityRenderer.extractShadow); a native pack's sun shadows replace them.
         self.mark_translucent_entity(out.len(), "minecraft:entity_shadow");
-        let pack_shadows = self.client.renderer.0.as_ref().is_some_and(|r| {
-            r.pack_entity_shadows()
-        });
+        let pack_shadows = self
+            .client
+            .renderer
+            .0
+            .as_ref()
+            .is_some_and(|r| r.pack_entity_shadows());
         let shadows = self.client.settings.entity_shadows
             && self.client.client_pack.polytone_colors.entity_shadows();
         let shadow_sprite = (shadows && !pack_shadows)
@@ -1942,7 +1945,11 @@ impl crate::game::ClientGame<'_> {
                         let cpu = now.elapsed().saturating_sub(r.last_wait);
                         sunrise_threads::work::tick_end(cpu.as_nanos() as u64);
                         let ms = |d: Duration| d.as_secs_f32() * 1000.0;
-                        let gpu = if rendered { r.gpu_times.last().copied() } else { None };
+                        let gpu = if rendered {
+                            r.gpu_times.last().copied()
+                        } else {
+                            None
+                        };
                         own_work = Some((ms(cpu), gpu));
                         if rendered {
                             let g = &self.client.settings.sunrise;
@@ -2094,12 +2101,10 @@ impl crate::game::ClientGame<'_> {
                             && self.client.screen == Screen::Playing
                             && self.common.player.is_some()
                         {
-                            self.client
-                                .perf
-                                .frame(
-                                    elapsed.as_secs_f32() * 1000.0,
-                                    booked.as_ref().map_or(&[], |frame| frame.spans.as_slice()),
-                                );
+                            self.client.perf.frame(
+                                elapsed.as_secs_f32() * 1000.0,
+                                booked.as_ref().map_or(&[], |frame| frame.spans.as_slice()),
+                            );
                             if startup::filling() {
                                 let mut fill: Vec<(&'static str, usize)> =
                                     self.client.streaming.stages().to_vec();
@@ -2428,7 +2433,13 @@ impl crate::game::ClientGame<'_> {
                     return;
                 };
                 status_rows.clear();
-                hud_layout::armor_level(armor, wi, hi, &mut g.client.hud_status_heights, &mut status_rows);
+                hud_layout::armor_level(
+                    armor,
+                    wi,
+                    hi,
+                    &mut g.client.hud_status_heights,
+                    &mut status_rows,
+                );
                 hud_layout::paint(batch, &g.client.gui.atlas, &status_rows);
             });
             self.gui_layer(VanillaGuiLayer::FoodLevel, &mut batch, &mut |g, batch| {
@@ -3298,24 +3309,15 @@ impl crate::game::ClientGame<'_> {
                         f64::from(pos.z) + 0.5,
                     ];
                     match id {
-                        1000 => self.play_audio(
-                            "minecraft:block.dispenser.dispense",
-                            Some(c),
-                            1.0,
-                            1.0,
-                        ),
-                        1001 => self.play_audio(
-                            "minecraft:block.dispenser.fail",
-                            Some(c),
-                            1.0,
-                            1.2,
-                        ),
-                        1002 => self.play_audio(
-                            "minecraft:block.dispenser.launch",
-                            Some(c),
-                            1.0,
-                            1.2,
-                        ),
+                        1000 => {
+                            self.play_audio("minecraft:block.dispenser.dispense", Some(c), 1.0, 1.0)
+                        }
+                        1001 => {
+                            self.play_audio("minecraft:block.dispenser.fail", Some(c), 1.0, 1.2)
+                        }
+                        1002 => {
+                            self.play_audio("minecraft:block.dispenser.launch", Some(c), 1.0, 1.2)
+                        }
                         1004 => self.play_audio(
                             "minecraft:entity.firework_rocket.shoot",
                             Some(c),
@@ -3325,12 +3327,7 @@ impl crate::game::ClientGame<'_> {
                         1018 => {
                             let r = self.client.particles.0.random();
                             let pitch = (r.next_float() - r.next_float()) * 0.2 + 1.0;
-                            self.play_audio(
-                                "minecraft:entity.blaze.shoot",
-                                Some(c),
-                                2.0,
-                                pitch,
-                            );
+                            self.play_audio("minecraft:entity.blaze.shoot", Some(c), 2.0, pitch);
                         }
                         1051 => {
                             let pitch =
@@ -3342,18 +3339,8 @@ impl crate::game::ClientGame<'_> {
                                 pitch,
                             );
                         }
-                        1049 => self.play_audio(
-                            "minecraft:block.crafter.craft",
-                            Some(c),
-                            1.0,
-                            1.0,
-                        ),
-                        1050 => self.play_audio(
-                            "minecraft:block.crafter.fail",
-                            Some(c),
-                            1.0,
-                            1.0,
-                        ),
+                        1049 => self.play_audio("minecraft:block.crafter.craft", Some(c), 1.0, 1.0),
+                        1050 => self.play_audio("minecraft:block.crafter.fail", Some(c), 1.0, 1.0),
                         2000 | 2010 => {
                             use sunrise_level::particle_options::{ParticleOptions, ParticleType};
                             let particle = if id == 2010 {
@@ -3635,12 +3622,7 @@ impl crate::game::ClientGame<'_> {
         );
         let random = self.client.particles.0.level_random();
         let pitch = (1.0 + (random.next_float() - random.next_float()) * 0.2) * 0.7;
-        self.play_audio_unshared(
-            "minecraft:block.end_gateway.spawn",
-            Some(at),
-            10.0,
-            pitch,
-        );
+        self.play_audio_unshared("minecraft:block.end_gateway.spawn", Some(at), 10.0, pitch);
     }
     #[inline(always)]
     pub(in crate::game) fn process_level_events_portal_travel_client(&mut self) {
@@ -4087,7 +4069,10 @@ impl crate::game::ClientGame<'_> {
             let q = sunrise_client::camera::rotation_with_roll(view_yaw, view_pitch, view_roll);
             (q.transform([0.0, 0.0, -1.0]), q.transform([0.0, 1.0, 0.0]))
         };
-        self.client.audio.0.set_listener(camera.to_array(), forward, up);
+        self.client
+            .audio
+            .0
+            .set_listener(camera.to_array(), forward, up);
         self.follow_audio_stream_entities();
         pr.lap("pr_listener");
         let block = [
@@ -4237,7 +4222,13 @@ impl crate::game::ClientGame<'_> {
             environment.set_frame(&frame);
             polytone_frame = Some(&frame);
         }
-        let fixed_time = self.client.settings.extras.pvp.tweaks.time
+        let fixed_time = self
+            .client
+            .settings
+            .extras
+            .pvp
+            .tweaks
+            .time
             .filter(|_| self.own_view())
             .map(|_| self.view_day_time());
         let sample_clock = |clock: &str| {
@@ -4388,7 +4379,13 @@ impl crate::game::ClientGame<'_> {
             && mod_api::__private::listened(mod_api::HookId::RenderViewTransform)
             && let Some(renderer) = &self.client.renderer.0
         {
-            let usable = renderer.view_transform_validator([yaw, pitch, roll], fov_degrees, depth_far, bob, spin);
+            let usable = renderer.view_transform_validator(
+                [yaw, pitch, roll],
+                fov_degrees,
+                depth_far,
+                bob,
+                spin,
+            );
             mod_api::ViewTransform::with_frame(usable, |transform| {
                 self.native_render_view_transform(camera_alpha as f32, transform);
                 glam::Mat4::from_cols_array(&transform.matrix())
@@ -4402,7 +4399,8 @@ impl crate::game::ClientGame<'_> {
             (!title && self.camera_subject().is_some()).then_some(self.client.view.eye);
         let previous_camera = self.client.native_camera_frame.take();
         self.client.native_camera_frame = (mods_read_camera && !title).then(|| {
-            let mut dimension = previous_camera.map_or_else(String::new, |snapshot| snapshot.dimension);
+            let mut dimension =
+                previous_camera.map_or_else(String::new, |snapshot| snapshot.dimension);
             dimension.clear();
             dimension.push_str(self.common.dim.id());
             let partial = camera_alpha as f32;
@@ -4445,7 +4443,6 @@ impl crate::game::ClientGame<'_> {
         });
         if reload_overlay.is_none() {
             self.flush_ime(&mut hud);
-
         }
         self.resolve_inline_profiles(&hud.inline_profiles);
         pr.lap("pr_hud");
@@ -4538,7 +4535,9 @@ impl crate::game::ClientGame<'_> {
         // the eyes and rays to it without changing their material routing.
         let mut additive = self.client.particles.0.take_additive();
         if !title {
-            self.client.frame_batch_reserved_quads.set(additive.len() / 4);
+            self.client
+                .frame_batch_reserved_quads
+                .set(additive.len() / 4);
             let (built, static_sections, visible_static_sections, static_stats) =
                 spans::time("entity_geometry", || {
                     self.entity_geometry(camera, alpha, billboard_frustum, entities, &mut additive)
@@ -4582,7 +4581,8 @@ impl crate::game::ClientGame<'_> {
         let (mut hand, hand_items) = if title || self.scoping() {
             Default::default()
         } else {
-            self.client.frame_batch_reserved_quads
+            self.client
+                .frame_batch_reserved_quads
                 .set((additive.len() / 4).saturating_add(entities.len() / 4));
             self.hand_geometry(camera_alpha)
         };
@@ -4742,8 +4742,13 @@ impl crate::game::ClientGame<'_> {
             depth_far,
             underwater,
             title,
-            sky_pass: !title && sunrise_client::fog::sky_pass_present(camera_fog, sky_effect_blocked, skybox),
-            sky_blocked: sunrise_client::fog::sky_pass_skipped(camera_fog, sky_effect_blocked, boss_world_fog),
+            sky_pass: !title
+                && sunrise_client::fog::sky_pass_present(camera_fog, sky_effect_blocked, skybox),
+            sky_blocked: sunrise_client::fog::sky_pass_skipped(
+                camera_fog,
+                sky_effect_blocked,
+                boss_world_fog,
+            ),
             skybox: skybox == Skybox::Overworld && self.client.settings.sunrise.sky,
             end_sky: skybox == Skybox::End && self.client.settings.sunrise.sky,
             end_sky_sprite: self
@@ -4902,22 +4907,32 @@ impl crate::game::ClientGame<'_> {
                     prepared_generation: renderer.prepared_generation(),
                     staged_prepared_draws: prepared_draws.len() as u64,
                 }));
-                self.client.pack_frame_state.set(renderer.shader_pack_state(&frame));
+                self.client
+                    .pack_frame_state
+                    .set(renderer.shader_pack_state(&frame));
                 let mut slots = self.client.pack_frame_slots.borrow_mut();
                 slots.clear();
                 slots.extend_from_slice(renderer.pack_bound_mod_slots());
                 drop(slots);
-                let world_camera = self.client.native_camera_frame.as_ref()
+                let world_camera = self
+                    .client
+                    .native_camera_frame
+                    .as_ref()
                     .filter(|_| self.has_world_render_hooks());
                 let mut driver = world_camera.map(|camera| {
                     native_custom_geometry::GameWorldStageDriver::new(
-                        self, camera, alpha, &mut world_geometry,
+                        self,
+                        camera,
+                        alpha,
+                        &mut world_geometry,
                     )
                 });
                 let rendered = consume(
                     renderer,
                     &frame,
-                    driver.as_mut().map(|d| d as &mut dyn sunrise_client::gfx::world_primitives::FrameHooks),
+                    driver
+                        .as_mut()
+                        .map(|d| d as &mut dyn sunrise_client::gfx::world_primitives::FrameHooks),
                 );
                 drop(driver);
                 self.client.render_snapshot.set(None);

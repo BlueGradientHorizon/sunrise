@@ -40,9 +40,15 @@ impl Hooks for Unsettle {
 /// Guest 12 in bed for 100 ticks at night, in the rain, in this level.
 pub(super) fn deep_asleep(game: &mut ServerGame<'_>) {
     let level = game.common.dim.id().to_owned();
-    game.server.lan.as_mut().unwrap().hub.guests.update_all(|g| {
-        g.dimension = level.clone();
-    });
+    game.server
+        .lan
+        .as_mut()
+        .unwrap()
+        .hub
+        .guests
+        .update_all(|g| {
+            g.dimension = level.clone();
+        });
     let player = game.player(12).unwrap();
     game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
         g.bed = Some([5, 64, 5]);
@@ -78,13 +84,21 @@ fn a_canceled_skip_keeps_the_clock_the_sleepers_and_the_rain() {
         );
         assert_eq!(game.command_clock_time(&clock), 13_000);
         assert!(game.common.world.weather.raining);
-        assert!(game.server.lan.as_ref().unwrap().hub.guests[0].bed.is_some());
+        assert!(
+            game.server.lan.as_ref().unwrap().hub.guests[0]
+                .bed
+                .is_some()
+        );
 
         // With no mod canceling, the same tick skips the night as vanilla does.
         game.tick_sleep();
         assert_eq!(game.command_clock_time(&clock), 24_000);
         assert!(!game.common.world.weather.raining);
-        assert!(game.server.lan.as_ref().unwrap().hub.guests[0].bed.is_none());
+        assert!(
+            game.server.lan.as_ref().unwrap().hub.guests[0]
+                .bed
+                .is_none()
+        );
     });
 }
 
@@ -105,6 +119,10 @@ fn a_listener_that_unsettles_the_sleepers_keeps_the_night() {
         mod_platform::testing::with_mods(mods, || game.tick_sleep());
         assert_eq!(game.command_clock_time(&clock), 13_000);
         assert!(game.common.world.weather.raining);
-        assert!(game.server.lan.as_ref().unwrap().hub.guests[0].bed.is_some());
+        assert!(
+            game.server.lan.as_ref().unwrap().hub.guests[0]
+                .bed
+                .is_some()
+        );
     });
 }

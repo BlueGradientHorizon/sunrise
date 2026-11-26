@@ -162,10 +162,7 @@ impl FnState {
     }
 
     /// The highest enabled world pack providing this data resource.
-    pub fn data_resource(
-        &self,
-        name: &str,
-    ) -> Option<sunrise_assets::resource_source::Resource> {
+    pub fn data_resource(&self, name: &str) -> Option<sunrise_assets::resource_source::Resource> {
         self.enabled_packs_highest_first()
             .map(DataPack::source)
             .find(|source| source.contains(name))
@@ -238,7 +235,8 @@ impl crate::game::ServerGame<'_> {
         )
         .map_err(|error| {
             ReloadStageError::OriginalJars(
-                sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(&error).unwrap(),
+                sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(&error)
+                    .unwrap(),
             )
         })?;
         let next_root = self
@@ -247,7 +245,9 @@ impl crate::game::ServerGame<'_> {
             .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
         let resources = next_root
             .as_ref()
-            .map_or(self.common.options.resources.as_path(), |root| root.prepared())
+            .map_or(self.common.options.resources.as_path(), |root| {
+                root.prepared()
+            })
             .to_path_buf();
         let data = next_root
             .as_ref()
@@ -261,7 +261,8 @@ impl crate::game::ServerGame<'_> {
             self.server.cmds.0.vanilla_disabled =
                 datapack::vanilla_disabled(&self.server.world_root);
         }
-        let additional = sunrise_gameplay_common::game::pack_discovery::data_packs(&self.common.mods);
+        let additional =
+            sunrise_gameplay_common::game::pack_discovery::data_packs(&self.common.mods);
         let stack = pack_stack(
             &self.server.world_root,
             &resources,
@@ -316,10 +317,10 @@ impl crate::game::ServerGame<'_> {
                 &sunrise_gameplay_common::game::pack_files(&tables.tables),
                 &tables.health.damage,
                 biomes.map(|biomes| (biomes.table.clone(), biomes.differs_from_preload())),
-                tables
-                    .tables
-                    .as_ref()
-                    .map_or_else(|| self.common.res.shared_items(), |tables| tables.items.clone()),
+                tables.tables.as_ref().map_or_else(
+                    || self.common.res.shared_items(),
+                    |tables| tables.items.clone(),
+                ),
                 tables
                     .tables
                     .as_ref()
@@ -457,7 +458,9 @@ impl crate::game::ServerGame<'_> {
     }
     pub fn save_datapack_settings(&self) {
         let disabled: Vec<&str> = self
-            .server.fns.0
+            .server
+            .fns
+            .0
             .packs
             .iter()
             .filter(|p| !self.server.fns.0.enabled.contains(&p.id))
@@ -472,23 +475,56 @@ impl crate::game::ServerGame<'_> {
         self.sync_enchantment_registries();
         let reg = &mut self.common.ui.registries;
         reg.functions = self.server.fns.0.store.functions.keys().cloned().collect();
-        reg.function_tags = self.server.fns.0.store.function_tags.keys().cloned().collect();
+        reg.function_tags = self
+            .server
+            .fns
+            .0
+            .store
+            .function_tags
+            .keys()
+            .cloned()
+            .collect();
         reg.predicates = self.server.fns.0.store.predicates.keys().cloned().collect();
-        reg.item_modifiers = self.server.fns.0.store.item_modifiers.keys().cloned().collect();
+        reg.item_modifiers = self
+            .server
+            .fns
+            .0
+            .store
+            .item_modifiers
+            .keys()
+            .cloned()
+            .collect();
         let sources = reg
             .by_registry
             .entry("minecraft:slot_source".into())
             .or_default();
-        sources.ids = self.server.fns.0.store.slot_sources.keys().cloned().collect();
+        sources.ids = self
+            .server
+            .fns
+            .0
+            .store
+            .slot_sources
+            .keys()
+            .cloned()
+            .collect();
         sources.tags = self
-            .server.fns.0
+            .server
+            .fns
+            .0
             .store
             .slot_source_tags
             .keys()
             .filter(|id| self.server.fns.0.store.slot_source_tag(id).is_ok())
             .cloned()
             .collect();
-        reg.schedules = self.server.fns.0.schedule.iter().map(|s| s.id.clone()).collect();
+        reg.schedules = self
+            .server
+            .fns
+            .0
+            .schedule
+            .iter()
+            .map(|s| s.id.clone())
+            .collect();
 
         reg.datapacks_enabled = (!self.server.cmds.0.vanilla_disabled)
             .then(|| "vanilla".to_owned())
@@ -496,12 +532,20 @@ impl crate::game::ServerGame<'_> {
             .chain(self.server.fns.0.enabled.iter().cloned())
             .collect();
         reg.datapacks_disabled = self
-            .server.fns.0
+            .server
+            .fns
+            .0
             .packs
             .iter()
             .filter(|p| !self.server.fns.0.enabled.contains(&p.id))
             .map(|p| p.id.clone())
-            .chain(self.server.cmds.0.vanilla_disabled.then(|| "vanilla".to_owned()))
+            .chain(
+                self.server
+                    .cmds
+                    .0
+                    .vanilla_disabled
+                    .then(|| "vanilla".to_owned()),
+            )
             .collect();
         // A pack's worldgen ids join the completion registries
         // (`command-registries.json` lists only the game's own), and so do
@@ -509,8 +553,10 @@ impl crate::game::ServerGame<'_> {
         // ones the world's worldgen is built from.
         // World load checks condition errors before these completions read the accepted IDs.
         if let Some(tables) = &self.server.world_tables.0 {
-            let (overrides, _) =
-                sunrise_level::datapack::worldgen_overrides(&self.server.fns.0.data, &tables.conditions);
+            let (overrides, _) = sunrise_level::datapack::worldgen_overrides(
+                &self.server.fns.0.data,
+                &tables.conditions,
+            );
             for (bundle, registry) in [
                 ("biomes", "minecraft:worldgen/biome"),
                 ("structures", "minecraft:worldgen/structure"),
@@ -536,7 +582,11 @@ impl crate::game::ServerGame<'_> {
                 }
             }
             if let Some(biomes) = &self.common.world_biomes {
-                entry.ids = biomes.registry_order().into_iter().map(str::to_owned).collect();
+                entry.ids = biomes
+                    .registry_order()
+                    .into_iter()
+                    .map(str::to_owned)
+                    .collect();
             }
             entry.ids.sort();
             entry.tags = tables
@@ -1329,15 +1379,18 @@ impl crate::game::ServerGame<'_> {
 
     /// Rescan the repository, retaining the selection of packs still present.
     fn reload_pack_repository(&mut self) {
-        let additional = sunrise_gameplay_common::game::pack_discovery::data_packs(&self.common.mods);
+        let additional =
+            sunrise_gameplay_common::game::pack_discovery::data_packs(&self.common.mods);
         let packs = sunrise_gameplay_common::game::pack_discovery::data_repository(
             &self.server.world_root,
             &self.common.options.resources,
             &additional,
         );
         self.server.fns.0.packs = packs.into_iter().map(Arc::new).collect();
-        self.server.fns.0.enabled =
-            datapack::selected_ids(self.server.fns.0.packs.iter().map(Arc::as_ref), &self.server.fns.0.enabled);
+        self.server.fns.0.enabled = datapack::selected_ids(
+            self.server.fns.0.packs.iter().map(Arc::as_ref),
+            &self.server.fns.0.enabled,
+        );
     }
     /// Check the pack's availability, selection and feature flags for this operation.
     fn get_pack(&self, name: &str, enabling: bool, selected: &[String]) -> R<()> {
@@ -1353,7 +1406,9 @@ impl crate::game::ServerGame<'_> {
         }
         if !enabling
             && self
-                .server.fns.0
+                .server
+                .fns
+                .0
                 .packs
                 .iter()
                 .any(|pack| pack.id == name && pack.is_feature() && !pack.features().is_empty())
@@ -1456,7 +1511,9 @@ impl crate::game::ServerGame<'_> {
                         i.saturating_sub(selected.len() - enabled.len())
                     } else if !ctx.has("last")
                         && self
-                            .server.fns.0
+                            .server
+                            .fns
+                            .0
                             .packs
                             .iter()
                             .find(|pack| pack.id == name)
@@ -1484,7 +1541,9 @@ impl crate::game::ServerGame<'_> {
                 let name = name.unwrap_or_default();
                 self.get_pack(&name, false, &selected)?;
                 if self
-                    .server.fns.0
+                    .server
+                    .fns
+                    .0
                     .packs
                     .iter()
                     .find(|pack| pack.id == name)
@@ -1511,7 +1570,8 @@ impl crate::game::ServerGame<'_> {
         // One resolve for the store and the tables, as `/reload`'s is: the
         // timers already in memory stay, and none come back from disk
         // (`ServerFunctionManager` keeps its queue over a pack change).
-        let additional = sunrise_gameplay_common::game::pack_discovery::data_packs(&self.common.mods);
+        let additional =
+            sunrise_gameplay_common::game::pack_discovery::data_packs(&self.common.mods);
         let mut stack = pack_stack(
             &self.server.world_root,
             &self.common.options.resources,
@@ -1572,20 +1632,28 @@ impl crate::game::ServerGame<'_> {
                 .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
             value
         } else {
-            self.server.fns.0.store.predicates.get(id).cloned().ok_or_else(|| {
-                let id = if id.contains(':') {
-                    id.to_string()
-                } else {
-                    format!("minecraft:{id}")
-                };
-                err(
-                    "argument.resource_or_id.no_such_element",
-                    &[&id, &"minecraft:predicate"],
-                )
-            })?
+            self.server
+                .fns
+                .0
+                .store
+                .predicates
+                .get(id)
+                .cloned()
+                .ok_or_else(|| {
+                    let id = if id.contains(':') {
+                        id.to_string()
+                    } else {
+                        format!("minecraft:{id}")
+                    };
+                    err(
+                        "argument.resource_or_id.no_such_element",
+                        &[&id, &"minecraft:predicate"],
+                    )
+                })?
         };
         let source = self
-            .server.command_source
+            .server
+            .command_source
             .clone()
             .unwrap_or_else(|| self.player_source());
         let view = source.entity.map(|t| self.entity_view_scored(t, &json));
@@ -1611,7 +1679,9 @@ mod tests {
                     game.server.streaming.forced.insert((0, 0));
                     assert_eq!(game.levels_to_tick(), [Dim::Nether]);
                     assert_eq!(
-                        game.server.levels.0
+                        game.server
+                            .levels
+                            .0
                             .parked_world(Dim::Overworld)
                             .unwrap()
                             .weather
@@ -1635,7 +1705,9 @@ mod tests {
                             parameters: Vec::new(),
                         },
                     );
-                    game.server.fns.0
+                    game.server
+                        .fns
+                        .0
                         .store
                         .function_tags
                         .insert("minecraft:tick".into(), vec![(id.into(), true, false)]);
@@ -1701,9 +1773,19 @@ mod tests {
             // `getPack` reads the repository as it stands: not yet scanned.
             assert!(!game.run_command("datapack enable \"file/b\""));
             assert!(game.run_command("datapack list available"));
-            assert!(game.server.fns.0.packs.iter().any(|pack| pack.id == "file/b"));
+            assert!(
+                game.server
+                    .fns
+                    .0
+                    .packs
+                    .iter()
+                    .any(|pack| pack.id == "file/b")
+            );
             assert!(game.run_command("datapack enable \"file/b\""));
-            assert_eq!(game.server.fns.0.enabled.last().map(String::as_str), Some("file/b"));
+            assert_eq!(
+                game.server.fns.0.enabled.last().map(String::as_str),
+                Some("file/b")
+            );
         });
         let _ = std::fs::remove_dir_all(root);
     }
@@ -1774,7 +1856,13 @@ mod tests {
             .into();
             game.reload_datapacks(true, &game.level.enabled_features.clone())
                 .unwrap();
-            assert!(game.server.fns.0.enabled.contains(&"trade_rebalance".to_owned()));
+            assert!(
+                game.server
+                    .fns
+                    .0
+                    .enabled
+                    .contains(&"trade_rebalance".to_owned())
+            );
             assert!(!game.run_command("datapack enable \"file/b\" after \"trade_rebalance\""));
             assert!(!game.run_command("datapack enable \"file/b\" before \"trade_rebalance\""));
             assert!(!game.server.fns.0.enabled.contains(&"file/b".to_owned()));

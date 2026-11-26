@@ -1,8 +1,8 @@
 #![cfg(test)]
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::Serverbound as S;
 use sunrise_protocol::text::translatable;
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 #[cfg(test)]
 pub(crate) mod tests {

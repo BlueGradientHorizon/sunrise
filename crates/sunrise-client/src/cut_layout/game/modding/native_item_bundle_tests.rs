@@ -271,7 +271,6 @@ fn mod_registered_bundle_items_uses_weight_and_front_extraction() {
     });
 }
 
-
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 #[cfg(test)]

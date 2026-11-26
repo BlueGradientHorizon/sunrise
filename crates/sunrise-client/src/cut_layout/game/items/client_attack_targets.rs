@@ -7,8 +7,6 @@ pub(crate) mod tests {
 
     use sunrise_client_gameplay::game::client_side::client_attack_targets::tests::sent_attacks;
 
-    
-
     #[derive(Default)]
     struct AttackBatch {
         targets: std::sync::Mutex<Vec<mod_api::EntityRef>>,

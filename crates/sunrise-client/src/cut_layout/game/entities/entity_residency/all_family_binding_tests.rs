@@ -1,11 +1,11 @@
 use super::super::native_entity_refs::tests::with_game;
-use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
 use mod_api::DimensionKey;
 use std::{
     num::NonZeroU32,
     sync::{Arc, Mutex},
 };
 use sunrise_gameplay::game::server_side::entity_residency::SlotAccess;
+use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
 use sunrise_items::items::ItemStack;
 use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, Holder, index::AttachmentIndex,

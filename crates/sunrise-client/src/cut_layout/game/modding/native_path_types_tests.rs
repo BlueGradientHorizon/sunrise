@@ -405,7 +405,6 @@ fn a_block_part_gives_the_nodes_beside_its_block_a_path_type() {
     });
 }
 
-
 #[cfg(test)]
 use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
 

@@ -180,9 +180,9 @@ impl ServerGame<'_> {
         uuid: u128,
         cells: &[BlockPos],
     ) -> Result<(), TransferError> {
+        use sunrise_sim::join_seq::visibility::PassLease;
         use sunrise_sim::save::carrier::{CellImage, OpKind, encode_operation, envelope_preflight};
         use sunrise_sim::save::carrier::{Operation, OperationCell};
-        use sunrise_sim::join_seq::visibility::PassLease;
 
         // A remote guest's mirror never transfers: the server's own
         // transfer reaches it through synchronization, so a guest's
@@ -512,10 +512,10 @@ impl ServerGame<'_> {
         rotation: [f64; 4],
     ) -> Result<(), TransferError> {
         use sunrise_core::nbt::{self, Tag};
+        use sunrise_sim::join_seq::visibility::PassLease;
         use sunrise_sim::save::carrier::{
             CellImage, OpKind, Operation, OperationCell, cube_symmetry_rotation, envelope_preflight,
         };
-        use sunrise_sim::join_seq::visibility::PassLease;
 
         // A remote guest's mirror never transfers: the server's own
         // transfer reaches it through synchronization, so a guest's

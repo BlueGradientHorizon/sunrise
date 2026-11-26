@@ -1420,17 +1420,23 @@ fn quick_move_and_live_rules_see_the_same_prepared_result_until_the_grid_changes
         let entity = game.world.block_entities.get_mut(&POS).unwrap();
         entity.slots_mut()[0] = stone(8);
         entity.slots_mut()[craft.grid] = input.clone();
-        game.server.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-            let menu = guest.menu.as_mut().unwrap();
-            menu.mod_type = Some(Box::leak(Box::new(ModMenuType {
-                crafting: Some(craft),
-                ..pot_type().clone()
-            })));
-            menu.craft = Some(ModCraft {
-                grid: vec![input, None, None, None],
-                result: Some(ItemStack::new("minecraft:diamond", 1)),
+        game.server
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .update(0, |guest| {
+                let menu = guest.menu.as_mut().unwrap();
+                menu.mod_type = Some(Box::leak(Box::new(ModMenuType {
+                    crafting: Some(craft),
+                    ..pot_type().clone()
+                })));
+                menu.craft = Some(ModCraft {
+                    grid: vec![input, None, None, None],
+                    result: Some(ItemStack::new("minecraft:diamond", 1)),
+                });
             });
-        });
         let player = game.player(12).unwrap();
         let menu = player.container_menu(game).unwrap();
         let result = menu.slot(game, RESULT).unwrap().unwrap();

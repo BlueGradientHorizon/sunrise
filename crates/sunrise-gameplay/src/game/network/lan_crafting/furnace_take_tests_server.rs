@@ -233,7 +233,9 @@ fn pickup_awards_xp_before_item_smelted_and_keeps_cooking_separate() {
             game.lan_guest_packet(12, click_result(window, 0, input::PICKUP));
             // The extracting guest learns what the furnace used (`ServerPlayer.awardRecipes`).
             let learned = game
-                .as_guest(12, |g| used.iter().all(|id| g.common.level.recipe_book.knows(id)))
+                .as_guest(12, |g| {
+                    used.iter().all(|id| g.common.level.recipe_book.knows(id))
+                })
                 .unwrap();
             assert!(learned, "{used:?}");
 

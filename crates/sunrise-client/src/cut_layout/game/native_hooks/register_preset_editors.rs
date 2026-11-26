@@ -3,6 +3,7 @@ use std::sync::Arc;
 use sunrise_client::hud::HudBatch;
 #[cfg(test)]
 pub(crate) mod tests {
+    use crate::game::native_hooks::register_preset_editors::*;
     use mod_api::{
         DrawContext, Hooks, Identifier, ModEntry, PresetEditor, PresetEditorDraft,
         RegisterPresetEditorsEvent, ScreenCharTypedPostEvent, ScreenCharTypedPreEvent,
@@ -23,7 +24,6 @@ pub(crate) mod tests {
         event::{DeviceId, ElementState, MouseButton, WindowEvent},
         keyboard::{KeyCode, PhysicalKey},
     };
-    use crate::game::native_hooks::register_preset_editors::*;
 
     #[derive(Debug, PartialEq, Eq)]
     enum MouseStep {

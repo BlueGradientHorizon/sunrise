@@ -420,16 +420,14 @@ pub fn apply_registry_data(m: &mut Mob, values: &[(u8, i32, Value)], game_time: 
                     Some(sunrise_sim::lan::data::RegistryRef::new(*id as u32));
             }
             (Species::Wolf, 23, Value::Id(id)) => {
-                m.extra.wolf_variant =
-                    Some(sunrise_sim::lan::data::RegistryRef::new(*id as u32));
+                m.extra.wolf_variant = Some(sunrise_sim::lan::data::RegistryRef::new(*id as u32));
             }
             (Species::Wolf, 24, Value::Id(id)) => {
                 m.extra.wolf_sound_variant =
                     Some(sunrise_sim::lan::data::RegistryRef::new(*id as u32));
             }
             (Species::Frog, 18, Value::Id(id)) => {
-                m.extra.frog_variant =
-                    Some(sunrise_sim::lan::data::RegistryRef::new(*id as u32));
+                m.extra.frog_variant = Some(sunrise_sim::lan::data::RegistryRef::new(*id as u32));
             }
             (Species::Pig, 19, Value::Id(id)) => {
                 m.extra.pig_variant = Some(sunrise_sim::lan::data::RegistryRef::new(*id as u32));

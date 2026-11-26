@@ -13,9 +13,7 @@ pub struct PreparedBlockEdit<'a> {
 }
 
 /// Resolve every palette state and compile every filter before a world mutation is possible.
-pub fn prepare(
-    edit: &mod_api::BlockEdit,
-) -> Result<PreparedBlockEdit<'_>, BlockEditError> {
+pub fn prepare(edit: &mod_api::BlockEdit) -> Result<PreparedBlockEdit<'_>, BlockEditError> {
     let palette = edit
         .palette
         .iter()

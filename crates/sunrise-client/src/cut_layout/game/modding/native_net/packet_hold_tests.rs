@@ -1,5 +1,7 @@
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
-use mod_api::{HoldError, HoldId, Identifier, SendPacketError, ServerboundPlayPacket, content::crash::ModCall};
+use mod_api::{
+    HoldError, HoldId, Identifier, SendPacketError, ServerboundPlayPacket, content::crash::ModCall,
+};
 use mod_platform::content::crash::enter_native_mod;
 use sunrise_client_gameplay::game::client_side::native_net::packet_hold::{Holds, PlaySend};
 use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;

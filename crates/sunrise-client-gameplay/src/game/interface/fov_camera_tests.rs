@@ -7,13 +7,13 @@ use mod_api::{
 };
 use std::sync::{Arc, Mutex};
 use sunrise_client::options_file::V as OptV;
-use sunrise_items::items::ItemStack;
-use sunrise_sim::motion::PlayerMotion;
 use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
 use sunrise_protocol::{
     connection::Pipe,
     packets::play::{self, Clientbound as C},
 };
+use sunrise_sim::motion::PlayerMotion;
 
 /// The player UUID, raw modifier, effect scale and starting interpolation seen by the hook.
 type Calls = Arc<Mutex<Vec<(u128, f32, f32, f32)>>>;
@@ -88,7 +88,11 @@ fn spectated_player_fov_uses_their_own_attributes_and_item_use() {
             }],
         }))
         .unwrap();
-        let m = game.common.mob_index.get_mut(&mut game.common.mobs, 31).unwrap();
+        let m = game
+            .common
+            .mob_index
+            .get_mut(&mut game.common.mobs, 31)
+            .unwrap();
         m.extra.sprinting = true;
         m.extra.using_item = 11;
         m.extra.using_off_hand = true;
@@ -126,7 +130,10 @@ fn spectated_player_fov_uses_their_own_attributes_and_item_use() {
 #[ignore = "daily"]
 fn at_effect_scale_zero_the_listener_still_sees_the_raw_modifier() {
     with_spectator("minecraft:player", |game, calls| {
-        game.client.settings.file.set("fovEffectScale", OptV::Double(0.0));
+        game.client
+            .settings
+            .file
+            .set("fovEffectScale", OptV::Double(0.0));
         game.client.camera_type = CameraType::ThirdPersonBack;
         game.tick_fov();
         // Mth.lerp(0, 1, 1.5) is 1: the start loses the raw value, the event keeps it.
@@ -140,7 +147,10 @@ fn spectated_non_player_fov_does_not_dispatch_the_player_hook() {
     with_spectator("minecraft:creeper", |game, calls| {
         game.client.view.fov_modifier = 0.5;
         game.tick_fov();
-        assert_eq!(game.client.view.fov_modifier, 0.75, "ease halfway to neutral 1.0");
+        assert_eq!(
+            game.client.view.fov_modifier, 0.75,
+            "ease halfway to neutral 1.0"
+        );
         assert!(calls.lock().unwrap().is_empty());
     });
 }

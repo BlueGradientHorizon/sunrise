@@ -6,7 +6,9 @@ use mod_api::{
 };
 use std::sync::{Arc, Mutex};
 use sunrise_core::nbt::Compound;
-use sunrise_gameplay_common::game::player_state::{CloneScope, OriginalAttachmentSlot, ScopedPlayer};
+use sunrise_gameplay_common::game::player_state::{
+    CloneScope, OriginalAttachmentSlot, ScopedPlayer,
+};
 use sunrise_items::equipment::Equipment;
 use sunrise_items::items::ItemStack;
 use sunrise_mod_runtime::attachments::{

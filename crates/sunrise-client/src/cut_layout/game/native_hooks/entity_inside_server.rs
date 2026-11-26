@@ -141,7 +141,6 @@ pub(crate) mod sweep_tests {
         });
     }
 
-
     /// A killing write stops the item's flush: the walk still reaches both blocks,
     /// the writes after the destruction never apply.
     #[test]
@@ -232,7 +231,9 @@ pub(crate) mod sweep_tests {
 
     /// Set up a single stone block at `(1, 100, 0)` and return an item sweeping strictly
     /// inside that cell.
-    fn single_stone_item(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> sunrise_sim::entities::ItemEntity {
+    fn single_stone_item(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    ) -> sunrise_sim::entities::ItemEntity {
         let stone = game
             .pack
             .assets
@@ -266,8 +267,8 @@ pub(crate) mod sweep_tests {
         ) {
             return;
         }
-        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         use std::sync::{Arc, Mutex};
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
 
         #[derive(Clone, Copy)]
         struct WriteStates {
@@ -433,8 +434,8 @@ pub(crate) mod sweep_tests {
         if fresh("callback_hurt_resolves_a_lifted_sibling_but_not_a_retired_handle") {
             return;
         }
-        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         use std::sync::{Arc, Mutex};
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         use sunrise_items::items::ItemStack;
 
         #[derive(Clone, Default)]
@@ -676,10 +677,11 @@ pub(crate) mod sweep_tests {
                 assert!(mod_api::__private::take_hook_panics().is_empty());
                 let [
                     sunrise_client_gameplay::game::toast_manager::VisibleToast {
-                        toast: sunrise_client_gameplay::game::toast_manager::Toast::Diagnostic {
-                            toast,
-                            ..
-                        },
+                        toast:
+                            sunrise_client_gameplay::game::toast_manager::Toast::Diagnostic {
+                                toast,
+                                ..
+                            },
                         ..
                     },
                 ] = client.client.toast_manager.visible.as_slice()
@@ -706,12 +708,12 @@ pub(crate) mod sweep_tests {
         if fresh("player_live_inside_flush_level_writes_peaceful_effect_and_fire_semantics") {
             return;
         }
-        use sunrise_gameplay_common::game::api_values::TryIntoApi;
-        use sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan;
-        use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;
         use std::sync::{Arc, Mutex};
-        use sunrise_sim::lan::guest::GuestMove;
         use sunrise_core::geometry::Vec3;
+        use sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan;
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
+        use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;
+        use sunrise_sim::lan::guest::GuestMove;
 
         #[derive(Clone, Default)]
         struct LivePlayerPart {
@@ -794,11 +796,9 @@ pub(crate) mod sweep_tests {
                     std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
                 );
                 game.world.set(1, 100, 0, stone).unwrap();
-                let mut player = sunrise_sim::motion::PlayerMotion::new(
-                    game.motion,
-                    Vec3::new(1.5, 100.0, 0.5),
-                )
-                .unwrap();
+                let mut player =
+                    sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(1.5, 100.0, 0.5))
+                        .unwrap();
                 player.mod_fire_immune = true;
                 let mut guest = guest(1);
                 guest.loaded = true;
@@ -838,11 +838,11 @@ pub(crate) mod sweep_tests {
         if fresh("mob_inside_tick_keeps_water_and_resolves_live_sources") {
             return;
         }
-        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         use std::sync::{Arc, Mutex};
+        use sunrise_core::geometry::Vec3;
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         use sunrise_level::chunk::Chunk;
         use sunrise_sim::{mobs::Mob, ticket_levels::Sources};
-        use sunrise_core::geometry::Vec3;
 
         #[derive(Clone)]
         struct Contact {
@@ -981,9 +981,9 @@ pub(crate) mod sweep_tests {
             return;
         }
         use std::sync::{Arc, Mutex};
+        use sunrise_core::{geometry::Vec3, random::LegacyRandom};
         use sunrise_level::chunk::Chunk;
         use sunrise_sim::{mobs::Mob, ticket_levels::Sources};
-        use sunrise_core::{geometry::Vec3, random::LegacyRandom};
 
         type TeleportObservation = Arc<Mutex<Option<(bool, [f64; 3])>>>;
         #[derive(Clone, Default)]
@@ -1085,12 +1085,12 @@ pub(crate) mod sweep_tests {
             return;
         }
         use std::sync::Arc;
+        use sunrise_core::{geometry::Vec3, random::LegacyRandom};
         use sunrise_level::chunk::Chunk;
         use sunrise_sim::{
             mobs::{Mob, goals::GoalSelector},
             ticket_levels::Sources,
         };
-        use sunrise_core::{geometry::Vec3, random::LegacyRandom};
 
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             game.options.dedicated = Some(Vec::new());
@@ -1430,5 +1430,4 @@ pub(crate) mod sweep_tests {
             });
         });
     }
-
 }

@@ -67,11 +67,12 @@ pub(crate) mod tests {
                     b"unreadable generator settings"
                 );
                 let y = game.common.world.shape.min_y + 1;
-                assert!(
-                    game.server
-                        .streaming
-                        .set_forced_loaded(&mut game.common.world, 32, 32, true)
-                );
+                assert!(game.server.streaming.set_forced_loaded(
+                    &mut game.common.world,
+                    32,
+                    32,
+                    true
+                ));
                 let chunk = &game.common.world.chunks[&(32, 32)];
                 assert_eq!(
                     Some(chunk.get(0, y, 0)),
@@ -252,8 +253,14 @@ mod unused_feature_startup_tests {
             );
             let save_root = root.clone();
             let mut request = WorldRequest::new(
-                case, None, Some(259), false, None, Level::default().rule_registry,
-            ).unwrap();
+                case,
+                None,
+                Some(259),
+                false,
+                None,
+                Level::default().rule_registry,
+            )
+            .unwrap();
             request.save_root = root;
             let mut prepared = request
                 .prepare(
@@ -263,7 +270,6 @@ mod unused_feature_startup_tests {
                     &sunrise_world::datafix::progress::UpgradeProgress::new(),
                 )
                 .unwrap();
-
 
             let empty =
                 sunrise_assets::resource_source::ResourceSource::indexed(Default::default());
@@ -395,8 +401,14 @@ mod unused_feature_preservation_tests {
             .validate_fill_layers(loaded.pack.assets.registry)
             .unwrap();
         let mut request = WorldRequest::new(
-            "preservation", None, Some(259), false, None, Level::default().rule_registry,
-        ).unwrap();
+            "preservation",
+            None,
+            Some(259),
+            false,
+            None,
+            Level::default().rule_registry,
+        )
+        .unwrap();
         request.save_root = root;
         assert!(
             request

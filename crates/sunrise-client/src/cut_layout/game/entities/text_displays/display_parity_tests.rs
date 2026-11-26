@@ -186,7 +186,8 @@ fn teleport_duration_unclamped_negative_same_target_and_rotation_match_vanilla_2
     // 2. NBT readAdditionalSaveData still clamps teleport_duration to 0..59.
     let mut tag = Compound::new();
     tag.insert("teleport_duration".into(), Tag::Int(100));
-    let state = sunrise_gameplay::game::persist::display::read_text_display_nbt(&Tag::Compound(tag));
+    let state =
+        sunrise_gameplay::game::persist::display::read_text_display_nbt(&Tag::Compound(tag));
     let mut nbt_entries = Vec::new();
     state.append_metadata(None, false, |_| None, &mut nbt_entries);
     let nbt_tp = nbt_entries
@@ -877,13 +878,7 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
         let initial_ids = [83226, 83191, 83242, 83102, 83249, 83232, 83100, 83250];
         let mut expected_bgs = Vec::new();
         for (idx, &eid) in initial_ids.iter().enumerate() {
-            assert!(game.spawn_remote_object(
-                eid,
-                "minecraft:text_display",
-                [0.0; 3],
-                [0.0; 3],
-                0
-            ));
+            assert!(game.spawn_remote_object(eid, "minecraft:text_display", [0.0; 3], [0.0; 3], 0));
             let argb = 0xFF00_0001u32 + idx as u32;
             let abgr =
                 0xFF00_0000u32 | ((argb & 0xFF) << 16) | (argb & 0xFF00) | ((argb >> 16) & 0xFF);
@@ -1704,9 +1699,7 @@ fn bold_missing_glyph_displays_and_block_display_83224_match_vanilla_26_3() {
             .default_state("minecraft:lime_concrete")
             .unwrap();
         game.client.text_displays.0.clear();
-        assert!(
-            game.spawn_remote_object(83224, "minecraft:block_display", ent_pos, [0.0; 3], 0,)
-        );
+        assert!(game.spawn_remote_object(83224, "minecraft:block_display", ent_pos, [0.0; 3], 0,));
         {
             let d = game.client.text_displays.0.get_mut(&83224).unwrap();
             d.show(&[(23, 0, Value::Id(lime.0 as i32))], None);

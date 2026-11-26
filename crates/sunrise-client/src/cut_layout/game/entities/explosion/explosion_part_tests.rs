@@ -712,7 +712,6 @@ fn a_block_part_keeps_its_block_from_a_dangerous_skull_cap() {
     });
 }
 
-
 use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

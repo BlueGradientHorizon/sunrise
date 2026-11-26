@@ -9,5 +9,4 @@ impl crate::game::ServerGame<'_> {
         }
         sunrise_gameplay::cat_spawner::spawn_near_player(self);
     }
-
 }

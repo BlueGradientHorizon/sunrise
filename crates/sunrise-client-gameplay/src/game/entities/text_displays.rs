@@ -1054,10 +1054,11 @@ impl ClientGame<'_> {
                 self.client.studio.freecam.pitch,
             ];
         }
-        let (yaw, pitch, _) = self
-            .client
-            .posed_rotation
-            .unwrap_or((self.client.view.y_rot, self.client.view.x_rot, 0.0));
+        let (yaw, pitch, _) = self.client.posed_rotation.unwrap_or((
+            self.client.view.y_rot,
+            self.client.view.x_rot,
+            0.0,
+        ));
         [yaw, pitch]
     }
     /// `DisplayRenderer.getBlockLightLevel` and `getSkyLightLevel`: the

@@ -303,8 +303,7 @@ fn blocks_carts_and_functions_keep_their_entity() {
                 assert_eq!(command.rotation, [190.0, 0.0]);
 
                 // A command-block minecart executes as itself, at its yaw.
-                let mut cart =
-                    Minecart::new(99, CartKind::CommandBlock, Vec3::new(1.0, 64.0, 1.0));
+                let mut cart = Minecart::new(99, CartKind::CommandBlock, Vec3::new(1.0, 64.0, 1.0));
                 cart.yaw = 30.0;
                 cart.command.command = "where".into();
                 game.carts.push(cart);

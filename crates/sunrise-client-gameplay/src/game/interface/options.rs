@@ -608,7 +608,14 @@ impl crate::game::ClientGame<'_> {
                 }
                 Event::NativeSettings(i) => self.native_settings_refresh(i),
                 Event::ModConfigScreen(i) => {
-                    let Some(id) = self.client.settings.mods.installed.get(i).map(|m| m.id.clone()) else {
+                    let Some(id) = self
+                        .client
+                        .settings
+                        .mods
+                        .installed
+                        .get(i)
+                        .map(|m| m.id.clone())
+                    else {
                         continue;
                     };
                     match mod_api::__private::create_config_screen(self, &id) {
@@ -935,7 +942,11 @@ impl crate::game::ClientGame<'_> {
         if self.common.options.frames.is_some() {
             return;
         }
-        let limit = if limit == 0 { SKIPPED_FRAME_RATE } else { limit };
+        let limit = if limit == 0 {
+            SKIPPED_FRAME_RATE
+        } else {
+            limit
+        };
         match self.client.settings.sunrise.pacing {
             sunrise_client::graphics::Pacing::Precise => sunrise_client::window::end_frame(
                 &mut self.client.limiter,

@@ -118,11 +118,7 @@ fn spawn_info(dimension: &str, game_type: i32) -> SpawnInfo {
     }
 }
 
-fn poll_until(
-    game: &mut ClientGame<'_>,
-    predicate: impl Fn(&ClientGame<'_>) -> bool,
-    what: &str,
-) {
+fn poll_until(game: &mut ClientGame<'_>, predicate: impl Fn(&ClientGame<'_>) -> bool, what: &str) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !predicate(game) {
         assert!(Instant::now() < deadline, "timed out waiting for {what}");
@@ -197,7 +193,11 @@ fn client_player_logging_out_fires_once_before_teardown_and_handles_no_player_tr
                 vec![empty_logout()],
                 "ConnectScreen.startConnecting notifies once before starting the attempt"
             );
-            poll_until(game, |g| g.client.remote.is_none(), "failed connect attempt");
+            poll_until(
+                game,
+                |g| g.client.remote.is_none(),
+                "failed connect attempt",
+            );
             assert_eq!(
                 take(),
                 vec![],
@@ -391,7 +391,12 @@ fn client_player_logging_out_fires_once_before_teardown_and_handles_no_player_tr
             writer.send(&C::StartConfiguration(Empty).encode()).unwrap();
             poll_until(
                 game,
-                |g| g.client.remote.as_ref().is_some_and(|r| r.reconfiguring.is_some()),
+                |g| {
+                    g.client
+                        .remote
+                        .as_ref()
+                        .is_some_and(|r| r.reconfiguring.is_some())
+                },
                 "start reconfiguration before clicking Disconnect",
             );
             assert_eq!(
@@ -446,7 +451,12 @@ fn client_player_logging_out_fires_once_before_teardown_and_handles_no_player_tr
                 .unwrap();
             poll_until(
                 game,
-                |g| g.client.remote.as_ref().is_some_and(|r| r.reconfiguring.is_some()),
+                |g| {
+                    g.client
+                        .remote
+                        .as_ref()
+                        .is_some_and(|r| r.reconfiguring.is_some())
+                },
                 "start reconfiguration",
             );
             server.recv().unwrap(); // ConfigurationAcknowledged

@@ -852,7 +852,9 @@ mod startup_registration_tests {
                     assert!(matches!(failure(), LayerError::NotNonemptyObject));
                 }
                 std::fs::write(&table, r#"{"invalid": {}}"#).unwrap();
-                assert!(matches!(failure(), LayerError::InvalidVanillaLayer(id) if id == "invalid"));
+                assert!(
+                    matches!(failure(), LayerError::InvalidVanillaLayer(id) if id == "invalid")
+                );
                 assert!(calls.lock().unwrap().is_empty());
                 assert!(model_layers::registered("alpha:golem#outer:armor").is_none());
             },

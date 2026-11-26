@@ -1,6 +1,5 @@
 #![cfg(test)]
 
-
 #[cfg(test)]
 mod tests {
     use super::super::{
@@ -452,9 +451,15 @@ mod tests {
                 game.adv.tree = Arc::new(tree);
                 game.adv.loaded = true;
                 game.ui.registries.advancements = vec![adv_id.as_str().into()];
-                game.server.lan.as_mut().unwrap().hub.guests.update_all(|guest| {
-                    guest.advancements_loaded = true;
-                });
+                game.server
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update_all(|guest| {
+                        guest.advancements_loaded = true;
+                    });
 
                 let player = game.player(12).unwrap();
                 let other = game.player(13).unwrap();
@@ -697,9 +702,15 @@ mod tests {
                 game.adv.tree = Arc::new(tree);
                 game.adv.loaded = true;
                 game.ui.registries.advancements = vec![adv_id.as_str().into()];
-                game.server.lan.as_mut().unwrap().hub.guests.update_all(|guest| {
-                    guest.advancements_loaded = true;
-                });
+                game.server
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update_all(|guest| {
+                        guest.advancements_loaded = true;
+                    });
 
                 let player = game.player(12).unwrap();
                 let other = game.player(13).unwrap();

@@ -126,7 +126,11 @@ fn assert_caused(
 }
 
 fn with_probe(
-    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Mutex<Vec<Seen>>, &AttachmentKey<i32>),
+    test: impl FnOnce(
+        &mut sunrise_gameplay::game::ServerGame<'_>,
+        &Mutex<Vec<Seen>>,
+        &AttachmentKey<i32>,
+    ),
 ) {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let mark = Arc::new(Mutex::new(None));
@@ -151,7 +155,11 @@ fn with_probe(
 }
 
 fn with_guest_probe(
-    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Mutex<Vec<Seen>>, &AttachmentKey<i32>),
+    test: impl FnOnce(
+        &mut sunrise_gameplay::game::ServerGame<'_>,
+        &Mutex<Vec<Seen>>,
+        &AttachmentKey<i32>,
+    ),
 ) {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let mark = Arc::new(Mutex::new(None));

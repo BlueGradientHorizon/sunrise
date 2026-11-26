@@ -1,9 +1,9 @@
 #![cfg(test)]
 use mod_api::EntityRef;
 use mod_api::ItemEntityRef;
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::lan::playerdata::uuid_ints;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_item_entity_refs::NativeItemEntityRefsGameExt1 as _;
 
@@ -12,11 +12,14 @@ pub(crate) mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::{HostTransaction, WorldEpoch};
-    use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
-    use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
     use sunrise_core::geometry::Vec3;
     use sunrise_gameplay_common::game::api_values::test_snapshot;
-    use sunrise_sim::{entities::{ArmorStand, ItemEntity}, mobs::Mob};
+    use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
+    use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
+    use sunrise_sim::{
+        entities::{ArmorStand, ItemEntity},
+        mobs::Mob,
+    };
 
     #[test]
     #[ignore = "daily"]

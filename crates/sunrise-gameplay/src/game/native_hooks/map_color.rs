@@ -1,5 +1,5 @@
-use crate::game::ServerGame;
 use super::*;
+use crate::game::ServerGame;
 
 impl ServerGame<'_> {
     /// `IBlockExtension.getMapColor` for the block `state` at `pos`, asked by `MapItem.update`.

@@ -13,7 +13,6 @@ mod tests {
     use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
     use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
     use sunrise_gameplay_common::game::weather::WeatherGameExt;
-    
 
     #[test]
     #[ignore = "daily"]
@@ -3356,7 +3355,3 @@ pub(crate) mod environment_read_tests {
         });
     }
 }
-
-
-
-

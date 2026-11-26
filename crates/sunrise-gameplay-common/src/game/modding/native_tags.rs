@@ -3,11 +3,7 @@ use mod_api::{BlockKey, DamageTypeKey, FluidKey, Identifier, ItemKey, TagKey, Ta
 use sunrise_items::items::{Items, TagRegistry};
 use sunrise_world::loot::LootTags;
 
-pub fn is_in_tag(
-    items: Option<&Items>,
-    item: ItemKey,
-    tag: TagKey<ItemKey>,
-) -> Option<bool> {
+pub fn is_in_tag(items: Option<&Items>, item: ItemKey, tag: TagKey<ItemKey>) -> Option<bool> {
     let items = items.filter(|items| items.tags_loaded(TagRegistry::Item))?;
     let item = mod_api::__private::item_key_id(item)?;
     mod_api::__private::with_tag_name(tag.untyped(), |name| {
@@ -41,21 +37,13 @@ pub fn item_tag_names(tags: &dyn LootTags) -> Option<Vec<Identifier>> {
     tags.item_tag_names()?.matching(|_| true)
 }
 
-pub fn block_in_tag(
-    items: Option<&Items>,
-    block: BlockKey,
-    tag: TagKey<BlockKey>,
-) -> Option<bool> {
+pub fn block_in_tag(items: Option<&Items>, block: BlockKey, tag: TagKey<BlockKey>) -> Option<bool> {
     let items = items.filter(|items| items.tags_loaded(TagRegistry::Block))?;
     let block = mod_api::__private::block_key_id(block)?;
     mod_api::__private::with_tag_name(tag.untyped(), |name| Some(items.block_in_tag(name?, block)))
 }
 
-pub fn fluid_in_tag(
-    items: Option<&Items>,
-    fluid: FluidKey,
-    tag: TagKey<FluidKey>,
-) -> Option<bool> {
+pub fn fluid_in_tag(items: Option<&Items>, fluid: FluidKey, tag: TagKey<FluidKey>) -> Option<bool> {
     let items = items.filter(|items| items.tags_loaded(TagRegistry::Fluid))?;
     let fluid = mod_api::__private::fluid_id(fluid)?;
     mod_api::__private::with_tag_name(tag.untyped(), |name| Some(items.fluid_in_tag(name?, fluid)))

@@ -557,21 +557,28 @@ impl crate::game::ServerGame<'_> {
             return false;
         }
         // A proxy released this record to another server, which now owns saving it.
-        let saved = if guest.joined() && !guest.released && !self.server.crash_save.excludes(guest.conn) {
-            let _ = self.finish_player_autosaves(true);
-            if self.server
-                .lan
-                .as_ref()
-                .and_then(|host| host.owner.as_ref())
-                .is_some_and(|o| o.uuid == guest.uuid)
-            {
-                playerdata::save_owner(guest, &mut self.common.level, &self.server.world_root, self.common.res.items())
+        let saved =
+            if guest.joined() && !guest.released && !self.server.crash_save.excludes(guest.conn) {
+                let _ = self.finish_player_autosaves(true);
+                if self
+                    .server
+                    .lan
+                    .as_ref()
+                    .and_then(|host| host.owner.as_ref())
+                    .is_some_and(|o| o.uuid == guest.uuid)
+                {
+                    playerdata::save_owner(
+                        guest,
+                        &mut self.common.level,
+                        &self.server.world_root,
+                        self.common.res.items(),
+                    )
+                } else {
+                    playerdata::save(guest, &self.server.world_root, self.common.res.items())
+                }
             } else {
-                playerdata::save(guest, &self.server.world_root, self.common.res.items())
-            }
-        } else {
-            false
-        };
+                false
+            };
         if saved {
             let directory = playerdata::directory(&self.server.world_root);
             self.native_player_save_to_file(guest.uuid, &guest.name, &directory);
@@ -835,12 +842,16 @@ impl crate::game::ServerGame<'_> {
     /// The integrated server's owner into the world's player, for `Level::write`.
     /// Returns the owner's uuid and name when they were stored.
     pub fn store_owner(&mut self) -> Option<(u128, String)> {
-        let uuid = self.server.lan.as_ref().and_then(|h| h.owner.as_ref())?.uuid;
+        let uuid = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|h| h.owner.as_ref())?
+            .uuid;
         let (conn, riding, dim, others) = self.server.lan.as_ref().and_then(|h| {
-            let g = h
-                .hub
-                .online_players()
-                .find(|g| g.uuid == uuid && !g.released && !self.server.crash_save.excludes(g.conn))?;
+            let g = h.hub.online_players().find(|g| {
+                g.uuid == uuid && !g.released && !self.server.crash_save.excludes(g.conn)
+            })?;
             let others = self.ridden_by_others(&h.hub.guests, &g.dimension, Some(uuid), true);
             Some((g.conn, g.vehicle, g.dimension.clone(), others))
         })?;
@@ -853,8 +864,8 @@ impl crate::game::ServerGame<'_> {
         if let Some(i) = host.hub.guests.iter().position(|g| g.conn == conn) {
             // The owner's map is the game's only during their own turn
             // (`guest_turn`); otherwise their record holds it, whoever acts.
-            let live =
-                (self.server.lan_acting_uuid == Some(uuid)).then(|| self.common.player_state.attachments.clone());
+            let live = (self.server.lan_acting_uuid == Some(uuid))
+                .then(|| self.common.player_state.attachments.clone());
             let mut store_ok = true;
             host.hub.guests.update(i, |g| {
                 let held = live.map(|a| std::mem::replace(&mut g.attachments, a));
@@ -906,7 +917,8 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         host.hub.set_view_distance(distance);
-        self.server.settings.render_distance = sunrise_sim::lan::hub::effective_view_distance(distance);
+        self.server.settings.render_distance =
+            sunrise_sim::lan::hub::effective_view_distance(distance);
         true
     }
 
@@ -1449,7 +1461,11 @@ impl crate::game::ServerGame<'_> {
                     if self.common.options.execution_role.is_dedicated_server()
                         && let Some((uuid, name)) =
                             host.hub.guest(conn).map(|g| (g.uuid, g.name.clone()))
-                        && let Some(old) = self.server.user_cache.as_mut().and_then(|c| c.get_by_id(uuid))
+                        && let Some(old) = self
+                            .server
+                            .user_cache
+                            .as_mut()
+                            .and_then(|c| c.get_by_id(uuid))
                     {
                         if !old.name.eq_ignore_ascii_case(&name) {
                             renamed = Some(old.name.clone());
@@ -2075,7 +2091,8 @@ impl crate::game::ServerGame<'_> {
     /// Pair late arrivals before a sound flush as well as at the end of the
     /// tick. The counter prevents taking or draining an entity's state twice.
     pub(in crate::game::server_side) fn lan_pair_joined(&mut self) {
-        let Some(next) = self.server
+        let Some(next) = self
+            .server
             .lan
             .as_ref()
             .filter(|host| host.hub.guests.iter().any(|g| host.hub.watches(g)))
@@ -2614,13 +2631,20 @@ impl crate::game::ServerGame<'_> {
             () => {{
                 let clock_rate = self.network_clock_rate();
                 TickCtx {
-                    sea_level: self.common.end.locator().map_or(63, |terrain| terrain.sea_level()),
+                    sea_level: self
+                        .common
+                        .end
+                        .locator()
+                        .map_or(63, |terrain| terrain.sea_level()),
                     world: &mut self.common.world,
                     entities,
                     next_entity: &mut self.server.next_entity,
                     spawn,
                     spawn_angle: self.common.level.world_spawn_angle,
-                    spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&self.common.level).id(),
+                    spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(
+                        &self.common.level,
+                    )
+                    .id(),
                     difficulty: i32::from(self.common.ui.difficulty),
                     difficulty_locked: self.common.level.difficulty_locked,
                     clock_rate,
@@ -2635,7 +2659,8 @@ impl crate::game::ServerGame<'_> {
         }
         let joining = {
             let ctx = join_ctx!();
-            self.server.lan
+            self.server
+                .lan
                 .as_mut()
                 .and_then(|host| host.hub.begin_player_join(conn, &ctx))
                 .is_some()
@@ -5216,21 +5241,21 @@ mod late_pairing_tests {
     #[test]
     #[ignore = "daily"]
     fn late_paired_item_display_sends_its_stack_on_pairing() {
-        use sunrise_gameplay_common::game::commands_common::OtherEntity;
         use super::LanSettings;
         use mod_api::ItemDisplayContext;
         use std::sync::{
             Arc,
             atomic::{AtomicI32, AtomicUsize},
         };
+        use sunrise_core::geometry::Vec3;
+        use sunrise_gameplay_common::game::commands_common::OtherEntity;
         use sunrise_items::items::ItemStack;
+        use sunrise_protocol::entity_data::{Value, serializer};
+        use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
         use sunrise_sim::lan::{
             Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig,
         };
         use sunrise_sim::text_display_data::resident::{DisplayContents, DisplayState};
-        use sunrise_core::geometry::Vec3;
-        use sunrise_protocol::entity_data::{Value, serializer};
-        use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
 
         crate::game::native_entity_refs::tests::with_game(|game| {
             let settings = LanSettings {
@@ -5281,7 +5306,8 @@ mod late_pairing_tests {
             guest.placed = true;
             guest.dimension = game.dim.id().to_owned();
             guest.sent_chunks.insert((0, 0));
-            let diamond_id = game.server
+            let diamond_id = game
+                .server
                 .lan
                 .as_ref()
                 .unwrap()
@@ -5538,10 +5564,10 @@ pub(in crate::game) mod merchant_packet_tests {
             guest.dimension = "minecraft:overworld".into();
             guest.sent_chunks.insert((0, 0));
             if !game.common.world.chunks.contains_key(&(0, 0)) {
-                game.common.world.chunks.insert(
-                    (0, 0),
-                    Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
-                );
+                game.common
+                    .world
+                    .chunks
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             }
             guest.inventory[0] = Some(sunrise_items::items::ItemStack::new("minecraft:emerald", 8));
             hub.guests.push(guest);
@@ -5728,7 +5754,11 @@ pub(in crate::game) mod merchant_packet_tests {
                 1,
                 play::Serverbound::ContainerClose(play::ContainerClose { container: window }),
             );
-            assert!(game.server.lan.as_ref().unwrap().menus[&1].merchant.is_none());
+            assert!(
+                game.server.lan.as_ref().unwrap().menus[&1]
+                    .merchant
+                    .is_none()
+            );
             assert!(packets(&rx).0.is_empty(), "closing does not resend offers");
 
             // Crossing the real level-two boundary runs updateSpecialPrices while

@@ -4,14 +4,12 @@
 //! negotiated peer that does not see the holder is sent nothing, and a message keeps its
 //! place among the player's held gameplay packets.
 #[cfg(test)]
-use super::transport_tests::{
-    Route, peer, sync_packets_within, value_key, values_until,
-};
+use super::transport_tests::{Route, peer, sync_packets_within, value_key, values_until};
 use std::time::{Duration, Instant};
 use sunrise_core::nbt::Tag;
-use sunrise_mod_runtime::attachments::Holder;
 #[cfg(test)]
 use sunrise_mod_runtime::attachments::AttachmentSync;
+use sunrise_mod_runtime::attachments::Holder;
 use sunrise_protocol::{
     attachment_sync,
     buf::{Codec, Ident, Reader},

@@ -9,7 +9,6 @@
 //!
 //! Every level shares the Overworld's clocks, weather parameters, rules, scoreboard, maps and portal arrivals.
 
-use sunrise_gameplay_common::game::GameGameExt3;
 use super::entity_residency::{define_resident_access, resident_owners};
 use super::{
     Dim, ExperienceOrb, FallingBlock, ItemEntity, Mob,
@@ -34,6 +33,7 @@ use std::{
     time::{Duration, Instant},
 };
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::GameGameExt3;
 use sunrise_gameplay_common::game::commands_common::{OtherEntity, Target};
 use sunrise_gameplay_common::game::entity::EntityLists;
 use sunrise_gameplay_common::game::residency_tick::ResidencyTickGameExt as _;
@@ -990,7 +990,11 @@ impl crate::game::ServerGame<'_> {
             None => (None, self.common.level.seed),
         };
         let fallback_overrides = sunrise_world::worldgen::overrides::WorldgenOverrides::default();
-        let overrides = self.server.world_tables.0.as_ref()
+        let overrides = self
+            .server
+            .world_tables
+            .0
+            .as_ref()
             .map_or(&fallback_overrides, |tables| &tables.biomes.overrides);
         let (streaming, save, locator) = super::world_loading::make_streaming(
             &self.common.res,
@@ -1022,7 +1026,9 @@ impl crate::game::ServerGame<'_> {
             sunrise_gameplay_common::game::authoritative_world_for_mods(&self.common.res, seed);
         world.attachments = save.load_attachments();
         world.shape = self.server.level_shapes.get(dim.id());
-        world.weather.copy_parameters_from(self.common.world.weather);
+        world
+            .weather
+            .copy_parameters_from(self.common.world.weather);
         if world.shape.can_have_weather(dim == Dim::End) && world.weather.raining {
             world.weather.rain_level.1 = 1.0;
             if world.weather.thundering {
@@ -1085,7 +1091,11 @@ impl crate::game::ServerGame<'_> {
         };
         self.native_level_opened(Dim::Overworld);
         self.initialize_overworld_spawn()?;
-        for dim in configured.iter().copied().filter(|&dim| dim != Dim::Overworld) {
+        for dim in configured
+            .iter()
+            .copied()
+            .filter(|&dim| dim != Dim::Overworld)
+        {
             if dim == starting_dim
                 && let Some(level) = starting_level.take()
             {
@@ -1250,7 +1260,10 @@ impl crate::game::ServerGame<'_> {
         swap(&mut self.common.ominous_spawners, &mut p.ominous_spawners);
         swap(&mut self.common.tnts, &mut p.tnts);
         swap(&mut self.server.hoppers, &mut p.hoppers);
-        swap(&mut self.server.chunk_spawn_enemies, &mut p.chunk_spawn_enemies);
+        swap(
+            &mut self.server.chunk_spawn_enemies,
+            &mut p.chunk_spawn_enemies,
+        );
         swap(&mut self.common.mobs, &mut p.mobs);
         swap(&mut self.server.knot_ids, &mut p.knot_ids);
         swap(&mut self.server.broken_knots, &mut p.broken_knots);
@@ -1282,7 +1295,9 @@ impl crate::game::ServerGame<'_> {
         let clock = self.common.level_clock_name(target);
         p.world.day_time = self.common.switch_clock(&clock);
         p.world.end_clock = self.common.world.end_clock;
-        p.world.weather.copy_parameters_from(self.common.world.weather);
+        p.world
+            .weather
+            .copy_parameters_from(self.common.world.weather);
         // The game rules and the difficulty are the server's, not a
         // level's: natural regeneration holds in every dimension.
         p.world.health_rules = self.common.world.health_rules;
@@ -1993,7 +2008,11 @@ impl crate::game::ServerGame<'_> {
     /// Advance light jobs queued on parked levels that neither ticked nor ran a view pass
     /// this server tick, without switching `self.dim` or running chunk generation/unloads.
     pub fn update_parked_light(&mut self, ticked: &[Dim]) {
-        let viewed_active = self.server.lan.as_ref().is_some_and(|h| h.hub.viewed.active());
+        let viewed_active = self
+            .server
+            .lan
+            .as_ref()
+            .is_some_and(|h| h.hub.viewed.active());
         let pending: Vec<Dim> = self
             .server
             .levels
@@ -2083,7 +2102,11 @@ impl crate::game::ServerGame<'_> {
         // Vanilla saves the level's chunks before their unload hooks.
         self.native_chunks_loaded();
         self.abort_abandoned_transactions(0);
-        for key in self.server.streaming.columns_with_outstanding_light(&self.common.world) {
+        for key in self
+            .server
+            .streaming
+            .columns_with_outstanding_light(&self.common.world)
+        {
             if let Some(chunk) = self.common.world.chunks.get_mut(&key) {
                 Arc::make_mut(chunk).lit = false;
                 self.common.world.dirty_light.insert(key);
@@ -2133,7 +2156,14 @@ impl crate::game::ServerGame<'_> {
     /// each open they heard.
     pub fn native_level_closed(&mut self, dim: Dim) {
         self.remove_level_fake_players(dim.id());
-        if let Some(index) = self.server.levels.0.order.iter().position(|&level| level == dim) {
+        if let Some(index) = self
+            .server
+            .levels
+            .0
+            .order
+            .iter()
+            .position(|&level| level == dim)
+        {
             self.native_level_unload(dim.id());
             self.server.levels.0.order.remove(index);
         }
@@ -2560,7 +2590,11 @@ mod tests {
                         game.enter_level(custom).unwrap();
                         dirty_test_chunk(game);
                         queue_unencodable_entity_record(&game.server.save.0);
-                        let disk = SaveDir::new(game.server.save.0.root.clone(), game.server.save.0.shape, None);
+                        let disk = SaveDir::new(
+                            game.server.save.0.root.clone(),
+                            game.server.save.0.shape,
+                            None,
+                        );
                         game.enter_level(Dim::Overworld).unwrap();
                         game.close_parked_level(custom).unwrap();
                         assert_eq!(game.dim, Dim::Overworld);
@@ -2577,12 +2611,12 @@ mod tests {
     #[ignore = "daily"]
     fn idle_eviction_keeps_the_refused_column_and_retires_its_neighbor() {
         use crate::game::native_entity_refs::tests::with_game;
-        use sunrise_gameplay_common::game::test_fixtures::run_fresh_cases;
         use mod_api::{ChunkUnloadEvent, EntitiesUnloadEvent, Hooks, ModEntry, ServerHost};
         use std::sync::Mutex;
+        use sunrise_core::nbt::{DISK_WRITE_NESTING_GUARD, Tag};
+        use sunrise_gameplay_common::game::test_fixtures::run_fresh_cases;
         use sunrise_items::items::ItemStack;
         use sunrise_level::chunk::Chunk;
-        use sunrise_core::nbt::{DISK_WRITE_NESTING_GUARD, Tag};
 
         if run_fresh_cases(
             "game::server_side::levels::tests::idle_eviction_keeps_the_refused_column_and_retires_its_neighbor",
@@ -2643,13 +2677,19 @@ mod tests {
                         );
                     }
                     let previous = Tag::compound([("marker", Tag::Int(47))]);
-                    game.server.save.0
+                    game.server
+                        .save
+                        .0
                         .save_entities(vec![((0, 0), vec![previous.clone()])])
                         .unwrap();
                     let invalid = (0..=DISK_WRITE_NESTING_GUARD)
                         .fold(Tag::Int(0), |nested, _| Tag::List(vec![nested]));
                     game.spawn_loaded_entity((0, 0), invalid, None);
-                    let disk = SaveDir::new(game.server.save.0.root.clone(), game.server.save.0.shape, None);
+                    let disk = SaveDir::new(
+                        game.server.save.0.root.clone(),
+                        game.server.save.0.shape,
+                        None,
+                    );
                     game.enter_level(Dim::Overworld).unwrap();
                     game.evict_idle_level_chunks(Dim::Nether).unwrap();
                     game.enter_level(Dim::Nether).unwrap();

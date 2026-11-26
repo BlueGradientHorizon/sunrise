@@ -25,7 +25,10 @@ fn particle_add_slot_follows_the_listening_mod() {
                     game.sync_render_hooks();
                     game.client.particles.0.requested = Some(Vec::new());
                     let smoke = ParticleOptions::simple(ParticleType::CampfireCosySmoke);
-                    game.client.particles.0.add(&smoke, [1.0, 2.0, 3.0], [0.0; 3]);
+                    game.client
+                        .particles
+                        .0
+                        .add(&smoke, [1.0, 2.0, 3.0], [0.0; 3]);
                     let requested = game.client.particles.0.requested.take().unwrap();
                     assert_eq!(requested.len(), 1);
                     requested[0].1[0]

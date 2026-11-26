@@ -1,6 +1,5 @@
 #![cfg(test)]
 
-
 #[cfg(test)]
 pub(crate) mod controller_tests {
     use std::sync::{Arc, atomic::AtomicI32, mpsc};

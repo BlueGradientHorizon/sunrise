@@ -476,7 +476,8 @@ impl ClientGame<'_> {
         }
         // `CustomHeadLayer`: a worn skull draws the skull model.
         if let Some(stack) = &a.equipment[5]
-            && let Some(kind) = skull_kind(&self.client.client_pack.item_renderer.models, &stack.item)
+            && let Some(kind) =
+                skull_kind(&self.client.client_pack.item_renderer.models, &stack.item)
             && let Some(head) = part_matrix(model, base, poses, "head", 0.0)
         {
             let pose = head * glam::Mat4::from_scale(glam::Vec3::splat(1.1875));

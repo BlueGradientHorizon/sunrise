@@ -290,9 +290,10 @@ pub trait EntityRemovalGameExt<'g>: crate::game::SideGame<'g> {
 
     /// Transactions keep pending removals when their level is parked.
     fn removal_pending_in(&self, dimension: Dim, target: &Target) -> bool {
-        let Some(id) = <Self::State as crate::game::side_ops::world::SideOps>::side_resident_target_id(
-            self, *target,
-        )
+        let Some(id) =
+            <Self::State as crate::game::side_ops::world::SideOps>::side_resident_target_id(
+                self, *target,
+            )
         else {
             return false;
         };
@@ -304,7 +305,9 @@ pub trait EntityRemovalGameExt<'g>: crate::game::SideGame<'g> {
         });
         // A commit's removals wait for its joins to be told: its entities read as gone until then.
         open || (self.transactions.committing.iter()).any(|commit| {
-            commit.dimension == dimension && commit.removed.contains(&id) && commit.removing != Some(id)
+            commit.dimension == dimension
+                && commit.removed.contains(&id)
+                && commit.removing != Some(id)
         })
     }
 }

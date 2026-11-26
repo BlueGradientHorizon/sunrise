@@ -666,10 +666,10 @@ impl crate::game::ClientGame<'_> {
                 }
             }
             C::SetBorderLerpSize(p) => {
-                if let Err(error) = self
-                    .common
-                    .border
-                    .lerp_between(p.old_size, p.new_size, p.lerp_time)
+                if let Err(error) =
+                    self.common
+                        .border
+                        .lerp_between(p.old_size, p.new_size, p.lerp_time)
                 {
                     log::warn!("invalid set_border_lerp_size packet: {error}");
                 }
@@ -956,10 +956,7 @@ impl crate::game::ClientGame<'_> {
     /// `ServerReconfigScreen`: a vertical layout of cells padded by 10, the
     /// title (9 high) over Disconnect (150 x 20), centred. The title's and the
     /// button's top left corners.
-    pub fn reconfigure_layout(
-        &self,
-        (w, h): (f32, f32),
-    ) -> ((f32, f32), (f32, f32)) {
+    pub fn reconfigure_layout(&self, (w, h): (f32, f32)) -> ((f32, f32), (f32, f32)) {
         let title = sunrise_game_data::text::Text::translate("connect.reconfiguring", &[]);
         let title_w = self.client.gui.atlas.font.width_text(&title).ceil() as i32;
         let width = (title_w + 20).max(170);

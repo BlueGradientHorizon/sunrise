@@ -1,9 +1,6 @@
 //! Switching an owner off holds scheduled work and prevents template writes.
 #![cfg(test)]
 
-
-
-
 #[cfg(test)]
 pub(crate) mod tests {
     use super::super::native_entity_refs::tests as fixture;

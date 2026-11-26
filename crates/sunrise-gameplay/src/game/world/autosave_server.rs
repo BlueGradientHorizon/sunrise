@@ -66,18 +66,27 @@ impl crate::game::ServerGame<'_> {
 
     pub(in crate::game) fn save_placed_players(&mut self) -> bool {
         let mut owner_saved = false;
-        if self.common.options.execution_role.writes_singleplayer_player()
+        if self
+            .common
+            .options
+            .execution_role
+            .writes_singleplayer_player()
             && !self.server.crash_save.keep_owner_file
         {
             let stored_owner = self.store_owner();
 
-            if stored_owner.is_some() || (self.server.lan.is_none() && self.common.player.is_some()) {
+            if stored_owner.is_some() || (self.server.lan.is_none() && self.common.player.is_some())
+            {
                 if stored_owner.is_none() {
                     self.sync_level();
                 }
 
                 let _ = self.finish_player_autosaves(true);
-                match self.common.level.write_player(&self.server.world_root, self.common.res.items()) {
+                match self
+                    .common
+                    .level
+                    .write_player(&self.server.world_root, self.common.res.items())
+                {
                     Ok(()) => {
                         owner_saved = true;
                         self.save_stats();
@@ -98,7 +107,6 @@ impl crate::game::ServerGame<'_> {
             && let Some(host) = self.server.lan.as_mut()
         {
             let owner = host.owner.as_ref().map(|owner| owner.uuid);
-
 
             host.hub.guests.update_all(|g| {
                 if g.placed
@@ -149,12 +157,20 @@ impl crate::game::ServerGame<'_> {
         self.save_schedule();
         self.save_warden_tracker();
         self.sync_world_level_data();
-        if self.common.options.execution_role.writes_singleplayer_player() && !owner_saved {
-
-
-            self.common.level.write_keeping_player(&self.server.world_root)?;
+        if self
+            .common
+            .options
+            .execution_role
+            .writes_singleplayer_player()
+            && !owner_saved
+        {
+            self.common
+                .level
+                .write_keeping_player(&self.server.world_root)?;
         } else {
-            self.common.level.write_without_player(&self.server.world_root)?;
+            self.common
+                .level
+                .write_without_player(&self.server.world_root)?;
         }
         self.save_world_state();
         Ok(())

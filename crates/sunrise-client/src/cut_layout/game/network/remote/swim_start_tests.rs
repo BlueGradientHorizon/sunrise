@@ -4,8 +4,8 @@ use std::sync::Arc;
 use std::sync::Mutex;
 use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 use sunrise_gameplay_common::game::native_hooks::can_start_swimming::SprintGameExt;
-use winit::keyboard::KeyCode;
 use sunrise_gameplay_common::game::remote::{Chunk, ItemStack, Keys, PlayerMotion, Vec3, play};
+use winit::keyboard::KeyCode;
 use {
     crate::game::server_side::native_entity_refs::tests::with_client_game,
     sunrise_gameplay::game::native_entity_refs::tests::with_game,

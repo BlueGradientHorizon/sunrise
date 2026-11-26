@@ -27,7 +27,11 @@ impl ServerGame<'_> {
         let reach = f64::from(radius) * 2.0 + 1.0;
         let min = center.map(|c| (c - reach).floor());
         let max = center.map(|c| (c + reach).floor());
-        let source = self.server.combat.0.explosion_direct
+        let source = self
+            .server
+            .combat
+            .0
+            .explosion_direct
             .map(|(id, _)| id)
             .or(self.server.combat.0.explosion_source);
         let mut entities = self

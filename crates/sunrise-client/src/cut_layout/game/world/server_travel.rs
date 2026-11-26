@@ -39,7 +39,6 @@ pub(crate) mod tests {
         }
     }
 
-
     #[test]
     #[ignore = "daily"]
     fn guest_portal_entry_uses_body_sleep_and_vehicle() {
@@ -276,7 +275,10 @@ pub(crate) mod tests {
         impl Hooks for Constructed {
             fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
                 let state = r
-                    .register_attachment_type(AttachmentDescriptor::new("natural_tree:state", || 0i32))
+                    .register_attachment_type(AttachmentDescriptor::new(
+                        "natural_tree:state",
+                        || 0i32,
+                    ))
                     .unwrap();
                 *self.1.lock().unwrap() = Some(state);
             }

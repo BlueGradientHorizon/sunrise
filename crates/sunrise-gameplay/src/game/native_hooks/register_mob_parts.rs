@@ -33,10 +33,7 @@ enum MobTarget<'a> {
 }
 
 impl MobTarget<'_> {
-    fn get_mut<'b>(
-        &'b mut self,
-        game: &'b mut crate::game::ServerGame<'_>,
-    ) -> Option<&'b mut Mob> {
+    fn get_mut<'b>(&'b mut self, game: &'b mut crate::game::ServerGame<'_>) -> Option<&'b mut Mob> {
         match self {
             Self::Resident { id, join } => {
                 let idx = game

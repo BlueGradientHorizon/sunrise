@@ -4,13 +4,11 @@ use mod_api::{
 };
 use std::sync::{Arc, Mutex};
 use sunrise_gameplay_common::game::boats_common::Boat;
+use sunrise_gameplay_common::game::piston_push::{Aabb, Direction, Lid, Vec3};
 use sunrise_gameplay_common::game::remote::passengers::PassengerSeat;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::play::{self, Clientbound};
 use sunrise_sim::mobs::Mob;
-use {
-    sunrise_gameplay_common::game::piston_push::{Aabb, Direction, Lid, Vec3},
-};
 use {
     crate::game::server_side::native_entity_refs::tests::with_client_game,
     sunrise_gameplay::game::native_entity_refs::tests::with_game,
@@ -293,6 +291,5 @@ fn an_observing_boat_keeps_the_lid_push_through_its_last_lerp_step() {
         },
     );
 }
-
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

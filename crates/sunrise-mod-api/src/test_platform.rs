@@ -24,7 +24,11 @@ extern "C" fn enter() {
     let Ok(exe) = std::env::current_exe() else {
         return;
     };
-    if exe.parent().and_then(|dir| dir.file_name()).is_some_and(|name| name == "deps") {
+    if exe
+        .parent()
+        .and_then(|dir| dir.file_name())
+        .is_some_and(|name| name == "deps")
+    {
         install();
     }
 }
@@ -43,6 +47,9 @@ pub fn install() {
             profiler_summary: profiler::summary,
             profiler_firefox_profile: profiler::firefox_profile,
         });
-        assert!(matches!(result, Ok(()) | Err(PlatformRefusal::AlreadyInstalled)));
+        assert!(matches!(
+            result,
+            Ok(()) | Err(PlatformRefusal::AlreadyInstalled)
+        ));
     });
 }

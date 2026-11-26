@@ -2,7 +2,6 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
-    
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_gameplay_common::game::mounts_common::MountsCommonGameExt1;
 

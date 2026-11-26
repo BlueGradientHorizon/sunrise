@@ -262,4 +262,3 @@ pub(crate) mod damage_type_registry_tests {
 #[cfg(test)]
 #[path = "tests/end_clock_tests_server.rs"]
 pub(crate) mod end_clock_tests;
-

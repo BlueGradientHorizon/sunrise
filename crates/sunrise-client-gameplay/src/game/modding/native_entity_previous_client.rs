@@ -57,7 +57,13 @@ impl ClientGame<'_> {
                 .and_then(|join| list_old(&self.common.resident_entities.general.rows, join))
                 .or_else(|| {
                     // A client's copy of a row its server shows it.
-                    let row = self.client.remote.as_ref()?.general.rows.get(&(id as i32))?;
+                    let row = self
+                        .client
+                        .remote
+                        .as_ref()?
+                        .general
+                        .rows
+                        .get(&(id as i32))?;
                     Some(Old {
                         position: row.previous,
                         rotation: row.previous_rotation,

@@ -76,8 +76,8 @@ impl crate::game::ServerGame<'_> {
                     }
                     shoved = true;
                     if let Some(MoveWho::Entity(handle)) = self.resolve_push_target(selected) {
-                        let moved =
-                            with_entity!(self, handle, entity => entity.position()).subtract(body.position);
+                        let moved = with_entity!(self, handle, entity => entity.position())
+                            .subtract(body.position);
                         if moved != Vec3::ZERO {
                             let rise = after.collider.frame.origin.y - kind.before().frame.origin.y;
                             let normal = movement.normalize();

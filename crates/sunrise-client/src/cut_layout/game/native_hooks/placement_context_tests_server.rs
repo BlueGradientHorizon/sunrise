@@ -364,4 +364,3 @@ fn substituted_placement_uses_the_held_item_preclear_and_selected_placed_by() {
         });
     });
 }
-

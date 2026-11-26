@@ -572,10 +572,11 @@ impl crate::game::ClientGame<'_> {
                     .unwrap_or_else(|| {
                         // With no fallback Part, keep both vanilla methods
                         // on the same dry level as an ordinary click.
-                        let split = sunrise_gameplay_common::game::api_values::block_state::block_listens(
-                            mod_api::HookId::UseWithoutItem,
-                            state,
-                        );
+                        let split =
+                            sunrise_gameplay_common::game::api_values::block_state::block_listens(
+                                mod_api::HookId::UseWithoutItem,
+                                state,
+                            );
                         self.remote_block_template(
                             &hit,
                             state,

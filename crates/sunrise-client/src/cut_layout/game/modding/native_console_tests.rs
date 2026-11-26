@@ -466,14 +466,20 @@ fn native_console_msg_routes_outgoing_confirmation_to_source() {
         game.build_registries();
         let (tx12, rx12) = std::sync::mpsc::channel();
         let (tx13, rx13) = std::sync::mpsc::channel();
-        game.server.lan.as_mut().unwrap().hub.guests.update_all(|guest| {
-            let tx = if guest.conn == 12 {
-                tx12.clone()
-            } else {
-                tx13.clone()
-            };
-            guest.sender = sunrise_client::lan::PlayerSender::new(tx, Arc::default());
-        });
+        game.server
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .update_all(|guest| {
+                let tx = if guest.conn == 12 {
+                    tx12.clone()
+                } else {
+                    tx13.clone()
+                };
+                guest.sender = sunrise_client::lan::PlayerSender::new(tx, Arc::default());
+            });
 
         let (send, receive) = std::sync::mpsc::channel();
         assert!(Commands::run_command_with_feedback(
@@ -568,11 +574,7 @@ fn native_console_runs_in_world_spawn_level_and_restores_dimension() {
             "setblock 1 64 1 minecraft:stone",
             send,
         ));
-        assert_eq!(
-            game.dim,
-            Dim::Nether,
-            "previous dimension must be restored"
-        );
+        assert_eq!(game.dim, Dim::Nether, "previous dimension must be restored");
         assert_ne!(
             game.world.block(1, 64, 1),
             stone,

@@ -130,11 +130,9 @@ impl StandaloneGeometry {
                 })
                 .collect();
             translucent[index] = model.faces.iter().any(|face| face.translucent);
-            bounds[index] = face_bounds(
-                prepared
-                    .iter()
-                    .flat_map(crate::game::client_side::minecarts_client::PreparedModelFace::positions),
-            );
+            bounds[index] = face_bounds(prepared.iter().flat_map(
+                crate::game::client_side::minecarts_client::PreparedModelFace::positions,
+            ));
             slots[index] = Some(prepared);
         }
         // The special parts are sized in an empty world, with no level loaded yet.
@@ -207,7 +205,13 @@ impl StandaloneGeometry {
         let mut prepared = Vec::new();
         let mut tints = FxHashMap::default();
         let grass = client_pack.item_renderer.grass_color(0.5, 1.0) as u32;
-        let default_tint = |index| client_pack.context.mesh.tables.default_tint(id, index, grass);
+        let default_tint = |index| {
+            client_pack
+                .context
+                .mesh
+                .tables
+                .default_tint(id, index, grass)
+        };
         if let Ok(models) = client_pack.render.model_catalog.collect_seeded(
             id,
             sunrise_gameplay_common::game::CommonGame::BLOCK_MODEL_SEED,
@@ -2088,7 +2092,10 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// The breaking stage at the block drawn (`BlockEntityDrawContext::crumbling_stage`).
-    pub(in crate::game) fn native_draw_crumbling_stage(&self, draw: &BlockEntityDraw) -> Option<u8> {
+    pub(in crate::game) fn native_draw_crumbling_stage(
+        &self,
+        draw: &BlockEntityDraw,
+    ) -> Option<u8> {
         draw.crumbling_stage
     }
     /// What is drawn next by `quad`, `cube`, `block`, `model` and `terrain_model` gets the
@@ -5254,7 +5261,11 @@ impl crate::game::ClientGame<'_> {
         };
         f(&mut drawn)
     }
-    pub fn test_native_draw_block(&self, draw: &mut BlockEntityDraw<'_>, state: BlockStateId) -> bool {
+    pub fn test_native_draw_block(
+        &self,
+        draw: &mut BlockEntityDraw<'_>,
+        state: BlockStateId,
+    ) -> bool {
         self.native_draw_block(draw, state)
     }
     pub fn test_native_draw_crumbling_stage(&self, draw: &BlockEntityDraw<'_>) -> Option<u8> {

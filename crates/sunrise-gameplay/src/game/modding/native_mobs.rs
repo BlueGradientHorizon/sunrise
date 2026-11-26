@@ -20,10 +20,7 @@ pub(in crate::game) fn equipment_stack_matches(
     }
 }
 
-pub(in crate::game) fn guest_equipment_slot(
-    g: &Guest,
-    slot: EquipmentSlot,
-) -> Option<&ItemStack> {
+pub(in crate::game) fn guest_equipment_slot(g: &Guest, slot: EquipmentSlot) -> Option<&ItemStack> {
     match slot {
         EquipmentSlot::MainHand => g.inventory.get(g.selected)?.as_ref(),
         EquipmentSlot::OffHand => g.offhand.as_ref(),

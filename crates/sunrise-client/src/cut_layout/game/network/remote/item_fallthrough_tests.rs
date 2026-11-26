@@ -148,5 +148,4 @@ fn apple_on_stone_passes_to_item_fallthrough_once() {
     );
 }
 
-
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

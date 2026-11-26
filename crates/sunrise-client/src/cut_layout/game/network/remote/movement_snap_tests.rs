@@ -189,7 +189,12 @@ fn a_stand_position_snap_keeps_the_first_draws_body_yaw() {
             on_ground: false,
         }))
         .unwrap();
-        let stand = game.common.armor_stands.iter().find(|a| a.id == 40).unwrap();
+        let stand = game
+            .common
+            .armor_stands
+            .iter()
+            .find(|a| a.id == 40)
+            .unwrap();
         assert_eq!(stand.render_position(0.25), Vec3::new(80.5, 64.0, 0.5));
         assert_eq!([stand.previous_yaw, stand.yaw], [135.0; 2]);
         assert_eq!([stand.render_yaw(0.0), stand.render_yaw(1.0)], [90.0; 2]);

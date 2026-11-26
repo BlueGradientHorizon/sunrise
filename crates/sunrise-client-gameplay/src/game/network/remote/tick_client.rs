@@ -1608,8 +1608,8 @@ impl crate::game::ClientGame<'_> {
         // LocalPlayer.tick and sendChanges run once the client has loaded (hasClientLoaded),
         // wherever the player is: a chunk that hasn't come yet has no blocks here, as vanilla's
         // empty chunk has none, so the player falls through it until the chunk comes.
-        let loaded =
-            self.common.player.is_some() && self.client.remote.as_ref().is_some_and(|r| r.loaded_sent);
+        let loaded = self.common.player.is_some()
+            && self.client.remote.as_ref().is_some_and(|r| r.loaded_sent);
         // The entities that tick before the player pushed it before its turn began, so
         // before its Pre.
         if loaded {
@@ -1650,7 +1650,8 @@ impl crate::game::ClientGame<'_> {
             .flatten();
             // The flag a glide starts from is the one before the hook, so a listener that
             // starts the glide from `player_tick_pre` is reported as this tick's start.
-            let fall_flying_before_hooks = self.common.player.as_ref().is_some_and(|p| p.fall_flying);
+            let fall_flying_before_hooks =
+                self.common.player.as_ref().is_some_and(|p| p.fall_flying);
             if let Some(player) = player {
                 self.native_player_tick_pre(mod_api::__private::PlayerTickPreCall { player });
             }
@@ -1763,7 +1764,6 @@ impl crate::game::ClientGame<'_> {
 }
 
 use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
-
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
 

@@ -57,14 +57,10 @@ impl ClientGame<'_> {
                 game.common.res.facts(),
                 game.common.collision,
             );
-            game.client.particles.0.add_with(
-                Some(&level),
-                options,
-                at,
-                velocity,
-                false,
-                false,
-            );
+            game.client
+                .particles
+                .0
+                .add_with(Some(&level), options, at, velocity, false, false);
         });
         true
     }

@@ -4,12 +4,15 @@
 //! published server over TCP. The values are decoded by the typed adapter and encoded by the
 //! token sends; the expected bodies are written out by hand.
 use mod_api::wire::{Reader, Wire, WireError, WireSchema, Writer};
+#[cfg(test)]
+use mod_api::{
+    __private::{HookPanicReport, take_hook_panics},
+    ModEntry,
+};
 use mod_api::{
     Hooks, IPayloadContext, PayloadAccepted, PayloadId, PayloadSendError, PlayerRef, Registrar,
     ToClient, ToServer, Wire,
 };
-#[cfg(test)]
-use mod_api::{__private::{HookPanicReport, take_hook_panics}, ModEntry};
 use std::sync::{
     Mutex,
     atomic::{AtomicUsize, Ordering},

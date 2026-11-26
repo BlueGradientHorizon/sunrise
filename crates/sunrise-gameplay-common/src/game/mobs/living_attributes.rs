@@ -1,7 +1,6 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-
     use sunrise_items::items::ItemStack;
 
     use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetime};
@@ -25,5 +24,4 @@ pub mod tests {
             })
             .collect()
     }
-
 }

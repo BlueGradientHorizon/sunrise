@@ -1,7 +1,6 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-
     pub fn write_silence_output(name: &str, rows: &[String]) {
         if let Some(root) = std::env::var_os("SUNRISE_SOURCE_SILENCE_OUTPUT") {
             std::fs::write(

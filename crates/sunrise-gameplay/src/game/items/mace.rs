@@ -513,7 +513,8 @@ impl ServerGame<'_> {
         }
         let damage_type = self.stack_melee_damage_type(
             Some(&stack),
-            self.common.player
+            self.common
+                .player
                 .as_ref()
                 .map_or((0.0, false), |p| (p.fall_distance, p.fall_flying)),
             true,

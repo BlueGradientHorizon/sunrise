@@ -7,8 +7,6 @@ use winit::keyboard::KeyCode;
 #[cfg(test)]
 pub(crate) mod tests {
 
-    
-
     use super::*;
 
     use sunrise_gameplay_common::game::Screen;

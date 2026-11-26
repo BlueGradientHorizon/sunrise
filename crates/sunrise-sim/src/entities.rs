@@ -2109,7 +2109,8 @@ impl ArmorStand {
     /// yBodyRotO, yBodyRot)`).
     pub fn render_yaw(&self, alpha: f32) -> f32 {
         self.previous_body_yaw
-            + alpha * sunrise_level::camera_math::wrap_degrees(self.body_yaw - self.previous_body_yaw)
+            + alpha
+                * sunrise_level::camera_math::wrap_degrees(self.body_yaw - self.previous_body_yaw)
     }
     /// A server's stand on its client, each tick:
     /// `setOldPosAndRot` (`ClientLevel.tickNonPassenger`), then the step of

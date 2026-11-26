@@ -5,8 +5,7 @@ use std::sync::{
 };
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::{
-    execution_role::ExecutionRole,
-    native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
+    execution_role::ExecutionRole, native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
 };
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};

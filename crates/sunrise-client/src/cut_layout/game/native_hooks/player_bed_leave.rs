@@ -1,7 +1,5 @@
 #![cfg(test)]
 
-
-
 #[cfg(test)]
 pub(crate) mod player_bed_leave_tests {
 

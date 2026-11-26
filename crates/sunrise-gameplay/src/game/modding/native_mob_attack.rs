@@ -99,7 +99,11 @@ impl ServerGame<'_> {
     /// events the strike made, and vanilla's answer when no hit decides it (a creeper's). None
     /// for a mob no longer here.
     fn mob_strike(&mut self, id: u32, who: Who) -> Option<(Vec<MobEvent>, Option<bool>)> {
-        let index = self.common.mobs.iter().position(|m| m.id == id && !m.removed)?;
+        let index = self
+            .common
+            .mobs
+            .iter()
+            .position(|m| m.id == id && !m.removed)?;
         let snapshot: Vec<_> = self
             .common
             .mobs
@@ -135,10 +139,9 @@ impl ServerGame<'_> {
         };
         drop(w);
         lent.give_back(&mut self.common.world);
-        self.common.mobs.restore(
-            lifted,
-            sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst,
-        );
+        self.common
+            .mobs
+            .restore(lifted, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         Some((events, answer))
     }
 }
@@ -190,12 +193,7 @@ mod tests {
             let player = game.player(1).unwrap().entity();
             let mob = |game: &ServerGame<'_>, entity| game.mob(entity).unwrap();
             let health = |game: &ServerGame<'_>, id| {
-                game.common
-                    .mobs
-                    .iter()
-                    .find(|m| m.id == id)
-                    .unwrap()
-                    .health
+                game.common.mobs.iter().find(|m| m.id == id).unwrap().health
             };
             let striker = mob(game, zombie);
             assert_eq!(striker.do_hurt_target(game, player), Ok(true));

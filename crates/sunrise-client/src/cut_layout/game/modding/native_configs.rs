@@ -12,8 +12,7 @@ pub(crate) mod tests {
     use std::sync::{Arc, Mutex};
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_gameplay_common::game::{
-        native_configs::NativeConfigsGameExt1 as _,
-        option_paths::game_dir,
+        native_configs::NativeConfigsGameExt1 as _, option_paths::game_dir,
         test_fixtures::run_fresh_cases,
     };
 
@@ -63,8 +62,7 @@ pub(crate) mod tests {
                                     calls.lock().unwrap().push((true, config.kind));
                                 }
                                 ConfigEvent::Unloading(host) => {
-                                    let SettingValue::Toggle(current) =
-                                        host.setting(key).unwrap()
+                                    let SettingValue::Toggle(current) = host.setting(key).unwrap()
                                     else {
                                         panic!("expected a toggle")
                                     };
@@ -84,8 +82,7 @@ pub(crate) mod tests {
             }
         }
         let calls = Arc::new(Mutex::new(Vec::new()));
-        let mods: Mods =
-            vec![ModEntry::new("phase_probe", Box::new(Probe(calls.clone())))].into();
+        let mods: Mods = vec![ModEntry::new("phase_probe", Box::new(Probe(calls.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
             with_client_game(|game| {
                 game.native_configs_client_start();

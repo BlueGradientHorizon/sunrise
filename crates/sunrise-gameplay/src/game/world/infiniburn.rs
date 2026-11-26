@@ -7,7 +7,9 @@ impl crate::game::ServerGame<'_> {
         self.common.world.golem_heads = Some(golem_heads.clone());
         self.common.world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type()));
         let parked: Vec<_> = self
-            .server.levels.0
+            .server
+            .levels
+            .0
             .parked
             .keys()
             .copied()

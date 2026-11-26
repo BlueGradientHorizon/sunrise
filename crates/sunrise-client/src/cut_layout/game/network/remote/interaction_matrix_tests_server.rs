@@ -101,7 +101,6 @@ pub(crate) fn matrix(mods: mod_api::Mods) {
     });
 }
 
-
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

@@ -135,7 +135,12 @@ pub trait MobsRestSideGameExt<'__sg>: crate::game::SideGame<'__sg> {
         <Self::State as SideOps>::side_item_post_move_contacts(self, item, client, sources)
     }
 
-    fn side_hurt_lent_item_entity(&mut self, item: &mut ItemEntity, amount: f32, damage_type: &str) {
+    fn side_hurt_lent_item_entity(
+        &mut self,
+        item: &mut ItemEntity,
+        amount: f32,
+        damage_type: &str,
+    ) {
         <Self::State as SideOps>::side_hurt_lent_item_entity(self, item, amount, damage_type);
     }
 

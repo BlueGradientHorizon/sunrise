@@ -615,7 +615,6 @@ impl Hooks for SourceSpy {
     }
 }
 
-
 #[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 

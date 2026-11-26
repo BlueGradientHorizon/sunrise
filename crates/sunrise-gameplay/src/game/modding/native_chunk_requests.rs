@@ -402,7 +402,11 @@ impl ServerGame<'_> {
                     continue;
                 }
                 self.server.async_chunk_requests.dec_active(dim);
-                if self.server.async_chunk_requests.release_holder(dim, req.pos) {
+                if self
+                    .server
+                    .async_chunk_requests
+                    .release_holder(dim, req.pos)
+                {
                     self.server.streaming.remove_async_request(req.pos);
                     released_any = true;
                 }
@@ -721,7 +725,13 @@ mod tests {
 
             let overworld = game.level("minecraft:overworld").unwrap();
             let target = [28, -19];
-            assert!(!game.common.world.chunks.contains_key(&(target[0], target[1])));
+            assert!(
+                !game
+                    .common
+                    .world
+                    .chunks
+                    .contains_key(&(target[0], target[1]))
+            );
 
             // 1. Queue an ungenerated chunk on the active level and drive real `ChunkStreamer` workers.
             let req = {
@@ -761,7 +771,11 @@ mod tests {
             game.server.streaming.radius = 0;
             game.tick_server(false).unwrap();
             assert!(
-                !game.common.world.chunks.contains_key(&(target[0], target[1])),
+                !game
+                    .common
+                    .world
+                    .chunks
+                    .contains_key(&(target[0], target[1])),
                 "streamed chunk unloads once its level-33 ticket is released"
             );
 

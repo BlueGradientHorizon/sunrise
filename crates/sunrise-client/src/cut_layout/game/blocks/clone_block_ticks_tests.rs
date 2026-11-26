@@ -7,9 +7,7 @@ use sunrise_core::position::{BlockPos, ChunkPos};
 use sunrise_level::chunk::Chunk;
 use {
     crate::game::*,
-    sunrise_gameplay_common::game::{
-        Options, Progress, Resources, execution_role,
-    },
+    sunrise_gameplay_common::game::{Options, Progress, Resources, execution_role},
 };
 
 fn game(

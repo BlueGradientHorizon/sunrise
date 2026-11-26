@@ -166,11 +166,8 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         assert_eq!(book_level(&normal), 2);
         normal
     }
-    fn check_replacement<'g, G>(
-        game: &mut G,
-        old: &CreativeModeTabs,
-        seen: &Arc<Mutex<Seen>>,
-    ) where
+    fn check_replacement<'g, G>(game: &mut G, old: &CreativeModeTabs, seen: &Arc<Mutex<Seen>>)
+    where
         G: sunrise_gameplay_common::game::SideGame<'g> + ItemsHost,
     {
         // Registry installation must not dispatch; the next demand uses the changed definition.
@@ -222,7 +219,8 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
                         assert_eq!(
                             game.stock_sort_order().of(
                                 "minecraft:stick",
-                                sunrise_items::items::ItemStack::new("minecraft:stick", 1).merge_kind()
+                                sunrise_items::items::ItemStack::new("minecraft:stick", 1)
+                                    .merge_kind()
                             ),
                             Some(0)
                         );
@@ -231,7 +229,8 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
                         assert_eq!(
                             game.stock_sort_order().of(
                                 "minecraft:torch",
-                                sunrise_items::items::ItemStack::new("minecraft:torch", 1).merge_kind()
+                                sunrise_items::items::ItemStack::new("minecraft:torch", 1)
+                                    .merge_kind()
                             ),
                             Some(0)
                         );

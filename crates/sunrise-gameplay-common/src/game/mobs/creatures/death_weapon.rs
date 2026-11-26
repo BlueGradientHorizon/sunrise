@@ -41,5 +41,4 @@ impl crate::game::CommonGame<'_> {
             _ => sunrise_sim::health::DirectEntity::Projectile,
         }
     }
-
 }

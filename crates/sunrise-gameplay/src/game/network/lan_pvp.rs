@@ -182,7 +182,8 @@ impl crate::game::ServerGame<'_> {
             self.melee_damage("minecraft:player", true, Some(victim));
         let sweep = self.sweep_attack_position(scale, crit, "minecraft:player");
         let strength = self.player_attack_knockback();
-        let knockback_attack = scale > 0.9 && self.common.player.as_ref().is_some_and(|p| p.sprinting);
+        let knockback_attack =
+            scale > 0.9 && self.common.player.as_ref().is_some_and(|p| p.sprinting);
         let (xd, zd) = self.extra_knockback_direction();
         self.server.attack_ticks = 0;
         self.swing_arm();
@@ -601,25 +602,25 @@ impl crate::game::ServerGame<'_> {
             .player
             .as_ref()
             .map_or([0.0; 3], |p| [p.position.x, p.position.y, p.position.z]);
-        let enchanted_damage = self
-            .common
-            .held()
-            .zip(self.common.player.as_ref())
-            .map(|(held, player)| {
-                let weapon = self.common.item_combat_stack(held);
-                let motion = (player.fall_distance, player.fall_flying);
-                let damage_type = self
-                    .common
-                    .stack_melee_damage_type(Some(&weapon), motion, true);
-                SweepDamage {
-                    weapon,
-                    attacker: player.entity_id as u32,
-                    base,
-                    scale,
-                    damage_type,
-                    direct_motion: Some(motion),
-                }
-            });
+        let enchanted_damage =
+            self.common
+                .held()
+                .zip(self.common.player.as_ref())
+                .map(|(held, player)| {
+                    let weapon = self.common.item_combat_stack(held);
+                    let motion = (player.fall_distance, player.fall_flying);
+                    let damage_type =
+                        self.common
+                            .stack_melee_damage_type(Some(&weapon), motion, true);
+                    SweepDamage {
+                        weapon,
+                        attacker: player.entity_id as u32,
+                        base,
+                        scale,
+                        damage_type,
+                        direct_motion: Some(motion),
+                    }
+                });
         let damage = if enchanted_damage.is_some() {
             0.0
         } else {

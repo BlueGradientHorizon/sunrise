@@ -1,7 +1,6 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-
     /// A zombie's type with only what a hurt and a push read.
     pub fn zombie_type() -> std::sync::Arc<sunrise_sim::mobs::MobType> {
         use sunrise_sim::mobs::{Anim, Brain, MobType, Species};

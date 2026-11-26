@@ -75,12 +75,18 @@ impl SideOps for crate::game::client_side::ClientState {
         use crate::game::client_side::text_displays::Shows;
 
         let (remote, id) = game.native_client_entity_context(entity).ok()?;
-        if remote.tracked(id).is_some_and(|(kind, _)| Shows::from_kind(kind).is_some())
+        if remote
+            .tracked(id)
+            .is_some_and(|(kind, _)| Shows::from_kind(kind).is_some())
             && let Some(display) = game.client.text_displays.0.get(&id)
         {
             return Some(display.custom_name.clone());
         }
-        remote.general.rows.get(&id).map(|row| row.custom_name.clone())
+        remote
+            .general
+            .rows
+            .get(&id)
+            .map(|row| row.custom_name.clone())
     }
 
     fn side_native_client_entity_body_target(
@@ -380,7 +386,10 @@ impl SideOps for crate::game::client_side::ClientState {
     }
     fn side_retire_disabled_instance_groups(game: &Self::Game<'_>, effective: &BTreeSet<String>) {
         game.client_retire_disabled_instance_groups(effective);
-        game.client.prepared_items.borrow_mut().retire_disabled(effective);
+        game.client
+            .prepared_items
+            .borrow_mut()
+            .retire_disabled(effective);
         if let Some(renderer) = &game.client.renderer.0 {
             renderer.retire_disabled_mod_meshes(effective);
             renderer.retire_disabled_mod_uniforms(effective);

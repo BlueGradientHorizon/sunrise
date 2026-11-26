@@ -1,6 +1,6 @@
 use mod_api::{
-    BabyEntitySpawnChild, Identifier, MobSplitChildren, PendingMobSpec, UnspawnedMob, UnspawnedMobError,
-    UnspawnedMobRead,
+    BabyEntitySpawnChild, Identifier, MobSplitChildren, PendingMobSpec, UnspawnedMob,
+    UnspawnedMobError, UnspawnedMobRead,
 };
 use std::sync::{
     Arc,
@@ -8,8 +8,11 @@ use std::sync::{
 };
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay::game::{
-    ServerGame, native_entity_refs::tests::with_game,
-    server_side::native_pending_children::{BabyChildSlot, ChildConstraint, PendingMob, SplitChildList},
+    ServerGame,
+    native_entity_refs::tests::with_game,
+    server_side::native_pending_children::{
+        BabyChildSlot, ChildConstraint, PendingMob, SplitChildList,
+    },
 };
 use sunrise_mod_runtime::attachments::Attachments;
 use sunrise_sim::mobs::{Mob, finalize};

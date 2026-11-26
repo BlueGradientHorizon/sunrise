@@ -82,9 +82,10 @@ impl ClientGame<'_> {
         };
         let (x, y, z) = edit.pos;
         let buffer = 4.0;
-        let mut near = self.common.eye_position().is_some_and(|eye| {
-            within_block_range(eye, self.common.reach() + buffer, [x, y, z])
-        });
+        let mut near = self
+            .common
+            .eye_position()
+            .is_some_and(|eye| within_block_range(eye, self.common.reach() + buffer, [x, y, z]));
         if let Some(uuid) = self.common.level.player_uuid {
             native_block_interaction_range(
                 &self.common.loop_context,

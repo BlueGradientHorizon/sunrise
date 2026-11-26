@@ -267,4 +267,3 @@ fn a_server_never_ticks_a_client_ticker() {
 }
 
 use sunrise_gameplay_common::game::side_ops::events::EventsSideGameExt as _;
-

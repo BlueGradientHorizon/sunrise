@@ -1,11 +1,9 @@
 //! Prepare local worlds without blocking the window's event loop.
 use super::*;
+use sunrise_gameplay_common::game::condition_reload_state::WorldBiomeRegistry;
 use sunrise_gameplay_common::game::growth_features;
 use sunrise_level::{chunk_streamer::ChunkStreamer, sim_settings::SimSettings};
-use sunrise_gameplay_common::game::condition_reload_state::WorldBiomeRegistry;
-use sunrise_sim::vanillagen::{
-    TerrainResources, shared_biome_source_data, shared_resource_data,
-};
+use sunrise_sim::vanillagen::{TerrainResources, shared_biome_source_data, shared_resource_data};
 use sunrise_world::worldgen::{
     biome_source::{BiomeSourceError, ResolvedBiomeSource},
     generator::data::{BiomeSourceData, GeneratorData},
@@ -403,7 +401,8 @@ impl PreparedWorld {
         )?;
         drop(streaming_step);
         streaming.radius = settings.render_distance;
-        let mut world = sunrise_gameplay_common::game::authoritative_world_for_mods(res, level.seed);
+        let mut world =
+            sunrise_gameplay_common::game::authoritative_world_for_mods(res, level.seed);
         world.attachments = save.load_attachments();
         world.shape = shape;
         world.fast_lava = sunrise_world::dimension_type::DimensionFacts::of_level(
@@ -521,8 +520,11 @@ pub fn worldgen_overrides_in_world(
         additional,
     );
     let enabled: Vec<_> = stack.enabled_packs().collect();
-    let conditions =
-        sunrise_gameplay_common::game::load_conditions::worldgen_load_conditions(base_conditions, resources, &enabled);
+    let conditions = sunrise_gameplay_common::game::load_conditions::worldgen_load_conditions(
+        base_conditions,
+        resources,
+        &enabled,
+    );
     worldgen_overrides_of(&stack.data_packs(Vec::new()), &conditions)
 }
 
@@ -1322,11 +1324,12 @@ mod tests {
             );
             let data = stack.data_packs(Vec::new());
             let enabled: Vec<_> = stack.enabled_packs().collect();
-            let conditions = sunrise_gameplay_common::game::load_conditions::worldgen_load_conditions(
-                &base_conditions,
-                &game.options.resources,
-                &enabled,
-            );
+            let conditions =
+                sunrise_gameplay_common::game::load_conditions::worldgen_load_conditions(
+                    &base_conditions,
+                    &game.options.resources,
+                    &enabled,
+                );
             let (overrides, _) = worldgen_overrides_of(&data, &conditions).unwrap();
             let packed: Vec<(String, serde_json::Value)> = overrides
                 .entries("biomes")
@@ -2324,9 +2327,7 @@ mod tests {
             &sunrise_assets::resource_source::ResourceRoot::directory(root.clone()),
         )
         .unwrap();
-        let registry = sunrise_level::assets::Assets::load(&root)
-            .unwrap()
-            .registry;
+        let registry = sunrise_level::assets::Assets::load(&root).unwrap().registry;
         let scratch = tempfile::tempdir().unwrap();
         let world = scratch.path();
         let pack = world.join("datapacks/checkerboard");
@@ -2403,7 +2404,8 @@ mod tests {
             native_load_context::{DataLoadOrigin, LoadContext, LoadInputs},
             registry::BlockRegistry,
             worldgen::{
-                generator::data::GeneratorData, mod_generators::ChunkAccess, overrides::WorldgenOverrides,
+                generator::data::GeneratorData, mod_generators::ChunkAccess,
+                overrides::WorldgenOverrides,
             },
         };
         struct Floor;

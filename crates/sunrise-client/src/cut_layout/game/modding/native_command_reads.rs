@@ -3,10 +3,9 @@
 pub(crate) mod tests {
 
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-    
+
     use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
 
-    
     use mod_api::CommandInvocation;
 
     /// The issue's case: a console `execute in minecraft:the_nether` reaches the mod with the

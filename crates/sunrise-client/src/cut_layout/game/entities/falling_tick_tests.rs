@@ -169,4 +169,3 @@ fn a_falling_block_gone_before_delivery_is_skipped() {
         assert!(heard.lock().unwrap().is_empty());
     });
 }
-

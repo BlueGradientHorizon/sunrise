@@ -311,7 +311,10 @@ impl crate::game::ServerGame<'_> {
         if self.lan_mount_valid(g, mob) {
             self.lan_send_mount(conn, false);
         } else {
-            self.reply_menu_click(conn, sunrise_gameplay_common::game::lan_menu_data::ClickReply::Close(window));
+            self.reply_menu_click(
+                conn,
+                sunrise_gameplay_common::game::lan_menu_data::ClickReply::Close(window),
+            );
         }
     }
     /// The slots of mount `index` as its menu shows them: the saddle, the

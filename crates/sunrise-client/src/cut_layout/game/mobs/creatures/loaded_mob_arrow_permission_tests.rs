@@ -1,8 +1,8 @@
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-use sunrise_sim::{entity_nbt, save};
 use sunrise_gameplay_common::game::creatures::{ProjectileKind, Vec3, Who};
+use sunrise_sim::{entity_nbt, save};
 
 fn parse(text: &str) -> Tag {
     let (tag, used) = sunrise_core::nbt::parse_snbt(text).unwrap();

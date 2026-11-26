@@ -93,10 +93,7 @@ impl Hooks for Queries {
 }
 
 /// A placed operator guest, named `guest<conn>`, and what the hub sends it.
-fn join_guest(
-    game: &mut sunrise_gameplay::game::ServerGame<'_>,
-    conn: u32,
-) -> mpsc::Receiver<Out> {
+fn join_guest(game: &mut sunrise_gameplay::game::ServerGame<'_>, conn: u32) -> mpsc::Receiver<Out> {
     let (tx, rx) = mpsc::channel();
     let mut guest = Guest::new(
         Joined {

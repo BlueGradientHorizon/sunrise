@@ -3,8 +3,6 @@
 #[cfg(feature = "client")]
 pub(crate) mod tests {
 
-    
-
     /// `LightningRodBlock.onLightningStrike` updates the neighbours of the block
     /// in front of the rod whether or not redstone experiments are on (#14371):
     /// a wire beside that block is strongly powered by the struck rod.

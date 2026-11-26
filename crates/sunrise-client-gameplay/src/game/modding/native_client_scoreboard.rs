@@ -81,9 +81,7 @@ impl ClientGame<'_> {
     pub(in crate::game) fn client_scoreboard(
         &self,
     ) -> Result<Option<&dyn ClientScoreboard>, ClientSessionReadError> {
-        Ok(self
-            .native_session()
-            .map(|_| self as &dyn ClientScoreboard))
+        Ok(self.native_session().map(|_| self as &dyn ClientScoreboard))
     }
 }
 

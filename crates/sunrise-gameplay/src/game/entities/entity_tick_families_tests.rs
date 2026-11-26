@@ -5,10 +5,10 @@ use super::{
 };
 use mod_api::{Hooks, HostSide};
 use std::sync::{Arc, Mutex};
-use sunrise_sim::entities::ArmorStand;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
-use sunrise_sim::thrown_trident::ThrownTrident;
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+use sunrise_sim::entities::ArmorStand;
+use sunrise_sim::thrown_trident::ThrownTrident;
 
 const AT: Vec3 = Vec3::new(4.5, 64.0, 4.5);
 const STAND: u32 = 71;

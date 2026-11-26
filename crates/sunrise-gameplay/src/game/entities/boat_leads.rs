@@ -11,11 +11,11 @@
 //! that client's position back (`handleMoveVehicle`), so vanilla never moves
 //! it by the rope either. Here the pull lands on the server's copy and the
 //! rider's client overwrites it the same way (`tick_boats`).
-use sunrise_gameplay_common::game::GameGameExt3;
 use crate::game::ServerGame;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::GameGameExt3;
 use sunrise_gameplay_common::game::boats_common::Boat;
 use sunrise_sim::mobs::leash::{self, Holder, HolderState, Pending};
 

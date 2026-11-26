@@ -1,6 +1,4 @@
-use {
-    sunrise_gameplay_common::game::creatures::{Mob, Projectile, ProjectileKind, Vec3},
-};
+use sunrise_gameplay_common::game::creatures::{Mob, Projectile, ProjectileKind, Vec3};
 
 #[test]
 #[ignore = "daily"]

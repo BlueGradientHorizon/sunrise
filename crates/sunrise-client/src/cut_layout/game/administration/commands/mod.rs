@@ -30,7 +30,6 @@ pub(crate) mod summon_bolt_tests;
 #[cfg(test)]
 pub(crate) mod peaceful_tests {
 
-    
     use sunrise_gameplay_common::game::server_side::commands::peaceful_tests::TRADER;
 
     use sunrise_command::{Arg, Context};

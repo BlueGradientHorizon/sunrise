@@ -40,8 +40,6 @@ pub(crate) mod tests {
 
     use super::super::native_entity_refs::tests::with_game;
 
-    
-
     use super::*;
 
     use mod_api::{HostTransaction, ItemPlace, ItemResource, ServerHost, TransactionError};
@@ -1031,7 +1029,9 @@ pub(crate) mod tests {
     }
     /// [`with_game`] with [`MOD_MENU`] as the thread's menu types, so a test neither depends on
     /// registering first nor touches the one-shot process table.
-    pub(super) fn with_mod_menu_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+    pub(super) fn with_mod_menu_game(
+        test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
+    ) {
         sunrise_level::containers::with_mod_menu_types(
             [(
                 MOD_MENU.into(),

@@ -385,4 +385,3 @@ pub(crate) mod block_change_tests {
     }
 }
 use sunrise_gameplay_common::game::tables::GameItems as _;
-

@@ -1,4 +1,6 @@
 //! Real assembler and template-placement regressions for position-sensitive rotate Parts.
+#[cfg(test)]
+use crate::game::native_rotate::*;
 use mod_api::{BlockPart, Hooks, ModEntry, Mods, RotateEvent, WorldgenHost};
 use serde_json::json;
 use std::{
@@ -12,6 +14,7 @@ use sunrise_core::{
     random::{LegacyRandom, RandomSource},
 };
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::native_rotate::{EngineState, native_worldgen_parts};
 use sunrise_world::{
     compression::Compression,
     heightmap::HeightmapType,
@@ -30,9 +33,6 @@ use sunrise_world::{
         },
     },
 };
-use sunrise_gameplay_common::game::native_rotate::{EngineState, native_worldgen_parts};
-#[cfg(test)]
-use crate::game::native_rotate::*;
 
 /// The child faces down only at its actual placed height, never at its sampled local Y=2.
 struct AtHeight {

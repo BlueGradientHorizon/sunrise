@@ -60,11 +60,8 @@ pub(crate) mod tests {
             sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
                 game.options.dedicated = Some(Vec::new());
                 game.player = Some(
-                    sunrise_sim::motion::PlayerMotion::new(
-                        game.motion,
-                        Vec3::new(8.5, 64.0, 8.5),
-                    )
-                    .unwrap(),
+                    sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5))
+                        .unwrap(),
                 );
                 for key in [far, near] {
                     let spawner = Spawner {
@@ -75,7 +72,11 @@ pub(crate) mod tests {
                         .block_entities
                         .insert(key, BlockEntity::Spawner(Box::new(spawner)));
                 }
-                let state = |game: &sunrise_gameplay::game::ServerGame<'_>, key| match game.world.block_entities.get(&key) {
+                let state = |game: &sunrise_gameplay::game::ServerGame<'_>, key| match game
+                    .world
+                    .block_entities
+                    .get(&key)
+                {
                     Some(BlockEntity::Spawner(s)) => (s.spawn_delay, s.required_player_range),
                     _ => panic!("the spawner is gone"),
                 };

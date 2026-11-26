@@ -5,7 +5,7 @@ use std::sync::Arc;
 pub(crate) mod tests {
 
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-    
+
     use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 
     use super::*;

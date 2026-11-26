@@ -1,7 +1,7 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    
+
     use sunrise_core::geometry::Vec3;
     use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
 

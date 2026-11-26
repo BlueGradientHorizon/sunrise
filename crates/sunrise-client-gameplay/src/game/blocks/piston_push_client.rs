@@ -814,7 +814,12 @@ impl crate::game::ClientGame<'_> {
                         let carried = if turned {
                             CLIENT_CARRY_HEIGHTS.with(|cell| {
                                 let mut heights = cell.borrow_mut();
-                                upright_tilt_clearance(&after_p.collider, bounds, rigid, &mut heights)
+                                upright_tilt_clearance(
+                                    &after_p.collider,
+                                    bounds,
+                                    rigid,
+                                    &mut heights,
+                                )
                             })
                         } else {
                             rigid
@@ -879,8 +884,7 @@ impl crate::game::ClientGame<'_> {
             )
         };
         clear(bounds).is_ok_and(|clear| clear)
-            && clear(bounds.move_by(Vec3::new(0.0, -SUPPORT_PROBE, 0.0)))
-                .is_ok_and(|clear| !clear)
+            && clear(bounds.move_by(Vec3::new(0.0, -SUPPORT_PROBE, 0.0))).is_ok_and(|clear| !clear)
     }
 
     fn client_shove_pass(&mut self, start: &Prepared, carried_support: Option<u32>) {

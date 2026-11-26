@@ -1,11 +1,9 @@
-use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
-use sunrise_gameplay_common::game::api_values::{
-    ApiStack, JavaString, Tag, stack_value,
-};
 #[cfg(test)]
 use crate::game::api_values::*;
 #[cfg(test)]
 use sunrise_gameplay_common::game::api_values::stack_limit_tests;
+use sunrise_gameplay_common::game::api_values::{ApiStack, JavaString, Tag, stack_value};
+use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
 
 #[test]
 fn read_encoding_keeps_nonresident_stack_limits() {

@@ -35,10 +35,7 @@ impl ServerGame<'_> {
 
     /// Every group the player waits on and its ticks left, ordered by
     /// group.
-    pub fn player_item_cooldowns(
-        &self,
-        player: PlayerRef,
-    ) -> Option<Vec<ItemCooldown>> {
+    pub fn player_item_cooldowns(&self, player: PlayerRef) -> Option<Vec<ItemCooldown>> {
         let mut out: Vec<ItemCooldown> = self
             .native_cooldowns_of(player)?
             .remaining()
@@ -73,11 +70,7 @@ impl ServerGame<'_> {
     }
     /// `ItemCooldowns.removeCooldown(group)`: ends the group's cooldown now,
     /// on the client too (`ServerItemCooldowns.onCooldownEnded`).
-    pub fn player_remove_item_cooldown(
-        &mut self,
-        player: PlayerRef,
-        group: &str,
-    ) -> bool {
+    pub fn player_remove_item_cooldown(&mut self, player: PlayerRef, group: &str) -> bool {
         let group: Arc<str> = group.into();
         self.native_as_resident_player(player, |game| {
             game.cooldowns.remove(&group);

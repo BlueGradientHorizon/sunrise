@@ -205,14 +205,9 @@ fn a_player_travel_veto_skips_server_travel_without_clamping_reports() {
             with_player(integrated, |game, rx| {
                 report(game, ACCEPTED);
                 assert_eq!(guest(game).position, ACCEPTED);
-                game.server
-                    .lan
-                    .as_mut()
-                    .unwrap()
-                    .hub
-                    .update_guest(1, |g| {
-                        g.motion.as_mut().unwrap().velocity = Vec3::new(0.4, 0.0, 0.0);
-                    });
+                game.server.lan.as_mut().unwrap().hub.update_guest(1, |g| {
+                    g.motion.as_mut().unwrap().velocity = Vec3::new(0.4, 0.0, 0.0);
+                });
                 game.guest_server_tick(1, true);
                 assert_eq!(guest(game).position, ACCEPTED);
                 assert_eq!(

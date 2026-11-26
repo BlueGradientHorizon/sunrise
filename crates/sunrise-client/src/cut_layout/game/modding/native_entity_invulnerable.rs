@@ -1,7 +1,5 @@
 #![cfg(test)]
 
-
-
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
@@ -15,14 +13,15 @@ mod tests {
         use super::super::native_entity_refs::tests::with_client_game;
         use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
         use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
-        use sunrise_sim::motion::PlayerMotion;
         use sunrise_protocol::packets::play::{self, Clientbound as C};
+        use sunrise_sim::motion::PlayerMotion;
         mod_platform::testing::with_mods(Default::default(), || {
             with_client_game(|game| {
                 let _server = logged_client(game);
                 game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
                 let local = game.local_player().unwrap().entity();
-                let health = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, health: f32| {
+                let health = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                              health: f32| {
                     game.handle_packet(C::SetHealth(play::SetHealth {
                         health,
                         food: 20,
@@ -93,7 +92,7 @@ mod tests {
     use sunrise_gameplay_common::game::GameGameExt1;
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
-    
+
     use sunrise_sim::mobs::Mob;
 
     #[test]

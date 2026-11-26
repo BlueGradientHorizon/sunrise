@@ -463,36 +463,41 @@ pub(crate) mod tests {
                 let seen = Arc::new(Mutex::new(Vec::new()));
                 let mods = vec![ModEntry::new("retune", Box::new(Retune(seen.clone())))];
                 mod_platform::testing::with_mods(mods.into(), || {
-                    sunrise_gameplay::game::server_side::native_guest_turn_tests::with_guests(|game| {
-                        let serving = Serving::fixture(0);
-                        let mut window = Integrated::stopped_for_test();
-                        window.flags = serving.flags.clone();
-                        let mut smoothed = 0.0;
-                        game.server.serving = Some(serving);
-                        game.native_lifecycle_world_ready();
-                        let live = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-                            let config = &game.server.lan.as_ref().unwrap().hub.config;
-                            (config.view_distance, config.simulation_distance)
-                        };
+                    sunrise_gameplay::game::server_side::native_guest_turn_tests::with_guests(
+                        |game| {
+                            let serving = Serving::fixture(0);
+                            let mut window = Integrated::stopped_for_test();
+                            window.flags = serving.flags.clone();
+                            let mut smoothed = 0.0;
+                            game.server.serving = Some(serving);
+                            game.native_lifecycle_world_ready();
+                            let live = |game: &sunrise_gameplay::game::ServerGame<'_>| {
+                                let config = &game.server.lan.as_ref().unwrap().hub.config;
+                                (config.view_distance, config.simulation_distance)
+                            };
 
-                        window.set_distances(48, 7, 1.0);
-                        game.tick_integrated_unpaused(&window.flags, &mut smoothed).unwrap();
-                        assert_eq!(live(game), (48, 7));
-                        game.tick_integrated_unpaused(&window.flags, &mut smoothed).unwrap();
-                        assert_eq!(live(game), (48, 5));
+                            window.set_distances(48, 7, 1.0);
+                            game.tick_integrated_unpaused(&window.flags, &mut smoothed)
+                                .unwrap();
+                            assert_eq!(live(game), (48, 7));
+                            game.tick_integrated_unpaused(&window.flags, &mut smoothed)
+                                .unwrap();
+                            assert_eq!(live(game), (48, 5));
 
-                        window.set_distances(50, 9, 1.0);
-                        game.tick_integrated_unpaused(&window.flags, &mut smoothed).unwrap();
-                        assert_eq!(*seen.lock().unwrap(), [(2, 2), (48, 7), (48, 5)]);
-                        assert_eq!(live(game), (50, 9));
-                        assert_eq!(
-                            (
-                                game.server.settings.render_distance,
-                                game.server.settings.simulation_distance
-                            ),
-                            (32, 9)
-                        );
-                    });
+                            window.set_distances(50, 9, 1.0);
+                            game.tick_integrated_unpaused(&window.flags, &mut smoothed)
+                                .unwrap();
+                            assert_eq!(*seen.lock().unwrap(), [(2, 2), (48, 7), (48, 5)]);
+                            assert_eq!(live(game), (50, 9));
+                            assert_eq!(
+                                (
+                                    game.server.settings.render_distance,
+                                    game.server.settings.simulation_distance
+                                ),
+                                (32, 9)
+                            );
+                        },
+                    );
                 });
             },
         );
@@ -501,16 +506,16 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn integrated_quit_unloads_the_client_before_requesting_server_stop() {
-        use super::{Flags, Integrated, channel};
-        use sunrise_client_gameplay::game::client_side::{
-            native_client_session::tests::logged_client,
-            remote_client::session_state::RemoteDimensionEntry,
-        };
         use super::super::native_entity_refs::tests::with_client_game;
+        use super::{Flags, Integrated, channel};
         use mod_api::{ClientHost, ClientLevelUnloadEvent, Hooks, ModEntry};
         use std::sync::{
             Arc,
             atomic::{AtomicUsize, Ordering},
+        };
+        use sunrise_client_gameplay::game::client_side::{
+            native_client_session::tests::logged_client,
+            remote_client::session_state::RemoteDimensionEntry,
         };
         use sunrise_client_render::level_loading::Reason;
         use sunrise_protocol::packets::play::SpawnInfo;
@@ -562,7 +567,9 @@ pub(crate) mod tests {
                         tasks: channel().0,
                         world_name: "Test".into(),
                         save_folder: "test".into(),
-                        rule_registry: Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
+                        rule_registry: Arc::new(
+                            sunrise_game_data::gamerules::RuleRegistry::vanilla(),
+                        ),
                     });
                     if closing_screen {
                         game.begin_closing_save(true).unwrap();
@@ -582,11 +589,11 @@ pub(crate) mod tests {
         use mod_api::{Hooks, ModEntry, ServerHost};
         use mod_platform::testing::with_mods;
         use std::sync::{Mutex, mpsc::Receiver};
+        use sunrise_core::nbt::Tag;
         use sunrise_gameplay::game::server_side::integrated::serve;
         use sunrise_gameplay_common::game::integrated_link::{Launch, Ready};
         use sunrise_protocol::crypto::offline_uuid;
         use sunrise_sim::{lan::playerdata, save};
-        use sunrise_core::nbt::Tag;
 
         struct Order {
             events: Arc<Mutex<Vec<String>>>,
@@ -714,7 +721,9 @@ pub(crate) mod tests {
             let launch = Launch {
                 online_auth: false,
                 session_verifier: crate::game::session_verifier(),
-                rule_registry: Arc::new(sunrise_gameplay_common::game::api_values::game_rule_registry()),
+                rule_registry: Arc::new(
+                    sunrise_gameplay_common::game::api_values::game_rule_registry(),
+                ),
                 folder,
                 name: Some("Integrated Startup Order".into()),
                 seed: Some(1),
@@ -819,11 +828,11 @@ pub(crate) mod tests {
         };
         use sunrise_sim::save::{LevelShape, SaveDir, SessionLock};
         use {
-            sunrise_gameplay_common::game::test_fixtures::run_fresh_cases,
             sunrise_gameplay::game::server_side::native_living_refs::tests::hurt_pig,
             sunrise_gameplay::game::server_side::native_living_refs::tests::send_to_the_nether,
             sunrise_gameplay::game::server_side::native_living_refs::tests::summon_mob,
             sunrise_gameplay_common::game::server_side::native_living_refs::tests::ZOMBIE_UUID,
+            sunrise_gameplay_common::game::test_fixtures::run_fresh_cases,
         };
 
         const NAME: &str =

@@ -61,7 +61,11 @@ impl ServerGame<'_> {
                 .ok_or(ChunkRefusal::Stale)?;
             (&mut parked.world, &mut parked.streaming)
         };
-        Ok((world, streaming, self.server.lan.as_ref().map(|host| &host.hub)))
+        Ok((
+            world,
+            streaming,
+            self.server.lan.as_ref().map(|host| &host.hub),
+        ))
     }
     /// `chunks` of any open server level (active or parked), and the loaded ring around each
     /// loaded chunk, queued to be lit again whole on that level's light engine

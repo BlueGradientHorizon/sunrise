@@ -101,11 +101,7 @@ impl Flight {
         self.upload_queue_work = work;
     }
 
-    pub(in crate::game::client_side) fn note_mesh_uploads(
-        &mut self,
-        count: usize,
-        bytes: u64,
-    ) {
+    pub(in crate::game::client_side) fn note_mesh_uploads(&mut self, count: usize, bytes: u64) {
         self.mesh_uploads[0] += count as u64;
         self.mesh_uploads[1] += bytes;
     }

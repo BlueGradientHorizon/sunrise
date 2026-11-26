@@ -1,3 +1,5 @@
+#[cfg(feature = "client")]
+pub use client_side::resource_load_client::load_resources_for_mods_with_limit;
 #[cfg(test)]
 use client_side::window_handler::follow_keymap;
 #[cfg(feature = "client")]
@@ -6,8 +8,6 @@ use client_side::{
     resource_load_client::{StartupLoadContext, load_resources_for_mods, load_resources_sync},
     resource_tables_client::{ClientPackResources, ClientResources},
 };
-#[cfg(feature = "client")]
-pub use client_side::resource_load_client::load_resources_for_mods_with_limit;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 use loading_screen::{App, Loading, leave_fullscreen_after, run_event_loop};
@@ -59,9 +59,6 @@ macro_rules! client_game_side {
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::activity;
-pub(in crate::game) use client_side::stock_layer_mask;
-#[cfg(feature = "client")]
-pub(in crate::game) use client_side::hotbar_items;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::advancements_screen;
@@ -120,6 +117,9 @@ pub use client_side::client_item_extensions;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub use client_side::client_reload;
+#[cfg(feature = "client")]
+pub(in crate::game) use client_side::hotbar_items;
+pub(in crate::game) use client_side::stock_layer_mask;
 #[path = "game/client_side.rs"]
 pub mod client_side;
 #[cfg(all(test, feature = "client"))]
@@ -226,14 +226,27 @@ impl ClientGame<'_> {
     }
 
     pub(in crate::game) fn renderer_framebuffer(&self) -> Option<[u32; 2]> {
-        self.client.renderer.0.as_ref()
+        self.client
+            .renderer
+            .0
+            .as_ref()
             .map(|renderer| [renderer.config.width, renderer.config.height])
-            .or_else(|| self.client.render_snapshot.get().map(|snapshot| snapshot.framebuffer))
+            .or_else(|| {
+                self.client
+                    .render_snapshot
+                    .get()
+                    .map(|snapshot| snapshot.framebuffer)
+            })
     }
 
     pub(in crate::game) fn renderer_prepared_generation(&self) -> Option<u64> {
         self.client.renderer.0.as_ref().map_or_else(
-            || self.client.render_snapshot.get().and_then(|snapshot| snapshot.prepared_generation),
+            || {
+                self.client
+                    .render_snapshot
+                    .get()
+                    .and_then(|snapshot| snapshot.prepared_generation)
+            },
             |renderer| renderer.prepared_generation(),
         )
     }
@@ -243,7 +256,10 @@ impl ClientGame<'_> {
         let staged = if self.client.renderer.0.is_some() {
             0
         } else {
-            self.client.render_snapshot.get().map_or(0, |snapshot| snapshot.staged_prepared_draws)
+            self.client
+                .render_snapshot
+                .get()
+                .map_or(0, |snapshot| snapshot.staged_prepared_draws)
         };
         Some((max_buffer_size, staged))
     }

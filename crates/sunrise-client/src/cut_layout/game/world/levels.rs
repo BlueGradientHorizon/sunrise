@@ -290,7 +290,8 @@ pub(crate) mod tests {
 
             // The streamer can send a late chunk straight to its writer, even
             // while its level is parked and the Overworld is in place.
-            game.server.streaming
+            game.server
+                .streaming
                 .save_finished(Chunk::with_layout(2, -3, game.world.layout()));
             game.server.save.0.flush().unwrap();
             let nether = &game.server.levels.0.parked[&Dim::Nether];
@@ -337,8 +338,9 @@ pub(crate) mod tests {
         impl Hooks for Quarry {
             fn register(&self, registrar: &mut dyn Registrar, _: &RegistrationContext) {
                 let saw_end = self.0.clone();
-                registrar.register_ticket_controller("quarry", Some(Arc::new(
-                    move |host, level, validation| {
+                registrar.register_ticket_controller(
+                    "quarry",
+                    Some(Arc::new(move |host, level, validation| {
                         if level.dimension_id() == "minecraft:the_nether"
                             && host.level("minecraft:the_end").is_some()
                         {
@@ -346,8 +348,8 @@ pub(crate) mod tests {
                         } else {
                             validation.remove_block_tickets(OWNER);
                         }
-                    },
-                )));
+                    })),
+                );
             }
         }
 

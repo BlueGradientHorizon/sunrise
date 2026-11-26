@@ -311,7 +311,8 @@ fn a_client_side_turning_shove_moves_the_local_player() {
                 let mut rotated =
                     sunrise_sim::colliders::ColliderState::from_api(&shape()).unwrap();
                 rotated.set_pose(rotated.pose().with_rotation([0.0, half, 0.0, half]));
-                game.client.remote
+                game.client
+                    .remote
                     .as_mut()
                     .unwrap()
                     .colliders

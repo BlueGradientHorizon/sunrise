@@ -52,4 +52,3 @@ fn unregistered_serializer_failed_reload_preserves_previous_recipes() {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
-

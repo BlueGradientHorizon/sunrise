@@ -9,7 +9,9 @@ pub trait GameHooks<'g>: crate::game::SideGame<'g> {
         offset: BlockPos,
         valid: &mut bool,
     ) {
-        crate::game::native_hooks::fire::FireHooks::fire_is_valid_book_shelf(self, level, table_pos, offset, valid);
+        crate::game::native_hooks::fire::FireHooks::fire_is_valid_book_shelf(
+            self, level, table_pos, offset, valid,
+        );
     }
 }
 

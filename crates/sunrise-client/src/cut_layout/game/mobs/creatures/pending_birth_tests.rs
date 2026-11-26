@@ -16,12 +16,12 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU32, AtomicUsize, Ordering},
 };
-use sunrise_gameplay_common::world_biomes;
-use sunrise_level::chunk::Chunk;
 use sunrise_gameplay_common::game::{
     commands_common::Target,
     creatures::{Dim, Mob},
 };
+use sunrise_gameplay_common::world_biomes;
+use sunrise_level::chunk::Chunk;
 use {
     sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
     sunrise_gameplay::game::native_entity_refs::tests::with_game,
@@ -674,7 +674,8 @@ fn breeding_replaces_the_cow_baby_with_a_pig_baby() {
                     .any(|t| t == "replaced_pig")
             );
             assert_eq!(
-                game.common.mobs
+                game.common
+                    .mobs
                     .iter()
                     .filter(|m| m.kind.id == "minecraft:cow")
                     .count(),
@@ -682,7 +683,8 @@ fn breeding_replaces_the_cow_baby_with_a_pig_baby() {
                 "only the parents are cows: no cow baby"
             );
             assert_eq!(
-                game.common.mobs
+                game.common
+                    .mobs
                     .iter()
                     .filter(|m| m.kind.id == "minecraft:pig")
                     .count(),
@@ -715,7 +717,11 @@ fn breeding_veto_leaves_no_baby_orb_or_statistic_and_the_parents_resting() {
             let before = game.common.mobs.len();
             let (parent, partner, child) = breed_pair(game, "minecraft:cow");
             assert_eq!(child, None);
-            assert_eq!(game.common.mobs.len(), before + 2, "only the two parents exist");
+            assert_eq!(
+                game.common.mobs.len(),
+                before + 2,
+                "only the two parents exist"
+            );
             assert!(game.common.mobs.iter().all(|m| m.extra.age >= 0), "no baby");
             assert!(
                 !game
@@ -754,7 +760,8 @@ fn clearing_the_baby_without_cancel_leaves_parents_and_credit_untouched() {
             Flow::Continue
         },
         |game| {
-            game.common.world
+            game.common
+                .world
                 .chunks
                 .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             assert!(game.entity_ticking_area()(1, 0));
@@ -888,8 +895,6 @@ pub(crate) fn with_splits(
     mod_platform::testing::with_mods(entries.into(), || with_game(run));
 }
 
-
-
 pub(crate) fn animals_bred(game: &sunrise_gameplay::game::ServerGame<'_>) -> i32 {
     game.stats.get("custom", "minecraft:animals_bred")
 }
@@ -903,7 +908,10 @@ fn a_waiting_baby_publishes_its_uuid_only_when_it_joins() {
             let (parent, _, child) = breed_pair(game, "minecraft:cow");
             let baby = child.unwrap();
             assert_eq!(baby, parent + 2);
-            assert!(game.common.persist.uuids.contains_key(&baby), "published at join");
+            assert!(
+                game.common.persist.uuids.contains_key(&baby),
+                "published at join"
+            );
         },
     );
     with_baby(
@@ -1301,15 +1309,16 @@ fn add_ready_pair(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> u32 {
         }
         game.common.mobs.push(mob);
     }
-    game.common.world
+    game.common
+        .world
         .chunks
         .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     game.native_joins_skip();
     parent
 }
 
-use sunrise_sim::mobs::goals::{Cx, Goal};
 use sunrise_core::{geometry::Vec3, random::LegacyRandom};
+use sunrise_sim::mobs::goals::{Cx, Goal};
 
 #[test]
 #[ignore = "daily"]
@@ -1352,7 +1361,8 @@ fn breeding_dispatches_when_proposed_child_is_none_and_accepts_replacement() {
             Vec3::new(3.0, 64.0, 4.0),
             0.0,
         ));
-        game.common.mobs
+        game.common
+            .mobs
             .push(Mob::new(base + 2, kind, Vec3::new(4.0, 64.0, 4.0), 0.0));
         game.native_joins_skip();
         for id in [base + 1, base + 2] {
@@ -1828,7 +1838,10 @@ fn detached_constructed_baby_preserves_attachments_and_reattaches_across_worlds_
                 Vec3::new(1.0, 64.0, 1.0),
                 0.0,
             ));
-            game.common.persist.uuids.insert(old_reserved_id, [9, 9, 9, 9]);
+            game.common
+                .persist
+                .uuids
+                .insert(old_reserved_id, [9, 9, 9, 9]);
             game.native_joins_skip();
 
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
@@ -2008,12 +2021,9 @@ use mod_api::{
     HostSide, UnspawnedMob,
 };
 
-pub(crate) fn fixture_resident_column(
-        world: &mut sunrise_level::world::World,
-        key: (i32, i32),
-    ) {
-        if !world.chunks.contains_key(&key) {
-            let chunk = sunrise_level::chunk::Chunk::with_layout(key.0, key.1, world.layout());
-            world.chunks.insert(key, std::sync::Arc::new(chunk));
-        }
+pub(crate) fn fixture_resident_column(world: &mut sunrise_level::world::World, key: (i32, i32)) {
+    if !world.chunks.contains_key(&key) {
+        let chunk = sunrise_level::chunk::Chunk::with_layout(key.0, key.1, world.layout());
+        world.chunks.insert(key, std::sync::Arc::new(chunk));
     }
+}

@@ -853,7 +853,11 @@ impl ServerGame<'_> {
             .as_str()
             .and_then(|s| u128::from_str_radix(s, 16).ok())
         {
-            let cached = self.server.user_cache.as_mut().and_then(|c| c.get_by_id(id));
+            let cached = self
+                .server
+                .user_cache
+                .as_mut()
+                .and_then(|c| c.get_by_id(id));
             return cached.or_else(|| {
                 self.server
                     .dedicated_services

@@ -1,9 +1,6 @@
 //! ContainerOpenersCounter timing, including lost openers.
 #![cfg(test)]
 
-
-
-
 #[cfg(test)]
 pub(crate) mod tests {
     use super::super::native_entity_refs::tests::run_fresh_cases;

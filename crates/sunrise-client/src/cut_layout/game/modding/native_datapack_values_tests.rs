@@ -289,10 +289,8 @@ fn datapack_vanilla_values_agree_with_worldgen_and_invalidate_on_reload() {
                 );
 
                 // 2. BlockStateProvider agrees with sunrise-world's evaluator on the same JSON and seed.
-                let resolved_tags = resolve_block_tags(
-                    game.common.pack.assets.registry,
-                    &game.items().block_tags,
-                );
+                let resolved_tags =
+                    resolve_block_tags(game.common.pack.assets.registry, &game.items().block_tags);
                 let bindings = StateProviderBindings::new(
                     game.common.pack.assets.registry,
                     integer_properties(game.common.pack.assets.registry),
@@ -504,11 +502,8 @@ fn datapack_vanilla_values_agree_with_worldgen_and_invalidate_on_reload() {
                         .map(|body| {
                             let mut reader = sunrise_protocol::buf::Reader::new(&body);
                             let id = reader.varint().unwrap();
-                            sunrise_protocol::packets::play::Clientbound::decode(
-                                id,
-                                reader.rest(),
-                            )
-                            .unwrap()
+                            sunrise_protocol::packets::play::Clientbound::decode(id, reader.rest())
+                                .unwrap()
                         })
                         .collect::<Vec<_>>()
                 };
@@ -631,27 +626,36 @@ fn datapack_vanilla_values_agree_with_worldgen_and_invalidate_on_reload() {
                         0.0,
                     ));
                 assert_eq!(unobstructed.test(game, level, [10, 65, 10]), Ok(false));
-                let mut marker = sunrise_sim::entities::ArmorStand::new(
-                    9002,
-                    Vec3::new(12.5, 65.0, 12.5),
-                    0.0,
-                );
+                let mut marker =
+                    sunrise_sim::entities::ArmorStand::new(9002, Vec3::new(12.5, 65.0, 12.5), 0.0);
                 marker.marker = true;
                 game.common.armor_stands.push(marker);
                 assert_eq!(unobstructed.test(game, level, [12, 65, 12]), Ok(true));
                 // LAN guest blocks building even when self.player is None (dedicated server).
                 let saved_player = game.common.player.take();
-                game.server.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.dimension = game.common.dim.id().to_owned();
-                    guest.loaded = true;
-                    guest.dead = false;
-                    guest.position = [14.5, 65.0, 14.5];
-                    guest.game_mode = 0;
-                });
+                game.server
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.dimension = game.common.dim.id().to_owned();
+                        guest.loaded = true;
+                        guest.dead = false;
+                        guest.position = [14.5, 65.0, 14.5];
+                        guest.game_mode = 0;
+                    });
                 assert_eq!(unobstructed.test(game, level, [14, 65, 14]), Ok(false));
-                game.server.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-                    guest.game_mode = 3;
-                });
+                game.server
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(0, |guest| {
+                        guest.game_mode = 3;
+                    });
                 assert_eq!(unobstructed.test(game, level, [14, 65, 14]), Ok(true));
                 game.common.player = saved_player;
                 // Parked server dimension entities are checked lazily too.
@@ -687,9 +691,8 @@ fn datapack_vanilla_values_agree_with_worldgen_and_invalidate_on_reload() {
                 let key = |game: &sunrise_client_gameplay::game::ClientGame<'_>, id: &str| {
                     <dyn mod_api::Host>::block_key(game, id).unwrap()
                 };
-                let _server = crate::game::client_side::remote_client::tests::connect_menu_test(
-                    game,
-                );
+                let _server =
+                    crate::game::client_side::remote_client::tests::connect_menu_test(game);
                 game.drain_test_remote_join();
                 {
                     let remote = game.client.remote.as_mut().unwrap();
@@ -880,8 +883,7 @@ fn datapack_vanilla_values_agree_with_worldgen_and_invalidate_on_reload() {
                     .unwrap()
                     .encode()
                     .unwrap();
-                let bad_chunks: Vec<Vec<u8>> =
-                    datapack_net::chunks(&bad_bytes).unwrap().collect();
+                let bad_chunks: Vec<Vec<u8>> = datapack_net::chunks(&bad_bytes).unwrap().collect();
                 assert_eq!(bad_chunks.len(), 1);
                 let bad_packet = sunrise_protocol::packets::play::Clientbound::CustomPayload(
                     sunrise_protocol::packets::configuration::CustomPayload {
@@ -890,13 +892,10 @@ fn datapack_vanilla_values_agree_with_worldgen_and_invalidate_on_reload() {
                     },
                 );
                 // Direct apply_packet fails with PacketError and keeps the previous generation live.
-                let err = game.apply_packet(bad_packet.clone()).expect_err(
-                    "invalid vanilla value on Play reload must fail with PacketError",
-                );
-                assert!(
-                    err.is::<PacketError>(),
-                    "expected PacketError, got: {err}"
-                );
+                let err = game
+                    .apply_packet(bad_packet.clone())
+                    .expect_err("invalid vanilla value on Play reload must fail with PacketError");
+                assert!(err.is::<PacketError>(), "expected PacketError, got: {err}");
                 assert_eq!(live_int.sample(game, &mut rng), Ok(5));
                 assert_eq!(
                     live_tag.contains(game, key(game, "minecraft:clay")),
@@ -966,11 +965,7 @@ fn datapack_vanilla_values_agree_with_worldgen_and_invalidate_on_reload() {
                 )
                 .ok()
                 .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(&bytes).ok())
-                .and_then(|value| {
-                    value
-                        .as_object()
-                        .and_then(|map| map.keys().next().cloned())
-                })
+                .and_then(|value| value.as_object().and_then(|map| map.keys().next().cloned()))
                 .map(|key| {
                     if key.contains(':') {
                         key
@@ -1028,14 +1023,12 @@ fn datapack_vanilla_values_agree_with_worldgen_and_invalidate_on_reload() {
                     .encode()
                     .unwrap();
                 for chunk in datapack_net::chunks(&named_bytes).unwrap() {
-                    game.apply_packet(
-                        sunrise_protocol::packets::play::Clientbound::CustomPayload(
-                            sunrise_protocol::packets::configuration::CustomPayload {
-                                channel: datapack_net::CHANNEL.into(),
-                                data: chunk,
-                            },
-                        ),
-                    )
+                    game.apply_packet(sunrise_protocol::packets::play::Clientbound::CustomPayload(
+                        sunrise_protocol::packets::configuration::CustomPayload {
+                            channel: datapack_net::CHANNEL.into(),
+                            data: chunk,
+                        },
+                    ))
                     .unwrap();
                 }
                 let named_level = game.level("minecraft:overworld").unwrap();

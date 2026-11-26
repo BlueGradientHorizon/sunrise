@@ -88,11 +88,7 @@ pub(crate) mod camera_type_tests {
             event.yaw += 180.0;
             event.roll = 180.0;
         }
-        fn camera_position(
-            &self,
-            _: &dyn ClientHost,
-            _: &mut mod_api::CameraPositionEvent<'_>,
-        ) {
+        fn camera_position(&self, _: &dyn ClientHost, _: &mut mod_api::CameraPositionEvent<'_>) {
             self.0
                 .positions
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);

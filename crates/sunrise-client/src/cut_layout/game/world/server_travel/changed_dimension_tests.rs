@@ -560,7 +560,8 @@ fn cross_dimension_command_trees_see_the_player_before_portal_and_command_moves(
                     }
                     assert!(game.on_server_trip(CONN));
                     assert_eq!(
-                        game.server.lan
+                        game.server
+                            .lan
                             .as_ref()
                             .unwrap()
                             .hub

@@ -1,5 +1,5 @@
-use crate::game::ServerGame;
 use super::{commands::Target, dragon::FightPlayer, living_attributes::AttributeWrite};
+use crate::game::ServerGame;
 use mod_api::{ActiveEffect, EffectApplicable, EffectTickChange, EntityRef, LivingRef, PlayerFood};
 use sunrise_core::nbt::Tag;
 use sunrise_core::{
@@ -255,7 +255,12 @@ impl crate::game::ServerGame<'_> {
             && let Some(key) = key
             && let Some(living) = self.effect_living_ref(None)
         {
-            let old = self.common.potions.effects.get(id).and_then(try_active_effect);
+            let old = self
+                .common
+                .potions
+                .effects
+                .get(id)
+                .and_then(try_active_effect);
             let incoming = ActiveEffect::new(
                 key,
                 effect.duration,
@@ -427,7 +432,14 @@ impl crate::game::ServerGame<'_> {
             if cancel {
                 index += 1;
             } else {
-                removed.push(self.common.potions.effects.list.remove(index).registry_index);
+                removed.push(
+                    self.common
+                        .potions
+                        .effects
+                        .list
+                        .remove(index)
+                        .registry_index,
+                );
             }
         }
         if !removed.is_empty() {
@@ -978,7 +990,9 @@ impl crate::game::ServerGame<'_> {
                             } else {
                                 m.heal(
                                     &self.common.loop_context,
-                                    &|| crate::game::server_side::entity_server::hit_reads_of!(self),
+                                    &|| {
+                                        crate::game::server_side::entity_server::hit_reads_of!(self)
+                                    },
                                     (4 << amp.min(30)) as f32,
                                 );
                             }
@@ -1136,7 +1150,9 @@ impl crate::game::ServerGame<'_> {
                             } else {
                                 m.heal(
                                     &self.common.loop_context,
-                                    &|| crate::game::server_side::entity_server::hit_reads_of!(self),
+                                    &|| {
+                                        crate::game::server_side::entity_server::hit_reads_of!(self)
+                                    },
                                     amount(4),
                                 );
                             }

@@ -24,8 +24,9 @@ pub trait EndGameExt<'__sg>: crate::game::SideGame<'__sg> {
         dimension_type: &str,
     ) -> &'a Environment {
         // A client of a server takes the type the server sent, built-in levels included.
-        remote_environment
-            .unwrap_or_else(|| Environment::for_level(level, resources.environment_of(dimension_type)))
+        remote_environment.unwrap_or_else(|| {
+            Environment::for_level(level, resources.environment_of(dimension_type))
+        })
     }
 
     /// EnderEyeItem.use's `getPlayerPOVHitResult`: whether the block aimed

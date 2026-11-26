@@ -2,8 +2,8 @@
 use mod_api::EntityRef;
 use mod_api::LivingRef;
 use mod_api::MobRef;
-use sunrise_sim::mobs::Who;
 use sunrise_gameplay_common::game::block_props::BlockPropsGameExt2 as _;
+use sunrise_sim::mobs::Who;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

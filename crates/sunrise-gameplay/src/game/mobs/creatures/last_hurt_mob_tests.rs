@@ -1,7 +1,5 @@
 use mod_api::LivingRef;
-use {
-    sunrise_gameplay_common::game::creatures::{Hit, Mob, Projectile, ProjectileKind, Vec3, Who},
-};
+use sunrise_gameplay_common::game::creatures::{Hit, Mob, Projectile, ProjectileKind, Vec3, Who};
 
 pub const PLAYER: u32 = 20;
 pub const PIG: u32 = 71;

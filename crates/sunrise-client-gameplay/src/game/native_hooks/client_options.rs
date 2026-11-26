@@ -53,8 +53,10 @@ pub(in crate::game) mod tests {
                     prepared_generation: None,
                     staged_prepared_draws: 0,
                 }));
-            let batch =
-                sunrise_client::hud::HudBatch::new([800, 600], game.client.settings.gui_scale_inputs());
+            let batch = sunrise_client::hud::HudBatch::new(
+                [800, 600],
+                game.client.settings.gui_scale_inputs(),
+            );
             let own = game.screen_own_exclusion(&batch);
             assert!(!own.is_empty());
             assert_eq!(game.screen_exclusion(), own);

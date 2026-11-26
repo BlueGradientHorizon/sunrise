@@ -6,7 +6,6 @@ pub mod server_side;
 mod entity_tick_families_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::acting_state;
-pub(in crate::game) use server_side::world_border;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::advancements;
 #[allow(unused_imports)]
@@ -121,6 +120,7 @@ pub use server_side::entity_residency;
 pub(in crate::game) use server_side::entity_sizes;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::server_effects;
+pub(in crate::game) use server_side::world_border;
 #[allow(dead_code)]
 pub struct ServerGame<'a> {
     pub common: sunrise_gameplay_common::game::CommonGame<'a>,
@@ -566,6 +566,7 @@ pub(in crate::game) use server_side::runtime_levels;
 mod runtime_reset_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side as server_state;
+pub use server_side::creation_packs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::scoreboard;
 #[allow(unused_imports)]
@@ -577,7 +578,6 @@ pub(in crate::game) use server_side::seats;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::server_lifecycle;
 pub use server_side::server_lifecycle::ServerRunOutcome;
-pub use server_side::creation_packs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::server_reload;
 #[allow(unused_imports)]
@@ -946,6 +946,6 @@ impl mod_api::AttachmentHost for ServerGame<'_> {
 }
 
 #[cfg(any(test, feature = "test-support"))]
-pub use server_side::native_guest_turn_tests;
-#[cfg(any(test, feature = "test-support"))]
 pub use server_side::fireworks_server::impact::ROCKET_IMPACT_PREPARES;
+#[cfg(any(test, feature = "test-support"))]
+pub use server_side::native_guest_turn_tests;

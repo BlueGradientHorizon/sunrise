@@ -2,8 +2,8 @@
 use super::{HiddenLayersData, StockLayerMask};
 use crate::game::native_entity_refs::tests::with_client_game;
 use sunrise_client::mobs::render;
-use sunrise_sim::mobs::Mob;
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::Mob;
 
 #[test]
 #[ignore = "daily"]

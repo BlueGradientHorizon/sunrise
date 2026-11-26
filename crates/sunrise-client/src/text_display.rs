@@ -1,10 +1,10 @@
 //! Display/TextDisplay synced data (26.3), checked against vanilla accessors
 //! and ClientboundSetEntityDataPacket's own stream codec.
-pub use sunrise_sim::text_display_data::resident;
 use crate::text::Text;
 use serde::Serialize;
 use std::sync::Arc;
 use sunrise_protocol::entity_data::Value;
+pub use sunrise_sim::text_display_data::resident;
 pub use sunrise_sim::text_display_data::{display_data, text_display_data, transformation};
 
 /// `TextDisplay.Align`.

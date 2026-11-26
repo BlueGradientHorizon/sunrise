@@ -1,17 +1,17 @@
 use crate::game::creatures::pending_birth_tests::AT;
 use crate::game::creatures::pending_birth_tests::IGNORE;
-use crate::game::creatures::pending_birth_tests::{NEXT_INT, SPLIT_DISPLACEMENT};
 pub(crate) use crate::game::creatures::pending_birth_tests::SEED;
 pub(crate) use crate::game::creatures::pending_birth_tests::YAWS;
 use crate::game::creatures::pending_birth_tests::animals_bred;
-use crate::game::creatures::pending_birth_tests::{
-    assert_vanilla_children, breed_pair, fixture_resident_column,
-};
 pub(crate) use crate::game::creatures::pending_birth_tests::find;
 pub(crate) use crate::game::creatures::pending_birth_tests::near;
 use crate::game::creatures::pending_birth_tests::spawned;
 use crate::game::creatures::pending_birth_tests::spec;
 use crate::game::creatures::pending_birth_tests::with_baby;
+use crate::game::creatures::pending_birth_tests::{NEXT_INT, SPLIT_DISPLACEMENT};
+use crate::game::creatures::pending_birth_tests::{
+    assert_vanilla_children, breed_pair, fixture_resident_column,
+};
 use crate::game::creatures::pending_birth_tests::{with_split, with_splits};
 use mod_api::{
     __private::{HookPanicReport, take_hook_panics},
@@ -34,8 +34,8 @@ use {
 #[test]
 #[ignore = "daily"]
 fn baby_slot_replacement_does_not_publish_on_engine_unwind() {
-    use sunrise_gameplay::game::server_side::pending_birth_fault::{self as escaping_fault, At};
     use std::sync::atomic::{AtomicBool, Ordering};
+    use sunrise_gameplay::game::server_side::pending_birth_fault::{self as escaping_fault, At};
 
     let replaced = Arc::new(AtomicBool::new(false));
     let observed = replaced.clone();
@@ -86,7 +86,11 @@ fn panicking_spawn_listeners_lose_cancellation_but_keep_direct_child_edits() {
         |game| {
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
             game.split_cube_children(&mut dying);
-            assert_eq!(game.common.mobs.len(), 2, "the cancellation was not applied");
+            assert_eq!(
+                game.common.mobs.len(),
+                2,
+                "the cancellation was not applied"
+            );
             assert_eq!(game.common.mobs[0].yaw, 1.0);
             assert_eq!(game.common.mobs[1].yaw, YAWS[2]);
         },
@@ -167,7 +171,10 @@ fn breeding_spawns_after_parent_host_edit_and_cancel_resets_both_parents() {
             fixture_resident_column(&mut game.common.world, (0, 0));
             let (parent, partner, child) = breed_pair(game, "minecraft:cow");
             assert_eq!(child, None);
-            assert!(game.common.mobs.iter().all(|m| m.extra.age >= 0), "no baby joined");
+            assert!(
+                game.common.mobs.iter().all(|m| m.extra.age >= 0),
+                "no baby joined"
+            );
             for id in [parent, partner] {
                 let mob = find(game, id);
                 assert_eq!(mob.extra.age, 6000);
@@ -188,7 +195,10 @@ fn cancelled_split_spawns_nothing_but_keeps_the_construction_draws() {
             let mut dying = cube(game, "minecraft:slime", 4, SEED);
             let next_id = game.server.next_entity;
             game.split_cube_children(&mut dying);
-            assert!(game.common.mobs.is_empty(), "a cancelled split spawns no child");
+            assert!(
+                game.common.mobs.is_empty(),
+                "a cancelled split spawns no child"
+            );
             assert_eq!(
                 game.server.next_entity,
                 next_id + 3,

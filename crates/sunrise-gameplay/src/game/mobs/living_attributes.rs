@@ -654,7 +654,6 @@ pub mod tests {
     pub fn living(game: &crate::game::ServerGame<'_>, id: u32) -> mod_api::LivingRef {
         game.living(game.entity(id).unwrap()).unwrap()
     }
-
 }
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

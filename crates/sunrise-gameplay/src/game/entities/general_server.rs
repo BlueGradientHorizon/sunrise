@@ -68,11 +68,7 @@ impl crate::game::ServerGame<'_> {
 
     /// A general row and its passengers. A dimension transfer includes live
     /// objects even when their `EntityType` does not serialize to disk.
-    pub fn general_tree_nbt(
-        &mut self,
-        id: u32,
-        transferring: bool,
-    ) -> Option<Tag> {
+    pub fn general_tree_nbt(&mut self, id: u32, transferring: bool) -> Option<Tag> {
         let mut tag = self.general_own_nbt(id, transferring)?;
         self.put_passengers_for(&mut tag, id, transferring);
         Some(tag)

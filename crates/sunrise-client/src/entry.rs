@@ -6,9 +6,9 @@ mod crash_retention;
 #[path = "sunrise_look.rs"]
 mod sunrise_look;
 use crate::{crash, game, logging};
-use sunrise_level::runtime_env::runtime_environment;
 use mod_api::__private::game::TicketActivation;
 use std::sync::OnceLock;
+use sunrise_level::runtime_env::runtime_environment;
 use sunrise_mod_package::selection::{Argument, LaunchArguments};
 
 static TICKET_ACTIVATION: OnceLock<TicketActivation> = OnceLock::new();

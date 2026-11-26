@@ -338,13 +338,13 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game::client_side) fn hands_busy(&self) -> bool {
         self.common.riding.is_some_and(|id| self.controls_boat(id))
             && [
-            winit::keyboard::KeyCode::KeyW,
-            winit::keyboard::KeyCode::KeyS,
-            winit::keyboard::KeyCode::KeyA,
-            winit::keyboard::KeyCode::KeyD,
-        ]
-        .iter()
-        .any(|k| self.movement_key_held(*k))
+                winit::keyboard::KeyCode::KeyW,
+                winit::keyboard::KeyCode::KeyS,
+                winit::keyboard::KeyCode::KeyA,
+                winit::keyboard::KeyCode::KeyD,
+            ]
+            .iter()
+            .any(|k| self.movement_key_held(*k))
     }
     /// `LocalPlayer.tick`: the swing (`LivingEntity.baseTick`), the attack
     /// strength and item swap tickers (`Player.tick`), then

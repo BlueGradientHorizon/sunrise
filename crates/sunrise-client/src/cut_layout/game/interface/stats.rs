@@ -12,10 +12,6 @@ mod stat_award_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
-    
-
-    
-
     use std::path::Path;
 
     use sunrise_gameplay_common::stats::player_json;

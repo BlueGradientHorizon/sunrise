@@ -918,12 +918,7 @@ impl crate::game::ServerGame<'_> {
     /// entity, through the same invulnerability observation as `/damage`.
     /// A refused hit changes no health and plays no sound. Returns true when
     /// the vehicle is no longer in the level.
-    pub fn vehicle_contact_hurt(
-        &mut self,
-        target: Target,
-        damage_type: &str,
-        amount: f32,
-    ) -> bool {
+    pub fn vehicle_contact_hurt(&mut self, target: Target, damage_type: &str, amount: f32) -> bool {
         let present = |game: &crate::game::ServerGame<'_>| match target {
             Target::Boat(id) => game.common.boats.iter().any(|b| b.id == id),
             Target::Cart(id) => game.common.carts.iter().any(|c| c.id == id),
@@ -1208,8 +1203,8 @@ impl crate::game::ServerGame<'_> {
         }
         if !access.is_on_fire() {
             if burning_before {
-                let pitch = 1.6
-                    + (access.item.random.next_float() - access.item.random.next_float()) * 0.4;
+                let pitch =
+                    1.6 + (access.item.random.next_float() - access.item.random.next_float()) * 0.4;
                 access.game.server_play_sound(
                     "minecraft:entity.generic.extinguish_fire",
                     at.components(),
@@ -1366,9 +1361,8 @@ impl crate::game::ServerGame<'_> {
             } else if id == subject_id {
                 Some((subject_target, Some(subject_pos)))
             } else if let Some((target, pos)) = sources.and_then(|source| source(id)) {
-                (!matches!(target, Target::Projectile(_))
-                    || !self.projectile_removal_pending(id))
-                .then_some((target, Some(pos)))
+                (!matches!(target, Target::Projectile(_)) || !self.projectile_removal_pending(id))
+                    .then_some((target, Some(pos)))
             } else {
                 self.native_entity_target(handle)
                     .filter(|&target| self.target_level(target) == self.common.dim)

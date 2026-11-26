@@ -11,11 +11,7 @@ pub(crate) mod tests {
 
     use super::*;
 
-    use sunrise_sim::{
-        mobs::Mob,
-        motion::PlayerMotion,
-        thrown_trident::ThrownTrident,
-    };
+    use sunrise_sim::{mobs::Mob, motion::PlayerMotion, thrown_trident::ThrownTrident};
 
     use super::super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 

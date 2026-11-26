@@ -4,8 +4,11 @@ use mod_api::{
     RegistrationContext, ServerHost,
 };
 use mod_platform::testing::with_mods;
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 use sunrise_gameplay::game::ServerRunOutcome;
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use sunrise_gameplay_common::game::Dim;
 use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1;
 use sunrise_gameplay_common::world_biomes;
@@ -316,7 +319,6 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                 logout: case == "config-unloading-logout-panic",
             };
 
-
             with_mods(
                 vec![ModEntry::new(
                     "log",
@@ -352,10 +354,8 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                                 Some(sunrise_sim::save::SessionLock::acquire(&root).unwrap());
                         }
 
-
                         game.server.world_adopted = adopted;
                         if matches!(case, "unopened" | "bind-failed-init" | "locked-unadopted") {
-
                             std::fs::write(root.join("level.dat"), b"unadopted save").unwrap();
                         }
                         if config_panic || prepare_error {
@@ -368,12 +368,10 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                             game.level.name = "previous save".into();
                             game.level.write(&root, &Default::default()).unwrap();
 
-
                             game.level.name = "lifecycle final save".into();
-                            game.world.chunks.insert(
-                                (0, 0),
-                                Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
-                            );
+                            game.world
+                                .chunks
+                                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
                             let stone = game
                                 .pack
                                 .assets
@@ -385,14 +383,13 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                             let serving_stopped = if dedicated {
                                 Box::new(|| true) as Box<dyn Fn() -> bool + Send + Sync>
                             } else {
-
-
                                 Box::new(sunrise_gameplay::game::server_side::integrated::tests::install_serving(
                                     game,
                                     case == "config-unloading-logout-panic",
                                 ))
                             };
-                            let lan = Arc::downgrade(&game.server.lan.as_ref().unwrap().hub.lan.shared);
+                            let lan =
+                                Arc::downgrade(&game.server.lan.as_ref().unwrap().hub.lan.shared);
                             *stopped_probe.lock().unwrap() = Some(StoppedProbe {
                                 serving_stopped,
                                 lan,
@@ -582,14 +579,24 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                             expected,
                             "second close is a no-op after {case}"
                         );
-                        assert!(game.server.session_lock.0.is_none(), "storage released after {case}");
+                        assert!(
+                            game.server.session_lock.0.is_none(),
+                            "storage released after {case}"
+                        );
                         assert!(!game.server.world_adopted, "adoption cleared after {case}");
-                        assert!(game.server.serving.is_none(), "serving retired after {case}");
+                        assert!(
+                            game.server.serving.is_none(),
+                            "serving retired after {case}"
+                        );
                         assert!(game.server.lan.is_none(), "LAN dropped after {case}");
                         if config_panic {
                             let registry = &game.pack.assets.registry;
-                            let chunk =
-                                game.server.save.0.load(0, 0, registry, world_biomes!(game)).unwrap();
+                            let chunk = game
+                                .server
+                                .save
+                                .0
+                                .load(0, 0, registry, world_biomes!(game))
+                                .unwrap();
                             assert_eq!(
                                 chunk.block(1, 64, 1),
                                 registry.default_state("minecraft:stone").unwrap()
@@ -621,26 +628,16 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
     }
 }
 
-
-
-
-
-
-
-
-
-
-
 #[test]
 #[ignore = "daily"]
 fn integrated_shutdown_reopens_the_authoritative_owner_or_keeps_an_interrupted_save() {
+    use sunrise_core::nbt::Tag;
     use sunrise_gameplay::game::lan::Owner;
     use sunrise_sim::{
         items::ItemStack,
         lan::playerdata,
         save::{self, Level, LevelShape, SaveDir},
     };
-    use sunrise_core::nbt::Tag;
 
     for (interrupted, legacy) in [(false, false), (true, false), (true, true)] {
         with_guests(|game| {
@@ -739,12 +736,12 @@ fn integrated_shutdown_reopens_the_authoritative_owner_or_keeps_an_interrupted_s
 #[test]
 #[ignore = "daily"]
 fn shutdown_notifies_only_for_replaced_player_files() {
+    use sunrise_core::nbt::Tag;
     use sunrise_gameplay::game::lan::Owner;
     use sunrise_sim::{
         lan::playerdata,
         save::{self, Level, LevelShape, SaveDir, SessionLock},
     };
-    use sunrise_core::nbt::Tag;
 
     const CASE: &str = "SUNRISE_SHUTDOWN_PLAYER_FILE_CASE";
     if run_fresh_cases(
@@ -832,7 +829,6 @@ fn shutdown_notifies_only_for_replaced_player_files() {
     assert_eq!(*notices.lock().unwrap(), [written]);
 }
 
-
 #[test]
 #[ignore = "daily"]
 fn full_saves_write_live_players_before_saving_levels() {
@@ -911,7 +907,16 @@ fn full_saves_write_live_players_before_saving_levels() {
                         .unwrap();
                     game.native_level_opened(Dim::Overworld);
                     game.save_game_with(false).unwrap();
-                    assert_eq!(game.server.lan.as_ref().unwrap().hub.online_players().count(), 2);
+                    assert_eq!(
+                        game.server
+                            .lan
+                            .as_ref()
+                            .unwrap()
+                            .hub
+                            .online_players()
+                            .count(),
+                        2
+                    );
                 })
             },
         );

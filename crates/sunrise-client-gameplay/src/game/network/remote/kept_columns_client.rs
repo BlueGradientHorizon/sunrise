@@ -122,9 +122,11 @@ impl crate::game::ClientGame<'_> {
         let within = far + new.count() <= MAX_COLUMNS as usize;
         if within {
             let shown = self.common.world.chunks.keep_far(kept);
-            self.client
-                .streaming
-                .remote_chunk_visibility_changed(&mut self.common.world, &[], &shown);
+            self.client.streaming.remote_chunk_visibility_changed(
+                &mut self.common.world,
+                &[],
+                &shown,
+            );
         }
         // Released, they are out of range: not `forget_remote_packets`, which keeps those.
         self.forget_remote_light(&gone);

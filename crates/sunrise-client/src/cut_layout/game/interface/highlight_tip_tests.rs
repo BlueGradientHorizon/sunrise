@@ -64,4 +64,3 @@ fn a_part_names_the_selected_stick_while_its_name_shows() {
         },
     );
 }
-

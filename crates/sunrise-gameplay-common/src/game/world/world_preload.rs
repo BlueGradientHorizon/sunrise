@@ -120,7 +120,8 @@ pub(in crate::game) fn preload_launch_world(
                 .as_ref()
                 .map_or(&[][..], |l| l.enabled_features.as_ref());
             let packs = data_repository(&world_root, &resources, &additional);
-            let enabled = sunrise_level::datapack::enabled_ids(&world_root, &packs, enabled_features);
+            let enabled =
+                sunrise_level::datapack::enabled_ids(&world_root, &packs, enabled_features);
             let stack = crate::game::function_pack_stack::PackStack::new(
                 &builtin_source,
                 &data_source,
@@ -135,8 +136,7 @@ pub(in crate::game) fn preload_launch_world(
                 &resources,
                 &enabled,
             );
-            let Ok((overrides, _)) =
-                preload_overrides(&stack.data_packs(Vec::new()), &conditions)
+            let Ok((overrides, _)) = preload_overrides(&stack.data_packs(Vec::new()), &conditions)
             else {
                 return;
             };
@@ -167,7 +167,13 @@ pub(in crate::game) fn preload_launch_world(
 fn preload_overrides(
     packs: &sunrise_level::datapack::DataPacks,
     conditions: &sunrise_world::conditions::LoadConditions,
-) -> Result<(sunrise_world::worldgen::overrides::WorldgenOverrides, Vec<String>), String> {
+) -> Result<
+    (
+        sunrise_world::worldgen::overrides::WorldgenOverrides,
+        Vec<String>,
+    ),
+    String,
+> {
     let result = sunrise_level::datapack::worldgen_overrides(packs, conditions);
     conditions.check_errors()?;
     Ok(result)
@@ -177,4 +183,3 @@ fn preload_overrides(
 pub fn world_data_used() {
     *PRELOAD.lock().unwrap_or_else(|e| e.into_inner()) = Preload::Used;
 }
-

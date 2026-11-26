@@ -1229,8 +1229,8 @@ pub(crate) mod mod_capability_tests {
     fn entity_and_player_attachments_stay_on_commit_and_go_back_on_abort() {
         use mod_api::{AttachmentDescriptor, AttachmentKey, Holder, Hooks, ModEntry, Registrar};
         use std::sync::Mutex;
-        use sunrise_sim::entities::ArmorStand;
         use sunrise_core::geometry::Vec3;
+        use sunrise_sim::entities::ArmorStand;
         struct EnergyMod(Arc<Mutex<Option<AttachmentKey<i32>>>>);
         #[mod_api::__subscriptions]
         impl Hooks for EnergyMod {
@@ -1258,8 +1258,12 @@ pub(crate) mod mod_capability_tests {
                 game.world
                     .chunks
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                game.common.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
-                game.common.armor_stands.push(ArmorStand::new(14, Vec3::ZERO, 0.0));
+                game.common
+                    .armor_stands
+                    .push(ArmorStand::new(13, Vec3::ZERO, 0.0));
+                game.common
+                    .armor_stands
+                    .push(ArmorStand::new(14, Vec3::ZERO, 0.0));
                 let guest = 0x5eed_u128;
                 let config = sunrise_sim::lan::hub::HubConfig {
                     default_game_mode: 0,
@@ -1291,7 +1295,8 @@ pub(crate) mod mod_capability_tests {
                 .unwrap();
                 let level = game.level(game.dim.id()).unwrap();
                 let player_ref = game.fake_player(level, guest, "test").unwrap();
-                let conn = game.server
+                let conn = game
+                    .server
                     .lan
                     .as_ref()
                     .unwrap()
@@ -1343,7 +1348,8 @@ pub(crate) mod mod_capability_tests {
                     game.server.lan_acting_uuid = Some(guest);
                     std::mem::swap(
                         &mut game.common.player_state.attachments,
-                        game.server.lan
+                        game.server
+                            .lan
                             .as_mut()
                             .unwrap()
                             .hub
@@ -1355,7 +1361,8 @@ pub(crate) mod mod_capability_tests {
                     energy_key.set(host, player, 70).unwrap();
                     std::mem::swap(
                         &mut game.common.player_state.attachments,
-                        game.server.lan
+                        game.server
+                            .lan
                             .as_mut()
                             .unwrap()
                             .hub

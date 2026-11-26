@@ -116,5 +116,4 @@ fn tnt_reads_the_hand_the_block_phase_listener_left() {
     });
 }
 
-
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

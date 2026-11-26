@@ -1,5 +1,5 @@
 //! Dual-role block collision box scans shared by server and client levels.
-use mod_api::{VoxelShape, __private::voxel_shape_from_core};
+use mod_api::{__private::voxel_shape_from_core, VoxelShape};
 use std::ops::ControlFlow;
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_level::collisions::SceneCollisions;

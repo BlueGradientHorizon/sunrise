@@ -256,9 +256,7 @@ pub(in crate::game) fn level_side(level: &impl SidedLevel) -> mod_api::LevelSide
 }
 
 /// The prediction's block states and the live block entities it invalidated.
-pub trait PredictedLevel:
-    sunrise_world::level::LevelAccess
-{
+pub trait PredictedLevel: sunrise_world::level::LevelAccess {
     fn block_entity_removed(&self, pos: BlockPos) -> bool;
 }
 

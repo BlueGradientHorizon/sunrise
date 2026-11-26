@@ -18,7 +18,6 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn conversion_post_reads_original_and_lightning_outcome() {
         use super::super::native_entity_refs::tests::with_game;
-        use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
         use mod_api::{
             EntityJoinLevelEvent, EquipmentSlot, Flow, Hooks, LivingConversionPostEvent,
             LivingConversionPreEvent,
@@ -28,6 +27,7 @@ pub(crate) mod tests {
             Mutex,
             atomic::{AtomicBool, AtomicUsize, Ordering},
         };
+        use sunrise_gameplay_common::game::test_fixtures::fixture_resident_column;
 
         #[derive(Debug)]
         struct SeenConversion {

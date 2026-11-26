@@ -1,7 +1,6 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-
     use std::sync::{
         Arc,
         atomic::{AtomicI32, AtomicUsize},

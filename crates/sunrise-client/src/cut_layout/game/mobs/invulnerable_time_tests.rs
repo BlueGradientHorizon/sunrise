@@ -6,10 +6,8 @@ use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
+use sunrise_gameplay_common::game::{Options, Progress, execution_role};
 use sunrise_level::chunk::Chunk;
-use {
-    sunrise_gameplay_common::game::{Options, Progress, execution_role},
-};
 
 const EDIT: &str = "00006095-0000-0000-0000-000000000002";
 

@@ -1,10 +1,10 @@
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
-use sunrise_gameplay_common::game::test_fixtures::run_fresh_cases;
-use sunrise_client_gameplay::game::ClientGame;
-use sunrise_gameplay_common::game::{Screen, tables::GameItems as _};
-use sunrise_client_gameplay::game::native_hooks::particle_count_tests::frame_scene;
 use std::sync::Arc;
+use sunrise_client_gameplay::game::ClientGame;
+use sunrise_client_gameplay::game::native_hooks::particle_count_tests::frame_scene;
 use sunrise_client_render::gfx::ScreenshotRequest;
+use sunrise_gameplay_common::game::test_fixtures::run_fresh_cases;
+use sunrise_gameplay_common::game::{Screen, tables::GameItems as _};
 use sunrise_shaders::RenderLayer;
 use sunrise_world::registry::BlockStateId;
 
@@ -54,7 +54,14 @@ fn drawn_frame(game: &mut ClientGame<'_>) -> (Vec<u8>, usize) {
     });
     game.render_with(|renderer, frame| renderer.render(frame, None))
         .unwrap();
-    let result = game.client.renderer.0.as_mut().unwrap().screenshot_result.take();
+    let result = game
+        .client
+        .renderer
+        .0
+        .as_mut()
+        .unwrap()
+        .screenshot_result
+        .take();
     let mut pending = result.unwrap().unwrap();
     let image = pending.image_mut();
     (std::mem::take(&mut image.rgba), image.width as usize)
@@ -123,8 +130,10 @@ fn scene(game: &mut ClientGame<'_>, flat: bool) -> Option<Scene> {
     let (reader, writer) = crate::game::remote::tests::connect_menu_test(game);
     game.client.remote.as_mut().unwrap().logged_in = true;
     let event_loop = frame_scene(game);
-    if game.client
-        .renderer.0
+    if game
+        .client
+        .renderer
+        .0
         .as_mut()
         .unwrap()
         .set_flat_draws(flat)
@@ -161,7 +170,9 @@ fn scene(game: &mut ClientGame<'_>, flat: bool) -> Option<Scene> {
                 chunk.set(8, 61, 7, bottom);
                 chunk.set(8, 61, 9, top);
             }
-            game.client.streaming.insert_remote(&mut game.common.world, chunk);
+            game.client
+                .streaming
+                .insert_remote(&mut game.common.world, chunk);
         }
     }
     settle(game);
@@ -200,7 +211,13 @@ fn layer_rules_move_states_between_the_packs_terrain_programs() {
         assert!(game.client.pack_ids.is_some(), "the pack loads");
         settle(game);
         assert!(
-            game.client.renderer.0.as_ref().unwrap().shader_pack_kind().is_none(),
+            game.client
+                .renderer
+                .0
+                .as_ref()
+                .unwrap()
+                .shader_pack_kind()
+                .is_none(),
             "the sections were uploaded while the pack was pending"
         );
         assert_eq!(

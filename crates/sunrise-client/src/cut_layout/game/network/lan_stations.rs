@@ -1,10 +1,10 @@
 #![cfg(test)]
+#[cfg(test)]
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
 use sunrise_gameplay_common::game::stations_common::Kind as StationKind;
 use sunrise_gameplay_common::game::stations_common::Station;
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play;
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
 
 #[cfg(test)]
 pub(crate) mod anvil_tests {

@@ -81,10 +81,10 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn world_bulk_files_survive_save_reload_backup_and_world_deletion() {
+        use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
         use std::io::Read;
         use std::path::PathBuf;
         use std::sync::atomic::{AtomicUsize, Ordering};
-        use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
         use sunrise_gameplay::game::world_loading::WorldRequest;
 
         struct ScratchDir(PathBuf);

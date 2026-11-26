@@ -35,8 +35,6 @@ pub(crate) mod tests {
 
     use sunrise_level::chunk::Chunk;
 
-    
-
     #[test]
     #[ignore = "daily"]
     fn dispatch_ticks_both_owners_of_each_located_kind() {

@@ -45,10 +45,9 @@ impl crate::game::ServerGame<'_> {
         );
         let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
         if let Some(p) = self.common.player.as_mut() {
-            let level = crate::game::entity_server::damage_level_of!(self, attack, &mut credit, None);
+            let level =
+                crate::game::entity_server::damage_level_of!(self, attack, &mut credit, None);
             apply_player_knockback(p, level, power, (xd, zd), source);
         }
     }
-
-
 }

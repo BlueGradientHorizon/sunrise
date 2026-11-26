@@ -82,11 +82,7 @@ impl crate::game::ServerGame<'_> {
     /// to the level, then runs `applyOnProjectileSpawned` with `stack`, the
     /// item it was made from (the held or dispensed stack, an arrow's ammo).
     /// The projectile's id.
-    pub fn spawn_projectile(
-        &mut self,
-        projectile: Projectile,
-        stack: &ItemStack,
-    ) -> Option<u32> {
+    pub fn spawn_projectile(&mut self, projectile: Projectile, stack: &ItemStack) -> Option<u32> {
         let id = self.add_fresh_projectile(projectile)?;
         self.apply_on_projectile_spawned(id, stack);
         Some(id)

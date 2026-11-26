@@ -19,7 +19,9 @@ impl mod_api::Hooks for QueryMod {
     }
 }
 
-fn with_query_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &AttachmentKey<u32>)) {
+fn with_query_game(
+    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &AttachmentKey<u32>),
+) {
     let key_slot = Arc::new(Mutex::new(None));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "query_test",

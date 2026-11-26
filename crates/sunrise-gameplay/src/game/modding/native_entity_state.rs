@@ -98,7 +98,9 @@ impl crate::game::ServerGame<'_> {
     /// Whether the entity crouches (`Entity.isCrouching`: the crouching
     /// pose).
     pub(in crate::game) fn entity_is_crouching(&self, entity: EntityRef) -> Option<bool> {
-        if !self.common.is_logical_server() && self.native_entity_read_target(entity)? == Target::Player {
+        if !self.common.is_logical_server()
+            && self.native_entity_read_target(entity)? == Target::Player
+        {
             return Some(self.common.player.as_ref()?.local_crouching);
         }
         Some(self.entity_pose(entity)? == "crouching")
@@ -240,7 +242,12 @@ impl crate::game::ServerGame<'_> {
                 Some(self.common.dropped.iter().find(|i| i.id == id)?.fire_ticks)
             }
             Body::Other(Target::Projectile(id)) => {
-                let p = self.common.creatures.projectiles.iter().find(|p| p.id == id)?;
+                let p = self
+                    .common
+                    .creatures
+                    .projectiles
+                    .iter()
+                    .find(|p| p.id == id)?;
                 Some(p.arrow.as_ref().map_or(p.fire_ticks, |a| a.fire_ticks))
             }
             Body::Other(_) => None,
@@ -632,26 +639,21 @@ impl crate::game::ServerGame<'_> {
                     i.needs_sync = true;
                     true
                 }),
-            Some(Target::General(id)) => {
-                self.common
-                    .resident_entities
-                    .general
-                    .row_mut(id)
-                    .is_some_and(|row| {
-                        row.no_gravity = no_gravity;
-                        true
-                    })
-            }
+            Some(Target::General(id)) => self
+                .common
+                .resident_entities
+                .general
+                .row_mut(id)
+                .is_some_and(|row| {
+                    row.no_gravity = no_gravity;
+                    true
+                }),
             _ => false,
         }
     }
     /// Sets the entity's shared invisibility flag (`Entity.setInvisible`) on a mob, an armor
     /// stand or an item frame. Returns false for players, guests and other kinds.
-    pub fn entity_set_invisible(
-        &mut self,
-        entity: EntityRef,
-        invisible: bool,
-    ) -> bool {
+    pub fn entity_set_invisible(&mut self, entity: EntityRef, invisible: bool) -> bool {
         match self.native_entity_target(entity) {
             Some(Target::Mob(id)) => self
                 .common
@@ -679,7 +681,10 @@ impl crate::game::ServerGame<'_> {
                 };
                 frame.invisible = invisible;
                 let pos = frame.pos;
-                self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+                self.common
+                    .world
+                    .modified
+                    .insert((pos[0] >> 4, pos[2] >> 4));
                 true
             }
             _ => false,
@@ -1309,4 +1314,3 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
 
 use sunrise_gameplay_common::game::native_entity_state_common::NativeEntityStateCommonGameExt1 as _;
-

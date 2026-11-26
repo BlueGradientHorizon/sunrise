@@ -78,6 +78,5 @@ fn crown_is_prepared_once_for_three_and_eight_dispenser_candidates() {
     }
 }
 
-
 #[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

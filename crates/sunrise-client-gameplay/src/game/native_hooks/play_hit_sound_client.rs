@@ -34,6 +34,12 @@ impl crate::game::ClientGame<'_> {
         } else {
             Audio::play
         };
-        play(&mut self.client.audio.0, sounds.hit.as_str(), at, volume, pitch);
+        play(
+            &mut self.client.audio.0,
+            sounds.hit.as_str(),
+            at,
+            volume,
+            pitch,
+        );
     }
 }

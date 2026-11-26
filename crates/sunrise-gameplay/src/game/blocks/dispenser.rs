@@ -1111,7 +1111,10 @@ impl crate::game::ServerGame<'_> {
             foot,
             y_rot(facing),
         );
-        self.common.persist.uuids.insert(self.server.next_entity, uuid);
+        self.common
+            .persist
+            .uuids
+            .insert(self.server.next_entity, uuid);
         self.common
             .world
             .modified

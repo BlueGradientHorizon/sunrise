@@ -98,7 +98,9 @@ impl crate::game::ServerGame<'_> {
         let unloaded_columns = plan.unloading_columns();
         self.server.streaming.submit_protos(protos);
         let unloaded = sunrise_level::spans::time("streaming", || {
-            self.server.streaming.complete_commit(&mut self.common.world, commit)
+            self.server
+                .streaming
+                .complete_commit(&mut self.common.world, commit)
         });
         self.server.streaming.extra.truncate(areas);
         sunrise_level::spans::time("spawn_fresh_chunks", || self.spawn_fresh_chunks());
@@ -125,9 +127,10 @@ impl crate::game::ServerGame<'_> {
                     self.common.world.block_entities.unload_column(column);
                 }
             });
-            self.common.world.block_names.retain(|p, _| {
-                !unloaded_columns.contains(&(p.0 >> 4, p.2 >> 4))
-            });
+            self.common
+                .world
+                .block_names
+                .retain(|p, _| !unloaded_columns.contains(&(p.0 >> 4, p.2 >> 4)));
         }
         sunrise_level::spans::time("sync_tick_chunks", || self.sync_tick_chunks());
         saved.map(|_| ())

@@ -14,8 +14,6 @@ pub(crate) mod tests {
 
     use super::*;
 
-    
-
     use sunrise_protocol::packets::play;
 
     use sunrise_sim::merchant;

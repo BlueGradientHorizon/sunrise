@@ -127,7 +127,11 @@ impl super::GameLevel<'_> {
                     .name
                     .clone()
             });
-            let key = (i32::MAX - 15, sunrise_sim::lan::menu::VEHICLE_KEY_Y, id as i32);
+            let key = (
+                i32::MAX - 15,
+                sunrise_sim::lan::menu::VEHICLE_KEY_Y,
+                id as i32,
+            );
             let mut slots = self.carts[i].items.clone();
             if let Some(BlockEntity::Chest(open)) = self.world.block_entities.get(&key) {
                 slots.clone_from(open);

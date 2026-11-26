@@ -262,10 +262,11 @@ impl crate::game::ClientGame<'_> {
             // old one, which must still read its existing chunks during Unload.
             let epoch = sunrise_gameplay_common::game::native_lifecycle_common::fresh_epoch();
             let handle = mod_api::LevelRef::new(epoch, level_key);
-            let mut world = sunrise_gameplay_common::game::native_hooks::block_entity_on_load::world_for_mods(
-                self.common.res.facts().air,
-                spawn.seed,
-            );
+            let mut world =
+                sunrise_gameplay_common::game::native_hooks::block_entity_on_load::world_for_mods(
+                    self.common.res.facts().air,
+                    spawn.seed,
+                );
             world.shape = format.shape;
             world.game_time = self.common.world.game_time;
             world.weather = self.common.world.weather;
@@ -1248,9 +1249,8 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         let timelines = r.synced_timelines();
-        let own =
-            Environment::with_type(self.common.res.environment_of(name), json, &timelines)
-                .map(Arc::new);
+        let own = Environment::with_type(self.common.res.environment_of(name), json, &timelines)
+            .map(Arc::new);
         let pack = pack_environment(name, json, stacks, &timelines);
         r.level_environments.insert(
             name.clone(),

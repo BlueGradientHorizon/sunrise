@@ -134,7 +134,11 @@ impl crate::game::ServerGame<'_> {
             game.validate_placement_player(player)?;
             if writes.into_iter().any(|(at, state)| {
                 !game.common.world.is_loaded_at(at.x, at.y, at.z)
-                    || game.common.world.carrier_fences.locks_cell(&[at.x, at.y, at.z])
+                    || game
+                        .common
+                        .world
+                        .carrier_fences
+                        .locks_cell(&[at.x, at.y, at.z])
                     || game.common.world.block(at.x, at.y, at.z) != state
             }) {
                 return Err(Refusal::PlacementChanged);

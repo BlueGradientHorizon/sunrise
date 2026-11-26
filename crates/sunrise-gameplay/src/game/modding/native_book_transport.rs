@@ -15,11 +15,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
 
-    pub fn guest_mod_book_placement(
-        &mut self,
-        conn: u32,
-        frame: sync::Frame,
-    ) {
+    pub fn guest_mod_book_placement(&mut self, conn: u32, frame: sync::Frame) {
         match frame {
             sync::Frame::Hello { epoch, schema } => {
                 let actual = self

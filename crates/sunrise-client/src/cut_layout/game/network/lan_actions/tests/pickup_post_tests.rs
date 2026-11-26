@@ -492,7 +492,14 @@ fn pre_pickup_edits_and_removals_match_on_host_and_guest() {
                             }
                         })
                     } else {
-                        game.server.lan.as_ref().unwrap().hub.guest(12).unwrap().inventory[0]
+                        game.server
+                            .lan
+                            .as_ref()
+                            .unwrap()
+                            .hub
+                            .guest(12)
+                            .unwrap()
+                            .inventory[0]
                             .as_ref()
                             .map_or(0, |stack| {
                                 if &*stack.item == "minecraft:apple" {

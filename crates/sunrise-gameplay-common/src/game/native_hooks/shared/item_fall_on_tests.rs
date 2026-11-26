@@ -38,7 +38,10 @@ pub static LOAN_VALUE: sunrise_mod_runtime::attachments::AttachmentType<i32> =
         sync_codec: None,
     };
 
-pub(in crate::game) struct LoanPart(pub(in crate::game) std::sync::Arc<()>, mod_api::AttachmentKey<i32>);
+pub(in crate::game) struct LoanPart(
+    pub(in crate::game) std::sync::Arc<()>,
+    mod_api::AttachmentKey<i32>,
+);
 #[mod_api::sunrise_part]
 impl BlockPart for LoanPart {
     fn fall_on(&self, host: &mut dyn LevelRandomHost, event: &mut FallOnEvent<'_>) {

@@ -2,18 +2,18 @@
 //! reached through `ServerPlayerGameMode.useItemOn`, which skips the block
 //! while sneaking with something in hand and then triggers
 //! ITEM_USED_ON_BLOCK for the use it consumed.
+#[cfg(test)]
+use crate::game::*;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay::game::game_tests::tests::server_game;
+use sunrise_gameplay_common::game::{BlockEntity, Hit, Resources};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{
     advancements::{Advancement, Criterion, Rewards, Tree},
     motion::PlayerMotion,
 };
 use sunrise_world::lazy_json::LazyJson;
-use sunrise_gameplay_common::game::{BlockEntity, Hit, Resources};
-#[cfg(test)]
-use crate::game::*;
 
 /// A server game with a campfire at `pos` (its block entity too) and beef in
 /// the main hand, the click forced onto that block.

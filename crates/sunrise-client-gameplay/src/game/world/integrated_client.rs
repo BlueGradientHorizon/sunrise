@@ -75,11 +75,7 @@ impl Integrated {
     pub(in crate::game) fn debug(
         &self,
     ) -> (u64, sunrise_gameplay_common::game::debug_lines::ServerDebug) {
-        self.flags
-            .debug
-            .lock()
-            .map(|d| *d)
-            .unwrap_or_default()
+        self.flags.debug.lock().map(|d| *d).unwrap_or_default()
     }
     /// `MinecraftServer.isCurrentlySaving`.
     pub fn is_saving(&self) -> bool {

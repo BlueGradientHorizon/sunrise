@@ -395,10 +395,9 @@ pub trait NativeEntityRefsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         let result = match result {
             Ok(result) => result,
             Err(RayError::World(error)) => {
-                return match error
-                    .get_ref()
-                    .and_then(|source| source.downcast_ref::<crate::game::collider_rays::UnloadedColumn>())
-                {
+                return match error.get_ref().and_then(|source| {
+                    source.downcast_ref::<crate::game::collider_rays::UnloadedColumn>()
+                }) {
                     Some(crate::game::collider_rays::UnloadedColumn(at)) => {
                         Ok(ClipRay::Unloaded([at.x, at.y, at.z]))
                     }
@@ -700,10 +699,7 @@ pub trait NativeEntityRefsCommonGameExt5<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// The server entity read boundary, distinguishing absent handles from parked bodies.
-    fn native_server_entity_target(
-        &self,
-        entity: EntityRef,
-    ) -> Result<Target, EntityReadError> {
+    fn native_server_entity_target(&self, entity: EntityRef) -> Result<Target, EntityReadError> {
         self.resolve_server_entity_in(entity, self.dim.key())
             .map(|(target, _)| target)
     }
@@ -764,10 +760,7 @@ pub trait NativeEntityRefsCommonGameExt5<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// Resolve an entity handle for a visitor query on either side.
-    fn native_entity_visit_target(
-        &self,
-        entity: EntityRef,
-    ) -> Result<Target, EntityReadError> {
+    fn native_entity_visit_target(&self, entity: EntityRef) -> Result<Target, EntityReadError> {
         if self.is_logical_server() {
             self.native_server_entity_target(entity)
         } else {
@@ -903,7 +896,10 @@ pub trait NativeEntityRefsCommonGameExt5<'__sg>: crate::game::SideGame<'__sg> {
     /// one in place, as a kill credit can name one (`getEntityInAnyDimension`):
     /// its identity reads (`entity_kind`, `entity_uuid`, `entity_level`)
     /// answer from there. None on a client or for anything else.
-    fn mob_in_other_level<'__loan>(&'__loan self, id: u32) -> Option<(super::Dim, &'__loan super::Mob)>
+    fn mob_in_other_level<'__loan>(
+        &'__loan self,
+        id: u32,
+    ) -> Option<(super::Dim, &'__loan super::Mob)>
     where
         '__sg: '__loan,
     {
@@ -1056,5 +1052,5 @@ use crate::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
 
 use crate::game::native_state_shapes::NativeStateShapesGameExt1 as _;
 
-use crate::game::remote::general::GeneralGameExt1 as _;
 use crate::game::pick_entity_common::PickEntityCommonGameExt1 as _;
+use crate::game::remote::general::GeneralGameExt1 as _;

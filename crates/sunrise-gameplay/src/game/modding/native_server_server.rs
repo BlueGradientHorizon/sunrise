@@ -14,7 +14,6 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use sunrise_command::{Arg, ArgType, Context};
 use sunrise_core::position::BlockPos;
 use sunrise_game_data::text::Text;
-use sunrise_gameplay_common::game::{GameGameExt1 as _, GameGameExt3 as _};
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_gameplay_common::game::native_server::Acting;
 use sunrise_gameplay_common::game::native_server::BaseTree;
@@ -31,6 +30,7 @@ use sunrise_gameplay_common::game::native_server::orb_meets;
 use sunrise_gameplay_common::game::native_server::ordered_box;
 use sunrise_gameplay_common::game::native_server::register_command_nodes;
 use sunrise_gameplay_common::game::native_server::system_chat;
+use sunrise_gameplay_common::game::{GameGameExt1 as _, GameGameExt3 as _};
 use sunrise_items::items::ItemStack;
 use sunrise_level::world::World;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -1139,12 +1139,14 @@ impl crate::game::ServerGame<'_> {
         (self.common.native_lifecycle.epoch()? == player.entity().epoch()).then_some(())?;
         let guests = &self.server.lan.as_ref()?.hub.guests;
         let guest = guests.get(guests.identity_index(player.uuid(), player.entity().id())?)?;
-        (guest.participates_online() && (guest.joined() || self.server.lan_acting == Some(guest.conn)))
-            .then_some(guest)
+        (guest.participates_online()
+            && (guest.joined() || self.server.lan_acting == Some(guest.conn)))
+        .then_some(guest)
     }
 
     pub(in crate::game) fn online_player_record(&self, player: PlayerRef) -> Option<&Guest> {
-        self.player_connection_record(player).filter(|guest| guest.joined())
+        self.player_connection_record(player)
+            .filter(|guest| guest.joined())
     }
 
     pub(in crate::game) fn player_address(&self, player: PlayerRef) -> Option<&str> {
@@ -1973,7 +1975,10 @@ impl crate::game::ServerGame<'_> {
         if dimension == self.common.dim.key() {
             Some(&self.common.mobs)
         } else {
-            self.server.levels.0.parked_mobs(Dim::from_id(level.dimension_id()))
+            self.server
+                .levels
+                .0
+                .parked_mobs(Dim::from_id(level.dimension_id()))
         }
     }
 

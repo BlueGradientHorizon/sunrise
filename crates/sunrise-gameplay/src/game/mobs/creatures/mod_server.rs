@@ -51,11 +51,12 @@ use sunrise_sim::health::source_damage_type;
 use {
     sunrise_game_data::Result, sunrise_items::items::ItemStack,
     sunrise_level::fast_hash::FxHashMap, sunrise_level::particle_options::ParticleType,
-    sunrise_sim::entities::arrows::EntityHit, sunrise_sim::health::Attack, sunrise_sim::health::HealthEvent,
-    sunrise_sim::health::HurtSource, sunrise_sim::join_seq::JoinSeq, sunrise_sim::mobs::Damage,
-    sunrise_sim::mobs::DamageKind, sunrise_sim::mobs::Mob, sunrise_sim::mobs::MobEvent,
-    sunrise_sim::mobs::MobWorld, sunrise_sim::mobs::PlayerView, sunrise_sim::mobs::Seen,
-    sunrise_sim::mobs::Species, sunrise_sim::mobs::Who, sunrise_sim::mobs::ai::eating_sound,
+    sunrise_sim::entities::arrows::EntityHit, sunrise_sim::health::Attack,
+    sunrise_sim::health::HealthEvent, sunrise_sim::health::HurtSource,
+    sunrise_sim::join_seq::JoinSeq, sunrise_sim::mobs::Damage, sunrise_sim::mobs::DamageKind,
+    sunrise_sim::mobs::Mob, sunrise_sim::mobs::MobEvent, sunrise_sim::mobs::MobWorld,
+    sunrise_sim::mobs::PlayerView, sunrise_sim::mobs::Seen, sunrise_sim::mobs::Species,
+    sunrise_sim::mobs::Who, sunrise_sim::mobs::ai::eating_sound,
     sunrise_sim::mobs::ai::eating_sound_is_bound, sunrise_sim::mobs::ai::feed_animal,
     sunrise_sim::mobs::ai::takes_food, sunrise_sim::mobs::entity_sounds::full_id,
     sunrise_sim::mobs::finalize::Group, sunrise_sim::mobs::spawning, sunrise_sim::projectiles::Hit,
@@ -257,7 +258,9 @@ impl crate::game::ServerGame<'_> {
             projectile.guest = self.server.lan_acting;
         }
         let id = self.add_projectile(projectile);
-        let row = sunrise_gameplay_common::game::entity::EntityHandle::Projectile(self.common.creatures.projectiles.len() - 1);
+        let row = sunrise_gameplay_common::game::entity::EntityHandle::Projectile(
+            self.common.creatures.projectiles.len() - 1,
+        );
         self.announce_fresh_join(row, id).then_some(id)
     }
 
@@ -620,9 +623,7 @@ impl crate::game::ServerGame<'_> {
         equine: Option<Box<sunrise_sim::mobs::equine::Offspring>>,
         parent_variant: Option<bool>,
         wolf_voice: Option<
-            sunrise_sim::lan::data::RegistryRef<
-                sunrise_sim::mobs::variants::WolfSoundVariant,
-            >,
+            sunrise_sim::lan::data::RegistryRef<sunrise_sim::mobs::variants::WolfSoundVariant>,
         >,
         experience: sunrise_sim::mobs::BreedExperience,
         at_tick_boundary: bool,
@@ -653,31 +654,39 @@ impl crate::game::ServerGame<'_> {
         let rabbit_variant = self.common.bred_rabbit_variant(parent, &p, q.as_ref());
         let axolotl = if p.species() == Species::Axolotl {
             let other = q.as_ref().map_or(p.extra.variant, |q| q.extra.variant);
-            self.common.mobs.iter_mut().find(|m| m.id == parent).map(|m| {
-                if m.random.next_int_bound(1200).unwrap_or(1) == 0 {
-                    let _ = m.random.next_int_bound(1);
-                    4
-                } else if m.random.next_boolean() {
-                    p.extra.variant
-                } else {
-                    other
-                }
-            })
+            self.common
+                .mobs
+                .iter_mut()
+                .find(|m| m.id == parent)
+                .map(|m| {
+                    if m.random.next_int_bound(1200).unwrap_or(1) == 0 {
+                        let _ = m.random.next_int_bound(1);
+                        4
+                    } else if m.random.next_boolean() {
+                        p.extra.variant
+                    } else {
+                        other
+                    }
+                })
         } else {
             None
         };
         let mooshroom = if p.species() == Species::Mooshroom {
             let mate = q.as_ref().map_or(p.extra.variant, |q| q.extra.variant);
             let own = p.extra.variant;
-            self.common.mobs.iter_mut().find(|m| m.id == parent).map(|m| {
-                if own == mate && m.random.next_int_bound(1024).unwrap_or(1) == 0 {
-                    if own == 1 { 0 } else { 1 }
-                } else if m.random.next_boolean() {
-                    own
-                } else {
-                    mate
-                }
-            })
+            self.common
+                .mobs
+                .iter_mut()
+                .find(|m| m.id == parent)
+                .map(|m| {
+                    if own == mate && m.random.next_int_bound(1024).unwrap_or(1) == 0 {
+                        if own == 1 { 0 } else { 1 }
+                    } else if m.random.next_boolean() {
+                        own
+                    } else {
+                        mate
+                    }
+                })
         } else {
             None
         };
@@ -877,7 +886,8 @@ impl crate::game::ServerGame<'_> {
         };
         let (mut pending, action) = accepted?;
         let child = &mut pending.mob;
-        let live_parent = self.common
+        let live_parent = self
+            .common
             .mobs
             .iter()
             .find(|m| m.id == parent)
@@ -890,12 +900,14 @@ impl crate::game::ServerGame<'_> {
             OrbOrder::BeforeChild
         };
         if fox {
-            let parent_cause = self.server
+            let parent_cause = self
+                .server
                 .love_cause
                 .get(&parent)
                 .copied()
                 .and_then(|conn| self.killer_uuid(conn));
-            let partner_cause = self.server
+            let partner_cause = self
+                .server
                 .love_cause
                 .get(&partner)
                 .copied()
@@ -1548,7 +1560,8 @@ impl crate::game::ServerGame<'_> {
         };
         let join = mob.join;
         let same_mob = |game: &mut Self| {
-            game.common.mob_index
+            game.common
+                .mob_index
                 .find(&game.common.mobs, id)
                 .filter(|&i| game.common.mobs[i].join == join && !game.common.mobs[i].removed)
         };
@@ -1861,7 +1874,12 @@ impl crate::game::ServerGame<'_> {
                         self.give_player_effect(effect, ticks, amplifier);
                     }
                 }
-                MobEvent::DamagePlayer { amount, from, kind, wielder: _ } => {
+                MobEvent::DamagePlayer {
+                    amount,
+                    from,
+                    kind,
+                    wielder: _,
+                } => {
                     let hurt = self.mob_hits_player(amount, from, kind);
                     if kind == "minecraft:spear" {
                         self.server.combat.0.hit_landed = hurt;
@@ -1926,7 +1944,14 @@ impl crate::game::ServerGame<'_> {
                         mob.needs_sync = true;
                     }
                 }
-                MobEvent::Knockback { target, power, x, z, source, apply_blocking } => {
+                MobEvent::Knockback {
+                    target,
+                    power,
+                    x,
+                    z,
+                    source,
+                    apply_blocking,
+                } => {
                     self.mob_event_knockback(target, power, [x, z], source, apply_blocking);
                 }
                 MobEvent::LidPush {
@@ -2069,8 +2094,16 @@ impl crate::game::ServerGame<'_> {
                 } => {
                     self.mob_hits_mob(target, amount, source);
                 }
-                MobEvent::ContactDamageMob { target, amount, kind, attacker } => {
-                    let mut source = Damage::of(Self::damage_kind(&self.common.health_resources.damage, kind));
+                MobEvent::ContactDamageMob {
+                    target,
+                    amount,
+                    kind,
+                    attacker,
+                } => {
+                    let mut source = Damage::of(Self::damage_kind(
+                        &self.common.health_resources.damage,
+                        kind,
+                    ));
                     if let Some((cube, from)) = attacker {
                         source.attacker = Some(Who::Mob(cube));
                         source.from = Some(from);
@@ -3139,7 +3172,8 @@ impl crate::game::ServerGame<'_> {
             KnownCause::Infer => from
                 .filter(|_| !projectile && damage_type != "minecraft:player_attack")
                 .and_then(|from| {
-                    self.common.mobs
+                    self.common
+                        .mobs
                         .iter()
                         .filter(|m| m.alive())
                         .min_by(|a, b| {
@@ -4625,12 +4659,17 @@ impl crate::game::ServerGame<'_> {
             Who::Mob(id) => {
                 let aim = self.attacker_aim(source.attacker);
                 let attack = self.attack_of_who(source.attacker);
-                let plan = self.prepare_knockback_credit(id as i32, None, self.server.combat.0.attack());
+                let plan =
+                    self.prepare_knockback_credit(id as i32, None, self.server.combat.0.attack());
                 let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                 if let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id) {
                     m.attacker_aim = aim;
-                    let level =
-                        crate::game::entity_server::damage_level_of!(self, &attack, &mut credit, None);
+                    let level = crate::game::entity_server::damage_level_of!(
+                        self,
+                        &attack,
+                        &mut credit,
+                        None
+                    );
                     m.knockback(level, power, x, z, &source, 0.0);
                     m.attacker_aim = None;
                 }
@@ -5642,7 +5681,9 @@ impl crate::game::ServerGame<'_> {
                             let join = self.common.mobs[index].join;
                             let same_target = |m: &Mob| m.id == id && m.join == join && !m.removed;
                             if self.damage_projectile_with_weapon(p, id, 4.0, source, aim) {
-                                if let Some(m) = self.common.mobs.iter_mut().find(|m| same_target(m)) {
+                                if let Some(m) =
+                                    self.common.mobs.iter_mut().find(|m| same_target(m))
+                                {
                                     sunrise_sim::mobs::shulker::hit_by_bullet(m);
                                 }
                                 self.settle_hurt_teleports()?;
@@ -6446,7 +6487,9 @@ impl crate::game::ServerGame<'_> {
                             before
                                 .iter()
                                 .chain(after)
-                                .find(|p| p.id == src_id && crate::game::entity_server::shot_alive(p))
+                                .find(|p| {
+                                    p.id == src_id && crate::game::entity_server::shot_alive(p)
+                                })
                                 .map(|p| {
                                     (
                                         crate::game::commands::Target::Projectile(src_id),
@@ -6595,7 +6638,10 @@ impl crate::game::ServerGame<'_> {
                     })
                     .map(|j| projectiles[j].id)
                     .collect();
-                self.common.creatures.bounced_followers.push((p.id, followers));
+                self.common
+                    .creatures
+                    .bounced_followers
+                    .push((p.id, followers));
             }
         }
         let hears_impact = !impacts.is_empty();
@@ -6783,12 +6829,10 @@ impl crate::game::ServerGame<'_> {
         };
         // SpawnEggItem.spawnMob: `EntityType.create` finalizes the mob, then
         // `PostSpawnProcessor` puts the egg's components on it.
-        let variants = self
-            .server
-            .world_tables
-            .0
-            .as_ref()
-            .map_or_else(|| self.common.res.variants(), |tables| tables.variants.as_ref());
+        let variants = self.server.world_tables.0.as_ref().map_or_else(
+            || self.common.res.variants(),
+            |tables| tables.variants.as_ref(),
+        );
         if let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id) {
             sunrise_sim::entity_nbt::apply_item_components(m, stack);
             sunrise_sim::entity_nbt::apply_item_variant_components(m, stack, variants);
@@ -7372,7 +7416,10 @@ impl crate::game::ServerGame<'_> {
         spawner: Option<mod_api::Spawner>,
         difficulty: spawning::LocalDifficulty,
         group: &mut Option<Group>,
-    ) -> (sunrise_sim::mobs::finalize::SpawnEvent, spawning::LocalDifficulty) {
+    ) -> (
+        sunrise_sim::mobs::finalize::SpawnEvent,
+        spawning::LocalDifficulty,
+    ) {
         if !mod_api::__private::listened(mod_api::HookId::FinalizeSpawn) {
             return (Default::default(), difficulty);
         }
@@ -7382,7 +7429,12 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Query the composed cluster size after the mob joins.
-    pub(in crate::game) fn spawn_cluster_size(&self, mob: mod_api::MobRef, kind: &str, vanilla: i32) -> i32 {
+    pub(in crate::game) fn spawn_cluster_size(
+        &self,
+        mob: mod_api::MobRef,
+        kind: &str,
+        vanilla: i32,
+    ) -> i32 {
         if !mod_api::__private::has_scoped_hook(mod_api::HookId::SpawnClusterSize)
             || !mod_api::__private::entity_part_hooked(
                 mod_api::HookId::SpawnClusterSize,
@@ -7462,9 +7514,9 @@ impl crate::game::ServerGame<'_> {
             cancel: &mut skip_finalize,
         });
         if native_group != given {
-            *group = native_group
-                .as_ref()
-                .and_then(|g| crate::game::native_unspawned_mob::spawn_group(g, self.world_variants()));
+            *group = native_group.as_ref().and_then(|g| {
+                crate::game::native_unspawned_mob::spawn_group(g, self.world_variants())
+            });
         }
         (
             sunrise_sim::mobs::finalize::SpawnEvent {
@@ -7964,7 +8016,6 @@ impl crate::game::ServerGame<'_> {
         }
     }
 
-
     /// A status effect from a mob, arrow or splash potion (`addEffect`).
     pub fn give_player_effect(&mut self, effect: &'static str, ticks: i32, amplifier: i32) {
         self.give_mob_effect(effect, ticks, amplifier, false);
@@ -8210,7 +8261,10 @@ impl crate::game::ServerGame<'_> {
             if keep || hit != Hit::None && p.arrow.is_none() {
                 self.sweep_projectile_inside(&mut p, None);
                 if p.destroyed {
-                    self.common.creatures.projectiles.retire_extracted(pid, join);
+                    self.common
+                        .creatures
+                        .projectiles
+                        .retire_extracted(pid, join);
                     continue;
                 }
             }
@@ -8446,7 +8500,12 @@ impl crate::game::ServerGame<'_> {
     /// `EnchantmentHelper.doPostAttackEffects` after the player's shot `p`
     /// (its `direct` entity, a hit of `damage_type`) hurt the mob `who`: the
     /// victim's own post-attack enchantments answer the player (Thorns).
-    pub(in crate::game) fn shot_post_attack(&mut self, p: &Projectile, who: Who, damage_type: &str) {
+    pub(in crate::game) fn shot_post_attack(
+        &mut self,
+        p: &Projectile,
+        who: Who,
+        damage_type: &str,
+    ) {
         let attack = self.current_attack();
         let (victim, kind) = match who {
             Who::Player => (self.own_entity_id() as u32, "minecraft:player".into()),
@@ -8639,7 +8698,11 @@ impl crate::game::ServerGame<'_> {
     pub fn finish_arrow_hit(&mut self, mut arrow: Projectile, outcome: EntityHit) {
         let keep = {
             let rain = self.arrow_rain();
-            sunrise_sim::entities::arrows::finish_entity_hit(&mut arrow, &self.arrow_scene(&rain), outcome)
+            sunrise_sim::entities::arrows::finish_entity_hit(
+                &mut arrow,
+                &self.arrow_scene(&rain),
+                outcome,
+            )
         };
         self.flush_arrow_events(&mut arrow);
         if keep {

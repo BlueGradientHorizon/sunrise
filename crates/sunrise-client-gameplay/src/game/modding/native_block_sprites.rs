@@ -1,9 +1,11 @@
 //! Where blocks' textures are in the block sprite arrays, for a client mod drawing blocks with the player's own
 //! textures (resource packs included) in its own pass: with `WorldDrawn::block_sprites`, the arrays themselves.
 use crate::game::ClientGame;
-use mod_api::{AtlasRegion, AtlasSpriteError, AtlasSpritePixels, ColorResolver, Identifier, LevelReadError};
-use sunrise_client_render::assets::RenderAssets;
+use mod_api::{
+    AtlasRegion, AtlasSpriteError, AtlasSpritePixels, ColorResolver, Identifier, LevelReadError,
+};
 use sunrise_client::block_sprites::{BlockSprites, Lookup, SpriteRef};
+use sunrise_client_render::assets::RenderAssets;
 use sunrise_level::chunk::Chunk;
 use sunrise_world::registry::BlockStateId;
 
@@ -33,9 +35,7 @@ impl ClientGame<'_> {
             })
             .collect()
     }
-    pub(in crate::game) fn sprite_atlas_and_split(
-        &self,
-    ) -> (&RenderAssets, u32) {
+    pub(in crate::game) fn sprite_atlas_and_split(&self) -> (&RenderAssets, u32) {
         let atlas = self
             .client
             .stitching_block_atlas

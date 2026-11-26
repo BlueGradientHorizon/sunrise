@@ -24,7 +24,10 @@ impl SideOps for crate::game::server_side::ServerState {
     }
     fn side_append_function_pack_sources<'a>(&'a self, to: &mut Vec<&'a ResourceSource>) {
         to.extend(
-            self.fns.0.enabled_packs().map(sunrise_level::datapack::DataPack::source),
+            self.fns
+                .0
+                .enabled_packs()
+                .map(sunrise_level::datapack::DataPack::source),
         );
     }
     fn side_function_registry(

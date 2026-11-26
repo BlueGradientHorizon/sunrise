@@ -1,7 +1,5 @@
 #![cfg(test)]
 
-
-
 #[cfg(test)]
 mod tests {
     use std::sync::{

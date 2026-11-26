@@ -1433,7 +1433,10 @@ impl crate::game::ClientGame<'_> {
         if self.client.screen == Screen::Options {
             let size = self.gui_size();
             if let Some(rect) =
-                self.client.chat_ui.options.step_page(&self.client.settings, size, next)
+                self.client
+                    .chat_ui
+                    .options
+                    .step_page(&self.client.settings, size, next)
             {
                 self.play_audio_button_click();
                 if self.pad_focus_mode() {

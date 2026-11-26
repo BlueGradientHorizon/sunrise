@@ -2453,9 +2453,7 @@ impl crate::game::ServerGame<'_> {
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
-
 use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1 as _;
-
 
 use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;
 

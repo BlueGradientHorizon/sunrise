@@ -268,5 +268,4 @@ pub fn loaded_block_entity(world: &World, [x, y, z]: [i32; 3]) -> Option<&BlockE
     world.block_entities.get(&(x, y, z))
 }
 
-
 use crate::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

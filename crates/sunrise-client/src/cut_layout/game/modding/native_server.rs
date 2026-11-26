@@ -20,12 +20,10 @@ pub(crate) mod sidebar_tests;
 pub(crate) mod tests {
 
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-    
+
     use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 
     use sunrise_gameplay_common::game::native_server::tests::player_guest;
-
-    
 
     use super::*;
 
@@ -64,14 +62,15 @@ pub(crate) mod tests {
         game.orbs.push(mk_orb(40));
         game.orbs.push(mk_orb(41));
         let overworld = game.level(game.dim.id()).expect("active overworld handle");
-        let visit_ids = |game: &sunrise_gameplay::game::ServerGame<'_>, level: LevelRef, min, max| {
-            let mut ids = Vec::new();
-            let flow = level.visit_experience_orbs(game, min, max, &mut |orb| {
-                ids.push(orb.entity().id());
-                core::ops::ControlFlow::Continue(())
-            })?;
-            Ok::<_, LevelReadError>((flow, ids))
-        };
+        let visit_ids =
+            |game: &sunrise_gameplay::game::ServerGame<'_>, level: LevelRef, min, max| {
+                let mut ids = Vec::new();
+                let flow = level.visit_experience_orbs(game, min, max, &mut |orb| {
+                    ids.push(orb.entity().id());
+                    core::ops::ControlFlow::Continue(())
+                })?;
+                Ok::<_, LevelReadError>((flow, ids))
+            };
         assert_eq!(
             visit_ids(&game, overworld, [0.0, 69.0, 0.0], [2.0, 71.0, 2.0]),
             Ok((core::ops::ControlFlow::Continue(()), vec![40, 41]))
@@ -593,7 +592,6 @@ pub(crate) mod tests {
 #[cfg(test)]
 pub(crate) mod fake_action_tests {
 
-    
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
 
@@ -611,7 +609,6 @@ pub(crate) mod fake_action_tests {
 
     use mod_api::PlayerAction;
     use mod_api::{ActionOutcome, ActionRefused, FakeEffect};
-    
 
     use mod_api::Hand;
 

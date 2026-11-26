@@ -8,8 +8,8 @@ use crate::game::{
     native_equipment_read::{hand_slot, lend_equipment},
 };
 use mod_api::{
-    ActiveEffect, AttributeModifierView, AttributeOperation, EffectKey, EntityReadError,
-    EquipmentSlot, ItemStackView, LivingRef, Pose, __private::LivingParty,
+    __private::LivingParty, ActiveEffect, AttributeModifierView, AttributeOperation, EffectKey,
+    EntityReadError, EquipmentSlot, ItemStackView, LivingRef, Pose,
 };
 use std::{ops::ControlFlow, sync::Arc};
 use sunrise_core::{geometry::Vec3, position::BlockPos};
@@ -408,7 +408,10 @@ pub trait NativeLivingBodyGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// the acting player, and a game without a hub keeps its single
     /// player's the same way), any other guest's are their hub record's.
     /// None for another kind.
-    fn native_living_player_effects<'__loan>(&'__loan self, t: Target) -> Option<&'__loan PlayerEffects>
+    fn native_living_player_effects<'__loan>(
+        &'__loan self,
+        t: Target,
+    ) -> Option<&'__loan PlayerEffects>
     where
         '__sg: '__loan,
     {

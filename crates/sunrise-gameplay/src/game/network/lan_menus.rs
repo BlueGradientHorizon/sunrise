@@ -167,12 +167,7 @@ impl crate::game::ServerGame<'_> {
         identity: i32,
         open: Box<PendingMenuOpen>,
     ) {
-        let queue = &mut self
-            .server
-            .menu_publications
-            .entry(conn)
-            .or_default()
-            .queue;
+        let queue = &mut self.server.menu_publications.entry(conn).or_default().queue;
         if let Some(entry) = queue.iter_mut().find(|entry| entry.identity == identity) {
             entry.open = Some(open);
         } else {
@@ -185,11 +180,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game) fn hold_menu_opens(&mut self, conn: u32) -> MenuOpenHold {
-        self.server
-            .menu_publications
-            .entry(conn)
-            .or_default()
-            .holds += 1;
+        self.server.menu_publications.entry(conn).or_default().holds += 1;
         MenuOpenHold(conn)
     }
 
@@ -217,11 +208,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game) fn resume_menu_opens(&mut self, MenuOpenHold(conn): MenuOpenHold) {
-        self.server
-            .menu_publications
-            .get_mut(&conn)
-            .unwrap()
-            .holds -= 1;
+        self.server.menu_publications.get_mut(&conn).unwrap().holds -= 1;
         self.drain_menu_opens(conn);
     }
 

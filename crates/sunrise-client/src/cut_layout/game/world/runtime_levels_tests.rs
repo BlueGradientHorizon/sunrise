@@ -1,6 +1,7 @@
 //! Levels a mod opens at run time: the table's rules, and a mod's calls against a game.
 
 use super::native_entity_refs::tests::with_game;
+use mod_api::{BiomePoint, RuntimeBiomeSource};
 use mod_api::{
     ChunkRef, ChunkUnloadEvent, Hooks, HostSide, LevelLoadEvent, LevelRef, LevelTickPostEvent,
     LevelUnloadEvent, ModEntry, RuntimeGenerator, RuntimeLevel, RuntimeLevelError, ServerHost,
@@ -10,7 +11,6 @@ use std::sync::{Arc, Mutex};
 use sunrise_gameplay::game::server_side::runtime_levels::{
     Generate, OpenLevel, RuntimeTable, classify_biome_source_error, runtime_biome_source_json,
 };
-use mod_api::{BiomePoint, RuntimeBiomeSource};
 use sunrise_gameplay_common::game::Dim;
 
 fn flat() -> RuntimeLevel {
@@ -651,9 +651,16 @@ fn the_idle_close_keeps_a_runtime_level_open_until_its_unload() {
         // After a successful submission, only the chunks and entities leave.
         game.evict_idle_level_chunks(dim).unwrap();
         assert_eq!(
-            save.load(0, 0, registry, game.world_biomes.as_ref().unwrap_or_else(|| game.res.biomes()))
-                .unwrap()
-                .block(1, 64, 1),
+            save.load(
+                0,
+                0,
+                registry,
+                game.world_biomes
+                    .as_ref()
+                    .unwrap_or_else(|| game.res.biomes())
+            )
+            .unwrap()
+            .block(1, 64, 1),
             stone
         );
         assert_eq!(save.load_entities(0, 0).unwrap().len(), 1);
@@ -694,7 +701,9 @@ fn an_idle_close_with_outstanding_light_saves_the_column_unlit() {
             if game.world.chunks.contains_key(&(0, 0)) {
                 break;
             }
-            game.server.streaming.wait(std::time::Duration::from_millis(5));
+            game.server
+                .streaming
+                .wait(std::time::Duration::from_millis(5));
         }
         let reopened = game.world.chunks.get(&(0, 0)).expect("the chunk reopened");
         assert!(!reopened.lit, "the saved column was marked lit");
@@ -856,8 +865,8 @@ fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
 #[test]
 #[ignore = "daily"]
 fn load_chunk_fails_where_a_mods_generator_panics() {
-    use sunrise_gameplay_common::game::test_fixtures::run_fresh_cases;
     use mod_api::ChunkLoadError;
+    use sunrise_gameplay_common::game::test_fixtures::run_fresh_cases;
     use sunrise_world::worldgen::mod_generators::{
         ChunkAccess, ModChunkGenerator, ModChunkGenerators, install_mod_chunk_generators,
     };
@@ -1214,7 +1223,8 @@ fn a_delete_of_a_level_that_is_not_open_removes_its_leftovers() {
 fn a_delete_of_reserved_or_invalid_ids_is_refused_and_removes_nothing() {
     with_opener("mine", "mine:a", flat(), |game, _| {
         let vanilla = game
-            .server.world_root
+            .server
+            .world_root
             .join("dimensions/minecraft/overworld/region/r.0.0.mca");
         let escape = game.server.world_root.join("dimensions/mine/x");
         write_file(&vanilla);
@@ -1953,7 +1963,10 @@ fn reopening_one_id_with_any_seed_reuses_the_metadata_its_first_open_leaked() {
             unload_as(game, "cycle", "cycle:a").unwrap();
             game.apply_runtime_levels();
             assert!(!game.runtime_level_is_open("cycle:a"));
-            assert_eq!(game.server.levels.0.runtime.seeds().get("cycle:a").copied(), None);
+            assert_eq!(
+                game.server.levels.0.runtime.seeds().get("cycle:a").copied(),
+                None
+            );
         }
     });
 }

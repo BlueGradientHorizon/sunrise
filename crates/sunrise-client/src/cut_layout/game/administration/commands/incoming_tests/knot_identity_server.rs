@@ -4,9 +4,9 @@ use crate::game::server_side::commands::knot_identity_tests::knots;
 use crate::game::server_side::commands::knot_identity_tests::step;
 use crate::game::server_side::commands::knot_identity_tests::summon_pig;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
+use sunrise_gameplay_common::game::Dim;
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
-use sunrise_gameplay_common::game::Dim;
 
 #[test]
 #[ignore = "daily"]

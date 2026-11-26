@@ -1,7 +1,6 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod transfer_lifetime_tests {
 
-
     use sunrise_mod_runtime::attachments::{AttachmentType, index::AttachmentIndex};
 
     pub static VALUE: AttachmentType<i32> = AttachmentType {
@@ -23,16 +22,10 @@ pub mod credits_respawn_tests {
 
     use sunrise_protocol::{
         buf::Reader,
-        packets::{
-            configuration::ClientInformation,
-            play::{Clientbound as C},
-        },
+        packets::{configuration::ClientInformation, play::Clientbound as C},
     };
 
-    use sunrise_sim::lan::{
-        Joined, Out, PlayerSender,
-        guest::Guest,
-    };
+    use sunrise_sim::lan::{Joined, Out, PlayerSender, guest::Guest};
 
     pub fn received_packets(rx: &mpsc::Receiver<Out>) -> impl Iterator<Item = C> + '_ {
         rx.try_iter()

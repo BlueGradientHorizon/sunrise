@@ -250,12 +250,8 @@ fn a_saved_mod_container_loads_its_table_before_its_items() {
             &game.world.block_names,
         );
         game.attach_save_data(&mut batch[0]);
-        let encoded = sunrise_sim::save::encode(
-            &batch[0],
-            registry,
-            game.res.biomes(),
-            &Default::default(),
-        );
+        let encoded =
+            sunrise_sim::save::encode(&batch[0], registry, game.res.biomes(), &Default::default());
         let loaded = sunrise_sim::save::decode(&encoded, registry, game.res.biomes()).unwrap();
         let pending = loaded
             .saved

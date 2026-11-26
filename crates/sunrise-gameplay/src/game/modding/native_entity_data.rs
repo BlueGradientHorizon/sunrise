@@ -185,7 +185,9 @@ impl crate::game::ServerGame<'_> {
     /// from its type, `Monster` for the dragon, `Misc` for every other kind.
     pub(in crate::game) fn entity_classification(&self, entity: EntityRef) -> Option<MobCategory> {
         Some(match self.native_entity_target(entity)? {
-            Target::Mob(id) => mob_category(self.common.mobs.iter().find(|m| m.id == id)?.category()),
+            Target::Mob(id) => {
+                mob_category(self.common.mobs.iter().find(|m| m.id == id)?.category())
+            }
             Target::Dragon(_) => MobCategory::Monster,
             _ => MobCategory::Misc,
         })

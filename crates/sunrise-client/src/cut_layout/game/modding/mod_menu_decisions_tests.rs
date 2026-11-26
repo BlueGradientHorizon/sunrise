@@ -2485,7 +2485,10 @@ fn block_and_ender_menu_providers_replace_the_live_window_only_on_commit() {
             });
             assert_eq!(result.is_ok(), commit);
             assert_eq!(active(game), commit.then_some(Slots::Block(POS)));
-            assert_eq!(game.server.lid_openers.get(&POS).copied(), commit.then_some(1));
+            assert_eq!(
+                game.server.lid_openers.get(&POS).copied(),
+                commit.then_some(1)
+            );
         }
         let window = player
             .container_menu(game)
@@ -2613,7 +2616,6 @@ fn a_display_replacement_is_journaled_along_with_the_click() {
         });
     });
 }
-
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 

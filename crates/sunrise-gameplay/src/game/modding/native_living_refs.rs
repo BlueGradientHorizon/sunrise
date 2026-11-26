@@ -161,9 +161,7 @@ impl ServerGame<'_> {
                     None
                 );
                 self.common.dragon.as_mut().is_some_and(|d| {
-                    crate::game::server_side::dragon::knockback(
-                        d, level, knock, SOURCE, resistance,
-                    )
+                    crate::game::server_side::dragon::knockback(d, level, knock, SOURCE, resistance)
                 })
             }
             _ => false,
@@ -221,13 +219,14 @@ impl ServerGame<'_> {
             self.common.native_lifecycle.epoch(),
             None,
         ));
-        let velocity = sunrise_gameplay_common::game::creatures::knockback::player_knockback_velocity(
-            player,
-            &mut random,
-            &mut level,
-            knock,
-            source,
-        );
+        let velocity =
+            sunrise_gameplay_common::game::creatures::knockback::player_knockback_velocity(
+                player,
+                &mut random,
+                &mut level,
+                knock,
+                source,
+            );
         // The retries drew from the victim's own random, landed or not.
         self.write_player_random(target, random);
         let velocity = velocity?;

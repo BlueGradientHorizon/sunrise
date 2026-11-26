@@ -273,18 +273,35 @@ fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet
                     [0.0, 0.0, 1.0],
                     [0.0, 1.0, 0.0],
                 );
-                let before = client.client.audio.0.heard.get(END_PORTAL).copied().unwrap_or(0);
+                let before = client
+                    .client
+                    .audio
+                    .0
+                    .heard
+                    .get(END_PORTAL)
+                    .copied()
+                    .unwrap_or(0);
                 for packet in rolled_back {
                     client.apply_packet(packet).unwrap();
                 }
                 assert_eq!(
-                    client.client.audio.0.heard.get(END_PORTAL).copied().unwrap_or(0),
+                    client
+                        .client
+                        .audio
+                        .0
+                        .heard
+                        .get(END_PORTAL)
+                        .copied()
+                        .unwrap_or(0),
                     before
                 );
                 for packet in committed_global {
                     client.apply_packet(packet).unwrap();
                 }
-                assert_eq!(client.client.audio.0.heard.get(END_PORTAL).copied(), Some(before + 1));
+                assert_eq!(
+                    client.client.audio.0.heard.get(END_PORTAL).copied(),
+                    Some(before + 1)
+                );
             });
         },
     );

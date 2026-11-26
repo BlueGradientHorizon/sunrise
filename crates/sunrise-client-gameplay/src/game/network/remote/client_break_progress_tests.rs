@@ -1,12 +1,14 @@
 use crate::game::client_side::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use crate::game::{ClientGame, client_side::remote_client::RemoteDimensionEntry};
+use mod_api::{ClientBreakProgressEvent, ClientHost};
 use std::sync::Arc;
-use sunrise_gameplay_common::game::{Hit, pick_ray::PickRayGameExt1 as _, player_identity::PlayerIdentityGameExt1 as _};
+use std::sync::Mutex;
+use sunrise_gameplay_common::game::{
+    Hit, pick_ray::PickRayGameExt1 as _, player_identity::PlayerIdentityGameExt1 as _,
+};
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
-use mod_api::{ClientBreakProgressEvent, ClientHost};
-use std::sync::Mutex;
 
 /// What a listener heard: the dimension, the breaker, the position and the progress.
 type Heard = (String, i32, [i32; 3], i32);

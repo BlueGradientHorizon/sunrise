@@ -92,7 +92,10 @@ fn the_end_fight_hooks_cancel_answer_and_hear_the_fight() {
                 game.tick_fight();
             }
             assert_eq!(log.lock().unwrap().ticks, 20);
-            assert!(game.common.dragon.is_none(), "a canceled fight makes no dragon");
+            assert!(
+                game.common.dragon.is_none(),
+                "a canceled fight makes no dragon"
+            );
             // `updatePlayers` every 20 ticks, then `findOrCreateDragon`.
             log.lock().unwrap().cancel = false;
             for _ in 0..20 {

@@ -14,11 +14,7 @@ static HEARD: std::sync::Mutex<Vec<Heard>> = std::sync::Mutex::new(Vec::new());
 struct Crits;
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Crits {
-    fn critical_hit(
-        &self,
-        host: mod_api::HostSide<'_>,
-        event: &mut mod_api::CriticalHitEvent<'_>,
-    ) {
+    fn critical_hit(&self, host: mod_api::HostSide<'_>, event: &mut mod_api::CriticalHitEvent<'_>) {
         HEARD.lock().unwrap().push((
             matches!(host, mod_api::HostSide::Client(_)),
             event.target_kind.to_string(),

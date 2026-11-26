@@ -1,6 +1,5 @@
 #![cfg(test)]
 
-
 #[cfg(test)]
 mod tests {
     use mod_api::{Hooks, HostSide, LevelRef, LevelTickPostEvent, LevelTickPreEvent, ModEntry};

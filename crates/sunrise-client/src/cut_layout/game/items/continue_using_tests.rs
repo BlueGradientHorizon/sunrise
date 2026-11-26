@@ -6,8 +6,7 @@ use mod_api::{CanContinueUsingEvent, Hooks, Host, ItemPart, Registrar, Registrat
 use std::sync::Mutex;
 use sunrise_gameplay::game::ServerGame;
 use sunrise_gameplay_common::game::{
-    chat_common::ChatCommonGameExt1 as _,
-    held_items::HeldItemsGameExt1 as _,
+    chat_common::ChatCommonGameExt1 as _, held_items::HeldItemsGameExt1 as _,
     player_identity::PlayerIdentityGameExt1 as _,
 };
 use sunrise_items::items::ItemStack;

@@ -130,12 +130,14 @@ impl SideOps for crate::game::client_side::ClientState {
         _item: &mut ItemEntity,
         _amount: f32,
         _damage_type: &str,
-    ) {}
+    ) {
+    }
     fn side_queue_boat_contact_hurts(
         _game: &mut Self::Game<'_>,
         _id: u32,
         _hurts: Vec<(&'static str, f32)>,
-    ) {}
+    ) {
+    }
     fn side_apply_boat_contact_hurts(_game: &mut Self::Game<'_>, _id: u32) -> bool {
         false
     }

@@ -98,16 +98,18 @@ fn a_plain_write_before_placement_preserves_the_staged_chest_transfer() {
         let from = level.capability(game, &ITEMS, SOURCE, None).unwrap();
         let registry = game.pack.assets.registry;
         let chest = registry.default_state("minecraft:chest").unwrap();
-        let north =
-            sunrise_gameplay_common::game::native_hooks::with_property(registry, chest, "facing", "north")
-                .unwrap()
-                .try_into_api()
-                .unwrap();
-        let south =
-            sunrise_gameplay_common::game::native_hooks::with_property(registry, chest, "facing", "south")
-                .unwrap()
-                .try_into_api()
-                .unwrap();
+        let north = sunrise_gameplay_common::game::native_hooks::with_property(
+            registry, chest, "facing", "north",
+        )
+        .unwrap()
+        .try_into_api()
+        .unwrap();
+        let south = sunrise_gameplay_common::game::native_hooks::with_property(
+            registry, chest, "facing", "south",
+        )
+        .unwrap()
+        .try_into_api()
+        .unwrap();
 
         let staged = game
             .storage_transaction(|game, tx| {
@@ -662,8 +664,7 @@ fn set_placed_by_writes_are_part_of_player_placement() {
     use sunrise_core::position::BlockPos;
     use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
 
-    const TEST: &str =
-        "cut_layout::game::native_player_place_tests::set_placed_by_writes_are_part_of_player_placement";
+    const TEST: &str = "cut_layout::game::native_player_place_tests::set_placed_by_writes_are_part_of_player_placement";
     const FLAG: &str = "SUNRISE_TEST_PLAYER_PLACE_WRITES";
     const ORIGIN: [i32; 3] = [5, 72, 4];
     const ABOVE: [i32; 3] = [5, 73, 4];

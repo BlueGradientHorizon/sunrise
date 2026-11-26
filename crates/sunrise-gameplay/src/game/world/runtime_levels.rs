@@ -12,9 +12,9 @@ use mod_api::{LevelRef, RuntimeBiomeSource, RuntimeGenerator, RuntimeLevel, Runt
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use std::sync::{LazyLock, Mutex};
+use sunrise_core::{LevelKey, identifier::Identifier};
 use sunrise_level::chunk::{ExtraLevel, ExtraLevels, LevelShape};
 use sunrise_sim::vanillagen::{TerrainResources, shared_biome_source_data, shared_resource_data};
-use sunrise_core::{LevelKey, identifier::Identifier};
 use sunrise_world::{
     dimension_type::DimensionFacts,
     worldgen::{
@@ -102,11 +102,7 @@ impl RuntimeTable {
     }
 
     /// Queue the close of `id`: it must be open, not waiting to open or to close.
-    pub fn queue_unload(
-        &mut self,
-        owner: &'static str,
-        id: &str,
-    ) -> Result<(), RuntimeLevelError> {
+    pub fn queue_unload(&mut self, owner: &'static str, id: &str) -> Result<(), RuntimeLevelError> {
         match self.entries.get_mut(id) {
             Some(entry) if entry.state == State::Open => {
                 entry.state = State::Closing;
@@ -661,8 +657,10 @@ impl crate::game::ServerGame<'_> {
                 let resources = &self.common.options.resources;
                 let dir = resources.join("worldgen");
                 let empty = Default::default();
-                let overrides = self.server
-                    .world_tables.0
+                let overrides = self
+                    .server
+                    .world_tables
+                    .0
                     .as_ref()
                     .map_or(&empty, |tables| &tables.biomes.overrides);
                 let biome_data = shared_biome_source_data(&dir, overrides).map_err(|e| {
@@ -745,7 +743,8 @@ impl crate::game::ServerGame<'_> {
                 generate,
             },
         )?;
-        let epoch = self.common
+        let epoch = self
+            .common
             .native_lifecycle
             .epoch()
             .expect("checked by the caller");
@@ -887,8 +886,10 @@ impl crate::game::ServerGame<'_> {
         if self.server.levels.0.runtime.is_erasing(id) {
             return Err("the files of an earlier delete are not all removed".into());
         }
-        let level = &self.server
-            .levels.0
+        let level = &self
+            .server
+            .levels
+            .0
             .runtime
             .entries
             .get(id)
@@ -1030,7 +1031,10 @@ impl crate::game::ServerGame<'_> {
 
     /// What the level `dim` is opened with: its generator, and its seed, which the world's is for
     /// a level every world has.
-    pub(in crate::game::server_side) fn runtime_terrain(&self, dim: Dim) -> Option<(&Generate, i64)> {
+    pub(in crate::game::server_side) fn runtime_terrain(
+        &self,
+        dim: Dim,
+    ) -> Option<(&Generate, i64)> {
         let level = &self.server.levels.0.runtime.entries.get(dim.id())?.level;
         Some((&level.generate, level.seed))
     }

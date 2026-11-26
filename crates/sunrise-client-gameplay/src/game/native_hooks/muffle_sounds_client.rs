@@ -1,7 +1,11 @@
 use super::*;
 
 impl crate::game::ClientGame<'_> {
-    pub(in crate::game) fn set_sound_source_scale(&mut self, source: mod_api::SoundSource, scale: f32) {
+    pub(in crate::game) fn set_sound_source_scale(
+        &mut self,
+        source: mod_api::SoundSource,
+        scale: f32,
+    ) {
         self.client
             .audio
             .0
@@ -39,8 +43,7 @@ impl crate::game::ClientGame<'_> {
         ticks: u32,
         exempt: &[&str],
     ) -> bool {
-        if !self.common.native_window() || !exempt.iter().all(|e| sound_id(e))
-        {
+        if !self.common.native_window() || !exempt.iter().all(|e| sound_id(e)) {
             return false;
         }
         self.client.audio.0.muffle(amount, lowpass, ticks, exempt)

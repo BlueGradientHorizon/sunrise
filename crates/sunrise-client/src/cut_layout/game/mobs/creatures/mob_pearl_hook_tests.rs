@@ -5,10 +5,8 @@ use std::sync::{
 };
 use sunrise_core::random::RandomSource;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-use {
-    sunrise_gameplay_common::game::creatures::{
-        Arc, Hit, Mob, Projectile, ProjectileKind, Species, Vec3, Who,
-    },
+use sunrise_gameplay_common::game::creatures::{
+    Arc, Hit, Mob, Projectile, ProjectileKind, Species, Vec3, Who,
 };
 
 pub(crate) struct PearlProbe {

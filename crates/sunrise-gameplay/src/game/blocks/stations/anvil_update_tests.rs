@@ -46,11 +46,9 @@ fn a_mods_anvil_menu_runs_the_anvil_update_listeners() {
     let mods = vec![ModEntry::new("recipes", Box::new(Recipes(heard.clone())))].into();
     mod_platform::testing::with_mods(mods, || {
         crate::game::native_entity_refs::tests::with_game(|game| {
-            let (player, ..) =
-                crate::game::native_server::fake_action_tests::fake(game, None, 0);
+            let (player, ..) = crate::game::native_server::fake_action_tests::fake(game, None, 0);
             heard.lock().unwrap().player = Some(player);
-            let left =
-                ApiStack::of(mod_api::__private::item_key("minecraft:iron_sword").unwrap());
+            let left = ApiStack::of(mod_api::__private::item_key("minecraft:iron_sword").unwrap());
             let inputs = |name| AnvilUpdateInputs {
                 left: &left,
                 right: None,
@@ -85,4 +83,3 @@ fn a_mods_anvil_menu_runs_the_anvil_update_listeners() {
         });
     });
 }
-

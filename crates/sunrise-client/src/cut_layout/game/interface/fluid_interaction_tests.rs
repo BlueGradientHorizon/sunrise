@@ -342,4 +342,3 @@ fn a_native_handler_tests_and_acts_in_its_place_and_a_panicking_one_does_not_app
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
-

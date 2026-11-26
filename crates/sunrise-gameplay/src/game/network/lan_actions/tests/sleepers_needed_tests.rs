@@ -69,7 +69,11 @@ fn a_mods_count_decides_the_skip_and_the_announcement() {
         let level = game.common.dim.id().to_owned();
         assert_eq!(heard.lock().unwrap().first(), Some(&(level, 100, 2, 2)));
         assert_eq!(game.command_clock_time(&clock), 24_000);
-        assert!(game.server.lan.as_ref().unwrap().hub.guests[0].bed.is_none());
+        assert!(
+            game.server.lan.as_ref().unwrap().hub.guests[0]
+                .bed
+                .is_none()
+        );
 
         // An answer below 1 counts as 1: with nobody in bed, the night stays.
         let zero: mod_api::Mods = vec![ModEntry::new("zero", Box::new(Need(0, heard)))].into();

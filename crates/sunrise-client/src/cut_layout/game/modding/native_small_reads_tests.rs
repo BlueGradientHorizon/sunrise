@@ -149,7 +149,8 @@ fn is_sitting_reads_each_mobs_own_test() {
         game.world
             .chunks
             .insert((0, 0), std::sync::Arc::new(Chunk::empty(0, 0)));
-        let read = |game: &ServerGame<'_>, id: u32| game.entity_is_sitting(game.entity(id).unwrap());
+        let read =
+            |game: &ServerGame<'_>, id: u32| game.entity_is_sitting(game.entity(id).unwrap());
         for id in 40..44 {
             assert_eq!(read(game, id), Some(false), "mob {id} stands");
         }
@@ -229,9 +230,11 @@ fn armor_stand_pose_and_flags_read_the_stand() {
         );
         // A server spawns the stand here; a client has it from the server's AddEntity.
         if !game.common().armor_stands.iter().any(|s| s.id == 21) {
-            game.common_mut()
-                .armor_stands
-                .push(ArmorStand::new(21, Vec3::new(0.5, 64.0, 0.5), 0.0));
+            game.common_mut().armor_stands.push(ArmorStand::new(
+                21,
+                Vec3::new(0.5, 64.0, 0.5),
+                0.0,
+            ));
         }
         let stand = game
             .common_mut()
@@ -548,7 +551,8 @@ fn client_player_state_reads_its_own_copy_only() {
                 .unwrap();
             game.common.inventory[5] = Some(ItemStack::new("minecraft:stone", 3));
             for flag in [true, false] {
-                game.common.world
+                game.common
+                    .world
                     .set(8, 64, 8, if flag { lava } else { air })
                     .unwrap();
                 {

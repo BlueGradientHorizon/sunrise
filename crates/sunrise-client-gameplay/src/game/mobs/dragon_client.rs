@@ -570,12 +570,7 @@ impl ClientGame<'_> {
                 }
             }
             if let Some((at, pitch)) = growl {
-                self.play_audio(
-                    "minecraft:entity.ender_dragon.growl",
-                    Some(at),
-                    2.5,
-                    pitch,
-                );
+                self.play_audio("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
             }
             let Some(d) = self.common.dragon.as_mut() else {
                 return;
@@ -613,12 +608,7 @@ impl ClientGame<'_> {
             if d.growl < 0 {
                 d.growl = 200 + d.random.next_int_bound(200).unwrap_or(0);
                 let pitch = 0.8 + self.common.world.random.next_float() * 0.3;
-                self.play_audio(
-                    "minecraft:entity.ender_dragon.growl",
-                    Some(at),
-                    2.5,
-                    pitch,
-                );
+                self.play_audio("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
             }
         }
         // checkCrystals' search runs on a client too (the healing beam).

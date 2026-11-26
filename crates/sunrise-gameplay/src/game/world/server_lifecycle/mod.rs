@@ -303,4 +303,3 @@ fn remember_shutdown(
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-

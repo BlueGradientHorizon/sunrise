@@ -27,7 +27,9 @@ enum Icon {
 
 impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn set_toasts_held(&self, held: bool) -> bool {
-        self.client.toast_manager.hold(mod_api::content::crash::current_native_mod(), held)
+        self.client
+            .toast_manager
+            .hold(mod_api::content::crash::current_native_mod(), held)
     }
 
     /// Queue from a shared ClientHost without dispatching back into a running hook.

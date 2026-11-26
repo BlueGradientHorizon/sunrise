@@ -1,8 +1,8 @@
 //! Run alone with private prepared resources: installs process-wide trait mods.
 use mod_api::{Hooks, PlayerInventoryChangedEvent, ServerHost};
 use std::sync::Mutex;
-use sunrise_level::chunk::Chunk;
 use sunrise_gameplay_common::game::{Arc, ItemStack, PlayerMotion, Vec3, World};
+use sunrise_level::chunk::Chunk;
 
 type Heard = (u128, Vec<Option<(String, u32)>>);
 

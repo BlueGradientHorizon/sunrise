@@ -914,15 +914,9 @@ fn assert_inventory_cursor(
 fn a_transactional_replacement_keeps_the_old_menu_until_commit() {
     with_owned_menu(true, |game, rx, key| {
         let inventory_cursor = ItemStack::new("minecraft:dirt", 3);
-        game.server
-            .lan
-            .as_mut()
-            .unwrap()
-            .hub
-            .guests
-            .update(0, |g| {
-                g.carried = Some(inventory_cursor.clone());
-            });
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            g.carried = Some(inventory_cursor.clone());
+        });
         let (window, old) = open(game, key);
         let player = game.player(123).unwrap();
         let stick =
@@ -930,15 +924,9 @@ fn a_transactional_replacement_keeps_the_old_menu_until_commit() {
         let resource = ItemResource::of(&stick);
         let old_slot = ItemPlace::MenuSlot { menu: old, slot: 1 };
         let carried = Some(ItemStack::new("minecraft:stone", 2));
-        game.server
-            .lan
-            .as_mut()
-            .unwrap()
-            .hub
-            .guests
-            .update(0, |g| {
-                g.carried = carried.clone();
-            });
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            g.carried = carried.clone();
+        });
         let host: &mut dyn ServerHost = game;
         host.transaction(|host, tx| {
             assert_eq!(old_slot.insert(host, tx, &resource, 2), Ok(2));
@@ -1072,15 +1060,9 @@ fn the_part_closes_the_menu_when_the_opening_stack_leaves_its_hand() {
 fn a_click_that_changes_the_opening_hand_cannot_run_the_default_pickup() {
     with_owned_menu(false, |game, rx, key| {
         let (window, menu) = open(game, key);
-        game.server
-            .lan
-            .as_mut()
-            .unwrap()
-            .hub
-            .guests
-            .update(0, |g| {
-                g.native_menu[0] = Some(ItemStack::new("minecraft:stick", 1));
-            });
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+            g.native_menu[0] = Some(ItemStack::new("minecraft:stick", 1));
+        });
         sent(&rx);
         CLICK_ACTION.set(Some(ClickAction::InvalidateOpeningItem));
         click(game, window, 0);
@@ -2097,9 +2079,14 @@ fn disconnect_before_publication_preserves_a_stack_offered_to_the_pending_menu()
     with_owned_menu(false, |game, rx, key| {
         let (window, current) = open(game, key);
         let stack = ItemStack::new("minecraft:stick", 2);
-        game.server.lan.as_mut().unwrap().hub.update_guest(1, |guest| {
-            guest.inventory[0] = Some(stack.clone());
-        });
+        game.server
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .update_guest(1, |guest| {
+                guest.inventory[0] = Some(stack.clone());
+            });
         sent(&rx);
 
         let player = game.player(123).unwrap();
@@ -3759,7 +3746,6 @@ fn processing_owned_menu_close_on_death_drops_inputs_unlike_live_close() {
         assert_eq!(dropped_count(game, "minecraft:stone"), 0);
     });
 }
-
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 

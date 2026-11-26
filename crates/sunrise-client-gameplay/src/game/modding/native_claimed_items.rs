@@ -70,7 +70,8 @@ impl crate::game::ClientGame<'_> {
         let total = max_distance.unwrap_or(t_end);
         let walk_to = ray_at(total);
         let window = (t_start / total, t_end / total);
-        let tables = sunrise_gameplay_common::game::native_block_tables::BlockTables::of(&self.common);
+        let tables =
+            sunrise_gameplay_common::game::native_block_tables::BlockTables::of(&self.common);
         let mut rays = ColliderRays {
             scene: SceneCollisions {
                 world: &self.common.world,

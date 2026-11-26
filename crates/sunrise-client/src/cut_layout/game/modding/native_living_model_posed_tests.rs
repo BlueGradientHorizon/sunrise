@@ -151,10 +151,8 @@ fn a_worn_chestplate_model_gets_a_call_of_its_own() {
             Vec3::ZERO,
             0.0,
         );
-        mob.extra.set_slot_stack(
-            CHEST,
-            Some(ItemStack::new("minecraft:iron_chestplate", 1)),
-        );
+        mob.extra
+            .set_slot_stack(CHEST, Some(ItemStack::new("minecraft:iron_chestplate", 1)));
         with_posed(Action::Observe, |calls| {
             right_arm_drawn(game, &mob);
             let layers: Vec<_> = calls

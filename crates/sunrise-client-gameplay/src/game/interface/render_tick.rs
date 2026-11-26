@@ -548,10 +548,10 @@ impl crate::game::ClientGame<'_> {
             let cull_fov = self
                 .fov_degrees(partial, eye)
                 .max((self.client.settings.fov as i32) as f32);
-            let (near_yaw, near_pitch, _) = self
-                .client
-                .posed_rotation
-                .unwrap_or((self.common.yaw, self.common.pitch, 0.0));
+            let (near_yaw, near_pitch, _) =
+                self.client
+                    .posed_rotation
+                    .unwrap_or((self.common.yaw, self.common.pitch, 0.0));
             let (near_min, near_max) = sunrise_client::camera::near_plane_bounds(
                 cull_fov,
                 size[0] as f32,
