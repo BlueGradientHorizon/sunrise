@@ -1065,7 +1065,14 @@ impl Game<'_> {
         // `isPassengerOfSameVehicle` leaves those riders out.
         let mut obstacles: Option<sunrise_client::entities::ObstacleGrid> = None;
         let mut nearby = Vec::new();
+        let mut round = self.native_tick_round();
+        // The stand whose turn just ended: it hears its Post before the next one's Pre.
+        let mut told = None;
         for join in joins {
+            if let Some(id) = told.take() {
+                self.settle_armor_stand_turn(&mut drowned, &mut dead);
+                self.native_tick_post_one(&round, id, TYPE_ID);
+            }
             let Some(i) = self.armor_stands.locate(join) else {
                 continue;
             };
@@ -1077,6 +1084,19 @@ impl Game<'_> {
                 continue;
             }
             let id = self.armor_stands[i].id;
+            // ServerLevel.tick skips an entity that `isRemoved`, here one whose removal is queued.
+            let target = super::commands::Target::Stand(id);
+            if self.target_removed(&target) || !self.native_tick_pre_one(&mut round, id, TYPE_ID) {
+                continue;
+            }
+            // The Pre's listener may have removed stands, this one included.
+            if self.target_removed(&target) {
+                continue;
+            }
+            let Some(i) = self.armor_stands.locate(join) else {
+                continue;
+            };
+            told = Some(id);
             self.armor_stands[i].enchantment_tick =
                 self.armor_stands[i].enchantment_tick.wrapping_add(1);
             if !self.armor_stands[i].equipment.is_empty() {
@@ -1370,7 +1390,20 @@ impl Game<'_> {
                 a.impulse_grace -= 1;
             }
         }
-        for (id, bubbles) in drowned {
+        if let Some(id) = told {
+            self.settle_armor_stand_turn(&mut drowned, &mut dead);
+            self.native_tick_post_one(&round, id, TYPE_ID);
+        }
+        Ok(())
+    }
+    /// The end of a stand's own turn, before its Post: its drowning bubbles, then its death
+    /// (`LivingEntity.baseTick` and `tickDeath` run inside the stand's tick).
+    fn settle_armor_stand_turn(
+        &mut self,
+        drowned: &mut Vec<(u32, i32)>,
+        dead: &mut Vec<(u32, Option<&'static str>)>,
+    ) {
+        for (id, bubbles) in drowned.drain(..) {
             let Some((at, v)) = self.armor_stands.iter().find(|a| a.id == id).map(|a| {
                 (
                     [a.position.x, a.position.y, a.position.z],
@@ -1384,7 +1417,7 @@ impl Game<'_> {
                 self.drown_particles(at, v, 8);
             }
         }
-        for (id, damage_type) in dead.into_iter().rev() {
+        for (id, damage_type) in dead.drain(..) {
             match damage_type {
                 Some(damage_type) => {
                     if let Some(i) = self.armor_stands.iter().position(|a| a.id == id) {
@@ -1404,7 +1437,6 @@ impl Game<'_> {
                 }
             }
         }
-        Ok(())
     }
     /// `Entity.move(mover, delta)` for a stand with physics (not a marker or
     /// `NoGravity`). Mob lids act on the shulker's turn; block-entity lids act
