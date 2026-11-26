@@ -14,6 +14,24 @@ type FrameKey = (
     Option<sunrise_shaders::Tonemap>,
 );
 
+/// Whether the frame is looked at again: the frame a renderer made now would draw in (`wanted`),
+/// the pick's `path`, the loader's `outcome` for it or its HDR request (`hdr`,
+/// `PickedPack::hdr`) changed since the last attempt.
+fn look_again<C: PartialEq>(
+    attempts: &mut FrameAttempt<(
+        Option<C>,
+        PathBuf,
+        Option<bool>,
+        Option<sunrise_shaders::Tonemap>,
+    )>,
+    wanted: Option<C>,
+    path: PathBuf,
+    outcome: Option<bool>,
+    hdr: Option<sunrise_shaders::Tonemap>,
+) -> bool {
+    attempts.changed((wanted, path, outcome, hdr))
+}
+
 impl<K: PartialEq> FrameAttempt<K> {
     // Remember attempts, including failures, until the requested configuration changes.
     fn changed(&mut self, key: K) -> bool {
@@ -91,10 +109,7 @@ impl Game<'_> {
             .renderer
             .as_ref()
             .map(|r| r.requested_frame(&self.settings.sunrise, request));
-        if !self
-            .frame_attempted
-            .changed((wanted, path, outcome, shape.hdr))
-        {
+        if !look_again(&mut self.frame_attempted, wanted, path, outcome, shape.hdr) {
             return;
         }
         let Some(renderer) = &mut self.renderer else {
@@ -304,7 +319,32 @@ impl Game<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::FrameAttempt;
+    use super::{FrameAttempt, look_again};
+    use crate::game::shader_packs::reconcile_pack_hdr;
+    use std::path::PathBuf;
+    use sunrise_shaders::Tonemap;
+
+    /// Same frame, pick and loader outcome; only the pick's tone curve owner changes: the frame
+    /// is looked at again, and the renderer that keeps serving takes the new request.
+    #[test]
+    fn a_new_hdr_request_alone_is_looked_at_again() {
+        let mut attempts = FrameAttempt::default();
+        let path = PathBuf::from("pack");
+        let mut installed = Some(Tonemap::Pack);
+        let mut look =
+            |hdr| look_again(&mut attempts, Some("8-bit"), path.clone(), Some(true), hdr);
+        assert!(look(Some(Tonemap::Pack)));
+        assert!(!look(Some(Tonemap::Pack)));
+        assert!(look(Some(Tonemap::Sunrise)));
+        assert!(!reconcile_pack_hdr(
+            true,
+            &mut installed,
+            Some(Tonemap::Sunrise)
+        ));
+        assert_eq!(installed, Some(Tonemap::Sunrise));
+        assert!(!look(Some(Tonemap::Sunrise)));
+        assert!(look(None));
+    }
 
     #[test]
     fn failed_frame_attempt_waits_for_a_policy_or_setting_change() {

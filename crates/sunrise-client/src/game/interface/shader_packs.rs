@@ -190,13 +190,16 @@ impl Game<'_> {
     }
 }
 
-/// What the renderer made before any `Game` exists (the loading screen's) readies for the pick:
-/// its HDR request is read now.
-pub(super) fn first_pack_shape(settings: &sunrise_client::settings::Settings) -> PickedPack {
+/// What the renderer made before any `Game` exists (the loading screen's) readies for the pick,
+/// with `pick_hdr` the game then keeps (`NativeShaders::pick_hdr`), so its notes are logged once.
+pub(super) fn startup_pack_shape(
+    settings: &sunrise_client::settings::Settings,
+    pick_hdr: &mut PickHdr,
+) -> PickedPack {
     pack_shape(
         settings,
         super::native_shaders::linear_frame_switch(),
-        &mut PickHdr::default(),
+        pick_hdr,
     )
 }
 
@@ -1342,7 +1345,7 @@ mod rendered_item_tests {
 #[cfg(test)]
 mod native_pack_tests {
     use super::{
-        PickHdr, active_pack, first_pack_shape, loaded_properties, pack_shape, reconcile_pack_hdr,
+        PickHdr, active_pack, loaded_properties, pack_shape, reconcile_pack_hdr, startup_pack_shape,
     };
     use sunrise_client::mod_list::{Installed, ModList, NativePage};
     use sunrise_shaders::Tonemap;
@@ -1368,27 +1371,27 @@ mod native_pack_tests {
         settings.sunrise.shader_pack = path.to_string_lossy().into_owned();
         let switch = linear_frame_switch();
         // A pack nobody answered for draws; it asks no float frame.
-        let shape = first_pack_shape(&settings);
+        let shape = startup_pack_shape(&settings, &mut PickHdr::default());
         assert!(shape.draws_flat && shape.starts_wide);
         assert!(!shape.hdr_float);
         remember(&path, fingerprint(&path), true);
-        assert!(!first_pack_shape(&settings).hdr_float);
+        assert!(!startup_pack_shape(&settings, &mut PickHdr::default()).hdr_float);
         // Refused, the frame is the one no pack asks for.
         remember(&path, fingerprint(&path), false);
-        let shape = first_pack_shape(&settings);
+        let shape = startup_pack_shape(&settings, &mut PickHdr::default());
         assert_eq!(shape.draws_flat, !switch);
         assert_eq!(shape.hdr_float, switch);
         remember(&path, fingerprint(&path), true);
         // Its mod off, it does not run.
         settings.mods.disabled.insert("frame_owner".into());
-        let shape = first_pack_shape(&settings);
+        let shape = startup_pack_shape(&settings, &mut PickHdr::default());
         assert!(!shape.draws_flat && !shape.starts_wide);
         assert_eq!(shape.hdr_float, switch);
         settings.mods.disabled.clear();
-        assert!(first_pack_shape(&settings).draws_flat);
+        assert!(startup_pack_shape(&settings, &mut PickHdr::default()).draws_flat);
         // Gone, it does not run under the switch.
         std::fs::remove_dir_all(root).unwrap();
-        let missing = first_pack_shape(&settings);
+        let missing = startup_pack_shape(&settings, &mut PickHdr::default());
         assert_eq!(missing.draws_flat, !switch);
         assert_eq!(missing.hdr_float, switch);
     }
@@ -1566,8 +1569,13 @@ mod native_pack_tests {
         let frame = shape_of(&mut settings, &mut state, &renderer_curve, true).1;
         assert_eq!(frame, Some(Tonemap::Pack));
         let warned = load(&mut state, &renderer_curve, true, frame);
-        assert_eq!(warned.len(), 1, "{warned:?}");
-        assert!(!warned[0].starts_with("shaders.properties:"));
+        assert_eq!(
+            warned,
+            [
+                "shaders.properties asks for Sunrise's HDR as Some(Sunrise) with the renderer's \
+                 macros, but the frame was made for Some(Pack): the frame's answer counts"
+            ]
+        );
         assert!(load(&mut state, &renderer_curve, false, frame).is_empty());
         // A frame made for the loader's answer: nothing to say.
         assert!(load(&mut state, &renderer_curve, true, Some(Tonemap::Sunrise)).is_empty());
@@ -1586,6 +1594,25 @@ mod native_pack_tests {
         let frame = shape_of(&mut settings, &mut state, &bad, true).1;
         assert_eq!(frame, None);
         assert!(load(&mut state, &bad, true, frame).is_empty());
+
+        // Without the switch the load logs what it logged before: each required feature
+        // Sunrise lacks, then each note of the file, in that order; with it, the request's note
+        // after them.
+        let others = hdr_pack(
+            &root,
+            "others",
+            "iris.features.required = SSBO NO_SUCH_FEATURE\nnot a pair\n\
+             sunrise.hdr = maybe\n",
+        );
+        let expected = [
+            "the pack requires `NO_SUCH_FEATURE`, which is not supported yet",
+            "shaders.properties:2: not a key=value line",
+        ];
+        assert_eq!(load(&mut state, &others, false, None), expected);
+        let with_switch = load(&mut state, &others, true, None);
+        assert_eq!(with_switch[..2], expected);
+        assert_eq!(with_switch.len(), 3, "{with_switch:?}");
+        assert!(names_value(&with_switch[2], 3, "sunrise.hdr", "maybe"));
 
         // The load reads the files again: the pack replaced under its name gives its new
         // request at the next frame.
