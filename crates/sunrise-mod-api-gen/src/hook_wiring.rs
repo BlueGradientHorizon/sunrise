@@ -266,7 +266,7 @@ fn check_target(sources: &mut Sources<'_>, hook: &Hook, build: &Build) -> Result
         return Ok(true);
     }
     let (bridge, table, installer, slots) = match package.as_str() {
-        "sunrise_client_lib" => (
+        "sunrise_client_lib" | "sunrise_sim" => (
             "native_client_hooks",
             "NativeClientHooks",
             "install_client_hooks",
@@ -287,14 +287,14 @@ fn check_target(sources: &mut Sources<'_>, hook: &Hook, build: &Build) -> Result
     let outgoing = bodies
         .iter()
         .any(|body| calls(body, None, &[&wrapper_path]));
-    if package == "sunrise_client_lib" {
+    if matches!(package.as_str(), "sunrise_client_lib" | "sunrise_sim") {
         require_calls(&bodies, None, &[&direct, &wrapper_path])?;
     } else {
         require_calls(&bodies, None, &[&wrapper_path])?;
     }
     // These client-library slots precede their catalog targets. The gameplay entry is
     // part of the route even when the slot declaration is accidentally deleted.
-    let incoming = if package == "sunrise_client_lib" {
+    let incoming = if matches!(package.as_str(), "sunrise_client_lib" | "sunrise_sim") {
         match name.as_str() {
             "can_grindstone_repair" => Some(("stations", "can_grindstone_repair")),
             "is_combine_repairable" => Some(("crafting::repair_item", "combine_repairable")),

@@ -26,7 +26,7 @@ pub trait Hooks {
         scope = "item",
         key = "stack",
         cancellable = false,
-        target = "sunrise_client_lib::crafting::native_hooks::native_is_combine_repairable",
+        target = "sunrise_sim::crafting::native_hooks::native_is_combine_repairable",
         neoforge = "IItemExtension.isCombineRepairable"
     )]
     fn is_combine_repairable(stack: &mod_api::ItemStack, repairable: &mut bool);

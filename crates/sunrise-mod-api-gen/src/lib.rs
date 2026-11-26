@@ -285,6 +285,7 @@ fn free_function_source(target: &str) -> Option<(&'static str, &str)> {
         ("mod_render::", "sunrise-mod-render"),
         ("sunrise_client_lib::", "sunrise-client-lib"),
         ("sunrise_client_render::", "sunrise-client-render"),
+        ("sunrise_sim::", "sunrise-sim"),
     ];
     prefixes
         .into_iter()
@@ -1114,6 +1115,14 @@ mod tests {
         assert_eq!(
             super::free_function_source("sunrise_client_lib::crafting::native_ingredient"),
             Some(("sunrise-client-lib", "crafting::native_ingredient"))
+        );
+        assert_eq!(
+            super::free_function_source("sunrise_sim::breathing::native_living_drown"),
+            Some(("sunrise-sim", "breathing::native_living_drown"))
+        );
+        assert_eq!(
+            super::free_function_source("sunrise_sim::crafting::native_hooks::native_ingredient"),
+            Some(("sunrise-sim", "crafting::native_hooks::native_ingredient"))
         );
         assert_eq!(
             super::free_function_source(

@@ -116,6 +116,7 @@ const CRATES: &[(&str, &str)] = &[
     ("sunrise_client_render", ""),
     ("sunrise_mod_render", ""),
     ("sunrise_mod_vocab", ""),
+    ("sunrise_sim", ""),
     ("sunrise_world", ""),
 ];
 

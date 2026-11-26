@@ -30,7 +30,7 @@ pub trait Hooks {
         context = "loop",
         scope = "item",
         key = "stack",
-        target = "sunrise_client_lib::stations::native_item_name",
+        target = "sunrise_sim::stations::native_item_name",
         neoforge = "Item.getName"
     )]
     fn item_name(stack: &ItemStack, name: &mut Option<Text>);

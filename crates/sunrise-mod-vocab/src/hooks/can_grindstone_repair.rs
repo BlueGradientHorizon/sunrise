@@ -29,7 +29,7 @@ pub trait Hooks {
         scope = "item",
         key = "stack",
         cancellable = false,
-        target = "sunrise_client_lib::stations::native_can_grindstone_repair",
+        target = "sunrise_sim::stations::native_can_grindstone_repair",
         neoforge = "IItemExtension.canGrindstoneRepair"
     )]
     fn can_grindstone_repair(stack: &mod_api::ItemStack, can_repair: &mut bool);

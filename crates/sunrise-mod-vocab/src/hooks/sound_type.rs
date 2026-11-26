@@ -12,7 +12,7 @@ pub trait Hooks {
         scope = "block",
         key = "state",
         cancellable = false,
-        target = "sunrise_client_lib::block_sounds::native_sound_type",
+        target = "sunrise_sim::block_sounds::native_sound_type",
         neoforge = "IBlockExtension.getSoundType"
     )]
     fn sound_type(

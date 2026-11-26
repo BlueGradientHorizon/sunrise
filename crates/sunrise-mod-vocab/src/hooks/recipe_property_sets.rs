@@ -24,7 +24,7 @@ pub trait Hooks {
         out = "additions",
         collect_validator = "crate::item::crafting::validate_recipe_properties",
         context = "data_load",
-        target = "sunrise_client_lib::crafting::native_hooks::native_recipe_property_sets",
+        target = "sunrise_sim::crafting::native_hooks::native_recipe_property_sets",
         neoforge = "RegisterRecipePropertiesEvent"
     )]
     fn recipe_property_sets(additions: &mut Vec<RecipePropertyAddition>);
