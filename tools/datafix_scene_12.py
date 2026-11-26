@@ -1856,23 +1856,8 @@ def build_flat(h, force=False):
     shutil.rmtree(work, ignore_errors=True)
     port = free_port()
 
-    class FlatServer(h.Server):
-        def __init__(self, directory):         # as Server.__init__, with a flat world
-            directory.mkdir(parents=True, exist_ok=True)
-            (directory / 'eula.txt').write_text('eula=true\n')
-            props = {'server-port': port, 'online-mode': 'false', 'level-name': 'world', 'level-seed': '4242',
-                     'view-distance': '4', 'spawn-protection': '0', 'enable-rcon': 'false', 'enable-query': 'false',
-                     'max-tick-time': '-1', 'level-type': 'FLAT', 'generator-settings': FLAT_OPTIONS}
-            (directory / 'server.properties').write_text(''.join(f'{k}={v}\n' for k, v in props.items()))
-            self.process = h.subprocess.Popen([h.java(version), '-Xmx2G', '-jar', str(jar), 'nogui'], cwd=directory,
-                                              stdin=h.subprocess.PIPE, stdout=h.subprocess.PIPE, stderr=h.subprocess.STDOUT, text=True)
-            self.lines = []
-            self.queue = queue.Queue()
-            self.counter = 0
-            threading.Thread(target=self._pump, daemon=True).start()
-            self.wait('Done (', 600)
-
-    server = FlatServer(work)
+    server = h.Server(work, jar, port, java=h.java(version),
+                      props_override={'level-type': 'FLAT', 'generator-settings': FLAT_OPTIONS})
     problems = []
     bots = []   # every bot that joined, so that the finally below closes it whatever fails
     JoinedBot = h.tracked_bot(bots)

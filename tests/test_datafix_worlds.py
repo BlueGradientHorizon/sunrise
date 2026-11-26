@@ -209,6 +209,7 @@ class BuildCleanupTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp, mock.patch.object(worlds, 'LOCAL', Path(temp)), \
                 mock.patch.object(worlds, 'server_jar', return_value=(Path('server.jar'), 3700, 770)), \
                 mock.patch.object(worlds, 'java', return_value='java'), mock.patch.object(worlds, 'Server', FakeServer), \
+                mock.patch.object(worlds, 'free_port', return_value=12345), \
                 mock.patch.object(worlds, 'Bot', FakeBot), mock.patch.object(worlds, 'build_scene', scene), \
                 mock.patch.object(worlds, 'time', SimpleNamespace(sleep=lambda seconds: None)):
             try:
@@ -232,18 +233,14 @@ class BuildFlatCleanupTests(unittest.TestCase):
     def build_flat(self, fail_in):
         events = []
 
-        class FakeBot:
+        class FakeBot(worlds.Bot):
             def __init__(self, port, protocol, name):
                 events.append('joined')
-
-            def leave(self):
-                events.append('left')
+                self.stop = threading.Event()
+                self.sock = SimpleNamespace(close=lambda: events.append('left'))
 
         class FakeServer:
-            def _pump(self):
-                pass
-
-            def wait(self, *args):
+            def __init__(self, *args, **kwargs):
                 pass
 
             def stop(self, *, save):
@@ -257,12 +254,12 @@ class BuildFlatCleanupTests(unittest.TestCase):
             if fail_in == 'visit' and commands[0].startswith('tp '):
                 raise ValueError('visit failed')
 
+        clock = SimpleNamespace(sleep=lambda seconds: None)
         with tempfile.TemporaryDirectory() as temp, mock.patch.object(worlds, 'LOCAL', Path(temp)), \
                 mock.patch.object(worlds, 'server_jar', return_value=(Path('server.jar'), 1343, 340)), \
                 mock.patch.object(worlds, 'java', return_value='java'), mock.patch.object(worlds, 'Server', FakeServer), \
-                mock.patch.object(worlds, 'Bot', FakeBot), mock.patch.object(worlds, 'subprocess', mock.MagicMock()), \
-                mock.patch.object(worlds.scene12, 'populate', populate), mock.patch.object(worlds.scene12, 'batch', batch), \
-                mock.patch.object(worlds.scene12, 'time', SimpleNamespace(sleep=lambda seconds: None)):
+                mock.patch.object(worlds, 'Bot', FakeBot), mock.patch.object(worlds, 'time', clock), \
+                mock.patch.multiple(worlds.scene12, populate=populate, batch=batch, time=clock, free_port=lambda: 12345):
             with self.assertRaises(ValueError) as caught:
                 worlds.scene12.build_flat(worlds)
         return events, str(caught.exception)
@@ -272,7 +269,7 @@ class BuildFlatCleanupTests(unittest.TestCase):
 
     def test_a_scene_that_fails_closes_every_bot_and_stops_the_server(self):
         events, error = self.build_flat('populate')
-        self.assertEqual((events, error), (['joined', 'left', 'joined', 'left', 'left', 'stopped'], 'populate failed'))
+        self.assertEqual((events, error), (['joined', 'left', 'joined', 'left', 'stopped'], 'populate failed'))
 
 
 class LegacyBuildTests(unittest.TestCase):
@@ -303,7 +300,7 @@ class LegacyBuildTests(unittest.TestCase):
         self.batch = mock.Mock(return_value=[['Time is 12'], ['Time is 12']])
         self.enterContext(mock.patch.multiple(
             worlds.scene12, time=worlds.time, lab_actions=self.lab_actions, batch=self.batch,
-            make_player=lambda *args: lambda *args: mock.Mock()))
+            free_port=lambda: 12345, make_player=lambda *args: lambda *args: mock.Mock()))
 
     def assert_saved_shutdown(self):
         self.stop.assert_called_once_with(save=False)
