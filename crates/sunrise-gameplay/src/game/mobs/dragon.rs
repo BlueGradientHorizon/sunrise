@@ -4739,7 +4739,7 @@ impl crate::game::ServerGame<'_> {
     /// takes the dragon as its owner and `assignDirectionalMovement`s the
     /// direction normalized again times `accelerationPower` (0.1), then
     /// `snapTo` the start. It joins the level's other projectiles.
-    pub(in crate::game) fn spawn_dragon_fireball(&mut self, at: Vec3, dir: Vec3) {
+    pub fn spawn_dragon_fireball(&mut self, at: Vec3, dir: Vec3) {
         // Vec3.normalize: a vector shorter than 1e-5 is zero.
         let normalize = |v: Vec3| {
             let l = (v.x * v.x + v.y * v.y + v.z * v.z).sqrt();

@@ -4,7 +4,8 @@
 #[cfg(test)]
 mod tests {
 
-    use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1;
+    use sunrise_gameplay_common::game::piston_push::PistonPushGameExt1;
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1;
 use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use mod_api::HostSide;
     use std::sync::{Arc, Mutex};

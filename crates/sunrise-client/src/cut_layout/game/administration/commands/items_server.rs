@@ -4,7 +4,9 @@ use sunrise_gameplay::game::server_side::commands::items::Slot;
 
 #[cfg(test)]
 pub(crate) mod mob_equipment_command_tests {
-    use crate::game::server_side::commands::items::mob_equipment_command_tests::with_game;
+    use sunrise_gameplay_common::game::tables::GameItems;
+use sunrise_gameplay_common::game::tables::WorldTablesExt;
+use crate::game::server_side::commands::items::mob_equipment_command_tests::with_game;
 
     #[test]
     #[ignore = "daily"]

@@ -1270,7 +1270,7 @@ pub struct WorldRest {
     pub mob_data: sunrise_sim::mobs::MobData,
     /// Complete pre-creation facts for the registered entity types.
     pub spawner_types: HashMap<String, sunrise_sim::mobs::spawner::SpawnerTypeFacts>,
-    providers: Providers,
+    pub providers: Providers,
     nether_environment: Environment,
     end_environment: Environment,
     pub behaviours: Arc<Behaviours>,

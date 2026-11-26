@@ -901,7 +901,7 @@ impl crate::game::ClientGame<'_> {
     /// server refused goes back). Only the blocks a hand opens or flips: a
     /// wooden or copper door, trapdoor or fence gate, a lever or a button;
     /// whatever else the use changes waits for the server.
-    pub(in crate::game) fn predict_use(&mut self, (changes, sounds): &DryUse, seq: i32) {
+    pub fn predict_use(&mut self, (changes, sounds): &DryUse, seq: i32) {
         let behaviours = self.common.res.behaviours();
         let predicted = |state: BlockStateId| hand_operated(behaviours, state);
         if changes.is_empty()
@@ -1381,7 +1381,7 @@ impl ServicesKeys {
     /// The keys start `Pending` and arrive from `fetch` on a thread of their own, so a
     /// listener never caches a verdict on keys it does not have yet. A thread that cannot
     /// start leaves them pending.
-    pub(in crate::game) fn fetching_with<E: std::fmt::Display>(
+    pub fn fetching_with<E: std::fmt::Display>(
         fetch: impl FnOnce() -> std::result::Result<ServicesKeySet, E> + Send + 'static,
     ) -> Arc<std::sync::Mutex<Self>> {
         let keys = Arc::new(std::sync::Mutex::new(ServicesKeys::Pending));

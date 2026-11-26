@@ -118,7 +118,7 @@ pub struct RecipeUi {
 #[derive(Clone, Copy, Debug, Default)]
 pub(in crate::game) struct ViewerChannels {
     pub(in crate::game) transfer: bool,
-    pub(in crate::game) check: bool,
+    pub check: bool,
 }
 
 /// The server's answers to `sunrise:recipe_check`, for what the client last

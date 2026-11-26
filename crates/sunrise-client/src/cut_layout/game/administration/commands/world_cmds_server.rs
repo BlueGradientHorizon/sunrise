@@ -137,7 +137,8 @@ pub(crate) fn run_a_datapack_explosion_type_removes_a_crystal_quietly_and_hurts_
 
 #[cfg(test)]
 pub(crate) mod vehicle_damage_command_tests {
-    use crate::game::server_side::commands::world_cmds::vehicle_damage_command_tests::attribute_chat_count;
+    use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
+use crate::game::server_side::commands::world_cmds::vehicle_damage_command_tests::attribute_chat_count;
     use crate::game::server_side::commands::world_cmds::vehicle_damage_command_tests::with_game;
     use std::sync::Arc;
 

@@ -104,7 +104,7 @@ impl Info {
         }
     }
 
-    pub(in crate::game::server_side) fn with_retry(mut self, retry: Retry) -> Self {
+    pub fn with_retry(mut self, retry: Retry) -> Self {
         self.retry = retry;
         self
     }
@@ -145,7 +145,7 @@ impl Info {
     }
 
     /// `finish`.
-    fn finish(&mut self) {
+    pub fn finish(&mut self) {
         if !self.done {
             self.done = true;
             if let Some(at) = self.started_at.take() {

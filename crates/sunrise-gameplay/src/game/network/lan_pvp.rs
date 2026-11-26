@@ -66,7 +66,7 @@ pub struct Strike {
     knockback: (f32, f64, f64),
     knockback_attack: bool,
     /// The attacker's team, for the victim's `Player.canHarmPlayer`.
-    team: Option<sunrise_game_data::scoreboard::Team>,
+    pub team: Option<sunrise_game_data::scoreboard::Team>,
     /// The attacker's main-hand item with a custom name, for the death
     /// message's `.item` form.
     item: Option<sunrise_game_data::text::Text>,

@@ -430,7 +430,7 @@ impl GameCpuResources {
 
 /// The data the background loader produces for `Game::new`.
 pub struct Loaded {
-    pub(in crate::game) game_cpu: Option<GameCpuResources>,
+    pub game_cpu: Option<GameCpuResources>,
     /// The one parsed `entity-models.json`, for the handoff `Game::new` does
     /// itself on the synchronous launch.
     pub entity_models: Option<Arc<sunrise_client::mobs::EntityModelDocument>>,

@@ -36,7 +36,7 @@ pub struct ViewedWorld {
     /// has another.
     pub(super) id: u64,
     /// The level's key (`minecraft:the_nether`).
-    pub(in crate::game) level: String,
+    pub level: String,
     /// Its key as a mod's `LevelRef` names it.
     pub(super) key: mod_api::DimensionKey,
     /// Its dimension has the Nether's cardinal light: its sections are shaded so.
@@ -49,11 +49,11 @@ pub struct ViewedWorld {
     /// (`ClientClockManager`).
     clock: Option<ClockState>,
     pub world: World,
-    pub(in crate::game) entities: ViewedEntities,
+    pub entities: ViewedEntities,
     /// The block entities of each column as its chunk packet carried them, with the data sent
     /// since: what a travel into the level loads (`switch`). A world that was the player's keeps
     /// its own in `world.block_entities` besides.
-    pub(in crate::game) block_entities: FxHashMap<(i32, i32), Vec<BlockEntityInfo>>,
+    pub block_entities: FxHashMap<(i32, i32), Vec<BlockEntityInfo>>,
     /// The most columns it holds: the cap its `open` said, at most
     /// `viewed_levels::MAX_COLUMNS`, so that a server cannot fill the client's memory through
     /// one opened level.

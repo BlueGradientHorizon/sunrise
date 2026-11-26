@@ -1448,7 +1448,7 @@ pub struct ClientState {
     pub(in crate::game::client_side) frame_ticks: f32,
     /// `ItemStack.popTime` of the nine hotbar stacks, then the off hand: set to 5
     /// when a slot gains items, counted down each tick.
-    pub(in crate::game::client_side) hotbar_pop: [u8; 10],
+    pub hotbar_pop: [u8; 10],
     pub titles: titles::Titles,
     /// `Hud.toolHighlightTimer`: the selected item name.
     pub tool_highlight: sunrise_client::hud_overlays::ToolHighlight,

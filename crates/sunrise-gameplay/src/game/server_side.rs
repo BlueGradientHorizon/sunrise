@@ -1293,7 +1293,7 @@ pub struct ServerState {
     pub native_commands:
         ServerOnly<sunrise_gameplay_common::game::native_server::NativeCommandState>,
     /// Other players in the current guest turn, including borrowed ancestor bodies.
-    pub(in crate::game::server_side) lan_building_boxes:
+    pub lan_building_boxes:
         ServerOnly<building_players::BuildingPlayers>,
     /// Bodies and their statistics displaced by guest turns, outer first.
     pub(in crate::game::server_side) lan_displaced_players:

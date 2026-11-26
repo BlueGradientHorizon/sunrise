@@ -248,7 +248,7 @@ pub struct Parked {
     tnts: sunrise_sim::join_seq::JoinList<PrimedTnt>,
     general: super::general::GeneralStore,
     hoppers: HashMap<(i32, i32, i32), HopperState>,
-    pub(in crate::game) mobs: sunrise_sim::join_seq::JoinList<Mob>,
+    pub mobs: sunrise_sim::join_seq::JoinList<Mob>,
     /// The entity ids of the level's fence knots (`knot_ids`).
     knot_ids: HashMap<[i32; 3], u32>,
     broken_knots: Vec<[i32; 3]>,
@@ -268,7 +268,7 @@ pub struct Parked {
     lan_states: sunrise_sim::lan::entity::States,
     /// Only the per-level parts of these are used (`swap_level`).
     anims: BlockEntityTicks,
-    pub(in crate::game) raiding: Raiding,
+    pub raiding: Raiding,
     sculk: SculkState,
     creaking: CreakingState,
     /// Natural spawning's candidate cache: each level keeps its own players' squares.
