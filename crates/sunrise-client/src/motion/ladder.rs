@@ -102,12 +102,10 @@ impl LivingAirWorld for MotionWorld<'_, '_, '_> {
     }
     fn speed(&mut self) -> Result<f32> {
         let mut speed = self.player.attribute("minecraft:movement_speed")? as f32;
-        native_living_speed(
-            self.loop_context,
-            self.player.entity_id as u32,
-            "minecraft:player",
-            &mut speed,
-        );
+        let side = self.side;
+        let reads = || side.hit_reads();
+        let living = self.player_lend(&reads);
+        native_living_speed(self.loop_context, living, &mut speed);
         Ok(speed)
     }
     fn flying_speed(&mut self) -> Result<f32> {
@@ -119,12 +117,10 @@ impl LivingAirWorld for MotionWorld<'_, '_, '_> {
         } else {
             0.02
         };
-        native_living_flying_speed(
-            self.loop_context,
-            self.player.entity_id as u32,
-            "minecraft:player",
-            &mut speed,
-        );
+        let side = self.side;
+        let reads = || side.hit_reads();
+        let living = self.player_lend(&reads);
+        native_living_flying_speed(self.loop_context, living, &mut speed);
         Ok(speed)
     }
     fn yaw(&mut self) -> Result<f32> {

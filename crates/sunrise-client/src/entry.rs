@@ -254,13 +254,15 @@ pub(crate) fn install_client_hooks() {
         menu_still_valid_listens: |menu| {
             mod_api::__private::menu_listens(mod_api::HookId::MenuStillValid, menu)
         },
-        living_heal: |context, entity, amount, cancel| {
+        living_heal: |context, healed, amount, cancel| {
             if !mod_api::__private::listened(mod_api::HookId::LivingHeal) {
                 return;
             }
             let reader = sunrise_client_render::api_context::LoopReader(context);
             let context = reader.context();
-            mod_api::dispatch_living_heal(&context, entity, amount, cancel);
+            game::with_lent_view(healed, |view| {
+                mod_api::dispatch_living_heal(&context, healed.id(), view, amount, cancel);
+            });
         },
         living_breathe_heard: || mod_api::__private::listened(mod_api::HookId::LivingBreathe),
         has_mods: || !mod_api::__private::mods().is_empty(),
@@ -333,29 +335,47 @@ pub(crate) fn install_client_hooks() {
             let context = reader.context();
             mod_api::dispatch_living_jump(&context, entity, kind, velocity);
         },
-        living_jump_power: |context, entity, kind, power| {
+        living_jump_power: |context, living, power| {
             if !mod_api::__private::listened(mod_api::HookId::LivingJumpPower) {
                 return;
             }
             let reader = sunrise_client_render::api_context::LoopReader(context);
             let context = reader.context();
-            mod_api::dispatch_living_jump_power(&context, entity, kind, power);
+            game::with_lent_view(living, |view| {
+                mod_api::dispatch_living_jump_power(
+                    &context,
+                    living.id(),
+                    living.kind(),
+                    view,
+                    power,
+                );
+            });
         },
-        living_speed: |context, entity, kind, speed| {
+        living_speed: |context, living, speed| {
             if !mod_api::__private::listened(mod_api::HookId::LivingSpeed) {
                 return;
             }
             let reader = sunrise_client_render::api_context::LoopReader(context);
             let context = reader.context();
-            mod_api::dispatch_living_speed(&context, entity, kind, speed);
+            game::with_lent_view(living, |view| {
+                mod_api::dispatch_living_speed(&context, living.id(), living.kind(), view, speed);
+            });
         },
-        living_flying_speed: |context, entity, kind, speed| {
+        living_flying_speed: |context, living, speed| {
             if !mod_api::__private::listened(mod_api::HookId::LivingFlyingSpeed) {
                 return;
             }
             let reader = sunrise_client_render::api_context::LoopReader(context);
             let context = reader.context();
-            mod_api::dispatch_living_flying_speed(&context, entity, kind, speed);
+            game::with_lent_view(living, |view| {
+                mod_api::dispatch_living_flying_speed(
+                    &context,
+                    living.id(),
+                    living.kind(),
+                    view,
+                    speed,
+                );
+            });
         },
         block_jump_factor: |context, state, factor| {
             crate::game::block_jump_factor(context, state, factor);

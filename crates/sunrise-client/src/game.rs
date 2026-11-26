@@ -1364,6 +1364,9 @@ mod native_harvest_queries;
 #[path = "game/modding/native_held_out_tests.rs"]
 mod native_held_out_tests;
 #[cfg(test)]
+#[path = "game/modding/native_heal_motion_view_tests.rs"]
+mod native_heal_motion_view_tests;
+#[cfg(test)]
 #[path = "game/modding/native_hit_attempt_tests.rs"]
 mod native_hit_attempt_tests;
 #[cfg(test)]
@@ -2524,6 +2527,7 @@ pub(crate) use launch_options::Options;
 pub use native_block_entity_draw::BlockEntityDraw;
 pub use native_data_maps::DataMapType;
 pub use native_hooks::{PhantomSpawnResult, SleepProblem};
+pub(crate) use native_living_body::with_lent_view;
 pub use native_mob_draw::{MobRender, PlayerRender};
 use std::{
     cell::RefCell,

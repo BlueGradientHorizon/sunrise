@@ -1,5 +1,5 @@
 //! Callbacks into the executable for native trait mods' client-library hooks.
-use crate::{items::ItemStack, motion::FrictionLevel};
+use crate::{health::LivingLend, items::ItemStack, motion::FrictionLevel};
 use mod_api::{BlockSoundCause, BlockSoundType, MenuOpeningItem};
 use std::sync::OnceLock;
 use sunrise_core::position::BlockPos;
@@ -13,7 +13,7 @@ type MenuValidity =
 pub struct NativeClientHooks {
     pub menu_still_valid: MenuValidity,
     pub menu_still_valid_listens: fn(&str) -> bool,
-    pub living_heal: fn(&LoopContext, u32, &mut f32, &mut bool),
+    pub living_heal: fn(&LoopContext, LivingLend<'_>, &mut f32, &mut bool),
     pub living_breathe_heard: fn() -> bool,
     pub has_mods: fn() -> bool,
     pub player_name_format: fn(&LoopContext, &crate::text::Text, &mut crate::text::Text),
@@ -21,9 +21,9 @@ pub struct NativeClientHooks {
     pub living_drown: fn(&LoopContext, u32, &str, &mut bool, &mut f32, &mut i32, &mut bool),
     pub living_fall: fn(&LoopContext, u32, &str, &mut f64, &mut f32, &mut bool),
     pub living_jump: fn(&LoopContext, u32, &str, [f64; 3]),
-    pub living_jump_power: fn(&LoopContext, u32, &str, &mut f32),
-    pub living_speed: fn(&LoopContext, u32, &str, &mut f32),
-    pub living_flying_speed: fn(&LoopContext, u32, &str, &mut f32),
+    pub living_jump_power: fn(&LoopContext, LivingLend<'_>, &mut f32),
+    pub living_speed: fn(&LoopContext, LivingLend<'_>, &mut f32),
+    pub living_flying_speed: fn(&LoopContext, LivingLend<'_>, &mut f32),
     pub block_jump_factor: fn(&LoopContext, BlockStateId, &mut f32),
     pub block_speed_factor: fn(&LoopContext, BlockStateId, &mut f32),
     pub is_ladder: fn(&LoopContext, u32, BlockPos, BlockStateId, &mut bool),
@@ -132,9 +132,14 @@ pub(crate) fn menu_still_valid_listens(menu: &str) -> bool {
         .is_some_and(|hooks| (hooks.menu_still_valid_listens)(menu))
 }
 
-pub(crate) fn living_heal(context: &LoopContext, entity: u32, amount: &mut f32, cancel: &mut bool) {
+pub(crate) fn living_heal(
+    context: &LoopContext,
+    healed: LivingLend<'_>,
+    amount: &mut f32,
+    cancel: &mut bool,
+) {
     if let Some(hooks) = HOOKS.get() {
-        (hooks.living_heal)(context, entity, amount, cancel);
+        (hooks.living_heal)(context, healed, amount, cancel);
     }
 }
 
@@ -210,21 +215,21 @@ pub(crate) fn living_jump(context: &LoopContext, entity: u32, kind: &str, veloci
     }
 }
 
-pub(crate) fn living_jump_power(context: &LoopContext, entity: u32, kind: &str, power: &mut f32) {
+pub(crate) fn living_jump_power(context: &LoopContext, living: LivingLend<'_>, power: &mut f32) {
     if let Some(hooks) = HOOKS.get() {
-        (hooks.living_jump_power)(context, entity, kind, power);
+        (hooks.living_jump_power)(context, living, power);
     }
 }
 
-pub(crate) fn living_speed(context: &LoopContext, entity: u32, kind: &str, speed: &mut f32) {
+pub(crate) fn living_speed(context: &LoopContext, living: LivingLend<'_>, speed: &mut f32) {
     if let Some(hooks) = HOOKS.get() {
-        (hooks.living_speed)(context, entity, kind, speed);
+        (hooks.living_speed)(context, living, speed);
     }
 }
 
-pub(crate) fn living_flying_speed(context: &LoopContext, entity: u32, kind: &str, speed: &mut f32) {
+pub(crate) fn living_flying_speed(context: &LoopContext, living: LivingLend<'_>, speed: &mut f32) {
     if let Some(hooks) = HOOKS.get() {
-        (hooks.living_flying_speed)(context, entity, kind, speed);
+        (hooks.living_flying_speed)(context, living, speed);
     }
 }
 

@@ -161,13 +161,13 @@ pub(crate) fn install() {
                     JUMPS.set(JUMPS.get() + 1);
                 }
             },
-            living_jump_power: |context, _, _, power| {
+            living_jump_power: |context, _, power| {
                 *power += context.setting("rules_mod", "stack").map_or(0.0, |_| 1.0);
             },
-            living_speed: |context, _, _, speed| {
+            living_speed: |context, _, speed| {
                 *speed += context.setting("rules_mod", "stack").map_or(0.0, |_| 2.0);
             },
-            living_flying_speed: |context, _, _, speed| {
+            living_flying_speed: |context, _, speed| {
                 *speed += context.setting("rules_mod", "stack").map_or(0.0, |_| 3.0);
             },
             block_jump_factor: |context, _, factor| {
