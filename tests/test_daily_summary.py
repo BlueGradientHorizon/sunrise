@@ -13,9 +13,12 @@ from pathlib import Path
 from unittest import mock
 
 from tests.os_support import needs_runner_shell
-from tests.test_ci_concurrency import ROOT, yaml
+from tests.test_ci_concurrency import ROOT
 from tools import sunrise_mod_binstall
 from tools.ci import daily_summary as summary, parity_verdict
+from tools.ci import vendored_yaml
+
+yaml = vendored_yaml.load()
 
 COMMIT = "c" * 40
 DAILY = yaml.load((ROOT / ".github/workflows/daily.yml").read_text(), Loader=yaml.BaseLoader)
@@ -924,7 +927,7 @@ class DailySummaryTests(unittest.TestCase):
 
 class DailyWorkflowTests(unittest.TestCase):
     def setUp(self):
-        from tests.test_ci_concurrency import ROOT, yaml
+        from tests.test_ci_concurrency import ROOT
         self.workflow = yaml.load((ROOT / ".github/workflows/daily.yml").read_text(), Loader=yaml.BaseLoader)
 
     def test_the_schedule_only_dispatches_a_real_run_on_main(self):
@@ -996,7 +999,7 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertTrue(jobs["summary"]["name"].startswith("summary ${{ needs.resolve.outputs.commit }}"))
 
     def test_daily_checks_linkage_on_the_linux_and_windows_client_sdks_before_pack(self):
-        from tests.test_ci_concurrency import ROOT, expression_value, yaml
+        from tests.test_ci_concurrency import ROOT, expression_value
         jobs = self.workflow["jobs"]
         self.assertNotIn("linkage", jobs)
         self.assertNotIn("linkage", jobs["summary"]["needs"])
@@ -1032,7 +1035,7 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertLess(api_commands.index(build), api_commands.index(check))
 
     def test_the_sdk_build_packs_exactly_the_archives_a_release_needs(self):
-        from tests.test_ci_concurrency import ROOT, yaml
+        from tests.test_ci_concurrency import ROOT
         from tools.ci import nightly
         workflow = yaml.load((ROOT / ".github/workflows/prebuilt-game-build.yml").read_text(), Loader=yaml.BaseLoader)
         build = workflow["jobs"]["build"]
@@ -1055,7 +1058,7 @@ class DailyWorkflowTests(unittest.TestCase):
         self.assertEqual(set(nightly.SDK_ASSETS) - set(nightly.SDK_ARCHIVES), {"sdk.json", "SHA256SUMS", "SHA256SUMS.sig"})
 
     def test_the_sdk_is_signed_and_published_only_on_main(self):
-        from tests.test_ci_concurrency import ROOT, yaml
+        from tests.test_ci_concurrency import ROOT
         workflow = yaml.load((ROOT / ".github/workflows/sdk-publish.yml").read_text(), Loader=yaml.BaseLoader)
         jobs = workflow["jobs"]
         on_main = "needs.authorize.outputs.publish == 'true'"
@@ -1092,7 +1095,7 @@ class DailyWorkflowTests(unittest.TestCase):
     def test_the_windows_report_is_uploaded_even_on_failure_and_downloaded_by_the_summary(self):
         import fnmatch
 
-        from tests.test_ci_concurrency import ROOT, yaml
+        from tests.test_ci_concurrency import ROOT
         daily_job, windows_job = summary.WINDOWS_ROWS_JOB.split(" / ")
         workflow_path = ROOT / self.workflow["jobs"][daily_job]["uses"]
         workflow = yaml.safe_load(workflow_path.read_text())

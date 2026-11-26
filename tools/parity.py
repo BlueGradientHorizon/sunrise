@@ -1405,6 +1405,8 @@ def trace_main(output, script, arguments):
     atexit.register(write)
     sys.addaudithook(audit)
     sys.argv = [script, *arguments]
+    # What `python <script>` itself does (sys.path[0] is the script's folder) and runpy.run_path does not: a traced run
+    # imports exactly what the untraced run of the same harness would. Harnesses import tools.<name> from the root.
     sys.path.insert(0, str(Path(script).parent))
     runpy.run_path(script, run_name="__main__")
 

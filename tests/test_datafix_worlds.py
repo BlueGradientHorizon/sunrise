@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 from tools import datafix_worlds as worlds
@@ -31,6 +32,23 @@ class JavaRuntimeTests(unittest.TestCase):
         self.assertEqual(exe, str(home / 'bin' / 'java'))
 
 
+class UnpinnedPlatformTests(unittest.TestCase):
+    def test_a_platform_the_lock_does_not_pin_is_refused_by_name_before_any_download(self):
+        for plat in ('windows-x64', 'mac-os'):
+            with self.subTest(plat), mock.patch.object(worlds, 'platform', return_value=plat), \
+                    mock.patch.object(worlds, 'version_meta', return_value={'javaVersion': {'component': 'java-runtime-gamma'}}), \
+                    mock.patch.object(worlds, 'install_runtime', side_effect=AssertionError('no download')), \
+                    self.assertRaisesRegex(ValueError, f'platform {plat};'):
+                worlds.java('x')
+
+    def test_platform_names_what_mojang_calls_the_machine(self):
+        for system, machine, expected in (('win32', 'AMD64', 'windows-x64'), ('win32', 'ARM64', 'windows-arm64'),
+                                          ('darwin', 'x86_64', 'mac-os'), ('darwin', 'arm64', 'mac-os-arm64'), ('linux', 'x86_64', 'linux')):
+            with self.subTest(system, machine=machine), mock.patch.object(worlds, 'sys', SimpleNamespace(platform=system)), \
+                    mock.patch.object(worlds, 'host', SimpleNamespace(machine=lambda: machine)):
+                self.assertEqual(worlds.platform(), expected)
+
+
 class ServerStopTests(unittest.TestCase):
     def test_a_server_that_ignores_stop_is_killed_and_the_timeout_reaches_the_caller(self):
         server = worlds.Server.__new__(worlds.Server)
@@ -49,6 +67,81 @@ class ServerStopTests(unittest.TestCase):
             server.stop()
         self.assertIsNotNone(server.process.poll())
         self.assertEqual(calls, [120, None])
+
+
+class KnownPacksTests(unittest.TestCase):
+    def configure(self, protocol, received):
+        """What the bot sends while it configures against a server that sends `received` (id, payload), then finish."""
+        bot = worlds.Bot.__new__(worlds.Bot)
+        bot.protocol = protocol
+        sent = []
+        packets = iter([*received, (3, b'')])
+        bot.receive = lambda: next(packets)
+        bot.send = lambda packet_id, payload=b'': sent.append((packet_id, payload))
+        bot.configure()
+        return sent
+
+    def test_the_bot_answers_only_the_select_known_packs_packet_of_its_protocol(self):
+        # What select_known_packs carries: one pack, namespace minecraft, id core, version.
+        offer = b'\x01\x09minecraft\x04core\x041.21'
+        answer = (7, b'\x00')
+        finish = (3, b'')
+        # 26.2: select_known_packs is 14 and update_tags 15. A bare minecraft-shaped payload on 15 is left alone.
+        self.assertEqual(self.configure(776, [(15, offer), (14, offer)]), [answer, finish])
+        # 26.3: post_effects comes in before it, so update_tags is 14 and select_known_packs 15.
+        self.assertEqual(self.configure(777, [(14, offer), (15, offer)]), [answer, finish])
+
+    def test_a_protocol_with_no_known_id_is_refused(self):
+        with self.assertRaisesRegex(ValueError, 'protocol 999'):
+            self.configure(999, [])
+
+
+class BuildCleanupTests(unittest.TestCase):
+    """build() with the server, the bot and the scene replaced: what is closed when something fails."""
+
+    def build(self, scene_error, stop_error):
+        events = []
+
+        class FakeBot:
+            def __init__(self, port, protocol, name):
+                events.append('joined')
+
+            def leave(self):
+                events.append('left')
+
+        class FakeServer:
+            def __init__(self, *args):
+                pass
+
+            def stop(self):
+                events.append('stopped')
+                if stop_error:
+                    raise stop_error
+
+        def scene(server, run, Bot, *args):
+            bot = Bot(1, 2, 'x')
+            if scene_error:
+                raise scene_error
+            return bot
+
+        with tempfile.TemporaryDirectory() as temp, mock.patch.object(worlds, 'LOCAL', Path(temp)), \
+                mock.patch.object(worlds, 'server_jar', return_value=(Path('server.jar'), 3700, 770)), \
+                mock.patch.object(worlds, 'java', return_value='java'), mock.patch.object(worlds, 'Server', FakeServer), \
+                mock.patch.object(worlds, 'Bot', FakeBot), mock.patch.object(worlds, 'build_scene', scene), \
+                mock.patch.object(worlds, 'time', SimpleNamespace(sleep=lambda seconds: None)):
+            try:
+                worlds.build('1.21.5')
+            except Exception as error:
+                return events, error
+        return events, None
+
+    def test_a_scene_that_fails_still_closes_the_bot_and_stops_the_server(self):
+        events, error = self.build(ValueError('scene failed'), None)
+        self.assertEqual((events, str(error)), (['joined', 'left', 'stopped'], 'scene failed'))
+
+    def test_a_stop_that_raises_reaches_the_caller_and_the_bot_is_closed(self):
+        events, error = self.build(None, RuntimeError('stop failed'))
+        self.assertEqual((events, str(error)), (['joined', 'left', 'stopped'], 'stop failed'))
 
 
 if __name__ == '__main__':
