@@ -1,8 +1,8 @@
-use sunrise_gameplay::game::commands::knot_identity_tests::game;
-use sunrise_gameplay::game::commands::knot_identity_tests::knot_uuid;
-use sunrise_gameplay::game::commands::knot_identity_tests::knots;
-use sunrise_gameplay::game::commands::knot_identity_tests::step;
-use sunrise_gameplay::game::commands::knot_identity_tests::summon_pig;
+use crate::game::commands::knot_identity_tests::game;
+use crate::game::commands::knot_identity_tests::knot_uuid;
+use crate::game::commands::knot_identity_tests::knots;
+use crate::game::commands::knot_identity_tests::step;
+use crate::game::commands::knot_identity_tests::summon_pig;
 use {crate::game::*, sunrise_gameplay_common::game::{Dim, entity, host}};
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_protocol::packets::configuration::ClientInformation;

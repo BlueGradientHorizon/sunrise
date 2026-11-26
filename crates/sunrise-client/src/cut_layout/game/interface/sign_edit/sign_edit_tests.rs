@@ -5,7 +5,8 @@
 //! `SignBlock.otherPlayerIsEditingSign`, `SignBlockEntity.tick` and
 //! `SignBlockEntity.updateSignText`.
 use super::*;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay::game::lan::LanHost, sunrise_gameplay_common::game::load_resources};
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay::game::lan::LanHost};
+use crate::game::{Settings, load_resources};
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_core::position::ChunkPos;
 use sunrise_items::items::ItemStack;

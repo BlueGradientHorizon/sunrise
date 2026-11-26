@@ -289,7 +289,7 @@ pub(in crate::game::server_side) fn log_outside_rcon_reply(rcon: bool, message: 
 }
 
 /// Runs `f` and returns the lines it logged.
-pub(in crate::game::server_side) fn capture_log(f: impl FnOnce()) -> Vec<String> {
+pub fn capture_log(f: impl FnOnce()) -> Vec<String> {
     CAPTURE.set(Some(Vec::new()));
     f();
     CAPTURE.take().unwrap_or_default()
@@ -430,7 +430,7 @@ fn ban_fields<T>(ban: &BanEntry<T>) -> serde_json::Value {
 /// The operator, whitelist and ban lists (DedicatedPlayerList), shared with
 /// the connection threads that check logins, and the server's own switches
 /// that an operator's command changes.
-pub(in crate::game) struct Lists {
+pub struct Lists {
     pub ops: OpList,
     pub white: WhiteList,
     pub bans: BanList,
@@ -2471,7 +2471,7 @@ pub(in crate::game::server_side) fn crash_fixture(
 }
 
 /// The text of a panic payload (`panic!("..")` is a `&str`, a formatted one a `String`).
-pub(in crate::game::server_side) fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+pub fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
     payload
         .downcast_ref::<&str>()
         .map(|s| (*s).to_owned())

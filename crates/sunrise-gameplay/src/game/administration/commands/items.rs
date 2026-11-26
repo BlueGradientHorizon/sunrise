@@ -11,7 +11,7 @@ use sunrise_sim::scoreboard_cmd::Holder;
 pub(in crate::game) mod contents;
 pub(in crate::game) mod slot_sources;
 use sunrise_gameplay_common::game::commands_common::Component;
-pub(in crate::game) use sunrise_gameplay_common::game::commands_common::Slot;
+pub use sunrise_gameplay_common::game::commands_common::Slot;
 
 pub(in crate::game) struct SlotCandidate {
     pub(in crate::game) slot: Slot,

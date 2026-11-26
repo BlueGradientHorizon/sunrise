@@ -1,4 +1,4 @@
-use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Screen, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay_common::game::load_resources};
+use {sunrise_client_lib::audio::Audio, crate::settings::Settings, crate::game::load_resources, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Screen, sunrise_gameplay_common::game::execution_role::ExecutionRole};
 
 /// A mod's pre-filled chat opens only over the world, with its text
 /// typed in and nothing sent.

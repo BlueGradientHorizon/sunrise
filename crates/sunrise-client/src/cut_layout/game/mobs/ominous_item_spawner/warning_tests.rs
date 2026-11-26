@@ -3,7 +3,7 @@ use sunrise_core::geometry::Vec3;
 #[test]
 #[ignore = "daily"]
 fn warning_dispatch_uses_neutral_at_tick_four() {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_sim::motion::PlayerMotion;
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
@@ -176,8 +176,8 @@ fn taken_spawner_tick_keeps_survivors_before_both_spawns() {
 #[test]
 #[ignore = "daily"]
 fn lifecycle_spawner_commands_unload_park_and_remote_metadata() {
+    use sunrise_gameplay_common::game::commands_common::Target;
     use crate::game::{
-        commands::Target,
         server_side::entity_server::taken_pass_tests::{
             LifecycleFixture, RemoteLifecycle, run_remote_lifecycle,
         },

@@ -26,7 +26,7 @@ fn game<'a>(
 fn client_game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
 ) -> Option<sunrise_client_gameplay::game::ClientGame<'a>> {
-    use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::execution_role, crate::game::load_resources};
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES")?);
     let settings = Settings::default();
     let loaded = load_resources(

@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 pub(crate) mod enchantment_snapshot_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_client_render::settings::Settings, crate::game::resource_load::load_resources};
 
     #[test]
     #[ignore = "daily"]
@@ -162,7 +162,7 @@ pub(crate) mod enchantment_snapshot_tests {
 
 #[cfg(test)]
 pub(crate) mod damage_type_registry_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_client_render::settings::Settings, crate::game::resource_load::load_resources};
 
     /// A world pack's damage type is a `/damage` type once the world opens,
     /// beside vanilla's, and the registry keeps vanilla's tags.

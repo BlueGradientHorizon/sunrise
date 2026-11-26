@@ -81,7 +81,7 @@ pub(in sunrise_gameplay::game::server_side) fn run_gateway_counters_match_actual
 
 // Exercise the real dispatch with cooldown-only states, so no teleport destination is resolved.
 fn game_gateway_phases() -> [[i32; 2]; 4] {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::nbt::Tag;
     use sunrise_level::chunk::Chunk;

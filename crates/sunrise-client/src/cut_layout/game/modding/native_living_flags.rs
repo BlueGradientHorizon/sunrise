@@ -4,6 +4,7 @@
 pub(crate) mod tests {
 
     use super::super::native_entity_refs::tests::{record_key, with_game};
+    use sunrise_gameplay_common::game_side;
     use mod_api::{
         BlockPart, EntityRef, Hooks, LivingRef, LoopContext, MakesOpenTrapdoorAboveClimbableEvent,
         Registrar, WorldEpoch,
@@ -212,7 +213,7 @@ pub(crate) mod tests {
         dedicated: bool,
         owner: bool,
     ) {
-        use {crate::game::server_side::execution_role::ExecutionRole, sunrise_gameplay::game::server_side::lan::LanSettings};
+        use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::server_side::lan::LanSettings};
         use sunrise_sim::lan::{NetConfig, hub::HubConfig};
         game.options.execution_role = if dedicated {
             ExecutionRole::DedicatedServer

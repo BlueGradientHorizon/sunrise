@@ -3,8 +3,8 @@
 //! (`playSearchingSound`, the block's hit sound) and the egg's own-random push
 //! (`Sniffer.spawnChildFromBreeding`'s `new ItemEntity(..)`).
 use {sunrise_client_gameplay::game::client_side::sniffers::Mob, sunrise_client_gameplay::game::client_side::sniffers::sniffer};
-use sunrise_gameplay::game::kill_die_vibration_tests::game as sculk_game;
-use sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS;
+use crate::game::kill_die_vibration_tests::game as sculk_game;
+use sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS;
 use {sunrise_gameplay_common::game::Game, sunrise_gameplay_common::game::PlayerMotion};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_sim::mobs::Who;

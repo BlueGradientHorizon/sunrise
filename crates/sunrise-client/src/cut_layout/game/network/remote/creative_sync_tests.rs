@@ -56,7 +56,7 @@ mod give_stack {
 
     use sunrise_gameplay_common::game::api_values::test_snapshot;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
-    use {sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::logged_in, sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::sent};
+    use {crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::sent};
     use mod_api::CreativeGiveError;
     use sunrise_command::args::GameMode;
     use sunrise_core::nbt::{Compound, JavaString, Tag};

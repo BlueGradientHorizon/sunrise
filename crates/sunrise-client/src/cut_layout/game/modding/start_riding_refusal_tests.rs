@@ -10,7 +10,7 @@ use sunrise_core::geometry::Vec3;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::Mob;
 
-use {sunrise_gameplay_common::game::Dim, crate::game::commands::Target, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 
 fn add_mob(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32, name: &str) -> EntityRef {
     let kind = game.res.mob_types().get(name).unwrap().clone();

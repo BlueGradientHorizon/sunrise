@@ -3,7 +3,7 @@
 //! view, `set_target`, and the no-mod-goals fast path.
 //!
 //! The `zombie` fixture is shared with the behavior tests (#824).
-use super::super::creatures;
+use sunrise_gameplay_common::game::creatures;
 use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
 use mod_api::{
     EntityPart, EntityRef, Goal, GoalContext, GoalFlags, GoalRegistrar, Hooks, LivingRef, ModEntry,

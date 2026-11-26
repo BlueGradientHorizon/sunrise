@@ -4,7 +4,7 @@
 pub(crate) mod tests {
     use super::*;
     use sunrise_gameplay_common::game::lan_actions::attack_checks::tests::disconnects;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;

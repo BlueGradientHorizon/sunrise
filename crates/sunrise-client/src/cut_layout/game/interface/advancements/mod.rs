@@ -55,7 +55,7 @@ use super::*;
 #[test]
     #[ignore = "daily"]
     fn mob_name_components_read_live_text_without_saved_nbt() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Settings, crate::game::commands::Target, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -139,7 +139,7 @@ use super::*;
 #[test]
     #[ignore = "daily"]
     fn mob_predicate_view_reads_active_effect_instances() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Settings, crate::game::commands::Target, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -240,7 +240,7 @@ use super::*;
 #[cfg(test)]
 pub(crate) mod structure_tag_tests {
     use sunrise_gameplay::game::server_side::advancements::View;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use serde_json::json;
     use sunrise_sim::advancements::{World, id_matches};
 
@@ -349,12 +349,12 @@ pub(crate) mod structure_tag_tests {
 #[cfg(test)]
 pub(crate) mod random_chance_command_tests {
     use super::*;
-    use crate::game::commands::Target;
+    use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_core::nbt::Tag;
     #[test]
     #[ignore = "daily"]
     fn registered_named_random_chance_uses_real_source_and_world_draws() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, crate::settings::Settings, crate::game::load_resources};
         use std::time::Instant;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();

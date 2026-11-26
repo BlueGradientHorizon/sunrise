@@ -14,7 +14,8 @@ use sunrise_level::{
 };
 use sunrise_mod_runtime::attachments::{AttachmentCodec, AttachmentError, Attachments, Holder};
 
-use super::Dim;
+use sunrise_gameplay_common::game::Dim;
+use sunrise_gameplay_common::world_biomes;
 
 static PROGRESS: AttachmentType<i32> = AttachmentType {
     namespace: "part_state",
@@ -387,7 +388,7 @@ fn part_state_saves_with_its_chunk_and_reloads_under_a_fresh_handle() {
 fn item_slot_writes_save_but_menu_data_is_transient() {
     const NAME: &str = "game::server_side::block_entity_part_state_tests::item_slot_writes_save_but_menu_data_is_transient";
     with_state_mod(NAME, |game| {
-        use super::api_values::TryIntoApi;
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         use sunrise_items::items::ItemStack;
 
         let entity = press_with_item_slot(game, (1, 64, 1));

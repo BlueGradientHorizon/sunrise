@@ -350,7 +350,7 @@ use sunrise_protocol::packets::{
 #[test]
     #[ignore = "daily"]
     fn remote_tag_packets_rebuild_vanilla_enchant_providers_and_transmitters_without_mods() {
-        use {sunrise_client_gameplay::game::enchant_power_beam_tests::enchant_particles, sunrise_client_gameplay::game::enchant_power_beam_tests::place};
+        use {crate::game::client_side::enchant_power_beam_tests::enchant_particles, crate::game::client_side::enchant_power_beam_tests::place};
         mod_platform::testing::with_mods(Vec::new().into(), || {
             with_client_game(|game| {
                 let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
@@ -388,7 +388,7 @@ use sunrise_protocol::packets::{
 #[test]
     #[ignore = "daily"]
     fn remote_enchant_snapshot_follows_tag_rebinding_and_tags_updated_callbacks() {
-        use {sunrise_client_gameplay::game::enchant_power_beam_tests::enchant_particles, sunrise_client_gameplay::game::enchant_power_beam_tests::place};
+        use {crate::game::client_side::enchant_power_beam_tests::enchant_particles, crate::game::client_side::enchant_power_beam_tests::place};
         use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
         static ENABLED: AtomicBool = AtomicBool::new(false);
         static CALLS: AtomicUsize = AtomicUsize::new(0);

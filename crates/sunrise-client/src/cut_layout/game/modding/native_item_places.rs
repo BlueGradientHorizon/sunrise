@@ -33,7 +33,7 @@ use sunrise_gameplay::game::server_side::native_item_places::tests::write;
 
 use sunrise_gameplay::game::server_side::native_item_places::tests::zombie;
 
-use super::super::BlockEntity;
+use sunrise_level::containers::BlockEntity;
 
 use super::super::native_entity_refs::tests::with_game;
 
@@ -2018,10 +2018,8 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
 #[test]
     #[ignore = "daily"]
     fn a_kept_handler_reaches_nothing_once_its_cart_is_removed() {
-        use super::super::{
-            commands::Target,
-            minecarts::{CartKind, Minecart},
-        };
+        use crate::game::commands::Target;
+        use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.carts.push(Minecart::new(
@@ -2121,7 +2119,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
 #[test]
     #[ignore = "daily"]
     fn a_kept_handler_reaches_nothing_once_its_world_closes() {
-        use super::super::minecarts::{CartKind, Minecart};
+        use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.carts.push(Minecart::new(
@@ -3196,7 +3194,7 @@ pub(in sunrise_gameplay::game::server_side) fn with_crafted_by_handler_map(
 #[test]
     #[ignore = "daily"]
     fn scoped_boat_slots_use_the_open_menu_and_refuse_a_removed_owner() {
-        use super::super::boats_common::Boat;
+        use sunrise_gameplay_common::game::boats_common::Boat;
         use sunrise_core::geometry::Vec3;
         with_game(|game| {
             let mut boat = Boat::new(600, "oak".into(), Vec3::new(1.0, 65.0, 2.0), 0.0);
@@ -3211,10 +3209,10 @@ pub(in sunrise_gameplay::game::server_side) fn with_crafted_by_handler_map(
                 }),
                 Some(27)
             );
-            let key = (i32::MAX - 15, super::super::minecarts::CART_KEY_Y, 600);
+            let key = (i32::MAX - 15, sunrise_gameplay_common::game::minecarts::CART_KEY_Y, 600);
             game.world
                 .block_entities
-                .insert(key, super::super::BlockEntity::Chest(vec![None; 27]));
+                .insert(key, BlockEntity::Chest(vec![None; 27]));
             game.edit_entity_slots(600, |slots, _| {
                 assert!(slots[0].is_none());
                 slots[0] = Some(ItemStack::new("minecraft:sand", 7));
@@ -3237,7 +3235,7 @@ pub(in sunrise_gameplay::game::server_side) fn with_crafted_by_handler_map(
 #[test]
     #[ignore = "daily"]
     fn a_chest_minecarts_items_are_its_slots() {
-        use super::super::minecarts::{CartKind, Minecart};
+        use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             let position = sunrise_core::geometry::Vec3::new(0.5, 65.0, 0.5);
@@ -3281,8 +3279,8 @@ pub(in sunrise_gameplay::game::server_side) fn with_crafted_by_handler_map(
 #[test]
     #[ignore = "daily"]
     fn reading_and_writing_vehicle_slots_unpack_pending_loot() {
-        use super::super::boats_common::Boat;
-        use super::super::minecarts::{CART_KEY_Y, CartKind, Minecart};
+        use sunrise_gameplay_common::game::boats_common::Boat;
+        use sunrise_gameplay_common::game::minecarts::{CART_KEY_Y, CartKind, Minecart};
         use sunrise_core::{geometry::Vec3, nbt::Tag};
         use sunrise_sim::save::PendingContainerLoot;
         with_game(|game| {
@@ -3460,7 +3458,7 @@ pub(in sunrise_gameplay::game::server_side) fn with_crafted_by_handler_map(
 #[test]
     #[ignore = "daily"]
     fn cart_slot_edits_prefer_the_menu_and_refuse_a_removed_owner() {
-        use super::super::minecarts::{CART_KEY_Y, CartKind, Minecart};
+        use sunrise_gameplay_common::game::minecarts::{CART_KEY_Y, CartKind, Minecart};
         use sunrise_core::geometry::Vec3;
         with_game(|game| {
             let mut cart = Minecart::new(600, CartKind::Chest, Vec3::new(1.0, 65.0, 2.0));
@@ -3663,7 +3661,7 @@ pub(in sunrise_gameplay::game::server_side) fn with_crafted_by_handler_map(
 #[test]
     #[ignore = "daily"]
     fn a_hopper_still_fills_a_chest_minecart_and_a_player_is_not_reached() {
-        use super::super::minecarts::{CartKind, Minecart};
+        use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
         let bin = Bin::default();
         with_bin_pigs(&bin, |game| {
             open_to_lan(game);

@@ -1,9 +1,9 @@
-use {sunrise_client_gameplay::game::client_side::remote_client::C, sunrise_client_gameplay::game::client_side::remote_client::Game, sunrise_client_gameplay::game::client_side::remote_client::ItemStack, sunrise_client_gameplay::game::client_side::remote_client::S, sunrise_client_gameplay::game::client_side::remote_client::Screen, sunrise_client_gameplay::game::client_side::remote_client::Tag, sunrise_client_gameplay::game::client_side::remote_client::play};
+use {sunrise_client_gameplay::game::client_side::remote_client::C, sunrise_gameplay_common::game::Game,sunrise_client_gameplay::game::client_side::remote_client::ItemStack, sunrise_client_gameplay::game::client_side::remote_client::S, sunrise_client_gameplay::game::client_side::remote_client::Screen, sunrise_client_gameplay::game::client_side::remote_client::Tag, sunrise_client_gameplay::game::client_side::remote_client::play};
 use crate::game::remote::tests::client_close_tests::chest;
 use crate::game::remote::tests::client_close_tests::close;
 use crate::game::remote::tests::client_close_tests::deliver;
 use crate::game::remote::tests::client_close_tests::isolated;
-use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::logged_in, sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::sent};
+use {crate::game::server_side::native_entity_refs::tests::with_client_game, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::sent};
 
 #[test]
 #[ignore = "daily"]

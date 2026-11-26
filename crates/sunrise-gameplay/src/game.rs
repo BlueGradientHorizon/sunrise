@@ -26,7 +26,7 @@ pub(in crate::game) use server_side::block_edits;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::block_entity_anims;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::block_entity_ticks;
+pub use server_side::block_entity_ticks;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::block_ticks;
 #[allow(unused_imports)]
@@ -62,9 +62,9 @@ pub(in crate::game) use server_side::chiseled_bookshelf;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::combat;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::command_harness;
+pub use server_side::command_harness;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::commands;
+pub use server_side::commands;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::composter;
 #[allow(unused_imports)]
@@ -74,7 +74,7 @@ pub(in crate::game) use server_side::container_loot;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::creaking;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::crossbow;
+pub use server_side::crossbow;
 #[allow(unused_imports)]
 pub(crate) use server_side::cushions;
 #[allow(unused_imports)]
@@ -92,7 +92,7 @@ pub(in crate::game) use server_side::deflect;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::dispense_bucket;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::dispense_fixture;
+pub use server_side::dispense_fixture;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::dispenser;
 #[allow(unused_imports)]
@@ -112,7 +112,7 @@ pub(in crate::game) use server_side::enderman;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::entity_initialization;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::entity_residency;
+pub use server_side::entity_residency;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::entity_sizes;
 #[allow(unused_imports)]
@@ -158,15 +158,15 @@ pub(in crate::game) use server_side::fangs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::finalize_spawn;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::fishing;
+pub use server_side::fishing;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::foxes;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::frames;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::functions;
+pub use server_side::functions;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::game_mode;
+pub use server_side::game_mode;
 #[allow(unused_imports)]
 pub use server_side::game_tests;
 #[allow(unused_imports)]
@@ -184,15 +184,15 @@ pub(in crate::game) use server_side::integrated;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::item_durability;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::item_entities;
+pub use server_side::item_entities;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::item_hurt;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::item_use;
+pub use server_side::item_use;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::journal_level_write;
+pub use server_side::journal_level_write;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::lan;
+pub use server_side::lan;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::lan_attributes;
 #[allow(unused_imports)]
@@ -210,11 +210,11 @@ pub(in crate::game) use server_side::lan_far;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::lan_menus;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::lan_mobs;
+pub use server_side::lan_mobs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::lan_mount_menu;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::lan_particles;
+pub use server_side::lan_particles;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::lan_pickup;
 #[allow(unused_imports)]
@@ -228,11 +228,11 @@ pub(in crate::game) use server_side::lan_trade_decisions;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::lan_trading;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::lan_vehicles;
+pub use server_side::lan_vehicles;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::lan_waypoints;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::leads;
+pub use server_side::leads;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::level_particles;
 #[allow(unused_imports)]
@@ -250,7 +250,7 @@ pub(in crate::game) use server_side::loot_rolls;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::mace;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::machines;
+pub use server_side::machines;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::melee;
 #[allow(unused_imports)]
@@ -371,7 +371,7 @@ pub(in crate::game) use server_side::native_fishing_hook_refs;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_game_event_context;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::native_goal_ticks;
+pub use server_side::native_goal_ticks;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_hanging;
 #[allow(unused_imports)]
@@ -408,9 +408,9 @@ pub(in crate::game) use server_side::native_lifecycle;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_living_effects;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::native_living_flags;
+pub use server_side::native_living_flags;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::native_living_position;
+pub use server_side::native_living_position;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_living_refs;
 #[allow(unused_imports)]
@@ -474,7 +474,7 @@ pub(in crate::game) use server_side::native_projectile_launch;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_projectile_refs;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::native_projectiles;
+pub use server_side::native_projectiles;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_quick_move;
 #[allow(unused_imports)]
@@ -500,7 +500,7 @@ pub(in crate::game) use server_side::native_structures;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_tick_time;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::native_unspawned_mob;
+pub use server_side::native_unspawned_mob;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::native_world_edit;
 #[allow(unused_imports)]
@@ -510,7 +510,7 @@ pub(in crate::game) use server_side::neoforge_block_maps;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::neoforge_mob_maps;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::nether_portal;
+pub use server_side::nether_portal;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::ominous_item_spawner;
 #[allow(unused_imports)]
@@ -530,7 +530,7 @@ pub(in crate::game) use server_side::pending_births;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::perf_remote;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::persist;
+pub use server_side::persist;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::pick_hotbar;
 #[allow(unused_imports)]
@@ -559,7 +559,7 @@ pub(in crate::game) use server_side::pumpkin;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::raids;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::respawn_anchor;
+pub use server_side::respawn_anchor;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::respawn_position;
 #[allow(unused_imports)]
@@ -584,13 +584,13 @@ pub(in crate::game) use server_side::server_lifecycle;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::server_reload;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::server_travel;
+pub use server_side::server_travel;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::shield;
+pub use server_side::shield;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::shoulders;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::slot_changes;
+pub use server_side::slot_changes;
 #[cfg(any(test, feature = "test-support"))]
 #[path = "game/modding/slot_rules_tests.rs"]
 pub mod slot_rules_tests;
@@ -645,7 +645,7 @@ pub(in crate::game) use server_side::spawner_server;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::state_digest;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::stats;
+pub use server_side::stats;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::structure_blocks;
 #[allow(unused_imports)]
@@ -678,7 +678,7 @@ pub(in crate::game) use server_side::using_item;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::vault;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::vehicle_teleport;
+pub use server_side::vehicle_teleport;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::view_pass;
 #[allow(unused_imports)]
@@ -690,13 +690,13 @@ pub(in crate::game) use server_side::wake_time;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::wandering_trader;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::wind;
+pub use server_side::wind;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::wither;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::world_fluids;
 #[allow(unused_imports)]
-pub(in crate::game) use server_side::world_loading;
+pub use server_side::world_loading;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::world_update_server;
 #[allow(unused_imports)]
@@ -860,10 +860,10 @@ pub(in crate::game) mod side_ops;
 pub(in crate::game) mod transactions;
 
 #[path = "game/network/remote/mod.rs"]
-mod remote;
+pub mod remote;
 
 #[path = "game/network/lan_actions/mod.rs"]
-mod lan_actions;
+pub mod lan_actions;
 
 pub mod native_hooks;
 
@@ -880,18 +880,18 @@ pub mod native_passages;
 mod native_configs;
 
 #[path = "game/modding/mods/mod.rs"]
-pub(crate) mod mods;
+pub mod mods;
 
 #[path = "game/modding/api_values.rs"]
 pub(crate) mod api_values;
 
 #[path = "game/mobs/creatures/mod.rs"]
-mod creatures;
+pub mod creatures;
 
 mod host;
 
 #[path = "game/client_side.rs"]
-pub(in crate::game) mod client_side;
+pub mod client_side;
 
 impl sunrise_sim::crafting::CraftingRemainder for ServerGame<'_> {
     fn crafting_remainder(&self, stack: &sunrise_items::items::ItemStack) -> Option<sunrise_items::items::ItemStack> {

@@ -5,6 +5,7 @@ mod tests {
 
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_gameplay_common::game::native_surface::TryIntoApi;
+    use sunrise_gameplay_common::game_side;
     use std::sync::atomic::Ordering;
     use sunrise_core::{geometry::Vec3, position::BlockPos};
     use sunrise_sim::entities::{ArmorStand, StandMedium};

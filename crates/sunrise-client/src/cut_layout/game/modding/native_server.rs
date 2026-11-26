@@ -494,13 +494,15 @@ use sunrise_gameplay::game::native_server::fake_action_tests::trader;
 
 use sunrise_gameplay::game::native_server::fake_action_tests::zombie;
 
-use super::{Acting, ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
+use sunrise_gameplay_common::game::items::interactions_common::PlayerAction;
+use sunrise_gameplay_common::game::modding::native_server::Acting;
+use super::{ActionOutcome, ActionRefused, FakeEffect};
 
 use mod_api::{BlockHit, Hand, PlayerRef};
 
 use sunrise_items::items::ItemStack;
 
-use super::super::{
+use sunrise_gameplay_common::game::{
         boats_common::Boat, minecarts::CART_KEY_Y, minecarts::CartKind, minecarts::Minecart,
     };
 
@@ -1155,7 +1157,8 @@ use super::super::{
 #[cfg(test)]
 pub(crate) mod player_rule_tests {
     use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
-    use {crate::game::native_server::*, sunrise_gameplay_common::game::native_server::{BlockPos, GlobalPos, Identifier, PlayerRespawnConfig}};
+    use {crate::game::native_server::*, sunrise_gameplay_common::game::native_server::{GlobalPos, Identifier, PlayerRespawnConfig}};
+    use sunrise_core::position::BlockPos;
 
     /// The guests of `with_guests` are rows 0 and 1; both stand in the level in place.
     fn in_this_level(game: &mut sunrise_gameplay::game::ServerGame<'_>) {

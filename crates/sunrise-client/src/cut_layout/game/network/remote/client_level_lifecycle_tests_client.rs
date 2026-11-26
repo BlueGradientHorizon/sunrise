@@ -8,7 +8,10 @@
 #[test]
 #[ignore = "daily"]
 fn a_reconfiguring_client_plays_menu_music_and_never_indexes_past_the_biomes() {
-    use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::world_biomes};
+    use crate::settings::Settings;
+    use crate::game::load_resources;
+    use sunrise_client_lib::audio::Audio;
     use sunrise_client::music::Music;
     use sunrise_core::geometry::Vec3;
     use sunrise_level::chunk::Chunk;

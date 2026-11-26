@@ -203,7 +203,7 @@ use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 
 #[cfg(test)]
 pub(crate) mod loot_position_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::{Settings, load_resources}};
 
     #[test]
     #[ignore = "daily"]
@@ -309,7 +309,7 @@ pub(crate) mod loot_position_tests {
 #[cfg(test)]
 pub(crate) mod loot_kill_target_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
     use std::sync::Arc;
     use sunrise_level::{chunk::Chunk, containers::BlockEntity};
     #[test]

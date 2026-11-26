@@ -3,11 +3,11 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::client_side::client_reload::texture_atlases::tests::maps;
+use sunrise_gameplay_common::game::interface::client_reload::texture_atlases::tests::maps;
 
-use sunrise_gameplay_common::game::client_side::client_reload::texture_atlases::tests::player;
+use sunrise_gameplay_common::game::interface::client_reload::texture_atlases::tests::player;
 
-use sunrise_gameplay_common::game::client_side::client_reload::texture_atlases::tests::presets;
+use sunrise_gameplay_common::game::interface::client_reload::texture_atlases::tests::presets;
 
 use super::*;
 

@@ -23,6 +23,8 @@ use sunrise_core::geometry::Direction as CoreDirection;
 
 use sunrise_core::position::BlockPos;
 
+use sunrise_gameplay_common::world_biomes;
+
 /// One transfer's whole life: the chest moves to the carrier, its
     /// cell becomes air, the operation commits, and the block has
     /// exactly one owner — the carrier file, decoded back.

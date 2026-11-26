@@ -9,7 +9,7 @@ use super::super::native_living_flags::tests::{guest, guest_server, packets, syn
 
 use super::super::native_living_position::tests::floor_and_zombies;
 
-use super::Stuck;
+use sunrise_sim::mobs::stuck::Stuck;
 
 use mod_api::client::first_person::Hand;
 
@@ -142,7 +142,7 @@ use sunrise_sim::mobs::Mob;
     #[test]
     #[ignore = "daily"]
     fn a_waypoint_write_on_a_mob_is_kept_with_the_waypoint() {
-        use super::super::commands::Target;
+        use sunrise_gameplay_common::game::commands_common::Target;
         with_game(|game| {
             floor_and_zombies(game);
             let zombie = game.living(game.entity(12).unwrap()).unwrap();

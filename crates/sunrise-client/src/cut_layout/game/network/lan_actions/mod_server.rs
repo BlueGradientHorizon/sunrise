@@ -857,7 +857,7 @@ pub(crate) mod tests {
 
 #[cfg(test)]
 pub(crate) mod respawn_world_point_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::Settings, crate::game::load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
@@ -1007,7 +1007,7 @@ pub(crate) mod guest_close_listener_tests {
     use sunrise_gameplay_common::game::lan_actions::guest_close_listener_tests::open;
     use sunrise_gameplay_common::game::lan_actions::guest_close_listener_tests::reset_listener;
     use sunrise_gameplay_common::game::lan_actions::guest_close_listener_tests::selected;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::Settings, crate::game::load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;

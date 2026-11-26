@@ -1337,7 +1337,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             // Sunrise-branded peer that gave no revision answer (rev 0) is refused before closing
             // its active window or sending packets, while a negotiated peer opens it and a vanilla
             // peer keeps stock menus.
-            use super::super::lan_actions::MenuOpen;
+            use sunrise_gameplay_common::game::lan_actions::MenuOpen;
             use sunrise_level::containers::{BlockEntity, ModContainer};
             game.world.chunks.insert(
                 (0, 0),

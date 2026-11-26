@@ -1,7 +1,7 @@
 //! After `entity_mount` lets a player board a cushion, the game finds the cushion again by id: one
 //! a listener removed does not seat the player, and the click is spent.
 use sunrise_gameplay_common::game::InteractTarget;
-use sunrise_gameplay::game::hook_meddler_tests::with_meddler;
+use crate::game::server_side::hook_meddler_tests::with_meddler;
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::entities::Cushion;
 

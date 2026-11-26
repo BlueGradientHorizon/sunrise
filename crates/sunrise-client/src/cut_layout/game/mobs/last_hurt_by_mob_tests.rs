@@ -5,6 +5,8 @@
 //! same on vanilla 26.3).
 use {crate::game::*, sunrise_gameplay_common::game::{Instant, Mob, Options, PathBuf, Progress, Resources, entity, execution_role, hit}};
 use std::sync::Arc;
+use crate::settings::Settings;
+use crate::game::load_resources;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 

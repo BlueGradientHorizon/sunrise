@@ -31,7 +31,7 @@ fn write(path: &Path, bytes: impl AsRef<[u8]>) {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(path, bytes).unwrap();
 }
-fn request(root: &Path) -> sunrise_gameplay::game::world_loading::WorldRequest {
+pub fn request(root: &Path) -> sunrise_gameplay::game::world_loading::WorldRequest {
     let mut request = super::world_loading::WorldRequest::new(
         "generic registries",
         Some("generic registries"),

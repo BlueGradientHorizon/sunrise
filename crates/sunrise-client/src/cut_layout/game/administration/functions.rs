@@ -488,7 +488,7 @@ use super::*;
 #[test]
     #[ignore = "daily"]
     fn function_pack_rejects_invalid_ordinary_lines_before_execution() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, crate::settings::Settings, crate::game::load_resources};
         use std::time::Instant;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -668,7 +668,7 @@ use super::*;
     #[test]
     #[ignore = "daily"]
     fn macro_lines_need_a_variable_and_parse_after_substitution() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, crate::settings::Settings, crate::game::load_resources};
         use std::time::Instant;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -772,7 +772,7 @@ use super::*;
 #[test]
     #[ignore = "daily"]
     fn unless_function_keeps_a_fallthrough_after_running_it_once() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, crate::settings::Settings, crate::game::load_resources};
         use std::time::Instant;
         use sunrise_level::datapack::FunctionLine;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -863,7 +863,7 @@ use super::*;
 #[cfg(test)]
 mod entity_score_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, crate::game::commands::Target, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
     use sunrise_core::nbt::Tag;
 
     #[test]
@@ -967,7 +967,7 @@ mod entity_score_tests {
     #[test]
     #[ignore = "daily"]
     fn folder_metadata_rejection_reaches_actual_function_commands() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, crate::settings::Settings, crate::game::load_resources};
         use std::time::Instant;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -1101,7 +1101,7 @@ mod required_tag_tests {
     #[test]
     #[ignore = "daily"]
     fn real_pack_required_tag_failures_execute_no_partial_functions() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, crate::settings::Settings, crate::game::load_resources};
         use std::time::{Instant, SystemTime, UNIX_EPOCH};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();

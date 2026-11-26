@@ -163,7 +163,7 @@ fn damage_command_keeps_explicit_explosion_with_an_attacker() {
 
 #[test]
 fn projectile_and_command_targets_classify_actual_direct_entity_families() {
-    use crate::game::commands::Target;
+    use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::{
         health::{Attack, DirectEntity},
@@ -300,7 +300,7 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
 }
 
 pub(crate) fn run_live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
-    use {sunrise_gameplay_common::game::combat_common::PlayerCredit, crate::game::commands::Target, sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENT_ORDER, sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS};
+    use {sunrise_gameplay_common::game::combat_common::PlayerCredit, sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay_common::game::side_ops::events::{TEST_POSTED_EVENT_ORDER, TEST_POSTED_EVENTS}};
     use mod_api::{ExplosionInteraction, ExplosionSettings};
     use sunrise_core::{geometry::Vec3, position::BlockPos};
     use sunrise_sim::{mobs::creaking, projectiles::ProjectileKind};
@@ -662,7 +662,7 @@ pub(crate) fn run_live_damage_and_blast_creaking_reactions_and_timed_player_cred
 #[test]
 #[ignore = "daily"]
 fn live_damage_and_blast_ghast_reflected_fireball() {
-    use crate::game::commands::Target;
+    use sunrise_gameplay_common::game::commands_common::Target;
     use mod_api::{ExplosionInteraction, ExplosionSettings};
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::projectiles::ProjectileKind;

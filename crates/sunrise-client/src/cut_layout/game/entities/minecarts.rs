@@ -318,7 +318,7 @@ pub(crate) mod cart_push_tests {
     #[test]
     #[ignore = "daily"]
     fn a_moving_carts_team_rules_which_carts_it_pushes() {
-        use crate::game::commands::Target;
+        use sunrise_gameplay_common::game::commands_common::Target;
         use sunrise_game_data::scoreboard::CollisionRule;
 
         /// Puts a cart on a team of its own, as `/team join` would.
@@ -401,7 +401,7 @@ pub(crate) mod cart_push_tests {
     #[test]
     #[ignore = "daily"]
     fn a_moving_carts_team_keeps_it_from_boarding_a_cow() {
-        use crate::game::commands::Target;
+        use sunrise_gameplay_common::game::commands_common::Target;
         use sunrise_game_data::scoreboard::CollisionRule;
         use sunrise_sim::mobs::Mob;
 
@@ -528,7 +528,7 @@ pub(crate) mod container_drop_tests {
 #[cfg(test)]
 pub(crate) mod rejected_passenger_tests {
     use {crate::game::minecarts::*, sunrise_gameplay_common::game::minecarts::{Arc, CartKind, HEIGHT, InteractTarget, Minecart, Vec3}};
-    use {crate::game::commands::Target, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+    use {sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use sunrise_core::nbt::Tag;
 
     fn pig(uuid: i32, children: Vec<Tag>) -> Tag {
@@ -647,7 +647,7 @@ pub(crate) mod rejected_passenger_tests {
 
 #[cfg(test)]
 pub(crate) mod hook_mutation_regressions {
-    use {crate::game::minecarts::*, sunrise_gameplay_common::game::minecarts::{Arc, CartKind, Minecart, Vec3}};
+    use {crate::game::minecarts::*, sunrise_gameplay_common::game::minecarts::{CartKind, Minecart, Vec3}};
     use std::sync::{Arc, Mutex};
     use sunrise_sim::mobs::Mob;
 

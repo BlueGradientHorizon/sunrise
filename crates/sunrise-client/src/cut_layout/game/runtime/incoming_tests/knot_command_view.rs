@@ -73,7 +73,7 @@ fn game<'a>(
 
 fn pig(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> usize {
     match game.target_with_uuid(sunrise_sim::save::uuid_from_text(PIG).unwrap()) {
-        Some(super::commands::Target::Mob(id)) => {
+        Some(sunrise_gameplay_common::game::commands_common::Target::Mob(id)) => {
             game.mobs.iter().position(|m| m.id == id).unwrap()
         }
         other => panic!("{other:?}"),
@@ -132,7 +132,7 @@ fn commands_see_the_knot_a_restored_fence_leash_ties() {
 /// rather than failing for every target, and find no entity when only knots matched.
 #[test]
 fn moving_commands_leave_natural_knots_out() {
-    use super::commands::{Target, without_knots};
+    use sunrise_gameplay_common::game::commands_common::{Target, without_knots};
     assert_eq!(
         without_knots(vec![Target::Knot(3), Target::Player]).unwrap(),
         vec![Target::Player]

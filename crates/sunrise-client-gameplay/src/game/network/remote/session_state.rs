@@ -40,7 +40,7 @@ impl ChunkGenerator for NoTerrain {
 }
 
 /// A server entity the client tracks (position as last sent).
-pub(in crate::game) struct Tracked {
+pub struct Tracked {
     pub(in crate::game) kind: String,
     pub(in crate::game) position: [f64; 3],
     pub(in crate::game) previous: [f64; 3],

@@ -8,7 +8,6 @@ use sunrise_gameplay_common::game::api_values::test_snapshot;
 
 use super::*;
 
-use crate::game::api_values::test_snapshot;
 
 use crate::game::native_entity_refs::tests::with_game;
 

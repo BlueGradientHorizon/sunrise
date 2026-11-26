@@ -339,7 +339,7 @@ pub(in crate::game) mod tests {
         ) {
             return;
         }
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::Settings, crate::game::load_resources};
         use sunrise_mod_package::content::{Block, Content};
         use sunrise_sim::mod_content::{ContentMod, build};
 
@@ -459,7 +459,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn generated_fire_matches_dispatch() {
-        use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {crate::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::Settings, crate::game::load_resources};
         use mod_api::{ClientHost, Flow, Hooks, ModEntry};
         use std::sync::{Arc, Mutex};
 
@@ -609,7 +609,7 @@ pub(in crate::game) mod tests {
         sunrise_gameplay_common::game::in_own_process(
             "game::native_hooks::tests::no_stack_is_hovered_without_a_window",
             || {
-                use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+                use {crate::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::Settings, crate::game::load_resources};
 
                 let root =
                     std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

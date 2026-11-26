@@ -1,6 +1,8 @@
 // Test module extracted without changing its logical path.
 use super::*;
 
+use sunrise_gameplay_common::world_biomes;
+
 include!("position_load_tests.rs");
 
 mod transient_entities {
@@ -309,7 +311,7 @@ fn comparator_and_hopper_live_state_survives_chunk_reload() {
 }
 
 pub(in sunrise_gameplay::game::server_side) fn run_comparator_and_hopper_live_state_survives_chunk_reload() {
-    use super::super::{Options, Progress, Settings, load_resources};
+    use sunrise_gameplay_common::game::{Options, Progress, Settings, load_resources};
     use sunrise_items::items::ItemStack;
     use sunrise_level::containers::BlockEntity;
     use sunrise_sim::save;
@@ -819,7 +821,7 @@ fn saved_attachments_read_over_a_constructed_map_but_not_a_live_one() {
 #[test]
 #[ignore = "daily"]
 fn an_older_save_loads_its_entities_attachments_back_onto_them() {
-    use super::super::{Options, Progress, Settings, load_resources};
+    use sunrise_gameplay_common::game::{Options, Progress, Settings, load_resources};
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -963,7 +965,7 @@ fn an_older_save_loads_its_entities_attachments_back_onto_them() {
 #[test]
 #[ignore = "daily"]
 fn a_lingering_cloud_leaves_with_its_chunk() {
-    use super::super::{Options, Progress, Settings, load_resources};
+    use sunrise_gameplay_common::game::{Options, Progress, Settings, load_resources};
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(

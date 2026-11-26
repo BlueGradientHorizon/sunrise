@@ -4,7 +4,7 @@
 pub(crate) mod loot_mine_component_tests {
     use super::*;
     use sunrise_gameplay::game::server_side::commands::terrain_cmds::loot_mine_component_tests::slot;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::nbt::Tag;
     use sunrise_level::chunk::Chunk;

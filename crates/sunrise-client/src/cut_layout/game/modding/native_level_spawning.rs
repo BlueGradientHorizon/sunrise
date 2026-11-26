@@ -4,7 +4,7 @@
 mod tests {
 
     use {sunrise_gameplay_common::game::server_side::commands::peaceful_tests::TRADER, crate::game::server_side::commands::peaceful_tests::with_types};
-    use super::super::execution_role::ExecutionRole;
+    use sunrise_gameplay_common::game::execution_role::ExecutionRole;
     use super::super::native_entity_refs::tests::with_game;
     use mod_api::{
         EntityConstructingEvent, EntityJoinLevelEvent, EntityRef, EntitySpawn, FinalizeSpawnEvent,

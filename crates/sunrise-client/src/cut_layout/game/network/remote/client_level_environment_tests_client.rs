@@ -6,6 +6,7 @@ use crate::game::remote::tests::client_level_environment_tests::spawn;
 use crate::game::remote::tests::client_level_environment_tests::with_height;
 use {sunrise_gameplay_common::game::Game, crate::game::server_side::native_entity_refs::tests::with_uncached_client_game as with_client_game};
 use std::sync::Arc;
+use sunrise_gameplay_common::world_biomes;
 use sunrise_protocol::connection::Pipe;
 
 /// Cloud preparation and atmospheric fog read the synced attributes, not the skybox, while

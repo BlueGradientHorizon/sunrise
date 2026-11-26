@@ -3,7 +3,7 @@
 //! per-entity store) and records the callback trace; the tests pin the
 //! acceptance matrix's ordering, residency and containment rows against the
 //! pass's own contract, with the vanilla orderings cited where they hold.
-use {crate::game::general::*, sunrise_gameplay_common::game::general::{Entity, GeneralEntityRecord, GeneralTypeEnvelope, Tag, Target, Vec3, format, record_from_compound, tests}};
+use {crate::game::general::*, sunrise_gameplay_common::game::general::{Entity, GeneralEntityRecord, GeneralTypeEnvelope, Target, Vec3, format, record_from_compound}};
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{
     AttachmentCodec, AttachmentError, AttachmentType, EntityPart, EntityTickListenedEvent,

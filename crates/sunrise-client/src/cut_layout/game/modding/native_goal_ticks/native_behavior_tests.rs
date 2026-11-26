@@ -3,7 +3,7 @@
 //! duration draw, the timeout, `can_still_use` and its one-tick default,
 //! panic containment, and the typed `NoBrain` refusal — driven through the
 //! same goal-host view the goal tests use.
-use super::super::creatures;
+use sunrise_gameplay_common::game::creatures;
 use super::super::native_entity_refs::tests::with_game;
 use super::tests::zombie;
 use mod_api::{

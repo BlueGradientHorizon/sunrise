@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::super::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use {sunrise_gameplay::game::server_side::lan::LanSettings, crate::game::server_side::native_entity_refs::tests::with_game};
     use super::*;
     use sunrise_client_gameplay::game::client_side::native_menu_refs::tests::guest;

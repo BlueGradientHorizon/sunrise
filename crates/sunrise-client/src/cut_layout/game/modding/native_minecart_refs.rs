@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use super::super::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::WorldEpoch;

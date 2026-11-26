@@ -1,4 +1,4 @@
-use {crate::game::server_side::entity_residency::super::native_entity_refs::tests::with_game, sunrise_gameplay::game::server_side::entity_residency::SlotAccess};
+use {sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::entity_residency::SlotAccess};
 use mod_api::DimensionKey;
 use std::{
     num::NonZeroU32,

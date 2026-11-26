@@ -2,7 +2,8 @@
 
 #[cfg(test)]
 mod tests {
-    use super::super::{fireworks::Rocket, native_entity_refs::tests::with_game};
+    use super::super::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::fireworks::Rocket;
     use super::*;
     use mod_api::WorldEpoch;
     use sunrise_core::random::RandomSource;

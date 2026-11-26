@@ -1,7 +1,8 @@
 //! ContainerOpenersCounter timing, including lost openers.
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::super::{lan_actions::MenuOpen, native_entity_refs::tests::run_fresh_cases};
+    use super::super::native_entity_refs::tests::run_fresh_cases;
+    use sunrise_gameplay_common::game::lan_actions::MenuOpen;
     use mod_api::{
         BlockState, BlockUpdateFlags, Flow, Hooks, HostBlockStates, MenuReplace,
         ModContainerViewersEvent, ModEntry, PlayerContainerOpenEvent, ServerHost, Text,

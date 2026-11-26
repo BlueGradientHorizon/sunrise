@@ -1,7 +1,7 @@
 //! After `player_shear_entity` returns without cancelling, the game finds the mob again by id and
 //! checks that it is still there and the shears are unchanged; if not, the click is spent and
 //! nothing is sheared.
-use sunrise_gameplay::game::hook_meddler_tests::with_meddler;
+use crate::game::server_side::hook_meddler_tests::with_meddler;
 use std::sync::{
     Arc,
     atomic::{AtomicU32, Ordering},

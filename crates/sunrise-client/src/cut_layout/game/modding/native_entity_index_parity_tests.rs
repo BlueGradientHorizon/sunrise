@@ -1,11 +1,9 @@
 #![cfg(test)]
 
 use super::native_entity_refs::tests::with_game;
-use super::{
-    Dim,
-    commands::Target,
-    creatures::{SpawnReason, SpawnSite},
-};
+use sunrise_gameplay_common::game::commands_common::Target;
+use sunrise_gameplay_common::game::creatures::{SpawnReason, SpawnSite};
+use sunrise_gameplay_common::game::Dim;
 use std::collections::HashSet;
 use sunrise_sim::join_seq::residency::table::EntityLookup;
 

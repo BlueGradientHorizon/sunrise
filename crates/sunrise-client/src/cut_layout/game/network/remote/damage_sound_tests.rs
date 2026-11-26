@@ -3,7 +3,7 @@
 /// `hurt` default for an unknown type (#4149).
 #[test]
 fn the_hurt_sound_follows_the_damage_events_type() {
-    use sunrise_gameplay_common::game::remote::hurt_sound_for;
+    use sunrise_gameplay_common::game::remote::selector_metadata::hurt_sound_for;
     use sunrise_protocol::registry::Dynamic;
     use sunrise_world::damage_source::Catalog;
     let types = [

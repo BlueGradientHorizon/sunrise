@@ -60,7 +60,7 @@ pub(in crate::game) mod cauldron_prediction_client;
 pub(in crate::game) mod chat;
 #[cfg(feature = "client")]
 #[path = "interface/client_ambient.rs"]
-pub(in crate::game) mod client_ambient;
+pub mod client_ambient;
 #[cfg(feature = "client")]
 #[path = "items/client_attack_targets.rs"]
 pub mod client_attack_targets;
@@ -146,7 +146,7 @@ pub(in crate::game) mod dynamic_lights;
 #[path = "world/end_client.rs"]
 pub(in crate::game) mod end_client;
 #[path = "entities/entity_client.rs"]
-pub(in crate::game) mod entity_client;
+pub mod entity_client;
 #[path = "interface/entity_culling/mod.rs"]
 pub(in crate::game) mod entity_culling;
 #[cfg(feature = "client")]
@@ -169,7 +169,7 @@ pub(in crate::game) mod events;
 pub(in crate::game) mod extras;
 #[cfg(feature = "client")]
 #[path = "mobs/fangs_client.rs"]
-pub(in crate::game) mod fangs_client;
+pub mod fangs_client;
 #[cfg(feature = "client")]
 #[path = "world/far_terrain_edits.rs"]
 pub(in crate::game) mod far_terrain_edits;
@@ -178,7 +178,7 @@ pub(in crate::game) mod far_terrain_edits;
 pub mod fireworks_client;
 #[cfg(feature = "client")]
 #[path = "items/fishing_client.rs"]
-pub(in crate::game) mod fishing_client;
+pub mod fishing_client;
 #[cfg(feature = "client")]
 #[path = "interface/focused_text_field.rs"]
 pub(in crate::game) mod focused_text_field;
@@ -335,7 +335,7 @@ pub(in crate::game) mod mount_menu;
 #[path = "interface/music.rs"]
 pub(in crate::game) mod music;
 #[path = "interface/names.rs"]
-pub(in crate::game) mod names;
+pub mod names;
 #[cfg(feature = "client")]
 #[path = "interface/narrator.rs"]
 pub mod narrator;
@@ -378,6 +378,9 @@ pub mod native_client_services;
 #[cfg(feature = "client")]
 #[path = "modding/native_client_session.rs"]
 pub mod native_client_session;
+#[cfg(feature = "client")]
+#[path = "modding/native_config_files.rs"]
+pub(in crate::game) mod native_config_files;
 #[path = "modding/native_connection_groups.rs"]
 pub(in crate::game) mod native_connection_groups;
 #[cfg(feature = "client")]
@@ -403,7 +406,7 @@ pub mod native_entity_refs_client;
 pub mod native_entity_refs;
 #[cfg(feature = "client")]
 #[path = "modding/native_entity_renderers.rs"]
-pub(in crate::game) mod native_entity_renderers;
+pub mod native_entity_renderers;
 #[cfg(feature = "client")]
 #[path = "modding/native_fluid_render.rs"]
 pub(in crate::game) mod native_fluid_render;
@@ -501,7 +504,7 @@ pub(in crate::game) mod native_terrain_model;
 pub(in crate::game) mod native_viewed_levels;
 #[cfg(feature = "client")]
 #[path = "modding/native_visuals.rs"]
-pub(in crate::game) mod native_visuals;
+pub mod native_visuals;
 #[cfg(feature = "client")]
 #[path = "mobs/nautili.rs"]
 pub(in crate::game) mod nautili;
@@ -616,7 +619,7 @@ pub(in crate::game) mod remote_stations;
 #[path = "network/remote_tags.rs"]
 pub(in crate::game) mod remote_tags;
 #[path = "network/remote_vehicles.rs"]
-pub(in crate::game) mod remote_vehicles;
+pub mod remote_vehicles;
 #[cfg(feature = "client")]
 #[path = "interface/render_control.rs"]
 pub(in crate::game) mod render_control;
@@ -670,7 +673,7 @@ pub(in crate::game) mod server_packs;
 pub(in crate::game) mod shader_pack_switch_tests;
 #[cfg(feature = "client")]
 #[path = "interface/shader_packs.rs"]
-pub(in crate::game) mod shader_packs;
+pub mod shader_packs;
 #[cfg(feature = "client")]
 #[path = "blocks/shelf.rs"]
 pub(in crate::game) mod shelf;
@@ -683,7 +686,7 @@ pub(in crate::game) mod sign_edit;
 pub(in crate::game) mod sign_outline_tests;
 #[cfg(feature = "client")]
 #[path = "mobs/sniffers.rs"]
-pub(in crate::game) mod sniffers;
+pub mod sniffers;
 #[cfg(feature = "client")]
 #[path = "network/social.rs"]
 pub(in crate::game) mod social;
@@ -1089,7 +1092,7 @@ pub(in crate::game) mod test_instances_client;
 pub(in crate::game) mod toast_manager_client;
 #[cfg(feature = "client")]
 #[path = "items/trading_client.rs"]
-pub(in crate::game) mod trading_client;
+pub mod trading_client;
 #[cfg(feature = "client")]
 #[path = "items/use_hand_client.rs"]
 pub(in crate::game) mod use_hand_client;
@@ -2350,7 +2353,7 @@ pub(in crate::game) mod payload_transport_client;
 
 #[cfg(feature = "client")]
 #[path = "interface/advancements/toast_client.rs"]
-pub(in crate::game) mod advancement_toast;
+pub mod advancement_toast;
 
 #[cfg(feature = "client")]
 #[path = "runtime/blockctl_client.rs"]

@@ -39,7 +39,7 @@ use super::*;
     #[test]
     #[ignore = "daily"]
     fn only_the_mob_touching_a_cart_pushes_it() {
-        use super::super::minecarts::{CartKind, Minecart};
+        use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
         let pushed = [0, 12].map(|crowd: u32| {
             let mut resources = None;
             let mut game = super::super::game_tests::tests::server_game(&mut resources);

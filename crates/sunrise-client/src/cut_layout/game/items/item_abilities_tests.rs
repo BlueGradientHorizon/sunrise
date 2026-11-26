@@ -1,5 +1,5 @@
 #![cfg(test)]
-use super::item_abilities::ability;
+use sunrise_gameplay_common::game::item_abilities::ability;
 use mod_api::{CanPerformActionEvent, Hooks, Host, ItemPart, Registrar, RegistrationContext};
 use std::sync::Arc;
 use sunrise_core::geometry::{Direction, Vec3};

@@ -1,5 +1,5 @@
-use {crate::game::creatures::*, sunrise_gameplay_common::game::creatures::{Arc, BlockPos, Mob, Result, Vec3, Who}};
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+use {crate::game::creatures::*, sunrise_gameplay_common::game::creatures::{BlockPos, Mob, Result, Vec3, Who}};
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;

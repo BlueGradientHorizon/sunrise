@@ -1,4 +1,4 @@
-use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{PlayerMotion, Vec3, motion}};
+use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{Vec3, motion}};
 use sunrise_sim::motion::PlayerMotion;
 
 /// ClientLevel ticks entities in the order they joined: a boat added after the

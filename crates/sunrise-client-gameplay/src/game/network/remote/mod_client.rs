@@ -217,7 +217,7 @@ pub(in crate::game) mod skin;
 pub(in crate::game) mod status;
 
 #[path = "sync_client.rs"]
-pub(in crate::game) mod sync;
+pub mod sync;
 
 #[path = "tables_client.rs"]
 pub(in crate::game) mod tables;

@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex, mpsc};
 use sunrise_core::{dimension::Dimension, random::LegacyRandom};
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
+use sunrise_gameplay_common::world_biomes;
 use sunrise_sim::lan::{Out, guest::InboxItem, hub::game_event};
 
 fn put_guest_in_end_exit(game: &mut sunrise_gameplay::game::ServerGame<'_>) {

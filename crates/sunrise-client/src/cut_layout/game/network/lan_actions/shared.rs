@@ -3,7 +3,7 @@
 #[cfg(test)]
 pub(in crate::game) mod swing_echo_tests {
     use sunrise_gameplay_common::game::lan_actions::ItemStack;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;
@@ -182,7 +182,7 @@ pub(in crate::game) mod swing_echo_tests {
 #[cfg(test)]
 pub(in crate::game) mod item_on_block_cooldown_tests {
     use sunrise_gameplay_common::game::lan_actions::ItemStack;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;

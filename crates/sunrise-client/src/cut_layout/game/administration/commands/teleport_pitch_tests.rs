@@ -1,5 +1,7 @@
-use super::Target;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+use crate::game::load_resources;
+use crate::settings::Settings;
+use sunrise_gameplay_common::game::commands_common::Target;
+use sunrise_gameplay_common::game::{Options, Progress};
 
 #[test]
 #[ignore = "daily"]

@@ -10,7 +10,7 @@ mod tests {
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
         root: &Path,
     ) -> sunrise_gameplay::game::ServerGame<'a> {
-        use super::super::super::{Options, Progress, Settings, load_resources};
+        use sunrise_gameplay_common::game::{Options, Progress, Settings, load_resources};
         let settings = Settings::default();
         let loaded = load_resources(
             sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),

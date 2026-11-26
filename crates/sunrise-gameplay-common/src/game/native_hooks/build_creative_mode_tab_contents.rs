@@ -373,7 +373,7 @@ pub(in crate::game) fn api_stacks(stacks: &[ItemStack]) -> Vec<mod_api::ItemStac
         .collect()
 }
 
-pub(in crate::game) fn snapshot(
+pub fn snapshot(
     catalog: &Catalog,
     permissions: CreativeTabPermissions,
     lists: &[Arc<TabContents>],
@@ -396,7 +396,7 @@ pub(in crate::game) fn snapshot(
 }
 
 /// `CreativeModeTab.getDisplayName`: the tab's `itemGroup.*` key with its title as fallback.
-pub(in crate::game) fn display_name(id: &str, title: &str) -> mod_api::Text {
+pub fn display_name(id: &str, title: &str) -> mod_api::Text {
     let key = sunrise_items::creative_catalog::item_group_key(id).map_or_else(
         || sunrise_items::creative_catalog::mod_item_group_key(id),
         str::to_owned,

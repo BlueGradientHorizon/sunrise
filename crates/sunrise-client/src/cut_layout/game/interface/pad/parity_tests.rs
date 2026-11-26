@@ -1,7 +1,7 @@
 //! A controller action does what its keyboard key does, on a real `Game` without a window.
 //! What needs a renderer (inventory slots, screenshots) is covered by tools/pad_parity_e2e.py.
 
-use super::super::{Audio, Options, Progress, Screen, Settings, load_resources};
+use sunrise_gameplay_common::game::{Audio, Options, Progress, Screen, Settings, load_resources};
 use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
 use sunrise_client::actions::Action;
 use sunrise_client::gamepad::{Button, PadState};

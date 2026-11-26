@@ -7,7 +7,8 @@ pub(crate) mod player_tests;
 #[cfg(test)]
 pub(crate) mod tests {
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
-    use {sunrise_gameplay_common::game::BlockEntity, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use crate::game::{Settings, load_resources};
+    use {sunrise_gameplay_common::game::BlockEntity, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
     use mod_api::HostTransaction;
     use mod_api::ServerHost;
     use mod_api::{

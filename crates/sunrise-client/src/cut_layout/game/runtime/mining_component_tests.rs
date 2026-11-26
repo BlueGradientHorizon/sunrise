@@ -1,4 +1,5 @@
-use super::{Options, Progress, Settings, load_resources};
+use crate::game::{Settings, load_resources};
+use sunrise_gameplay_common::game::{Options, Progress};
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
 use sunrise_level::chunk::Chunk;

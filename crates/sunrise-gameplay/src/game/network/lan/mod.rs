@@ -11,7 +11,7 @@ pub(in crate::game) mod residency;
 pub(in crate::game) mod viewed_areas;
 
 use super::shield::OFFHAND_SLOT;
-pub(in crate::game) use sunrise_gameplay_common::game::lan_common::{LanSettings, sync};
+pub use sunrise_gameplay_common::game::lan_common::{LanSettings, sync};
 use sunrise_gameplay_common::game::{
     api_values::TryIntoApi,
     cauldron_prediction::publish_registrations,

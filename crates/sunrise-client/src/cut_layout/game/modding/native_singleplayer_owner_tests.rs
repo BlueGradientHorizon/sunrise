@@ -6,7 +6,7 @@
 //! Each test runs again in a child process of its own: the game fixture loads the resources
 //! in-process and installs process-wide tables (the cauldron contents among them).
 
-use super::execution_role::ExecutionRole;
+use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 use sunrise_gameplay::game::server_side::lan::LanSettings;
 use sunrise_gameplay::game::server_side::native_singleplayer_owner::SingleplayerProfile;
 use mod_api::{Hooks, ModEntry, PlayerRef, ServerHost, prelude::*};

@@ -58,7 +58,7 @@ type Panic = Box<dyn Any + Send>;
 /// The slots of one run of a loop, as a mod build nests them: `(A, (B, ()))` of [`Attributed`]
 /// slots. Each mod's slot is made and dropped inside that mod's guard, so a panic in its `Default`
 /// or its `Drop` names the mod and the loop (`hook loop <name>`) like a panic in its `before`.
-pub(crate) trait LoopSlots: Sized + 'static {
+pub trait LoopSlots: Sized + 'static {
     /// Every mod's slot, made with its `Default`. A panic in one mod's drops the slots made before
     /// it (with [`Self::release`]) and goes on unwinding.
     fn make() -> Self;

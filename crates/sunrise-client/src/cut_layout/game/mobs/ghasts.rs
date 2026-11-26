@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 pub(crate) fn with_headless_game(run: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, crate::game::load_resources};
 
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let save = tempfile::tempdir().unwrap();

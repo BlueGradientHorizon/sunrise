@@ -46,7 +46,7 @@ pub(crate) mod tests {
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
         root: &std::path::Path,
     ) -> (sunrise_gameplay::game::ServerGame<'a>, [f64; 3]) {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
         let settings = Settings::default();
         let loaded = load_resources(
             sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),

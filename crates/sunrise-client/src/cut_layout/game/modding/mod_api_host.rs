@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod attachment_membership_tests {
     use {crate::game::mod_api_host::*, sunrise_gameplay_common::game::mod_api_host::{AttachmentAccess}};
-    use {crate::game::commands::Target, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+    use {sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::{join_seq::Joined, mobs::Mob};
 

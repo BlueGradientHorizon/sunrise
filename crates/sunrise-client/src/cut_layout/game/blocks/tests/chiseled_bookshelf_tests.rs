@@ -2,8 +2,8 @@
 //! slot a container write names, and `ChiseledBookShelfBlock.removeBook` on a
 //! slot the state calls occupied but that holds nothing.
 use sunrise_gameplay::game::machines::shelf_signal;
-use sunrise_client_gameplay::game::sculk::TEST_POSTED_EVENTS;
-use {sunrise_gameplay_common::game::Hit, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+use sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS;
+use {sunrise_gameplay_common::game::Hit, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::Settings, crate::game::load_resources};
 use std::sync::Arc;
 use sunrise_core::geometry::Direction;
 use sunrise_core::position::BlockPos;

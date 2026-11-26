@@ -1,4 +1,4 @@
-use super::super::super::Screen;
+use sunrise_gameplay_common::game::Screen;
 use super::*;
 use crate::game::remote::interaction_event_tests::mapping_press_tests::Heard;
 use crate::game::remote::interaction_event_tests::mapping_press_tests::sent;

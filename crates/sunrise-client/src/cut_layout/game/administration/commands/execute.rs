@@ -6,7 +6,7 @@ pub(crate) mod execute_facing_tests;
 
 #[cfg(test)]
 pub(crate) mod terminal_fork_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::{Settings, load_resources}};
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;

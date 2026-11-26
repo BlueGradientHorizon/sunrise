@@ -10,7 +10,8 @@ use sunrise_core::geometry::Vec3;
 #[test]
     #[ignore = "daily"]
     fn for_player_keeps_the_outer_body_in_its_original_dimension() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::load_resources};
+        use crate::settings::Settings;
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
         use sunrise_protocol::packets::configuration::ClientInformation;
         use sunrise_sim::{

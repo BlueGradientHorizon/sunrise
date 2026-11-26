@@ -6,7 +6,7 @@ mod language_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use super::{
+use sunrise_gameplay::game::server_side::dedicated::{
         FORWARDING_REMOVED, capture_log, log, log_from, overload_warning, panic_message,
         refuse_forwarding_secret,
     };
@@ -212,7 +212,9 @@ use std::{
 
 #[cfg(test)]
 mod console_source_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
+    use crate::game::load_resources;
+    use sunrise_client_render::settings::Settings;
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;

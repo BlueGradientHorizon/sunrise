@@ -3,6 +3,7 @@
 //! picking themselves, so a `client_pick` listener runs only in those calls. `attack ID`
 //! reports what the pick its click was taken with held.
 use super::*;
+use serde_json::json;
 use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
 use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use mod_api::{ClientHost, ClientPickEvent, CrosshairTarget, Hooks};

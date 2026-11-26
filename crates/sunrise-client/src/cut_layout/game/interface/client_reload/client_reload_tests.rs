@@ -375,7 +375,7 @@ fn a_converted_file_outside_the_pack_is_absent_not_empty() {
 #[test]
 #[ignore = "daily"]
 fn initial_load_stages_and_applies_client_reload_listeners() {
-    use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_client_gameplay::game::load_resources_for_mods, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_client_gameplay::game::start_client_game};
+    use {sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_client_gameplay::game::load_resources_for_mods, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_client_gameplay::game::start_client_game};
     use mod_api::{
         __private::game::RegistrationContextNew, AddClientReloadListenersEvent, ClientHost,
         ClientItemExtensionsRegistrar, ClientReloadListenerContext, Hooks, ModEntry,
@@ -1344,7 +1344,7 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
         .name("client-startup-fixture".into())
         .stack_size(32 * 1024 * 1024)
         .spawn(|| {
-            use {sunrise_gameplay_common::game::Audio, sunrise_client_gameplay::game::UiResources, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_client_gameplay::game::start_client_game};
+            use {sunrise_client_lib::audio::Audio, sunrise_client_gameplay::game::UiResources, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_client_gameplay::game::start_client_game};
             use mod_api::{
                 ClientHost, ClientSetupContext, ClientSetupEvent, ClientTickPreEvent,
                 ConfigContext, ConfigLoadingEvent, Hooks, ModEntry, RegisterConfigsEvent,

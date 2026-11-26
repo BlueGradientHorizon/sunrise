@@ -396,7 +396,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_replaced_can_harm_player_answer_reaches_every_site() {
-        use super::super::rule_replacements::{HARM, replaced};
+        use sunrise_gameplay_common::game::rule_replacements::{HARM, replaced};
         with_two_guests(|game| {
             game.ui.rules.set("pvp", Value::Bool(false));
             let sites = replaced(&HARM, |_, _| true, || every_site(game));

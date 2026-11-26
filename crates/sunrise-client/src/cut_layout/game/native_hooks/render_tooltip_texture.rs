@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 pub(crate) mod render_tooltip_texture_tests {
-    use super::ItemStack;
+    use sunrise_items::items::ItemStack;
     use mod_api::{ClientHost, Hooks, Identifier, ModEntry, RenderTooltipTextureEvent};
     use mod_platform::testing::with_mods;
     use sunrise_client::hud::{HudBatch, Rect};

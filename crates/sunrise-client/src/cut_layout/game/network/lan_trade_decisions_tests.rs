@@ -251,7 +251,7 @@ pub(crate) fn open(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     payment: u32,
 ) -> ContainerClick {
-    use {sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer, sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn, crate::game::server_side::trading_common::MerchantState};
+    use {sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer, sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn, sunrise_gameplay_common::game::trading_common::MerchantState};
     spawn(game, 40, "minecraft:villager");
     game.mobs[0].extra.profession = sunrise_sim::mobs::villager::ProfessionState::from_index(5);
     let mut offer = offer("minecraft:wheat", "minecraft:emerald");
@@ -969,7 +969,7 @@ fn a_refused_trade_restores_a_replaced_transient_in_place() {
 #[test]
 #[ignore = "daily"]
 fn exploration_trade_maps_share_nested_reservations() {
-    use super::maps::MapData;
+    use sunrise_gameplay_common::game::maps::MapData;
     with_guests(|game| {
         let start = game.peek_map_id();
         let make = || MapData::fresh(0.0, 0.0, 0, "minecraft:overworld");

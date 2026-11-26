@@ -1,7 +1,7 @@
 use {crate::game::creatures::*, sunrise_gameplay_common::game::creatures::{Arc, Projectile, ProjectileKind, Vec3}};
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_projectiles::impact_probe::Action, sunrise_gameplay::game::native_projectiles::impact_probe::with_probe};
+use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::native_projectiles::impact_probe::{Action, with_probe}};
 use mod_api::{Flow, HearsProjectileImpactsEvent, Hooks, ProjectileImpactEvent, ServerHost};
-use std::sync::{Arc, Mutex, atomic::Ordering};
+use std::sync::{Mutex, atomic::Ordering};
 use sunrise_level::chunk::Chunk;
 use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,

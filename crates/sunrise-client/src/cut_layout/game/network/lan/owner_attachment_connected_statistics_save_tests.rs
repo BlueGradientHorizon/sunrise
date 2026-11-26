@@ -121,7 +121,7 @@ mod connected_statistics_save_tests {
     use std::fs;
 
     fn connected_stats_save_control(stale: bool) {
-        use {crate::game::server_side::execution_role::ExecutionRole, sunrise_gameplay::game::server_side::stats};
+        use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::server_side::stats};
         use std::sync::{Arc, Mutex};
         let mut resources = None;
         let mut game = sunrise_gameplay::game::game_tests::tests::server_game(&mut resources);

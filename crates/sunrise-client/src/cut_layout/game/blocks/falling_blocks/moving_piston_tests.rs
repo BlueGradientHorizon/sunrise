@@ -1,4 +1,4 @@
-use crate::game::commands::Target;
+use sunrise_gameplay_common::game::commands_common::Target;
 use {sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use serde_json::Value;
 use sunrise_core::geometry::Vec3;

@@ -1,5 +1,5 @@
 //! Entity.kill, BlockAttachedEntity.kill, ArmorStand.kill and ItemEntity.dampensVibrations.
-use super::{Options, Progress, Settings, load_resources};
+use sunrise_gameplay_common::game::{Options, Progress, Settings, load_resources};
 use sunrise_gameplay_common::game::execution_role;
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};

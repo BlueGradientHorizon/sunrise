@@ -1,6 +1,7 @@
 use sunrise_gameplay_common::game::in_own_process;
 use crate::game::native_server::command_failure_tests::with_failure_sources;
 use sunrise_game_data::text;
+use sunrise_gameplay_common::world_biomes;
 
 #[test]
 #[ignore = "daily"]

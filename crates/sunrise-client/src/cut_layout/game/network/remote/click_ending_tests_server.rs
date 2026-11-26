@@ -79,7 +79,7 @@ fn an_end_crystal_click_on_a_block_ends_there() {
 #[ignore = "daily"]
 fn flint_and_steel_use_on_ends_the_click() {
     use sunrise_gameplay_common::game::Hit;
-    use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, crate::game::load_resources};
     use sunrise_core::geometry::Vec3;
     use {sunrise_sim::first_person_sim::Hand, sunrise_sim::motion::PlayerMotion};
 

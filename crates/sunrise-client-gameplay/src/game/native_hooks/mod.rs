@@ -159,7 +159,7 @@ pub(in crate::game) mod entity_outline;
 pub mod customize_chat_overlay;
 
 #[path = "cut_merged_customize_boss_event_progress.rs"]
-pub(in crate::game) mod customize_boss_event_progress;
+pub mod customize_boss_event_progress;
 
 pub(in crate::game) mod contained_fluid;
 

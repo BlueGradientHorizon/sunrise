@@ -31,4 +31,4 @@ mod test_game_dir;
 
 
 
-pub(crate) use sunrise_level::{crash, logging, spans};
+pub use sunrise_level::{crash, logging, spans};

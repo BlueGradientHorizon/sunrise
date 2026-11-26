@@ -240,7 +240,7 @@ fn a_client_refresh_keeps_and_a_world_close_retires_the_servers_answers() {
         // A client sharing this Resources snapshot neither asks nor clears the server's answers.
         #[cfg(feature = "client")]
         {
-            use {sunrise_gameplay_common::game::Audio, sunrise_client_gameplay::game::ClientGame, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay_common::game::load_resources, sunrise_gameplay::game::native_entity_refs::tests::fixture_root};
+            use {crate::game::{Audio, Settings, load_resources}, sunrise_client_gameplay::game::ClientGame, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::fixture_root};
             let root = fixture_root();
             let saves = tempfile::tempdir().unwrap();
             let settings = Settings::default();

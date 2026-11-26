@@ -557,11 +557,11 @@ pub(crate) mod hopper_cart_rider_tests;
 
 #[cfg(test)]
 pub(crate) mod hopper_cart_transfer_tests {
-    use super::super::{
+    use sunrise_gameplay_common::game::{
         boats_common::Boat,
         minecarts::{CartKind, Minecart},
-        native_entity_refs::tests::with_game,
     };
+    use super::super::native_entity_refs::tests::with_game;
 
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Tag;
@@ -641,7 +641,7 @@ pub(crate) mod hopper_cart_transfer_tests {
                     }
                     let key = (
                         i32::MAX - 15,
-                        super::super::minecarts::CART_KEY_Y,
+                        sunrise_gameplay_common::game::minecarts::CART_KEY_Y,
                         id as i32,
                     );
                     if open {

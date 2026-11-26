@@ -1,4 +1,5 @@
 use super::*;
+use sunrise_gameplay_common::game_side;
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use crate::game::remote::movement_input_tests::Native;
 use crate::game::remote::movement_input_tests::reset_player;

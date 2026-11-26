@@ -2,7 +2,9 @@
 //! and a trident: `Entity.load` with `AbstractArrow.readAdditionalSaveData` over the
 //! resident entity.
 use sunrise_gameplay::game::server_side::commands::data::Target;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
+use crate::game::resource_load::load_resources;
+use crate::settings::Settings;
 use sunrise_core::nbt::Tag;
 use sunrise_sim::arrows::Pickup;
 use sunrise_sim::projectiles::ProjectileKind;

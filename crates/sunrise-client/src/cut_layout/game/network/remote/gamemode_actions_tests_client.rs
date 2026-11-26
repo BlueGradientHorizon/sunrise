@@ -1,5 +1,5 @@
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
-use sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::logged_in;
+use crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in;
 use sunrise_client_gameplay::game::remote::gamemode_actions_tests::add_entity;
 use sunrise_client_gameplay::game::remote::gamemode_actions_tests::outgoing;
 use sunrise_client_gameplay::game::remote::gamemode_actions_tests::ranged_stick;

@@ -417,7 +417,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn each_refusal_is_named_and_changes_nothing() {
-        use super::super::execution_role::ExecutionRole;
+        use sunrise_gameplay_common::game::execution_role::ExecutionRole;
         use sunrise_gameplay_common::game::dragon_common::Dragon;
         with_game(|game| {
             level(game);

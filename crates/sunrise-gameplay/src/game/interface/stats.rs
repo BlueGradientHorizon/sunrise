@@ -7,7 +7,7 @@ use super::Dim;
 use std::path::PathBuf;
 use sunrise_core::{geometry::Vec3, identifier::Identifier, random::RandomSource};
 
-pub(in crate::game) use sunrise_gameplay_common::stats::{Stats, locate_player_json, player_json};
+pub use sunrise_gameplay_common::stats::{Stats, locate_player_json, player_json};
 use sunrise_gameplay_common::stats::{namespaced, stat_registry};
 
 /// One player `PhantomSpawner.tick` visits. `identity` is the server player's uuid and

@@ -1,6 +1,6 @@
 //! A mod's write to a player in another level reaches their inventory at once. A give drops
 //! overflow in the player's level; a raw throw or block break still needs that level in place.
-use super::Dim;
+use sunrise_gameplay_common::game::Dim;
 use super::native_entity_refs::tests::run_fresh_cases;
 use super::native_guest_turn_tests::with_guests;
 use mod_api::{HostTransaction, ItemPlace, ServerHost};

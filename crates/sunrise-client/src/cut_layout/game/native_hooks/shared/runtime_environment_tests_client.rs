@@ -1,7 +1,7 @@
 #[test]
 #[ignore = "daily"]
 fn client_host_reads_playing_and_key_mappings() {
-    use super::super::Screen;
+    use sunrise_gameplay_common::game::Screen;
     use super::super::native_entity_refs::tests::with_client_game;
     use mod_api::prelude::ClientInputClientHost;
     use mod_api::{MappingError, Text};

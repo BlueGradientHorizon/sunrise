@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 pub(crate) mod stand_equip_event_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {crate::game::{Settings, load_resources}, sunrise_gameplay_common::game::{Options, Progress}};
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
     use sunrise_level::{chunk::Chunk, containers::BlockEntity, sculk::Info};
@@ -105,8 +105,8 @@ pub(crate) mod stand_equip_event_tests {
 
 #[cfg(test)]
 pub(crate) mod mob_equipment_command_tests {
-    use {crate::game::commands::Target, sunrise_gameplay::game::commands::data::DataRef};
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay::game::commands::data::DataRef};
+    use {crate::game::{Settings, load_resources}, sunrise_gameplay_common::game::{Options, Progress}};
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;
@@ -416,8 +416,8 @@ pub(crate) mod mob_equipment_command_tests {
 
 #[cfg(test)]
 pub(crate) mod mob_equipment_stack_tests {
-    use {crate::game::commands::Target, sunrise_gameplay::game::commands::data::DataRef};
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay::game::commands::data::DataRef};
+    use {crate::game::{Settings, load_resources}, sunrise_gameplay_common::game::{Options, Progress}};
     use std::sync::Arc;
     use sunrise_core::nbt::Tag;
     use sunrise_core::position::ChunkPos;

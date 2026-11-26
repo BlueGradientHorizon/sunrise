@@ -7,6 +7,7 @@ use sunrise_sim::motion::{MotionWorld, PlayerMotion};
 use sunrise_world::chunk::BlockState;
 use sunrise_world::entity_move::MovementRecord;
 use sunrise_world::registry::BlockStateId;
+use sunrise_gameplay_common::game_side;
 
 /// A server's game on the prepared resources, or None when they are absent
 /// (CI has none: the tests then skip quietly).

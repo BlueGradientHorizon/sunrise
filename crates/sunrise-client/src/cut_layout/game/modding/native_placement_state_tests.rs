@@ -1,6 +1,6 @@
 //! The server placement-state query through the public handle on prepared resources.
+use sunrise_gameplay_common::game::Dim;
 use super::{
-    Dim,
     native_entity_refs::tests::{run_fresh_cases, with_game_at},
 };
 use mod_api::{
@@ -123,7 +123,7 @@ fn vanilla_candidates_use_the_resolved_context_without_placing() {
     with_game(
         "vanilla_candidates_use_the_resolved_context_without_placing",
         |game| {
-            use super::api_values::TryIntoEngine;
+            use sunrise_gameplay_common::game::api_values::TryIntoEngine;
             let level = game.level(game.dim.id()).unwrap();
             let mut context = PlacementContext::new(POS, Direction::East, None);
             context.source = PlacementSource::Player {
@@ -306,7 +306,7 @@ fn another_blocks_state_is_returned_only_from_the_level_in_play() {
     with_game(
         "another_blocks_state_is_returned_only_from_the_level_in_play",
         |game| {
-            use super::api_values::TryIntoApi;
+            use sunrise_gameplay_common::game::api_values::TryIntoApi;
             let level = game.level(game.dim.id()).unwrap();
             let registry = game.pack.assets.registry;
             let log = game
@@ -364,7 +364,7 @@ fn another_blocks_state_is_returned_only_from_the_level_in_play() {
                 .state_for_placement(game, door, &context)
                 .unwrap()
                 .unwrap();
-            use super::api_values::TryIntoEngine;
+            use sunrise_gameplay_common::game::api_values::TryIntoEngine;
             let state = registry.state(state.try_into_engine(&()).unwrap()).unwrap();
             assert_eq!(state.properties["powered"], "true");
 
@@ -419,7 +419,7 @@ fn directional_queries_read_the_clicked_block_and_refuse_what_vanilla_throws_on(
     with_game(
         "directional_queries_read_the_clicked_block_and_refuse_what_vanilla_throws_on",
         |game| {
-            use super::api_values::TryIntoEngine;
+            use sunrise_gameplay_common::game::api_values::TryIntoEngine;
             let level = game.level(game.dim.id()).unwrap();
             let registry = game.pack.assets.registry;
             let air = registry.default_state("minecraft:air").unwrap();

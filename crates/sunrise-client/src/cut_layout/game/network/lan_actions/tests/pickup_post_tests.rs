@@ -194,7 +194,7 @@ pub(crate) fn host_case(
 }
 
 #[allow(unused_imports)]
-pub(crate) use sunrise_client_gameplay::game::client_side::lan_actions_client::pickups::pickup_post_tests::host_animations;
+pub(crate) use sunrise_client_gameplay::game::network::lan_actions::pickups_client::pickup_post_tests::host_animations;
 
 pub(crate) fn host_stat(game: &sunrise_gameplay::game::ServerGame<'_>) -> i64 {
     game.stats

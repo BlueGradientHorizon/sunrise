@@ -7,7 +7,7 @@ pub(crate) mod tests {
     use sunrise_gameplay_common::game::dragon_common::Crystal;
     use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
-    use {sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::logged_in, sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::sent};
+    use {crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::sent};
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::packets::play::Serverbound as S;

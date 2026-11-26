@@ -56,7 +56,7 @@ pub enum Outline<'a> {
     Default(&'a sunrise_items::blocks::StateFacts),
 }
 
-pub(in crate::game) fn outline_offset(
+pub fn outline_offset(
     facts: &sunrise_items::blocks::BlockFacts,
     state: BlockStateId,
     x: i32,

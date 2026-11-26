@@ -1,7 +1,7 @@
 //! An experience orb is a score holder: `execute as <orb> store … score @s`
 //! stores into the score named by the orb's UUID, as an armor stand's does
 //! (tools/test_orb_score_store_parity.py measures the same on vanilla 26.3).
-use {crate::game::*, sunrise_gameplay_common::game::{Instant, Options, PathBuf, Progress, Resources, entity, execution_role}};
+use {crate::game::*, sunrise_gameplay_common::game::{Instant, Options, PathBuf, Progress, Resources, Settings, entity, execution_role, load_resources}};
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;

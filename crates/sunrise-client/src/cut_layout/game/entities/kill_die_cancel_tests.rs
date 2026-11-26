@@ -1,6 +1,6 @@
 //! `/kill` runs death before returning. A typed server hook can veto it;
 //! a later allowed kill dies exactly once.
-use {sunrise_gameplay::game::kill_die_vibration_tests::PIG, sunrise_gameplay::game::kill_die_vibration_tests::deaths, sunrise_gameplay::game::kill_die_vibration_tests::run};
+use crate::game::kill_die_vibration_tests::{PIG, deaths, run};
 use mod_api::{Hooks, LivingDeathEvent, ModEntry, ServerHost};
 use mod_platform::testing::with_mods;
 use std::sync::{

@@ -11,6 +11,7 @@ mod tests {
         chunk::Chunk,
         containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields},
     };
+    use sunrise_gameplay_common::world_biomes;
 
     type Log = Arc<Mutex<Vec<(i32, i32)>>>;
     struct Loaded(Log);

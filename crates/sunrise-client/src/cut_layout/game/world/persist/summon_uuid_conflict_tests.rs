@@ -1,6 +1,6 @@
 // Test module extracted without changing its logical path.
 use super::*;
-use crate::game::commands::Target;
+use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_sim::motion::PlayerMotion;
 
 #[test]

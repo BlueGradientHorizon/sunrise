@@ -1,11 +1,9 @@
 //! Switching an owner off holds scheduled work and prevents template writes.
 #[cfg(test)]
 pub(crate) mod tests {
-    use super::super::{
-        Dim, Hit,
-        api_values::{TryIntoApi, TryIntoEngine},
-        native_entity_refs::tests as fixture,
-    };
+    use super::super::native_entity_refs::tests as fixture;
+    use crate::game::api_values::{TryIntoApi, TryIntoEngine};
+    use sunrise_gameplay_common::game::{Dim, Hit};
     use mod_api::{
         BlockPart, BlockToolModificationEvent, CanBeHydratedEvent, DispenseMethodEvent, Dispensed,
         Flow, Hooks, Host, LevelWriteHost, Registrar, RegistrationContext, ServerHost,

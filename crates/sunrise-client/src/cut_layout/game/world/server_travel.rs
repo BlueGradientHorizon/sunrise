@@ -540,7 +540,7 @@ use sunrise_gameplay::game::server_side::server_travel::credits_respawn_tests::c
 
 use sunrise_gameplay::game::server_side::server_travel::credits_respawn_tests::light_spawn_chunks;
 
-use super::Dim;
+use sunrise_gameplay_common::game::Dim;
 
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 

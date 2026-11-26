@@ -33,7 +33,7 @@ pub(in crate::game) mod connected_advancement_save_tests {
     }
 
     fn connected_advancement_save() {
-        use {crate::game::server_side::execution_role::ExecutionRole, sunrise_gameplay::game::server_side::stats};
+        use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::server_side::stats};
         use std::sync::{Arc, Mutex};
         let mut game_resources = None;
         let mut game = sunrise_gameplay::game::game_tests::tests::server_game(&mut game_resources);
@@ -202,7 +202,7 @@ pub(in crate::game) mod connected_advancement_preservation_tests {
     #[test]
     #[ignore = "daily"]
     fn empty_progress_missing_play_and_disconnect_wrapper_stay_distinct() {
-        use {crate::game::server_side::execution_role::ExecutionRole, sunrise_gameplay::game::server_side::stats};
+        use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::server_side::stats};
         use std::sync::{Arc, Mutex};
         let mut game_resources = None;
         let mut game = sunrise_gameplay::game::game_tests::tests::server_game(&mut game_resources);

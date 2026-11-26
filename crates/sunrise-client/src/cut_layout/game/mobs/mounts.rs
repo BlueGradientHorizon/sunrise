@@ -58,7 +58,7 @@ use super::*;
     pub(crate) fn server_game(
         resources: &mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
     ) -> Option<Box<sunrise_gameplay::game::ServerGame<'_>>> {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
         let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {

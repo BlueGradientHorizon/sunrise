@@ -1,6 +1,6 @@
 use sunrise_gameplay::game::command_harness::spans;
-use sunrise_gameplay::game::commands::summon_bolt_tests::ORACLE_PLAYER_UUID;
-use sunrise_gameplay::game::commands::summon_bolt_tests::tag_contains_bolt;
+use crate::game::server_side::commands::summon_bolt_tests::ORACLE_PLAYER_UUID;
+use crate::game::server_side::commands::summon_bolt_tests::tag_contains_bolt;
 use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use serde_json::{Value, json};
 use std::collections::HashSet;

@@ -1,5 +1,5 @@
 //! Exercise the actual registered leave-block goal and Game event handler.
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
 use std::sync::Arc;
 use sunrise_core::random::RandomSource;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};

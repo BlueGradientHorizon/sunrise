@@ -1,4 +1,4 @@
-use {crate::game::creatures::*, sunrise_gameplay_common::game::creatures::{Arc, BlockPos, Mob, ProjectileKind, Vec3, Who}};
+use {crate::game::creatures::*, sunrise_gameplay_common::game::creatures::{Arc, Mob, ProjectileKind, Vec3, Who}};
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;

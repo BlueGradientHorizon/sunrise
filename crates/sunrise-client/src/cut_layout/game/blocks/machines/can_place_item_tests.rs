@@ -262,7 +262,7 @@ fn default_items_insert_checks_admission_and_overrides_the_declared_rule() {
             .capability(game, &ITEMS, at, Some(Direction::Up))
             .unwrap();
         let stack = ItemStack::new("minecraft:stone", 1);
-        use super::super::api_values::TryIntoApi;
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         let resource = ItemResource::of(&stack.try_into_api().unwrap());
         assert_eq!(
             game.storage_transaction(|host, tx| {
@@ -291,7 +291,7 @@ fn refusing_a_capability_insert_does_not_journal_the_slot() {
         let handler = level
             .capability(game, &ITEMS, at, Some(Direction::Up))
             .unwrap();
-        use super::super::api_values::TryIntoApi;
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         let resource =
             ItemResource::of(&ItemStack::new("minecraft:stone", 1).try_into_api().unwrap());
         let before = (target(game).revision(), game.transactions.writes());
@@ -321,7 +321,7 @@ fn prepare_counted_admission(
     entity.items = counts
         .map(|count| Some(ItemStack::new("minecraft:stone", count)))
         .into();
-    use super::super::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     ItemResource::of(&ItemStack::new("minecraft:stone", 1).try_into_api().unwrap())
 }
 
@@ -446,7 +446,7 @@ fn storage_rechecks_the_entity_after_an_accepted_write_in_the_same_attempt() {
         let handler = level
             .capability(game, &STORAGE, at, Some(Direction::Up))
             .unwrap();
-        use super::super::api_values::TryIntoApi;
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         let resource =
             ItemResource::of(&ItemStack::new("minecraft:stone", 1).try_into_api().unwrap());
         assert_eq!(

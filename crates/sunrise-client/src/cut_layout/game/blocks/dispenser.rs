@@ -434,7 +434,7 @@ impl Fits {
     #[test]
     #[ignore = "daily"]
     fn a_damage_item_part_changes_the_wear_of_a_dispensed_tool() {
-        use {sunrise_gameplay::game::damage_item_tests::Rule, sunrise_gameplay::game::damage_item_tests::with_wear_part};
+        use {crate::game::server_side::damage_item_tests::Rule, crate::game::server_side::damage_item_tests::with_wear_part};
         with_wear_part("minecraft:brush", Rule::Halve, |game, wear| {
             let damage = |game: &mut sunrise_gameplay::game::ServerGame<'_>, item: &str, points| {
                 game.hurt_and_break(ItemStack::new(item, 1), points)
@@ -483,7 +483,7 @@ impl Fits {
 #[test]
     #[ignore = "daily"]
     fn mod_dispenser_answers_preserve_fallback_and_own_consumption() {
-        use super::super::api_values::{StackReadError, TryIntoApi};
+        use crate::game::api_values::{StackReadError, TryIntoApi};
         super::super::native_entity_refs::tests::with_game(|game| {
             assert_eq!(
                 mod_dispensed((None, CLICK), game.items()),

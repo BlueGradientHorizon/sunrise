@@ -4,7 +4,7 @@
 mod tests {
     use super::*;
     use {sunrise_gameplay_common::game::in_own_process, sunrise_client_gameplay::game::client_side::native_client_session::tests::finish_login, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
-    use download::Progress::*;
+    use crate::server_packs::download::Progress::*;
     use std::{path::Path, time::Duration};
     use sunrise_protocol::{
         connection::Connection,

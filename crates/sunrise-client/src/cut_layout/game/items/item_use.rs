@@ -304,7 +304,7 @@ pub(crate) mod interact_vibration_tests {
         held: &str,
         f: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
     ) -> Option<Vec<String>> {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES")?);
         let settings = Settings::default();
         let loaded = load_resources(

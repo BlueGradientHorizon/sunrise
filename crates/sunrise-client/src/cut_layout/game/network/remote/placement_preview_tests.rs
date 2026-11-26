@@ -5,7 +5,7 @@ fn placement_preview_checks_obstruction_without_changing_the_level() {
 }
 
 pub(in crate::game) fn run_placement_preview_checks_obstruction_without_changing_the_level() {
-    use sunrise_gameplay_common::game::remote::DryLevel;
+    use sunrise_gameplay_common::game::remote::dry_level::DryLevel;
     use sunrise_core::{position::BlockPos, random::LegacyRandom};
     use sunrise_world::{
         level::{Behaviours, LevelAccess, PlaceContext, PlaceOutcome, Ticks, data::load_registry},
@@ -153,7 +153,7 @@ fn redstone_updates_respect_the_preview_level_side() {
 }
 
 pub(in crate::game) fn run_redstone_updates_respect_the_preview_level_side() {
-    use {sunrise_gameplay_common::game::remote::DryLevel, sunrise_gameplay_common::game::remote::dry_level::PredictionBase};
+    use {sunrise_gameplay_common::game::remote::dry_level::DryLevel, sunrise_gameplay_common::game::remote::dry_level::PredictionBase};
     use std::collections::HashMap;
     use sunrise_core::{geometry::Direction, position::BlockPos, random::LegacyRandom};
     use sunrise_world::{

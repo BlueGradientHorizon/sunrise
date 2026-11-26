@@ -65,7 +65,9 @@ pub(crate) mod query_feedback_tests {
     #[test]
     #[ignore = "daily"]
     fn a_silent_source_drops_query_results_but_still_stores_them() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role::ExecutionRole};
+        use crate::settings::Settings;
+        use crate::game::load_resources;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(

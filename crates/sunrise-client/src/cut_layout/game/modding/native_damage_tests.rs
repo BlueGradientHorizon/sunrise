@@ -1550,7 +1550,7 @@ fn borrowed_base_tick_damage_settles_before_the_next_mob_tick() {
 #[ignore = "daily"]
 fn borrowed_mod_effect_posts_before_the_next_action() {
     use super::native_entity_refs::tests::run_fresh_cases;
-    use super::potions::tests::effect_test_mod;
+    use sunrise_gameplay_common::game::client_side::potions::tests::effect_test_mod;
     use std::sync::atomic::Ordering::Relaxed;
 
     if run_fresh_cases(
@@ -2261,9 +2261,8 @@ fn guest_landing_posts_before_its_ground_hit() {
 #[test]
 #[ignore = "daily"]
 fn ordinary_guest_move_settles_fall_before_resuming() {
-    use super::{
-        native_entity_refs::tests::run_fresh_cases, native_player_death::tests::add_guest,
-    };
+    use super::native_entity_refs::tests::run_fresh_cases;
+    use sunrise_gameplay::game::native_player_death::tests::add_guest;
     use sunrise_level::chunk::Chunk;
     use sunrise_world::entity_move::MoverType;
 

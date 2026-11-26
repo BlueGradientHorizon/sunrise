@@ -2,8 +2,9 @@
 
 #[cfg(test)]
 mod tests {
-    use super::super::api_values::TryIntoApi;
-    use super::super::{commands::OtherEntity, native_entity_refs::tests::with_game};
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
+    use crate::game::commands::OtherEntity;
+    use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::WorldEpoch;
     use sunrise_core::geometry::Vec3;

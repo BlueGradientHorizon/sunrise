@@ -26,7 +26,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
 #[test]
     #[ignore = "daily"]
     fn tick_count_reads_supported_entities_and_refuses_others() {
-        use super::super::minecarts::{CartKind, Minecart};
+        use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
         use super::super::native_entity_refs::tests::bind_local_player;
         use super::super::native_guest_turn_tests::with_guests;
         use mod_api::WorldEpoch;
@@ -132,7 +132,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
     #[ignore = "daily"]
     fn portal_cooldown_reads_simulated_kinds_and_refuses_others() {
         use super::super::native_guest_turn_tests::with_guests;
-        use super::super::{
+        use sunrise_gameplay_common::game::{
             Dim, FallingBlock, boats_common::Boat, fireworks::Rocket, minecarts::CartKind,
             minecarts::Minecart,
         };
@@ -352,7 +352,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
                 );
             });
             super::super::native_entity_refs::tests::with_client_game(|g| {
-                let _server = super::super::native_client_session::tests::logged_client(g);
+                let _server = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(g);
                 g.player =
                     Some(PlayerMotion::new(g.motion, sunrise_core::geometry::Vec3::ZERO).unwrap());
                 let local = g.entity(7).unwrap();
@@ -487,7 +487,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
                 check_under_water(g, false, player, mob);
             });
             super::super::native_entity_refs::tests::with_client_game(|g| {
-                let _server = super::super::native_client_session::tests::logged_client(g);
+                let _server = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(g);
                 g.player =
                     Some(PlayerMotion::new(g.motion, sunrise_core::geometry::Vec3::ZERO).unwrap());
                 let player = g.entity(7).unwrap();
@@ -644,7 +644,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
         ) {
             return;
         }
-        use super::super::native_client_session::tests::logged_client;
+        use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::motion::PlayerMotion;
         mod_platform::testing::with_mods(Default::default(), || {

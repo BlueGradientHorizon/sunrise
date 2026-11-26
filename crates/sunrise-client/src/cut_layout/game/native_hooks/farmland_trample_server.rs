@@ -14,6 +14,7 @@ pub(crate) mod tests {
     use sunrise_core::geometry::Vec3;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
+    use sunrise_gameplay_common::{game_side, world_items};
 
     #[test]
     #[ignore = "daily"]

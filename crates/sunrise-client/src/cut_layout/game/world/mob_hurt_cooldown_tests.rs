@@ -1,5 +1,5 @@
 use {crate::game::*, sunrise_gameplay_common::game::{Arc, Instant, PathBuf, Vec3, execution_role, game_dir, hit}};
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;

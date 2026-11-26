@@ -2,8 +2,9 @@
 
 #[cfg(test)]
 mod tests {
+    use sunrise_gameplay_common::game::Dim;
     use super::super::{
-        Dim, native_entity_refs::tests::run_fresh_cases, native_guest_turn_tests::with_guests,
+        native_entity_refs::tests::run_fresh_cases, native_guest_turn_tests::with_guests,
     };
     use sunrise_gameplay::game::server_side::native_level_effects::LevelRef;
     use mod_api::{__private::particle_named_key, ParticleOptions, WorldEpoch};

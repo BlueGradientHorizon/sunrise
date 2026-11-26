@@ -3,6 +3,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sunrise_gameplay_common::world_biomes;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use std::time::Duration;
     use sunrise_core::nbt::{DISK_WRITE_NESTING_GUARD, Tag};

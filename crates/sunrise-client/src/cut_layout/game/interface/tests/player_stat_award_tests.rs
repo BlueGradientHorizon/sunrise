@@ -4,6 +4,7 @@
 //! bed slept in (`ServerPlayer.startSleepInBed`, whose statistic the bed picks:
 //! `StrawBedBlock.getSleptInBedStatType`).
 use super::super::*;
+use sunrise_gameplay_common::game_side;
 use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::motion::{MotionWorld, PlayerMotion};

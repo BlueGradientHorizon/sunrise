@@ -14,7 +14,7 @@ use sunrise_sim::health::{BlockOutcome, Blocking, HurtSource};
 use sunrise_world::blocking_rules::{BlockingRules, DamageReduction, ItemDamageFunction};
 
 /// `Inventory.SLOT_OFFHAND`: the `using` slot of an off-hand item.
-pub(in crate::game) use super::held_items::OFFHAND_SLOT;
+pub use super::held_items::OFFHAND_SLOT;
 
 impl ServerGame<'_> {
     /// `AbstractArrow.onHitEntity` on the player: a piercing arrow passes item blocking, whoever

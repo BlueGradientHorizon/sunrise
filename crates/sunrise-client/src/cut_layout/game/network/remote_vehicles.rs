@@ -54,7 +54,7 @@ pub(crate) mod tests {
             game.riding = Some(7);
             game.side.remote.as_mut().unwrap().first_passenger = true;
             assert!(game.driven_mount().is_some());
-            use play::relative as rel;
+            use sunrise_protocol::packets::play::relative as rel;
             game.apply_packet(C::TeleportEntity(play::TeleportEntity {
                 id: 7,
                 position: [0.0, 0.0, 4.0],
@@ -98,9 +98,10 @@ pub(crate) mod tests {
     }
 
     pub(in sunrise_client_gameplay::game::client_side) fn run_steering_mount_control_matches_vanilla() {
-        use super::super::{
-            Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
-        };
+        use crate::game::load_resources;
+        use crate::settings::Settings;
+        use sunrise_client_lib::audio::Audio;
+        use sunrise_gameplay_common::game::{Options, Progress, execution_role::ExecutionRole};
         use sunrise_items::items::ItemStack;
         use sunrise_protocol::connection::Pipe;
         use sunrise_sim::motion::PlayerMotion;
@@ -347,9 +348,10 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_driven_horse_moves_on_the_riders_last_tick_input() {
-        use super::super::{
-            Audio, Options, Progress, Settings, execution_role::ExecutionRole, load_resources,
-        };
+        use crate::game::load_resources;
+        use crate::settings::Settings;
+        use sunrise_client_lib::audio::Audio;
+        use sunrise_gameplay_common::game::{Options, Progress, execution_role::ExecutionRole};
         use sunrise_items::items::ItemStack;
         use sunrise_protocol::connection::Pipe;
         use sunrise_sim::motion::PlayerMotion;
@@ -526,7 +528,7 @@ mod plugin_seat_tests {
     #[test]
     #[ignore = "daily"]
     fn local_rider_uses_attachments_and_follows_a_moving_seat_chain() {
-        use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::{mobs::Mob, motion::PlayerMotion, sprint::Keys};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

@@ -225,7 +225,7 @@ pub(in crate::game) fn building_players(host: &LanHost) -> HubBodies {
 }
 
 /// Builds the hub's bodies once for the turns to come (`Some`), or drops them.
-pub(in crate::game) fn building_cache(host: Option<&LanHost>) {
+pub fn building_cache(host: Option<&LanHost>) {
     let bodies = host.map(|host| shared(host.hub.guests.simulation_iter().map(building_player)));
     BUILDING_CACHE.with(|c| *c.borrow_mut() = bodies);
 }

@@ -4,7 +4,10 @@
 #[cfg(test)]
 pub(crate) mod shriek_capture_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
+    use crate::game::load_resources;
+    use crate::settings::Settings;
+    use sunrise_client_lib::audio::Audio;
     use std::sync::Arc;
     use sunrise_core::{position::ChunkPos, random::LegacyRandom};
     use sunrise_level::chunk::Chunk;

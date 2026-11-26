@@ -29,7 +29,7 @@ fn listening<R>(
 
 use sunrise_gameplay::game::server_side::native_unspawned_mob::tests::spawn_pig;
 
-use super::super::commands::Target;
+use sunrise_gameplay_common::game::commands_common::Target;
 
 use super::super::native_entity_refs::tests::with_game;
 

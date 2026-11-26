@@ -2,11 +2,10 @@
 
 #[cfg(test)]
 mod tests {
-    use super::super::api_values::TryIntoApi;
-    use super::super::{
-        Dim,
-        native_entity_refs::tests::{run_fresh_cases, with_client_game, with_game},
-    };
+    use sunrise_gameplay_common::game::Dim;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
+    use super::super::native_entity_refs::tests::{run_fresh_cases, with_client_game, with_game};
+    use sunrise_gameplay_common::world_biomes;
     use mod_api::{ChunkRef, LevelRef, LightLayer, WorldEpoch};
     use sunrise_core::position::BlockPos;
 

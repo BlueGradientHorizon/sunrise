@@ -2,7 +2,7 @@
 //! builds both from `{id:..}` through their `(EntityType, Level)` factory, so
 //! the orb is never unstuck, and an empty item is discarded while loading
 //! (`ItemEntity.readAdditionalSaveData`) yet the command still succeeds.
-use super::super::{Options, Progress, Settings, execution_role, load_resources};
+use {crate::game::load_resources, sunrise_gameplay_common::game::{Options, Progress, Settings, execution_role}};
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_level::chunk::Chunk;

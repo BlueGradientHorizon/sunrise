@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use super::{AHEAD, TAKEN};
+    use sunrise_gameplay::game::server_side::ahead::{AHEAD, TAKEN};
     use sunrise_gameplay::game::game_tests::tests::server_game;
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, random::RandomSource};

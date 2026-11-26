@@ -1,4 +1,4 @@
-use super::commands::Target;
+use crate::game::commands::Target;
 use crate::game::server_side::vehicle_removal_tests::finish_death_on_next_tick;
 use crate::game::server_side::vehicle_removal_tests::push_pig;
 use crate::game::server_side::vehicle_removal_tests::with_removal_test_hooks;

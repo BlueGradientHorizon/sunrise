@@ -138,7 +138,7 @@ pub(in crate::game) mod falling_save;
 #[path = "entities/falling_tick.rs"]
 pub(in crate::game) mod falling_tick;
 #[path = "mobs/fangs.rs"]
-pub(in crate::game) mod fangs;
+pub mod fangs;
 #[path = "mobs/finalize_spawn.rs"]
 pub(in crate::game) mod finalize_spawn;
 #[path = "items/fishing.rs"]
@@ -791,7 +791,7 @@ pub(in crate::game) mod native_menu_refs_server;
 #[path = "modding/native_menu_drop_tests.rs"]
 mod native_menu_drop_tests;
 #[path = "modding/native_mob_navigation.rs"]
-pub(in crate::game) mod native_mob_navigation;
+pub mod native_mob_navigation;
 #[path = "modding/native_player_attack.rs"]
 pub(in crate::game) mod native_player_attack;
 #[path = "modding/native_player_death_server.rs"]

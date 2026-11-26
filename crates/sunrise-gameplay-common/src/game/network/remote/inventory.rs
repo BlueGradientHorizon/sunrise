@@ -126,7 +126,7 @@ pub fn changed_slots(
 /// then the table from its last position down; a key sits at `HashCommon.mix(key) & mask` or the
 /// next free position. The table starts at 32 (16 expected, load factor 0.75) and doubles when an
 /// insert finds it holding 24 (`size++ >= maxFill`), re-inserting from its last position down.
-pub(in crate::game) fn open_hash_order(keys: &[i16]) -> Vec<i16> {
+pub fn open_hash_order(keys: &[i16]) -> Vec<i16> {
     fn mix(key: i16) -> usize {
         let h = i32::from(key).wrapping_mul(0x9E37_79B9_u32 as i32);
         (h ^ ((h as u32) >> 16) as i32) as u32 as usize

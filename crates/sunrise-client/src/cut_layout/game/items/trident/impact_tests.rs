@@ -1,5 +1,5 @@
 use super::*;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_projectiles::impact_probe::Action, sunrise_gameplay::game::native_projectiles::impact_probe::with_probe};
+use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_projectiles::impact_probe::Action, crate::game::server_side::native_projectiles::impact_probe::with_probe};
 use std::sync::atomic::Ordering;
 
 pub(crate) fn aim_trident_at_wall(

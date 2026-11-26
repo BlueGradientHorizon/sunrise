@@ -10,7 +10,7 @@ use crate::game::CommonGame as Game;
 use super::Mining;
 use sunrise_core::geometry::Aabb;
 #[allow(unused_imports)]
-use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
+pub use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
 #[allow(unused_imports)]
 use {
     sunrise_items::items::ItemStack, sunrise_sim::entities::Experience,
@@ -25,9 +25,9 @@ pub mod death_state;
 pub(in crate::game) mod effects;
 pub mod guest_body;
 pub(in crate::game) mod hub_click;
-pub(in crate::game) mod movement;
+pub mod movement;
 pub mod packets;
 pub(in crate::game) mod pickups;
 pub(in crate::game) mod sleep;
-pub(in crate::game) mod tick;
+pub mod tick;
 include!("shared.rs");

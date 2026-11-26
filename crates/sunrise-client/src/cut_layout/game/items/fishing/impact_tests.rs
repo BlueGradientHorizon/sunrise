@@ -1,6 +1,6 @@
 //! Tick-level bobber impact payload, cancellation, gate and removal coverage.
 use super::*;
-use {sunrise_gameplay::game::native_projectiles::impact_probe::Action, sunrise_gameplay::game::native_projectiles::impact_probe::point, sunrise_gameplay::game::native_projectiles::impact_probe::with_probe};
+use crate::game::native_projectiles::impact_probe::{Action, point, with_probe};
 use std::sync::atomic::Ordering;
 use sunrise_sim::mobs::Mob;
 

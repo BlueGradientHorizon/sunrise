@@ -113,7 +113,7 @@ pub(in crate::game) mod living_drops;
 pub(in crate::game) mod living_destroy_block;
 
 #[path = "cut_merged_living_death_post.rs"]
-pub(in crate::game) mod living_death_post;
+pub mod living_death_post;
 
 pub(in crate::game) mod living_death_message;
 

@@ -1,5 +1,4 @@
 use {crate::game::creatures::*, sunrise_gameplay_common::game::creatures::{DamageKind, Vec3, knockback, source_damage_type}};
-use sunrise_core::geometry::Vec3;
 pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     with_role_game(
         sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,

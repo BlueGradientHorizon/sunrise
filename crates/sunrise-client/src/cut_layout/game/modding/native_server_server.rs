@@ -651,9 +651,13 @@ use sunrise_gameplay::game::native_server::fake_action_tests::held;
 
 use sunrise_gameplay::game::native_server::fake_action_tests::place;
 
-use super::super::{respawn_anchor::RespawnConfig, stations::Kind, stations::Station};
+use sunrise_gameplay::game::respawn_anchor::RespawnConfig;
 
-use super::{Acting, ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
+use sunrise_gameplay_common::game::stations_common::{Kind, Station};
+
+use sunrise_gameplay_common::game::modding::native_server::Acting;
+
+use mod_api::{ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
 
 use crate::game::native_server::fake_action_tests::fake;
 

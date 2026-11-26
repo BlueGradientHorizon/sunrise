@@ -8,7 +8,7 @@ use super::*;
 #[test]
     #[ignore = "daily"]
     fn recovered_world_uses_the_pack_flat_generator_before_its_first_save() {
-        use execution_role::ExecutionRole::DedicatedServer;
+        use sunrise_gameplay_common::game::execution_role::ExecutionRole::DedicatedServer;
         use std::fs;
         use sunrise_sim::save;
 
@@ -99,7 +99,7 @@ use super::*;
     fn both_server_roles_record_regions_before_world_generation() {
         mod_platform::__private::initialize().unwrap();
         use super::super::native_entity_refs::tests::with_game_role;
-        use execution_role::ExecutionRole::{DedicatedServer, IntegratedServer};
+        use sunrise_gameplay_common::game::execution_role::ExecutionRole::{DedicatedServer, IntegratedServer};
         struct Regions;
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for Regions {

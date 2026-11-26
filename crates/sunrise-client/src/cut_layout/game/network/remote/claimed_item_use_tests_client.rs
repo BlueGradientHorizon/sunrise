@@ -6,7 +6,7 @@ use crate::game::remote::claimed_item_use_tests::Phase;
 use crate::game::remote::claimed_item_use_tests::SHIELD;
 use crate::game::remote::claimed_item_use_tests::STICK;
 use crate::game::remote::claimed_item_use_tests::with_owner;
-use {sunrise_gameplay_common::game::Screen, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::logged_in};
+use {sunrise_gameplay_common::game::Screen, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in};
 use std::sync::Arc;
 use sunrise_client::interaction_input::Button;
 use sunrise_core::nbt::{JavaString, Tag};

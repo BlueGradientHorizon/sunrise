@@ -3,7 +3,7 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
-use super::super::native_block_tables::BlockTables;
+use sunrise_gameplay_common::game::native_block_tables::BlockTables;
 
 use super::super::native_guest_turn_tests::with_guests;
 

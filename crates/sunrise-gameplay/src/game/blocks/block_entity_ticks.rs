@@ -19,7 +19,7 @@ use sunrise_level::{
 
 /// What `block_entities.tick` is visiting: the kinds its dispatch ticks, read once per entry.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum TickedKind {
+pub enum TickedKind {
     /// `HopperBlockEntity` (its transfer state is `Game::hoppers[pos]`).
     Hopper,
     /// `CrafterBlockEntity`.
@@ -97,7 +97,7 @@ impl TickedKind {
     dead_code,
     reason = "read by `[[native.loop]]` helpers, compiled in a mod build"
 )]
-pub(crate) struct BlockEntityTick<'g, 'a> {
+pub struct BlockEntityTick<'g, 'a> {
     /// The game the loop runs on: the level being ticked, `hoppers`, everything the loop has.
     pub(crate) game: &'g mut crate::game::ServerGame<'a>,
     /// The block entity's position.
@@ -202,7 +202,7 @@ impl OwnBlockEntities {
 /// it took when it started: one a slot adds joins the list for the next pass, as one placed by a
 /// tick does, and one it removes (or replaces) later in the list is passed over when the loop gets
 /// there, as one removed by an earlier tick is. For the visited one, see [`Self::before`].
-pub(crate) trait BlockEntityTickSlot {
+pub trait BlockEntityTickSlot {
     /// Whether [`Self::before`] may change the visited block entity, so the loop checks it again
     /// after a [`LoopFlow::Continue`]. False only for `()`, the game's own loop, whose `before`
     /// does nothing, so it has no check; a mod's slot always has it.

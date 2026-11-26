@@ -1,6 +1,7 @@
 //! `FireworkRocketEntity.explode`'s game event and sound gate, and the
 //! `ITEM_USED` an `useOn` counts. Prepared resources only.
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
+use crate::game::{Settings, load_resources};
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::LegacyRandom};
 use {

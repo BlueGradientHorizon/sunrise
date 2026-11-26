@@ -1,7 +1,6 @@
 //! HUD slots in a real client: placement, scoped wrapping and replacement, and layer cancellation.
+use sunrise_gameplay_common::game::{Screen, execution_role::ExecutionRole};
 use super::{
-    Screen,
-    execution_role::ExecutionRole,
     native_entity_refs::tests::{run_fresh_cases, with_client_game},
 };
 use mod_api::{
@@ -284,7 +283,7 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
         );
         sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
         game.side.title.0 = None;
-        game.side.screen = super::Screen::Playing;
+        game.side.screen = Screen::Playing;
         game.side.chat_ui.hide_gui = false;
         game.set_local_mode(sunrise_command::args::GameMode::Survival);
         let mut player = PlayerMotion::new(game.motion, Vec3::new(2.0, 64.0, 2.0)).unwrap();

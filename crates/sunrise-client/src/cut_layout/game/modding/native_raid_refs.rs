@@ -2,7 +2,8 @@
 
 #[cfg(test)]
 mod tests {
-    use super::super::{execution_role::ExecutionRole, native_entity_refs::tests::with_game};
+    use sunrise_gameplay_common::game::execution_role::ExecutionRole;
+    use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::{Hooks, RaidStateChangeEvent, ServerHost, WorldEpoch};
     use std::sync::{Arc, Mutex};

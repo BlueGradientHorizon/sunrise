@@ -7,7 +7,7 @@ use sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest;
 
 use sunrise_gameplay_common::game::server_side::native_sound_refs::tests::packets;
 
-use super::super::lan::LanSettings;
+use sunrise_gameplay_common::game::lan_common::LanSettings;
 
 use super::super::native_entity_refs::tests::with_game;
 

@@ -1,4 +1,4 @@
-use crate::game::commands::Target;
+use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_gameplay::game::commands::world_cmds::effect_attribute_tests::with_game;
 
 /// `isTransmittingWaypoint` reads the range with Invisibility's modifier:

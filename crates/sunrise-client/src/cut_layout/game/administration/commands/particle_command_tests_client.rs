@@ -1,4 +1,4 @@
-use sunrise_gameplay::game::commands::world_cmds::particle_command_tests::game;
+pub(crate) use crate::game::server_side::commands::world_cmds::particle_command_tests::game;
 use mod_api::client::particles::PositionSource;
 use std::sync::Arc;
 use sunrise_client::particles::ParticleLevel;

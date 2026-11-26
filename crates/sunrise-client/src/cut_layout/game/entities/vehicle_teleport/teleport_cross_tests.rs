@@ -1,6 +1,6 @@
 //! `/tp` of hanging entities (`BlockAttachedEntity.setPos`) and of any entity
 //! kind into another dimension (`Entity.teleportCrossDimension`).
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role, sunrise_gameplay_common::game::load_resources};
+use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::execution_role, crate::game::load_resources};
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;

@@ -7,7 +7,7 @@ use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::off
 
 use sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn;
 
-use super::super::api_values::{StackReadError, TryIntoApi, TryIntoEngine};
+use sunrise_gameplay_common::game::api_values::{StackReadError, TryIntoApi, TryIntoEngine};
 
 use super::super::native_entity_refs::tests::with_game;
 

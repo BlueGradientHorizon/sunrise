@@ -4,7 +4,7 @@ use sunrise_core::geometry::Vec3;
 #[test]
 #[ignore = "daily"]
 fn empty_tag_selectors_follow_actual_tag_edits() {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_sim::motion::PlayerMotion;
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();

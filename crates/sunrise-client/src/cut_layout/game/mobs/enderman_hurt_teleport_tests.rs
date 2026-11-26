@@ -1,5 +1,5 @@
 //! `Enderman.hurtServer` teleports inside the hurt the game layer deals.
-use {crate::game::server_side::Options, crate::game::server_side::Progress, crate::game::server_side::Settings, sunrise_gameplay::game::server_side::explosion::BlockInteraction, crate::game::server_side::load_resources};
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay::game::server_side::explosion::BlockInteraction, crate::game::load_resources};
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
 use sunrise_level::chunk::Chunk;

@@ -1,7 +1,7 @@
 //! A rail's parts decide its track: the shape a cart reads (`rail_direction`), and as it
 //! connects, whether it curves (`rail_flexible`), climbs (`rail_can_make_slopes`) or takes a
 //! shape at all (`rail_valid_shape`).
-use super::minecarts::Shape;
+use sunrise_gameplay_common::game::minecarts::Shape;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};

@@ -3,6 +3,7 @@
 //! `Avatar` and not a `Mob`, none of `Mob.addAdditionalSaveData`'s fields
 //! (tools/test_mannequin_save_parity.py measures the same on vanilla 26.3).
 use {crate::game::*, sunrise_gameplay_common::game::{Instant, Mob, Options, PathBuf, Progress, Resources, entity, execution_role}};
+use crate::settings::Settings;
 use std::sync::Arc;
 use sunrise_core::nbt::{Tag, parse_snbt};
 

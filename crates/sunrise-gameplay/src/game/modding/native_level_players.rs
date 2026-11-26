@@ -2,7 +2,7 @@
 //! resolves UUIDs from the spawn code's player enumeration so a guest's turn
 //! names its player once, excluding anyone who cannot resolve.
 use crate::game::ServerGame;
-use core::ops::ControlFlow;
+pub use core::ops::ControlFlow;
 use mod_api::{ChunkRef, EntityRef, LevelReadError, LevelRef, PlayerRef};
 
 impl ServerGame<'_> {

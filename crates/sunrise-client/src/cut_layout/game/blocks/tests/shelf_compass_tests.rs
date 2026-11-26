@@ -5,7 +5,7 @@
 //! shelf's own block: two shelves at different places and facings draw different
 //! needles, where with no owner both drew the same one.
 use super::*;
-use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay_common::game::load_resources};
+use {crate::audio::Audio, crate::settings::Settings, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role::ExecutionRole, crate::game::load_resources};
 use sunrise_core::nbt::{Compound, Tag};
 use sunrise_items::items::ItemStack;
 use sunrise_level::{

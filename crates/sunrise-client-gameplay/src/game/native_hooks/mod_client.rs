@@ -168,7 +168,7 @@ pub(in crate::game) mod screen_hovered_stack;
 pub(in crate::game) mod use_item_hand;
 
 #[path = "shared/book_screen_client.rs"]
-pub(in crate::game) mod book_screen;
+pub mod book_screen;
 
 #[path = "shared/system_helpers_client.rs"]
 pub(in crate::game) mod system_helpers;

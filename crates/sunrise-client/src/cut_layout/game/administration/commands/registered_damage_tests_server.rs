@@ -4,7 +4,7 @@ use sunrise_sim::mobs::{Damage, Who};
 #[test]
 #[ignore = "daily"]
 fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() {
-    use {crate::game::commands::Target, sunrise_gameplay::game::commands::data::DataRef, sunrise_gameplay::game::native_goal_ticks::live_read_tests::read_borrowed_target, sunrise_gameplay::game::native_living_flags::tests::guest, sunrise_gameplay::game::native_living_flags::tests::guest_server};
+    use {sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay::game::commands::data::DataRef, crate::game::modding::native_goal_ticks::live_read_tests::read_borrowed_target, crate::game::modding::native_living_flags::tests::guest, crate::game::modding::native_living_flags::tests::guest_server};
     use mod_api::{ExplosionInteraction, ExplosionSettings};
     use sunrise_core::{geometry::Vec3, nbt::Tag, position::BlockPos};
     use sunrise_sim::{mobs::ai, projectiles::ProjectileKind};

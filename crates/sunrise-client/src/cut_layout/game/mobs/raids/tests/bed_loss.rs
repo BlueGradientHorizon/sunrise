@@ -1,5 +1,5 @@
 //! Real Game raid creation/wave dispatch with a loaded claimed-bed precondition.
-use super::super::{Options, Progress, Settings, load_resources};
+use crate::game::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
 use sunrise_level::chunk::Chunk;

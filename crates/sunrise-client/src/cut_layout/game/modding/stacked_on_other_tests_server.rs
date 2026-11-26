@@ -1,7 +1,7 @@
 use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
-use crate::game::stacked_on_other_tests::ASKS;
-use crate::game::stacked_on_other_tests::PLAYER;
-use crate::game::stacked_on_other_tests::SEEN;
+use sunrise_gameplay::game::stacked_on_other_tests::ASKS;
+use sunrise_gameplay::game::stacked_on_other_tests::PLAYER;
+use sunrise_gameplay::game::stacked_on_other_tests::SEEN;
 use sunrise_gameplay::game::stacked_on_other_tests::Script;
 use sunrise_gameplay::game::stacked_on_other_tests::count;
 use sunrise_gameplay::game::stacked_on_other_tests::dispatches;

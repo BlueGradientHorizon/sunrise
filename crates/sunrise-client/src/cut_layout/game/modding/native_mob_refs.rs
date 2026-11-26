@@ -92,8 +92,8 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn leash_holder_reads_live_state() {
-        use {crate::game::server_side::boats_common::Boat, sunrise_gameplay::game::server_side::lan::LanSettings};
-        use mobs::leash::{Holder, Pending};
+        use {sunrise_gameplay_common::game::boats_common::Boat, sunrise_gameplay::game::server_side::lan::LanSettings};
+        use sunrise_sim::mobs::leash::{Holder, Pending};
         use mod_api::LeashHolder;
         use std::sync::{
             Arc,
@@ -278,7 +278,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn mob_flags_baby_setter_uses_species_age_and_attribute_boundaries() {
-        use mobs::finalize::{Attr, base_value};
+        use sunrise_sim::mobs::finalize::{Attr, base_value};
 
         with_game(|game| {
             let mut id = 12;
@@ -321,7 +321,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn mob_flags_baby_setter_runs_ghastling_setup_in_both_directions() {
-        use mobs::{control::MoveKind, nav::NavKind};
+        use sunrise_sim::mobs::{control::MoveKind, nav::NavKind};
 
         with_game(|game| {
             let ghast = add_mob(game, 12, "minecraft:happy_ghast");

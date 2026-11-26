@@ -290,7 +290,7 @@ fn summoned(game: &mut sunrise_gameplay::game::ServerGame<'_>, kind: &str, nbt: 
         .summon_with_nbt(kind, [4.5, 80.5, 4.5], nbt)
         .unwrap()
         .unwrap();
-    use crate::game::commands::Target;
+    use crate::game::server_side::commands::Target;
     match target {
         Target::Stand(id) | Target::Trident(id) | Target::Rocket(id) => id,
         other => panic!("{kind} summoned as {other:?}"),

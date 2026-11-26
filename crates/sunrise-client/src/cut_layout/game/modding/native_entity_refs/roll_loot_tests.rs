@@ -2,7 +2,8 @@
 //! same random state it gives what the engine's own roll in the same context gives,
 //! `/loot … fish <table> <pos> <tool>` (whose `loot` path the loot harnesses hold to
 //! vanilla 26.3).
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role, sunrise_gameplay::game::functions, sunrise_gameplay_common::game::load_resources};
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role, sunrise_gameplay::game::functions};
+use crate::game::{Settings, load_resources};
 use mod_api::{Authority, LevelRef};
 use std::sync::Arc;
 use sunrise_core::{

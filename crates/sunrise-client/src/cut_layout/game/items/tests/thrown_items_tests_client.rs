@@ -1,4 +1,4 @@
-use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+use {crate::game::load_resources, crate::settings::Settings, sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 
 /// The one sound `event` played since the last call, with its volume.
 pub(crate) fn sound(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, event: &str) -> (f32, f32) {

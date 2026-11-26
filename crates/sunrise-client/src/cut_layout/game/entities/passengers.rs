@@ -750,8 +750,10 @@ use sunrise_gameplay::game::server_side::passengers::nested_vehicle_discard_test
 use super::*;
 
 use crate::game::{
-        boats_common::Boat, entity_memory::OffLevel, server_side::minecarts_server::CartHit,
+        boats_common::Boat, entity_memory::OffLevel,
     };
+
+use sunrise_gameplay::game::server_side::minecarts_server::CartHit;
 
 use std::sync::{
         Arc,

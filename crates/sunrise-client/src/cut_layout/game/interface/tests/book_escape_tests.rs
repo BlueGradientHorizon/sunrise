@@ -8,7 +8,7 @@
 //! empty — `!getValue().isEmpty()`, not blank — and trims the title on send
 //! (`:70`).
 use sunrise_client_gameplay::game::client_side::books::BookScreen;
-use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role, sunrise_gameplay_common::game::load_resources};
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role, crate::game::{Audio, Settings, load_resources}};
 use sunrise_items::items::ItemStack;
 use winit::keyboard::KeyCode;
 

@@ -58,7 +58,8 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_gliding_firework_drops_leads_and_plays_lead_break() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
+        use crate::game::{Settings, load_resources};
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::mobs::{Mob, leash::Holder};
 

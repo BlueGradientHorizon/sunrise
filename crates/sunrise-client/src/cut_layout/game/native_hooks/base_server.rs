@@ -6,7 +6,7 @@ pub(crate) mod held_break_slot_tests {
     #[test]
     #[ignore = "daily"]
     fn held_durability_retains_the_stack_hand_and_explicit_break_slot() {
-        use {sunrise_gameplay_common::game::Hand, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Hand, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
         use sunrise_core::equipment_slot::EquipmentSlot;
         use sunrise_core::geometry::Vec3;
         use sunrise_items::items::ItemStack;

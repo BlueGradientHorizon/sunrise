@@ -1,6 +1,6 @@
 #[cfg(test)]
 pub(crate) mod fake_travel_tests {
-    use super::super::super::Dim;
+    use sunrise_gameplay_common::game::Dim;
     use sunrise_gameplay::game::server_side::commands_server::Target;
 
     #[test]

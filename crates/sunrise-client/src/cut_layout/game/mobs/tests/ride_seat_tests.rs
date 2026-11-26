@@ -4,7 +4,7 @@
 //! vanilla lets nobody ride.
 use crate::game::server_side::mounts::tests::server_game;
 use super::*;
-use crate::game::commands::{OtherEntity, Target};
+use sunrise_gameplay_common::game::commands_common::{OtherEntity, Target};
 use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
 use sunrise_sim::motion::PlayerMotion;
 

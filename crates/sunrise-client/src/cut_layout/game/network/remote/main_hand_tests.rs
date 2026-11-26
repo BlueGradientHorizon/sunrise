@@ -1,4 +1,4 @@
-use {sunrise_gameplay_common::game::lan_mob_metadata::mob_meta, crate::game::server_side::native_entity_refs::tests::with_client_game, crate::game::remote::tests::spawn_menu_test, sunrise_client_gameplay::game::villager_client::tests::meta_hub};
+use {sunrise_gameplay_common::game::lan_mob_metadata::mob_meta, crate::game::server_side::native_entity_refs::tests::with_client_game, crate::game::remote::tests::spawn_menu_test, sunrise_gameplay_common::game::lan_meta_fixture::meta_hub};
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::{buf::Reader, connection::Pipe, packets::play::Clientbound};
 use sunrise_sim::{

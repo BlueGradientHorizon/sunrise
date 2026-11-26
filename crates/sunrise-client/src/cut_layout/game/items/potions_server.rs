@@ -156,7 +156,7 @@ pub(crate) mod tests {
         ) {
             return;
         }
-        use {sunrise_gameplay::game::lan_particles::tests::MeasuredParticle, crate::game::lan_particles::tests::PARTICLE_MAP_READS, sunrise_gameplay::game::server_side::lan_particles::tests::test_hub};
+        use {sunrise_gameplay::game::lan_particles::tests::MeasuredParticle, sunrise_gameplay::game::server_side::lan_particles::tests::PARTICLE_MAP_READS, sunrise_gameplay::game::server_side::lan_particles::tests::test_hub};
         use sunrise_protocol::entity_data::{ParticleData, Value, serializer};
 
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
@@ -642,7 +642,7 @@ pub(crate) mod potion_contents_tests;
 
 #[cfg(test)]
 pub(crate) mod mob_absorption_max_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
     use sunrise_level::chunk::Chunk;
@@ -815,7 +815,7 @@ pub(crate) mod mob_absorption_max_tests {
 
 #[cfg(test)]
 pub(crate) mod mob_health_boost_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
     use sunrise_level::chunk::Chunk;
@@ -1067,7 +1067,7 @@ pub(crate) mod mob_health_boost_tests {
 
 #[cfg(test)]
 pub(crate) mod depleted_absorption_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, crate::game::commands::Target, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
     use sunrise_level::chunk::Chunk;
@@ -1330,7 +1330,7 @@ pub(crate) mod depleted_absorption_tests {
 pub(crate) mod arrow_contents {
     //! Actual in-memory Game potion paths. No run loop, world load or server startup.
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::execution_role, crate::game::load_resources};
     use serde_json::{Value, json};
     use std::{path::PathBuf, sync::Arc, time::Instant};
     use sunrise_level::chunk::Chunk;

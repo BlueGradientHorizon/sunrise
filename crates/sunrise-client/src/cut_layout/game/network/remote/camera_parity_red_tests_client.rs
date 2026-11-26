@@ -9,6 +9,7 @@ use crate::game::remote::tests::camera_parity_red_tests::sync_interaction_size;
 use crate::game::remote::tests::camera_parity_red_tests::vec3_bits_expected;
 use {sunrise_gameplay_common::game::Game, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
 use std::sync::Arc;
+use sunrise_gameplay_common::world_biomes;
 use sunrise_client::{
     debug_entries::Status, debug_overlay::Displayer, level_loading::Reason,
     options_file::V as OptV, screen_effects::Blend,

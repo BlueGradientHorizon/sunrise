@@ -13,7 +13,11 @@ use sunrise_gameplay_common::game::native_passages::tests::passage_messages;
 
 use sunrise_gameplay::game::native_passages::tests::listen;
 
-use super::{HeldRefusal, PassageForm, Refused, check};
+use sunrise_gameplay_common::game::native_passages::{HeldRefusal, check};
+
+use sunrise_protocol::passage_sync::PassageForm;
+
+use mod_api::PassageRegistrationError as Refused;
 
 use crate::game::Dim;
 

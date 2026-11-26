@@ -1,7 +1,7 @@
 //! Actual command execution with prepared resources. Canonical membership is
 //! installed only in a fresh process; no native mod bundle or trait hooks are used.
 use super::*;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
 use std::{path::PathBuf, sync::Arc};
 use sunrise_level::{
     chunk::Chunk,

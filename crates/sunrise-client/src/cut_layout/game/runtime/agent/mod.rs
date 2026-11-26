@@ -9,6 +9,7 @@ pub(crate) mod face_pick_tests;
 pub(crate) mod tests {
 
 use super::*;
+use serde_json::json;
 
 #[test]
     #[ignore = "daily"]

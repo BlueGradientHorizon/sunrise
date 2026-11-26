@@ -1,4 +1,4 @@
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
 
 /// A game on the prepared resources with a creative player (as `crossbow.rs`).
 pub(crate) fn game_with_player<'a>(

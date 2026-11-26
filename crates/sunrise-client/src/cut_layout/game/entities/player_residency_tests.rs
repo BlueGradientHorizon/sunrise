@@ -1,4 +1,4 @@
-use crate::game::commands::Target;
+use sunrise_gameplay_common::game::commands_common::Target;
 use {sunrise_gameplay::game::entity_residency::SlotAccess, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
 use std::{
     num::NonZeroU32,

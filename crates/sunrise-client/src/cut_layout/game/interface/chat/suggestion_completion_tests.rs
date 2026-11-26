@@ -1,5 +1,6 @@
 use super::*;
-use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
+use crate::game::{Audio, Settings, load_resources};
 use mod_api::{self, ChatSuggestionAppliedEvent, ClientHost, Hooks};
 use std::{
     path::PathBuf,

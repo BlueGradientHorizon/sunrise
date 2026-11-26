@@ -7,12 +7,13 @@ mod tests {
     use mod_platform::testing::with_mods;
     use std::sync::{Arc, Mutex};
     use sunrise_game_data::gamerules;
+    use sunrise_gameplay_common::game_side;
     use sunrise_level::chunk::Chunk;
 
     #[test]
     #[ignore = "daily"]
     fn dimension_shape_reads_current_parked_and_stale_levels() {
-        use super::super::Dim;
+        use sunrise_gameplay_common::game::Dim;
         use mod_api::{Authority, Host, LevelDimensionShape};
         use sunrise_level::chunk::LevelShape;
 
@@ -489,7 +490,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn rule_reads_distinguish_unknown_stale_and_unavailable_and_snapshot_values() {
-        use super::super::execution_role::ExecutionRole;
+        use sunrise_gameplay_common::game::execution_role::ExecutionRole;
         use mod_api::{LevelReadError, WorldEpoch};
         with_game(|game| {
             let level = game.level(game.dim.id()).unwrap();

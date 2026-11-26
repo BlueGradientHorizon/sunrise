@@ -78,7 +78,8 @@ use super::*;
 #[cfg(test)]
 pub(crate) mod command_damage_listener_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
+    use crate::game::{Settings, load_resources};
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;

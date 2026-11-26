@@ -504,7 +504,7 @@ pub(in crate::game) fn gameplay_tables(
 /// value (`AttributeSupplier.getValue`, the base inside its range; the spawn and reset bases
 /// stay the raw ones). The read answers only a registered entity type's: a declaration for a
 /// type no mod registered stays unread.
-pub(in crate::game) fn publish_entity_type_defaults(
+pub fn publish_entity_type_defaults(
     catalog: &sunrise_world::attributes::entity::Catalog,
 ) {
     mod_api::__private::publish_entity_type_defaults(

@@ -9,7 +9,7 @@ pub(crate) mod roll_loot_tests;
 #[cfg(test)]
 pub(crate) mod general_handle_tests {
     use super::tests::with_game;
-    use crate::game::commands::Target;
+    use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_gameplay_common::game::general::GeneralRow;
     use mod_api::{EntityRef, WorldEpoch};
     use sunrise_core::geometry::Vec3;
@@ -107,6 +107,7 @@ pub(crate) mod general_handle_tests {
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use sunrise_gameplay_common::{game_side, world_biomes};
     pub use sunrise_gameplay_common::game::test_fixtures::{
         FRESH_CASE_LIMIT, fixture_block_names, fixture_facts_mut, fixture_root, output_within, ran_one_test,
         record_key, resolve_parts, run_fresh_cases, run_fresh_cases_at_once, run_with_game_stack,
@@ -178,7 +179,7 @@ pub(crate) mod tests {
     ) {
         with_game_role(
             root,
-            super::super::execution_role::ExecutionRole::IntegratedServer,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,
             test,
         );
     }
@@ -186,7 +187,7 @@ pub(crate) mod tests {
     pub(crate) fn with_client_game(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
         with_game_role_client(
             fixture_root(),
-            super::super::execution_role::ExecutionRole::Client,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
             test,
         );
     }
@@ -194,7 +195,7 @@ pub(crate) mod tests {
     pub(crate) fn with_uncached_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         with_game_role_and_facts_with(
             fixture_root(),
-            super::super::execution_role::ExecutionRole::IntegratedServer,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,
             None,
             false,
             test,
@@ -206,7 +207,7 @@ pub(crate) mod tests {
     ) {
         with_game_role_and_facts_with_client(
             fixture_root(),
-            super::super::execution_role::ExecutionRole::Client,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
             None,
             false,
             test,
@@ -215,7 +216,7 @@ pub(crate) mod tests {
 
     pub(crate) fn with_game_role(
         root: std::path::PathBuf,
-        role: super::super::execution_role::ExecutionRole,
+        role: sunrise_gameplay_common::game::execution_role::ExecutionRole,
         test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
     ) {
         with_game_role_and_facts(root, role, None, test);
@@ -223,7 +224,7 @@ pub(crate) mod tests {
 
     pub(crate) fn with_game_role_client(
         root: std::path::PathBuf,
-        role: super::super::execution_role::ExecutionRole,
+        role: sunrise_gameplay_common::game::execution_role::ExecutionRole,
         test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
     ) {
         with_game_role_and_facts_client(root, role, None, test);
@@ -232,7 +233,7 @@ pub(crate) mod tests {
     /// Configure the fixture's owned gameplay facts before constructing the game.
     pub(crate) fn with_game_role_and_facts(
         root: std::path::PathBuf,
-        role: super::super::execution_role::ExecutionRole,
+        role: sunrise_gameplay_common::game::execution_role::ExecutionRole,
         configure: Option<
             fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_items::blocks::BlockFacts),
         >,
@@ -243,7 +244,7 @@ pub(crate) mod tests {
 
     pub(crate) fn with_game_role_and_facts_client(
         root: std::path::PathBuf,
-        role: super::super::execution_role::ExecutionRole,
+        role: sunrise_gameplay_common::game::execution_role::ExecutionRole,
         configure: Option<
             fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_items::blocks::BlockFacts),
         >,
@@ -254,14 +255,14 @@ pub(crate) mod tests {
 
     fn with_game_role_and_facts_with(
         root: std::path::PathBuf,
-        role: super::super::execution_role::ExecutionRole,
+        role: sunrise_gameplay_common::game::execution_role::ExecutionRole,
         configure: Option<
             fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_items::blocks::BlockFacts),
         >,
         cached: bool,
         test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
     ) {
-        use super::super::{Options, Progress, Settings, load_resources, load_resources_uncached};
+        use sunrise_gameplay_common::game::{Options, Progress, Settings, load_resources, load_resources_uncached};
         use mod_api::Authority;
 
         // Parts registration replaces its metadata snapshot. Finish registration before
@@ -343,14 +344,14 @@ pub(crate) mod tests {
 
     fn with_game_role_and_facts_with_client(
         root: std::path::PathBuf,
-        role: super::super::execution_role::ExecutionRole,
+        role: sunrise_gameplay_common::game::execution_role::ExecutionRole,
         configure: Option<
             fn(&sunrise_world::registry::BlockRegistry, &mut sunrise_items::blocks::BlockFacts),
         >,
         cached: bool,
         test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
     ) {
-        use super::super::{
+        use sunrise_gameplay_common::game::{
             Audio, Options, Progress, Settings, load_resources, load_resources_uncached,
         };
         use mod_api::Authority;
@@ -376,7 +377,7 @@ pub(crate) mod tests {
                 &settings,
                 std::time::Instant::now(),
                 false,
-                super::super::execution_role::ExecutionRole::Client,
+                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
                 &Progress::new(),
                 &mut |_, _| unreachable!(),
             )
@@ -390,7 +391,7 @@ pub(crate) mod tests {
                 &settings,
                 std::time::Instant::now(),
                 false,
-                super::super::execution_role::ExecutionRole::Client,
+                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
                 &Progress::new(),
                 &mut |_, _| unreachable!(),
             )
@@ -1398,7 +1399,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn side_guards_agree_across_integrated_dedicated_and_client() {
-        use super::super::execution_role::ExecutionRole;
+        use sunrise_gameplay_common::game::execution_role::ExecutionRole;
         use std::sync::Arc;
         use sunrise_level::chunk::Chunk;
         let mut server_level = None;
@@ -2195,7 +2196,7 @@ pub(crate) mod tests {
             game.side.lan.as_ref().unwrap().hub.lan.shared.next_id();
             let level = game.level(game.dim.id()).unwrap();
             let role = game.options.execution_role;
-            game.options.execution_role = super::super::execution_role::ExecutionRole::Client;
+            game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
             assert!(game.fake_player(level, 1234, "machine").is_none());
             game.options.execution_role = role;
             let made = game.fake_player(level, 1234, "machine").unwrap();
@@ -3232,14 +3233,14 @@ pub(crate) mod tests {
             &settings,
             Instant::now(),
             false,
-            super::super::execution_role::ExecutionRole::IntegratedServer,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
             &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = super::super::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -3371,14 +3372,14 @@ pub(crate) mod tests {
             &settings,
             Instant::now(),
             false,
-            super::super::execution_role::ExecutionRole::IntegratedServer,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,
             &Progress::new(),
             &mut |_, _| unreachable!(),
         )
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = super::super::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         options.dedicated = Some(Vec::new());
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,

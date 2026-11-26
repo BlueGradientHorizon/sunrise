@@ -13,7 +13,7 @@ pub(crate) mod tests;
 #[cfg(test)]
 mod interaction_saved_defaults_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
 
     #[test]
     #[ignore = "daily"]
@@ -174,7 +174,7 @@ mod interaction_saved_defaults_tests {
 #[cfg(test)]
 mod loaded_tag_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
     use sunrise_sim::mobs::Species;
 
     fn check(
@@ -422,7 +422,7 @@ mod loaded_tag_tests {
 #[cfg(test)]
 mod item_display_saved_transform_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
@@ -1605,7 +1605,7 @@ pub(crate) mod thrown_item_tests;
 #[cfg(test)]
 mod h262_enderman_absolute_anger_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
     use sunrise_sim::motion::PlayerMotion;
     pub(super) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
@@ -1841,7 +1841,7 @@ mod h262_enderman_absolute_anger_tests {
 #[cfg(test)]
 mod sulfur_body_attribute_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_sim::motion::PlayerMotion;
 
     fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
@@ -2122,7 +2122,7 @@ mod sulfur_body_attribute_tests {
 #[cfg(test)]
 mod summoned_knot_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
@@ -2429,7 +2429,7 @@ mod summoned_knot_tests {
 #[cfg(test)]
 mod camel_pose_saved_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
 
     #[test]
     #[ignore = "daily"]
@@ -2847,7 +2847,7 @@ mod restored_vehicle_transfer_tests {
 #[cfg(test)]
 mod trader_llama_discard_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_sim::motion::PlayerMotion;
 
     fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {

@@ -64,7 +64,7 @@ pub(crate) mod teleport_rider_tests {
     #[test]
     #[ignore = "daily"]
     fn a_vehicle_carries_its_riders_and_a_rider_leaves_its_vehicle() {
-        use super::super::Target;
+        use sunrise_gameplay_common::game::commands_common::Target;
         use sunrise_core::geometry::Vec3;
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             let horse = game.res.mob_types().get("minecraft:horse").unwrap().clone();
@@ -202,7 +202,7 @@ pub(crate) mod teleport_rider_tests {
     #[test]
     #[ignore = "daily"]
     fn a_vehicle_carries_a_two_level_mob_stack_without_a_seating_tick() {
-        use super::super::Target;
+        use sunrise_gameplay_common::game::commands_common::Target;
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::mobs::Mob;
 

@@ -1,7 +1,7 @@
 //! After `hanging_break` returns without cancelling, the game finds the item frame or painting
 //! again by id: one a listener removed neither breaks nor is removed again, and an empty frame it
 //! filled stays.
-use sunrise_gameplay::game::hook_meddler_tests::with_meddler;
+use crate::game::server_side::hook_meddler_tests::with_meddler;
 
 #[test]
 #[ignore = "daily"]

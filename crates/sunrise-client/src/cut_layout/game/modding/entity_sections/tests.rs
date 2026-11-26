@@ -1,5 +1,5 @@
 use {crate::game::entity_sections::*, sunrise_gameplay_common::game::entity_sections::{Crossing, EntityRef, EntitySections, LiveSectionHost, Scope, WorldEpoch, player, section_coord, section_of}};
-use {crate::game::commands::Target, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+use {sunrise_gameplay_common::game::commands_common::Target, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{EntityEnteringSectionEvent, Hooks, HostSide};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -783,7 +783,7 @@ fn a_client_is_told_each_teleport_and_where_its_entities_really_are() {
 #[test]
 #[ignore = "daily"]
 fn a_refused_player_add_does_not_hide_the_resident_entities_crossing() {
-    use sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::logged_in;
+    use crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in;
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::packets::play::{self, Clientbound as C};
 

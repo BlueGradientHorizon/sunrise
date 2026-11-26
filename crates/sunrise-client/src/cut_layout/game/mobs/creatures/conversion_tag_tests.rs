@@ -1,4 +1,4 @@
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, crate::game::commands::Target, sunrise_gameplay_common::game::load_resources};
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
 use sunrise_core::nbt::Tag;
 
 #[test]

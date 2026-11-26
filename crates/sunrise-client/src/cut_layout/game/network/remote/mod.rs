@@ -413,7 +413,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn block_alias_survival_consumption_and_client_prediction() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::World, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::World, crate::settings::Settings, crate::game::load_resources};
         use std::{path::PathBuf, sync::Arc};
         use sunrise_items::items::ItemStack;
         use sunrise_level::chunk::Chunk;
@@ -559,7 +559,7 @@ pub(crate) mod tests {
             loaded.gui.unwrap(),
             options,
             settings,
-            sunrise_gameplay_common::game::Audio::silent(
+            sunrise_client_lib::audio::Audio::silent(
                 &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
             ),
             None,
@@ -626,7 +626,7 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_servers_client_takes_its_speed_from_the_attributes_not_the_effect() {
-        use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
         use sunrise_core::geometry::Vec3;
         use sunrise_protocol::packets::play::{
             AttributeModifier, AttributeSnapshot, Clientbound as C, RemoveMobEffect,

@@ -3,6 +3,7 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game_side;
 use sunrise_sim::motion::{MotionWorld, PlayerMotion};
 
 #[test]

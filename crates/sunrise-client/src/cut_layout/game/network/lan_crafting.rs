@@ -615,6 +615,8 @@ mod empty_ingredient_placement_tests {
     }
 
     use super::*;
+    use sunrise_gameplay_common::world_recipes;
+    use sunrise_gameplay_common::world_stations;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_protocol::packets::{configuration::ClientInformation, recipes::PlaceRecipe};
     use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};

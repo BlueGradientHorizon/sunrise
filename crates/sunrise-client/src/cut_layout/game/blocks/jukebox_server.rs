@@ -5,7 +5,7 @@ pub(crate) mod jukebox_play_tests {
     use super::*;
 
     fn playing(ticks: i32) -> Option<Vec<String>> {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES")?);
         let settings = Settings::default();
         let loaded = load_resources(
@@ -303,7 +303,7 @@ pub(crate) mod jukebox_tests;
 #[cfg(test)]
 pub(crate) mod block_change_tests {
 
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_level::chunk::Chunk;
 

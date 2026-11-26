@@ -1,4 +1,4 @@
-use super::native_guest_turn_tests::with_guests;
+use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use sunrise_gameplay::game::server_side::native_level_sound_except_tests::decode_packets;
 use sunrise_gameplay::game::server_side::native_level_sound_except_tests::in_isolated_process;
 use mod_api::SoundSource;

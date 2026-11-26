@@ -9,7 +9,9 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_flying_rocket_opens_a_motion_run_of_its_own() {
-        use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {crate::game::load_resources, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
+        use crate::settings::Settings;
+        use sunrise_client_lib::audio::Audio;
         use sunrise_core::geometry::Vec3;
 
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

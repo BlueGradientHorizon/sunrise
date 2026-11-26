@@ -1,5 +1,5 @@
 use crate::game::remote::native_entity_tests::spawn;
-use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay_common::game::load_resources};
+use {sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, crate::game::load_resources};
 use mod_api::EquipmentSlot;
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::entity_data::Value;

@@ -1,5 +1,6 @@
 //! End-to-end registration and root publication, with unique resource and save roots.
 use super::*;
+use sunrise_gameplay_common::world_biomes;
 use mod_api::{
     DataPackFilesEvent, Hooks, Identifier, ModEntry, PoiKey, ProfessionDefinition, ProfessionKey,
     ProfessionWorkstation, RegisterVillagerProfessionsEvent, RegistrationContext, ServerHost,

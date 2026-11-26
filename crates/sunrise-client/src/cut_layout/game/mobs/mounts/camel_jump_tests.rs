@@ -3,7 +3,7 @@
 //! and the jump's data is above zero, and it posts `GameEvent.ENTITY_ACTION`
 //! from the camel beside its dash sound
 //! (tools/test_camel_jump_parity.py measures the same on vanilla 26.3).
-use {crate::game::*, sunrise_gameplay_common::game::{Dim, Instant, Options, PathBuf, Progress, Resources, Vec3, entity, execution_role, host}};
+use {crate::game::*, sunrise_gameplay_common::game::{Dim, Instant, Options, PathBuf, Progress, Resources, Settings, Vec3, entity, execution_role, host, load_resources}};
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::configuration::ClientInformation;

@@ -1,5 +1,6 @@
 //! Exercise the removal boundary through the live server, including the next actor's tick.
-use super::{commands::Target, native_entity_refs::tests::with_game};
+use super::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::commands_common::Target;
 use mod_api::{Flow, Hooks, HostSide, ServerHost};
 use std::sync::{
     Arc, Mutex,
@@ -86,10 +87,8 @@ fn nested_blast_skips_the_stand_or_cushion_already_being_removed() {
 #[test]
 #[ignore = "daily"]
 fn stand_equipment_and_below_world_spills_are_visible_at_dismount() {
-    use super::{
-        hook_meddler_tests::with_meddler,
-        minecarts::{CartKind, Minecart},
-    };
+    use super::hook_meddler_tests::with_meddler;
+    use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
     use sunrise_gameplay_common::game::boats_common::Boat;
     use sunrise_items::items::ItemStack;
 

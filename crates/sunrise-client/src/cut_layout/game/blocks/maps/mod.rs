@@ -14,7 +14,7 @@ use super::*;
     #[test]
     #[ignore = "daily"]
     fn map_on_banner_in_adventure_mode_honours_can_place_on() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::Settings, crate::game::load_resources};
         use std::sync::Arc;
         use sunrise_command::args::GameMode;
         use sunrise_level::chunk::Chunk;

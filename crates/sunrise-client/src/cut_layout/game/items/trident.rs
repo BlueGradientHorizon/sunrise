@@ -13,7 +13,7 @@ use sunrise_core::geometry::{Aabb, Vec3};
     #[test]
     #[ignore = "daily"]
     fn trident_release_rechecks_stack_durability_after_charge() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::PlayerMotion, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::PlayerMotion, sunrise_gameplay_common::game::Progress, crate::game::Settings, crate::game::load_resources};
         use sunrise_core::nbt::Tag;
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -96,7 +96,7 @@ use sunrise_core::geometry::{Aabb, Vec3};
     #[test]
     #[ignore = "daily"]
     fn riptide_launch_preserves_float_push() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::PlayerMotion, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::PlayerMotion, sunrise_gameplay_common::game::Progress, crate::game::Settings, crate::game::load_resources};
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(

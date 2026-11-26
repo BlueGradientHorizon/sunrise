@@ -8,7 +8,7 @@ use super::*;
 #[test]
     #[ignore = "daily"]
     fn command_view_uses_live_and_pending_boat_leashes_not_raw_tags() {
-        use crate::game::commands::Target;
+        use sunrise_gameplay_common::game::commands_common::Target;
         super::super::native_entity_refs::tests::with_game(|game| {
             let (id, uuid, actual_holder, unknown) =
                 (1, [326, 1, 0, 1], [326, 2, 0, 1], [111, 222, 333, 444]);

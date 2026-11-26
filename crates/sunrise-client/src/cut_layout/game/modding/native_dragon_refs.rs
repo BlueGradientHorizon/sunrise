@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 mod tests {
-    use super::super::Dim;
+    use sunrise_gameplay_common::game::Dim;
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::{MobRef, WorldEpoch};

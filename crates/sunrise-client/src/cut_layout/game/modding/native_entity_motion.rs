@@ -12,7 +12,7 @@ use sunrise_core::geometry::{Aabb, Vec3};
 #[test]
     #[ignore = "daily"]
     fn reset_fall_distance_forgets_a_fall_for_mobs_carts_and_players() {
-        use super::super::minecarts::{CartKind, Minecart};
+        use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
         use sunrise_sim::mobs::Mob;
         fn fake_fall<'a>(game: &'a mut sunrise_gameplay::game::ServerGame<'_>) -> &'a mut f64 {
             let host = game.server.lan.as_mut().unwrap();
@@ -58,7 +58,7 @@ use sunrise_core::geometry::{Aabb, Vec3};
 #[test]
     #[ignore = "daily"]
     fn only_a_mount_its_rider_controls_takes_the_riders_speed() {
-        use super::super::commands::Target;
+        use crate::game::commands::Target;
         use sunrise_sim::mobs::{Mob, equine::Rider};
         super::super::native_entity_refs::tests::with_game(|game| {
             for (id, name) in [(30, "minecraft:horse"), (31, "minecraft:pig")] {

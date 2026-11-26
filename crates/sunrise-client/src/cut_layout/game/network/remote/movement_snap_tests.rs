@@ -6,7 +6,10 @@ use {sunrise_gameplay_common::game::remote::shape_meets, sunrise_gameplay_common
 #[test]
 #[ignore = "daily"]
 fn plugin_player_stack_follows_network_moves_and_local_carriers() {
-    use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role::ExecutionRole};
+    use sunrise_client_lib::audio::Audio;
+    use crate::game::load_resources;
+    use crate::settings::Settings;
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::packets::play::{self, Clientbound as C};
     use sunrise_sim::{motion::PlayerMotion, sprint::Keys};

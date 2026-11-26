@@ -1,6 +1,7 @@
 //! `EndermanLeaveBlockGoal.canPlaceBlock`'s `level.getEntities(this.enderman,
 //! cube)`: every entity but the enderman blocks the cube, not just mobs.
-use super::super::{Options, Progress, Settings, execution_role, load_resources};
+use crate::settings::Settings;
+use sunrise_gameplay_common::game::{Options, execution_role, resource_load::{Progress, load_resources}};
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_level::chunk::Chunk;

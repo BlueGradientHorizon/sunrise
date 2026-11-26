@@ -4,6 +4,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
+use sunrise_gameplay_common::game_side;
 use sunrise_gameplay_common::stats::StatScoreOp;
 
 struct Rewrite(Arc<AtomicUsize>);

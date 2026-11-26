@@ -4,6 +4,7 @@ use mod_api::{
     Hooks, ModEntry, ServerHost,
 };
 use mod_platform::testing::with_mods;
+use sunrise_gameplay_common::world_biomes;
 use std::sync::{Arc, Mutex};
 
 const CHILD: &str = "SUNRISE_SERVER_LIFECYCLE_CHILD";

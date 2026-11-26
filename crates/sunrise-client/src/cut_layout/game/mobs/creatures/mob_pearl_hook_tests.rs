@@ -2,7 +2,7 @@ use {crate::game::creatures::*, sunrise_gameplay_common::game::creatures::{Arc, 
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{EnderPearlTeleportEvent, EntityTeleportEvent, Flow, Hooks, ModEntry, ServerHost};
 use std::sync::{
-    Arc, Mutex,
+    Mutex,
     atomic::{AtomicU8, Ordering},
 };
 

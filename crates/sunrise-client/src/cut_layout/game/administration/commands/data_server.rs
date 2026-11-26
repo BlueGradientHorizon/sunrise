@@ -94,7 +94,7 @@ pub(crate) mod saved_tag_tests;
 pub(crate) mod modern_literal_tests {
     use super::*;
     use sunrise_gameplay::game::commands::execute::ExecState;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
 
     #[test]
     #[ignore = "daily"]
@@ -210,7 +210,7 @@ pub(crate) mod modern_literal_tests {
 
 #[cfg(test)]
 pub(crate) mod falling_live_adoption_tests {
-    use crate::game::commands::Target;
+    use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_gameplay::game::commands::data::falling_live_adoption_tests::with_game;
     use sunrise_core::nbt::Tag;
     use sunrise_core::{geometry::Vec3, position::BlockPos};

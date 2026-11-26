@@ -327,7 +327,7 @@ fn content_entity_stays_registered_after_startup_pack_rollback() {
 #[test]
 #[ignore = "daily"]
 fn startup_saves_the_cleared_selection_even_when_a_required_pack_fails() {
-    use {sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_client_gameplay::game::StartupLoadContext, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_client_gameplay::game::load_resources_sync, sunrise_gameplay_common::game::mods};
+    use {sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_client_gameplay::game::StartupLoadContext, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_client_gameplay::game::load_resources_sync, sunrise_gameplay_common::game::mods};
     use std::{path::PathBuf, time::Instant};
     use sunrise_assets::resource_source::ResourceRoot;
     use sunrise_client::{

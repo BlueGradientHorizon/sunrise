@@ -13,7 +13,8 @@ use sunrise_level::particle_options::ParticleOptions;
 /// A game over the prepared resources that registers no mod tables of the process (the
 /// particles here are the pack's): a direct `ClientGame`, not the mod fixture's `with_client_game`.
 fn with_game(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
-    use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role};
+    use crate::game::{Audio, Settings, load_resources};
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),

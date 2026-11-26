@@ -4,6 +4,7 @@
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use std::sync::Arc;
+    use sunrise_gameplay_common::world_biomes;
     use sunrise_sim::vanillagen::{TerrainResources, VanillaTerrain};
     use sunrise_world::worldgen::generator::FlatSettings;
 

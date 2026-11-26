@@ -23,7 +23,7 @@ pub(crate) mod peaceful_tests {
 
 use sunrise_gameplay_common::game::server_side::commands::peaceful_tests::TRADER;
 
-use super::{Arg, Context};
+use sunrise_command::{Arg, Context};
 
 use crate::game::{execution_role::ExecutionRole, native_entity_refs::tests as fixture};
 
@@ -181,7 +181,7 @@ pub(crate) mod teleport_player_rider_tests;
 #[cfg(test)]
 pub(crate) mod selector_bounds_tests {
     use {crate::game::server_side::commands::*};
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::{entities::ArmorStand, mobs::Mob};
 
@@ -406,7 +406,7 @@ pub(crate) mod effective_presence_tests {
 #[cfg(test)]
 pub(crate) mod fill_note_instrument_tests {
     use {crate::game::server_side::commands::*};
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;
@@ -714,7 +714,7 @@ pub(crate) mod vehicle_kill_tests;
 
 #[cfg(test)]
 pub(crate) mod global_selector_order_tests {
-    use {sunrise_gameplay::game::server_side::commands::Selector, crate::game::server_side::commands::Target};
+    use {sunrise_gameplay::game::server_side::commands::Selector, sunrise_gameplay_common::game::commands_common::Target};
     use sunrise_command::args::Sort;
     use sunrise_core::nbt::Tag;
     use sunrise_core::position::ChunkPos;

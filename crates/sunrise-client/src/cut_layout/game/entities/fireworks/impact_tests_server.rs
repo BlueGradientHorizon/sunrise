@@ -1,5 +1,5 @@
 use crate::game::fireworks::impact::tests::launch;
-use {sunrise_gameplay::game::native_projectiles::impact_probe::Action, sunrise_gameplay::game::native_projectiles::impact_probe::with_probe};
+use crate::game::native_projectiles::impact_probe::{Action, with_probe};
 
 #[test]
 #[ignore = "daily"]

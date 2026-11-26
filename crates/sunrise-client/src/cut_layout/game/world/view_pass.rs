@@ -44,7 +44,9 @@ use sunrise_protocol::{
         root: &std::path::Path,
         home: &std::path::Path,
     ) -> sunrise_gameplay::game::ServerGame<'a> {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
+        use crate::settings::Settings;
+        use crate::game::load_resources;
         let settings = Settings::default();
         let loaded = load_resources(
             sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),

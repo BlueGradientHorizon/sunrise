@@ -11,7 +11,7 @@ fn api_state<S: sunrise_gameplay_common::game::Side>(game: &super::Game<'_, S>, 
 where
     for<'__g> sunrise_gameplay_common::game::Game<'__g, S>: ::mod_api::Host,
 {
-    use super::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     game.pack
         .assets
         .registry
@@ -315,7 +315,7 @@ fn latency_reads_what_the_keep_alives_measured() {
 #[test]
 #[ignore = "daily"]
 fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() {
-    use super::native_client_session::tests::logged_client;
+    use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
     use mod_api::BlockPos;
     use sunrise_core::geometry::Vec3;
     use sunrise_level::chunk::Chunk;

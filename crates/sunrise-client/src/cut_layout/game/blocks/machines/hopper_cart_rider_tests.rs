@@ -4,11 +4,9 @@
 //! its rider's turn instead (`tick_cart_riding`, from `guest_vehicle_tick`),
 //! which used to move the cart without the suck: a player riding a hopper
 //! minecart under a chest got nothing.
-use super::super::{
-    game_tests::tests::server_game,
-    minecarts::{CartKind, Minecart},
-};
+use super::super::game_tests::tests::server_game;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
 

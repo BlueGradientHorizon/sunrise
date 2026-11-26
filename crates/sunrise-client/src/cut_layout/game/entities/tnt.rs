@@ -83,7 +83,7 @@ use super::*;
     }
 pub(in sunrise_gameplay::game::server_side) fn run_portal_transfer_tnt_state_follows_memory_but_not_saved_nbt()
      {
-        use super::super::commands::Target;
+        use sunrise_gameplay_common::game::commands_common::Target;
         let mut resources = None;
         let mut game = server_game(&mut resources).expect("set SUNRISE_TEST_RESOURCES");
         game.add_primed_tnt(BlockPos::new(8, 64, 8), 0.0, 80, None, None);
@@ -302,7 +302,7 @@ pub(crate) fn run_portal_blast_sulfur_cube_uses_only_positive_cooldown() {
 #[test]
     #[ignore = "daily"]
     fn live_data_commands_adopt_into_the_existing_tnt() {
-        use crate::game::commands::Target;
+        use sunrise_gameplay_common::game::commands_common::Target;
         use sunrise_core::nbt::Tag;
         let mut resources = None;
         let mut game = server_game(&mut resources).expect("prepared Game resources are required");
@@ -628,7 +628,7 @@ pub(crate) fn run_silent_launched_potions_and_bottles_keep_their_impact() {
         };
         // An operator's commands.
         game.ui.registries.permission = 4;
-        use crate::game::commands::Target;
+        use sunrise_gameplay_common::game::commands_common::Target;
         use sunrise_core::nbt::Tag;
         for kind in ["splash_potion", "lingering_potion", "experience_bottle"] {
             let stack = ItemStack::new(&format!("minecraft:{kind}"), 1);

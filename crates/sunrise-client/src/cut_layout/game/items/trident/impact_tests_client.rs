@@ -1,6 +1,6 @@
 use super::*;
 use crate::game::server_side::trident::impact_tests::aim_trident_at_wall;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_projectiles::impact_probe::Action, sunrise_gameplay::game::native_projectiles::impact_probe::with_probe};
+use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::native_projectiles::impact_probe::Action, crate::game::native_projectiles::impact_probe::with_probe};
 use std::sync::atomic::Ordering;
 use sunrise_sim::mobs::Mob;
 

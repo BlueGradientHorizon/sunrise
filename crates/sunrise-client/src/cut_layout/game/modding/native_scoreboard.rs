@@ -7,7 +7,9 @@ use sunrise_gameplay_common::game::server_side::native_scoreboard::tests::guest;
 
 use sunrise_gameplay::game::server_side::native_scoreboard::tests::open_lan;
 
-use super::super::{lan::LanSettings, native_entity_refs::tests::with_game};
+use sunrise_gameplay::game::lan::LanSettings;
+
+use super::super::native_entity_refs::tests::with_game;
 
 use super::*;
 

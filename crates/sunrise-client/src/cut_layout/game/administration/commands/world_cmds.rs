@@ -15,7 +15,8 @@ use sunrise_gameplay::game::server_side::commands::world_cmds::datapack_damage_t
 
 use sunrise_gameplay::game::server_side::commands_server::world_cmds::datapack_damage_tests::pig;
 
-use crate::game::{commands::Target, native_entity_refs::tests::with_game};
+use sunrise_gameplay_common::game::commands_common::Target;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 
 use sunrise_core::geometry::Vec3;
 
@@ -100,7 +101,7 @@ pub(crate) fn run_a_datapack_types_tags_reach_the_mob_hurt_path() {
 
 #[cfg(test)]
 pub(crate) mod vehicle_damage_command_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;
@@ -272,7 +273,7 @@ pub(crate) mod effect_attribute_tests;
 
 #[cfg(test)]
 pub(crate) mod attribute_modifier_command_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Tag;

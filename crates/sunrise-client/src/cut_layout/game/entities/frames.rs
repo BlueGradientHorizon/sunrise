@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 pub(crate) mod map_limit_tests {
-    use super::super::maps::{Decoration, Key, MapData};
+    use sunrise_gameplay_common::game::maps::{Decoration, Key, MapData};
     use super::*;
 
     fn frame(id: u32) -> ItemFrame {

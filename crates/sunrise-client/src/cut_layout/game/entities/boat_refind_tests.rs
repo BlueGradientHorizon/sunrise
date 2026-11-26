@@ -1,6 +1,6 @@
 //! After `entity_mount` lets a mob board a boat it touches, the game finds the boat and the mob
 //! again by id, counts the boat's passengers again and boards the mob only if it is still free.
-use sunrise_gameplay::game::hook_meddler_tests::with_meddler;
+use crate::game::server_side::hook_meddler_tests::with_meddler;
 
 fn mob_id(game: &sunrise_gameplay::game::ServerGame<'_>, kind: &str) -> u32 {
     game.mobs.iter().find(|m| &*m.kind.id == kind).unwrap().id

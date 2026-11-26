@@ -3,7 +3,8 @@
 //! position and yaw; and only `CompassItem.inventoryTick` ticks a
 //! `LodestoneTracker`, so any other item carrying the component keeps it.
 use sunrise_gameplay::game::game_tests::tests::server_game;
-use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role, sunrise_gameplay_common::game::load_resources};
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role};
+use crate::game::{Audio, Settings, load_resources};
 use sunrise_core::nbt::Tag;
 use sunrise_core::random::LegacyRandom;
 use sunrise_items::items::ItemStack;

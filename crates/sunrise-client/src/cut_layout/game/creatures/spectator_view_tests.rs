@@ -1,6 +1,7 @@
 //! `Entity.isInvisibleTo`: a spectator sees an invisible body as the translucent
 //! one (`LivingEntityRenderer.submit`'s `forceTransparent`), anyone else not at all.
-use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::execution_role, sunrise_gameplay_common::game::load_resources};
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role};
+use crate::game::{Audio, Settings, load_resources};
 use std::sync::Arc;
 use sunrise_command::args::GameMode;
 use sunrise_core::geometry::Vec3;

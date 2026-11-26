@@ -1,7 +1,7 @@
 //! A mob named in a command reply carries `Entity.getDisplayName`'s hover and
 //! insertion (#14220): `HoverEvent.ShowEntity` of its type, UUID and name, and
 //! its UUID string to insert.
-use crate::game::commands::Target;
+use sunrise_gameplay_common::game::commands_common::Target;
 use {crate::game::*, sunrise_gameplay_common::game::{Instant, Mob, Options, PathBuf, Progress, Resources, entity, execution_role}};
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;

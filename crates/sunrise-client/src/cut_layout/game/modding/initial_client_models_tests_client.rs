@@ -1,5 +1,8 @@
 use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-use {sunrise_gameplay_common::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
+use crate::audio::Audio;
+use crate::settings::Settings;
+use crate::game::load_resources;
 
 #[test]
 #[ignore = "daily"]

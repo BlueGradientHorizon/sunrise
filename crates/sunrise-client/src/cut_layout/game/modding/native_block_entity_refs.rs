@@ -178,7 +178,7 @@ use sunrise_sim::lan::menu::Slots;
             }
             let furnace = game.block_entity(level, [2, 64, 0]).unwrap();
             let sign = game.block_entity(level, [4, 64, 0]).unwrap();
-            use super::super::lan_actions::MenuOpen;
+            use sunrise_gameplay_common::game::lan_actions::MenuOpen;
             assert!(!player.open_menu(game, sign).unwrap());
             assert_eq!(game.open_block_menu(999, (0, 64, 0)), MenuOpen::Refused);
             game.world
@@ -307,7 +307,7 @@ use sunrise_sim::lan::menu::Slots;
 #[test]
     #[ignore = "daily"]
     fn viewers_follow_open_menus_per_level_and_leave_out_fake_players() {
-        use super::super::Dim;
+        use sunrise_gameplay_common::game::Dim;
         use mod_api::{BlockUpdateFlags, EntityRef, Host};
         use sunrise_world::chunk::BlockState;
         super::super::native_guest_turn_tests::with_guests(|game| {

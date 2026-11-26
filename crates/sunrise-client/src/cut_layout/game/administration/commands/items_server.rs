@@ -2,7 +2,7 @@
 
 #[cfg(test)]
 pub(crate) mod mob_equipment_command_tests {
-    use sunrise_gameplay::game::commands::items::mob_equipment_command_tests::with_game;
+    use crate::game::administration::commands::items::mob_equipment_command_tests::with_game;
 
     #[test]
     #[ignore = "daily"]
@@ -225,7 +225,6 @@ pub(crate) mod registered_slot_source_preservation_tests {
 use sunrise_gameplay::game::server_side::commands::items::registered_slot_source_preservation_tests::count;
 
     use super::*;
-    use sunrise_gameplay::game::server_side::commands::items::registered_slot_source_preservation_tests::count;
 
     /// A command the player types runs as them (`CommandSourceStack.getEntity`),
     /// so `source:"this"` is their own slots without an `execute as`.

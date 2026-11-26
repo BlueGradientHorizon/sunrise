@@ -9,7 +9,7 @@ pub(crate) mod tests {
 
 use sunrise_gameplay::game::server_side::nether_portal::tests::portal_cooldown_keeps_the_process;
 
-use super::super::server_travel::TravelCause;
+use sunrise_gameplay::game::server_side::server_travel::TravelCause;
 
 use super::*;
 

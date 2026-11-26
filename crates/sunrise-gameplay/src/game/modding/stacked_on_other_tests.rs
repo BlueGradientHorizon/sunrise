@@ -1243,7 +1243,7 @@ pub mod item_part_tests {
     use mod_api::{ItemPart, Registrar, RegistrationContext};
 
     #[derive(Clone, Default)]
-    pub(in crate::game) struct PartScript {
+    pub struct PartScript {
         pub(in crate::game) cancel_carried: bool,
         pub(in crate::game) cancel_clicked: bool,
         pub(in crate::game) handled: bool,
@@ -1481,7 +1481,7 @@ pub mod item_part_tests {
         mod_platform::testing::with_mods(mods, test);
     }
 
-    pub(in crate::game) struct GlobalAndPartMod(pub(in crate::game) bool);
+    pub struct GlobalAndPartMod(pub(in crate::game) bool);
     #[mod_api::__subscriptions]
     impl Hooks for GlobalAndPartMod {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {

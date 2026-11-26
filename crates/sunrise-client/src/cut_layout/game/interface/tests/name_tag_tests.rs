@@ -10,7 +10,7 @@
 //! stack it names with -- and `Player.interactOn` puts a creative player's
 //! count straight back -- and `EntityAttachment.NAME_TAG` says where the tag
 //! hangs, which `EntityTypes.SNIFFER` moves to 2.05 above the feet.
-use sunrise_client_gameplay::game::client_side::sculk::TEST_POSTED_EVENTS;
+use sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS;
 use super::super::*;
 use sunrise_client_gameplay::game::client_side::names::name_tag_at;
 use sunrise_gameplay_common::game::creatures::render_fixture::mob;

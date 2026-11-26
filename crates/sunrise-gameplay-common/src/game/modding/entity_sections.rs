@@ -46,11 +46,11 @@ use std::collections::hash_map::Entry;
 use sunrise_sim::mobs::living::section_writes::PositionWrite;
 
 /// `SectionPos.blockToSectionCoord(Mth.floor(v))`.
-pub(in crate::game) fn section_coord(v: f64) -> i32 {
+pub fn section_coord(v: f64) -> i32 {
     sunrise_core::mth::floor(v) >> 4
 }
 
-pub(in crate::game) fn section_of([x, y, z]: [f64; 3]) -> [i32; 3] {
+pub fn section_of([x, y, z]: [f64; 3]) -> [i32; 3] {
     [section_coord(x), section_coord(y), section_coord(z)]
 }
 
@@ -62,7 +62,7 @@ pub fn crossed(from: [f64; 3], to: [f64; 3]) -> bool {
 
 /// A section change a boundary found: the entity, its old and its new section.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::game) struct Crossing {
+pub struct Crossing {
     pub(in crate::game) id: u32,
     pub(in crate::game) old: [i32; 3],
     pub(in crate::game) new: [i32; 3],
@@ -203,7 +203,7 @@ pub(in crate::game) struct PlayerMoveState {
 
 /// The Host used while the entity's world view is borrowed. It answers only
 /// reads from the current write; other operations retain their typed refusal.
-pub(in crate::game) struct LiveSectionHost(pub(in crate::game) Option<SectionWriter>);
+pub struct LiveSectionHost(pub(in crate::game) Option<SectionWriter>);
 
 mod_api::impl_host_areas!(LiveSectionHost, except(datafix));
 mod_api::impl_server_host_areas!(LiveSectionHost);

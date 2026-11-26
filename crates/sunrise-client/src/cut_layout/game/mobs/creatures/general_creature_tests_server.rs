@@ -1,9 +1,10 @@
 use sunrise_gameplay::game::server_side::creatures_server::ProjectileKind;
+use sunrise_gameplay_common::game_side;
 
 #[test]
 #[ignore = "daily"]
 fn conversion_transfers_tags_and_team() {
-    use super::super::commands::Target;
+    use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::{
         mobs::{Mob, conversion::Params},
@@ -48,7 +49,7 @@ fn conversion_transfers_tags_and_team() {
 #[ignore = "daily"]
 fn ender_pearl_clears_impulse_before_next_fall() {
     use {sunrise_gameplay::game::server_side::creatures_server::Hit, sunrise_gameplay::game::server_side::creatures_server::Projectile, sunrise_gameplay::game::server_side::creatures_server::Vec3, sunrise_gameplay::game::server_side::creatures_server::Who};
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_sim::motion::{MotionWorld, PlayerMotion};
 
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());

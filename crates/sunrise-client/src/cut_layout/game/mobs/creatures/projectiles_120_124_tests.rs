@@ -1,5 +1,5 @@
 //! Witness-driven parity tests for projectile gaps #120-#124 against vanilla 26.3.
-use crate::game::commands::Target;
+use sunrise_gameplay_common::game::commands_common::Target;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::PathBuf;

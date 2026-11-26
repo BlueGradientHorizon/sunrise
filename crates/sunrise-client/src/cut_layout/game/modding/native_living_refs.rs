@@ -638,7 +638,7 @@ use sunrise_core::geometry::Vec3;
             let i = game.mobs.iter().position(|m| m.id == pig).unwrap();
             let mob = &mut game.mobs[i];
             mob.knockback(
-                crate::game::server_side::entity_server::damage_level_of!(
+                sunrise_gameplay::game::server_side::entity_server::damage_level_of!(
                     game,
                     &NO_ATTACK,
                     &mut credit,
@@ -869,7 +869,7 @@ use sunrise_core::geometry::Vec3;
                 sunrise_gameplay::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
                 game.note_attacker("minecraft:mob_attack", 15);
                 let rules = game.world.health_rules;
-                let level = crate::game::server_side::entity_server::damage_level_of!(
+                let level = sunrise_gameplay::game::server_side::entity_server::damage_level_of!(
                     game,
                     &sunrise_sim::health::NO_ATTACK,
                     no_push,

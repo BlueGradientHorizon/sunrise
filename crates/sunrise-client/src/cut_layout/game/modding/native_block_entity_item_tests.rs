@@ -1,5 +1,5 @@
-use super::api_values::{StackReadError, TryIntoApi};
-use super::native_live_holder_tests::{mod_holder, with_mod_parts};
+use sunrise_gameplay_common::game::api_values::{StackReadError, TryIntoApi};
+use crate::game::native_live_holder_tests::{mod_holder, with_mod_parts};
 use mod_api::{
     BlockEntityItemError as Error, Host, HostTransaction, ITEMS, ItemResource, ServerHost,
     TransactionContext, TransactionError,

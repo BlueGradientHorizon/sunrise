@@ -1,7 +1,7 @@
-use sunrise_gameplay::game::commands::enchant_tests::RIPTIDE;
-use sunrise_gameplay::game::commands::enchant_tests::TRIDENT;
-use sunrise_gameplay::game::commands::enchant_tests::riptide;
-use {sunrise_gameplay_common::game::Screen, sunrise_gameplay::game::lan::LanHost, sunrise_gameplay::game::server_side::lan_particles::tests::test_hub, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::logged_in, sunrise_client_gameplay::game::native_hotbar_slot::hotbar_slot_tests::sent};
+use crate::game::commands::enchant_tests::RIPTIDE;
+use crate::game::commands::enchant_tests::TRIDENT;
+use crate::game::commands::enchant_tests::riptide;
+use {sunrise_gameplay_common::game::Screen, sunrise_gameplay::game::lan::LanHost, sunrise_gameplay::game::server_side::lan_particles::tests::test_hub, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::sent};
 use std::sync::Arc;
 use sunrise_client::creative::Creative;
 use sunrise_game_data::scoreboard::tag_to_json;

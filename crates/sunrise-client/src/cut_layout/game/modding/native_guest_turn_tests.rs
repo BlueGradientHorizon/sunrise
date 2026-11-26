@@ -26,7 +26,7 @@ pub use sunrise_gameplay::game::native_guest_turn_tests::{
 #[test]
 #[ignore = "daily"]
 fn player_dimensions_validate_identity_on_both_server_roles() {
-    use super::execution_role::ExecutionRole;
+    use sunrise_gameplay_common::game::execution_role::ExecutionRole;
     let previous_extra = super::EXTRA_DIMS.read().unwrap().clone();
     with_guests(|game| {
         super::Dim::add_extra("test:pocket");
@@ -670,7 +670,7 @@ fn velocity_writes_send_only_the_owning_player_the_replacement_motion() {
 #[test]
 #[ignore = "daily"]
 fn another_guests_services_work_during_a_turn() {
-    use {crate::game::server_side::commands::Target, sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Ender, sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Player};
+    use {crate::game::commands::Target, sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Ender, sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Player};
     use mod_api::{CriterionContext, CriterionTest, CriterionTestError, TriggerCriterionError};
     use sunrise_command::args::Selector;
     use sunrise_items::items::ItemStack;
@@ -890,7 +890,7 @@ fn nested_guest_turns_restore_each_equipment_store() {
 #[test]
 #[ignore = "daily"]
 fn another_guests_live_merchant_session_is_visible_during_a_turn() {
-    use {sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer, sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn, crate::game::server_side::trading_common::MerchantState};
+    use {sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer, sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn, sunrise_gameplay_common::game::trading_common::MerchantState};
     use sunrise_sim::merchant::{Session, Trader};
 
     with_guests(|game| {
@@ -1452,7 +1452,7 @@ fn set_selected_slot_tells_an_acting_guests_client() {
 #[test]
 #[ignore = "daily"]
 fn a_vetoed_drop_gives_the_stack_back() {
-    use super::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use mod_api::{Flow, Hooks, ItemTossEvent, ModEntry, ServerHost};
     use mod_platform::testing::with_mods;
     use sunrise_items::items::ItemStack;

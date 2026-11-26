@@ -5,6 +5,7 @@
 //! damps the light) and a bottom slab (whose up face occludes the sky-light
 //! column) do not. The world is lit by the vanilla light engine, not by hand.
 use {crate::game::*, sunrise_gameplay_common::game::{Instant, Level, Options, PathBuf, PlayerMotion, Progress, Resources, Vec3, entity, execution_role, tables}};
+use crate::settings::Settings;
 use std::sync::Arc;
 use sunrise_level::chunk::Chunk;
 use sunrise_level::light::{LightTables, apply_lighting, light_chunk};

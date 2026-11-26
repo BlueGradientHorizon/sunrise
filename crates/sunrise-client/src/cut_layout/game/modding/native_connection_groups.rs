@@ -4,7 +4,7 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Dim, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_client_gameplay::game::viewed_worlds::tests::client_with_pipe, sunrise_client_gameplay::game::viewed_worlds::tests::close as viewed_close, sunrise_client_gameplay::game::viewed_worlds::tests::column as viewed_column, sunrise_client_gameplay::game::viewed_worlds::tests::open as viewed_open, sunrise_client_gameplay::game::viewed_worlds::tests::run as viewed_run};
+    use {sunrise_gameplay_common::game::Dim, sunrise_gameplay::game::native_entity_refs::tests::with_game, crate::game::client_side::viewed_worlds::tests::client_with_pipe, crate::game::client_side::viewed_worlds::tests::close as viewed_close, crate::game::client_side::viewed_worlds::tests::column as viewed_column, crate::game::client_side::viewed_worlds::tests::open as viewed_open, crate::game::client_side::viewed_worlds::tests::run as viewed_run};
     use mod_api::{
         BlockEdit, BlockRun, BlockUpdateFlags, Host, HostTransaction, LevelReadError, LevelRef,
         LevelWriteError, ServerHost, WorldEpoch,

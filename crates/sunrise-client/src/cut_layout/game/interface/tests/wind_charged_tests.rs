@@ -2,8 +2,10 @@
 //! body (`WindChargedMobEffect.onMobRemoved`) and for a silent source no sound
 //! at all (`ServerLevel.explode`'s `playSound`), and vehicles left alone by a
 //! mob's blast with mob griefing off (`VehicleEntity.ignoreExplosion`).
-use crate::game::commands::Target;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Settings, sunrise_gameplay_common::game::load_resources};
+use sunrise_gameplay_common::game::commands_common::Target;
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
+use crate::game::load_resources;
+use crate::settings::Settings;
 use std::sync::Arc;
 use sunrise_level::chunk::Chunk;
 use sunrise_world::food::Difficulty;

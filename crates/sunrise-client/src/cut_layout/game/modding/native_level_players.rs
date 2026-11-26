@@ -2,10 +2,8 @@
 
 #[cfg(test)]
 mod tests {
-    use super::super::{
-        Dim,
-        native_guest_turn_tests::{place_host, with_guests},
-    };
+    use sunrise_gameplay_common::game::Dim;
+    use super::super::native_guest_turn_tests::{place_host, with_guests};
     use sunrise_gameplay::game::server_side::native_level_players::ControlFlow;
     use mod_api::{ChunkRef, LevelReadError, LevelRef, PlayerRef, WorldEpoch};
 
