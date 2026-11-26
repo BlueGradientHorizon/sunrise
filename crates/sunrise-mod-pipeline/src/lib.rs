@@ -543,6 +543,37 @@ pub fn extract_vertex_inputs(vertex: &str) -> Result<Vec<(String, String)>, Stri
     Ok(out)
 }
 
+/// Reads an include for a program: the sprite helpers ([`SPRITE_INCLUDE`]) are pasted when
+/// `sprite` (the pipeline is textured, or the reader is finding out whether it is) and refused
+/// otherwise, every other file comes from `include`.
+fn read_include(
+    id: &str,
+    sprite: bool,
+    include: &dyn Fn(&str) -> Result<Option<String>, String>,
+) -> Result<Option<String>, String> {
+    if id != SPRITE_INCLUDE {
+        return include(id);
+    }
+    if sprite {
+        return Ok(Some(PIPELINE_SPRITE_GLSL.to_owned()));
+    }
+    Err(format!(
+        "{SPRITE_INCLUDE} requires a sprite texture (RenderPipeline::textured)"
+    ))
+}
+
+/// The [`Includes`] of a program's stages, reading files through `read` ([`read_include`]).
+fn program_includes<'a>(
+    read: &'a dyn Fn(&str) -> Result<Option<String>, String>,
+) -> Includes<'a> {
+    Includes {
+        read,
+        namespace: "minecraft",
+        folder: INCLUDE_FOLDER,
+        once: &["moj_import"],
+    }
+}
+
 /// Refuse any top-level vertex `in` declaration ([`sunrise_glsl::stage_inputs`] of the expanded
 /// stage, comments gone) that is not listed in `vertex_inputs` or whose GLSL type disagrees with
 /// the pipeline's [`VertexFormat`]. A declaration is located by where its name stands in
@@ -599,24 +630,14 @@ pub struct ProgramBindings {
 /// declares is the program's too (#5905), and one named only in a comment is not, nor does a
 /// sprite name in a comment make the program textured. A stage whose includes cannot be expanded
 /// refuses the program, as [`translate`] does, with the include's error.
+/// [`SPRITE_INCLUDE`] is always pasted: including it is itself asking for the sprite texture.
 pub fn extract_program_bindings(
     sources: &ProgramSources<'_>,
     defines: &[&str],
     include: &dyn Fn(&str) -> Result<Option<String>, String>,
 ) -> Result<ProgramBindings, Problem> {
-    // Including the sprite helpers is itself asking for the sprite texture.
-    let read = |id: &str| -> Result<Option<String>, String> {
-        if id == SPRITE_INCLUDE {
-            return Ok(Some(PIPELINE_SPRITE_GLSL.to_owned()));
-        }
-        include(id)
-    };
-    let includes = Includes {
-        read: &read,
-        namespace: "minecraft",
-        folder: INCLUDE_FOLDER,
-        once: &["moj_import"],
-    };
+    let read = |id: &str| read_include(id, true, include);
+    let includes = program_includes(&read);
     let defines = effective_defines(defines);
     let expand = |text: &str, file: &str, dir: &str| {
         sunrise_glsl::expand_includes(text, file, dir, &includes, Some(&defines))
@@ -808,23 +829,8 @@ fn translate_inner(
     extra_samplers: &[&str],
     include: &dyn Fn(&str) -> Result<Option<String>, String>,
 ) -> Result<BuiltProgram, Vec<Problem>> {
-    let read = |id: &str| -> Result<Option<String>, String> {
-        if id == SPRITE_INCLUDE {
-            if options.textured {
-                return Ok(Some(PIPELINE_SPRITE_GLSL.to_owned()));
-            }
-            return Err(format!(
-                "{SPRITE_INCLUDE} requires a sprite texture (RenderPipeline::textured)"
-            ));
-        }
-        include(id)
-    };
-    let includes = Includes {
-        read: &read,
-        namespace: "minecraft",
-        folder: INCLUDE_FOLDER,
-        once: &["moj_import"],
-    };
+    let read = |id: &str| read_include(id, options.textured, include);
+    let includes = program_includes(&read);
 
     let vertex_expanded = sunrise_glsl::expand_includes(
         sources.vertex,
@@ -976,16 +982,15 @@ pub fn translate_linear_fragment(
 ) -> Result<naga::Module, String> {
     guard::guarded(|| {
         let defines = effective_defines(options.defines);
+        // The text is expanded already: nothing is left to include.
         let noop = |_: &str| Ok(None);
-        let includes = Includes {
-            read: &noop,
-            namespace: "minecraft",
-            folder: INCLUDE_FOLDER,
-            once: &["moj_import"],
-        };
+        let read = |id: &str| read_include(id, options.textured, &noop);
+        let includes = program_includes(&read);
         let setup = Setup::new(options);
         let inputs = setup.inputs(options, &defines, &includes);
-        let provided = |_: &str| false;
+        // The program is the one `translate` built, which asks for no extra samplers.
+        let extra_samplers: &[&str] = &[];
+        let provided = |name: &str| extra_samplers.contains(&name);
         let stages = Stages {
             dir: "",
             vertex: vertex_expanded,
