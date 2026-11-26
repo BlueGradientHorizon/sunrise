@@ -391,6 +391,17 @@ fn build_error(error: String) -> String {
     )
 }
 
+/// The project's work folder in the cache, by mod id and the project's own (canonical) folder: two
+/// checkouts of one mod (Git worktrees, a fork beside the original) never share a staged copy, its
+/// lock or the cargo build folder kept by its path, so one's check neither waits for the other's
+/// nor recompiles the mod after it.
+fn work_dir(cache: &Path, id: &str, project: &Path) -> PathBuf {
+    use sha2::{Digest, Sha256};
+    let hash = Sha256::digest(project.to_string_lossy().as_bytes());
+    let short: String = hash[..6].iter().map(|b| format!("{b:02x}")).collect();
+    cache.join("work").join(format!("{id}-{short}"))
+}
+
 /// Avoid names reserved by package discovery at the input root (such as `native` and `rust`).
 fn stage_name(id: &str) -> String {
     format!("mod-{id}")
@@ -426,7 +437,7 @@ fn prepare(
         },
         &cache,
     )?;
-    let work = cache.join("work").join(&id);
+    let work = work_dir(&cache, &id, &project);
     fs::create_dir_all(&work).map_err(|e| format!("{}: {e}", work.display()))?;
     let work = dunce::canonicalize(&work).map_err(|e| format!("{}: {e}", work.display()))?;
     let lock_path = work.join("build.lock");

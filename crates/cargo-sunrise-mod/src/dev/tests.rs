@@ -41,6 +41,29 @@ fn the_cache_is_the_override_else_the_platforms_cache_folder() {
 }
 
 #[test]
+fn each_project_folder_has_its_own_work_folder() {
+    let cache = Path::new("/cache");
+    let (project, worktree) = (Path::new("/src/ae2"), Path::new("/src/ae2-feature"));
+    let work = work_dir(cache, "ae2", project);
+    assert_eq!(
+        work,
+        work_dir(cache, "ae2", project),
+        "stable for one project"
+    );
+    assert_ne!(
+        work,
+        work_dir(cache, "ae2", worktree),
+        "same mod id, another folder"
+    );
+    assert_ne!(work, work_dir(cache, "jei", project));
+    assert_eq!(work.parent(), Some(Path::new("/cache/work")));
+    let name = work.file_name().unwrap().to_str().unwrap();
+    let hash = name.strip_prefix("ae2-").unwrap();
+    assert_eq!(hash.len(), 12, "{name}");
+    assert!(hash.bytes().all(|b| b.is_ascii_hexdigit()), "{name}");
+}
+
+#[test]
 fn the_rust_is_rustups_else_the_exact_one_on_the_path_else_an_error_saying_how() {
     let target = "x86_64-unknown-linux-gnu";
     let found = |version: &str, host: &str| Found {
