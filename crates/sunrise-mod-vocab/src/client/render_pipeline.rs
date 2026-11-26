@@ -320,8 +320,9 @@ impl RenderPipeline {
         self
     }
 
-    /// Set whether fragments write to the depth buffer (`DepthStencilState.writeDepth`).
-    /// Default: `false`.
+    /// Set whether fragments that pass the comparison write to the depth buffer
+    /// (`DepthStencilState.writeDepth`). Default: `false`. Linked shader-pack passes also
+    /// require a writable slot or an explicit [`PackDepthTarget`].
     pub fn depth_write(mut self, write: bool) -> Self {
         match &mut self.state.depth_stencil {
             Some(ds) => ds.write = write,
@@ -715,8 +716,8 @@ pub struct PackBinding {
     pub defines: Vec<(String, Option<String>)>,
     /// Optional depth target the pipeline draws into: an auxiliary depth plane
     /// ([`PackDepthTarget::new`]), allocated and populated only while an active pack is bound and
-    /// samples one of its declared samplers, or the pack's main depth ([`PackDepthTarget::Main`]),
-    /// which the pipeline's vertex stage fills with the world's projection of its geometry.
+    /// samples one of its declared samplers, or the pack's main depth ([`PackDepthTarget::Main`]).
+    /// The target permits writes; the pipeline must also request them.
     pub depth_target: Option<PackDepthTarget>,
     /// Per-frame pack uniforms supplied by the mod under pack-side GLSL names. If a pack
     /// declares a uniform with a different GLSL type, the engine leaves it unbound and logs
@@ -904,12 +905,15 @@ impl PackBinding {
 
 /// The depth target a [`PackBinding`]'s pipeline draws into under a shader pack.
 ///
-/// A pipeline with no depth target draws into the pack's main depth (`depthtex0`) too, but
-/// [`Self::Main`] also enables depth writes there (when the pipeline is depth-tested). The depth
-/// comes from the pipeline's vertex stage: a pass naming [`Self::Main`] writes the depth its
-/// vertex stage's position gives in the world's projection, including geometry the mod projects
-/// itself, so a mod needs no separate copy into it. Under a pack the fragment stage is the
-/// pack's, so `gl_FragDepth` is not the mod's to write.
+/// An explicit target allows writes when the pipeline requests them with
+/// [`RenderPipeline::depth_write`]. Without a target, writes are allowed only in
+/// [`PackPassSlot::AfterOpaqueGbuffers`] and [`PackPassSlot::Shadow`]; other slots can compare
+/// against the pack's main depth (`depthtex0`) but cannot write it. The comparison is mapped
+/// to standard-Z as described by [`DepthCompare`], independently of writes.
+///
+/// With [`Self::Main`], the vertex stage can emit depth in the world's projection directly,
+/// including for geometry the mod projects itself, so a mod needs no separate copy into it.
+/// Under a pack the fragment stage is the pack's, so `gl_FragDepth` is not the mod's to write.
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[non_exhaustive]
 // no wire: local client shader-pack depth target descriptor.

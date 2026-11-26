@@ -2831,11 +2831,7 @@ impl PackPost {
                     pages: false,
                 };
                 pack.mod_depth_target.set(active_depth);
-                pack.depth_compare.set(if spec.depth_test {
-                    wgpu::CompareFunction::LessEqual
-                } else {
-                    wgpu::CompareFunction::Always
-                });
+                pack.depth_compare.set(spec.depth_compare);
                 *pack.mod_vertex.borrow_mut() = own_stage.cloned();
                 let built_pass = build(program, Some(&mod_geometry));
                 pack.mod_vertex.borrow_mut().take();
