@@ -919,8 +919,10 @@ pub fn sampler_filtering(sampler: &Sampler) -> bool {
         || blends_mip_levels(sampler)
 }
 
+/// Vanilla's rule for linear blending between mip levels: `maxLod > 0.25`, where an absent
+/// `maxLod` is its 1000.
 fn blends_mip_levels(sampler: &Sampler) -> bool {
-    sampler.max_lod.is_some_and(|lod| lod > 0.25)
+    sampler.max_lod.is_none_or(|lod| lod > 0.25)
 }
 
 fn address_mode(address: SamplerAddress) -> wgpu::AddressMode {
@@ -4556,6 +4558,36 @@ impl super::Renderer {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Vanilla's sampler blends between mip levels whenever `maxLod` is above 0.25, an absent
+    /// one being 1000 (#6000): `Sampler::new` blends and needs a filterable texture, so a depth
+    /// target takes `max_lod = Some(0.0)`, which reads the nearest level alone.
+    #[test]
+    fn a_sampler_without_max_lod_blends_mip_levels_as_vanilla_does() {
+        use crate::gfx::mod_frame_graph::validate_transient_depth_binding;
+        let default = Sampler::new(SamplerFilter::Nearest, SamplerAddress::ClampToEdge);
+        assert!(blends_mip_levels(&default) && sampler_filtering(&default));
+        let mut base_only = default;
+        base_only.max_lod = Some(0.0);
+        assert!(!blends_mip_levels(&base_only) && !sampler_filtering(&base_only));
+        let mut quarter = default;
+        quarter.max_lod = Some(0.25);
+        assert!(!blends_mip_levels(&quarter));
+        quarter.max_lod = Some(0.5);
+        assert!(blends_mip_levels(&quarter));
+        let depth = mod_api::RenderTargetDescriptor::rgba8(
+            [4, 4],
+            mod_api::RenderTargetDepth::Depth32Float,
+        );
+        assert!(!validate_transient_depth_binding(
+            &depth,
+            sampler_filtering(&default)
+        ));
+        assert!(validate_transient_depth_binding(
+            &depth,
+            sampler_filtering(&base_only)
+        ));
+    }
     use crate::gfx::world_primitives::{self, STAGES, WorldPrimitives};
     use glam::Vec3;
     use mod_api::{BlendFunction, Identifier, RenderPipeline, WorldDepth};
