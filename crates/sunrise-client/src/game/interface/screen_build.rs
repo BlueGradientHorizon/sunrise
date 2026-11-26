@@ -410,13 +410,13 @@ struct EffectsMemo {
     answer: EffectsLayout,
 }
 
-/// One frame's `screen_room` answer and the screen it was taken for: the
+/// One frame's `screen_room` answer (`[left, right]`) and the screen it was taken for: the
 /// layout's inputs ask it more than once a frame, the hook once.
 #[derive(Clone, Copy, PartialEq)]
 struct RoomMemo {
     frame: u64,
     screen: Screen,
-    room: f32,
+    room: [f32; 2],
 }
 
 /// The open screen's build and what it was made from.
@@ -468,7 +468,7 @@ impl ScreenBuildState {
     }
 
     /// The room the mods asked this frame for `screen`, if they were asked.
-    pub(super) fn room_answer(&self, frame: u64, screen: Screen) -> Option<f32> {
+    pub(super) fn room_answer(&self, frame: u64, screen: Screen) -> Option<[f32; 2]> {
         self.room
             .get()
             .filter(|memo| memo.frame == frame && memo.screen == screen)
@@ -476,7 +476,7 @@ impl ScreenBuildState {
     }
 
     /// Keeps this frame's room for the layout's other inputs in the same frame.
-    pub(super) fn keep_room_answer(&self, frame: u64, screen: Screen, room: f32) {
+    pub(super) fn keep_room_answer(&self, frame: u64, screen: Screen, room: [f32; 2]) {
         self.room.set(Some(RoomMemo {
             frame,
             screen,
@@ -1590,6 +1590,90 @@ mod tests {
                 });
             });
         }
+    }
+
+    /// Room on the left moves the window right, clears the recipe book's selected tab or
+    /// moves nothing, and sets off room on the right; an answer that isn't room on one side
+    /// leaves the other side's. In its own process: the game it opens publishes process-wide
+    /// tables.
+    #[test]
+    #[ignore = "daily"]
+    fn room_on_the_left_moves_the_window_right_and_clears_the_book() {
+        crate::game::in_own_process(
+            "game::screen_build::tests::room_on_the_left_moves_the_window_right_and_clears_the_book",
+            || {
+                use mod_api::{ClientHost, Hooks, ModEntry, ScreenRoomEvent};
+                use std::sync::{
+                    Arc,
+                    atomic::{AtomicU32, Ordering},
+                };
+                use sunrise_client::{hud::HudBatch, recipe_book::BookType};
+
+                struct Panels {
+                    left: Arc<AtomicU32>,
+                    right: Arc<AtomicU32>,
+                }
+                #[mod_api::__subscriptions]
+                impl Hooks for Panels {
+                    fn screen_room(&self, _: &dyn ClientHost, event: &mut ScreenRoomEvent<'_>) {
+                        // Assigned, not `max`ed, so the answers that aren't room reach the game.
+                        event.left = f32::from_bits(self.left.load(Ordering::Relaxed));
+                        event.right = f32::from_bits(self.right.load(Ordering::Relaxed));
+                    }
+                }
+                let left = Arc::new(AtomicU32::new(0));
+                let right = Arc::new(AtomicU32::new(0));
+                let panels = Panels {
+                    left: left.clone(),
+                    right: right.clone(),
+                };
+                let mods: mod_api::Mods = vec![ModEntry::new("panels", Box::new(panels))].into();
+                mod_platform::testing::with_mods(mods, || {
+                    crate::game::native_entity_refs::tests::with_client_game(|game| {
+                        game.screen = Screen::Inventory;
+                        game.container = None;
+                        game.craft_size = 2;
+                        game.settings.gui_scale = 1;
+                        let batch = HudBatch::new([427, 240], game.settings.gui_scale_inputs());
+                        // (open book, left, right) -> the window's and the book's left edges.
+                        // Closed, the window sits at 125; open, at 202 with the book at 54 and
+                        // its selected tab at 22.
+                        for (open, l, r, x, book_x) in [
+                            // 74 right: 51 spare left of the panel's room.
+                            (false, 149.0, 0.0, 199.0, None),
+                            // 10 right: the tab stays 12 clear of the screen's edge.
+                            (true, 20.0, 0.0, 212.0, Some(64.0)),
+                            // The tab would leave the screen: nothing moves.
+                            (true, 149.0, 0.0, 202.0, Some(54.0)),
+                            // 50 right less 74 left: 1 spare on each side.
+                            (false, 100.0, 149.0, 101.0, None),
+                            // No room on one side leaves the other side's answer.
+                            (false, f32::NAN, 149.0, 51.0, None),
+                            (false, f32::INFINITY, 149.0, 51.0, None),
+                            (false, 149.0, -20.0, 199.0, None),
+                            (false, 149.0, f32::NEG_INFINITY, 199.0, None),
+                        ] {
+                            game.frames += 1;
+                            game.level.recipe_book.open[BookType::Crafting.index()] = open;
+                            left.store(f32::to_bits(l), Ordering::Relaxed);
+                            right.store(f32::to_bits(r), Ordering::Relaxed);
+                            let layout = game.container_layout(&batch);
+                            assert_eq!(layout.origin, (x, 37.0), "{open} {l} {r}");
+                            assert_eq!(layout.book.map(|book| book[0]), book_x);
+                            assert_eq!(
+                                layout.slots.iter().find(|(id, _)| *id == 0).unwrap().1,
+                                [x + 7.0, 178.0, 18.0, 18.0]
+                            );
+                            assert_eq!(
+                                game.screen_view(&batch, Screen::Inventory).rect,
+                                [x, 37.0, 176.0, 166.0]
+                            );
+                            assert_eq!(game.slot_at(&batch, x + 8.0, 179.0), Some(0));
+                        }
+                    });
+                });
+            },
+        );
     }
 
     /// Each `ScreenView::regions` kind where vanilla 26.3 draws it, from its

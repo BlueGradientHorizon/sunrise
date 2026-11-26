@@ -263,15 +263,13 @@ class ReportTests(unittest.TestCase):
                 return subprocess.CompletedProcess(command, 0, "", "")
 
             with (mock.patch.object(surface_report.subprocess, "run", side_effect=export),
-                  mock.patch.object(surface_report, "unpack") as unpack,
-                  mock.patch.object(surface_report, "tree_tool", return_value=["checkpoint-tool"]) as tree_tool,
+                  mock.patch.object(surface_report, "base_tool", return_value=["checkpoint-tool"]) as base_tool,
                   mock.patch.object(surface_report, "compare", return_value=(1, "later change refused")) as compare):
                 code, text = surface_report.report(["stage"], base, head, work, True, own_base_tool=lambda: ["old-tool"])
                 self.assertEqual(code, 1)
                 self.assertIn("Audited schema 2 → 3 reset", text)
                 self.assertIn("later change refused", text)
-                unpack.assert_called_once_with("checked", work / "schema-reset", ())
-                tree_tool.assert_called_once_with(work / "schema-reset", work)
+                base_tool.assert_called_once_with("checked", work, archive_name="schema-reset")
                 self.assertEqual(compare.call_args.args[1:5], (work / "schema-reset", head, work, True))
                 self.assertEqual(json.loads((work / "base.json").read_text())["hash"], "checkpoint-with-loops")
 
@@ -664,39 +662,164 @@ Path(sys.argv[3]).write_text('{"schema": 3, "by": "' + marker + '"}\n')
                 work = folder / "work"
                 work.mkdir()
 
-                def cargo(command, cwd, **_):
-                    built = folder / "target/surface-base/debug" / name
+                def cargo(command, **_):
+                    target = Path(command[command.index("--target-dir") + 1])
+                    built = target / "debug" / name
                     built.parent.mkdir(parents=True, exist_ok=True)
                     built.write_text("stage")
                     return subprocess.CompletedProcess(command, 0, "", "")
 
-                with mock.patch.object(surface_report, "ROOT", folder), \
-                     mock.patch.object(surface_report.sys, "platform", platform), \
+                with mock.patch.object(surface_report.sys, "platform", platform), \
                      mock.patch.object(surface_report.subprocess, "run", cargo):
-                    tool = surface_report.tree_tool(Path("one"), work)
+                    tool = surface_report.tree_tool(Path("one"), work, work / "target")
                 self.assertEqual(Path(tool[0]).name, "base-stage-0" + name[len("sunrise-stage"):])
                 self.assertEqual(Path(tool[0]).read_text(), "stage")
 
-    def test_each_base_tool_build_gets_its_own_copy(self):
-        with tempfile.TemporaryDirectory() as directory:
-            folder = Path(directory)
-            work = folder / "work"
-            work.mkdir()
-            name = "sunrise-stage.exe" if sys.platform == "win32" else "sunrise-stage"
 
-            def cargo(command, cwd, **_):
-                binary = folder / "target/surface-base/debug" / name
-                binary.parent.mkdir(parents=True, exist_ok=True)
-                binary.write_text(str(cwd))
-                return subprocess.CompletedProcess(command, 0, "", "")
+@unittest.skipUnless(shutil.which("cargo"), "needs Cargo for the exporter fixture")
+class ExporterTargetTests(unittest.TestCase):
+    SOURCES = {
+        "Cargo.toml": '[package]\nname = "sunrise-stage"\nversion = "0.0.0"\nedition = "2024"\n'
+                      '[build-dependencies]\ngenerator = { path = "generator" }\n'
+                      '[workspace]\nmembers = ["generator"]\n',
+        "Cargo.lock": 'version = 4\n[[package]]\nname = "generator"\nversion = "0.0.0"\n'
+                      '[[package]]\nname = "sunrise-stage"\nversion = "0.0.0"\ndependencies = ["generator"]\n',
+        "build.rs": 'fn main() {\n'
+                    '    println!("cargo:rerun-if-changed=build.rs");\n'
+                    '    println!("cargo:rustc-env=VALUE={}", generator::VALUE);\n}\n',
+        "generator/Cargo.toml": '[package]\nname = "generator"\nversion = "0.0.0"\nedition = "2024"\n',
+        "generator/src/lib.rs": 'pub const VALUE: &str = "A";\n',
+        "src/main.rs": 'fn main() {\n'
+                       '    let output = std::env::args_os().nth(3).unwrap();\n'
+                       '    std::fs::write(output, format!(r#"{{"schema":3,"value":"{}"}}"#, env!("VALUE"))).unwrap();\n'
+                       '}\n',
+    }
+    INPUT = "generator/src/lib.rs"
 
-            with mock.patch.object(surface_report, "ROOT", folder), \
-                 mock.patch.object(surface_report.subprocess, "run", cargo):
-                first = surface_report.tree_tool(Path("one"), work)
-                second = surface_report.tree_tool(Path("two"), work)
-            # A later build of another tree replaces the shared binary, never a copy an audit already holds.
-            self.assertNotEqual(first, second)
-            self.assertEqual((Path(first[0]).read_text(), Path(second[0]).read_text()), ("one", "two"))
+    def setUp(self):
+        target = ROOT / "target"
+        target.mkdir(exist_ok=True)
+        directory = tempfile.TemporaryDirectory(prefix="surface-report-", dir=target)
+        self.addCleanup(directory.cleanup)
+        self.work = Path(directory.name)
+        self.repo = self.work / "repo"
+        for name, source in self.SOURCES.items():
+            path = self.repo / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(source)
+        self.env = {**os.environ, "CARGO_TARGET_DIR": str(self.work / "foreign-target"),
+                    "CARGO_BUILD_BUILD_DIR": str(self.work / "foreign-build"), "CARGO_NET_OFFLINE": "true",
+                    "RUSTC_WRAPPER": "", "RUSTC_WORKSPACE_WRAPPER": ""}
+
+    def backdate(self, tree):
+        for path in self.SOURCES:
+            os.utime(tree / path, ns=(1_000_000_000, 1_000_000_000))
+
+    def test_backdated_local_audits_export_each_tree_without_modifying_it(self):
+        a = self.repo
+        b = self.work / "dirty"
+        shutil.copytree(a, b)
+        with mock.patch.object(surface_report, "ROOT", b):
+            surface_report.git("init", "-q")
+            self.commit()
+        (b / self.INPUT).write_text('pub const VALUE: &str = "B";\n')
+        for tree in (a, b):
+            self.backdate(tree)
+        head_tool = python_stub(self.work / "head_stage.py", r"""
+import sys
+from pathlib import Path
+
+args = sys.argv[1:]
+if args[0] == "surface":
+    Path(args[2]).write_text('{}')
+elif args[0] == "surface-diff":
+    print(Path(args[1]).read_text())
+""")
+        driver = self.work / "driver"
+        (driver / "tools/ci").mkdir(parents=True)
+        shutil.copy2(ROOT / "tools/ci/surface.toml", driver / "tools/ci/surface.toml")
+        report = surface_report.report
+        env = {**self.env, "SUNRISE_STAGE_TOOL": head_tool[1], "RUNNER_TEMP": str(self.work),
+               "GITHUB_STEP_SUMMARY": ""}
+        with (mock.patch.object(surface_report, "ROOT", driver),
+              mock.patch.object(surface_report, "os", ScopedOs(env)),
+              mock.patch.object(surface_report, "report", side_effect=lambda _tool, *a, **kw: report(head_tool, *a, **kw))):
+            for tree, value in ((a, "A"), (b, "B")):
+                input_mtime = (tree / self.INPUT).stat().st_mtime_ns
+                with contextlib.redirect_stdout(io.StringIO()) as output:
+                    code = surface_report.main(["--trees", str(tree), str(a), "--build-base-tool"])
+                self.assertEqual(code, 0, output.getvalue())
+                self.assertIn(f'{{"schema":3,"value":"{value}"}}', output.getvalue())
+                self.assertEqual((tree / self.INPUT).stat().st_mtime_ns, input_mtime)
+                self.assertFalse((tree / "target").exists())
+        self.assertFalse((driver / "target").exists())
+        self.assertFalse((self.work / "foreign-target").exists())
+        self.assertFalse((self.work / "foreign-build").exists())
+
+    def commit(self):
+        surface_report.git("add", ".")
+        surface_report.git("-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                           "-c", "commit.gpgsign=false", "commit", "-qm", "exporter fixture")
+        return surface_report.git("rev-parse", "HEAD").strip()
+
+    @unittest.skipUnless(shutil.which("tar"), "needs tar to unpack the exporter fixture")
+    def test_archived_builds_reconcile_a_b_a_and_keep_unchanged_units_fresh(self):
+        run = subprocess.run
+        unpack = surface_report.unpack
+        artifacts_by_build = []
+
+        def record_build(command, **kwargs):
+            if command[0] != "cargo":
+                return run(command, **kwargs)
+            done = run([*command, "--message-format=json"], **kwargs)
+            artifacts_by_build.append([item for line in done.stdout.splitlines()
+                                       if (item := json.loads(line))["reason"] == "compiler-artifact"])
+            return done
+
+        def backdated_archive(sha, into, paths):
+            identity = unpack(sha, into, paths)
+            self.backdate(into)
+            return identity
+
+        with (mock.patch.object(surface_report, "ROOT", self.repo),
+              mock.patch.object(surface_report, "os", ScopedOs(self.env)),
+              mock.patch.object(surface_report.subprocess, "run", side_effect=record_build),
+              mock.patch.object(surface_report, "unpack", side_effect=backdated_archive)):
+            surface_report.git("init", "-q")
+            a = self.commit()
+            (self.repo / self.INPUT).write_text('pub const VALUE: &str = "B";\n')
+            b = self.commit()
+            # Reconcile A/B/A with fresh archives, then let an older writer build B before the warm A audit.
+            builds = []
+            for index, (sha, legacy) in enumerate(((a, False), (b, False), (a, False), (b, True), (a, False))):
+                work = self.work / f"audit-{index}"
+                work.mkdir()
+                if legacy:
+                    tree = work / "archive"
+                    tree.mkdir()
+                    unpack(sha, tree, ())
+                    # The old tar -m kept extraction time; the only source difference needs a new mtime.
+                    os.utime(tree / self.INPUT, None)
+                    target = self.repo / "target" / "surface-base"
+                    target.mkdir(parents=True, exist_ok=True)
+                    with (target / "surface-report.lock").open("a") as lock:
+                        surface_report.file_lock.lock(lock)
+                        tool = surface_report.tree_tool(tree, work, target)
+                else:
+                    tool = surface_report.base_tool(sha, work)
+                builds.append((tool, work / "surface.json"))
+            for build in artifacts_by_build[:-1]:
+                generator = next(item for item in build if item["target"]["name"] == "generator")
+                self.assertFalse(generator["fresh"])
+            # Each copied tool keeps its result even after later builds replace the cached binary.
+            for (tool, output), value in zip(builds, ("A", "B", "A", "B", "A"), strict=True):
+                done = surface_report.export_surface(tool, self.repo, output)
+                self.assertEqual(done.returncode, 0, done.stderr)
+                self.assertEqual(json.loads(output.read_text())["value"], value)
+        self.assertTrue(artifacts_by_build[-1])
+        self.assertTrue(all(item["fresh"] for item in artifacts_by_build[-1]), artifacts_by_build[-1])
+        self.assertFalse((self.work / "foreign-target").exists())
+        self.assertFalse((self.work / "foreign-build").exists())
 
 
 class BuildToolTests(unittest.TestCase):
