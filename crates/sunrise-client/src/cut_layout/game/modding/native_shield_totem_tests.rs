@@ -230,6 +230,47 @@ fn an_uncanceled_totem_saves_the_mob() {
     assert_eq!(heard.order, ["shield", "totem", "totem", "post"]);
 }
 
+#[test]
+#[ignore = "daily"]
+fn a_mods_protector_from_outside_the_hands_saves_the_mob() {
+    let totem = sunrise_items::items::ItemStack::new("minecraft:totem_of_undying", 1);
+    let saved = heard(
+        Heard {
+            refuse_hand: Some(Hand::Main),
+            lend: Some("minecraft:totem_of_undying"),
+            ..Heard::default()
+        },
+        |game| {
+            let mut hit = zombie(game, 226008);
+            hit.extra.set_main_hand_stack(Some(totem.clone()));
+            game.mobs.push(hit);
+            assert!(game.mob_hits_mob(226008, 1000.0, Damage::of(DamageKind::Generic)));
+            let hit = &game.mobs[0];
+            assert_eq!(hit.health, 1.0, "saved");
+            assert_eq!(
+                hit.extra.main_hand_stack(),
+                Some(&totem),
+                "the refused hand keeps its totem"
+            );
+        },
+    );
+    assert_eq!(saved.order, ["shield", "totem", "protection", "post"]);
+    // With no answer the mob dies, and a stack without the component is no answer.
+    let died = heard(
+        Heard {
+            lend: Some("minecraft:stick"),
+            ..Heard::default()
+        },
+        |game| {
+            let attacker = zombie(game, 226009);
+            game.mobs.push(attacker);
+            assert!(game.mob_hits_mob(226009, 1000.0, Damage::of(DamageKind::Generic)));
+            assert_eq!(game.mobs[0].health, 0.0);
+        },
+    );
+    assert_eq!(died.order, ["shield", "protection", "post"]);
+}
+
 /// The hit's level is the one the hit draws from: a mod's draw moves the world's random on by
 /// exactly one place.
 #[cfg(any())]

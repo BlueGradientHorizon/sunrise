@@ -96,7 +96,8 @@ fn a_packs_text_draws_world_text_with_and_without_improved_transparency() {
         );
         display.metadata(&[(23, 0, Value::Text(Tag::String("W".into())))]);
         game.client.text_displays.0.insert(1, display);
-        game.tick_text_displays(game.clock.runs_normally());
+        // This disconnected render fixture advances its display directly.
+        game.tick_and_file_display(1);
         assert_eq!(corner(game, frame), translucent, "a display's background");
 
         // No text and no background: nothing drawn.
@@ -105,7 +106,7 @@ fn a_packs_text_draws_world_text_with_and_without_improved_transparency() {
             (23, 0, Value::Text(Tag::String("".into()))),
             (25, 1, Value::Int(0)),
         ]);
-        game.tick_text_displays(game.clock.runs_normally());
+        game.tick_and_file_display(1);
         assert_eq!(corner(game, frame), empty, "an empty display");
 
         let display = game.client.text_displays.0.get_mut(&1).unwrap();
@@ -113,12 +114,12 @@ fn a_packs_text_draws_world_text_with_and_without_improved_transparency() {
             (2, 0, Value::OptText(Some(Tag::String("Tag".into())))),
             (3, 0, Value::Bool(true)),
         ]);
-        game.tick_text_displays(game.clock.runs_normally());
+        game.tick_and_file_display(1);
         assert_eq!(corner(game, frame), GREEN, "a name tag");
 
         let display = game.client.text_displays.0.get_mut(&1).unwrap();
         display.metadata(&[(0, 0, Value::Byte(0x02))]);
-        game.tick_text_displays(game.clock.runs_normally());
+        game.tick_and_file_display(1);
         let discrete = if improved { MAGENTA } else { WHITE };
         assert_eq!(corner(game, frame), discrete, "a discrete name tag");
 
@@ -128,7 +129,7 @@ fn a_packs_text_draws_world_text_with_and_without_improved_transparency() {
                 (23, 0, Value::Text(Tag::String("W".into()))),
                 (25, 1, Value::Int(0x8000_00FFu32 as i32)),
             ]);
-            game.tick_text_displays(game.clock.runs_normally());
+            game.tick_and_file_display(1);
             // Half blue over the tag's white glyphs: (0.5, 0.5, 1); a unorm byte rounds 127.5
             // either way, so one step of tolerance. Drawn the other way round, the background's
             // nearer depth hides the tag and the frame is half blue over the green text: (0, 128,
@@ -252,14 +253,14 @@ fn a_world_view_draws_the_name_tag() {
             (25, 1, Value::Int(0)),
         ]);
         game.client.text_displays.0.insert(1, display);
-        game.tick_text_displays(game.clock.runs_normally());
+        game.tick_and_file_display(1);
         let unnamed = picture(game);
         let display = game.client.text_displays.0.get_mut(&1).unwrap();
         display.metadata(&[
             (2, 0, Value::OptText(Some(Tag::String("Tag".into())))),
             (3, 0, Value::Bool(true)),
         ]);
-        game.tick_text_displays(game.clock.runs_normally());
+        game.tick_and_file_display(1);
         let named = picture(game);
         assert!(named != unnamed, "the view shows the name tag");
     });

@@ -585,6 +585,72 @@ pub(crate) mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn new_authenticated_world_saves_profile_without_player_before_login() {
+        use sunrise_core::nbt::Tag;
+        use sunrise_gameplay::game::server_side::integrated::serve;
+        use sunrise_gameplay_common::game::integrated_link::Launch;
+        use sunrise_sim::{lan::playerdata, save};
+
+        super::super::native_entity_refs::tests::with_client_game(|window| {
+            window.join_world_rest().unwrap();
+            let dir = tempfile::tempdir().unwrap();
+            // Deliberately not the offline UUID for Tester.
+            let owner = 0x1234_5678_90ab_cdef_0123_4567_89ab_cdef;
+            let mut options = window.options.clone();
+            options.dedicated = Some(Vec::new());
+            options.execution_role = ExecutionRole::IntegratedServer;
+            options.headless = true;
+            options.test_terrain = true;
+            let mut settings = window.client.settings.sim_settings();
+            settings.render_distance = 2;
+            settings.simulation_distance = 2;
+            let launch = Launch {
+                online_auth: false,
+                session_verifier: crate::game::session_verifier(),
+                rule_registry: Arc::new(
+                    sunrise_gameplay_common::game::api_values::game_rule_registry(),
+                ),
+                folder: dir.path().to_string_lossy().into_owned(),
+                name: Some("Pre-login".into()),
+                seed: Some(1),
+                creative: true,
+                create: None,
+                owner,
+                player: "Tester".into(),
+                owner_profile: None,
+            };
+            let flags = Arc::new(Flags::default());
+            // Stop as soon as startup finishes, without connecting the owner.
+            flags.stop.store(true, Ordering::Relaxed);
+            let (ready_tx, ready_rx) = channel();
+            let (_tasks_tx, tasks_rx) = channel();
+            serve(
+                &window.res,
+                window.pack.clone(),
+                options,
+                settings,
+                launch,
+                flags,
+                tasks_rx,
+                &ready_tx,
+                crate::game::profile_resolver,
+            )
+            .unwrap();
+            assert_eq!(ready_rx.try_recv().unwrap().unwrap().1, "Pre-login");
+            let profile = Tag::IntArray(playerdata::uuid_ints(owner).to_vec());
+            // Shutdown rotates the initial save into level.dat_old. Both name the profile.
+            for file in ["level.dat_old", "level.dat"] {
+                let root = save::read_dat(&dir.path().join(file)).unwrap();
+                let data = root.get("Data").unwrap();
+                assert_eq!(data.get("singleplayer_uuid"), Some(&profile));
+                assert!(data.get("Player").is_none());
+            }
+            assert!(!playerdata::path(dir.path(), owner).exists());
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn integrated_startup_saves_and_starts_before_handing_out_ready() {
         use mod_api::{Hooks, ModEntry, ServerHost};
         use mod_platform::testing::with_mods;

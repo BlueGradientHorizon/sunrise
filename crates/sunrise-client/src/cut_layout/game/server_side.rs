@@ -761,6 +761,10 @@ mod continue_using_tests;
 #[path = "items/stop_using_tests.rs"]
 mod stop_using_tests;
 
+#[cfg(test)]
+#[path = "items/use_same_item_tests.rs"]
+mod use_same_item_tests;
+
 #[path = "items/item_entities.rs"]
 pub(crate) mod item_entities;
 

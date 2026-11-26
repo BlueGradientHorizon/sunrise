@@ -2381,9 +2381,7 @@ use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
 mod link_and_path_tests {
     use super::*;
     use crate::game::ClientGame;
-    use crate::game::native_entity_refs::tests::{
-        fixture_root, with_client_game, with_game_role_client,
-    };
+    use crate::game::native_entity_refs::tests::with_client_game;
     use mod_api::{ClientHost, ClientTickPreEvent, Hooks, ModEntry, OpenLinkError, OpenPathError};
     use mod_platform::testing::with_mods;
     use std::sync::{Arc, Mutex};
@@ -2507,7 +2505,8 @@ mod link_and_path_tests {
             ExecutionRole::IntegratedServer,
             ExecutionRole::DedicatedServer,
         ] {
-            with_game_role_client(fixture_root(), role, |game| {
+            with_client_game(|game| {
+                game.common.options.execution_role = role;
                 assert_eq!(
                     game.confirm_link("https://example.com", false),
                     Err(OpenLinkError::Unavailable)

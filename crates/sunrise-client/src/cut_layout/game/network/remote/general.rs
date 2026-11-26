@@ -505,6 +505,74 @@ pub(crate) mod tests {
             )
         });
     }
+
+    /// `Entity.DATA_NO_GRAVITY` (5) reaches a general row through vanilla's `SetEntityData`
+    /// after its spawn and again when it changes: the client's row holds what was last set.
+    #[test]
+    #[ignore = "daily"]
+    fn a_general_rows_synced_no_gravity_reaches_its_client_row() {
+        use sunrise_protocol::entity_data::{Value, serializer};
+
+        mod_platform::__private::initialize().unwrap();
+        let _phase = mod_platform::__private::RegistrationGuard::open();
+        let declare = || vec![mod_api::ModEntry::new("mymod", Box::new(Declare))];
+        mod_platform::testing::with_mods(declare().into(), || {
+            mod_platform::__private::part_tests::install_parts_fixture(&declare()).unwrap();
+            crate::game::client_side::item_entities_client::thrown_items_tests::with_remote_game(
+                |game| {
+                    game.handle_packet(C::Login(play::Login {
+                        player_id: 7,
+                        hardcore: false,
+                        levels: vec!["minecraft:overworld".into()],
+                        max_players: 20,
+                        chunk_radius: 8,
+                        simulation_distance: 8,
+                        reduced_debug_info: false,
+                        show_death_screen: true,
+                        limited_crafting: false,
+                        spawn: play::SpawnInfo {
+                            dimension_type: 0,
+                            dimension: "minecraft:overworld".into(),
+                            seed: 1,
+                            game_type: 0,
+                            previous_game_type: None,
+                            debug: false,
+                            flat: false,
+                            last_death: None,
+                            portal_cooldown: 0,
+                            sea_level: 63,
+                        },
+                        online_mode: false,
+                        enforces_secure_chat: false,
+                    }))
+                    .unwrap();
+                    game.handle_packet(C::PlayerPosition(play::PlayerPosition {
+                        teleport: 1,
+                        position: [0.5, 70.0, 0.5],
+                        delta: [0.0; 3],
+                        yaw: 0.0,
+                        pitch: 0.0,
+                        relatives: 0,
+                    }))
+                    .unwrap();
+                    game.handle_packet(spawn(12, "mymod:missile", [0.5, 70.0, 0.5]))
+                        .unwrap();
+                    let set = |no_gravity: bool| {
+                        C::SetEntityData(play::SetEntityData {
+                            id: 12,
+                            values: vec![(5, serializer::BOOLEAN, Value::Bool(no_gravity))],
+                        })
+                    };
+                    assert!(!rows(game)[&12].no_gravity);
+                    game.handle_packet(set(true)).unwrap();
+                    assert!(rows(game)[&12].no_gravity);
+                    game.handle_packet(set(false)).unwrap();
+                    assert!(!rows(game)[&12].no_gravity);
+                },
+            )
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn general_spawn_captures_existing_entity_attachments_or_empty() {

@@ -1653,6 +1653,7 @@ mod tests {
 
     /// Only a creeper, spider or enderman has a spectator chain.
     #[test]
+    #[ignore = "daily"]
     fn spectated_entities_pick_their_chain() {
         sunrise_gameplay_common::game::in_own_process(
             "game::client_side::remote_camera::tests::spectated_entities_pick_their_chain",

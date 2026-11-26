@@ -375,6 +375,10 @@ pub mod native_goal_ticks;
 #[cfg(any(test, feature = "test-support"))]
 #[path = "modding/native_guest_turn_tests.rs"]
 pub mod native_guest_turn_tests;
+#[cfg(test)]
+#[path = "modding/native_player_inventory_tests.rs"]
+mod native_player_inventory_tests;
+
 #[path = "modding/native_hanging.rs"]
 pub(in crate::game) mod native_hanging;
 #[path = "modding/native_harvest_queries.rs"]
@@ -435,6 +439,9 @@ pub(in crate::game) mod native_minecart_refs;
 pub(in crate::game) mod native_mob_goals;
 #[path = "modding/native_mob_refs.rs"]
 pub(in crate::game) mod native_mob_refs;
+#[cfg(test)]
+#[path = "modding/native_mob_refs_client.rs"]
+mod native_mob_refs_client;
 #[path = "modding/native_mob_wanted_position.rs"]
 pub(in crate::game) mod native_mob_wanted_position;
 #[path = "modding/native_mobs.rs"]

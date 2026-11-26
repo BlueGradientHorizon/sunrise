@@ -391,7 +391,3 @@ fn equipment_effects_wait_for_root() {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
-use sunrise_gameplay_common::game::native_give_stack::NativeGiveStackGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;

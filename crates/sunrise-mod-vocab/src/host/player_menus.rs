@@ -156,6 +156,7 @@ pub trait PlayerMenusBackendMut {
 }
 
 /// The client implementation of the player menu write backend.
+// hidden: client handles reach the engine through ClientBackendMut.
 #[doc(hidden)]
 #[sunrise_mod_api_macros::host_area]
 pub trait PlayerMenusClientBackendMut {

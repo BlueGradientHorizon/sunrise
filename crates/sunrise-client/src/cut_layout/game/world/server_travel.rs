@@ -41,6 +41,42 @@ pub(crate) mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn a_joining_player_keeps_its_saved_portal_cooldown() {
+        if sunrise_gameplay_common::game::test_fixtures::run_fresh_cases(
+            "cut_layout::game::server_side::server_travel::tests::a_joining_player_keeps_its_saved_portal_cooldown",
+            "SUNRISE_TEST_SERVER_PORTAL_CASE",
+            &["join"],
+        ) {
+            return;
+        }
+        super::super::native_guest_turn_tests::with_guests(|game| {
+            // A player whose file was saved 7 ticks into its cooldown, before its first body.
+            let body =
+                sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5))
+                    .unwrap();
+            game.server.lan.as_mut().unwrap().hub.update_guest(12, |g| {
+                g.motion = None;
+                g.loaded_body = Some(sunrise_sim::lan::guest::SavedBody::of(&body));
+                g.saved = Some(sunrise_core::nbt::Tag::compound([(
+                    "PortalCooldown",
+                    sunrise_core::nbt::Tag::Int(7),
+                )]));
+            });
+            let tag = game.as_guest(12, |g| g.player_nbt()).unwrap().unwrap();
+            assert_eq!(
+                tag.get("PortalCooldown"),
+                Some(&sunrise_core::nbt::Tag::Int(7))
+            );
+            // The countdown goes on in the player's record between its turns.
+            assert_eq!(
+                game.server.lan.as_ref().unwrap().play[&12].portal.cooldown,
+                7
+            );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn guest_portal_entry_uses_body_sleep_and_vehicle() {
         if !in_own_process("guest_portal_entry_uses_body_sleep_and_vehicle", "entry") {
             return;

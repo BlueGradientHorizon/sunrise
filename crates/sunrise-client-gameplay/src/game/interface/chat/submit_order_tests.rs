@@ -34,7 +34,9 @@ fn enter_handles_the_line_before_the_chat_screen_closes() {
         crate::game::client_side::native_entity_refs::tests::with_client_game(|game| {
             let (client, _server) = Pipe::pair();
             game.connect_local(client, "ChatOrderTest").unwrap();
-            game.client.remote.as_mut().unwrap().has_logical_player = true;
+            let remote = game.client.remote.as_mut().unwrap();
+            remote.joined = true;
+            remote.has_logical_player = true;
             game.player = Some(
                 sunrise_sim::motion::PlayerMotion::new(
                     game.motion,

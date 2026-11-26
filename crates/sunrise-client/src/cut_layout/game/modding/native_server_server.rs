@@ -16,6 +16,120 @@ pub(crate) mod tests {
     use super::*;
     use crate::game::native_server::tests::with_command_sources;
 
+    #[test]
+    #[ignore = "daily"]
+    fn self_deop_sends_the_tree_for_the_permission_the_listener_reads() {
+        use sunrise_gameplay::game::server_side::dedicated::Lists;
+        use sunrise_gameplay_common::game::{
+            execution_role::ExecutionRole, lan_actions::GuestCommand,
+        };
+        use sunrise_server_files::user_lists::{
+            BanList, IpBanList, NameAndId, OpEntry, OpList, WhiteList,
+        };
+        use sunrise_sim::lan::PlayerSender;
+
+        type Reads = Arc<Mutex<Vec<(Option<u8>, bool)>>>;
+        struct Observe(Reads);
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Observe {
+            fn player_commands_sent(
+                &self,
+                host: &dyn mod_api::Host,
+                event: &mut mod_api::PlayerCommandsSentEvent<'_>,
+            ) -> Option<mod_api::CommandTreeSelection> {
+                if event.player.uuid() == 12 {
+                    self.0.lock().unwrap().push((
+                        event.player.permission_level(host),
+                        event.tree.root_names().any(|name| name == "deop"),
+                    ));
+                }
+                None
+            }
+        }
+
+        let reads = Reads::default();
+        mod_platform::testing::with_mods(
+            vec![mod_api::ModEntry::new(
+                "observe_deop",
+                Box::new(Observe(reads.clone())),
+            )]
+            .into(),
+            || {
+                super::super::native_guest_turn_tests::with_guests(|game| {
+                    game.options.execution_role = ExecutionRole::DedicatedServer;
+                    game.options.dedicated = Some(Vec::new());
+                    game.build_registries();
+                    game.ui.dispatcher.0 =
+                        Arc::new(sunrise_command::vanilla::build_for(false, true));
+                    let files = tempfile::tempdir().unwrap();
+                    let root = files.path();
+                    let mut ops = OpList::new(root.join("ops.json"));
+                    assert!(ops.add(OpEntry {
+                        user: NameAndId {
+                            id: 12,
+                            name: "guest12".into()
+                        },
+                        level: 4,
+                        bypasses_player_limit: false,
+                    }));
+                    game.server.server_lists.0 = Some(Arc::new(Mutex::new(Lists {
+                        ops,
+                        white: WhiteList::new(root.join("whitelist.json")),
+                        bans: BanList::new(root.join("banned-players.json")),
+                        ip_bans: IpBanList::new(root.join("banned-ips.json")),
+                        use_whitelist: false,
+                        enforce_whitelist: false,
+                        op_level: 4,
+                        player_idle_timeout: 0,
+                        stop: false,
+                        autosave: true,
+                    })));
+                    let (sent, received) = std::sync::mpsc::channel();
+                    let hub = &mut game.server.lan.as_mut().unwrap().hub;
+                    hub.config.integrated = false;
+                    hub.ops.insert(12, 4);
+                    hub.refresh_permissions();
+                    hub.update_guest(12, |g| g.sender = PlayerSender::new(sent, Arc::default()));
+                    game.send_player_command_tree(12);
+                    // GameProfileArgument requires a player-only selector.
+                    let (ok, feedback) = game
+                        .run_guest_command_told(GuestCommand {
+                            conn: 12,
+                            command: "deop @s[type=minecraft:player]".into(),
+                            permission: 4,
+                            integrated: false,
+                            quiet: false,
+                        })
+                        .expect("the command source is online");
+                    assert!(ok, "{feedback:?}");
+                    assert_eq!(*reads.lock().unwrap(), [(Some(4), true), (Some(0), false)]);
+                    let delivered: Vec<_> = command_delivery_packets(&received).collect();
+                    let [
+                        C::Commands(before),
+                        C::EntityEvent(permission),
+                        C::Commands(after),
+                    ] = delivered.as_slice()
+                    else {
+                        panic!(
+                            "expected the operator tree, permission update and non-operator tree"
+                        );
+                    };
+                    assert_eq!((permission.id, permission.event), (12, 24));
+                    for (packet, operator) in [(before, true), (after, false)] {
+                        let roots = &packet.nodes[packet.root as usize].children;
+                        assert_eq!(
+                            roots
+                                .iter()
+                                .any(|&i| packet.nodes[i as usize].name == "deop"),
+                            operator
+                        );
+                        assert!(roots.iter().any(|&i| packet.nodes[i as usize].name == "me"));
+                    }
+                })
+            },
+        );
+    }
+
     fn command_delivery_packets(
         receiver: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>,
     ) -> impl Iterator<Item = C> + '_ {

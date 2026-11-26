@@ -98,7 +98,7 @@ impl crate::game::ServerGame<'_> {
     /// `LivingEntity.releaseUsingItem` of the acting player, the hand of the
     /// item in use acting: the use is over before any hook runs, so a mod
     /// that releases again from one finds nothing. False when none runs.
-    pub(in crate::game) fn release_using_item(&mut self) -> bool {
+    pub fn release_using_item(&mut self) -> bool {
         let Some(hand) = self.common.used_hand() else {
             return false;
         };

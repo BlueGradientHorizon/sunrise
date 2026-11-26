@@ -331,6 +331,106 @@ mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn aborted_bulk_replacement_restores_loaned_block_entity_lease() {
+        use crate::game::native_entity_refs::tests::with_game;
+        use mod_api::BlockUpdateFlags;
+        use sunrise_gameplay_common::game::api_values::TryIntoApi as _;
+        use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
+        use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+        use sunrise_items::items::ItemStack;
+
+        with_game(|game| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let level = game.level(game.dim.id()).unwrap();
+            let state = |name| game.pack.assets.registry.default_state(name).unwrap();
+            let (chest, stone, hopper) = (
+                state("minecraft:chest"),
+                state("minecraft:stone"),
+                state("minecraft:hopper"),
+            );
+            let to_stone = [1, 64, 0];
+            let to_hopper = [2, 64, 0];
+            let diamond = ItemStack::new("minecraft:diamond", 1);
+            for pos in [to_stone, to_hopper] {
+                assert_eq!(
+                    level.set_block(
+                        game,
+                        pos,
+                        chest.try_into_api().unwrap(),
+                        BlockUpdateFlags::NONE
+                    ),
+                    Ok(true)
+                );
+                game.world
+                    .block_entities
+                    .get_mut(&(pos[0], pos[1], pos[2]))
+                    .unwrap()
+                    .slots_mut()[0] = Some(diamond.clone());
+            }
+            let h1 = game.block_entity(level, to_stone).unwrap();
+            let h2 = game.block_entity(level, to_hopper).unwrap();
+            let (lease1, entity1) = game.world.block_entities.take(&(1, 64, 0)).unwrap();
+            let (lease2, entity2) = game.world.block_entities.take(&(2, 64, 0)).unwrap();
+
+            let edit = BlockEdit {
+                palette: vec![
+                    stone.try_into_api().unwrap(),
+                    hopper.try_into_api().unwrap(),
+                ],
+                filters: vec![],
+                runs: [(to_stone, 0), (to_hopper, 1)]
+                    .into_iter()
+                    .map(|([x, y, z], block)| BlockRun {
+                        x,
+                        y,
+                        z,
+                        block,
+                        height: 1,
+                        surface: None,
+                        only: None,
+                    })
+                    .collect(),
+            };
+
+            game.storage_scope(|game, _| {
+                game.storage_scope(|game, _| {
+                    assert_eq!(level.edit_blocks(game, &edit), Ok(2));
+                    ((), true)
+                });
+                assert!(game.block_entity(level, to_stone).is_none());
+                assert_ne!(game.block_entity(level, to_hopper), Some(h2));
+                assert!(game.block_entity(level, to_hopper).is_some());
+                ((), false)
+            });
+
+            assert_eq!(game.world.block(1, 64, 0), chest);
+            assert_eq!(game.world.block(2, 64, 0), chest);
+            assert!(game.world.block_entities.put(lease1, entity1));
+            assert!(game.world.block_entities.put(lease2, entity2));
+            assert_eq!(game.block_entity(level, to_stone), Some(h1));
+            assert_eq!(game.block_entity(level, to_hopper), Some(h2));
+            for pos in [(1, 64, 0), (2, 64, 0)] {
+                assert_eq!(
+                    game.world.block_entities.get(&pos).unwrap().slots()[0],
+                    Some(diamond.clone())
+                );
+            }
+
+            let (lease, entity) = game.world.block_entities.take(&(1, 64, 0)).unwrap();
+            game.storage_scope(|game, _| {
+                assert_eq!(level.edit_blocks(game, &edit), Ok(2));
+                ((), true)
+            });
+            assert!(!game.world.block_entities.put(lease, entity));
+            assert_eq!(game.world.block(1, 64, 0), stone);
+            assert!(game.world.block_entities.get(&(1, 64, 0)).is_none());
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn mixed_bulk_and_ordinary_writes_publish_only_on_outer_commit() {
         use crate::game::native_entity_refs::tests::with_game;
         use mod_api::BlockUpdateFlags;

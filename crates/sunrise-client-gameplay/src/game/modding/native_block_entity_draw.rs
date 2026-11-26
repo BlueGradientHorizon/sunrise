@@ -3872,6 +3872,142 @@ pub mod tests {
     }
 
     #[cfg(test)]
+    #[test]
+    #[ignore = "daily"]
+    fn block_draws_resolved_states_and_rejects_unknown_states() {
+        if super::super::native_entity_refs::tests::run_fresh_cases(
+            "game::client_side::native_block_entity_draw::tests::block_draws_resolved_states_and_rejects_unknown_states",
+            "SUNRISE_BLOCK_DRAW_STATES_CHILD",
+            &["case"],
+        ) {
+            return;
+        }
+        use crate::game::host::draw::GameBlockEntityDrawContext;
+        use mod_api::{BlockEntityDrawContext, BlockState, HostBlockStates as _, StateConstraint};
+        use sunrise_gameplay_common::game::api_values::TryIntoEngine as _;
+
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            let mut surface = draw();
+            assert!(!game.native_draw_block(&mut surface, BlockStateId(u32::MAX)));
+            assert!(surface.vertices.is_empty());
+
+            let log_key = game.block_key("minecraft:oak_log").expect("oak_log key");
+            let states = game.block_states();
+            let log_x = BlockState::of(&states, log_key, &[StateConstraint::new("axis", "x")])
+                .expect("oak_log[axis=x]");
+            let log_y = BlockState::of(&states, log_key, &[StateConstraint::new("axis", "y")])
+                .expect("oak_log[axis=y]");
+            let log_x_id = log_x.try_into_engine(&()).expect("engine id for axis=x");
+            let log_y_id = log_y.try_into_engine(&()).expect("engine id for axis=y");
+
+            let invalid_ordinal = mod_api::__private::block_state_from_ordinal(log_key, u16::MAX);
+            let unknown_block = mod_api::__private::block_state_from_ordinal(
+                mod_api::__private::parts_installation::block_key(u32::MAX),
+                0,
+            );
+            {
+                let mut drawn = GameBlockEntityDrawContext {
+                    game,
+                    surface: &mut surface,
+                };
+                assert!(!drawn.block(invalid_ordinal));
+                assert!(!drawn.block(unknown_block));
+            }
+            assert!(surface.vertices.is_empty());
+
+            let bytes = |vertices: &[Vertex]| bytemuck::cast_slice::<_, u8>(vertices).to_vec();
+            let top_sprite = game.client.gui.atlas.sprites["block/oak_log_top"];
+            let side_sprite = game.client.gui.atlas.sprites["block/oak_log"];
+            let face_in_sprite = |quad: &[Vertex], rect: Rect| {
+                quad.iter().all(|v| {
+                    (rect.u0..=rect.u1).contains(&v.uv[0]) && (rect.v0..=rect.v1).contains(&v.uv[1])
+                })
+            };
+
+            let render = |game: &crate::game::ClientGame<'_>, state: BlockState| {
+                let mut surface = draw();
+                surface.light = 0x7030;
+                {
+                    let mut drawn = GameBlockEntityDrawContext {
+                        game,
+                        surface: &mut surface,
+                    };
+                    assert!(drawn.block(state));
+                }
+                surface
+            };
+
+            // Sprites were bound when the generation was built, not on the first block draw.
+            game.client.gui.atlas.sprites.remove("block/oak_log_top");
+            let drawn_y = render(game, log_y);
+            game.client
+                .gui
+                .atlas
+                .sprites
+                .insert("block/oak_log_top".into(), top_sprite);
+            let drawn_x = render(game, log_x);
+
+            let air_key = game.block_key("minecraft:air").unwrap();
+            let air = BlockState::of(&game.block_states(), air_key, &[]).unwrap();
+            assert!(
+                render(game, air).vertices.is_empty(),
+                "valid empty states draw nothing"
+            );
+            assert_eq!(drawn_y.vertices.len(), 24, "upright oak_log has 6 faces");
+            assert_eq!(drawn_x.vertices.len(), 24, "horizontal oak_log has 6 faces");
+            assert!(drawn_y.vertices.iter().all(|v| v.light == 0x7030));
+            assert!(drawn_x.vertices.iter().all(|v| v.light == 0x7030));
+
+            let y_top = drawn_y
+                .vertices
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .find(|q| q.iter().all(|v| v.pos[1] == 1.0))
+                .expect("top face on axis=y");
+            let y_east = drawn_y
+                .vertices
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .find(|q| q.iter().all(|v| v.pos[0] == 11.0))
+                .expect("east face on axis=y");
+            assert!(face_in_sprite(y_top, top_sprite));
+            assert!(face_in_sprite(y_east, side_sprite));
+
+            let x_top = drawn_x
+                .vertices
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .find(|q| q.iter().all(|v| v.pos[1] == 1.0))
+                .expect("top face on axis=x");
+            let x_east = drawn_x
+                .vertices
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .find(|q| q.iter().all(|v| v.pos[0] == 11.0))
+                .expect("east face on axis=x");
+            assert!(face_in_sprite(x_top, side_sprite));
+            assert!(face_in_sprite(x_east, top_sprite));
+
+            for (state_id, drawn) in [(log_y_id, &drawn_y), (log_x_id, &drawn_x)] {
+                let mut expected = Vec::new();
+                game.block_model_vertices(
+                    state_id,
+                    sunrise_gameplay_common::game::CommonGame::BLOCK_MODEL_SEED,
+                    drawn.pose(),
+                    drawn.element_ambient(),
+                    true,
+                    &mut expected,
+                );
+                assert_eq!(bytes(&drawn.vertices), bytes(&expected));
+            }
+        });
+    }
+
+    #[cfg(test)]
     /// `BlockEntityDrawContext::text` lays the font's glyphs out under the pose, a quad per
     /// glyph from left to right, in the frame's light and the opaque colour it was given, with
     /// the text's styles: bold widens it and doubles its glyphs, and an outline (black too)

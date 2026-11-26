@@ -247,24 +247,58 @@ pub fn render_single_mob(
 #[derive(Clone)]
 pub struct EntityModelDocument(Arc<BTreeMap<String, Part>>);
 
+#[derive(Debug)]
+pub(crate) enum EntityModelValidationError {
+    NotNonemptyObject(String),
+    InvalidLayer { id: String, detail: String },
+}
+
+impl std::fmt::Display for EntityModelValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotNonemptyObject(detail) | Self::InvalidLayer { detail, .. } => {
+                f.write_str(detail)
+            }
+        }
+    }
+}
+
+impl std::error::Error for EntityModelValidationError {}
+
 impl EntityModelDocument {
     pub fn load(root: &Path) -> crate::Result<Self> {
         let path = root.join("entity-models.json");
         let layers: Value = serde_json::from_slice(&fs::read(&path)?)?;
         let Value::Object(layers) = layers else {
-            return Err(format!("{}: expected a top-level JSON object", path.display()).into());
+            return Err(EntityModelValidationError::NotNonemptyObject(format!(
+                "{}: expected a top-level JSON object",
+                path.display()
+            ))
+            .into());
         };
         // EntityModelSet.vanilla builds a populated set from LayerDefinitions.createRoots.
         if layers.is_empty() {
-            return Err(format!("{}: no entity model definitions", path.display()).into());
+            return Err(EntityModelValidationError::NotNonemptyObject(format!(
+                "{}: no entity model definitions",
+                path.display()
+            ))
+            .into());
         }
         let mut models = BTreeMap::new();
         for (key, model) in layers {
             if !model_layers::is_layer_id(&key) {
-                return Err(format!("{}: invalid model layer key {key:?}", path.display()).into());
+                return Err(EntityModelValidationError::InvalidLayer {
+                    detail: format!("{}: invalid model layer key {key:?}", path.display()),
+                    id: key,
+                }
+                .into());
             }
-            let mut part = Part::decode("root", model)
-                .map_err(|error| format!("{}: layer {key}: {error}", path.display()))?;
+            let mut part = Part::decode("root", model).map_err(|error| {
+                EntityModelValidationError::InvalidLayer {
+                    id: key.clone(),
+                    detail: format!("{}: layer {key}: {error}", path.display()),
+                }
+            })?;
             part.layer = Some(key.as_str().into());
             models.insert(key, part);
         }

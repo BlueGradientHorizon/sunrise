@@ -983,7 +983,7 @@ impl crate::game::ClientGame<'_> {
         let Some(id) = self.observed_overlay_now() else {
             return self.screen_view_now();
         };
-        self.client.renderer.0.as_ref()?;
+        self.renderer_framebuffer()?;
         Some(self.screen_overlay_view(id))
     }
     /// Opens an overlay, one of the screens kept beside `Screen` (the sign
@@ -1424,18 +1424,10 @@ impl crate::game::ClientGame<'_> {
         }
     }
     pub(crate) fn screen_overlay_view(&self, id: &'static str) -> ScreenView<'_> {
-        let rect = self
-            .client
-            .renderer
-            .0
-            .as_ref()
-            .map_or([0.0; 4], |renderer| {
-                let batch = HudBatch::new(
-                    [renderer.config.width, renderer.config.height],
-                    self.client.settings.gui_scale_inputs(),
-                );
-                [0.0, 0.0, batch.width, batch.height]
-            });
+        let rect = self.renderer_framebuffer().map_or([0.0; 4], |framebuffer| {
+            let batch = HudBatch::new(framebuffer, self.client.settings.gui_scale_inputs());
+            [0.0, 0.0, batch.width, batch.height]
+        });
         ScreenView::from(mod_api::__private::built::ScreenView {
             id,
             mod_screen: None,
@@ -1495,11 +1487,8 @@ impl crate::game::ClientGame<'_> {
         if !self.screen_hooks_open() {
             return None;
         }
-        let renderer = self.client.renderer.0.as_ref()?;
-        let batch = HudBatch::new(
-            [renderer.config.width, renderer.config.height],
-            self.client.settings.gui_scale_inputs(),
-        );
+        let framebuffer = self.renderer_framebuffer()?;
+        let batch = HudBatch::new(framebuffer, self.client.settings.gui_scale_inputs());
         if self.client.screen != Screen::Playing {
             return Some(self.screen_view(&batch, self.client.screen));
         }

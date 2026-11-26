@@ -1,14 +1,18 @@
 //! `LivingEntity.updatingUsingItem` and `releaseUsingItem` go on only while the
 //! hand holds the item the use began with (`ItemStack.isSameItem`), as #3211 asks.
 use super::item_use::interact_vibration_tests::with_game;
-use super::*;
+use sunrise_gameplay::game::ServerGame;
+use sunrise_gameplay_common::game::{
+    chat_common::ChatCommonGameExt1 as _, held_items::HeldItemsGameExt1 as _,
+};
+use sunrise_items::items::ItemStack;
 
 const FINISH: &str = "G 10,64,-4 minecraft:item_interact_finish";
 
 /// Starts eating a golden apple with the use button held and 64 arrows in the
 /// inventory, runs `ticks` ticks of the use, then `f`. Returns the interaction
 /// vibrations posted after the start's.
-fn eating(ticks: u32, f: impl FnOnce(&mut crate::game::ServerGame<'_>)) -> Vec<String> {
+fn eating(ticks: u32, f: impl FnOnce(&mut ServerGame<'_>)) -> Vec<String> {
     let lines = with_game("minecraft:golden_apple", |game| {
         game.creative = false;
         game.build_registries();
@@ -31,7 +35,7 @@ fn eating(ticks: u32, f: impl FnOnce(&mut crate::game::ServerGame<'_>)) -> Vec<S
     lines
 }
 
-fn arrows(game: &crate::game::ServerGame<'_>) -> u32 {
+fn arrows(game: &ServerGame<'_>) -> u32 {
     game.common.inventory[9].as_ref().map_or(0, |s| s.count)
 }
 
@@ -111,7 +115,3 @@ fn a_command_putting_the_apple_back_keeps_the_use() {
     });
     assert!(lines.is_empty(), "{lines:?}");
 }
-
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

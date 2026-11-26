@@ -1026,6 +1026,197 @@ pub(crate) mod tests {
             assert!(close_at < open_at);
         });
     }
+    #[test]
+    #[ignore = "daily"]
+    fn bulk_menu_updates_send_the_live_owner_and_abort_without_packets() {
+        with_game(|game| {
+            let rx = watched_guest(game);
+            let menu = open(game, 1, "display", MenuReplace::CloseFirst);
+            let window = menu.container_id(game).unwrap();
+            let mut outer = guest(2);
+            outer.inventory[3] = Some(ItemStack::new("minecraft:diamond", 7));
+            outer.carried = Some(ItemStack::new("minecraft:dirt", 9));
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
+            hub.guests.push(outer);
+            hub.guests.update(0, |g| {
+                g.inventory[5] = Some(ItemStack::new("minecraft:gold_ingot", 2));
+                g.carried = Some(ItemStack::new("minecraft:stone", 4));
+            });
+            sent(&rx);
+            let items = |count| {
+                vec![Some(
+                    ItemStack::new("minecraft:stick", count)
+                        .try_into_api()
+                        .unwrap(),
+                )]
+            };
+            let check = |count| {
+                let packets = sent(&rx);
+                let contents: Vec<_> = packets
+                    .iter()
+                    .filter_map(|p| match p {
+                        C::ContainerSetContent(content) => Some(content),
+                        _ => None,
+                    })
+                    .collect();
+                let [content] = contents.as_slice() else {
+                    panic!("{packets:?}");
+                };
+                assert_eq!(content.container, window);
+                assert_eq!(content.items[0].as_ref().map(|s| s.count), Some(count));
+                assert_eq!(content.items[9 + 27 + 5].as_ref().map(|s| s.count), Some(2));
+                assert!(content.items[9 + 27 + 3].is_none());
+                assert_eq!(content.carried.as_ref().map(|s| s.count), Some(4));
+            };
+            game.as_guest(2, |game| {
+                game.as_guest(1, |game| {
+                    assert_eq!(menu.set_items(game, items(1)), Ok(()));
+                    check(1);
+                    let aborted: Result<(), mod_api::TransactionError<()>> =
+                        game.transaction(|game, _| {
+                            assert_eq!(menu.set_items(game, items(3)), Ok(()));
+                            Err(())
+                        });
+                    assert_eq!(aborted, Err(mod_api::TransactionError::Aborted(())));
+                    assert!(sent(&rx).is_empty());
+                    assert_eq!(
+                        menu.slot(game, 0).flatten().map(|stack| stack.count()),
+                        Some(1)
+                    );
+                    let committed: Result<(), mod_api::TransactionError<()>> =
+                        game.transaction(|game, _| {
+                            assert_eq!(menu.set_items(game, items(5)), Ok(()));
+                            assert!(sent(&rx).is_empty());
+                            Ok(())
+                        });
+                    assert_eq!(committed, Ok(()));
+                    check(5);
+                })
+                .unwrap();
+                assert_eq!(game.carried.as_ref().unwrap().count, 9);
+            })
+            .unwrap();
+            assert_eq!(
+                game.server.lan.as_ref().unwrap().hub.guests[0]
+                    .carried
+                    .as_ref()
+                    .unwrap()
+                    .count,
+                4
+            );
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn staged_same_level_open_spills_the_old_chest_before_its_veto_replaces_it() {
+        use mod_api::{BlockState, BlockUpdateFlags, ContainerOpenedEvent, Flow, HostBlockStates};
+        use sunrise_level::chunk::Chunk;
+
+        const POS: [i32; 3] = [2, 64, 2];
+        const CELL: (i32, i32, i32) = (POS[0], POS[1], POS[2]);
+        const CONTENT: &str = "minecraft:gold_ingot";
+        const COUNT: u32 = 7;
+        struct Veto;
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for Veto {
+            fn container_opened(
+                &self,
+                host: &mut dyn ServerHost,
+                event: &mut ContainerOpenedEvent<'_>,
+            ) -> Flow {
+                assert_eq!(event.kind, MOD_MENU);
+                assert!(host.transaction_matches(None));
+                let level = host.level("minecraft:overworld").unwrap();
+                let chest = BlockState::of(
+                    &host.block_states(),
+                    mod_api::__private::block_key("minecraft:chest").unwrap(),
+                    &[],
+                )
+                .unwrap();
+                assert_eq!(
+                    level.set_block(host, POS, chest, BlockUpdateFlags::NEIGHBORS),
+                    Ok(true)
+                );
+                Flow::Cancel
+            }
+        }
+        let mods = vec![mod_api::ModEntry::new("replace_chest_veto", Box::new(Veto))].into();
+        mod_platform::testing::with_mods(mods, || {
+            with_mod_menu_game(|game| {
+                let (_rx, key) = mod_menu_guest(game);
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                let level = game.level("minecraft:overworld").unwrap();
+                let chest = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:chest")
+                    .unwrap();
+                assert_eq!(
+                    game.level_set_block(level, POS, chest, BlockUpdateFlags::NEIGHBORS),
+                    Ok(true)
+                );
+                game.world
+                    .block_entities
+                    .get_mut(&CELL)
+                    .unwrap()
+                    .slots_mut()[0] = Some(ItemStack::new(CONTENT, COUNT));
+                let player = game.player(123).unwrap();
+                (game as &mut dyn ServerHost)
+                    .transaction(|host, _| {
+                        let staged = player
+                            .open_mod_menu(
+                                host,
+                                ModMenuOpen::new(key, mod_api::Text::literal("vetoed")),
+                            )
+                            .unwrap()
+                            .unwrap();
+                        assert!(staged.fields().window < 0);
+                        let air = BlockState::of(
+                            &host.block_states(),
+                            mod_api::__private::block_key("minecraft:air").unwrap(),
+                            &[],
+                        )
+                        .unwrap();
+                        assert_eq!(
+                            level.set_block(host, POS, air, BlockUpdateFlags::NEIGHBORS),
+                            Ok(true)
+                        );
+                        Ok::<_, ()>(())
+                    })
+                    .unwrap();
+
+                assert_eq!(game.world.block(CELL.0, CELL.1, CELL.2), chest);
+                let new_chest = game.world.block_entities.get(&CELL).unwrap();
+                assert!(new_chest.slots().iter().all(Option::is_none));
+                let dropped: u32 = game
+                    .dropped
+                    .iter()
+                    .filter(|entity| &*entity.stack.item == CONTENT)
+                    .map(|entity| entity.stack.count)
+                    .sum();
+                assert_eq!(
+                    dropped, COUNT,
+                    "the old chest must spill its entire inventory"
+                );
+                assert!(
+                    game.server
+                        .lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .guest(1)
+                        .unwrap()
+                        .menu
+                        .is_none()
+                );
+            });
+        });
+    }
+
     /// [`with_game`] with [`MOD_MENU`] as the thread's menu types, so a test neither depends on
     /// registering first nor touches the one-shot process table.
     pub(super) fn with_mod_menu_game(

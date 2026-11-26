@@ -574,3 +574,490 @@ use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    struct MachineArgument;
+
+    impl mod_api::CommandArgumentType for MachineArgument {
+        fn kind(&self) -> mod_api::CommandArgumentKind {
+            mod_api::CommandArgumentKind::Word
+        }
+
+        fn parse(&self, input: &str) -> Result<String, mod_api::CommandArgumentError> {
+            match input {
+                "press" | "furnace" => Ok(input.to_owned()),
+                _ => Err(mod_api::CommandArgumentError::new(
+                    mod_api::Text::translate(
+                        "test.commands.machine.unknown",
+                        vec![mod_api::Text::literal(input)],
+                    ),
+                )),
+            }
+        }
+
+        fn suggest(&self, request: &mod_api::SuggestionRequest) -> Vec<mod_api::Suggestion> {
+            ["press", "furnace"]
+                .into_iter()
+                .filter(|machine| machine.starts_with(request.prefix.as_str()))
+                .map(|machine| request.suggest(machine))
+                .collect()
+        }
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn client_commands_execute_bound_typed_invocations_contain_panics_and_reject_stale_generations()
+    {
+        use mod_api::prelude::NetworkClientHost;
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+        struct DropBomb(Arc<AtomicBool>);
+        impl Drop for DropBomb {
+            fn drop(&mut self) {
+                if !self.0.swap(true, Ordering::Relaxed) {
+                    panic!("client command capture destructor fixture");
+                }
+            }
+        }
+
+        struct ClientCommandsMod {
+            heard: Arc<Mutex<Vec<mod_api::CommandInvocation>>>,
+            sibling: Arc<Mutex<Vec<mod_api::CommandInvocation>>>,
+            recursed: Arc<AtomicUsize>,
+            ping_pong: Arc<Mutex<Vec<&'static str>>>,
+            dropped: Arc<AtomicBool>,
+        }
+
+        #[mod_api::__subscriptions]
+        impl mod_api::Hooks for ClientCommandsMod {
+            fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
+                r.register_command_argument("machine", MachineArgument);
+            }
+
+            fn register_client_commands(
+                &self,
+                _: &mut dyn mod_api::ClientHost,
+                event: &mut mod_api::RegisterClientCommandsEvent<'_>,
+            ) {
+                let heard = self.heard.clone();
+                event.commands.push(
+                    mod_api::Command::new(
+                        "cmach <machine:client_cmd_fixture:machine> <pos:block_pos> [count:integer]",
+                    )
+                    .executes_client(move |_, invocation| {
+                        heard.lock().unwrap().push(invocation.clone());
+                        Some(1)
+                    }),
+                );
+                event.commands.push(
+                    mod_api::Command::new("cpanic")
+                        .executes_client(|_, _| panic!("client command panic fixture")),
+                );
+                let sibling = self.sibling.clone();
+                event.commands.push(
+                    mod_api::Command::new("csibling <word:word>").executes_client(
+                        move |_, invocation| {
+                            sibling.lock().unwrap().push(invocation.clone());
+                            Some(1)
+                        },
+                    ),
+                );
+                let recursed = self.recursed.clone();
+                event
+                    .commands
+                    .push(
+                        mod_api::Command::new("crecurse").executes_client(move |host, _| {
+                            recursed.fetch_add(1, Ordering::Relaxed);
+                            assert!(host.send_chat("/crecurse").is_ok());
+                            Some(1)
+                        }),
+                    );
+                let ping = self.ping_pong.clone();
+                let pong = self.ping_pong.clone();
+                event.commands.extend([
+                    mod_api::Command::new("cping").executes_client(move |host, _| {
+                        ping.lock().unwrap().push("ping");
+                        for _ in 0..2 {
+                            assert!(host.send_chat("/cpong").is_ok());
+                        }
+                        Some(1)
+                    }),
+                    mod_api::Command::new("cpong").executes_client(move |host, _| {
+                        pong.lock().unwrap().push("pong");
+                        for _ in 0..2 {
+                            assert!(host.send_chat("/cping").is_ok());
+                        }
+                        assert!(host.send_chat("/csibling nested").is_ok());
+                        Some(1)
+                    }),
+                ]);
+                let bomb = DropBomb(self.dropped.clone());
+                event.commands.extend([
+                    mod_api::Command::new("capture").executes_client(move |_, _| {
+                        let _capture = &bomb;
+                        Some(1)
+                    }),
+                    mod_api::Command::new("shared local <value:integer>")
+                        .executes_client(|_, _| Some(42)),
+                    mod_api::Command::new("shared refused").executes_client(|_, _| None),
+                ]);
+                event
+                    .commands
+                    .push(mod_api::Command::op("cop", 2).executes_client(|_, _| Some(1)));
+                let tagged = self.heard.clone();
+                event.commands.push(
+                    mod_api::Command::new(
+                        "cbiome <biome:resource_or_tag:minecraft:worldgen/biome>",
+                    )
+                    .executes_client(move |_, invocation| {
+                        tagged.lock().unwrap().push(invocation.clone());
+                        Some(1)
+                    }),
+                );
+                event.commands.push(
+                    mod_api::Command::new("cserver <target:player>")
+                        .executes_client(|_, _| Some(1)),
+                );
+            }
+        }
+
+        let heard = Arc::new(Mutex::new(Vec::new()));
+        let sibling = Arc::new(Mutex::new(Vec::new()));
+        let recursed = Arc::new(AtomicUsize::new(0));
+        let ping_pong = Arc::new(Mutex::new(Vec::new()));
+        let dropped = Arc::new(AtomicBool::new(false));
+        let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
+            "client_cmd_fixture",
+            Box::new(ClientCommandsMod {
+                heard: heard.clone(),
+                sibling: sibling.clone(),
+                recursed: recursed.clone(),
+                ping_pong: ping_pong.clone(),
+                dropped: dropped.clone(),
+            }),
+        )]
+        .into();
+
+        let _ = mod_api::testing::rebuild_parts(|| -> Result<(), ()> {
+            sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
+            mod_platform::testing::with_mods(mods, || {
+                crate::game::native_entity_refs::tests::with_client_game(|game| {
+                    let _ = mod_api::__private::take_hook_panics();
+                    let chat_tree = game.chat_tree_for(None);
+                    assert!(chat_tree.find("cmach").is_some());
+                    assert!(chat_tree.find("cpanic").is_some());
+                    assert!(chat_tree.find("csibling").is_some());
+                    // An operator-level client usage is in the tree behind its level (#5654).
+                    let cop = chat_tree.find("cop").expect("an operator client command");
+                    assert_eq!(chat_tree.nodes[cop].permission, 2);
+                    assert!(chat_tree.find("cserver").is_none());
+                    let tp = chat_tree.find("tp").expect("tp redirect preserved");
+                    let tp_target = chat_tree.nodes[tp].redirect.expect("tp redirect preserved");
+                    assert_eq!(chat_tree.nodes[tp_target].name(), "teleport");
+                    assert_eq!(chat_tree.nodes[tp].permission, 2);
+
+                    // Unregistered or rejected roots return false so they proceed to the server.
+                    assert_eq!(game.run_client_native_command("unknown_root foo"), None);
+                    // Below its level the local player can't run it; at the level it runs.
+                    game.ui.registries.permission = 0;
+                    assert_eq!(game.run_client_native_command("cop"), None);
+                    game.ui.registries.permission = 2;
+                    assert_eq!(
+                        game.run_client_native_command("cop"),
+                        Some(ClientCommandOutcome::Success(1))
+                    );
+                    game.ui.registries.permission = 0;
+                    assert_eq!(game.run_client_native_command("cserver @a"), None);
+                    // A resource-or-tag argument tells a `#tag` from an id (#5654).
+                    for (text, tag, id) in [
+                        ("cbiome #minecraft:is_ocean", true, "minecraft:is_ocean"),
+                        ("cbiome minecraft:plains", false, "minecraft:plains"),
+                    ] {
+                        assert_eq!(
+                            game.run_client_native_command(text),
+                            Some(ClientCommandOutcome::Success(1)),
+                            "{text}"
+                        );
+                        let invocation = heard.lock().unwrap().pop().unwrap();
+                        assert_eq!(
+                            invocation.argument("biome"),
+                            Some(&mod_api::CommandArgumentValue::ResourceOrTag {
+                                tag,
+                                id: mod_api::Identifier::parse(id).unwrap(),
+                            }),
+                            "{text}"
+                        );
+                    }
+
+                    // Typed client invocation parses custom arguments, coordinates and optionals.
+                    assert_eq!(
+                        game.run_client_native_command("cmach press 1 2 3 7"),
+                        Some(ClientCommandOutcome::Success(1))
+                    );
+                    {
+                        let heard = heard.lock().unwrap();
+                        assert_eq!(heard.len(), 1);
+                        assert_eq!(heard[0].literals, ["cmach"]);
+                        assert_eq!(
+                            heard[0].argument("machine"),
+                            Some(&mod_api::CommandArgumentValue::Custom {
+                                kind: "client_cmd_fixture:machine".into(),
+                                value: "press".into(),
+                            })
+                        );
+                        assert_eq!(
+                            heard[0].argument("pos"),
+                            Some(&mod_api::CommandArgumentValue::BlockPos([1, 2, 3]))
+                        );
+                        assert_eq!(
+                            heard[0].argument("count"),
+                            Some(&mod_api::CommandArgumentValue::Integer(7))
+                        );
+                    }
+
+                    // A syntax error on a registered client root reports locally and never calls the executor.
+                    let before_err = game.client.chat_ui.chat.recent_lines(50).len();
+                    assert_eq!(
+                        game.run_client_native_command("cmach nope 1 2 3"),
+                        Some(ClientCommandOutcome::Failed)
+                    );
+                    assert_eq!(heard.lock().unwrap().len(), 1);
+                    assert!(game.client.chat_ui.chat.recent_lines(50).len() > before_err);
+
+                    // A panicking client executor disables only itself, emits a notice, and leaves siblings working.
+                    let before_panic = game.client.chat_ui.chat.recent_lines(50).len();
+                    assert_eq!(
+                        game.run_client_native_command("cpanic"),
+                        Some(ClientCommandOutcome::Failed)
+                    );
+                    assert!(game.client.chat_ui.chat.recent_lines(50).len() > before_panic);
+                    let notices: Vec<_> = mod_api::__private::take_hook_panics()
+                        .into_iter()
+                        .filter(|notice| notice.mod_id == "client_cmd_fixture")
+                        .collect();
+                    assert_eq!(notices.len(), 1);
+                    assert_eq!(notices[0].hook, "client_command.execute");
+
+                    // Disabled executor is not invoked again, and sibling commands still run.
+                    assert_eq!(
+                        game.run_client_native_command("cpanic"),
+                        Some(ClientCommandOutcome::Failed)
+                    );
+                    assert!(
+                        mod_api::__private::take_hook_panics()
+                            .into_iter()
+                            .all(|notice| notice.mod_id != "client_cmd_fixture")
+                    );
+                    assert_eq!(
+                        game.run_client_native_command("csibling ok"),
+                        Some(ClientCommandOutcome::Success(1))
+                    );
+                    {
+                        let sibling = sibling.lock().unwrap();
+                        assert_eq!(sibling.len(), 1);
+                        assert_eq!(
+                            sibling[0].argument("word"),
+                            Some(&mod_api::CommandArgumentValue::String("ok".into()))
+                        );
+                    }
+
+                    // Rebuilding the client tree invalidates parsed executor keys from the previous generation.
+                    let old_key = game
+                        .client
+                        .native_client_commands
+                        .dispatcher
+                        .parse("cmach press 1 2 3", &game.ui.registries)
+                        .executable()
+                        .unwrap()
+                        .0
+                        .executor
+                        .expect("client command binds an executor key");
+                    assert!(
+                        game.client
+                            .native_client_commands
+                            .dispatcher
+                            .owns_executor(old_key)
+                    );
+                    let mut server = Dispatcher::new();
+                    let shared = server.literal(0, "shared");
+                    let remote = server.literal(shared, "server");
+                    let target = server.literal(0, "target");
+                    let shared_alias = server.literal(0, "shared_alias");
+                    server.requires(shared, 2);
+                    server.requires(remote, 3);
+                    server.requires_execution(remote, 3);
+                    server.executes(remote, "remote");
+                    server.redirect(remote, target);
+                    server.redirect(shared_alias, shared);
+                    // Refresh the local usage after a connection rebuild without claiming the shared root.
+                    let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+                    game.connect_local(client, "CommandsTest").unwrap();
+                    game.client.remote.as_mut().unwrap().joined = true;
+                    assert!(dropped.load(Ordering::Relaxed));
+                    let notices: Vec<_> = mod_api::__private::take_hook_panics()
+                        .into_iter()
+                        .filter(|notice| notice.mod_id == "client_cmd_fixture")
+                        .collect();
+                    assert_eq!(notices.len(), 1);
+                    assert_eq!(notices[0].hook, "client_command.drop");
+                    let display = game.chat_tree_for(Some(&server));
+                    let children = &display.nodes[shared].children;
+                    assert!(
+                        children
+                            .iter()
+                            .any(|&id| display.nodes[id].name() == "local")
+                    );
+                    assert!(children.contains(&remote));
+                    assert_eq!(display.nodes[shared].permission, 2);
+                    assert_eq!(display.nodes[remote].execution_permission, 3);
+                    let remote_target = display.nodes[remote]
+                        .redirect
+                        .expect("server redirect preserved");
+                    assert_eq!(display.nodes[remote_target].name(), "target");
+                    let op_reg = sunrise_command::args::Registries {
+                        permission: 3,
+                        ..Default::default()
+                    };
+                    assert_eq!(
+                        display
+                            .parse("shared_alias server", &op_reg)
+                            .executable()
+                            .unwrap()
+                            .1,
+                        "remote"
+                    );
+                    assert!(
+                        display
+                            .parse("shared_alias local 7", &op_reg)
+                            .executable()
+                            .is_err()
+                    );
+                    let alias_suggestions: Vec<String> = display
+                        .client_suggestions(&display.parse("shared_alias ", &op_reg), 13, &op_reg)
+                        .1
+                        .into_iter()
+                        .map(|s| s.text)
+                        .collect();
+                    assert_eq!(alias_suggestions, ["server"]);
+
+                    assert_eq!(game.run_client_native_command("shared server"), None);
+                    assert_eq!(game.run_client_native_command("shared"), None);
+                    assert_eq!(
+                        game.run_client_native_command("shared local nope"),
+                        Some(ClientCommandOutcome::Failed)
+                    );
+                    assert_eq!(
+                        game.send_signed_chat_input("/shared local 7"),
+                        Some(ClientCommandOutcome::Success(42))
+                    );
+                    assert_eq!(
+                        game.send_signed_chat_input("/shared refused"),
+                        Some(ClientCommandOutcome::Failed)
+                    );
+                    assert_eq!(
+                        game.run_client_native_command("cpanic"),
+                        Some(ClientCommandOutcome::Failed)
+                    );
+                    assert!(
+                        mod_api::__private::take_hook_panics()
+                            .into_iter()
+                            .all(|notice| notice.mod_id != "client_cmd_fixture")
+                    );
+                    assert_eq!(
+                        game.send_signed_chat_input("/csibling signed"),
+                        Some(ClientCommandOutcome::Success(1))
+                    );
+                    game.send_unattended_command("/csibling unattended");
+                    // Ordinary top-level Host submission intercepts locally without waiting for a frame.
+                    assert!(NetworkClientHost::send_chat(game, "/csibling host_top").is_ok());
+                    {
+                        let sibling = sibling.lock().unwrap();
+                        assert_eq!(sibling.len(), 4);
+                        assert_eq!(
+                            sibling[2].argument("word"),
+                            Some(&mod_api::CommandArgumentValue::String("unattended".into()))
+                        );
+                        assert_eq!(
+                            sibling[3].argument("word"),
+                            Some(&mod_api::CommandArgumentValue::String("host_top".into()))
+                        );
+                    }
+                    assert!(game.command_prompt_message().is_none());
+
+                    // Submitting the same executor defers the attempt, then refuses it locally.
+                    assert!(NetworkClientHost::send_chat(game, "/crecurse").is_ok());
+                    assert_eq!(recursed.load(Ordering::Relaxed), 1);
+                    let chain = game.client.native_client_commands.pending_commands[0]
+                        .chain
+                        .clone();
+                    game.native_frame_end().unwrap();
+                    assert_eq!(recursed.load(Ordering::Relaxed), 1);
+                    assert!(
+                        game.client
+                            .native_client_commands
+                            .pending_commands
+                            .is_empty()
+                    );
+                    for (line, kind) in [
+                        ("crecurse", PendingClientCommandKind::Signed),
+                        ("/crecurse", PendingClientCommandKind::Unattended),
+                    ] {
+                        assert_eq!(
+                            game.submit_client_command(line, kind, Some(chain.clone())),
+                            Ok(Some(ClientCommandOutcome::Failed))
+                        );
+                    }
+                    assert!(game.command_prompt_message().is_none());
+
+                    // A tree refresh between frames must preserve each branch’s executor ancestry.
+                    assert!(NetworkClientHost::send_chat(game, "/cping").is_ok());
+                    assert_eq!(*ping_pong.lock().unwrap(), ["ping"]);
+                    game.native_frame_end().unwrap();
+                    assert_eq!(*ping_pong.lock().unwrap(), ["ping", "pong", "pong"]);
+                    assert_eq!(sibling.lock().unwrap().len(), 4);
+                    game.chat_tree_for(Some(&server));
+                    let before_refusals = game.client.chat_ui.chat.recent_lines(50).len();
+                    game.native_frame_end().unwrap();
+                    assert_eq!(*ping_pong.lock().unwrap(), ["ping", "pong", "pong"]);
+                    assert_eq!(
+                        game.client.chat_ui.chat.recent_lines(50).len(),
+                        before_refusals + 4
+                    );
+                    assert!(
+                        game.client
+                            .native_client_commands
+                            .pending_commands
+                            .is_empty()
+                    );
+                    {
+                        let sibling = sibling.lock().unwrap();
+                        let nested = Some(mod_api::CommandArgumentValue::String("nested".into()));
+                        assert_eq!(sibling.len(), 6);
+                        for invocation in &sibling[4..] {
+                            assert_eq!(invocation.argument("word"), nested.as_ref());
+                        }
+                    }
+                    // A fresh player submission has no ancestors and still intercepts locally.
+                    assert_eq!(
+                        game.send_signed_chat_input("/cping"),
+                        Some(ClientCommandOutcome::Success(1))
+                    );
+                    assert_eq!(*ping_pong.lock().unwrap(), ["ping", "pong", "pong", "ping"]);
+
+                    assert!(
+                        !game
+                            .client
+                            .native_client_commands
+                            .dispatcher
+                            .owns_executor(old_key)
+                    );
+                });
+            });
+            Ok(())
+        });
+    }
+}

@@ -34,6 +34,107 @@ pub(crate) mod tests {
 
     #[test]
     #[ignore = "daily"]
+    fn fox_enderman_and_zombified_piglin_take_targets_with_their_side_effects() {
+        use sunrise_core::random::{LegacyRandom, RandomSource};
+        let mut client_events = Vec::new();
+        with_game(|game| {
+            for (id, name) in [
+                (12, "minecraft:fox"),
+                (13, "minecraft:enderman"),
+                (14, "minecraft:zombified_piglin"),
+                (15, "minecraft:zombie"),
+            ] {
+                let kind = game.res.mob_types().get(name).unwrap().clone();
+                game.mobs.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
+            }
+            let handle = |game: &sunrise_gameplay::game::ServerGame<'_>, id| {
+                game.mob(game.entity(id).unwrap()).unwrap()
+            };
+            let (fox, enderman, piglin) = (handle(game, 12), handle(game, 13), handle(game, 14));
+            let other = game.living(game.entity(15).unwrap()).unwrap();
+            let state = |game: &sunrise_gameplay::game::ServerGame<'_>, id| {
+                game.mobs.iter().find(|m| m.id == id).unwrap().clone()
+            };
+
+            // Fox.setTarget: a target leaves defending as it is; clearing ends it.
+            game.mobs
+                .iter_mut()
+                .find(|m| m.id == 12)
+                .unwrap()
+                .extra
+                .ints[0] |= mobs::fox::DEFENDING;
+            mobs::fox::add_trusted_entity(
+                game.mobs.iter_mut().find(|m| m.id == 12).unwrap(),
+                [1, 2, 3, 4],
+            );
+            assert!(fox.set_target(game, Some(other)));
+            assert_eq!(fox.target(game), Some(other));
+            assert!(mobs::fox::flag(&state(game, 12), mobs::fox::DEFENDING));
+            assert!(fox.set_target(game, None));
+            assert_eq!(fox.target(game), None);
+            assert!(!mobs::fox::flag(&state(game, 12), mobs::fox::DEFENDING));
+            assert!(mobs::fox::trusts(&state(game, 12), [1, 2, 3, 4]));
+
+            // Enderman target changes also update the synced flags and attack speed.
+            let enderman_state = game.mobs.iter_mut().find(|m| m.id == 13).unwrap();
+            enderman_state.age = 1234;
+            enderman_state.extra.flag2 = true;
+            game.start_audio_capture();
+            assert!(enderman.set_target(game, Some(other)));
+            client_events =
+                std::mem::take(&mut game.mobs.iter_mut().find(|m| m.id == 13).unwrap().outbox);
+            game.handle_mob_events(client_events.clone()).unwrap();
+            assert!(
+                game.server.pending_sounds.is_empty(),
+                "stare stays client-local"
+            );
+            let m = state(game, 13);
+            assert!(m.extra.flag, "DATA_CREEPY");
+            assert_eq!(m.extra.counter, 1234, "targetChangeTime");
+            assert!(mobs::enderman::attacking_speed(&m) > 0.0);
+            assert!(m.extra.flag2, "retargeting preserves DATA_STARED_AT");
+            assert!(m.movement_speed() > f64::from(0.3f32));
+            assert!(enderman.set_target(game, None));
+            let m = state(game, 13);
+            assert!(!m.extra.flag);
+            assert_eq!(m.extra.counter, 0);
+            assert!(!m.extra.flag2, "clearing resets DATA_STARED_AT");
+            assert_eq!(mobs::enderman::attacking_speed(&m), 0.0);
+
+            // A zombified piglin samples both delays only when acquiring its first target.
+            let mut expected = LegacyRandom::new(2026);
+            let sound_delay = expected.next_int_bound(21).unwrap();
+            let alert_delay = 80 + expected.next_int_bound(41).unwrap();
+            game.mobs.iter_mut().find(|m| m.id == 14).unwrap().random = LegacyRandom::new(2026);
+            assert!(piglin.set_target(game, Some(other)));
+            assert_eq!(piglin.target(game), Some(other));
+            let first = state(game, 14);
+            assert_eq!(first.extra.counter, sound_delay);
+            assert_eq!(first.extra.counter2, alert_delay);
+            assert!(piglin.set_target(game, Some(other)));
+            let changed = state(game, 14);
+            assert_eq!(changed.extra.counter, first.extra.counter);
+            assert_eq!(changed.extra.counter2, first.extra.counter2);
+            assert!(piglin.set_target(game, None));
+            assert_eq!(piglin.target(game), None);
+        });
+        super::super::native_entity_refs::tests::with_client_game(|game| {
+            game.client.audio.0.capture = Some(Vec::new());
+            game.handle_client_mob_events(&mut client_events);
+            assert_eq!(
+                game.client
+                    .audio
+                    .0
+                    .heard
+                    .get("minecraft:entity.enderman.stare"),
+                Some(&1)
+            );
+            assert!(game.client.audio.0.capture.as_ref().unwrap().is_empty());
+        });
+    }
+
+    #[test]
+    #[ignore = "daily"]
     fn redirected_fake_target_is_refused_with_the_original_target_intact() {
         use std::sync::{Arc, Mutex};
         struct Redirect(Arc<Mutex<Option<LivingRef>>>);
