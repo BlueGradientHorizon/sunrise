@@ -27,8 +27,8 @@ Projectile.readAdditionalSaveData	inline	crates/sunrise-client/src/entity_nbt.rs
 Projectile.restoreFrom	missing		no projectile `restoreFrom`: the owner is not carried over a dimension change
 Projectile.isOutsideOwnerCollisionRange	inline	crates/sunrise-client/src/projectiles.rs::Projectile::tick	gap: minor: left_owner tests the owner's box inflated 1.0 at the position only; vanilla sweeps along the motion and checks the owner's passengers too
 Projectile.getMovementToShoot	port	crates/sunrise-client/src/projectiles.rs::Projectile::shoot	direction plus triangle spread 0.0172275 times uncertainty, scaled by power
-Projectile.onAboveBubbleColumn	port	crates/sunrise-client/src/arrows.rs::Ticker::bubble_column	gap: minor: arrows only; thrown ender pearls get their push in creatures.rs tick_projectiles and other projectiles get none
-Projectile.onInsideBubbleColumn	port	crates/sunrise-client/src/arrows.rs::Ticker::bubble_column	gap: minor: arrows only; thrown ender pearls get their push in creatures.rs tick_projectiles and other projectiles get none
+Projectile.onAboveBubbleColumn	port	crates/sunrise-client/src/entities/arrows/flight.rs::Ticker::bubble_column	gap: minor: arrows only; thrown ender pearls get their push in creatures.rs tick_projectiles and other projectiles get none
+Projectile.onInsideBubbleColumn	port	crates/sunrise-client/src/entities/arrows/flight.rs::Ticker::bubble_column	gap: minor: arrows only; thrown ender pearls get their push in creatures.rs tick_projectiles and other projectiles get none
 Projectile.canBreakBlockInAdventureMode	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::projectile_breaks_block	gap: minor: the shooter's gamemode and kind decide it; a stack's `can_break` predicate is not consulted
 Projectile.spawnProjectileFromRotation	port	crates/sunrise-client/src/projectiles.rs::Projectile::shoot_from_rotation	gap: minor: the aim and inherited velocity only; the add-to-world step is the caller's
 Projectile.spawnProjectile	port	crates/sunrise-client/src/game/items/projectile_spawned.rs::Game::spawn_projectile	add_projectile then apply_on_projectile_spawned; each shooter aims its own shot first. gap: minor: thrown potions, experience bottles, tridents, fireworks and fishing hooks are added by their own stores and skip the spawn effects
@@ -51,31 +51,31 @@ ShulkerBullet.destroy	inline	crates/sunrise-client/src/game/mobs/creatures/mod.r
 ShulkerBullet.hurtServer	port	crates/sunrise-client/src/game/items/deflect.rs::Game::hit_shulker_bullet
 ThrowableProjectile.applyInertia	port	crates/sunrise-client/src/projectiles.rs::Projectile::tick	default arm: gravity, then drag 0.8 in water and 0.99 in air; gap: minor: no bubble particles in water
 ThrowableProjectile.handleFirstTickBubbleColumn	port	crates/sunrise-client/src/projectiles.rs::Projectile::first_tick_bubble_column	the column blocks in the box on the first tick, before the tick's gravity and inertia; `Projectile::tick` runs it for a server too, where it used to be `tick_remote`'s alone
-AbstractArrow.<init>	port	crates/sunrise-client/src/arrows.rs::ArrowState::new	arrow defaults: pickup, pickup item, shake, pierce; the owner and drawn ammo come from set_owner and set_item
+AbstractArrow.<init>	port	crates/sunrise-client/src/entities/arrows/state.rs::ArrowState::new	arrow defaults: pickup, pickup item, shake, pierce; the owner and drawn ammo come from set_owner and set_item
 AbstractArrow.defineSynchedData	skip:java		flags, pierce level and in-ground sync fields; Sunrise keeps them on ArrowState and Projectile
 AbstractArrow.lerpMotion	skip:other		client interpolation of a server motion packet; Sunrise's remote arrows take the server position each update
-AbstractArrow.onSyncedDataUpdated	inline	crates/sunrise-client/src/arrows.rs::Ticker::on_hit_block	the 7-tick shake starts when the arrow lands here; vanilla starts it when the client sees it stuck
-AbstractArrow.hitTargetsOrDeflectSelf	port	crates/sunrise-client/src/arrows.rs::Ticker::step_move_and_hit	gap: minor: the nearest entity on the way is taken per tick; vanilla goes on through the rest within the same tick
+AbstractArrow.onSyncedDataUpdated	inline	crates/sunrise-client/src/entities/arrows/flight.rs::Ticker::on_hit_block	the 7-tick shake starts when the arrow lands here; vanilla starts it when the client sees it stuck
+AbstractArrow.hitTargetsOrDeflectSelf	port	crates/sunrise-client/src/entities/arrows/flight.rs::Ticker::step_move_and_hit	gap: minor: the nearest entity on the way is taken per tick; vanilla goes on through the rest within the same tick
 AbstractArrow.addBubbleParticles	port	crates/sunrise-client/src/projectiles.rs::Projectile::arrow_trail	four bubble particles along a submerged arrow
-AbstractArrow.move	inline	crates/sunrise-client/src/arrows.rs::Ticker::tick	should_fall then start_falling run from the tick for an arrow in the ground
-AbstractArrow.resetPiercedEntities	inline	crates/sunrise-client/src/arrows.rs::Ticker::on_hit_block	the pierced list is cleared when the arrow lands
+AbstractArrow.move	inline	crates/sunrise-client/src/entities/arrows/flight.rs::Ticker::tick	should_fall then start_falling run from the tick for an arrow in the ground
+AbstractArrow.resetPiercedEntities	inline	crates/sunrise-client/src/entities/arrows/flight.rs::Ticker::on_hit_block	the pierced list is cleared when the arrow lands
 AbstractArrow.doKnockback	port	crates/sunrise-client/src/game/mobs/creatures/mod.rs::Game::projectile_hit	punch pushes along the flight, scaled by 0.6 and by knockback resistance
-AbstractArrow.findHitEntity	port	crates/sunrise-client/src/arrows.rs::Ticker::entity_hit	box clip, then the margin test against the segment
-AbstractArrow.findHitEntities	port	crates/sunrise-client/src/arrows.rs::Ticker::step_move_and_hit	gap: minor: only the nearest hit per tick is returned; a piercing arrow takes the rest on later ticks
-AbstractArrow.canHitEntity	port	crates/sunrise-client/src/arrows.rs::Ticker::step_move_and_hit	gap: minor: skips pierced entities here; the player canHarmPlayer rule is in creatures.rs tick_projectiles
+AbstractArrow.findHitEntity	port	crates/sunrise-client/src/entities/arrows/flight.rs::Ticker::entity_hit	box clip, then the margin test against the segment
+AbstractArrow.findHitEntities	port	crates/sunrise-client/src/entities/arrows/flight.rs::Ticker::step_move_and_hit	gap: minor: only the nearest hit per tick is returned; a piercing arrow takes the rest on later ticks
+AbstractArrow.canHitEntity	port	crates/sunrise-client/src/entities/arrows/flight.rs::Ticker::step_move_and_hit	gap: minor: skips pierced entities here; the player canHarmPlayer rule is in creatures.rs tick_projectiles
 AbstractArrow.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::arrow_from_nbt	shake, in ground, in block state, pickup and the arrow fields
-AbstractArrow.tryPickup	port	crates/sunrise-client/src/arrows.rs::ArrowState::player_touch	disallowed, allowed (gives the pickup item) and creative only
+AbstractArrow.tryPickup	port	crates/sunrise-client/src/entities/arrows/state.rs::ArrowState::player_touch	disallowed, allowed (gives the pickup item) and creative only
 AbstractArrow.setFlag	port	crates/sunrise-client/src/projectiles.rs::Projectile::set_critical	gap: minor: only the critical flag; the no-physics flag is a plain field
-AbstractArrow.setPickupItemStack	port	crates/sunrise-client/src/arrows.rs::ArrowState::set_item	an empty stack falls back to the default pickup item
-AbstractArrow.isNoPhysics	inline	crates/sunrise-client/src/arrows.rs::Ticker::tick	no_physics is a field read by the tick
+AbstractArrow.setPickupItemStack	port	crates/sunrise-client/src/entities/arrows/state.rs::ArrowState::set_item	an empty stack falls back to the default pickup item
+AbstractArrow.isNoPhysics	inline	crates/sunrise-client/src/entities/arrows/flight.rs::Ticker::tick	no_physics is a field read by the tick
 AbstractArrow.getSlot	missing		an arrow's pickup stack is not addressable as an entity slot, so item commands on an arrow do nothing
-AbstractArrow.Pickup.byOrdinal	port	crates/sunrise-client/src/arrows.rs::Pickup::from_byte	out of range is DISALLOWED
+AbstractArrow.Pickup.byOrdinal	port	crates/sunrise-client/src/entities/arrows/state.rs::Pickup::from_byte	out of range is DISALLOWED
 Arrow.updateColor	port	crates/sunrise-client/src/projectiles.rs::Projectile::arrow_effect_color	the tipped arrow's opaque potion colour for its flight and hit particles (-1 for none)
 Arrow.makeParticle	port	crates/sunrise-client/src/game/network/remote_projectiles.rs::Game::arrow_makeparticle	ticked in #3514; `Arrow.makeParticle` is cited at crates/sunrise-client/src/game/network/remote_projectiles.rs:218
 Arrow.handleEntityEvent	port	crates/sunrise-client/src/game/network/remote_projectiles.rs::Game::remote_arrow_puff	ticked in #3514; `Arrow.handleEntityEvent` is cited at crates/sunrise-client/src/game/network/remote_projectiles.rs:242
 ThrownTrident.defineSynchedData	skip:java		loyalty and foil synced fields; Sunrise keeps loyalty on the trident struct
 ThrownTrident.isAcceptibleReturnOwner	port	crates/sunrise-client/src/game/items/trident.rs::Game::tick_tridents	the loyalty return needs the owner's eye position; gap: minor: no separate alive or spectator check
-ThrownTrident.findHitEntities	port	crates/sunrise-client/src/arrows.rs::Ticker::step_move_and_hit	one entity hit per trident, none once it has dealt damage
+ThrownTrident.findHitEntities	port	crates/sunrise-client/src/entities/arrows/flight.rs::Ticker::step_move_and_hit	one entity hit per trident, none once it has dealt damage
 ThrownTrident.hitBlockEnchantmentEffects	port	crates/sunrise-client/src/game/items/trident.rs::Game::trident_block_effects	gap: minor: only Channeling's hit_block effect (lightning on a rod in a storm) is modelled
 ThrownTrident.tryPickup	port	crates/sunrise-client/src/game/items/trident.rs::Game::trident_taken	all three pickup modes and the no-physics owner's return; gap: inventory overflow drops instead of refusing pickup
 ThrownTrident.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt/trident.rs::trident_from_nbt	pickup, Owner, LeftOwner, HasBeenShot and DealtDamage survive load; ThrownTrident::from_nbt reads loyalty from the saved stack

@@ -143,4 +143,4 @@ ExperienceOrb.hurtServer	port	crates/sunrise-client/src/entities.rs::ExperienceO
 ExperienceOrb.addAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::orb_to_nbt	gap: minor: Health is always written as 5
 ExperienceOrb.readAdditionalSaveData	port	crates/sunrise-client/src/entity_nbt.rs::orbs_from_nbt	gap: minor: Health is ignored
 HumanoidArm.getOpposite	inline	crates/sunrise-client/src/game.rs::Game::hand_geometry	the main hand's side is main_hand_left; the off hand is the other side
-InsideBlockEffectApplier.StepBasedCollector.flushStep	port	crates/sunrise-client/src/arrows.rs::Collector::flush	gap: minor: the arrow collector has four effects (clear freeze, fire, lava, extinguish); the player's collector sits in motion.rs check_inside_blocks
+InsideBlockEffectApplier.StepBasedCollector.flushStep	port	crates/sunrise-client/src/entities/arrows/flight.rs::Collector::flush	gap: minor: the arrow collector has four effects (clear freeze, fire, lava, extinguish); the player's collector sits in motion.rs check_inside_blocks

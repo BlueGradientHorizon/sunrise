@@ -211,7 +211,7 @@ lan = ["sleep-reload", "leash_reload", "reopen_player"]
 name = "motion"
 about = "entity and player movement, collision, vehicles and riding, projectiles"
 paths = [
-  "crates/sunrise-client/src/motion*", "crates/sunrise-client/src/projectiles.rs", "crates/sunrise-client/src/arrows.rs",
+  "crates/sunrise-client/src/motion*", "crates/sunrise-client/src/projectiles.rs", "crates/sunrise-client/src/entities/arrows*",
   "crates/sunrise-world/src/entity_move.rs", "crates/sunrise-world/src/player_travel.rs",
   "crates/sunrise-world/src/*collision*", "crates/sunrise-world/src/movement_*", "crates/sunrise-world/src/living_motion.rs",
   "crates/sunrise-world/src/swimming.rs", "crates/sunrise-world/src/climbing.rs",

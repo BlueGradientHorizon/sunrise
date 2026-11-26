@@ -26,7 +26,10 @@ TEST = 'game::potions::arrow_contents::actual_arrow_contents_match_pinned_method
 ORACLE = 'VanillaArrowContentsExpiryOracle'
 PRODUCTION = [
     'crates/sunrise-client-render/src/brewing.rs',
-    'crates/sunrise-client/src/arrows.rs',
+    'crates/sunrise-client/src/entities/arrows.rs',
+    'crates/sunrise-client/src/entities/arrows/flight.rs',
+    'crates/sunrise-client/src/entities/arrows/contact.rs',
+    'crates/sunrise-client/src/entities/arrows/state.rs',
     'crates/sunrise-client/src/game/items/potions.rs',
 ]
 
