@@ -337,6 +337,15 @@ macro_rules! impl_block_states_without_tables {
                 fn block_state_is_redstone_conductor(&self, _: BlockState) -> Option<bool> {
                     None
                 }
+                fn block_state_light_block(&self, _: BlockState) -> Option<u8> {
+                    None
+                }
+                fn block_state_is_suffocating(&self, _: BlockState) -> Option<bool> {
+                    None
+                }
+                fn block_state_is_valid_spawn(&self, _: BlockState, _: &str) -> Option<bool> {
+                    None
+                }
                 fn block_state_class(
                     &self,
                     _: BlockState,
@@ -715,6 +724,31 @@ impl BlockStates<'_> {
     /// For a placed block see [`LevelRef::is_redstone_conductor`](crate::LevelRef::is_redstone_conductor).
     pub fn is_redstone_conductor(&self, state: BlockState) -> Option<bool> {
         self.backend.block_state_is_redstone_conductor(state)
+    }
+    /// `BlockState.getLightBlock()`: how much light `state` stops, 0 to 15 (stone 15, water and
+    /// leaves 1, air and glass 0). None as for `replaceable`.
+    pub fn light_block(&self, state: BlockState) -> Option<u8> {
+        self.backend.block_state_light_block(state)
+    }
+    /// `BlockState.isSuffocating(level, pos)` when the block's own predicate decides from `state`
+    /// alone: stone yes, glass and leaves no, a piston unless extended. None as for
+    /// `replaceable`, and for a state whose answer needs a position or a block entity (a closed
+    /// shulker box, a shape a block entity publishes or an offset moves). For those, ask
+    /// [`LevelRef::state_is_suffocating`](crate::LevelRef::state_is_suffocating) at a position,
+    /// which also takes a state that is not placed there.
+    pub fn is_suffocating(&self, state: BlockState) -> Option<bool> {
+        self.backend.block_state_is_suffocating(state)
+    }
+    /// `BlockState.isValidSpawn(level, pos, entityType)`: whether a mob of `entity_type` (an
+    /// identifier such as `minecraft:zombie`) may spawn on top of `state`, as natural spawning
+    /// decides it from the state alone: the game's spawning reads no position for it, so the
+    /// answer holds wherever the state stands. The default rule
+    /// (`BlockBehaviour.Properties.isValidSpawn`) is a sturdy top face and a light emission below
+    /// 14; a block's declared `spawn_rule` replaces it, leaves admit ocelots and parrots, ice
+    /// polar bears, and magma blocks only fire immune types. None as for `replaceable`, and for
+    /// an entity type the game has no spawn species for.
+    pub fn is_valid_spawn(&self, state: BlockState, entity_type: &str) -> Option<bool> {
+        self.backend.block_state_is_valid_spawn(state, entity_type)
     }
     /// Match a state against a block and partial property constraints. Unknown properties and
     /// values are errors even when the state belongs to a different block. None means the

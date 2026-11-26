@@ -99,6 +99,16 @@ impl<'r> SuffocationRegistry<'r> {
         Ok(Self { collisions, rules })
     }
 
+    /// The answer for `state` when it does not depend on the position or a block entity: the
+    /// rule is constant. None for a closed-shulker rule, a full-shape test that reads a published
+    /// or offset shape, and a state outside the registry.
+    pub fn constant(&self, state: BlockStateId) -> Option<bool> {
+        match self.rules.get(state.0 as usize)? {
+            Rule::Constant(value) => Some(*value),
+            Rule::DynamicFull | Rule::Shulker => None,
+        }
+    }
+
     pub fn is_suffocating<W: DynamicCollisionWorld>(
         &self,
         world: &mut W,

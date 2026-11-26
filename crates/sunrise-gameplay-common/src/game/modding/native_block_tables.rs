@@ -464,6 +464,36 @@ impl<'a> BlockTables<'a> {
     pub fn block_state_is_redstone_conductor(&self, state: BlockStateId) -> Option<bool> {
         self.res.behaviours().state_redstone_conductor(state)
     }
+    /// `BlockState.getLightBlock()`, the exported dampening. None for an unknown state.
+    pub fn block_state_light_block(&self, state: BlockStateId) -> Option<u8> {
+        self.pack.assets.registry.state(state)?;
+        Some(self.res.facts().get(state).dampening)
+    }
+    /// `BlockState.isSuffocating` of a state alone, from the bound suffocation rules. None for an
+    /// unknown state and for a rule that needs the position or a block entity.
+    pub fn block_state_is_suffocating(&self, state: BlockStateId) -> Option<bool> {
+        self.pack.assets.registry.state(state)?;
+        self.res.suffocation().constant(state)
+    }
+    /// `BlockState.isValidSpawn(level, pos, type)` of a state alone. None for an unknown state
+    /// and for an entity type with no spawn species.
+    pub fn block_state_is_valid_spawn(
+        &self,
+        state: BlockStateId,
+        entity_type: &str,
+    ) -> Option<bool> {
+        self.pack.assets.registry.state(state)?;
+        let species = sunrise_sim::mobs::species::ALL
+            .iter()
+            .find(|def| entity_type.strip_prefix("minecraft:") == Some(def.name))?
+            .species;
+        Some(sunrise_sim::mobs::spawn_rules::is_valid_spawn_on(
+            species,
+            self.res.facts(),
+            &self.res.rest.get()?.mob_data,
+            state,
+        ))
+    }
     /// `instanceof` for the vanilla classes of [`mod_api::BlockClass`], from the block's exported
     /// class chain: a class and its subclasses, an interface by what the block implements. None
     /// for an unknown state.

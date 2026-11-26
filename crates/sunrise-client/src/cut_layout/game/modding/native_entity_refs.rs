@@ -2898,6 +2898,107 @@ pub(crate) mod tests {
         });
     }
 
+    /// `BlockState.isSuffocating(level, pos)` of a state that need not be placed: the cell's
+    /// shulker box block entity decides a shulker box (`Blocks.shulkerBox`), absent counting as
+    /// closed, while stone and glass ignore the level.
+    #[test]
+    #[ignore = "daily"]
+    fn level_reads_whether_a_supplied_state_suffocates_at_a_position() {
+        use std::sync::Arc;
+        use sunrise_client::block_entity_anim::{Shulker, ShulkerStatus};
+        use sunrise_client::chunk::Chunk;
+        with_game(|game| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let level = game.level(game.dim.id()).unwrap();
+            let [stone, glass, shulker] = [
+                "minecraft:stone",
+                "minecraft:glass",
+                "minecraft:shulker_box",
+            ]
+            .map(|name| mod_api::prelude::BlockStatesHost::block_state_id(&*game, name).unwrap());
+            // The cell holds air: each state answers as if it stood there.
+            assert_eq!(
+                level.state_is_suffocating(game, [0, 64, 0], stone),
+                Some(true)
+            );
+            assert_eq!(
+                level.state_is_suffocating(game, [0, 64, 0], glass),
+                Some(false)
+            );
+            assert_eq!(
+                level.state_is_suffocating(game, [0, 64, 0], shulker),
+                Some(true)
+            );
+            // The state alone cannot say; the position can.
+            {
+                use mod_api::HostBlockStates;
+                assert_eq!(game.block_states().is_suffocating(shulker), None);
+            }
+            let placed = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:shulker_box")
+                .unwrap();
+            game.world.set(0, 64, 0, placed).unwrap();
+            for status in [
+                ShulkerStatus::Closed,
+                ShulkerStatus::Opening,
+                ShulkerStatus::Opened,
+                ShulkerStatus::Closing,
+            ] {
+                game.world.shulkers.insert(
+                    [0, 64, 0],
+                    Shulker {
+                        status,
+                        ..Default::default()
+                    },
+                );
+                assert_eq!(
+                    level.state_is_suffocating(game, [0, 64, 0], shulker),
+                    Some(status == ShulkerStatus::Closed),
+                    "{status:?}"
+                );
+                assert_eq!(
+                    level.state_is_suffocating(game, [0, 64, 0], stone),
+                    Some(true),
+                    "{status:?}"
+                );
+            }
+            // One cell over there is no box: the same state suffocates there.
+            assert_eq!(
+                level.state_is_suffocating(game, [1, 64, 0], shulker),
+                Some(true)
+            );
+            // A parked level answers from its own block entities.
+            game.world.shulkers.insert(
+                [0, 64, 0],
+                Shulker {
+                    status: ShulkerStatus::Opened,
+                    ..Default::default()
+                },
+            );
+            assert!(
+                game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
+                    .is_some()
+            );
+            assert_eq!(
+                level.state_is_suffocating(game, [0, 64, 0], shulker),
+                Some(false)
+            );
+            assert!(
+                game.enter_command_level(sunrise_gameplay_common::game::Dim::Overworld)
+                    .is_some()
+            );
+            game.world.shulkers.remove(&[0, 64, 0]);
+            // Unloaded and out-of-height positions are unknown, not a guess.
+            assert_eq!(level.state_is_suffocating(game, [160, 64, 0], stone), None);
+            assert_eq!(level.state_is_suffocating(game, [0, 10000, 0], stone), None);
+        });
+    }
+
     #[test]
     #[ignore = "daily"]
     fn level_sturdy_uses_gameplay_support() {
