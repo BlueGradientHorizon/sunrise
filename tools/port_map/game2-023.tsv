@@ -10,7 +10,7 @@ FlowingFluid.BlockStatePairKey.equals	skip:java	-	cache key record equality
 FlowingFluid.BlockStatePairKey.hashCode	skip:java	-	cache key record hash
 FlowingFluid.SpreadContext.getBlockState	port	crates/sunrise-world/src/level/fluids.rs::Sim::context_state	-
 FlowingFluid.SpreadContext.isHole	port	crates/sunrise-world/src/level/fluids.rs::Sim::context_is_hole	-
-Fluid.getAABB	inline	crates/sunrise-client/src/arrows.rs::Ticker::collided_with_fluid	the fluid box (block to block plus height) is built inside collided_with_fluid for the sweep test
+Fluid.getAABB	inline	crates/sunrise-client/src/entities/arrows/flight.rs::Ticker::collided_with_fluid	the fluid box (block to block plus height) is built inside collided_with_fluid for the sweep test
 FluidState.isSourceOfType	port	crates/sunrise-world/src/level/fluids.rs::Sim::is_source_of	family comparison instead of owner identity; same result for source states
 LavaFluid.hasFlammableNeighbours	inline	crates/sunrise-world/src/level/fluids.rs::Sim::lava_random_tick	the six-neighbour check is folded into the random tick; uses the plain IGNITED_BY_LAVA flag, no face argument
 LavaFluid.isFlammable	port	crates/sunrise-world/src/level/fluids.rs::Sim::lava_flammable	deprecated no-face overload; same build-height and chunk check and flag
