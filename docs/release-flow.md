@@ -498,17 +498,27 @@ repository, the event (a dispatch), the full ref and the dry-run input exactly, 
 case. A run on any other ref, a case variant, a tag or a pull request's ref is a dry run: it signs with a throwaway key
 and publishes nothing.
 
-A daily run's evidence is the run itself, never a tag. `release_train.daily_passed` accepts only a real
-`daily.yml` dispatch in `sunrise-org/sunrise` on `main` or `release/26.3` with both exact, unsuffixed jobs
-`summary <full sha>` and `green <full sha>` completed with `success` in the same run and attempt. The names carry
-the full SHA resolved and tested by the daily. The workflow's `head_sha` can differ, and the title is not proof.
-Dry runs and break-glass runs have suffixed summaries and do not count. The green job succeeds only on a writing
-run after resolve, summary and every leg (parity included) pass and the SDK is published.
+A daily run's evidence is the run itself, never a tag. The release reader accepts only a `daily.yml` dispatch in
+`sunrise-org/sunrise` from `refs/heads/main` or `refs/heads/release/26.3`. The run record's short branch name
+is not enough: GitHub's reference to the local `prebuilt-game-build.yml` must confirm the full branch ref and
+immutable workflow SHA, and the source must be reachable from that branch in the trusted origin checkout.
 
-The run itself must have completed with `success` unless the daily is promoting its own commit to `nightly/26.3`:
-it passes its own `<run id>/<attempt>` as `daily_run` through `release.yml` to `nightly-build.yml`. Only that explicitly
-named run and attempt may count while still in progress with no conclusion, and both jobs must still have succeeded.
-Every signing and publishing gate reads `authorize`'s `publish == 'true'`, so a missing output signs and writes nothing.
+`release_train.daily_passed` requires both exact, unsuffixed jobs `summary <full sha>` and `green <full sha>` to
+have completed with `success` in the same run and attempt. Those names identify the tested commit; it must be the
+workflow SHA or one of its ancestors, not just a commit on the branch's current tip. Neither the run title nor the
+workflow SHA substitutes for the job markers. Dry runs and break-glass runs have suffixed summaries and do not
+count as full dailies. The green job succeeds only on a writing run after resolve, summary and every leg (parity
+included) pass and the SDK is published.
+
+Ordinary discovery takes only completed successful runs. An explicitly named `<run id>/<attempt>` (`daily_run`)
+may also supply proof while in progress with no conclusion, once both markers have succeeded. The daily normally
+passes its own attempt through `release.yml` to `nightly-build.yml`; the selector chooses evidence, not who is
+authorized to call or publish. Every signing and publishing gate still reads `authorize`'s `publish == 'true'`,
+so a missing output signs and writes nothing.
+
+The release reader runs from the workflow's own ref. Updating it on `main` does not update the copies on
+`nightly/26.3` and `release/26.3`; the Nightly build and Stable pick and tag reservation apply the reader on their
+respective branches.
 
 **A stable release** (`nightly-build.yml` with `kind=stable`, `nightly.py pick --kind stable`):
 
@@ -646,7 +656,8 @@ waives the full daily on the release commit and nothing else:
   the break-glass daily refuses to start and the release refuses to build. The SDK legs sdk-publish waits for always
   run, since a release ships only after its `sdk-<sha>`. A game crate's or Cargo change runs every leg that tests the
   game (the ignored-test shards, the Windows rows and the parity harnesses), and the release build's smoke test boots
-  the game headless on the commit. A break-glass daily's legs count only when the whole run succeeded.
+  the game headless on the commit. The selected leg markers must all come from one successful release-branch
+  run, with the same workflow provenance and tested-commit ancestry checks as for a full daily.
 - **The gate always applies.** dyna-checks runs on pushes to `release/26.3`, and the release needs `lint`, `verify` and
   `verify-static` passed on a push of exactly its commit.
 - **Never for** a minor or major release (only a patch of the parent), a commit that is the parent's or doesn't
