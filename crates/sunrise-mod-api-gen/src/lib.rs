@@ -1007,7 +1007,12 @@ mod tests {
         std::fs::write(&hooks, &placeholder).unwrap();
         assert_eq!(
             super::hook_wiring::check(&root, std::slice::from_ref(pickup)).unwrap_err(),
-            "item_picked_up (sunrise_client::game::native_hooks::item_picked_up::Game<'_>::native_item_picked_up): target does not call fire_item_picked_up or Self::fire_item_picked_up"
+            concat!(
+                "item_picked_up (sunrise_client::game::native_hooks::item_picked_up::ServerGame<'_>::native_item_picked_up): ",
+                "target does not call fire_item_picked_up or Self::fire_item_picked_up or ",
+                "super::fire::fire_item_picked_up or fire::fire_item_picked_up or ",
+                "crate::game::native_hooks::fire::fire_item_picked_up",
+            )
         );
         assert_eq!(std::fs::read_to_string(&hooks).unwrap(), placeholder);
         // A hook without its attribute fails by name.
