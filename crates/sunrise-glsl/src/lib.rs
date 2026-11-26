@@ -2264,8 +2264,9 @@ fn main_at(text: &str) -> impl Iterator<Item = usize> + '_ {
         .map(|r| r.start)
 }
 
-/// Parse and validate one stage, attaching it and its authored position to each error. A block
-/// or sampler the pipeline does not provide is refused with its name in [`Error::unprovided`].
+/// Parse and validate one stage, attaching it and the authored position to each error. Parse
+/// refusals quote the rewritten line naga read. A block or sampler the pipeline does not
+/// provide is refused with its name in [`Error::unprovided`].
 fn compile(
     stage: ShaderStage,
     code: &Expanded,
@@ -2276,20 +2277,7 @@ fn compile(
     let options = glsl_options(stage, limits);
     let text = code.text();
     let module = Frontend::default().parse(&options, text).map_err(|e| {
-        // The line naga read, as the translator wrote it, each found among the line breaks.
-        let breaks: Vec<usize> = text.match_indices('\n').map(|(at, _)| at).collect();
-        let mut errors = code.errors_in(e.errors.iter().map(|e| {
-            let start = e.meta.to_range().map_or(0, |r| r.start);
-            let line = breaks.partition_point(|&b| b < start);
-            let from = line.checked_sub(1).map_or(0, |l| breaks[l] + 1);
-            let to = breaks.get(line).copied().unwrap_or(text.len());
-            let source = text[from..to].trim();
-            (e.meta, format!("({source}): {}", e.kind))
-        }));
-        for error in &mut errors {
-            error.stage = Some(stage);
-        }
-        errors
+        code.errors_in(stage, &e, |kind, line| format!("({}): {kind}", line.trim()))
     })?;
     let info = Validator::new(ValidationFlags::all(), Capabilities::all())
         .validate(&module)

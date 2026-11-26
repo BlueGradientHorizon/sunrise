@@ -292,7 +292,8 @@ fn wrap_main(src: &mut Expanded) -> Result<(), String> {
 
 /// Runs the directives of one stage, with the backend's defines every program has
 /// (`core_shader::run_directives`: a post pass has none of its own), then parses and validates
-/// it. Refusals name the stage and the authored position; success includes the parsed code.
+/// it. Refusals name the stage and the authored position, without quoting the rewritten line;
+/// success includes the parsed code.
 fn parse(
     stage: ShaderStage,
     code: &Expanded,
@@ -302,13 +303,7 @@ fn parse(
         .map_err(|e| vec![e.with_stage(stage)])?;
     let module = Frontend::default()
         .parse(&sunrise_glsl::glsl_options(stage, limits), code.text())
-        .map_err(|e| {
-            let mut errors = code.errors_in(e.errors.iter().map(|e| (e.meta, e.kind.to_string())));
-            for error in &mut errors {
-                error.stage = Some(stage);
-            }
-            errors
-        })?;
+        .map_err(|e| code.errors_in(stage, &e, |kind, _line| kind.to_string()))?;
     let info = Validator::new(ValidationFlags::all(), Capabilities::empty())
         .validate(&module)
         .map_err(|e| {

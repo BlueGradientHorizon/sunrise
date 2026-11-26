@@ -470,16 +470,31 @@ impl Expanded {
         self.error_at(span.to_range().map(|r| r.start), message)
     }
 
-    /// [`Expanded::error_in`] for each of naga's errors, the text's lines found once for all.
-    pub fn errors_in(&self, errors: impl IntoIterator<Item = (naga::Span, String)>) -> Vec<Error> {
+    /// Locate each of naga's parse errors in `stage`, indexing the rewritten text's line
+    /// breaks once. `message` receives the error kind and the line naga read (the first line
+    /// when the span is unknown); the diagnostic's position is mapped back to the author.
+    pub fn errors_in(
+        &self,
+        stage: naga::ShaderStage,
+        errors: &naga::front::glsl::ParseErrors,
+        message: impl Fn(&naga::front::glsl::ErrorKind, &str) -> String,
+    ) -> Vec<Error> {
         let text = self.text();
         let breaks: Vec<usize> = text.match_indices('\n').map(|(at, _)| at).collect();
-        (errors.into_iter())
-            .map(|(span, message)| {
-                let at = span.to_range().map(|r| r.start);
-                let origin =
-                    || at.and_then(|at| self.lines.origin(breaks.partition_point(|&b| b < at)));
-                self.located_error(at.and_then(|at| self.lines.position(at)), origin, message)
+        errors
+            .errors
+            .iter()
+            .map(|error| {
+                let at = error.meta.to_range().map(|r| r.start);
+                let line = at.map_or(0, |at| breaks.partition_point(|&b| b < at));
+                let from = line.checked_sub(1).map_or(0, |l| breaks[l] + 1);
+                let to = breaks.get(line).copied().unwrap_or(text.len());
+                self.located_error(
+                    at.and_then(|at| self.lines.position(at)),
+                    || at.and_then(|_| self.lines.origin(line)),
+                    message(&error.kind, &text[from..to]),
+                )
+                .with_stage(stage)
             })
             .collect()
     }
