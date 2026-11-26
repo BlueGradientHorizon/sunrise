@@ -1086,7 +1086,10 @@ pub(crate) fn generate_with_layout(
                         .libraries
                         .get(layout.runtime.key)
                         .map_or(layout.runtime.key, String::as_str),
-                    generic_copied.contains(slots.published.name.as_str()),
+                    found
+                        .owner
+                        .as_ref()
+                        .filter(|_| generic_copied.contains(slots.published.name.as_str())),
                 )
             })
             .transpose()
@@ -1132,7 +1135,7 @@ pub(crate) fn generate_with_layout(
             }
             Some(owner) => {
                 let self_ty = &owner.self_ty;
-                let owner_name = plain(&self_ty.to_token_stream().to_string()).replace("::", "_");
+                let owner_name = patch_owner_name(self_ty);
                 // A trait method's copy is renamed in its helper trait: with the game's trait in
                 // scope too, `x.name()` would be ambiguous.
                 let source_trait = owner.trait_.as_ref().map(|(_, path, _)| path.clone());
@@ -1420,13 +1423,17 @@ fn loop_tag(name: &str) -> String {
         .collect()
 }
 
+fn patch_owner_name(self_ty: &syn::Type) -> String {
+    plain(&self_ty.to_token_stream().to_string()).replace("::", "_")
+}
+
 /// A loop entry's copy: each slot's helper as a module beside it, marked with its mod for the crash
 /// report, and its body, which runs the loop with the slots in this game's state for it
 /// (`Game::run_published_loop`). Refused when a helper is not Rust items.
 fn loop_entry(
     slots: &LoopSlots,
     runtime: &str,
-    generic_copied: bool,
+    copied_owner: Option<&syn::ItemImpl>,
 ) -> Result<(proc_macro2::TokenStream, syn::Block), String> {
     let published = &slots.published;
     let tag = loop_tag(&published.name);
@@ -1478,15 +1485,9 @@ fn loop_entry(
     // one, for these slots) runs the loop; the game's own otherwise, and always for the run without
     // the slots (nested, or after a panic), which the copy's slot type can't take.
     let call = |game: proc_macro2::TokenStream, slot: proc_macro2::TokenStream| {
-        if generic_copied {
-            // The entry's owner type: the segment before its name.
-            let owner = published
-                .entry
-                .rsplit("::")
-                .nth(1)
-                .map(plain)
-                .unwrap_or_default();
-            let helper = format_ident!("__Fnr_{}_{}", owner, published.generic);
+        if let Some(owner) = copied_owner {
+            let owner_name = patch_owner_name(&owner.self_ty);
+            let helper = format_ident!("__Fnr_{}_{}", owner_name, published.generic);
             quote!(#helper::#generic(#game, #slot))
         } else {
             quote!(#game.#generic(#slot))
