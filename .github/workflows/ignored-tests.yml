@@ -220,4 +220,5 @@ jobs:
             fi
             echo "data-leg $field=$value"
           done
+          python3 tools/ci/cgroup_telemetry.py "/sys/fs/cgroup/" 2>/dev/null || true
           sccache --show-stats || echo 'data-leg compiler-cache statistics unavailable'
