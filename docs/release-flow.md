@@ -498,13 +498,17 @@ repository, the event (a dispatch), the full ref and the dry-run input exactly, 
 case. A run on any other ref, a case variant, a tag or a pull request's ref is a dry run: it signs with a throwaway key
 and publishes nothing.
 
-A daily run's evidence is the run itself, never a tag: its job `green <full sha>` succeeds only on a writing run whose
-resolve and summary succeeded, every leg (parity included) passed and the SDK is published. `release_train.daily_passed`
-looks for that job in a real `daily.yml` dispatch on `main` or `release/26.3` that concluded `success` with `head_sha` equal
-to the commit (a title never stands in for it), reading the jobs of that run id and attempt. The daily promoting its own
-commit to `nightly/26.3` has not completed yet: it passes its own `<run id>/<attempt>` down (`release.yml`, `nightly-build.yml`
-`daily_run`), and that one in-progress run counts through its green job. Every signing and publishing gate reads
-`authorize`'s `publish == 'true'`, so a missing output signs and writes nothing.
+A daily run's evidence is the run itself, never a tag. `release_train.daily_passed` accepts only a real
+`daily.yml` dispatch in `sunrise-org/sunrise` on `main` or `release/26.3` with both exact, unsuffixed jobs
+`summary <full sha>` and `green <full sha>` completed with `success` in the same run and attempt. The names carry
+the full SHA resolved and tested by the daily. The workflow's `head_sha` can differ, and the title is not proof.
+Dry runs and break-glass runs have suffixed summaries and do not count. The green job succeeds only on a writing
+run after resolve, summary and every leg (parity included) pass and the SDK is published.
+
+The run itself must have completed with `success` unless the daily is promoting its own commit to `nightly/26.3`:
+it passes its own `<run id>/<attempt>` as `daily_run` through `release.yml` to `nightly-build.yml`. Only that explicitly
+named run and attempt may count while still in progress with no conclusion, and both jobs must still have succeeded.
+Every signing and publishing gate reads `authorize`'s `publish == 'true'`, so a missing output signs and writes nothing.
 
 **A stable release** (`nightly-build.yml` with `kind=stable`, `nightly.py pick --kind stable`):
 
