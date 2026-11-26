@@ -3,7 +3,7 @@
 //! `surface.json` from `.sunrise/sdk/`, or another build's
 //! small files through [`crate::sdk_fetch::fetch_build`]; none links the generator's catalog.
 use crate::options::Options;
-use crate::sdk_fetch::{PinnedSdk, ensure_sdk, fetch_build, fetch_pinned};
+use crate::sdk_fetch::{PinnedSdk, ensure_sdk, fetch_build, fetch_index_only, fetch_pinned};
 use crate::sdk_notes::{self, Shipped};
 use crate::uses_table::{self, Scanned, surface_of};
 use mod_surface::child::ChildEntry;
@@ -201,7 +201,9 @@ pub(crate) fn sdk(args: &[String]) -> Result<(), String> {
     let project = Path::new(".");
     let old = fetch_build(project, a)?;
     let new = fetch_build(project, b)?;
-    let chain = sdk_notes::chain(&new, Some(&old.build), |text| fetch_build(project, text))?;
+    let chain = sdk_notes::chain(&new, Some(&old.build), |build| {
+        fetch_index_only(project, build)
+    })?;
     println!("{} to {}", old.name, new.name);
     print!(
         "{}",
@@ -603,7 +605,9 @@ pub(crate) fn pin_report(entry: ChildEntry, root: &Path, to: &str) -> Result<(),
     };
     let new = fetch_build(root, to)?;
     let new_surface = surface_of(&new)?;
-    let chain = sdk_notes::chain(&new, Some(&old.build), |text| fetch_build(root, text))?;
+    let chain = sdk_notes::chain(&new, Some(&old.build), |build| {
+        fetch_index_only(root, build)
+    })?;
     let notes = migrate_notes(&chain.notes);
     print!(
         "{}",
@@ -796,12 +800,23 @@ pub(crate) fn check_mod(
         let Ok(Ok(sources)) = uses_table::read(root, &package.manifest) else {
             return Err(error);
         };
-        let Ok(chain) = sdk_notes::chain(&sdk, None, |text| fetch_build(root, text)) else {
+        // The notes since the build the mod last compiled against; with none recorded, only the
+        // pinned build's own, and the line after them says how to read older ones.
+        let last = sdk_notes::last_built(root);
+        let walked = sdk_notes::chain(&sdk, last.as_deref(), |build| match &last {
+            Some(_) => fetch_index_only(root, build),
+            None => Err(format!(
+                "no build this mod compiled against is recorded; `cargo sunrise-mod sdk diff <build> {}` lists the notes since one",
+                sdk.build
+            )),
+        });
+        let Ok(chain) = walked else {
             return Err(error);
         };
         let explained = sdk_notes::explaining(&chain.notes, &surface, &sources);
         return Err(sdk_notes::with_notes(error, &explained, &chain));
     }
+    sdk_notes::record_built(root, &sdk.build)?;
     match uses_table::scan(entry, root, &package.manifest, &surface)? {
         Scanned::Uses(uses) => {
             print!(
@@ -1160,19 +1175,15 @@ mod tests {
         ]
     }
 
-    /// Fetches a build of `builds` by its id, as a release would.
-    fn fetcher(builds: &[PinnedSdk]) -> impl Fn(&str) -> Result<PinnedSdk, String> + '_ {
+    /// Fetches the `sdk.json` of a build of `builds` by its id, as a release would.
+    fn fetcher(builds: &[PinnedSdk]) -> impl Fn(&str) -> Result<Index, String> + '_ {
         |text| {
-            builds
+            let build = builds
                 .iter()
                 .find(|b| b.build == text)
-                .map(|b| PinnedSdk {
-                    build: b.build.clone(),
-                    name: b.name.clone(),
-                    dir: b.dir.clone(),
-                    surface: b.surface.clone(),
-                })
-                .ok_or_else(|| format!("no release for {text}"))
+                .ok_or_else(|| format!("no release for {text}"))?;
+            let bytes = std::fs::read(build.dir.join(sdk::INDEX)).unwrap();
+            Ok(Index::read(&bytes, &build.build).unwrap())
         }
     }
 
@@ -1191,9 +1202,62 @@ mod tests {
         let chain = sdk_notes::chain(&builds[2], Some(&builds[0].build), fetcher(&builds)).unwrap();
         assert_eq!(
             why_by_build(&chain),
-            [("name-c", "third"), ("name-b", "second")]
+            [("name-c", "third"), ("bbbbbbb", "second")]
         );
         assert_eq!(chain.stopped, None);
+    }
+
+    #[test]
+    fn the_chain_stops_at_a_build_named_twice() {
+        let dir = tempfile::tempdir().unwrap();
+        let (a, b) = ("a".repeat(40), "b".repeat(40));
+        let builds = [
+            chained(
+                dir.path(),
+                &a,
+                Some(&b),
+                vec![note(&["hook:one"], "first", None)],
+            ),
+            chained(
+                dir.path(),
+                &b,
+                Some(&a),
+                vec![note(&["hook:two"], "second", None)],
+            ),
+        ];
+        let chain = sdk_notes::chain(&builds[0], None, fetcher(&builds)).unwrap();
+        assert_eq!(
+            why_by_build(&chain),
+            [("name-a", "first"), ("bbbbbbb", "second")]
+        );
+        assert!(
+            chain.stopped.is_some_and(|why| why.contains("aaaaaaa")),
+            "names the build named twice"
+        );
+    }
+
+    #[test]
+    fn the_chain_from_the_build_last_compiled_against_is_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let builds = three_builds(dir.path());
+        let chain = sdk_notes::chain(&builds[2], Some(&builds[2].build), |text| {
+            panic!("nothing to fetch, asked for {text}")
+        })
+        .unwrap();
+        assert_eq!(chain.notes, []);
+        assert_eq!(chain.stopped, None);
+    }
+
+    #[test]
+    fn the_last_compiled_build_reads_back_and_anything_else_is_none() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(sdk_notes::last_built(dir.path()), None);
+        std::fs::create_dir(dir.path().join(".sunrise")).unwrap();
+        let build = "d".repeat(40);
+        sdk_notes::record_built(dir.path(), &build).unwrap();
+        assert_eq!(sdk_notes::last_built(dir.path()), Some(build));
+        std::fs::write(dir.path().join(".sunrise/built"), "dddd\n").unwrap();
+        assert_eq!(sdk_notes::last_built(dir.path()), None);
     }
 
     #[test]
@@ -1205,8 +1269,8 @@ mod tests {
             why_by_build(&chain),
             [
                 ("name-c", "third"),
-                ("name-b", "second"),
-                ("name-a", "first")
+                ("bbbbbbb", "second"),
+                ("aaaaaaa", "first")
             ]
         );
         assert_eq!(chain.stopped, None);

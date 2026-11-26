@@ -117,7 +117,9 @@ code the mod declares (mixin targets, loops, internals) that changed. A mod made
 build is only named; its declared internals are checked as the pin moves.
 
 When `check` fails to compile a native mod, it keeps the compiler's error and adds the change notes (why and
-`migrate`) of the API items the mod's source names that the pinned build no longer has. Each SDK's release page
+`migrate`) of the API items the mod's source names that the pinned build no longer has, from every SDK since the
+build the mod last compiled against (which `check` records in `.sunrise/built`; with none recorded, the pinned
+build's own notes). Each SDK's release page
 lists the notes since the SDK before it.
 
 The same checks without the tool, from a build's `surface.json` and a mod folder, are `sunrise-stage uses` and

@@ -1,12 +1,34 @@
 //! The change notes of the SDK builds between two builds, and the ones that explain a failed
 //! build of a mod. Each build's `sdk.json` carries the notes of the changes since the build
 //! before it (`surface.previous`), so a mod that moves across several builds follows that chain.
-//! Only each build's small files are fetched ([`crate::sdk_fetch::fetch_build`]).
+//! Only each older build's signed `sdk.json` is fetched
+//! ([`crate::sdk_fetch::fetch_index_only`]).
 use crate::sdk_fetch::PinnedSdk;
 use mod_surface::scan::{Token, tokens};
 use mod_surface::{Surface, leaf};
 use std::collections::BTreeSet;
+use std::path::Path;
 use sunrise_mod_package::sdk::{self, ChangeNote, Index};
+
+/// The build the project's native mod last compiled against, written by `check` after a
+/// compile succeeds: a later failed compile reads the notes since it.
+const BUILT: &str = ".sunrise/built";
+
+/// The build the project last compiled against, when `check` recorded one.
+pub(crate) fn last_built(project: &Path) -> Option<String> {
+    let bytes =
+        crate::bounded::read_bytes(&project.join(BUILT), 64, crate::bounded::Symlinks::Refuse)
+            .ok()?;
+    let build = String::from_utf8(bytes).ok()?.trim().to_owned();
+    sunrise_mod_package::manifest::revision(&build).then_some(build)
+}
+
+/// Record `build` as the one the project last compiled against.
+pub(crate) fn record_built(project: &Path, build: &str) -> Result<(), String> {
+    crate::internals::check_output_dir(&project.join(".sunrise"))?;
+    let path = project.join(BUILT);
+    std::fs::write(&path, format!("{build}\n")).map_err(|e| format!("{}: {e}", path.display()))
+}
 
 /// A change note and the build whose `sdk.json` carried it.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -43,15 +65,18 @@ fn index_of(sdk: &PinnedSdk) -> Result<Index, String> {
 
 /// The notes of `newer` and of every build before it, following `surface.previous`: up to the
 /// build `older` names (the walk stops when the chain reaches it, and its own notes are not
-/// included), or with no `older` to the chain's end. A build `fetch` cannot read ends the walk
-/// with the notes found so far and the reason.
+/// included; `older` naming `newer` gives no notes), or with no `older` to the chain's end. A
+/// build `fetch` cannot read ends the walk with the notes found so far and the reason.
 pub(crate) fn chain(
     newer: &PinnedSdk,
     older: Option<&str>,
-    mut fetch: impl FnMut(&str) -> Result<PinnedSdk, String>,
+    mut fetch: impl FnMut(&str) -> Result<Index, String>,
 ) -> Result<Chain, String> {
     let mut notes = Vec::new();
     let mut stopped = None;
+    if older == Some(newer.build.as_str()) {
+        return Ok(Chain { notes, stopped });
+    }
     let mut name = newer.name.clone();
     let mut index = index_of(newer)?;
     // Each build names an older one; one named twice would send the walk round for ever.
@@ -72,8 +97,8 @@ pub(crate) fn chain(
             stopped = Some(format!("build {short} is named twice on the chain"));
             break;
         }
-        match fetch(&previous).and_then(|build| Ok((index_of(&build)?, build.name))) {
-            Ok((next, next_name)) => (index, name) = (next, next_name),
+        match fetch(&previous) {
+            Ok(next) => (name, index) = (crate::sdk_fetch::name(&next), next),
             Err(why) => {
                 let short = previous.get(..7).unwrap_or(&previous);
                 stopped = Some(format!("build {short}: {why}"));
