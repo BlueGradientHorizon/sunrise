@@ -22,6 +22,7 @@ pub mod stubs;
 
 use crate::check::{Problem, line_column, problem, translate_backends};
 use naga::front::glsl::InterfaceLimits;
+use std::sync::LazyLock;
 use sunrise_glsl::{Expanded, Glue, Includes, Inputs, ResourceKind, Stages, Translated};
 
 /// The folder under `assets/<namespace>/` holding core shader programs (`.vsh` and `.fsh`).
@@ -219,10 +220,21 @@ pub struct ProgramSources<'a> {
     pub fragment: &'a str,
 }
 
-/// Default vertex inputs (`PipelineVertexFormat::PositionTexColor`) in deterministic
-/// sequential location order (`0..3`).
-pub const DEFAULT_VERTEX_INPUTS: [(&str, &str); 3] =
-    [("Position", "vec3"), ("UV0", "vec2"), ("Color", "vec4")];
+/// Default vertex inputs `(name, glsl_type)`: the attributes of
+/// [`VertexFormat::position_tex_color`](mod_vocab::VertexFormat::position_tex_color) in
+/// deterministic sequential location order (`0..3`). Built once from that format; its three
+/// names are leaked so that [`Options::default`] can borrow them for `'static`.
+pub static DEFAULT_VERTEX_INPUTS: LazyLock<Vec<(&'static str, &'static str)>> =
+    LazyLock::new(|| {
+        mod_vocab::VertexFormat::position_tex_color()
+            .attributes
+            .into_iter()
+            .map(|attribute| {
+                let name: &'static str = Box::leak(attribute.name.into_boxed_str());
+                (name, attribute.format.glsl_type())
+            })
+            .collect()
+    });
 
 /// Bind-group set index for mod-declared `BindGroupLayout` entries (set 0 stays vanilla's shared
 /// bindings from `BindGroupLayouts.java`).
@@ -385,7 +397,7 @@ impl Default for Options<'_> {
         Self {
             textured: false,
             defines: &[],
-            vertex_inputs: &DEFAULT_VERTEX_INPUTS,
+            vertex_inputs: DEFAULT_VERTEX_INPUTS.as_slice(),
             mod_bindings: &[],
             push_constant_size: 0,
             linear_light: false,
@@ -405,10 +417,10 @@ pub struct BuiltProgram {
     pub fragment_expanded: String,
 }
 
-/// Vertex & fragment `Glue` for `PipelineVertexFormat::PositionTexColor`.
+/// Vertex & fragment `Glue` for [`VertexFormat::position_tex_color`](mod_vocab::VertexFormat::position_tex_color).
 pub fn pipeline_glue<'a>(interface: InterfaceLimits, fragment_finish: Option<&'a str>) -> Glue<'a> {
     Glue {
-        inputs: &DEFAULT_VERTEX_INPUTS,
+        inputs: DEFAULT_VERTEX_INPUTS.as_slice(),
         prelude: "layout(location = 0) in vec3 hz_pos;\n\
                   layout(location = 1) in vec2 hz_uv;\n\
                   layout(location = 2) in vec4 hz_color;",
