@@ -174,3 +174,38 @@ fn an_end_crystal_keeps_the_fire_ticks_it_was_given() {
         assert_eq!(tag.get("Fire"), Some(&Tag::Short(40_000_i32 as i16)));
     });
 }
+
+/// `WitherSkull.isOnFire` and `ShulkerBullet.isOnFire` answer false though their types are not
+/// `.fireImmune()`; `END_CRYSTAL` is.
+#[test]
+#[ignore = "daily"]
+fn a_skull_and_a_bullet_never_burn_but_are_not_fire_immune_and_a_crystal_is() {
+    with_game(|game| {
+        open_chunk(game);
+        for kind in [
+            ProjectileKind::WitherSkull { dangerous: false },
+            ProjectileKind::ShulkerBullet {
+                target: None,
+                dir: None,
+                steps: 0,
+                delta: [0.0; 3],
+                seed: 0,
+            },
+        ] {
+            let mut shot = Projectile::new(kind, Vec3::new(8.5, 65.0, 8.5), None);
+            shot.id = game.take_entity_id();
+            let id = shot.id;
+            game.creatures.projectiles.push(shot);
+            let entity = game.entity(id).unwrap();
+            assert!(entity.set_remaining_fire_ticks(game, 60));
+            assert_eq!(entity.fire_ticks(game), Some(60));
+            assert_eq!(entity.fire_immune(game), Some(false));
+            assert_eq!(entity.is_on_fire(game), Some(false));
+        }
+        game.summon_with_nbt("minecraft:end_crystal", [8.5, 65.0, 8.5], "{}")
+            .unwrap();
+        game.lan_assign_ids();
+        let id = game.crystals[0].id;
+        assert_eq!(game.entity(id).unwrap().fire_immune(game), Some(true));
+    });
+}

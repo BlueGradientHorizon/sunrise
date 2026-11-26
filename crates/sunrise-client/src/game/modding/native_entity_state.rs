@@ -7,7 +7,7 @@
 //! the local client's live semantic sneak state; fire and underwater reads also
 //! use the client's own cached state.
 //! Ticks lived (`Entity.tickCount`) are read for players, mobs, items, orbs and minecarts.
-use super::{Game, commands::Target, native_entity_base::kind_fire_immune};
+use super::{Game, commands::Target, native_entity_base::BuiltinKind};
 use mod_api::{EntityReadError, EntityRef};
 use std::ops::ControlFlow;
 use sunrise_client::join_seq::residency::table::EntityLookup;
@@ -305,13 +305,21 @@ impl Game<'_> {
     /// `Entity.isOnFire`: remaining ticks or the client's synced shared flag 0, unless fire
     /// immune. Every kind, and on a client every tracked copy.
     pub(super) fn entity_is_on_fire(&self, entity: EntityRef) -> Option<bool> {
-        let (ticks, immune) = match self.native_entity_read_target(entity) {
+        let (ticks, immune, kind) = match self.native_entity_read_target(entity) {
             Some(target) => {
                 let view = self.read_entity_base(target)?;
-                (view.base.fire_ticks, view.fire_immune)
+                (view.base.fire_ticks, view.fire_immune, view.kind)
             }
-            None => (0, self.client_tracked_fire_immunity(entity)?),
+            None => (
+                0,
+                self.client_tracked_fire_immunity(entity)?,
+                self.native_client_tracked(entity)
+                    .and_then(|(id, _)| BuiltinKind::from_type_id(id)),
+            ),
         };
+        if kind.is_some_and(BuiltinKind::is_on_fire_overridden_false) {
+            return Some(false);
+        }
         let synced = !self.is_logical_server()
             && self
                 .remote
@@ -330,7 +338,7 @@ impl Game<'_> {
 
     /// The immunity of a copy the client only tracks (no body of its own): a player's synced
     /// grant, a general row's declared `fire_immune`, a mob type's flag, and the one table of
-    /// [`kind_fire_immune`] the server answers from for every other kind.
+    /// [`BuiltinKind`] the server answers from for every other kind.
     fn client_tracked_fire_immunity(&self, entity: EntityRef) -> Option<bool> {
         if let Some(row) = self.native_client_general(entity) {
             return Some(super::general::general_type_catalog().fire_immune(row.type_slot));
@@ -340,7 +348,7 @@ impl Game<'_> {
             return self.client_tracked_player_fire_immunity(entity);
         }
         Some(
-            kind_fire_immune(kind)
+            BuiltinKind::from_type_id(kind).is_some_and(BuiltinKind::fire_immune)
                 || self
                     .res
                     .mob_types()

@@ -102,33 +102,84 @@ pub(in crate::game) struct BaseView {
     pub base: EntityBase,
     /// `Entity.fireImmune`: the type's immunity, or the live grant the body carries.
     pub fire_immune: bool,
+    /// The entity's [`BuiltinKind`], when it is one.
+    pub kind: Option<BuiltinKind>,
     /// The [`owned`] values the family keeps as fields of its body.
     owned: u8,
 }
 
-/// `EntityType.fireImmune()` for the kinds that are neither a mob (its type flag), an item (its
-/// stack) nor a general entity (its row): the one table the server's [`Game::read_entity_base`]
-/// and a client's tracked copy both answer from.
-pub(in crate::game) fn kind_fire_immune(kind: &str) -> bool {
-    matches!(
-        kind,
-        "minecraft:tnt"
-            | "minecraft:end_crystal"
-            | "minecraft:ender_dragon"
-            | "minecraft:area_effect_cloud"
-            | "minecraft:wither_skull"
-            | "minecraft:shulker_bullet"
-    )
+/// The built-in kinds that are neither a mob (its type flag), an item (its stack), a general
+/// entity (its row) nor a plain flag-less projectile: the one place the server's
+/// [`Game::read_entity_base`] and a client's tracked copy both answer their fire facts from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(in crate::game) enum BuiltinKind {
+    Tnt,
+    EndCrystal,
+    EnderDragon,
+    AreaEffectCloud,
+    WitherSkull,
+    ShulkerBullet,
+}
+
+impl BuiltinKind {
+    /// The kind a client's tracked copy names by its type id, converted once at the boundary.
+    pub(in crate::game) fn from_type_id(id: &str) -> Option<Self> {
+        Some(match id {
+            "minecraft:tnt" => Self::Tnt,
+            "minecraft:end_crystal" => Self::EndCrystal,
+            "minecraft:ender_dragon" => Self::EnderDragon,
+            "minecraft:area_effect_cloud" => Self::AreaEffectCloud,
+            "minecraft:wither_skull" => Self::WitherSkull,
+            "minecraft:shulker_bullet" => Self::ShulkerBullet,
+            _ => return None,
+        })
+    }
+
+    /// Whether `EntityTypes` builds the kind with `.fireImmune()`: `TNT`, `END_CRYSTAL`,
+    /// `ENDER_DRAGON` and `AREA_EFFECT_CLOUD`. `WITHER_SKULL` and `SHULKER_BULLET` are not.
+    pub(in crate::game) fn fire_immune(self) -> bool {
+        matches!(
+            self,
+            Self::Tnt | Self::EndCrystal | Self::EnderDragon | Self::AreaEffectCloud
+        )
+    }
+
+    /// Whether the class overrides `Entity.isOnFire` to return false: `WitherSkull.isOnFire`
+    /// and `ShulkerBullet.isOnFire`, whatever their fire ticks.
+    pub(in crate::game) fn is_on_fire_overridden_false(self) -> bool {
+        matches!(self, Self::WitherSkull | Self::ShulkerBullet)
+    }
 }
 
 impl Game<'_> {
+    /// The [`BuiltinKind`] of the entity `t` names.
+    fn builtin_kind(&self, t: Target) -> Option<BuiltinKind> {
+        use sunrise_client::projectiles::ProjectileKind;
+        match t {
+            Target::Tnt(_) => Some(BuiltinKind::Tnt),
+            Target::Crystal(_) => Some(BuiltinKind::EndCrystal),
+            Target::Dragon(_) | Target::DragonPart(_) => Some(BuiltinKind::EnderDragon),
+            Target::Cloud(_) => Some(BuiltinKind::AreaEffectCloud),
+            Target::Projectile(id) => {
+                match self.creatures.projectiles.iter().find(|p| p.id == id)?.kind {
+                    ProjectileKind::WitherSkull { .. } => Some(BuiltinKind::WitherSkull),
+                    ProjectileKind::ShulkerBullet { .. } => Some(BuiltinKind::ShulkerBullet),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
     /// The base state of the entity `t` names, or None when its body is gone.
     pub(in crate::game) fn read_entity_base(&self, t: Target) -> Option<BaseView> {
         let mut base = EntityBase::read(self.saved_entity_compound(t));
         let (owned, fire_immune) = self.load_owned_base(t, &mut base)?;
+        let kind = self.builtin_kind(t);
         Some(BaseView {
             base,
             fire_immune,
+            kind,
             owned,
         })
     }
@@ -251,7 +302,6 @@ impl Game<'_> {
                 (NO_GRAVITY, false)
             }
             Target::Projectile(id) => {
-                use sunrise_client::projectiles::ProjectileKind;
                 let p = self.creatures.projectiles.iter().find(|p| p.id == id)?;
                 base.no_gravity = p.no_gravity;
                 match p.arrow.as_ref() {
@@ -261,12 +311,8 @@ impl Game<'_> {
                     }
                     None => {
                         base.fire_ticks = p.fire_ticks;
-                        let immune = kind_fire_immune(match p.kind {
-                            ProjectileKind::WitherSkull { .. } => "minecraft:wither_skull",
-                            ProjectileKind::ShulkerBullet { .. } => "minecraft:shulker_bullet",
-                            _ => "",
-                        });
-                        (FIRE | NO_GRAVITY, immune)
+                        // No projectile type is built with `.fireImmune()`.
+                        (FIRE | NO_GRAVITY, false)
                     }
                 }
             }
@@ -279,7 +325,7 @@ impl Game<'_> {
             Target::Tnt(id) => {
                 let t = self.tnts.iter().find(|t| t.id == id)?;
                 base.no_gravity = t.no_gravity;
-                (NO_GRAVITY, kind_fire_immune("minecraft:tnt"))
+                (NO_GRAVITY, BuiltinKind::Tnt.fire_immune())
             }
             Target::Falling(id) => {
                 let f = self.falling.iter().find(|f| f.id == id)?;
@@ -291,10 +337,7 @@ impl Game<'_> {
                 let c = self.crystals.iter().find(|c| c.id == id)?;
                 base.fire_ticks = c.fire;
                 base.invulnerable = c.invulnerable;
-                (
-                    FIRE | INVULNERABLE,
-                    kind_fire_immune("minecraft:end_crystal"),
-                )
+                (FIRE | INVULNERABLE, BuiltinKind::EndCrystal.fire_immune())
             }
             Target::Bolt(id) => {
                 let b = self.bolts.iter().find(|b| b.id == id)?;
@@ -317,15 +360,15 @@ impl Game<'_> {
                 base.fire_ticks = f.fire_ticks;
                 (FIRE, false)
             }
-            Target::Dragon(_) => (0, kind_fire_immune("minecraft:ender_dragon")),
-            Target::Cloud(_) => (0, kind_fire_immune("minecraft:area_effect_cloud")),
+            Target::Dragon(_) => (0, BuiltinKind::EnderDragon.fire_immune()),
+            Target::Cloud(_) => (0, BuiltinKind::AreaEffectCloud.fire_immune()),
             Target::General(id) => {
                 let row = self.resident_entities.general.row(id)?;
                 *base = row.base;
                 (ALL, general_type_catalog().fire_immune(row.type_slot))
             }
             // The dragon's parts take its type.
-            Target::DragonPart(_) => (ALL, kind_fire_immune("minecraft:ender_dragon")),
+            Target::DragonPart(_) => (ALL, BuiltinKind::EnderDragon.fire_immune()),
             // `EntityType.FISHING_BOBBER` is not fire immune; the bobber is never saved.
             Target::Hook(id) => {
                 let (hook, _) = self.fishing_hook_by_id(id)?;
