@@ -1030,11 +1030,20 @@ impl FrameGraphContext for GameFrameGraphContext<'_, '_> {
             return Err(FrameGraphError::Unavailable);
         };
         let owner = mod_api::content::crash::current_native_mod();
-        // Validate imported mod render target ownership/liveness up front.
-        if let FrameTarget::Mod(rt) = desc.target {
-            renderer
-                .render_target_size(owner, rt)
-                .map_err(FrameGraphError::InvalidTarget)?;
+        // Validate imported mod render target ownership/liveness, and the mip level the pass
+        // renders into, up front.
+        match desc.target {
+            FrameTarget::Mod(rt) => {
+                renderer
+                    .resolve_mod_render_target(owner, rt, desc.mip_level)
+                    .map_err(FrameGraphError::InvalidTarget)?;
+            }
+            _ if desc.mip_level != 0 => {
+                return Err(FrameGraphError::InvalidTarget(
+                    RenderTargetError::InvalidMipLevels,
+                ));
+            }
+            _ => {}
         }
         for &t in desc.reads.iter().chain(desc.writes.iter()) {
             if let FrameTarget::Mod(rt) = t {
