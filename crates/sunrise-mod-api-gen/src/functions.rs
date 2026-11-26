@@ -6,6 +6,7 @@
 //! modules its targets are in. Before a function is copied, its text is checked against the
 //! index's hash: a source that is not the build's is refused by name, never walked.
 use crate::patch::{Found, Source, TargetPath, plain, replaceable_with_binding, target_path};
+use crate::source::{LEGACY_LAYOUT, SourceLayout};
 use mod_surface::build_data::FunctionDigests;
 use quote::{ToTokens, quote};
 use serde::{Deserialize, Serialize};
@@ -142,6 +143,15 @@ impl FunctionIndex {
     /// Only the span is checked here; every other file the copy reads is checked against its
     /// [`ModuleFile::sha256`] as it is read.
     pub fn check(&self, root: &Path, target: &str) -> Result<(), (&'static str, String)> {
+        self.check_with_layout(root, target, LEGACY_LAYOUT)
+    }
+
+    pub(crate) fn check_with_layout(
+        &self,
+        root: &Path,
+        target: &str,
+        layout: SourceLayout,
+    ) -> Result<(), (&'static str, String)> {
         let key = key(target);
         let krate = key.split("::").next().unwrap_or_default();
         if !self.crates.contains_key(krate) {
@@ -154,7 +164,7 @@ impl FunctionIndex {
             return Err((refused.code.name(), refused.why.clone()));
         }
         let Some(function) = self.functions.get(&key) else {
-            return Err(if krate == "sunrise_client" {
+            return Err(if layout.owns(&key) {
                 (
                     "E_MIXIN_TARGET_MISSING",
                     format!("no function `{key}` in this game build's function index ({FILE})"),
@@ -324,6 +334,7 @@ pub fn index(root: &Path, generic: &BTreeSet<String>) -> Result<FunctionIndex, S
 
 pub(crate) fn index_with_context(
     root: &Path,
+    layout: SourceLayout,
     generic: &BTreeSet<String>,
 ) -> Result<
     (
@@ -333,7 +344,7 @@ pub(crate) fn index_with_context(
     ),
     String,
 > {
-    index_of_with_context(root, generic, None)
+    index_of_with_context(root, layout, generic, None)
 }
 
 /// [`index`], listing only the functions whose keys are in `only`, when given.
@@ -342,11 +353,12 @@ pub(crate) fn index_of(
     generic: &BTreeSet<String>,
     only: Option<&BTreeSet<String>>,
 ) -> Result<FunctionIndex, String> {
-    index_of_with_context(root, generic, only).map(|(index, _, _)| index)
+    index_of_with_context(root, LEGACY_LAYOUT, generic, only).map(|(index, _, _)| index)
 }
 
 fn index_of_with_context(
     root: &Path,
+    layout: SourceLayout,
     generic: &BTreeSet<String>,
     only: Option<&BTreeSet<String>>,
 ) -> Result<
@@ -357,16 +369,16 @@ fn index_of_with_context(
     ),
     String,
 > {
-    let mut source = Source::new(root)?;
+    let mut source = Source::new(root, layout)?;
     // Below the game crate, only the functions marked `#[replaceable]` take a replacement.
-    let marked: BTreeSet<String> = crate::replace::marked(root)?
+    let marked: BTreeSet<String> = crate::replace::marked(root, layout)?
         .into_iter()
         .map(|(_, path)| key(&path))
         .collect();
     let lower: BTreeSet<&str> = marked
         .iter()
         .filter_map(|path| path.split("::").next())
-        .filter(|krate| *krate != "sunrise_client")
+        .filter(|krate| layout.domain(krate).is_none())
         .collect();
     for krate in lower {
         if !source.load(krate)? {
@@ -476,7 +488,7 @@ fn index_of_with_context(
     for (key, mut found) in candidates {
         let krate = key.split("::").next().unwrap_or_default();
         if only.is_some_and(|only| !only.contains(&key))
-            || (krate != "sunrise_client" && !marked.contains(&key))
+            || (layout.domain(krate).is_none() && !marked.contains(&key))
         {
             continue;
         }

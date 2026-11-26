@@ -1,4 +1,5 @@
 //! One source staging pass for the launcher and `sunrise-stage`.
+use crate::source::{LEGACY_LAYOUT, SourceLayout};
 use crate::{internals, replace};
 /// The build a staged copy is of, named in each build-data file's header.
 pub use mod_surface::build_data::Build;
@@ -34,6 +35,16 @@ pub fn stage(
     mode: Mode,
     build: &Build,
 ) -> Result<Staged, String> {
+    stage_with_layout(root, LEGACY_LAYOUT, internals_json, mode, build)
+}
+
+pub(crate) fn stage_with_layout(
+    root: &Path,
+    layout: SourceLayout,
+    internals_json: &Path,
+    mode: Mode,
+    build: &Build,
+) -> Result<Staged, String> {
     let stamp = root.join(".sunrise-source-staged");
     if stamp.exists() {
         return Err("source tree is already staged; use a fresh copy of the source".into());
@@ -50,7 +61,7 @@ pub fn stage(
         loops: Vec<crate::loops::PublishedLoop>,
     }
     let loops = Loops {
-        loops: crate::loops::collect(root)?,
+        loops: crate::loops::collect_with_layout(root, layout)?,
     };
     eprintln!(
         "stage_phase=loops seconds={:.3}",
@@ -65,7 +76,7 @@ pub fn stage(
         .map(|l| crate::functions::key(&l.generic_target()))
         .collect();
     let (mut functions, pristine_owners, workspace_traits) =
-        crate::functions::index_with_context(root, &generic)?;
+        crate::functions::index_with_context(root, layout, &generic)?;
     eprintln!(
         "stage_phase=functions seconds={:.3}",
         started.elapsed().as_secs_f64()
@@ -75,10 +86,7 @@ pub fn stage(
         &Document::new(build, loops),
     )?;
     let started = Instant::now();
-    let mut internals = match mode {
-        Mode::Build => internals::widen(root)?,
-        Mode::Discovery => internals::discover(root)?,
-    };
+    let mut internals = internals::stage(root, layout, matches!(mode, Mode::Discovery))?;
     internals
         .entries
         .extend(crate::crossing::foreign_internals(root)?);
@@ -101,7 +109,7 @@ pub fn stage(
     );
     let started = Instant::now();
     let replace =
-        replace::stage_with_context(root, Some(pristine_owners), Some(&workspace_traits))?;
+        replace::stage_with_context(root, layout, Some(pristine_owners), Some(&workspace_traits))?;
     eprintln!(
         "stage_phase=replace seconds={:.3}",
         started.elapsed().as_secs_f64()
@@ -153,6 +161,241 @@ mod tests {
             commit: "c".repeat(40),
         };
         super::stage(root, internals, mode, &build)
+    }
+
+    #[test]
+    fn three_game_domains_stage_and_patch_their_own_functions() {
+        use crate::source::{GameDomain, SourceLayout};
+        use crate::{functions, patch};
+        use std::{fs, process::Command};
+
+        const COMMON: GameDomain = GameDomain {
+            package: "sunrise-fixture-common",
+            key: "sunrise_fixture_common",
+        };
+        const SERVER: GameDomain = GameDomain {
+            package: "sunrise-fixture-server",
+            key: "sunrise_fixture_server",
+        };
+        const CLIENT: GameDomain = GameDomain {
+            package: "sunrise-fixture-client",
+            key: "sunrise_fixture_client",
+        };
+        const RUNTIME: GameDomain = GameDomain {
+            package: "sunrise-fixture-runtime",
+            key: "sunrise_fixture_runtime",
+        };
+        let layout = SourceLayout {
+            runtime: RUNTIME,
+            domains: &[COMMON, SERVER, CLIENT],
+            entry: None,
+        };
+        let input = tempfile::tempdir().unwrap();
+        let staged = tempfile::tempdir().unwrap();
+        let source = input.path();
+        let output = staged.path();
+        let write = |path: &Path, text: &str| {
+            for tree in [source, output] {
+                let path = tree.join(path);
+                fs::create_dir_all(path.parent().unwrap()).unwrap();
+                fs::write(path, text).unwrap();
+            }
+        };
+        for domain in [COMMON, SERVER, CLIENT, RUNTIME] {
+            let package = domain.package_path(Path::new(""));
+            let mut manifest = format!("[package]\nname = '{}'\n", domain.package);
+            if domain.key == COMMON.key {
+                manifest.push_str("[lib]\npath = 'engine/lib.rs'\nname = 'common_engine'\n");
+            } else if domain.key != RUNTIME.key {
+                manifest.push_str("[dependencies]\ncommon_engine = { package = 'sunrise-fixture-common', path = '../sunrise-fixture-common' }\n");
+            } else {
+                manifest.push_str("[dependencies]\nsunrise-fixture-server = { path = '../sunrise-fixture-server' }\nsunrise-fixture-client = { path = '../sunrise-fixture-client', optional = true }\n[features]\nclient = ['dep:sunrise-fixture-client']\n");
+            }
+            write(&package.join("Cargo.toml"), &manifest);
+            let source_dir = if domain.key == COMMON.key {
+                "engine"
+            } else {
+                "src"
+            };
+            let src = package.join(source_dir);
+            let lib = if domain.key == RUNTIME.key {
+                "#[cfg(feature = \"client\")] pub fn desktop() -> u32 { sunrise_fixture_client::game::same() }\npub fn dedicated() -> u32 { sunrise_fixture_server::game::same() }\n"
+            } else {
+                "#![forbid(unsafe_code)]\npub mod game;\n"
+            };
+            write(&src.join("lib.rs"), lib);
+        }
+        for (domain, game) in [
+            (COMMON, "include!(\"fragment.rs\");\n"),
+            (
+                SERVER,
+                "pub struct ServerGame { value: u32 }\nfn same() -> u32 { common_engine::game::same() + 1 }\n",
+            ),
+            (
+                CLIENT,
+                "fn same() -> u32 { common_engine::game::same() + 2 }\n",
+            ),
+        ] {
+            let lib = domain.library(source).unwrap();
+            let game_path = lib.with_file_name("game.rs");
+            write(game_path.strip_prefix(source).unwrap(), game);
+        }
+        let fragment = "crates/sunrise-fixture-common/engine/fragment.rs";
+        write(Path::new(fragment), "fn same() -> u32 { 40 }\n");
+        write(
+            Path::new("crates/unrelated/Cargo.toml"),
+            "[package]\nname = 'unrelated'\n",
+        );
+        write(
+            Path::new("crates/unrelated/src/lib.rs"),
+            "pub fn same() -> u32 { 99 }\n",
+        );
+        write(Path::new("crates/sunrise-mod-api-gen/internals.txt"), "");
+        write(Path::new(crate::crossing::CROSSING_FOREIGN_FILE), "[]");
+
+        let result = stage_with_layout(
+            output,
+            layout,
+            &output.join("internals.json"),
+            Mode::Build,
+            &Build {
+                commit: "fixture".into(),
+            },
+        )
+        .unwrap();
+        let docs = fs::read_to_string(output.join(functions::FILE)).unwrap();
+        let (_, index): (_, functions::FunctionIndex) =
+            mod_surface::build_data::read(functions::FILE, &docs).unwrap();
+        let targets: Vec<_> = layout
+            .domains
+            .iter()
+            .map(|domain| format!("{}::game::same", domain.key))
+            .collect();
+        for target in &targets {
+            assert!(
+                result
+                    .internals
+                    .entries
+                    .iter()
+                    .any(|entry| entry.path == *target)
+            );
+        }
+        assert_eq!(result.replace.crates, 3);
+        assert_eq!(result.replace.slots, targets.iter().cloned().collect());
+        assert_eq!(
+            index
+                .functions
+                .keys()
+                .cloned()
+                .collect::<std::collections::BTreeSet<_>>(),
+            result.replace.slots
+        );
+        assert_eq!(index.functions[&targets[0]].file, fragment);
+        assert_eq!(index.crates[COMMON.key].library, "common_engine");
+        assert_eq!(
+            index.check_with_layout(source, "unrelated::same", layout),
+            Err(("E_MIXIN_NOT_REPLACEABLE", replace::UNMARKED.into())),
+        );
+        for domain in layout.domains {
+            assert!(
+                fs::read_to_string(domain.library(output).unwrap())
+                    .unwrap()
+                    .contains("AtomicPtr<()>; 1]")
+            );
+        }
+
+        let extras = patch::Extras {
+            modules: vec![patch::SupportModule {
+                id: "support".into(),
+                file: "crates/sunrise-fixture-server/src/game.rs".into(),
+                name: "patch_support".into(),
+                text: "pub fn answer() -> u32 { 10 }".into(),
+                public: true,
+            }],
+            bridges: vec![patch::Bridge {
+                id: "value".into(),
+                method: "patch_value".into(),
+                kind: "GET".into(),
+                target: "sunrise_fixture_server::game::ServerGame".into(),
+                member: Some("value".into()),
+            }],
+            ..Default::default()
+        };
+        let patches =
+            patch::generate_with_layout(source, layout, "patch", &targets, &extras, &index)
+                .unwrap();
+        assert_eq!(patches.libs.len(), 3);
+        for (name, rust) in &patches.libs {
+            let server = name == "patch_fixture_server";
+            assert_eq!(rust.contains("mod patch_support"), server, "{name}");
+            assert_eq!(rust.contains("pub mod __fnr_bridges"), server, "{name}");
+        }
+        let compile = |name: &str, input: &Path, dependencies: &[(&str, &Path)]| {
+            let lib = output.join(format!("lib{name}.rlib"));
+            let mut rustc = Command::new("rustc");
+            rustc
+                .args(["--edition=2024", "--crate-type=rlib", "--crate-name", name])
+                .arg("-L")
+                .arg(format!("dependency={}", output.display()))
+                .arg("-o")
+                .arg(&lib)
+                .arg(input);
+            for (name, path) in dependencies {
+                rustc
+                    .arg("--extern")
+                    .arg(format!("{name}={}", path.display()));
+            }
+            let result = rustc.output().unwrap();
+            assert!(
+                result.status.success(),
+                "{}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+            lib
+        };
+        let common = compile("common_engine", &COMMON.library(output).unwrap(), &[]);
+        let server = compile(
+            SERVER.key,
+            &SERVER.library(output).unwrap(),
+            &[("common_engine", &common)],
+        );
+        let runtime = compile(
+            RUNTIME.key,
+            &RUNTIME.library(output).unwrap(),
+            &[(SERVER.key, &server)],
+        );
+        let files = patches
+            .libs
+            .into_iter()
+            .collect::<std::collections::BTreeMap<_, _>>();
+        let patch_source = output.join("patch_fixture_server.rs");
+        fs::write(&patch_source, &files["patch_fixture_server"]).unwrap();
+        let patch = compile(
+            "patch_fixture_server",
+            &patch_source,
+            &[(SERVER.key, &server), ("common_engine", &common)],
+        );
+        let runner = output.join("dedicated.rs");
+        fs::write(&runner, "fn main() { assert_eq!(sunrise_fixture_runtime::dedicated(), 41); assert_eq!(patch_fixture_server::game::patch_support::answer(), 10); }").unwrap();
+        let binary = output.join(format!("dedicated{}", std::env::consts::EXE_SUFFIX));
+        let result = Command::new("rustc")
+            .args(["--edition=2024", "-L"])
+            .arg(format!("dependency={}", output.display()))
+            .arg("--extern")
+            .arg(format!("{}={}", RUNTIME.key, runtime.display()))
+            .arg("--extern")
+            .arg(format!("patch_fixture_server={}", patch.display()))
+            .arg("-o")
+            .arg(&binary)
+            .arg(runner)
+            .output()
+            .unwrap();
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+        assert!(Command::new(binary).status().unwrap().success());
     }
 
     #[test]

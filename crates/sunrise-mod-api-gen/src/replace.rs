@@ -55,6 +55,34 @@ pub fn eligible(attrs: &[syn::Attribute], sig: &syn::Signature) -> bool {
     signature_exclusion(attrs, sig).is_none()
 }
 
+pub(crate) enum CandidateExclusion {
+    Signature,
+    GenericImpl,
+}
+
+pub(crate) fn candidate_exclusion(
+    attrs: &[syn::Attribute],
+    sig: &syn::Signature,
+    owner: Option<&syn::ItemImpl>,
+    loop_generic: bool,
+) -> Option<CandidateExclusion> {
+    let mut unslotted;
+    let sig = if loop_generic {
+        unslotted = sig.clone();
+        unslotted.generics = syn::Generics::default();
+        &unslotted
+    } else {
+        sig
+    };
+    if !eligible(attrs, sig) {
+        return Some(CandidateExclusion::Signature);
+    }
+    if !loop_generic && owner.is_some_and(|block| !lifetimes_only(&block.generics)) {
+        return Some(CandidateExclusion::GenericImpl);
+    }
+    None
+}
+
 pub(crate) fn signature_exclusion(
     attrs: &[syn::Attribute],
     sig: &syn::Signature,
@@ -387,7 +415,8 @@ fn functions<'a>(
             }
             Item::Fn(function)
                 if !mod_source::modules::gated(&function.attrs)
-                    && eligible(&function.attrs, &function.sig) =>
+                    && candidate_exclusion(&function.attrs, &function.sig, None, false)
+                        .is_none() =>
             {
                 out.push(Found {
                     module: module.to_owned(),
@@ -401,9 +430,11 @@ fn functions<'a>(
             }
             Item::Impl(block)
                 if !mod_source::modules::gated(&block.attrs)
-                    && lifetimes_only(&block.generics)
                     && matches!(&*block.self_ty, Type::Path(ty) if ty.qself.is_none()) =>
             {
+                if !lifetimes_only(&block.generics) {
+                    continue;
+                }
                 let (trait_name, resolved_trait) = match &block.trait_ {
                     Some((_, path, _)) => {
                         let Ok(resolved) = resolve_trait_impl(module, block, types, workspace)
@@ -422,7 +453,8 @@ fn functions<'a>(
                 };
                 for member in &block.items {
                     if let ImplItem::Fn(method) = member
-                        && eligible(&method.attrs, &method.sig)
+                        && candidate_exclusion(&method.attrs, &method.sig, Some(block), false)
+                            .is_none()
                         && !block.trait_.as_ref().is_some_and(|(_, path, _)| {
                             names_associated(&qualified(&method.sig, path))
                         })
@@ -543,7 +575,10 @@ fn inventory(
 }
 
 /// Marked lower-crate functions and their source locations.
-pub(crate) fn marked(root: &Path) -> Result<Vec<(String, String)>, String> {
+pub(crate) fn marked(
+    root: &Path,
+    layout: source::SourceLayout,
+) -> Result<Vec<(String, String)>, String> {
     fn scan(module: &str, items: &[Item], out: &mut Vec<(String, String)>) -> Result<(), String> {
         for item in items {
             match item {
@@ -615,7 +650,7 @@ pub(crate) fn marked(root: &Path) -> Result<Vec<(String, String)>, String> {
             .unwrap()
             .to_string_lossy()
             .replace('-', "_");
-        if name == "sunrise_client" {
+        if layout.domain(&name).is_some() {
             continue;
         }
         let manifest: toml::Value = toml::from_str(
@@ -633,6 +668,7 @@ pub(crate) fn marked(root: &Path) -> Result<Vec<(String, String)>, String> {
             continue;
         }
         for file in source::module_files(
+            root,
             name.clone(),
             lib.clone(),
             lib.parent().unwrap().to_owned(),
@@ -705,11 +741,12 @@ struct Crate {
 /// head check, reader and installer, and each crate that has one its slot array. Run on a copy,
 /// never on a working tree.
 pub fn stage(root: &Path) -> Result<Staged, String> {
-    stage_with_context(root, None, None)
+    stage_with_context(root, source::LEGACY_LAYOUT, None, None)
 }
 
 pub(crate) fn stage_with_context(
     root: &Path,
+    layout: source::SourceLayout,
     mut pristine_owners: Option<BTreeMap<String, OwnerTypes>>,
     workspace: Option<&WorkspaceTraits>,
 ) -> Result<Staged, String> {
@@ -721,23 +758,25 @@ pub(crate) fn stage_with_context(
             &owned_workspace
         }
     };
-    let list = marked(root)?;
+    let list = marked(root, layout)?;
     let mut used = vec![false; list.len()];
-    let client = root.join("crates/sunrise-client/src");
-    let game = root.join("crates/sunrise-client");
-    let mut crates = vec![Crate {
-        name: "sunrise_client".into(),
-        lib: client.join("lib.rs"),
-        files: source::game_files(&client, true)?,
-        marked_only: false,
-        package: game.clone(),
-    }];
+    let game = layout.runtime.package_path(root);
+    let mut crates = Vec::new();
+    for domain in layout.domains {
+        crates.push(Crate {
+            name: domain.key.into(),
+            lib: domain.library(root)?,
+            files: domain.files(root, true)?,
+            marked_only: false,
+            package: domain.package_path(root),
+        });
+    }
     let lower: BTreeSet<&str> = list
         .iter()
         .map(|(_, path)| path.split("::").next().unwrap_or_default())
         .collect();
     for name in lower {
-        if name == "sunrise_client" {
+        if layout.domain(name).is_some() {
             return Err(format!(
                 "{name}: every function of the game crate's game module is replaceable already"
             ));
@@ -855,7 +894,7 @@ pub(crate) fn stage_with_context(
         // them directly. An exported reference keeps them linked without work at startup.
         let linked: Vec<_> = crates
             .iter()
-            .filter(|other| !krate.marked_only && other.marked_only)
+            .filter(|other| krate.package == game && other.marked_only)
             .map(|other| format!("&::{}::__REPLACE", other.name))
             .collect();
         if !linked.is_empty() {

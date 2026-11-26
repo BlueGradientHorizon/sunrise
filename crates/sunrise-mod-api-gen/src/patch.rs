@@ -8,7 +8,7 @@
 //! inaccessible. A method moves into a one-method trait implemented for its own type, so `self`,
 //! `Self` and the helpers' bindings stay as written. horizon-mixins then patches the copies, and
 //! the game installs each through its function's replacement slot (`__fnr_<name>`).
-use crate::source::unraw;
+use crate::source::{LEGACY_LAYOUT, SourceLayout, unraw};
 use quote::{ToTokens, format_ident, quote};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -16,6 +16,7 @@ use syn::visit::Visit;
 use syn::{ImplItem, Item};
 
 mod reexports;
+use reexports::Narrowing;
 
 /// One target function, copied.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,6 +153,7 @@ impl From<mod_source::modules::ModuleFile> for SourceFile {
 
 /// The game crate's modules by path, parsed lazily from the pinned source.
 pub(crate) struct Source {
+    layout: SourceLayout,
     root: PathBuf,
     /// The crates whose modules are in `files`.
     loaded: BTreeSet<String>,
@@ -187,7 +189,11 @@ struct Cache {
 impl Source {
     /// The modules the function index lists, with nothing walked: each file is read when a
     /// target's module is.
-    fn indexed(root: &Path, index: &crate::functions::FunctionIndex) -> Result<Self, String> {
+    fn indexed(
+        root: &Path,
+        layout: SourceLayout,
+        index: &crate::functions::FunctionIndex,
+    ) -> Result<Self, String> {
         let mut files = BTreeMap::new();
         let mut libraries = BTreeMap::new();
         let mut hashes = BTreeMap::new();
@@ -207,6 +213,7 @@ impl Source {
             libraries.insert(krate.clone(), facts.library.clone());
         }
         Ok(Self {
+            layout,
             root: root.to_owned(),
             loaded: index.crates.keys().cloned().collect(),
             files,
@@ -218,6 +225,13 @@ impl Source {
             hashes,
             stale: None,
         })
+    }
+
+    fn extras_owner<'a>(&self, path: &'a str) -> &'a str {
+        let owner = path.split("::").next().expect("a crate");
+        self.layout
+            .domain(owner)
+            .map_or(self.layout.runtime.key, |domain| domain.key)
     }
 
     /// The source root.
@@ -248,37 +262,51 @@ impl Source {
         Ok(text)
     }
 
-    pub(crate) fn new(root: &Path) -> Result<Self, String> {
-        let src = root.join("crates/sunrise-client/src");
+    pub(crate) fn new(root: &Path, layout: SourceLayout) -> Result<Self, String> {
         let mut files = BTreeMap::new();
-        files.insert(
-            "sunrise_client".to_owned(),
-            vec![SourceFile {
-                path: src.join("lib.rs"),
-                include_cfg: None,
-            }],
-        );
-        for file in crate::source::game_files(&src, false)? {
+        let mut libraries = BTreeMap::new();
+        let mut loaded = BTreeSet::new();
+        let mut local_macros = BTreeSet::new();
+        for domain in layout.domains {
+            let lib = domain.library(root)?;
+            let package = domain.package_path(root);
+            if domain.key != LEGACY_LAYOUT.runtime.key && package.join("Cargo.toml").is_file() {
+                libraries.insert(
+                    domain.key.to_owned(),
+                    crate::replace::library_name(&package)?,
+                );
+            }
+            loaded.insert(domain.key.to_owned());
+            let mut local = BTreeSet::new();
+            let mut exported = BTreeSet::new();
+            for path in walk(lib.parent().expect("a source file has a folder")) {
+                let text = std::fs::read_to_string(&path)
+                    .map_err(|e| format!("{}: {e}", path.display()))?;
+                macro_names(&text, &mut local, &mut exported);
+            }
+            local_macros.extend(local.into_iter().filter(|name| !exported.contains(name)));
+            files.insert(
+                domain.key.to_owned(),
+                vec![SourceFile {
+                    path: lib,
+                    include_cfg: None,
+                }],
+            );
+        }
+        for file in layout.files(root, false)? {
             files
                 .entry(file.module.clone())
                 .or_insert_with(Vec::new)
                 .push(file.into());
         }
-        let mut local_macros = BTreeSet::new();
-        let mut exported = BTreeSet::new();
-        for path in walk(&src) {
-            let text =
-                std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-            macro_names(&text, &mut local_macros, &mut exported);
-        }
-        local_macros.retain(|name| !exported.contains(name));
         Ok(Self {
+            layout,
             root: root.to_owned(),
-            loaded: BTreeSet::from(["sunrise_client".to_owned()]),
+            loaded,
             files,
             parsed: BTreeMap::new(),
             local_macros,
-            libraries: BTreeMap::new(),
+            libraries,
             owners: BTreeMap::new(),
             cache: Cache::default(),
             hashes: BTreeMap::new(),
@@ -296,7 +324,7 @@ impl Source {
         };
         let library = crate::replace::library_name(&package)?;
         let dir = lib.parent().expect("a source file has a folder").to_owned();
-        let files = crate::source::module_files(krate.to_owned(), lib, dir, false)?;
+        let files = crate::source::module_files(&self.root, krate.to_owned(), lib, dir, false)?;
         let mut exported = BTreeSet::new();
         let mut local = BTreeSet::new();
         for file in files {
@@ -319,17 +347,16 @@ impl Source {
     fn owner_types(&mut self, krate: &str) -> Result<&crate::replace::OwnerTypes, String> {
         if !self.owners.contains_key(krate) {
             let mut types = crate::replace::OwnerTypes::default();
-            if krate == "sunrise_client" {
-                let src = self.root.join("crates/sunrise-client/src");
-                let lib_path = src.join("lib.rs");
+            if let Some(domain) = self.layout.domain(krate) {
+                let lib_path = domain.library(&self.root)?;
                 if lib_path.is_file() {
                     let text = std::fs::read_to_string(&lib_path)
                         .map_err(|e| format!("{}: {e}", lib_path.display()))?;
                     let parsed = syn::parse_file(&text)
                         .map_err(|e| format!("{}: {e}", lib_path.display()))?;
-                    types.declare("sunrise_client", &parsed.items);
+                    types.declare(krate, &parsed.items);
                 }
-                for file in crate::source::game_files(&src, true)? {
+                for file in domain.files(&self.root, true)? {
                     let text = std::fs::read_to_string(&file.path)
                         .map_err(|e| format!("{}: {e}", file.path.display()))?;
                     let parsed = syn::parse_file(&text)
@@ -780,24 +807,23 @@ pub(crate) fn replaceable_with_binding(
     let sig = &found.function.sig;
     // A published loop's function is generic over its slot alone: each mod build copies it once,
     // for the one slot type its entry's copy calls it with. Its other rules are a function's.
-    let mut unslotted = sig.clone();
-    if loop_generic {
-        unslotted.generics = syn::Generics::default();
-    }
-    if !crate::replace::eligible(&found.function.attrs, &unslotted) {
-        return Err("it is not replaceable: `const`, `async`, `unsafe`, \
-             `self` by value, `impl Trait` or `!` in its signature, `#[inline(always)]`, or \
-             compiled only under a `cfg`"
-            .into());
-    }
-    if !loop_generic
-        && !(crate::replace::lifetimes_only(&sig.generics)
-            && found
-                .owner
-                .as_ref()
-                .is_none_or(|b| crate::replace::lifetimes_only(&b.generics)))
-    {
-        return Err("it is generic over types or takes `impl Trait`: one copy can't stand for every instance".into());
+    use crate::replace::CandidateExclusion;
+    match crate::replace::candidate_exclusion(
+        &found.function.attrs,
+        sig,
+        found.owner.as_ref(),
+        loop_generic,
+    ) {
+        Some(CandidateExclusion::Signature) => {
+            return Err("it is not replaceable: `const`, `async`, `unsafe`, \
+                 `self` by value, `impl Trait` or `!` in its signature, `#[inline(always)]`, or \
+                 compiled only under a `cfg`"
+                .into());
+        }
+        Some(CandidateExclusion::GenericImpl) => {
+            return Err("it is generic over types or takes `impl Trait`: one copy can't stand for every instance".into());
+        }
+        None => {}
     }
     let mut trait_binding = None;
     if let Some(block) = &found.owner {
@@ -983,12 +1009,23 @@ pub fn generate(
     extras: &Extras,
     index: &crate::functions::FunctionIndex,
 ) -> Result<PatchCrate, Vec<Refusal>> {
+    generate_with_layout(root, LEGACY_LAYOUT, krate, targets, extras, index)
+}
+
+pub(crate) fn generate_with_layout(
+    root: &Path,
+    layout: SourceLayout,
+    krate: &str,
+    targets: &[String],
+    extras: &Extras,
+    index: &crate::functions::FunctionIndex,
+) -> Result<PatchCrate, Vec<Refusal>> {
     let refuse = |target: &str, code, why: String| Refusal {
         target: target.to_owned(),
         code,
         why,
     };
-    let mut source = match Source::indexed(root, index) {
+    let mut source = match Source::indexed(root, layout, index) {
         Ok(source) => source,
         Err(why) => {
             return Err(targets
@@ -1013,7 +1050,7 @@ pub fn generate(
             .loops
             .iter()
             .any(|l| l.published.generic_target() == *target);
-        if let Err((code, why)) = index.check(root, target) {
+        if let Err((code, why)) = index.check_with_layout(root, target, layout) {
             refusals.push(refuse(target, code, why));
             continue;
         }
@@ -1026,7 +1063,7 @@ pub fn generate(
         };
         let name = found.function.sig.ident.clone();
         let source_crate = found.module.split("::").next().expect("a crate").to_owned();
-        let patch_name = patch_crate(krate, &source_crate);
+        let patch_name = patch_name(krate, &source_crate, layout);
         let mut node = trees.entry(source_crate).or_default();
         for segment in found.module.split("::").skip(1) {
             node = node.children.entry(segment.to_owned()).or_default();
@@ -1045,6 +1082,10 @@ pub fn generate(
             .map(|slots| {
                 loop_entry(
                     slots,
+                    source
+                        .libraries
+                        .get(layout.runtime.key)
+                        .map_or(layout.runtime.key, String::as_str),
                     generic_copied.contains(slots.published.name.as_str()),
                 )
             })
@@ -1200,7 +1241,9 @@ pub fn generate(
     for module in &extras.modules {
         match support_module(&source, module) {
             Ok((path, tokens)) => {
-                let mut node = trees.entry("sunrise_client".to_owned()).or_default();
+                let mut node = trees
+                    .entry(source.extras_owner(&path).to_owned())
+                    .or_default();
                 for segment in path.split("::").skip(1) {
                     node = node.children.entry(segment.to_owned()).or_default();
                 }
@@ -1210,22 +1253,33 @@ pub fn generate(
             Err((code, why)) => refusals.push(refuse(&module.id, code, why)),
         }
     }
-    let mut bridge_traits = Vec::new();
-    let mut bridge_names: Vec<syn::Ident> = Vec::new();
+    #[derive(Default)]
+    struct Bridges {
+        traits: Vec<proc_macro2::TokenStream>,
+        names: Vec<syn::Ident>,
+    }
+    let mut bridge_imports = BTreeMap::<String, Bridges>::new();
     for bridge in &extras.bridges {
         match bridge_trait(&mut source, bridge) {
             Ok((path, trait_name, tokens)) => {
-                let mut node = trees.entry("sunrise_client".to_owned()).or_default();
+                let (declaring, module) = path.split_once("::").unwrap_or((&path, ""));
+                let owner = source.extras_owner(&path);
+                let mut node = trees.entry(owner.to_owned()).or_default();
                 for segment in path.split("::").skip(1) {
                     node = node.children.entry(segment.to_owned()).or_default();
                 }
                 node.own.insert(trait_name.to_string());
                 node.copies.push(tokens);
-                let mirror: syn::Path =
-                    syn::parse_str(&path.replacen("sunrise_client", "crate", 1))
-                        .expect("a module path");
-                bridge_traits.push(quote!(pub use #mirror::#trait_name;));
-                bridge_names.push(trait_name.clone());
+                let mirror: syn::Path = if owner != declaring {
+                    syn::parse_str(&path).expect("a module path")
+                } else if module.is_empty() {
+                    syn::parse_quote!(crate)
+                } else {
+                    syn::parse_str(&format!("crate::{module}")).expect("a module path")
+                };
+                let imports = bridge_imports.entry(owner.to_owned()).or_default();
+                imports.traits.push(quote!(pub use #mirror::#trait_name;));
+                imports.names.push(trait_name);
             }
             Err((code, why)) => refusals.push(refuse(&bridge.id, code, why)),
         }
@@ -1241,20 +1295,17 @@ pub fn generate(
     }
     let mut libs = Vec::new();
     for (source_crate, tree) in &trees {
-        let bridges = if source_crate == "sunrise_client" {
-            bridge_names.as_slice()
-        } else {
-            &[]
-        };
-        let used = (source_crate != "sunrise_client").then(|| {
+        let imports = bridge_imports.remove(source_crate).unwrap_or_default();
+        let bridges = imports.names.as_slice();
+        let bridge_traits = &imports.traits;
+        let used = layout.domain(source_crate).is_none().then(|| {
             let mut used = extras.idents.clone();
             idents_in(&tree_tokens(tree), &mut used);
             used
         });
-        let narrowing = used.as_ref().map(|used| Narrowing {
-            used,
-            linked: &extras.linked,
-        });
+        let narrowing = used
+            .as_ref()
+            .map(|used| Narrowing::new(used, &extras.linked));
         let body = match mirror(&mut source, source_crate, tree, bridges, narrowing.as_ref()) {
             Ok(body) => body,
             Err(why) => {
@@ -1282,7 +1333,7 @@ pub fn generate(
             #bridge_module
         };
         libs.push((
-            patch_crate(krate, source_crate),
+            patch_name(krate, source_crate, layout),
             prettyplease_or_tokens(lib),
         ));
     }
@@ -1374,12 +1425,14 @@ fn loop_tag(name: &str) -> String {
 /// (`Game::run_published_loop`). Refused when a helper is not Rust items.
 fn loop_entry(
     slots: &LoopSlots,
+    runtime: &str,
     generic_copied: bool,
 ) -> Result<(proc_macro2::TokenStream, syn::Block), String> {
     let published = &slots.published;
     let tag = loop_tag(&published.name);
     let hook = format!("loop {}", published.name);
-    let loops = quote!(::sunrise_client::game::published_loops);
+    let runtime = format_ident!("{runtime}");
+    let loops = quote!(::#runtime::game::published_loops);
     let mut items = Vec::new();
     let mut nested = quote!(());
     for (index, slot) in slots.slots.iter().enumerate().rev() {
@@ -1479,8 +1532,12 @@ pub fn idents_in(tokens: &proc_macro2::TokenStream, out: &mut BTreeSet<String>) 
 /// The patch crate that mirrors `source_crate`: `krate` itself for the game crate, and
 /// `krate_<crate>` for a lower one (`sunrise_patch_client_lib` for `sunrise_client_lib`).
 pub fn patch_crate(krate: &str, source_crate: &str) -> String {
+    patch_name(krate, source_crate, LEGACY_LAYOUT)
+}
+
+fn patch_name(krate: &str, source_crate: &str, layout: SourceLayout) -> String {
     match source_crate {
-        "sunrise_client" => krate.to_owned(),
+        primary if primary == layout.runtime.key => krate.to_owned(),
         other => format!("{krate}_{}", other.trim_start_matches("sunrise_")),
     }
 }
@@ -1604,17 +1661,6 @@ fn original_path(libraries: &BTreeMap<String, String>, path: &str) -> String {
     }
 }
 
-/// How a lower crate's mirror narrows its modules' imports: only the listed functions' modules
-/// are widened, so an import through the crate's other modules may not resolve from a mirror.
-struct Narrowing<'a> {
-    /// The names the copies and the rows' helpers use: the imports a mirror keeps.
-    used: &'a BTreeSet<String>,
-    /// The crates the patch crate links: in a module with copies, an import from one of them,
-    /// or from std, is kept whatever it names. A copy may call a trait's method without naming
-    /// the trait (`angle.mcos()` from `Mth`), and such an import resolves as it did in the game.
-    linked: &'a BTreeSet<String>,
-}
-
 /// The statics std's `thread_local!` declares in `mac`, with their attributes and visibility;
 /// `None` for any other macro, for one that may not be std's (a bare `thread_local!` unless
 /// `bare_is_std`, `std::thread_local!` unless `std_is_std`), or when the body doesn't read as
@@ -1649,15 +1695,6 @@ fn thread_local_statics(
             _ => None,
         })
         .collect()
-}
-
-impl Narrowing<'_> {
-    /// Whether a path starting at `root` resolves from a mirror as it did in the game: `std`
-    /// and `core`, which every crate has, or a crate the patch crate links. (`alloc` is not in
-    /// a crate's extern prelude, and the patch crate declares no `extern crate alloc`.)
-    fn resolves(&self, root: &syn::Ident) -> bool {
-        root == "std" || root == "core" || self.linked.contains(&root.to_string())
-    }
 }
 
 /// The mirror of module `path` and its children in `tree`.
@@ -1712,8 +1749,8 @@ fn mirror(
         })
         .collect();
     let root = !path.contains("::");
-    let only_public =
-        root || (path.split("::").next() != Some("sunrise_client") && tree.copies.is_empty());
+    let lower = reexports::preserve_owner_features(source.layout, path);
+    let only_public = root || (lower && tree.copies.is_empty());
     // A `thread_local!` names the statics it declares. Only a public one can be re-exported:
     // nothing widens a private one, which a glob would not have brought either. Other
     // macro invocations may define items syn can't see, which only a glob re-exports.
@@ -1769,7 +1806,6 @@ fn mirror(
         .map(|(ident, attrs)| (ident.clone(), cfg_predicates(attrs).collect()));
     // A lower crate is compiled with its own features, but the patch crate with the game's, so a
     // condition on a feature can't be decided here: the glob brings such an item where it exists.
-    let lower = path.split("::").next() != Some("sunrise_client");
     for (ident, cfg) in re_exported
         .chain(thread_locals)
         .filter(|(ident, _)| !reserved.contains(&ident.to_string()))
@@ -2146,6 +2182,7 @@ mod tests {
         .unwrap();
         std::fs::write(package.join("src/lib.rs"), "pub mod render {}\n").unwrap();
         let mut source = Source {
+            layout: LEGACY_LAYOUT,
             root: root.path().to_owned(),
             loaded: BTreeSet::new(),
             files: BTreeMap::new(),
@@ -2272,6 +2309,7 @@ mod tests {
     #[test]
     fn lower_ancestors_do_not_export_unwidened_private_items() {
         let mut source = Source {
+            layout: LEGACY_LAYOUT,
             root: PathBuf::new(),
             loaded: BTreeSet::new(),
             files: BTreeMap::new(),
@@ -2336,6 +2374,7 @@ mod tests {
         )
         .unwrap();
         let mut source = Source {
+            layout: LEGACY_LAYOUT,
             root: dir.path().to_owned(),
             loaded: BTreeSet::new(),
             files: BTreeMap::from([(
@@ -2359,10 +2398,7 @@ mod tests {
             ..Tree::default()
         };
         let linked = BTreeSet::new();
-        let narrowing = Narrowing {
-            used: &used,
-            linked: &linked,
-        };
+        let narrowing = Narrowing::new(&used, &linked);
         let out = mirror(&mut source, "fixture", &tree, &[], Some(&narrowing)).unwrap();
         let parsed: syn::File = syn::parse2(out).unwrap();
         let imports: Vec<String> = uses(&parsed.items)
@@ -2388,6 +2424,7 @@ mod tests {
         std::fs::write(&outer, "use std::sync::Arc;").unwrap();
         std::fs::write(&included, "use std::rc::Rc;").unwrap();
         let mut source = Source {
+            layout: LEGACY_LAYOUT,
             root: dir.clone(),
             loaded: BTreeSet::new(),
             files: BTreeMap::from([(
@@ -2428,6 +2465,7 @@ mod tests {
         let file = dir.join("mod.rs");
         std::fs::write(&file, "pub fn f() {}").unwrap();
         let mut source = Source {
+            layout: LEGACY_LAYOUT,
             root: dir.clone(),
             loaded: BTreeSet::new(),
             files: BTreeMap::from([(
@@ -2464,6 +2502,7 @@ mod tests {
     /// A source whose module `path` is `text`, read from no file.
     fn source_of(path: &str, text: &str) -> Source {
         Source {
+            layout: LEGACY_LAYOUT,
             root: PathBuf::new(),
             loaded: BTreeSet::new(),
             files: BTreeMap::new(),
@@ -2738,10 +2777,7 @@ mod tests {
                     use crate::helpers::Helper;";
         let used = BTreeSet::new();
         let linked = BTreeSet::from(["sunrise_core".to_owned()]);
-        let narrowing = Narrowing {
-            used: &used,
-            linked: &linked,
-        };
+        let narrowing = Narrowing::new(&used, &linked);
         let imports = |tree: &Tree| {
             let mut source = source_of("lower::render", text);
             let out = mirror(&mut source, "lower::render", tree, &[], Some(&narrowing)).unwrap();
@@ -2989,7 +3025,7 @@ mod census {
     #[ignore = "measurement: prints the census"]
     fn refusal_census() {
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let mut source = Source::new(&root).unwrap();
+        let mut source = Source::new(&root, LEGACY_LAYOUT).unwrap();
         let modules: Vec<String> = source.files.keys().cloned().collect();
         let mut counts: BTreeMap<String, usize> = BTreeMap::new();
         let mut total = 0;

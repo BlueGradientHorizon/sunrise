@@ -1,4 +1,5 @@
 //! The staged internals view (#589). Source copies only: the working tree keeps its visibility.
+use crate::source::{LEGACY_DOMAIN, LEGACY_LAYOUT, SourceLayout};
 use proc_macro2::Span;
 use quote::{ToTokens, quote};
 use sha2::{Digest, Sha256};
@@ -201,6 +202,8 @@ impl TypeUses {
 
 #[derive(Default)]
 struct Pass {
+    layout: SourceLayout,
+    source_root: PathBuf,
     sources: Vec<Source>,
     /// By path, kind and condition: a field and a method of one name are two entries, and so are
     /// two guarded alternatives of one item.
@@ -437,6 +440,7 @@ struct ResolveState {
 /// A source-level name index, not a compiler: macros and associated types remain opaque. Crates
 /// are loaded only when a signature reaches them; no visibility edits are made through this index.
 struct Shapes {
+    root: PathBuf,
     roots: BTreeMap<String, PathBuf>,
     loaded: BTreeSet<String>,
     scopes: BTreeMap<String, Scope>,
@@ -470,6 +474,7 @@ impl Shapes {
             roots.insert(name, lib);
         }
         Ok(Self {
+            root: root.to_owned(),
             roots,
             loaded: BTreeSet::new(),
             scopes: BTreeMap::new(),
@@ -487,13 +492,18 @@ impl Shapes {
             return Ok(());
         };
         let dir = lib.parent().expect("source parent");
-        let files =
-            crate::source::module_files(krate.to_owned(), lib.clone(), dir.to_owned(), false)?;
+        let files = crate::source::module_files(
+            &self.root,
+            krate.to_owned(),
+            lib.clone(),
+            dir.to_owned(),
+            false,
+        )?;
         self.loaded.insert(krate.to_owned());
         for file in files {
             let text = fs::read_to_string(&file.path)
                 .map_err(|e| format!("{}: {e}", file.path.display()))?;
-            let parsed = crate::game_modules::parse(&file.path, &text)?;
+            let parsed = crate::game_modules::parse(&self.root, &file.path, &text)?;
             self.items(&file.module, &file.cfg, &parsed.items);
         }
         Ok(())
@@ -945,7 +955,7 @@ impl Pass {
         }
         let text = fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
         // The host forwarders are widened as written into the copy: spans address the expanded text.
-        let text = crate::game_modules::expand(path, &text)?;
+        let text = crate::game_modules::expand(&self.source_root, &text)?;
         let parsed = syn::parse_file(&text).map_err(|e| format!("{}: {e}", path.display()))?;
         let lines = std::iter::once(0)
             .chain(text.match_indices('\n').map(|(i, _)| i + 1))
@@ -1375,7 +1385,7 @@ impl Pass {
             // through the module's glob, which needs the import public.
             Item::Use(value)
                 if !test_only(&value.attrs)
-                    && module.split("::").next() != Some("sunrise_client")
+                    && !self.layout.owns(module)
                     && self
                         .cfg
                         .iter()
@@ -1716,9 +1726,7 @@ impl Pass {
                                     (definition.module.clone(), TypeUses::item(&definition.item))
                                 });
                             }
-                        } else if !path.starts_with("sunrise_client::")
-                            && !self.entries.contains_key(&key)
-                        {
+                        } else if !self.layout.owns(&path) && !self.entries.contains_key(&key) {
                             self.cfg = definition.cfg;
                             self.entry(
                                 &definition.module,
@@ -1745,12 +1753,12 @@ impl Pass {
             .values()
             .filter(|entry| {
                 matches!(entry.kind, "struct" | "enum")
-                    && !entry.path.starts_with("sunrise_client::")
+                    && !self.layout.owns(&entry.path)
                     && !API_CRATES.contains(&entry.path.split("::").next().unwrap_or_default())
             })
             .map(|entry| entry.path.clone())
             .collect();
-        let manifest = root.join("crates/sunrise-client/Cargo.toml");
+        let manifest = self.layout.runtime.package_path(root).join("Cargo.toml");
         let text = fs::read_to_string(&manifest).map_err(|e| e.to_string())?;
         let manifest: toml::Value = toml::from_str(&text).map_err(|e| e.to_string())?;
         // The table lives in the game crate. A transitive or optional dependency's name is
@@ -1820,7 +1828,7 @@ pub(crate) fn widen_generated(path: &Path, text: String) -> Result<String, Strin
         edits: BTreeMap::new(),
         annotations: BTreeMap::new(),
     });
-    pass.items(0, "sunrise_client::game", &parsed.items);
+    pass.items(0, &format!("{}::game", LEGACY_DOMAIN.key), &parsed.items);
     Ok(pass.sources.remove(0).rendered())
 }
 
@@ -1829,23 +1837,27 @@ pub(crate) fn widen_generated(path: &Path, text: String) -> Result<String, Strin
 /// A marked replaceable lower-crate function is an internal too: its copy names declarations in
 /// the same module, including those from literal source fragments.
 pub fn widen(root: &Path) -> Result<Widened, String> {
-    stage(root, false)
+    stage(root, LEGACY_LAYOUT, false)
 }
 
 /// Instrument a discovery-only source copy. Its catalog is identical to [`widen`]'s, but
 /// compiler deprecation diagnostics identify each use by kind and catalog path.
 /// Never use this copy for a normal build or a published prebuilt.
 pub fn discover(root: &Path) -> Result<Widened, String> {
-    stage(root, true)
+    stage(root, LEGACY_LAYOUT, true)
 }
 
 /// Read the same original signatures and reachable layouts as staging, without changing files.
 /// Visibility edits are collected but never emitted, so build-time consumers can safely build
 /// a crossing rule over the catalog in a normal source checkout.
 pub fn catalog(root: &Path) -> Result<Vec<Internal>, String> {
+    catalog_with_layout(root, LEGACY_LAYOUT)
+}
+
+fn catalog_with_layout(root: &Path, layout: SourceLayout) -> Result<Vec<Internal>, String> {
     let path = root.join("crates/sunrise-mod-api-gen/internals.txt");
     let text = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    Ok(collect(root, &[("internals.txt", text)], false)?
+    Ok(collect(root, layout, &[("internals.txt", text)], false)?
         .entries
         .into_values()
         .collect())
@@ -1854,42 +1866,52 @@ pub fn catalog(root: &Path) -> Result<Vec<Internal>, String> {
 /// [`catalog`] with the listed foreign layouts (`winit::event_loop::ControlFlow`...), as
 /// `internals.json` has them: what a crossing rule over the game reads.
 pub fn rule_catalog(root: &Path) -> Result<Vec<Internal>, String> {
-    let mut entries = catalog(root)?;
+    rule_catalog_with_layout(root, LEGACY_LAYOUT)
+}
+
+pub(crate) fn rule_catalog_with_layout(
+    root: &Path,
+    layout: SourceLayout,
+) -> Result<Vec<Internal>, String> {
+    let mut entries = catalog_with_layout(root, layout)?;
     entries.extend(crate::crossing::foreign_internals(root)?);
     Ok(entries)
 }
 
-fn stage(root: &Path, discovery: bool) -> Result<Widened, String> {
+pub(crate) fn stage(root: &Path, layout: SourceLayout, discovery: bool) -> Result<Widened, String> {
     let path = root.join("crates/sunrise-mod-api-gen/internals.txt");
     let text = fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    widen_mode(root, &[("internals.txt", text)], discovery)
+    collect(root, layout, &[("internals.txt", text)], discovery)?.finish()
 }
 
 /// [`widen`] with each list's file name and text, so an error names the file and line it came from.
 #[cfg(test)]
 fn widen_with(root: &Path, lists: &[(&str, String)]) -> Result<Widened, String> {
-    widen_mode(root, lists, false)
+    collect(root, LEGACY_LAYOUT, lists, false)?.finish()
 }
 
-fn widen_mode(root: &Path, lists: &[(&str, String)], discovery: bool) -> Result<Widened, String> {
-    collect(root, lists, discovery)?.finish()
-}
-
-fn collect(root: &Path, lists: &[(&str, String)], discovery: bool) -> Result<Pass, String> {
+fn collect(
+    root: &Path,
+    layout: SourceLayout,
+    lists: &[(&str, String)],
+    discovery: bool,
+) -> Result<Pass, String> {
     let mut pass = Pass {
+        layout,
+        source_root: root.to_owned(),
         discovery,
         ..Pass::default()
     };
-    let src = root.join("crates/sunrise-client/src");
-    for source in crate::source::game_files(&src, false)?
-        .into_iter()
-        .chain(std::iter::once(mod_source::modules::ModuleFile {
-            module: "sunrise_client::entry".into(),
-            path: src.join("entry.rs"),
+    let mut files = layout.files(root, false)?;
+    if let Some(entry) = layout.entry {
+        files.push(mod_source::modules::ModuleFile {
+            module: format!("{}::entry", layout.runtime.key),
+            path: layout.runtime.package_path(root).join(entry),
             cfg: Vec::new(),
             included: false,
-        }))
-    {
+        });
+    }
+    for source in files {
         let file = pass.load(&source.path)?;
         pass.cfg = source.cfg;
         pass.items(
@@ -1908,7 +1930,7 @@ fn collect(root: &Path, lists: &[(&str, String)], discovery: bool) -> Result<Pas
             }
         }
     }
-    for (origin, path) in crate::replace::marked(root)? {
+    for (origin, path) in crate::replace::marked(root, layout)? {
         pass.lower(root, &path, true)
             .map_err(|e| format!("{origin}: {path}: {e}"))?;
     }
@@ -1922,7 +1944,11 @@ fn collect(root: &Path, lists: &[(&str, String)], discovery: bool) -> Result<Pas
             .map(str::to_owned)
             .collect();
         for krate in crates {
-            let (_, lib) = crate::source::crate_root(root, &krate)?;
+            let lib = if let Some(domain) = layout.domain(&krate) {
+                domain.library(root)?
+            } else {
+                crate::source::crate_root(root, &krate)?.1
+            };
             let file = pass.load(&lib)?;
             let start = pass.sources[file]
                 .parsed
@@ -2050,9 +2076,8 @@ mod tests {
             "#![cfg(feature = \"extra\")]\nfn optional_helper() {}",
         );
         fixture.put("crates/sunrise-client/src/game/runtime.rs", "fn live() {}");
-        let src = fixture.0.join("crates/sunrise-client/src");
         for every_build in [false, true] {
-            let files = crate::source::game_files(&src, every_build).unwrap();
+            let files = LEGACY_DOMAIN.files(&fixture.0, every_build).unwrap();
             assert!(
                 !files
                     .iter()
@@ -2103,7 +2128,8 @@ mod tests {
             module,
         );
         fn modules(root: &Path) -> BTreeSet<String> {
-            crate::source::game_files(&root.join("crates/sunrise-client/src"), true)
+            LEGACY_DOMAIN
+                .files(root, true)
                 .unwrap()
                 .into_iter()
                 .map(|file| file.module)
@@ -2154,8 +2180,7 @@ mod tests {
         let moved = fixture.0.with_extension("relocated");
         fs::rename(&fixture.0, &moved).unwrap();
         fixture.0 = moved;
-        let files =
-            crate::source::game_files(&fixture.0.join("crates/sunrise-client/src"), true).unwrap();
+        let files = LEGACY_DOMAIN.files(&fixture.0, true).unwrap();
         assert!(files.iter().all(|file| file.path.starts_with(&fixture.0)));
         let modules: BTreeSet<_> = files.iter().map(|file| file.module.as_str()).collect();
         assert!(modules.contains("sunrise_client::game::feature"));
@@ -2213,8 +2238,14 @@ pub(crate) struct ItemStack { #[allow(dead_code)] kind: StackKind }
         }
         let lists = [("internals.txt", "lower::direct".into())];
         let expected = widen_with(&normal.0, &lists).unwrap();
-        let ordinary = widen_mode(&repeat.0, &lists, false).unwrap();
-        let marked = widen_mode(&discovery.0, &lists, true).unwrap();
+        let ordinary = collect(&repeat.0, LEGACY_LAYOUT, &lists, false)
+            .unwrap()
+            .finish()
+            .unwrap();
+        let marked = collect(&discovery.0, LEGACY_LAYOUT, &lists, true)
+            .unwrap()
+            .finish()
+            .unwrap();
         assert_eq!(expected.entries, marked.entries);
         assert_eq!(
             serde_json::to_vec(&expected.entries).unwrap(),
