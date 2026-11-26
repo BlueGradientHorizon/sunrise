@@ -261,5 +261,33 @@ class BuildFlatCleanupTests(unittest.TestCase):
         self.assertEqual((events, error), (['joined', 'left', 'joined', 'left', 'left', 'stopped'], 'populate failed'))
 
 
+class LegacyBuildTests(unittest.TestCase):
+    def setUp(self):
+        work = Path(self.enterContext(tempfile.TemporaryDirectory()))
+
+        def start(*args, cwd, **kwargs):
+            (cwd / 'world').mkdir()
+            return process
+
+        process = mock.Mock(stdout=['Done (\n'], returncode=None)
+        process.poll.side_effect = lambda: process.returncode
+        process.kill.side_effect = lambda: setattr(process, 'returncode', 1)
+        self.enterContext(mock.patch.multiple(
+            worlds, LOCAL=work, server_jar=mock.Mock(return_value=(Path('server.jar'), 1343, 340)),
+            java=mock.Mock(return_value='java'), free_port=lambda: 12345,
+            subprocess=SimpleNamespace(Popen=start, PIPE=subprocess.PIPE, STDOUT=subprocess.STDOUT),
+            time=SimpleNamespace(sleep=lambda seconds: None, time=worlds.time.time)))
+        self.lab_actions = mock.Mock()
+        self.enterContext(mock.patch.multiple(
+            worlds.scene12, LAST={}, time=worlds.time, lab_actions=self.lab_actions,
+            batch=mock.Mock(return_value=[['Time is 12'], ['Time is 12']]),
+            make_player=lambda *args: lambda *args: mock.Mock()))
+
+    def test_lab_actions_oserror_reaches_the_caller(self):
+        self.lab_actions.side_effect = ConnectionResetError('lab bot disconnected')
+        with self.assertRaisesRegex(ConnectionResetError, 'lab bot disconnected'):
+            worlds.build('1.12.2')
+
+
 if __name__ == '__main__':
     unittest.main()

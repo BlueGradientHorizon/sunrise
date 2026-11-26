@@ -1778,10 +1778,7 @@ def populate(server, Bot, port, protocol, name, problems):
     say(scoreboard_commands())
     if ERA == 12:
         say(advancement_commands())
-        try:
-            lab_actions(server, bot, problems)
-        except OSError as error:      # the server dropped the bot
-            problems.append(('lab_actions', ['the bot lost its connection: %s' % error]))
+        lab_actions(server, bot, problems)
     else:
         say(achievement_commands())
         if ERA == 8:                  # 1.8 makes a map only when an empty map is used
