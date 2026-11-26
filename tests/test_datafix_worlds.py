@@ -31,5 +31,18 @@ class JavaRuntimeTests(unittest.TestCase):
         self.assertEqual(exe, str(home / 'bin' / 'java'))
 
 
+class BotConfigurationTests(unittest.TestCase):
+    def test_only_the_select_known_packs_packet_is_answered(self):
+        known = b'\x01\x09minecraft'  # one pack, namespace "minecraft"
+        incoming = [(7, known), (7, b''), (14, known), (3, b'')]  # registry data twice, known packs, finish
+        sent = []
+        bot = worlds.Bot.__new__(worlds.Bot)
+        bot.protocol = 766
+        bot.receive = lambda: incoming.pop(0)
+        bot.send = lambda packet_id, payload=b'': sent.append((packet_id, payload))
+        bot.configure()
+        self.assertEqual(sent, [(7, b'\x00'), (3, b'')])
+
+
 if __name__ == '__main__':
     unittest.main()
