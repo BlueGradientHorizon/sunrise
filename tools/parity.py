@@ -1128,10 +1128,10 @@ def fresh_only(keep):
     """{harness: date} of the harnesses that passed only without kept oracle runs, within FRESH_ONLY_DAYS."""
     listing = keep / "fresh-only.json"
     names = json.loads(listing.read_text(encoding="utf-8")) if listing.exists() else {}
-    if not isinstance(names, dict):
-        return {}
+    if not isinstance(names, dict) or not all(isinstance(day, str) for day in names.values()):
+        raise ValueError(f"{listing} is not an object of harness names and dates")
     oldest = time.strftime("%Y-%m-%d", time.gmtime(time.time() - FRESH_ONLY_DAYS * 86400))
-    return {name: day for name, day in names.items() if isinstance(name, str) and isinstance(day, str) and day >= oldest}
+    return {name: day for name, day in names.items() if day >= oldest}
 
 
 def remember_fresh_only(keep, results):
@@ -1846,13 +1846,9 @@ def main():
         reuse_oracles = not args.fresh and (not args.all or ORACLE_KEEP is not None)
         kept_fresh_only = {}
         if reuse_oracles and ORACLE_KEEP:
-            # The keep only saves work: a keep that can't be read or tidied leaves this run without its list.
-            try:
-                ORACLE_KEEP.mkdir(parents=True, exist_ok=True)
-                prune_oracle_keep(ORACLE_KEEP)
-                kept_fresh_only = fresh_only(ORACLE_KEEP)
-            except (OSError, ValueError) as error:
-                print(f"oracle keep {ORACLE_KEEP}: {error}; running without its upkeep", flush=True)
+            ORACLE_KEEP.mkdir(parents=True, exist_ok=True)
+            prune_oracle_keep(ORACLE_KEEP)
+            kept_fresh_only = fresh_only(ORACLE_KEEP)
         local = LocalExecutor(jobs, int(memory_available() * 0.75), args.timeout,
                               REMOTE_LOCAL_PEAK if remotes and args.jobs is None else None)
         local.solo = solo_harnesses(config)
@@ -1864,12 +1860,6 @@ def main():
                   f"{', '.join(sorted(local.solo & {harness_of(name) for name in selected}))}", flush=True)
         results, elapsed = run(selected, state, hasher, environment_key(hasher), [*remotes, local], reuse_oracles,
                                rounds, set(kept_fresh_only))
-        if reuse_oracles and ORACLE_KEEP:
-            try:
-                remember_fresh_only(ORACLE_KEEP, results)
-            except (OSError, ValueError) as error:
-                print(f"oracle keep {ORACLE_KEEP}: {error}; the harnesses that passed only fresh are not kept",
-                      flush=True)
     finally:
         for executor in [*remotes, *([local] if local else [])]:
             executor.stop()
@@ -1891,6 +1881,8 @@ def main():
                 lines = []
             for line in lines:
                 print(f"    {line[:300]}")
+    if reuse_oracles and ORACLE_KEEP:  # after the run's state and report, so a keep that can't be written loses only its list
+        remember_fresh_only(ORACLE_KEEP, results)
     return 1 if failed else 0
 
 
