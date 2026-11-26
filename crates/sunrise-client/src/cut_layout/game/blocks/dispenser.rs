@@ -511,7 +511,7 @@ impl Fits {
     }
 /// A server with no player of its own, an open hub and one guest (conn 2)
     /// standing at (8.5, 200, 8.5) on a stone floor.
-    pub(in sunrise_gameplay::game::server_side) fn server_with_guest(
+    pub(crate) fn server_with_guest(
         resources: &mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
     ) -> sunrise_gameplay::game::ServerGame<'_> {
         let mut game = super::super::game_tests::tests::server_game(resources);

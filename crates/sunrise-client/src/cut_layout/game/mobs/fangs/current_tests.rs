@@ -108,7 +108,7 @@ fn fangs_in_a_current_are_pushed_and_fangs_in_still_water_are_not() {
     run_fangs_in_a_current_are_pushed_and_fangs_in_still_water_are_not();
 }
 
-pub(in sunrise_gameplay::game::server_side) fn run_fangs_in_a_current_are_pushed_and_fangs_in_still_water_are_not()
+pub(crate) fn run_fangs_in_a_current_are_pushed_and_fangs_in_still_water_are_not()
  {
     let witness = read_witness();
     assert!(

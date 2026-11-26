@@ -1406,7 +1406,7 @@ pub(crate) mod arrow_contents {
         run_actual_arrow_contents_match_pinned_methods();
     }
 
-    pub(in sunrise_gameplay::game::server_side) fn run_actual_arrow_contents_match_pinned_methods() {
+    pub(crate) fn run_actual_arrow_contents_match_pinned_methods() {
         let root =
             PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").expect("explicit resources"));
         let input =

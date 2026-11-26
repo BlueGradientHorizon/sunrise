@@ -13,7 +13,7 @@ use sunrise_sim::motion::PlayerMotion;
 
 /// `ArmorStand`'s portal: stone at `y`, nether portal blocks at `y + 1` and
 /// `y + 2` in the column of `(x, z)`.
-pub(in sunrise_gameplay::game::server_side) fn put_portal(
+pub(crate) fn put_portal(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     x: i32,
     z: i32,

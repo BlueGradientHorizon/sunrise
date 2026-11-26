@@ -100,7 +100,7 @@ fn a_refused_sting_leaves_the_bee_alone() {
     assert!(sting_sounds(&mut game).is_empty());
 }
 
-pub(in sunrise_client_gameplay::game::client_side) fn sting_sounds(
+pub(crate) fn sting_sounds(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
 ) -> Vec<(f32, [f64; 3])> {
     std::mem::take(&mut game.side.pending_sounds)

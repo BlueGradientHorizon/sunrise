@@ -69,7 +69,7 @@ fn title_game<'a>(
     fn title_debug_overlay_draws_without_a_level() {
         run_title_debug_overlay_draws_without_a_level();
     }
-pub(in sunrise_client_gameplay::game::client_side) fn run_title_debug_overlay_draws_without_a_level() {
+pub(crate) fn run_title_debug_overlay_draws_without_a_level() {
         use mod_api::prelude::ScreensClientHost;
         use sunrise_client::debug_keys::KeyAction;
         let mut resources = None;
@@ -119,7 +119,7 @@ pub(in sunrise_client_gameplay::game::client_side) fn run_title_debug_overlay_dr
     fn title_debug_options_open_draw_and_return_without_a_level() {
         run_title_debug_options_open_draw_and_return_without_a_level();
     }
-pub(in sunrise_client_gameplay::game::client_side) fn run_title_debug_options_open_draw_and_return_without_a_level()
+pub(crate) fn run_title_debug_options_open_draw_and_return_without_a_level()
      {
         use sunrise_client::debug_keys::KeyAction;
         let mut resources = None;

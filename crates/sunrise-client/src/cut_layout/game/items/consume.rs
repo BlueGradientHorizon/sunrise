@@ -29,7 +29,7 @@ use sunrise_sim::motion::PlayerMotion;
     fn consumption_hook_keeps_the_stack_before_use_and_cancellation_stops_attempts() {
         run_consumption_hook_keeps_the_stack_before_use_and_cancellation_stops_attempts();
     }
-pub(in sunrise_gameplay::game::server_side) fn run_consumption_hook_keeps_the_stack_before_use_and_cancellation_stops_attempts()
+pub(crate) fn run_consumption_hook_keeps_the_stack_before_use_and_cancellation_stops_attempts()
      {
         let heard = Arc::new(Mutex::new(Vec::new()));
         let moved = Arc::new(AtomicBool::new(false));
@@ -251,7 +251,7 @@ pub(crate) mod fox_consumption_hook_tests {
         run_fox_consumption_adapter_uses_full_host_and_preserves_listener_writes();
     }
 
-    pub(in sunrise_gameplay::game::server_side) fn run_fox_consumption_adapter_uses_full_host_and_preserves_listener_writes()
+    pub(crate) fn run_fox_consumption_adapter_uses_full_host_and_preserves_listener_writes()
      {
         let mode = Arc::new(AtomicU8::new(0));
         let heard = Arc::new(Mutex::new(Vec::new()));
@@ -374,7 +374,7 @@ pub(crate) mod fox_consumption_hook_tests {
         run_fox_tick_pauses_before_movement_and_next_actor_and_preserves_full_host_writes();
     }
 
-    pub(in sunrise_gameplay::game::server_side) fn run_fox_tick_pauses_before_movement_and_next_actor_and_preserves_full_host_writes()
+    pub(crate) fn run_fox_tick_pauses_before_movement_and_next_actor_and_preserves_full_host_writes()
      {
         let heard = Arc::new(Mutex::new(Vec::new()));
         let spawned = Arc::new(Mutex::new(Vec::new()));

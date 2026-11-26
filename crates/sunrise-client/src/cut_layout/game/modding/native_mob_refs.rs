@@ -14,7 +14,7 @@ pub(crate) mod tests {
     use sunrise_sim::{entities::ArmorStand, mobs::Mob};
     use sunrise_sim::mobs;
 
-    pub(in sunrise_gameplay::game::server_side) fn add_mob(
+    pub(crate) fn add_mob(
         game: &mut sunrise_gameplay::game::ServerGame<'_>,
         id: u32,
         name: &str,

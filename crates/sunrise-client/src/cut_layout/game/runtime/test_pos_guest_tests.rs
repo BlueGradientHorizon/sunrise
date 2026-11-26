@@ -20,7 +20,7 @@ use sunrise_sim::{
 pub(crate) const GUEST: &str = "H274Guest";
 
 /// A host on a stone floor with one connected, placed guest (conn 2).
-pub(in sunrise_gameplay::game::server_side) fn game(
+pub(crate) fn game(
     resources: &mut Option<std::sync::Arc<Resources>>,
 ) -> sunrise_gameplay::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(

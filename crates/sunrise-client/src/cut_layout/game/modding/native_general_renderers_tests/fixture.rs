@@ -21,7 +21,7 @@ pub static FUEL: AttachmentType<i32> = AttachmentType {
     sync: true,
 };
 
-pub(in sunrise_client_gameplay::game::client_side) fn register(registrar: &mut dyn Registrar) {
+pub(crate) fn register(registrar: &mut dyn Registrar) {
     registrar
         .register_attachment_type("general_render_fixture:render_fuel", true)
         .unwrap();
@@ -44,7 +44,7 @@ pub(in sunrise_client_gameplay::game::client_side) fn register(registrar: &mut d
         .unwrap();
 }
 
-pub(in sunrise_client_gameplay::game::client_side) fn register_renderer(renderers: &mut dyn EntityRenderers) {
+pub(crate) fn register_renderer(renderers: &mut dyn EntityRenderers) {
     renderers.register(KIND.into(), std::sync::Arc::new(Probe));
 }
 

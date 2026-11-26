@@ -8,7 +8,7 @@ pub(crate) mod tests {
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::mobs::Mob;
 
-    pub(in sunrise_gameplay::game::server_side) fn effect(
+    pub(crate) fn effect(
         id: &'static str,
         duration: i32,
         amplifier: i32,

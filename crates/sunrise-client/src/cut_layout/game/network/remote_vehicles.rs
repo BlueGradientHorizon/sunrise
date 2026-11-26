@@ -106,7 +106,7 @@ pub(crate) mod tests {
         run_steering_mount_control_matches_vanilla();
     }
 
-    pub(in sunrise_client_gameplay::game::client_side) fn run_steering_mount_control_matches_vanilla() {
+    pub(crate) fn run_steering_mount_control_matches_vanilla() {
         use crate::game::load_resources;
         use crate::settings::Settings;
         use sunrise_client_lib::audio::Audio;

@@ -2370,7 +2370,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             assert!(!maps_dir.join(format!("{}.dat", source + 3)).exists());
         });
     }
-pub(in sunrise_gameplay::game::server_side) fn with_crafted_by_handler_map(
+pub(crate) fn with_crafted_by_handler_map(
         accepts_replacement: bool,
         on_insert: Option<sunrise_sim::lan::PlayerSender>,
         test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, ItemPlace, i32, mod_api::ItemStack),
@@ -3508,7 +3508,7 @@ pub(in sunrise_gameplay::game::server_side) fn with_crafted_by_handler_map(
         });
     }
 /// Runs `test` with a mod answering `ENTITY_AUTOMATION` for pigs with `bin`.
-    pub(in sunrise_gameplay::game::server_side) fn with_bin_pigs(
+    pub(crate) fn with_bin_pigs(
         bin: &Bin,
         test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
     ) {

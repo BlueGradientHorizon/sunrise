@@ -249,7 +249,7 @@ fn enchant_power_query_reads_the_logged_in_client_level() {
     );
 }
 
-pub(in sunrise_client_gameplay::game::client_side) fn place<S: sunrise_gameplay_common::game::Side>(
+pub(crate) fn place<S: sunrise_gameplay_common::game::Side>(
     game: &mut Game<'_, S>,
     offset: [i32; 3],
     block: &str,
@@ -302,7 +302,7 @@ fn block_parts_answer_the_enchanting_power_and_the_beam_colour() {
 }
 
 /// Drive the public worker entry, observing real particle requests rather than cache bits.
-pub(in sunrise_client_gameplay::game::client_side) fn enchant_particles(game: &sunrise_client_gameplay::game::ClientGame<'_>) -> usize {
+pub(crate) fn enchant_particles(game: &sunrise_client_gameplay::game::ClientGame<'_>) -> usize {
     use sunrise_client::{
         animate_tick::{AnimateContext, animate_tick},
         particles::ParticleEngine,

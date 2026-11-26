@@ -71,7 +71,7 @@ pub(crate) fn with_stick_part(body: impl FnOnce(&mut sunrise_client_gameplay::ga
 
 /// Puts `main` in slot 0, selects it, and ticks until the attack strength is
 /// full and the hand is up.
-pub(in sunrise_client_gameplay::game::client_side) fn settle(
+pub(crate) fn settle(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     main: ItemStack,
 ) {
@@ -86,7 +86,7 @@ pub(in sunrise_client_gameplay::game::client_side) fn settle(
 
 /// The main hand's height over the next six ticks, and the stick count it
 /// shows after each.
-pub(in sunrise_client_gameplay::game::client_side) fn dip(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> Vec<(f32, u32)> {
+pub(crate) fn dip(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> Vec<(f32, u32)> {
     (0..6)
         .map(|_| {
             game.tick_hand();
@@ -96,7 +96,7 @@ pub(in sunrise_client_gameplay::game::client_side) fn dip(game: &mut sunrise_cli
         .collect()
 }
 
-pub(in sunrise_client_gameplay::game::client_side) fn close(got: &[(f32, u32)], want: &[(f32, u32)]) {
+pub(crate) fn close(got: &[(f32, u32)], want: &[(f32, u32)]) {
     assert_eq!(got.len(), want.len(), "{got:?}");
     for (g, w) in got.iter().zip(want) {
         assert!(

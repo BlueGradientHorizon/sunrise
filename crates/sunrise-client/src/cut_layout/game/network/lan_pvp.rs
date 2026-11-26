@@ -235,7 +235,7 @@ pub(crate) mod arrow_hit_sound_tests {
         run_an_arrow_that_hurts_another_player_dings_its_shooter();
     }
 
-    pub(in sunrise_gameplay::game::server_side) fn run_an_arrow_that_hurts_another_player_dings_its_shooter() {
+    pub(crate) fn run_an_arrow_that_hurts_another_player_dings_its_shooter() {
         let witness = load_witness();
         assert_eq!(witness.minecraft_version, "26.3");
         assert!(!witness.cases.is_empty());

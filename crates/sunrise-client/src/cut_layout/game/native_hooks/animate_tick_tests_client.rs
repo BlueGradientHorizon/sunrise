@@ -6,7 +6,7 @@ use sunrise_core::random::{LegacyRandom, RandomSource as _};
 use sunrise_level::particle_options::ParticleType;
 use sunrise_world::registry::BlockStateId;
 
-pub(in sunrise_client_gameplay::game::client_side) fn level_random(
+pub(crate) fn level_random(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
 ) -> LegacyRandom {
     LegacyRandom::from(<(u64, Option<f64>)>::from(

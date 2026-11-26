@@ -64,20 +64,20 @@ impl Hooks for Mod {
 
 impl Wear {
     /// The points asked about since the last call.
-    pub(in sunrise_gameplay::game::server_side) fn take_asked(&self) -> Vec<i32> {
+    pub(crate) fn take_asked(&self) -> Vec<i32> {
         std::mem::take(&mut *self.asked.lock().unwrap())
     }
     /// The entities the wears since the last call named.
-    pub(in sunrise_gameplay::game::server_side) fn take_worn_by(&self) -> Vec<Option<u32>> {
+    pub(crate) fn take_worn_by(&self) -> Vec<Option<u32>> {
         std::mem::take(&mut *self.worn_by.lock().unwrap())
     }
-    pub(in sunrise_gameplay::game::server_side) fn set(&self, rule: Rule) {
+    pub(crate) fn set(&self, rule: Rule) {
         *self.rule.lock().unwrap() = rule;
     }
 }
 
 /// Runs `test` on a serving game whose `item` has a part, starting with `rule`.
-pub(in sunrise_gameplay::game::server_side) fn with_wear_part(
+pub(crate) fn with_wear_part(
     item: &'static str,
     rule: Rule,
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Wear),

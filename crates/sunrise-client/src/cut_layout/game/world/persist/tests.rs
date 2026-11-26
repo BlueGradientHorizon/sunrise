@@ -324,7 +324,7 @@ fn comparator_and_hopper_live_state_survives_chunk_reload() {
     run_comparator_and_hopper_live_state_survives_chunk_reload();
 }
 
-pub(in sunrise_gameplay::game::server_side) fn run_comparator_and_hopper_live_state_survives_chunk_reload() {
+pub(crate) fn run_comparator_and_hopper_live_state_survives_chunk_reload() {
     use sunrise_gameplay_common::game::{Options, Progress};
     use crate::settings::Settings;
     use crate::game::load_resources;

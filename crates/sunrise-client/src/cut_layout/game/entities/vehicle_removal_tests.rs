@@ -19,7 +19,7 @@ pub(crate) fn push_pig(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u3
     game.mobs.push(Mob::new(id, kind, AT, 0.0));
 }
 
-pub(in sunrise_gameplay::game::server_side) fn tick_area(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
+pub(crate) fn tick_area(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     super::native_entity_refs::tests::prepare_entity_ticking_neighborhood(
         game,
         ChunkPos::new(0, 0),
@@ -297,7 +297,7 @@ fn mob_removal_order_witness() {
     run_mob_removal_order_witness();
 }
 
-pub(in sunrise_gameplay::game::server_side) fn run_mob_removal_order_witness() {
+pub(crate) fn run_mob_removal_order_witness() {
     let observation = Arc::new(Observation::default());
     with_removal_test_hooks(Observe(observation.clone()), |game| {
         game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(

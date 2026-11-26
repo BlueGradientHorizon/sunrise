@@ -86,7 +86,7 @@ use super::*;
     fn portal_transfer_tnt_state_follows_memory_but_not_saved_nbt() {
         run_portal_transfer_tnt_state_follows_memory_but_not_saved_nbt();
     }
-pub(in sunrise_gameplay::game::server_side) fn run_portal_transfer_tnt_state_follows_memory_but_not_saved_nbt()
+pub(crate) fn run_portal_transfer_tnt_state_follows_memory_but_not_saved_nbt()
      {
         use sunrise_gameplay_common::game::commands_common::Target;
         let mut resources = None;
@@ -118,7 +118,7 @@ pub(in sunrise_gameplay::game::server_side) fn run_portal_transfer_tnt_state_fol
     fn portal_transfer_ordinary_nbt_cannot_supply_runtime_immunity() {
         run_portal_transfer_ordinary_nbt_cannot_supply_runtime_immunity();
     }
-pub(in sunrise_gameplay::game::server_side) fn run_portal_transfer_ordinary_nbt_cannot_supply_runtime_immunity()
+pub(crate) fn run_portal_transfer_ordinary_nbt_cannot_supply_runtime_immunity()
      {
         use sunrise_core::nbt::Tag;
         let mut resources = None;
@@ -667,7 +667,7 @@ pub(crate) fn run_silent_launched_potions_and_bottles_keep_their_impact() {
     fn silent_bottles_preserve_xp_and_the_server_random_stream() {
         run_silent_bottles_preserve_xp_and_the_server_random_stream();
     }
-pub(in sunrise_gameplay::game::server_side) fn run_silent_bottles_preserve_xp_and_the_server_random_stream()
+pub(crate) fn run_silent_bottles_preserve_xp_and_the_server_random_stream()
      {
         on_big_stack(|| {
             use sunrise_sim::projectiles::{Hit, Projectile, ProjectileKind};

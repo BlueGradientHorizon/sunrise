@@ -15,7 +15,7 @@ use sunrise_sim::{
     projectiles::{Hit, Projectile, ProjectileKind, ThrownType},
 };
 
-pub(in sunrise_gameplay::game::server_side) fn fresh_player(
+pub(crate) fn fresh_player(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     mode: GameMode,
 ) {

@@ -46,7 +46,7 @@ pub(crate) fn in_the_nether(game: &mut sunrise_gameplay::game::ServerGame<'_>) -
 }
 
 /// `count` diamonds, as a mod reads them from SNBT.
-pub(in sunrise_gameplay::game::server_side) fn some_diamonds(
+pub(crate) fn some_diamonds(
     game: &sunrise_gameplay::game::ServerGame<'_>,
     count: u32,
 ) -> mod_api::ItemStack {

@@ -59,7 +59,7 @@ pub(in crate::game) struct FishingExtraCase {
     pub(in crate::game) ticks: Vec<FishingTick>,
 }
 
-pub(in sunrise_gameplay::game::server_side) fn load_witness() -> FishingWitness {
+pub(crate) fn load_witness() -> FishingWitness {
     let dir = std::env::var_os("SUNRISE_PROJECTILE_WITNESS_DIR").unwrap_or_else(|| {
         panic!(
             "SUNRISE_PROJECTILE_WITNESS_DIR is unset; run tools/test_projectile_targets_parity.py"
@@ -77,11 +77,11 @@ pub(in sunrise_gameplay::game::server_side) fn load_witness() -> FishingWitness 
     witness
 }
 
-pub(in sunrise_gameplay::game::server_side) fn bits(v: f64) -> String {
+pub(crate) fn bits(v: f64) -> String {
     format!("{:016x}", v.to_bits())
 }
 
-pub(in sunrise_gameplay::game::server_side) fn fbits(v: f32) -> String {
+pub(crate) fn fbits(v: f32) -> String {
     format!("{:08x}", v.to_bits())
 }
 
@@ -98,7 +98,7 @@ pub(crate) fn align_next_entity_mod4(
     }
 }
 
-pub(in sunrise_gameplay::game::server_side) fn setup_game<'a>(
+pub(crate) fn setup_game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
 ) -> sunrise_gameplay::game::ServerGame<'a> {
     let mut game = sunrise_gameplay::game::game_tests::tests::server_game(resources);
@@ -416,7 +416,7 @@ fn witness_fishing_bobber_targets() {
     run_witness_fishing_bobber_targets();
 }
 
-pub(in sunrise_gameplay::game::server_side) fn run_witness_fishing_bobber_targets() {
+pub(crate) fn run_witness_fishing_bobber_targets() {
     let witness = load_witness();
     let mut resources = None;
     let mut game = setup_game(&mut resources);

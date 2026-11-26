@@ -140,7 +140,7 @@ pub(crate) mod vehicle_damage_command_tests {
     use sunrise_gameplay::game::commands::world_cmds::vehicle_damage_command_tests::with_game;
     use std::sync::Arc;
 
-    pub(in sunrise_gameplay::game::server_side) fn attribute_guests(
+    pub(crate) fn attribute_guests(
         game: &mut sunrise_gameplay::game::ServerGame<'_>,
     ) -> Vec<std::sync::mpsc::Receiver<sunrise_sim::lan::Out>> {
         use std::sync::{atomic::AtomicI32, mpsc};

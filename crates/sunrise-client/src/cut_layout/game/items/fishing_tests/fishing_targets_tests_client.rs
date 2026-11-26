@@ -14,7 +14,7 @@ use sunrise_core::geometry::Vec3;
 use sunrise_core::random::RandomSource;
 use sunrise_items::items::ItemStack;
 
-pub(in sunrise_client_gameplay::game::client_side) fn reset_arena(
+pub(crate) fn reset_arena(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     target: &str,
 ) {

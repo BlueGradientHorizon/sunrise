@@ -10,7 +10,7 @@ pub(crate) mod tests {
         run_replacing_a_gateway_discards_its_old_cooldown();
     }
 
-    pub(in sunrise_gameplay::game::server_side) fn run_replacing_a_gateway_discards_its_old_cooldown() {
+    pub(crate) fn run_replacing_a_gateway_discards_its_old_cooldown() {
         use {crate::game::*, sunrise_gameplay_common::game::*};
         let root = std::path::PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES").expect("set SUNRISE_TEST_RESOURCES"),

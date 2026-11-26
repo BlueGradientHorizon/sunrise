@@ -2,7 +2,7 @@ use crate::game::chat_common::end_clock_tests::game;
 use sunrise_sim::save::Level;
 
 /// `/time <line>`; the feedback it printed.
-pub(in sunrise_gameplay::game::server_side) fn run(
+pub(crate) fn run(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     line: &str,
 ) -> String {

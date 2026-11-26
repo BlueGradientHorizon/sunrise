@@ -20,7 +20,7 @@ impl mobs::LiveMobs for OneMob<'_> {
 }
 
 /// Run the public target getter with the actor and the other mob outside `Game`.
-pub(in sunrise_gameplay::game::server_side) fn read_borrowed_target(
+pub(crate) fn read_borrowed_target(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     warden: MobRef,
     other: u32,

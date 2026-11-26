@@ -44,7 +44,7 @@ fn a_server_that_starts_tracking_later_shows_the_same_knot() {
     );
 }
 
-pub(in sunrise_gameplay::game::server_side) fn host(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
+pub(crate) fn host(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     let net = NetConfig {
         announce: false,
         ..NetConfig::lan(0, "knot-identity-test".into(), 2)

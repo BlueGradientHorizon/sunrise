@@ -184,7 +184,7 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
     });
 }
 
-pub(in sunrise_client_gameplay::game::client_side) fn publish_frame(
+pub(crate) fn publish_frame(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     frame: u64,
 ) {

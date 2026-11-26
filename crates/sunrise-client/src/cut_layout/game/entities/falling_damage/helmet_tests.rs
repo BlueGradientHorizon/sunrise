@@ -9,7 +9,7 @@ fn falling_impacts_wear_the_helmet_before_normal_armor_and_reduction() {
     run_falling_impacts_wear_the_helmet_before_normal_armor_and_reduction();
 }
 
-pub(in sunrise_gameplay::game::server_side) fn run_falling_impacts_wear_the_helmet_before_normal_armor_and_reduction()
+pub(crate) fn run_falling_impacts_wear_the_helmet_before_normal_armor_and_reduction()
  {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();

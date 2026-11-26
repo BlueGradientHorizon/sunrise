@@ -18,7 +18,7 @@ use sunrise_gameplay::game::server_side::dedicated;
 use sunrise_gameplay_common::game::chat_common;
 use sunrise_gameplay_common::game::execution_role;
 
-pub(in sunrise_gameplay::game::server_side) fn with_save_game(
+pub(crate) fn with_save_game(
     root: &std::path::Path,
     test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) {

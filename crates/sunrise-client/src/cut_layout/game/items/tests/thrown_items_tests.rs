@@ -13,7 +13,7 @@ use sunrise_sim::entities::{ExperienceOrb, ItemEntity};
 
 /// A game with the player standing at 8.5 70 8.5 in a ticking chunk, with the
 /// positional sounds it plays recorded.
-pub(in sunrise_gameplay::game::server_side) fn standing_game<'a>(
+pub(crate) fn standing_game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
 ) -> sunrise_gameplay::game::ServerGame<'a> {
     let mut game = server_game(resources);

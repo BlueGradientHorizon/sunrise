@@ -69,7 +69,7 @@ use super::*;
     fn explosion_items_parity_fixture() {
         run_explosion_items_parity_fixture();
     }
-pub(in sunrise_gameplay::game::server_side) fn run_explosion_items_parity_fixture() {
+pub(crate) fn run_explosion_items_parity_fixture() {
         let directory = std::env::var_os("SUNRISE_EXPLOSION_ITEMS_FIXTURE")
             .expect("set SUNRISE_EXPLOSION_ITEMS_FIXTURE to the fixture directory");
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {

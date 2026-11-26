@@ -99,7 +99,7 @@ fn fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_do_not_tick() {
     run_fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_do_not_tick();
 }
 
-pub(in sunrise_gameplay::game::server_side) fn run_fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_do_not_tick()
+pub(crate) fn run_fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_do_not_tick()
  {
     let witness = load_witness();
     assert_eq!(witness.game_version, "26.3");
@@ -214,7 +214,7 @@ fn fangs_and_an_ominous_item_spawner_pause_on_scheduled_ticket_removal_and_resum
     run_fangs_and_an_ominous_item_spawner_pause_on_scheduled_ticket_removal_and_resume_26_3();
 }
 
-pub(in sunrise_gameplay::game::server_side) fn run_fangs_and_an_ominous_item_spawner_pause_on_scheduled_ticket_removal_and_resume_26_3()
+pub(crate) fn run_fangs_and_an_ominous_item_spawner_pause_on_scheduled_ticket_removal_and_resume_26_3()
  {
     let witness = load_witness();
     assert_eq!(witness.game_version, "26.3");

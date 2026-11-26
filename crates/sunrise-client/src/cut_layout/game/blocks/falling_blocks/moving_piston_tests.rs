@@ -39,7 +39,7 @@ fn a_falling_block_resting_in_a_moving_piston_cell_stays() {
     run_a_falling_block_resting_in_a_moving_piston_cell_stays();
 }
 
-pub(in sunrise_gameplay::game::server_side) fn run_a_falling_block_resting_in_a_moving_piston_cell_stays() {
+pub(crate) fn run_a_falling_block_resting_in_a_moving_piston_cell_stays() {
     let path = std::env::var("SUNRISE_FALLING_MOVING_PISTON_WITNESS").expect(
         "run through tools/test_falling_moving_piston_parity.py, which records the witness",
     );

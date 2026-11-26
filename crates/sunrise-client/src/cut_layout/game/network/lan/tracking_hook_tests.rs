@@ -28,7 +28,7 @@ pub(in crate::game) enum Heard {
 pub(crate) struct Probe(pub(crate) Arc<Mutex<Vec<Heard>>>);
 impl Probe {
     /// Tell the player which entity it heard of, on the mod's channel.
-    pub(in sunrise_gameplay::game::server_side) fn send(
+    pub(crate) fn send(
         &self,
         host: &mut dyn ServerHost,
         player: u128,
@@ -89,7 +89,7 @@ pub(in crate::game) enum Sent {
     Other(i32),
 }
 
-pub(in sunrise_gameplay::game::server_side) fn read(packets: Vec<Vec<u8>>) -> Vec<Sent> {
+pub(crate) fn read(packets: Vec<Vec<u8>>) -> Vec<Sent> {
     packets
         .iter()
         .map(|body| {
@@ -206,7 +206,7 @@ pub(crate) fn at(sent: &[Sent], wanted: &Sent) -> usize {
 
 /// The stops a removal packet carries: it is followed at once by the mod's word for each,
 /// in the order the mods heard them.
-pub(in sunrise_gameplay::game::server_side) fn words_after_removal(
+pub(crate) fn words_after_removal(
     sent: &[Sent],
     id: u32,
 ) -> (Vec<u32>, Vec<&Sent>) {
@@ -221,7 +221,7 @@ pub(in sunrise_gameplay::game::server_side) fn words_after_removal(
     (ids.clone(), words)
 }
 
-pub(in sunrise_gameplay::game::server_side) fn sorted(mut v: Vec<Heard>) -> Vec<Heard> {
+pub(crate) fn sorted(mut v: Vec<Heard>) -> Vec<Heard> {
     v.sort_by_key(|h| format!("{h:?}"));
     v
 }

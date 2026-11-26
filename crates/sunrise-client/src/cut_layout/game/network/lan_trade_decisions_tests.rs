@@ -54,7 +54,7 @@ thread_local! {
     pub(in crate::game) static USES: RefCell<Vec<i32>> = const { RefCell::new(Vec::new()) };
     pub(in crate::game) static IN_ACTION: RefCell<Vec<bool>> = const { RefCell::new(Vec::new()) };
 }
-pub(in sunrise_gameplay::game::server_side) fn script(value: Script) {
+pub(crate) fn script(value: Script) {
     SCRIPT.with(|s| *s.borrow_mut() = value);
     CALLS.set(0);
     STACKED.set(0);
@@ -123,7 +123,7 @@ impl Hooks for Stacked {
         Flow::Continue
     }
 }
-pub(in sunrise_gameplay::game::server_side) fn trade(
+pub(crate) fn trade(
     host: &mut dyn ServerHost,
     event: &mut TradeWithVillagerEvent<'_>,
 ) {
@@ -238,11 +238,11 @@ pub(in sunrise_gameplay::game::server_side) fn trade(
         }
     }
 }
-pub(in sunrise_gameplay::game::server_side) fn with_mod(test: impl FnOnce()) {
+pub(crate) fn with_mod(test: impl FnOnce()) {
     let mods: Mods = vec![ModEntry::new("trade-observer", Box::new(Mod))].into();
     mod_platform::testing::with_mods(mods, test);
 }
-pub(in sunrise_gameplay::game::server_side) fn with_both(test: impl FnOnce()) {
+pub(crate) fn with_both(test: impl FnOnce()) {
     let mods: Mods = vec![ModEntry::new("trade-and-stack", Box::new(Both))].into();
     mod_platform::testing::with_mods(mods, test);
 }
@@ -378,7 +378,7 @@ pub(crate) fn work_screen_mut<'a>(
         .unwrap()
 }
 
-pub(in sunrise_gameplay::game::server_side) fn reloaded_trader(
+pub(crate) fn reloaded_trader(
     game: &sunrise_gameplay::game::ServerGame<'_>,
 ) -> Box<Trader> {
     let saved = sunrise_sim::entity_nbt::mob_to_nbt(
@@ -466,7 +466,7 @@ pub(crate) struct RemoveHero {
 }
 
 impl RemoveHero {
-    pub(in sunrise_gameplay::game::server_side) fn remove(host: HostSide<'_>, entities: &[u32]) {
+    pub(crate) fn remove(host: HostSide<'_>, entities: &[u32]) {
         assert_eq!(entities, [40]);
         let HostSide::Server(host) = host else {
             panic!("server fixture");
@@ -805,7 +805,7 @@ fn an_invalid_offer_restores_another_merchants_effects_and_modifiers() {
 }
 
 /// Observe the order from gameplay's store and independently through the mod API's live map.
-pub(in sunrise_gameplay::game::server_side) fn speed_modifier_ids(
+pub(crate) fn speed_modifier_ids(
     game: &sunrise_gameplay::game::ServerGame<'_>,
 ) -> [Vec<String>; 2] {
     let attrs = game.mobs[1].extra.attributes.as_deref().unwrap();
@@ -1002,7 +1002,7 @@ fn exploration_trade_maps_share_nested_reservations() {
     });
 }
 
-pub(in sunrise_gameplay::game::server_side) fn record_packets(
+pub(crate) fn record_packets(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
 ) -> mpsc::Receiver<Out> {
     let (tx, rx) = mpsc::channel();
@@ -1018,7 +1018,7 @@ pub(in sunrise_gameplay::game::server_side) fn record_packets(
     rx
 }
 
-pub(in sunrise_gameplay::game::server_side) fn packets(rx: &mpsc::Receiver<Out>) -> Vec<Clientbound> {
+pub(crate) fn packets(rx: &mpsc::Receiver<Out>) -> Vec<Clientbound> {
     rx.try_iter()
         .flat_map(|out| match out {
             Out::Packet(body) => vec![body],
@@ -1032,7 +1032,7 @@ pub(in sunrise_gameplay::game::server_side) fn packets(rx: &mpsc::Receiver<Out>)
         .collect()
 }
 
-pub(in sunrise_gameplay::game::server_side) fn corrected(rx: &mpsc::Receiver<Out>, window: i32, payment: u32) {
+pub(crate) fn corrected(rx: &mpsc::Receiver<Out>, window: i32, payment: u32) {
     let received = packets(rx);
     let [
         Clientbound::MerchantOffers(offers),
@@ -1048,10 +1048,10 @@ pub(in sunrise_gameplay::game::server_side) fn corrected(rx: &mpsc::Receiver<Out
     assert!(content.carried.is_none());
 }
 
-pub(in sunrise_gameplay::game::server_side) fn count(stack: Option<&ItemStack>) -> u32 {
+pub(crate) fn count(stack: Option<&ItemStack>) -> u32 {
     stack.map_or(0, |s| s.count)
 }
-pub(in sunrise_gameplay::game::server_side) fn result(game: &sunrise_gameplay::game::ServerGame<'_>) -> u32 {
+pub(crate) fn result(game: &sunrise_gameplay::game::ServerGame<'_>) -> u32 {
     let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
     guest
         .inventory
@@ -1067,10 +1067,10 @@ pub(in sunrise_gameplay::game::server_side) fn result(game: &sunrise_gameplay::g
                 .filter(|s| s.item.as_ref() == "minecraft:emerald"),
         )
 }
-pub(in sunrise_gameplay::game::server_side) fn dirt(game: &sunrise_gameplay::game::ServerGame<'_>) -> u32 {
+pub(crate) fn dirt(game: &sunrise_gameplay::game::ServerGame<'_>) -> u32 {
     count(game.side.lan.as_ref().unwrap().hub.guests[0].inventory[20].as_ref())
 }
-pub(in sunrise_gameplay::game::server_side) fn stat(game: &sunrise_gameplay::game::ServerGame<'_>) -> i32 {
+pub(crate) fn stat(game: &sunrise_gameplay::game::ServerGame<'_>) -> i32 {
     game.side.lan.as_ref().unwrap().play[&12]
         .stats
         .values
@@ -1079,7 +1079,7 @@ pub(in sunrise_gameplay::game::server_side) fn stat(game: &sunrise_gameplay::gam
         .copied()
         .unwrap_or(0)
 }
-pub(in sunrise_gameplay::game::server_side) fn unchanged(
+pub(crate) fn unchanged(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     payment: u32,
 ) {

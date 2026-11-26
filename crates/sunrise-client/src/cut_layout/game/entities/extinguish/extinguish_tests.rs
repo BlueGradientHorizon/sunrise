@@ -11,14 +11,14 @@ use sunrise_gameplay_common::game_side;
 
 /// A server's game on the prepared resources, or None when they are absent
 /// (CI has none: the tests then skip quietly).
-pub(in sunrise_gameplay::game::server_side) fn server<'a>(
+pub(crate) fn server<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
 ) -> Option<sunrise_gameplay::game::ServerGame<'a>> {
     std::env::var_os("SUNRISE_TEST_RESOURCES")?;
     Some(server_game(resources))
 }
 
-pub(in sunrise_gameplay::game::server_side) fn state(
+pub(crate) fn state(
     game: &sunrise_gameplay::game::ServerGame<'_>,
     name: &str,
     level: &str,
@@ -33,7 +33,7 @@ pub(in sunrise_gameplay::game::server_side) fn state(
     game.pack.assets.registry.resolve(&state).unwrap()
 }
 
-pub(in sunrise_gameplay::game::server_side) fn block(
+pub(crate) fn block(
     game: &sunrise_gameplay::game::ServerGame<'_>,
     pos: [i32; 3],
 ) -> String {
@@ -44,7 +44,7 @@ pub(in sunrise_gameplay::game::server_side) fn block(
 /// A server's player standing in the block at `pos` (feet on its floor), on
 /// fire: the tick `guest_server_tick` runs for it, its block effects and the
 /// consumer of their events.
-pub(in sunrise_gameplay::game::server_side) fn burn_in(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: [i32; 3]) {
+pub(crate) fn burn_in(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: [i32; 3]) {
     let at = Vec3::new(
         f64::from(pos[0]) + 0.5,
         f64::from(pos[1]),
@@ -84,7 +84,7 @@ pub(in sunrise_gameplay::game::server_side) fn burn_in(game: &mut sunrise_gamepl
 
 /// Outside the world border, as `/worldborder center 1000 1000` and
 /// `/worldborder set 100` put the origin.
-pub(in sunrise_gameplay::game::server_side) fn outside_the_border(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
+pub(crate) fn outside_the_border(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     game.border.set_center([1000.0, 1000.0]);
     game.border.set_size(100.0);
 }

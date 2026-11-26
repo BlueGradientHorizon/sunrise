@@ -127,7 +127,7 @@ impl mobs::goals::Goal for Vanilla {
 }
 
 /// A zombie in the game's list, as `Mob::new` builds it.
-pub(in sunrise_gameplay::game::server_side) fn zombie(
+pub(crate) fn zombie(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     id: u32,
     at: [f64; 3],

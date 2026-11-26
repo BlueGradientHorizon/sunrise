@@ -222,7 +222,7 @@ pub(crate) mod controller_tests {
     }
 
     /// A guest drives a horse with an unobstructed ten-block fall to stone.
-    pub(in sunrise_gameplay::game::server_side) fn guest_horse_at_start_of_fall(
+    pub(crate) fn guest_horse_at_start_of_fall(
         game: &mut sunrise_gameplay::game::ServerGame<'_>,
     ) -> (u32, mpsc::Receiver<sunrise_sim::lan::Out>) {
         game.build_registries();

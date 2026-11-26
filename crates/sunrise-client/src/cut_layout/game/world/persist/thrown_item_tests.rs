@@ -196,7 +196,7 @@ fn a_moved_thrown_item_projectile_saves_its_loaded_item() {
     run_a_moved_thrown_item_projectile_saves_its_loaded_item();
 }
 
-pub(in sunrise_gameplay::game::server_side) fn run_a_moved_thrown_item_projectile_saves_its_loaded_item() {
+pub(crate) fn run_a_moved_thrown_item_projectile_saves_its_loaded_item() {
     let (x0, z0, cases) = load_witness_26_3();
     let key = (x0 >> 4, z0 >> 4);
     let keys: HashSet<ChunkKey> = [key].into();

@@ -202,7 +202,7 @@ fn block_items_notify_after_setup_and_before_consumption() {
     });
 }
 
-pub(in sunrise_gameplay::game::server_side) fn place(
+pub(crate) fn place(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     pos: [i32; 3],
     stack: ItemStack,

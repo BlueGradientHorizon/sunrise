@@ -44,7 +44,7 @@ fn client_ticks_match_the_vanilla_cases() {
     run_client_ticks_match_the_vanilla_cases();
 }
 
-pub(in sunrise_client_gameplay::game::client_side) fn run_client_ticks_match_the_vanilla_cases() {
+pub(crate) fn run_client_ticks_match_the_vanilla_cases() {
     if run_in_child("client_ticks_match_the_vanilla_cases") {
         return;
     }

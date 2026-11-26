@@ -58,7 +58,7 @@ fn portal_arrival_effects_merge_items_before_their_first_tick() {
     run_portal_arrival_effects_merge_items_before_their_first_tick();
 }
 
-pub(in sunrise_gameplay::game::server_side) fn run_portal_arrival_effects_merge_items_before_their_first_tick()
+pub(crate) fn run_portal_arrival_effects_merge_items_before_their_first_tick()
 {
     for (incoming, waiting, incoming_age, waiting_age, restart) in [
         (3, 5, 5999, 41, false),
@@ -160,7 +160,7 @@ fn portal_arrival_effects_tnt_protection_is_live_but_not_saved() {
     run_portal_arrival_effects_tnt_protection_is_live_but_not_saved();
 }
 
-pub(in sunrise_gameplay::game::server_side) fn run_portal_arrival_effects_tnt_protection_is_live_but_not_saved()
+pub(crate) fn run_portal_arrival_effects_tnt_protection_is_live_but_not_saved()
  {
     for restart_waiting in [false, true] {
         with_game(|game| {
@@ -285,7 +285,7 @@ fn portal_arrival_effects_join_removals_cannot_consume_live_stacks() {
     run_portal_arrival_effects_join_removals_cannot_consume_live_stacks();
 }
 
-pub(in sunrise_gameplay::game::server_side) fn run_portal_arrival_effects_join_removals_cannot_consume_live_stacks()
+pub(crate) fn run_portal_arrival_effects_join_removals_cannot_consume_live_stacks()
  {
     for portal in [true, false] {
         for remove_incoming in [false, true] {
@@ -402,7 +402,7 @@ fn portal_arrival_effects_nested_spawns_do_not_hide_the_real_arrival() {
     run_portal_arrival_effects_nested_spawns_do_not_hide_the_real_arrival();
 }
 
-pub(in sunrise_gameplay::game::server_side) fn run_portal_arrival_effects_nested_spawns_do_not_hide_the_real_arrival()
+pub(crate) fn run_portal_arrival_effects_nested_spawns_do_not_hide_the_real_arrival()
  {
     for portal in [true, false] {
         let armed = Arc::new(AtomicBool::new(false));

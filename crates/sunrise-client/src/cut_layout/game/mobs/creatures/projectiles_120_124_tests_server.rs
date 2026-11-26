@@ -10,7 +10,7 @@ use crate::game::creatures::projectiles_120_124_tests::*;
 use std::collections::BTreeMap;
 use sunrise_core::random::{LegacyRandom, RandomSource};
 
-pub(in sunrise_gameplay::game::server_side) fn alive_124(
+pub(crate) fn alive_124(
     game: &sunrise_gameplay::game::ServerGame<'_>,
     t: Target124,
 ) -> bool {

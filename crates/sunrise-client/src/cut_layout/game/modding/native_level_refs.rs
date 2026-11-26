@@ -2229,7 +2229,7 @@ pub(crate) mod environment_read_tests {
         run_biome_reads_follow_live_cells_parked_levels_and_client_login_without_loading();
     }
 
-    pub(in sunrise_gameplay::game::server_side) fn run_biome_reads_follow_live_cells_parked_levels_and_client_login_without_loading()
+    pub(crate) fn run_biome_reads_follow_live_cells_parked_levels_and_client_login_without_loading()
      {
         use sunrise_protocol::connection::Pipe;
 
@@ -2306,7 +2306,7 @@ pub(crate) mod environment_read_tests {
         run_floor_reads_real_collision_shapes_and_refuses_unloaded_positions();
     }
 
-    pub(in sunrise_gameplay::game::server_side) fn run_floor_reads_real_collision_shapes_and_refuses_unloaded_positions()
+    pub(crate) fn run_floor_reads_real_collision_shapes_and_refuses_unloaded_positions()
      {
         with_game(|game| {
             game.world
@@ -2357,7 +2357,7 @@ pub(crate) mod environment_read_tests {
         run_sky_and_logical_height_read_the_named_dimension_and_client_state();
     }
 
-    pub(in sunrise_gameplay::game::server_side) fn run_sky_and_logical_height_read_the_named_dimension_and_client_state()
+    pub(crate) fn run_sky_and_logical_height_read_the_named_dimension_and_client_state()
      {
         use sunrise_level::chunk::LevelShape;
         use sunrise_protocol::connection::Pipe;
@@ -2447,7 +2447,7 @@ pub(crate) mod environment_read_tests {
         run_closest_biome_uses_the_named_generator_without_loading_resident_chunks();
     }
 
-    pub(in sunrise_gameplay::game::server_side) fn run_closest_biome_uses_the_named_generator_without_loading_resident_chunks()
+    pub(crate) fn run_closest_biome_uses_the_named_generator_without_loading_resident_chunks()
      {
         use sunrise_sim::vanillagen::{TerrainResources, VanillaTerrain};
 
@@ -2564,7 +2564,7 @@ pub(crate) mod environment_read_tests {
         run_nearest_structure_uses_the_named_generator_without_loading_resident_chunks();
     }
 
-    pub(in sunrise_gameplay::game::server_side) fn run_nearest_structure_uses_the_named_generator_without_loading_resident_chunks()
+    pub(crate) fn run_nearest_structure_uses_the_named_generator_without_loading_resident_chunks()
      {
         use mod_api::StructureSearch;
         use sunrise_sim::vanillagen::{TerrainResources, VanillaTerrain};
@@ -2669,7 +2669,7 @@ pub(crate) mod environment_read_tests {
         run_level_environment_reads_match_vanilla_vectors();
     }
 
-    pub(in sunrise_gameplay::game::server_side) fn run_level_environment_reads_match_vanilla_vectors() {
+    pub(crate) fn run_level_environment_reads_match_vanilla_vectors() {
         use serde_json::{Value, json};
         use std::collections::HashMap;
         use sunrise_sim::vanillagen::{TerrainResources, VanillaTerrain};

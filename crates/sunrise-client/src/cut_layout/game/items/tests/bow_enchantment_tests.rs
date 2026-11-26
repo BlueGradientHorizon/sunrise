@@ -8,7 +8,7 @@ pub(crate) use crate::game::client_side::use_hand_client::bow_enchantment_tests:
 
 /// The horizontal heading `p` was shot with, in degrees:
 /// `Projectile.shootFromRotation` sends it along `(-sin(yaw), ..., cos(yaw))`.
-pub(in sunrise_gameplay::game::server_side) fn heading(p: &sunrise_sim::projectiles::Projectile) -> f32 {
+pub(crate) fn heading(p: &sunrise_sim::projectiles::Projectile) -> f32 {
     (-p.velocity.x as f32)
         .atan2(p.velocity.z as f32)
         .to_degrees()

@@ -561,7 +561,7 @@ fn primed_tnt_and_falling_blocks_match_26_3_witness() {
     run_primed_tnt_and_falling_blocks_match_26_3_witness();
 }
 
-pub(in sunrise_client_gameplay::game::client_side) fn run_primed_tnt_and_falling_blocks_match_26_3_witness() {
+pub(crate) fn run_primed_tnt_and_falling_blocks_match_26_3_witness() {
     in_own_process(
         "game::client_side::crosshair_pick_tests::primed_tnt_and_falling_blocks_match_26_3_witness",
         || {
@@ -648,7 +648,7 @@ fn nested_ride_root_vehicle_exclusion_matches_26_3_witness() {
     run_nested_ride_root_vehicle_exclusion_matches_26_3_witness();
 }
 
-pub(in sunrise_client_gameplay::game::client_side) fn run_nested_ride_root_vehicle_exclusion_matches_26_3_witness() {
+pub(crate) fn run_nested_ride_root_vehicle_exclusion_matches_26_3_witness() {
     in_own_process(
         "game::client_side::crosshair_pick_tests::nested_ride_root_vehicle_exclusion_matches_26_3_witness",
         || {
@@ -682,7 +682,7 @@ fn review_parity_cases_match_26_3_witness() {
     run_review_parity_cases_match_26_3_witness();
 }
 
-pub(in sunrise_client_gameplay::game::client_side) fn run_review_parity_cases_match_26_3_witness() {
+pub(crate) fn run_review_parity_cases_match_26_3_witness() {
     in_own_process(
         "game::client_side::crosshair_pick_tests::review_parity_cases_match_26_3_witness",
         || {
@@ -733,7 +733,7 @@ fn middle_click_sends_pick_item_from_entity_for_tnt_and_falling_block() {
     run_middle_click_sends_pick_item_from_entity_for_tnt_and_falling_block();
 }
 
-pub(in sunrise_client_gameplay::game::client_side) fn run_middle_click_sends_pick_item_from_entity_for_tnt_and_falling_block()
+pub(crate) fn run_middle_click_sends_pick_item_from_entity_for_tnt_and_falling_block()
  {
     in_own_process(
         "game::client_side::crosshair_pick_tests::middle_click_sends_pick_item_from_entity_for_tnt_and_falling_block",
@@ -804,7 +804,7 @@ fn dynamic_redirectable_tag_controls_arrow_pick_and_in_ground_stops_it() {
     run_dynamic_redirectable_tag_controls_arrow_pick_and_in_ground_stops_it();
 }
 
-pub(in sunrise_client_gameplay::game::client_side) fn run_dynamic_redirectable_tag_controls_arrow_pick_and_in_ground_stops_it()
+pub(crate) fn run_dynamic_redirectable_tag_controls_arrow_pick_and_in_ground_stops_it()
  {
     in_own_process(
         "game::client_side::crosshair_pick_tests::dynamic_redirectable_tag_controls_arrow_pick_and_in_ground_stops_it",
@@ -864,7 +864,7 @@ fn singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3() 
     run_singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3();
 }
 
-pub(in sunrise_client_gameplay::game::client_side) fn run_singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3()
+pub(crate) fn run_singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3()
  {
     in_own_process(
         "game::client_side::crosshair_pick_tests::singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3",

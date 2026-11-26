@@ -779,7 +779,7 @@ fn server_player_packet_witness() {
     run_server_player_packet_witness();
 }
 
-pub(in sunrise_gameplay::game::server_side) fn run_server_player_packet_witness() {
+pub(crate) fn run_server_player_packet_witness() {
     // Resource loading installs process-wide registries. Use the standard child
     // boundary, with a larger stack on the thread that loads the prepared game.
     let (_, module) = module_path!().split_once("::").unwrap();
