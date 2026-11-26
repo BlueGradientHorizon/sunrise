@@ -3151,6 +3151,66 @@ mod tests {
         );
     }
 
+    /// `text` expanded and rewritten as a vertex stage, the way `translate` reads it.
+    fn rewritten_vertex(text: &str) -> String {
+        let read = |_: &str| -> Result<Option<String>, String> { Ok(None) };
+        let includes = includes(&read);
+        let inputs = Inputs {
+            blocks: &BLOCKS,
+            samplers: &SAMPLERS,
+            extra_set: 1,
+            extra_blocks: &[],
+            extra_samplers: &[],
+            extra_texel_buffers: &[],
+            extra_storage_buffers: &[],
+            extra_storage_images: &[],
+            push_constant_binding: None,
+            loose: &LOOSE,
+            defines: &[],
+            includes: &includes,
+        };
+        let expanded = expand_includes(text, VSH_FILE, "minecraft:shaders/core/", &includes, None)
+            .unwrap_or_else(|e| panic!("{e}"));
+        let rewritten = rewrite(
+            &expanded,
+            ShaderStage::Vertex,
+            &inputs,
+            &GLUE,
+            &mut Names::new(10),
+        )
+        .unwrap_or_else(|e| panic!("{e}"));
+        rewritten.text().to_owned()
+    }
+
+    /// A preprocessor line is no declaration, whatever words it holds: the classifier lists
+    /// nothing from it, and the translator leaves it as it is (a loose `uniform` declaration
+    /// of an unknown name would be refused if it read as one).
+    #[test]
+    fn a_preprocessor_line_is_no_declaration() {
+        let text = "#version 330\n#define IN in vec3 X;\n#define U uniform float Nope;\n\
+            #define S uniform sampler2D T;\nvoid main() { }\n";
+        assert_eq!(resources(text), []);
+        assert_eq!(stage_inputs(text), []);
+        let rewritten = rewritten_vertex(text);
+        for line in text.lines().skip(1).take(3) {
+            assert!(rewritten.contains(&format!("{line}\n")), "{rewritten}");
+        }
+    }
+
+    /// A precision word after the storage word (`in highp vec4 X;`) is not GLSL's order, which
+    /// puts it before the type name after the qualifiers; `declaration()` reads the words after
+    /// `in` as type and name only (memory qualifiers apart), so this line is no declaration:
+    /// nothing lists it, and the translator leaves it as it is, for naga to refuse or not.
+    #[test]
+    fn a_precision_word_after_the_storage_word_is_no_declaration() {
+        let text = "#version 330\nin highp vec4 X;\nuniform lowp sampler2D T;\nvoid main() { }\n";
+        assert_eq!(stage_inputs(text), []);
+        assert_eq!(resources(text), []);
+        let rewritten = rewritten_vertex(text);
+        assert!(rewritten.contains("\nin highp vec4 X;\n"), "{rewritten}");
+        assert!(rewritten.contains("\nuniform lowp sampler2D T;\n"), "{rewritten}");
+    }
+
     /// Only a storage buffer's declaration names a storage block, with its memory qualifiers.
     #[test]
     fn storage_blocks_are_read_from_buffer_declarations_only() {
