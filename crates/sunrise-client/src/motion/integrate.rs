@@ -308,12 +308,9 @@ impl MotionWorld<'_, '_, '_> {
         }
         Ok(keys)
     }
-    /// Finish the live client tick with the fluid and sprint decisions already applied.
-    #[sunrise_mod_api_macros::replaceable]
-    pub fn finish_local_tick(&mut self, keys: crate::sprint::Keys) -> Result<()> {
-        self.finish_local_tick_body(keys)
-    }
-    fn finish_local_tick_body(&mut self, keys: crate::sprint::Keys) -> Result<()> {
+    /// The `#[replaceable]` wrapper lives in `motion.rs`; its key is the module
+    /// that holds the `impl`.
+    pub(super) fn finish_local_tick_body(&mut self, keys: crate::sprint::Keys) -> Result<()> {
         self.player.shift_key_down = keys.shift;
         let direction = keys.direction();
         self.player.move_vector = direction;
@@ -994,22 +991,6 @@ impl MotionWorld<'_, '_, '_> {
         self.move_ordinary(&mut MoveGate::new(), mover, movement, false, false)
             .map(|_| ())
     }
-    /// `LocalPlayer.move`: the move, then `updateAutoJump` with the float
-    /// horizontal displacement. The gate is this invocation's (#2414), armed
-    /// here before the move's own handling, no-physics included.
-    ///
-    /// Every travel branch hands a player's own move here, after input, jumping
-    /// and friction and before collision, so a native mod takes the move through
-    /// `[[native.mixin]]` where a Java mod mixes into `LocalPlayer.move` or
-    /// `Entity.move(SELF, …)`. It runs for the client's prediction of its own
-    /// player and for a server's player: a row tells them apart by
-    /// `self.loop_context.side()`.
-    #[sunrise_mod_api_macros::replaceable]
-    pub fn move_self(&mut self, gate: &mut MoveGate, movement: Vec3) -> Result<()> {
-        self.move_ordinary(gate, MoverType::SelfMovement, movement, true, false)
-            .map(|_| ())
-    }
-
     /// An ordinary move; its acting server player can hand off a landing to Game.
     pub fn move_ordinary(
         &mut self,

@@ -1392,6 +1392,34 @@ impl RestitutionWorld for MotionWorld<'_, '_, '_> {
         Ok(())
     }
 }
+// `#[replaceable]` targets are keyed by the module holding the `impl`, so these
+// two wrappers stay here even though their bodies moved to `integrate`. Moving
+// them would rename every native mod's target and the `fn-replace-check` entry
+// in `tools/ci/fn-replace-check/lower/sunrise-mod.toml`.
+impl MotionWorld<'_, '_, '_> {
+    /// Finish the live client tick with the fluid and sprint decisions already applied.
+    #[sunrise_mod_api_macros::replaceable]
+    pub fn finish_local_tick(&mut self, keys: crate::sprint::Keys) -> Result<()> {
+        self.finish_local_tick_body(keys)
+    }
+
+    /// `LocalPlayer.move`: the move, then `updateAutoJump` with the float
+    /// horizontal displacement. The gate is this invocation's (#2414), armed
+    /// here before the move's own handling, no-physics included.
+    ///
+    /// Every travel branch hands a player's own move here, after input, jumping
+    /// and friction and before collision, so a native mod takes the move through
+    /// `[[native.mixin]]` where a Java mod mixes into `LocalPlayer.move` or
+    /// `Entity.move(SELF, …)`. It runs for the client's prediction of its own
+    /// player and for a server's player: a row tells them apart by
+    /// `self.loop_context.side()`.
+    #[sunrise_mod_api_macros::replaceable]
+    pub fn move_self(&mut self, gate: &mut MoveGate, movement: Vec3) -> Result<()> {
+        self.move_ordinary(gate, MoverType::SelfMovement, movement, true, false)
+            .map(|_| ())
+    }
+}
+
 impl MotionWorld<'_, '_, '_> {
     /// The moving player, as the motion value and heal hooks lend it: the attributes and floats
     /// this tick holds, the effects and stacks of the side that ticks it.
