@@ -10,13 +10,11 @@ pub struct ExtensionTag {
     /// The reader's contract.
     pub doc: &'static str,
 }
-pub const GOLEM_HEADS: &[ExtensionTag] = &[
-    ExtensionTag {
-        registry: "block",
-        id: "sunrise:golem_heads",
-        doc: "Additional blocks that count as a golem's carved head (`CarvedPumpkinBlock`'s pumpkin predicate) for snow, iron and copper golems. Merged with vanilla's carved pumpkin and jack o'lantern; an empty tag restores vanilla.",
-    },
-];
+pub const GOLEM_HEADS: &[ExtensionTag] = &[ExtensionTag {
+    registry: "block",
+    id: "sunrise:golem_heads",
+    doc: "Additional blocks that count as a golem's carved head (`CarvedPumpkinBlock`'s pumpkin predicate) for snow, iron and copper golems. Merged with vanilla's carved pumpkin and jack o'lantern; an empty tag restores vanilla.",
+}];
 pub const VILLAGER_SECONDARY: &[ExtensionTag] = &[
     ExtensionTag {
         registry: "block",
