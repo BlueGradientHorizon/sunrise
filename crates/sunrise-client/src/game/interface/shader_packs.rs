@@ -46,8 +46,8 @@ pub(super) fn read_shader_options(
     let lang = sunrise_shaders::Lang::load(&pack, language);
     let chosen = chosen_shader_options(name);
     let pack = pack.with_chosen(chosen.clone());
-    let text = pack.read_text("shaders.properties").unwrap_or_default();
-    let properties = Properties::parse(&text, &sunrise_shaders::properties_macros(&pack, macros));
+    // As the load reads it, with the feature macros the pack asks for.
+    let (properties, _) = sunrise_shaders::read_properties(&pack, &mut macros.clone());
     let screens = sunrise_shaders::Screens::parse(&properties, &options);
     Some(ShaderOptions::new(
         name.to_owned(),
@@ -1451,6 +1451,52 @@ mod native_pack_tests {
         assert_eq!(shape(&plain, false), (false, None));
         std::fs::write(asks.join("shaders/shaders.properties"), "x=1\n").unwrap();
         assert_eq!(shape(&asks, true), (true, Some(Tonemap::Pack)));
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    /// The pick's HDR read before the frame is made and the Shader Options page read
+    /// `shaders.properties` as the load does: what a flag the pack lists guards (spec 3.2,
+    /// decision D-6) is read; what an unlisted flag guards is not.
+    #[test]
+    fn the_hdr_read_and_the_options_page_see_the_features_the_pack_lists() {
+        let root = std::env::temp_dir().join(format!("sunrise-hdr-feature-{}", std::process::id()));
+        let guarded = "#ifdef IRIS_FEATURE_SSBO\nsunrise.hdr = true\nsliders = LEVEL\n#endif\n";
+        let lists = hdr_pack(
+            &root,
+            "lists",
+            &format!("iris.features.optional = SSBO\n{guarded}"),
+        );
+        let unlisted = hdr_pack(&root, "unlisted", guarded);
+        for path in [&lists, &unlisted] {
+            std::fs::write(
+                path.join("shaders/options.glsl"),
+                "#define LEVEL 2 // [1 2]\n",
+            )
+            .unwrap();
+        }
+        let mut settings = hdr_settings();
+        let mut state = PickHdr::default();
+        assert_eq!(
+            shape_of(&mut settings, &mut state, &lists, true),
+            (true, Some(Tonemap::Pack))
+        );
+        assert_eq!(
+            shape_of(&mut settings, &mut state, &unlisted, true),
+            (false, None)
+        );
+        let sliders = |path: &std::path::Path| {
+            let name = path.to_string_lossy();
+            let options =
+                super::read_shader_options(&name, "en_us", &sunrise_shaders::Macros::standard());
+            options
+                .unwrap()
+                .screens
+                .sliders
+                .into_iter()
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(sliders(&lists), ["LEVEL"]);
+        assert!(sliders(&unlisted).is_empty());
         std::fs::remove_dir_all(root).unwrap();
     }
 

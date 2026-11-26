@@ -86,23 +86,25 @@ pub fn with_options(pack: &Pack, macros: &crate::Macros) -> crate::Macros {
     out
 }
 
-/// The macros `shaders.properties` is read with: the pack's options over `macros`. No
-/// `IRIS_FEATURE_<name>` is among them (spec OQ-2), so what a pack puts behind one is not read.
-pub fn properties_macros(pack: &Pack, macros: &crate::Macros) -> crate::Macros {
-    with_options(pack, macros)
-}
-
-/// A pack's `shaders.properties` as the game reads it before the programs: parsed with
-/// `properties_macros` over `macros` (the standard set and the renderer's). Returns the
-/// properties and a note for each required feature Sunrise lacks (`Macros::feature_notes`).
-/// Whatever reads a pack's programs (the game, the `real_packs` test) reads them with `macros`.
+/// A pack's `shaders.properties` as the game reads it before the programs, with the pack's
+/// options over `macros` (the standard set and the renderer's), in two reads (spec 3.2,
+/// decision D-6): the first, with no `IRIS_FEATURE_*`, settles the flags the pack lists;
+/// `Macros::define_features` then defines the answers in `macros`, and the second read, the
+/// one returned, sees them. A flag list only a feature macro reaches is not read. Returns the
+/// properties and a note for each required feature Sunrise lacks (`Macros::feature_notes`, of
+/// the first read). Whatever reads a pack's programs and id files (the game, the `real_packs`
+/// test) reads them with `macros` as this leaves it.
 pub fn read_properties(
     pack: &Pack,
     macros: &mut crate::Macros,
 ) -> (crate::Properties, Vec<String>) {
     let text = pack.read_text("shaders.properties").unwrap_or_default();
-    let properties = crate::Properties::parse(&text, &properties_macros(pack, macros));
-    let notes = crate::Macros::feature_notes(&properties);
+    let listed = crate::Properties::parse(&text, &with_options(pack, macros));
+    let notes = crate::Macros::feature_notes(&listed);
+    if !macros.define_features(&listed) {
+        return (listed, notes);
+    }
+    let properties = crate::Properties::parse(&text, &with_options(pack, macros));
     (properties, notes)
 }
 
@@ -413,27 +415,18 @@ mod tests {
     use super::*;
 
     /// `shaders.properties` read as the game reads it: its conditionals see the pack's options
-    /// and the macros given (the renderer's vendor here), and the features it turns on are then
+    /// and the macros given (the renderer's vendor here), and the features it lists are then
     /// defined for the programs, with a note for a required one Sunrise lacks.
     #[test]
     fn properties_are_read_with_the_options_then_define_the_features() {
         let bytes = crate::pack::tests::zip(&[
-            (
-                "shaders/options.glsl",
-                "#define LEVEL 2 // [1 2]
-",
-            ),
+            ("shaders/options.glsl", "#define LEVEL 2 // [1 2]\n"),
             (
                 "shaders/shaders.properties",
-                "#if LEVEL == 2
-screen = x
-#endif
-                 #ifdef MC_GL_VENDOR_OTHER
-vendor = other
-#endif
-                 iris.features.optional = SSBO
-iris.features.required = NOT_A_FEATURE
-",
+                "#if LEVEL == 2\nscreen = x\n#endif\n\
+                 #ifdef MC_GL_VENDOR_OTHER\nvendor = other\n#endif\n\
+                 #if LEVEL == 2\niris.features.optional = SSBO\n#endif\n\
+                 #ifdef MC_GL_VENDOR_OTHER\niris.features.required = NOT_A_FEATURE CUSTOM_IMAGES\n#endif\n",
             ),
         ]);
         let pack = Pack::from_zip_bytes("p.zip", bytes).unwrap();
@@ -442,34 +435,166 @@ iris.features.required = NOT_A_FEATURE
         let (properties, notes) = read_properties(&pack, &mut macros);
         assert_eq!(properties.get("screen"), Some("x"));
         assert_eq!(properties.get("vendor"), Some("other"));
-        assert!(!macros.is_defined("IRIS_FEATURE_SSBO"));
+        assert_eq!(macros.get("IRIS_FEATURE_SSBO"), Some("1"));
+        assert_eq!(macros.get("IRIS_FEATURE_CUSTOM_IMAGES"), Some("1"));
+        assert!(!macros.is_defined("IRIS_FEATURE_NOT_A_FEATURE"));
         assert_eq!(
             notes,
             ["the pack requires `NOT_A_FEATURE`, which is not supported yet"]
         );
     }
 
-    /// Neither `shaders.properties` nor the programs see an `IRIS_FEATURE_<name>` (spec OQ-2):
-    /// what a pack puts behind one is skipped, for an optional, a required, an unlisted and an
-    /// unknown feature alike, and a required feature Sunrise has gets no note.
+    /// A pack with this `shaders.properties`, an `options.glsl` and a composite program whose
+    /// fragment stage declares the uniform `seen_<name>` only where `IRIS_FEATURE_<NAME>` is
+    /// defined, for each of `features`.
+    fn feature_pack(properties: &str, features: &[(&str, &str)]) -> Pack {
+        let mut fsh = String::from("#version 330\nout vec4 c;\n");
+        let mut sum = String::from("0.0");
+        for (seen, feature) in features {
+            fsh.push_str(&format!(
+                "#ifdef IRIS_FEATURE_{feature}\nuniform float {seen};\n#else\n\
+                 const float {seen} = 0.0;\n#endif\n"
+            ));
+            sum.push_str(&format!(" + {seen}"));
+        }
+        fsh.push_str(&format!("void main() {{ c = vec4({sum}); }}\n"));
+        let vsh = "#version 330\nvoid main() { gl_Position = vec4(0.0); }\n";
+        let bytes = crate::pack::tests::zip(&[
+            ("shaders/shaders.properties", properties),
+            ("shaders/composite.vsh", vsh),
+            ("shaders/composite.fsh", &fsh),
+        ]);
+        Pack::from_zip_bytes("p.zip", bytes).unwrap()
+    }
+
+    /// The `seen_*` uniforms the pack's composite program declares, loaded as the game loads it.
+    fn composite_uniforms(
+        pack: &Pack,
+        properties: &crate::Properties,
+        macros: &crate::Macros,
+    ) -> Vec<String> {
+        let post = crate::load_post(pack, "", properties, macros, &crate::GameInputs::default());
+        let composite = post
+            .programs
+            .iter()
+            .find(|p| p.name == "composite")
+            .unwrap();
+        let program = composite.program.as_ref().expect("composite translates");
+        let mut names: Vec<String> = program
+            .interface
+            .uniforms
+            .iter()
+            .filter(|u| u.name.starts_with("seen_"))
+            .map(|u| u.name.clone())
+            .collect();
+        names.sort();
+        names
+    }
+
+    /// `IRIS_FEATURE_<NAME>` (spec 3.2, decision D-6): defined as `1` for a flag Sunrise has
+    /// that `iris.features.optional` or `iris.features.required` lists, in any case, under the
+    /// name as Sunrise writes it; undefined for one the pack doesn't list, one Sunrise lacks, and
+    /// the name in the pack's own case. `shaders.properties`, the programs and the id files read
+    /// with the macros the read leaves see the same answers.
     #[test]
-    fn properties_and_programs_see_no_feature_macro() {
-        let bytes = crate::pack::tests::zip(&[(
-            "shaders/shaders.properties",
-            "iris.features.required = COMPUTE_SHADERS\n\
-             #ifdef IRIS_FEATURE_CUSTOM_IMAGES\nuniform.float.optional = 1.0\n#endif\n\
-             #ifdef IRIS_FEATURE_COMPUTE_SHADERS\nuniform.float.required = 1.0\n#endif\n\
-             #ifdef IRIS_FEATURE_SSBO\nuniform.float.unlisted = 1.0\n#endif\n\
-             #ifdef IRIS_FEATURE_NOT_A_FEATURE\nuniform.float.unknown = 1.0\n#endif\n\
-             iris.features.optional = CUSTOM_IMAGES\n",
-        )]);
-        let pack = Pack::from_zip_bytes("p.zip", bytes).unwrap();
+    fn listed_features_sunrise_has_are_defined_for_properties_programs_and_id_files() {
+        let features = [
+            ("seen_optional", "CUSTOM_IMAGES"),
+            ("seen_required", "COMPUTE_SHADERS"),
+            ("seen_both", "HIGHER_SHADOWCOLOR"),
+            ("seen_unlisted", "SSBO"),
+            ("seen_unknown", "NOT_A_FEATURE"),
+            ("seen_lower", "custom_images"),
+            ("seen_missing_required", "NOT_REQUIRED_EITHER"),
+        ];
+        let mut text = String::from(
+            "iris.features.optional = custom_images NOT_A_FEATURE HIGHER_SHADOWCOLOR\n\
+             iris.features.required = Compute_Shaders NOT_REQUIRED_EITHER HIGHER_SHADOWCOLOR\n",
+        );
+        for (seen, feature) in features {
+            text.push_str(&format!(
+                "#ifdef IRIS_FEATURE_{feature}\n{seen} = 1\n#endif\n"
+            ));
+        }
+        let pack = feature_pack(&text, &features);
         let mut macros = crate::Macros::standard();
         let (properties, notes) = read_properties(&pack, &mut macros);
-        let read = |name: &str| properties.get(&format!("uniform.float.{name}")).is_some();
-        assert!(!read("optional") && !read("required") && !read("unlisted") && !read("unknown"));
-        assert!(notes.is_empty());
-        assert!(!macros.is_defined("IRIS_FEATURE_CUSTOM_IMAGES"));
+        let read: Vec<&str> = features
+            .iter()
+            .filter(|(seen, _)| properties.get(seen).is_some())
+            .map(|(seen, _)| *seen)
+            .collect();
+        assert_eq!(read, ["seen_optional", "seen_required", "seen_both"]);
+        for name in ["CUSTOM_IMAGES", "COMPUTE_SHADERS", "HIGHER_SHADOWCOLOR"] {
+            assert_eq!(
+                macros.get(&format!("IRIS_FEATURE_{name}")),
+                Some("1"),
+                "{name}"
+            );
+        }
+        let defined: Vec<&str> = macros.names().filter(|n| n.contains("IRIS")).collect();
+        assert_eq!(defined.len(), 3, "{defined:?}");
+        assert_eq!(
+            notes,
+            ["the pack requires `NOT_REQUIRED_EITHER`, which is not supported yet"]
+        );
+        assert_eq!(
+            composite_uniforms(&pack, &properties, &macros),
+            ["seen_both", "seen_optional", "seen_required"]
+        );
+        // `block.properties`, `entity.properties` and `item.properties` are read with the
+        // same macros.
+        let ids = crate::Properties::parse(
+            "#ifdef IRIS_FEATURE_CUSTOM_IMAGES\nblock.7 = stone\n#endif\n\
+             #ifdef IRIS_FEATURE_SSBO\nblock.8 = dirt\n#endif\n",
+            &macros,
+        );
+        assert_eq!(ids.get("block.7"), Some("stone"));
+        assert_eq!(ids.get("block.8"), None);
+    }
+
+    /// A pack that lists no flag Sunrise has gets no feature macro, its programs none either,
+    /// and the macros are left as they were.
+    #[test]
+    fn a_pack_that_lists_no_feature_sunrise_has_gets_none() {
+        let features = [("seen_ssbo", "SSBO"), ("seen_unknown", "NOT_A_FEATURE")];
+        for text in [
+            "",
+            "iris.features.optional =\n",
+            "iris.features.optional = NOT_A_FEATURE SSBO,\n",
+            "#ifdef IRIS_FEATURE_SSBO\nseen_ssbo = 1\n#endif\n",
+        ] {
+            let pack = feature_pack(text, &features);
+            let mut macros = crate::Macros::standard();
+            let (properties, _) = read_properties(&pack, &mut macros);
+            assert_eq!(macros, crate::Macros::standard(), "{text}");
+            assert_eq!(properties.get("seen_ssbo"), None, "{text}");
+            assert!(
+                composite_uniforms(&pack, &properties, &macros).is_empty(),
+                "{text}"
+            );
+        }
+    }
+
+    /// The flag lists are read once without any feature macro, then the answers are defined
+    /// and the file read again: a list only a feature macro reaches is not read (its flag stays
+    /// undefined), a list a feature macro would hide is read, and what is guarded by a listed
+    /// flag's macro is read.
+    #[test]
+    fn flag_lists_are_settled_before_the_answers_are_defined() {
+        let text = "iris.features.optional = CUSTOM_IMAGES\n\
+                    #ifdef IRIS_FEATURE_CUSTOM_IMAGES\n\
+                    iris.features.required = SSBO\nguarded = 1\n#endif\n\
+                    #ifndef IRIS_FEATURE_CUSTOM_IMAGES\n\
+                    iris.features.required = COMPUTE_SHADERS\n#endif\n";
+        let pack = feature_pack(text, &[]);
+        let mut macros = crate::Macros::standard();
+        let (properties, notes) = read_properties(&pack, &mut macros);
+        assert_eq!(properties.get("guarded"), Some("1"));
+        assert!(macros.is_defined("IRIS_FEATURE_CUSTOM_IMAGES"));
+        assert!(macros.is_defined("IRIS_FEATURE_COMPUTE_SHADERS"));
+        assert!(!macros.is_defined("IRIS_FEATURE_SSBO"));
+        assert!(notes.is_empty(), "{notes:?}");
     }
 
     #[test]

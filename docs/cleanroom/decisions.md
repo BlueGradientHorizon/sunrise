@@ -198,3 +198,40 @@ the full list.
   pipeline.
 - **Tests:** `pack_post::tests::a_sampler_of_another_class_than_its_image_refuses_the_program`
   (`sunrise-render-shaderpack`).
+
+## D-6: which feature flags get `IRIS_FEATURE_<flag>`, and which reads see it
+
+- **Open point:** spec rev 1, 3.2, lines 372-373: `iris.features.optional` asks to "enable those supported and define
+  `IRIS_FEATURE_<flag>` for each"; `iris.features.required` asks to refuse the pack when one is unsupported "and enable
+  them", without naming a macro. 1.5.1, line 167 lists `IRIS_FEATURE_<flag>` ("an optional feature flag … is
+  supported"). The spec doesn't say whether a required flag gets the macro, which case the macro's name takes when the
+  pack writes the flag in another one, or which reads of the pack see it: `shaders.properties` holds the flag lists
+  and may itself test the macros. Until 2026-11-26 OQ-2 in the [README](README.md) kept every `IRIS_FEATURE_*` undefined;
+  it was rewritten on [#6054](https://github.com/sunrise-org/sunrise/issues/6054).
+- **Decision:**
+  - `IRIS_FEATURE_<NAME>` is defined, as `1`, for each flag Sunrise supports (`FEATURES` in
+    `crates/sunrise-shaders/src/macros.rs`) that the pack lists in `iris.features.optional` or in
+    `iris.features.required`. A flag matches in any case, and the macro takes the name as `FEATURES` writes it
+    (`ssbo` listed gives `IRIS_FEATURE_SSBO`, not `IRIS_FEATURE_ssbo`). A flag Sunrise lacks, and a flag the pack
+    doesn't list, stay undefined. A required flag Sunrise lacks keeps its note, and the pack still loads, as before.
+  - `shaders.properties` is read twice, in one fixed order: first with the standard macros, the renderer's and the
+    pack's options and no feature macro, which settles the two lists; then the answers are defined and the file is
+    read again, and that second read is the one the game uses. A list that only a feature macro reaches is not read.
+    The programs and `block.properties`, `entity.properties` and `item.properties` see the answers. A pack that lists
+    no supported flag is read once, with the macros it had before.
+  - The same read serves every place that reads a pack's `shaders.properties`: the load, the HDR read made before
+    the frame, and the Shader Options page.
+  - No setting turns it off: it is the format's answer to what the pack asks.
+- **Reason:** a required flag is one the pack needs, so it is at least as much a request as an optional one, and a
+  pack that tests the macro after requiring the flag means the feature it required. The pack's spelling of a flag is
+  matched in any case already (the notes), and the macro needs one spelling for every program to agree on. Reading the
+  lists before any answer exists makes the answer independent of the answer itself, so a list guarded by a feature
+  macro has one result.
+- **Tests:** `options::tests::listed_features_sunrise_has_are_defined_for_properties_programs_and_id_files`,
+  `options::tests::a_pack_that_lists_no_feature_sunrise_has_gets_none`,
+  `options::tests::flag_lists_are_settled_before_the_answers_are_defined`,
+  `options::tests::properties_are_read_with_the_options_then_define_the_features`, and in `tests/it`
+  `reversed_culling_feature::requested_reversed_culling_loads_and_packs_take_the_path_it_guards` and
+  `terrain_fade::fade_feature_negotiation_ignores_case_and_defines_the_written_macro` (`sunrise-shaders`);
+  `game::shader_packs::native_pack_tests::the_hdr_read_and_the_options_page_see_the_features_the_pack_lists`
+  (`sunrise-client`).

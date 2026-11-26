@@ -5,9 +5,9 @@
 pub(crate) use sunrise_glsl::macros::lex;
 
 /// The feature flags of `iris.features.*` (spec 3.2) Sunrise has. A pack that requires one of
-/// them loads; one it lacks is noted. Sunrise defines no `IRIS_FEATURE_<name>` macro for them
-/// (spec OQ-2, docs/cleanroom/README.md): that macro family names another loader, so packs take
-/// the path they take without it. `BLOCK_EMISSION_ATTRIBUTE`: terrain's
+/// them loads; one it lacks is noted. For each of them the pack lists, in either list, its
+/// programs and property files see `IRIS_FEATURE_<NAME>` (spec 1.5.1, 3.2; decision D-6 and
+/// OQ-2 in docs/cleanroom/): `Macros::define_features`. `BLOCK_EMISSION_ATTRIBUTE`: terrain's
 /// `at_midBlock.w` is the light its block gives. `SEPARATE_HARDWARE_SAMPLERS` (ShaderDoc,
 /// "Separate Hardware Shadow Samplers"): `shadowtex0`/`shadowtex1` stay plain depth samplers when
 /// hardware filtering is on, `shadowtex0HW`/`shadowtex1HW` compare; Sunrise picks a comparison
@@ -26,9 +26,17 @@ const FEATURES: [&str; 9] = [
     "SSBO",
 ];
 
-/// Whether `name` is one of [`FEATURES`], in any case.
-fn is_feature(name: &str) -> bool {
-    FEATURES.iter().any(|f| f.eq_ignore_ascii_case(name))
+/// The one of [`FEATURES`] `name` is, in any case.
+fn feature(name: &str) -> Option<&'static str> {
+    FEATURES
+        .iter()
+        .copied()
+        .find(|f| f.eq_ignore_ascii_case(name))
+}
+
+/// The flags `properties` gives under `key`, as the pack wrote them.
+fn flags<'a>(properties: &'a crate::Properties, key: &str) -> std::str::SplitWhitespace<'a> {
+    properties.get(key).unwrap_or_default().split_whitespace()
 }
 
 /// `MC_VERSION` of the version Sunrise plays: 26.3 → 260300.
@@ -174,8 +182,9 @@ impl Macros {
         // default; Iris 1.11.7 defines both too, with or without a resource pack's maps).
         m.define("MC_NORMAL_MAP", "");
         m.define("MC_SPECULAR_MAP", "");
-        // No `IS_IRIS`, `IRIS_VERSION` or `IRIS_HAS_*`: Sunrise is not that loader and does not
-        // claim its identity (spec OQ-2, docs/cleanroom/README.md). Packs take their other path.
+        // No `IS_IRIS`, `IRIS_VERSION` or `IRIS_HAS_*` (spec OQ-2, docs/cleanroom/README.md):
+        // packs take their other path. The `IRIS_FEATURE_*` answers depend on the pack
+        // (`define_features`).
         // Distant Sunrises' block materials, which Iris defines with or without the mod (packs
         // compare ids with them unguarded: Exposa's `blockID == DH_BLOCK_LEAVES`), numbered as
         // the mod's `EDhApiBlockMaterial` numbers them.
@@ -222,15 +231,27 @@ impl Macros {
     }
 
     /// A note for each feature `iris.features.required` names that Sunrise lacks; a name matches
-    /// in any case. Optional features need nothing: no macro is defined for them (see `FEATURES`).
+    /// in any case. The pack still loads.
     pub fn feature_notes(properties: &crate::Properties) -> Vec<String> {
-        properties
-            .get("iris.features.required")
-            .unwrap_or_default()
-            .split_whitespace()
-            .filter(|f| !is_feature(f))
+        flags(properties, "iris.features.required")
+            .filter(|f| feature(f).is_none())
             .map(|f| format!("the pack requires `{f}`, which is not supported yet"))
             .collect()
+    }
+
+    /// Defines `IRIS_FEATURE_<NAME>` as `1` for each of [`FEATURES`] that `properties` lists in
+    /// `iris.features.optional` (spec 3.2) or `iris.features.required` (decision D-6), a name
+    /// matching in any case and the macro taking the name as `FEATURES` writes it. A flag
+    /// Sunrise lacks stays undefined. Whether any was defined.
+    pub fn define_features(&mut self, properties: &crate::Properties) -> bool {
+        let mut defined = false;
+        let listed = flags(properties, "iris.features.optional")
+            .chain(flags(properties, "iris.features.required"));
+        for name in listed.filter_map(feature) {
+            self.define(format!("IRIS_FEATURE_{name}"), "1");
+            defined = true;
+        }
+        defined
     }
 }
 
@@ -298,9 +319,10 @@ mod tests {
     }
 
     /// A required feature Sunrise has loads without a note, one it lacks gets a note, whatever the
-    /// case it is written in; no `IRIS_FEATURE_*` macro is defined either way (spec OQ-2).
+    /// case it is written in; the standard and renderer sets hold no `IRIS_*` macro (the
+    /// feature answers come from the pack's lists, `define_features`).
     #[test]
-    fn required_features_are_noted_and_never_defined() {
+    fn required_features_are_noted_and_the_standard_set_names_no_feature() {
         let properties = crate::Properties::parse(
             "iris.features.optional = COMPUTE_SHADERS ssbo NOT_A_FEATURE\n\
              iris.features.required = BLOCK_EMISSION_ATTRIBUTE HIGHER_SHADOWCOLOR custom_images \

@@ -38,7 +38,7 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 use sunrise_render_shaderpack::pack_atlas::{TerrainDraws, deviceless_game_inputs};
-use sunrise_shaders::{Macros, Pack, PostProgram, Properties, Screens, discover, load_post};
+use sunrise_shaders::{Macros, Pack, PostProgram, Screens, discover, load_post};
 
 /// The game's dimensions, as their identifier and legacy number (`dimension_folder_named`), and
 /// a modded dimension, which takes the folder `dimension.properties` maps `*` to.
@@ -249,9 +249,8 @@ struct Profile {
 /// screen reads it.
 fn profiles(pack: &Pack, macros: &Macros) -> Vec<Profile> {
     let options = sunrise_shaders::options(pack);
-    let text = pack.read_text("shaders.properties").unwrap_or_default();
-    let macros = sunrise_shaders::properties_macros(pack, macros);
-    let screens = Screens::parse(&Properties::parse(&text, &macros), &options);
+    let (properties, _) = sunrise_shaders::read_properties(pack, &mut macros.clone());
+    let screens = Screens::parse(&properties, &options);
     screens
         .profiles
         .into_iter()
