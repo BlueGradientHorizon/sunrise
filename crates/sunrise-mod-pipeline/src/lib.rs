@@ -517,6 +517,17 @@ fn asset_path(file: &str) -> String {
     }
 }
 
+/// An include expansion refusal at the directive that caused it, in its own asset file. The
+/// preprocessor names the line but not the column.
+fn import_problem(error: sunrise_glsl::ImportError) -> Problem {
+    Problem {
+        file: asset_path(&error.file),
+        line: error.line as usize,
+        column: 0,
+        message: error.refusal.to_string(),
+    }
+}
+
 /// A refusal at byte `at` of `stage`'s text (none when it has no place: the stage file, no line),
 /// in the file and at the line that byte came from ([`Expanded::error_at`]: an `#include`d
 /// declaration is located in its own file), and at its column in the expanded text.
@@ -645,9 +656,9 @@ pub struct ProgramBindings {
 /// under `defines` and comments removed. A uniform block, sampler or buffer an included file
 /// declares is the program's too (#5905), and one named only in a comment is not, nor does a
 /// sprite name in a comment make the program textured. A stage whose includes cannot be expanded
-/// refuses the program, as [`translate`] does, with the include's error, and so does a vertex
-/// input of an unsupported type, a duplicate one or a 17th, in the file and at the line that
-/// declares it, an included file's among them.
+/// refuses the program at the directive that failed, as [`translate`] does. An unsupported,
+/// duplicate or 17th vertex input is refused where it is declared. Both refusals name the
+/// file (including an included file) and line.
 /// [`SPRITE_INCLUDE`] is always pasted: including it is itself asking for the sprite texture.
 pub fn extract_program_bindings(
     sources: &ProgramSources<'_>,
@@ -659,7 +670,7 @@ pub fn extract_program_bindings(
     let defines = effective_defines(defines);
     let expand = |text: &str, file: &str, dir: &str| {
         sunrise_glsl::expand_includes(text, file, dir, &includes, Some(&defines))
-            .map_err(|e| problem(file, e.to_string()))
+            .map_err(import_problem)
     };
     let vertex = expand(sources.vertex, sources.vertex_file, sources.vertex_dir)?;
     let fragment = expand(
@@ -740,7 +751,8 @@ pub const COMPUTE_BIND_GROUP: u32 = 0;
 pub const COMPUTE_FOLDER: &str = "shaders/compute";
 
 /// Translate and validate one mod compute shader (`.csh`) on a guarded 64 MiB stack thread with
-/// the same crash/memory containment bounds as [`translate`].
+/// the same crash/memory containment bounds as [`translate`]. An include expansion refusal
+/// names the file and line of the failing directive.
 pub fn translate_compute(
     sources: &ComputeSources<'_>,
     options: &ComputeOptions<'_>,
@@ -750,6 +762,7 @@ pub fn translate_compute(
         .unwrap_or_else(|reason| Err(vec![problem(sources.file, reason)]))
 }
 
+/// Check expanded source for refusals before translating the compute shader.
 fn translate_compute_inner(
     sources: &ComputeSources<'_>,
     options: &ComputeOptions<'_>,
@@ -763,7 +776,7 @@ fn translate_compute_inner(
         &includes,
         Some(options.defines),
     )
-    .map_err(|e| vec![problem(sources.file, e.to_string())])?;
+    .map_err(|e| vec![import_problem(e)])?;
     if let Some((at, msg)) = guard::refusal(expanded.text()) {
         return Err(vec![refusal_at(&expanded, at, msg)]);
     }
@@ -844,8 +857,9 @@ pub fn translate_oit(
 }
 
 /// Expand both stages ([`Expanded`]), refuse what the guard and the vertex inputs refuse, and
-/// translate the program, once more with the linear-light finish when `options` ask for it. The
-/// built program carries each stage's expanded text.
+/// translate the program, once more with the linear-light finish when `options` ask for it.
+/// Include expansion refusals name the file and line of the failing directive. The built program
+/// carries each stage's expanded text.
 fn translate_inner(
     sources: &ProgramSources<'_>,
     options: &Options<'_>,
@@ -863,7 +877,7 @@ fn translate_inner(
         &includes,
         Some(defines),
     )
-    .map_err(|e| vec![problem(sources.vertex_file, e.to_string())])?;
+    .map_err(|e| vec![import_problem(e)])?;
     if let Some((at, msg)) = guard::refusal(vertex.text()) {
         return Err(vec![refusal_at(&vertex, at, msg)]);
     }
@@ -876,7 +890,7 @@ fn translate_inner(
         &includes,
         Some(defines),
     )
-    .map_err(|e| vec![problem(sources.fragment_file, e.to_string())])?;
+    .map_err(|e| vec![import_problem(e)])?;
     if let Some((at, msg)) = guard::refusal(fragment.text()) {
         return Err(vec![refusal_at(&fragment, at, msg)]);
     }
@@ -1923,11 +1937,59 @@ void main() {{
             void main() { fragColor = texture(Real, vec2(0.0)); }\n";
         let refused = extract_program_bindings(&sources(vsh, fsh), &[], &stub_include)
             .expect_err("a missing include refuses the program");
-        assert_eq!(refused.file, "assets/example/shaders/core/glow.vsh");
-        assert!(
-            refused.message.contains("nothing_here.glsl not found"),
-            "{refused:?}"
+        assert_eq!(
+            refused,
+            Problem {
+                file: "assets/example/shaders/core/glow.vsh".to_owned(),
+                line: 2,
+                column: 0,
+                message: "minecraft:shaders/include/nothing_here.glsl not found".to_owned(),
+            }
         );
+    }
+
+    /// A missing nested include names the file and line that asked for it, whether reading
+    /// bindings for `check` or preparing a render or compute stage for translation.
+    #[test]
+    fn a_missing_nested_include_names_the_including_file_and_line() {
+        let include = |id: &str| match id {
+            "example:shaders/include/outer.glsl" => {
+                Ok(Some("// outer\n\n#include \"missing.glsl\"\n".to_owned()))
+            }
+            other => stub_include(other),
+        };
+        let expected = Problem {
+            file: "assets/example/shaders/include/outer.glsl".to_owned(),
+            line: 3,
+            column: 0,
+            message: "example:shaders/include/missing.glsl not found".to_owned(),
+        };
+        let bad = "#version 450\n#include <example:outer.glsl>\n";
+        for render in [sources(bad, FSH), sources(VSH, bad)] {
+            assert_eq!(
+                extract_program_bindings(&render, &[], &include).unwrap_err(),
+                expected
+            );
+            assert_eq!(
+                translate(&render, &Options::default(), &include).unwrap_err(),
+                [expected.clone()]
+            );
+        }
+        let compute = ComputeSources {
+            file: "assets/example/shaders/compute/a.csh",
+            dir: "example:shaders/compute/",
+            source: bad,
+        };
+        let options = ComputeOptions {
+            defines: &[],
+            mod_bindings: &[],
+            check_backends: false,
+            interface: DEVICELESS_INTERFACE_LIMITS,
+        };
+        let Err(problems) = translate_compute(&compute, &options, &include) else {
+            panic!("a missing include must refuse the compute shader");
+        };
+        assert_eq!(problems, [expected]);
     }
 
     /// A translator error in an included file names it by its asset path, as a stage file is.
