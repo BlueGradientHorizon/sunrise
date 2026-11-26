@@ -161,7 +161,7 @@ impl DragonSlot {
         self.replace(dragon);
         Ok(())
     }
-    pub(in crate::game) fn discard(&mut self) {
+    pub fn discard(&mut self) {
         self.register(0);
         self.slot.discard();
     }
