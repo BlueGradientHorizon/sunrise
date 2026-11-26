@@ -1463,13 +1463,11 @@ fn compile(
     };
     let locate = |line: usize| match line
         .checked_sub(header_lines)
-        .and_then(|l| stage.pp.lines.get(l))
+        .and_then(|l| stage.pp.origin_at(l))
     {
-        Some(o) => sunrise_glsl::Location {
-            file: (stage.pp.files.get(o.file as usize))
-                .cloned()
-                .unwrap_or_default(),
-            line: o.line,
+        Some((file, line)) => sunrise_glsl::Location {
+            file: file.to_owned(),
+            line,
         },
         None => sunrise_glsl::Location {
             file: "<sunrise>".into(),

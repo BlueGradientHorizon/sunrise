@@ -55,9 +55,22 @@ pub struct Preprocessed {
 impl Preprocessed {
     /// `file:line` of an output line (from 0), for messages.
     pub fn locate(&self, line: usize) -> String {
-        let o = self.lines.get(line).copied().unwrap_or_default();
-        let file = self.files.get(o.file as usize).map_or("?", String::as_str);
-        format!("{file}:{}", o.line)
+        let none = (self.file_of(Origin::default()), 0);
+        let (file, line) = self.origin_at(line).unwrap_or(none);
+        format!("{file}:{line}")
+    }
+
+    /// The pack file an origin names: `"?"` for an index outside [`Preprocessed::files`], which
+    /// only a `Preprocessed` built by hand has.
+    pub(crate) fn file_of(&self, origin: Origin) -> &str {
+        (self.files.get(origin.file as usize)).map_or("?", String::as_str)
+    }
+
+    /// The pack file and line output line `line` (from 0) came from; `None` past the last line.
+    /// The one lookup from the code's lines to the pack that [`Preprocessed::locate`],
+    /// [`Preprocessed::error_at_line`] and the compile step share.
+    pub(crate) fn origin_at(&self, line: usize) -> Option<(&str, u32)> {
+        self.lines.get(line).map(|o| (self.file_of(*o), o.line))
     }
 
     /// The stage's own file: the first of [`Preprocessed::files`]. [`preprocess`] always reads it
@@ -72,8 +85,8 @@ impl Preprocessed {
     /// lines were mapped, or one of a `Preprocessed` built by hand: it names the stage file with
     /// no line, as [`Origin::default`] does for the lines Sunrise writes.
     pub(crate) fn error_at_line(&self, line: usize, message: impl Into<String>) -> crate::Error {
-        match self.lines.get(line) {
-            Some(o) => crate::Error::new(self.files[o.file as usize].clone(), o.line, message),
+        match self.origin_at(line) {
+            Some((file, line)) => crate::Error::new(file, line, message),
             None => crate::Error::new(self.file(), 0, message),
         }
     }
