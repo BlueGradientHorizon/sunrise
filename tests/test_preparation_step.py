@@ -1,4 +1,6 @@
 """Observable preparation diagnostics without executing Cargo, Java or the preparer."""
+import contextlib
+import io
 import os
 import json
 import shutil
@@ -7,6 +9,10 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
+
+from tests.os_support import needs_runner_shell
+from tools.ci import preparation_step
 
 SCRIPT = Path(__file__).resolve().parents[1] / "tools/ci/preparation_step.py"
 
@@ -90,11 +96,16 @@ class PreparationStepTests(unittest.TestCase):
             self.assertEqual(result.stderr, "")
 
     def test_signal_and_step_identity(self):
-        with tempfile.TemporaryDirectory() as folder:
-            result = self.invoke(Path(folder), "import os, signal; os.kill(os.getpid(), signal.SIGTERM)", "preparer-build")
-            self.assertEqual(result.returncode, 143)
-            self.assertEqual(result.stdout, self.diagnostic("preparer-build", -15, "unclassified"))
+        # A command ended by SIGTERM reports -15 (subprocess's way to say a signal ended it); only POSIX has that.
+        ended_by_sigterm = subprocess.CompletedProcess([], -15)
+        with tempfile.TemporaryDirectory() as folder, \
+                mock.patch.object(preparation_step.subprocess, "run", return_value=ended_by_sigterm), \
+                contextlib.redirect_stdout(io.StringIO()) as out:
+            status = preparation_step.run("preparer-build", Path(folder) / "private.log", ["command"])
+        self.assertEqual(status, 143)
+        self.assertEqual(out.getvalue(), self.diagnostic("preparer-build", -15, "unclassified"))
 
+    @needs_runner_shell
     def test_shell_cleanup_preserves_failure(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
@@ -134,6 +145,7 @@ class PreparationStepTests(unittest.TestCase):
             self.assertNotIn('SECRET', again.stdout + again.stderr)
             self.assertTrue((root / 'source/minecraft/26.3/prepared.json').exists())
 
+    @needs_runner_shell
     def test_a_kept_preparation_is_reused_only_unchanged_and_each_job_gets_its_own_copy(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
