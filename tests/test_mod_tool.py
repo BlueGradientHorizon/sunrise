@@ -52,14 +52,17 @@ class ToolFoldersTests(unittest.TestCase):
             tools = Path(folder) / "tools"
             tools.mkdir()
             (tools / "prebuilt_game.py").write_text("import os\nfrom tools import lab, unused_name\nfrom tools.release_file import LAUNCHER_MIN\n")
-            (tools / "lab.py").write_text("from tools import file_lock\n")
+            (tools / "lab.py").write_text("from tools import file_lock\nfrom tools.ci import ids\n")
+            (tools / "ci").mkdir()
+            (tools / "ci/ids.py").write_text("")
             (tools / "file_lock.py").write_text("import time\n")
             (tools / "release_file.py").write_text("")
             (tools / "other.py").write_text("")
             with patch.object(mod_tool, "ROOT", Path(folder)):
                 inputs = mod_tool.build_inputs()
-        self.assertEqual([path for path in inputs if path.startswith("tools/") and not path.startswith("tools/ci/")],
-                         ["tools/file_lock.py", "tools/lab.py", "tools/prebuilt_game.py", "tools/release_file.py"])
+        self.assertEqual([path for path in inputs if path.startswith("tools/") and path not in mod_tool.BUILD_FILES],
+                         ["tools/ci/ids.py", "tools/file_lock.py", "tools/lab.py", "tools/prebuilt_game.py",
+                          "tools/release_file.py"])
         self.assertIn("Cargo.lock", inputs)
 
     def test_the_real_build_inputs_hold_the_modules_prebuilt_game_imports(self):
