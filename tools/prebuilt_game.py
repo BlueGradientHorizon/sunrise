@@ -668,8 +668,12 @@ def build(out: Path, server: bool) -> None:
 def runtime_feature_fields(root: Path, metadata: dict, artifacts: list[dict], target_dir: Path, server: bool) -> dict:
     layout = source_layout(root)
     if layout == "split":
-        return {"source_layout": layout, "runtime_role": runtime_role_facts(
-            metadata, GAME, artifacts, target_dir, "server" if server else "client")}
+        side = "server" if server else "client"
+        role = runtime_role_facts(metadata, GAME, artifacts, target_dir, side)
+        shells = [library for library in role["libraries"].values() if library["package"] == "sunrise-client"]
+        if len(shells) != 1:
+            raise ValueError(f"{side} SDK needs exactly one sunrise-client runtime library, found {len(shells)}")
+        return {"game_features": shells[0]["features"], "source_layout": layout, "runtime_role": role}
     if layout != "legacy":
         raise ValueError(f"unknown SDK source layout: {layout}")
     return {"game_features": sorted(next(

@@ -1323,12 +1323,20 @@ mod tests {
         assert!(legacy.runtime_role().is_none());
 
         write(
-            r#""source_layout":"split","runtime_role":{"side":"server","libraries":{
+            r#""game_features":["shared-shell"],"source_layout":"split","runtime_role":{"side":"server","libraries":{
                 "common@0.1.0:fixture_common":{"package":"common","library":"fixture_common","features":["shared"],"aliases":{}},
                 "server@0.1.0:fixture_server":{"package":"server","library":"fixture_server","features":["headless"],"aliases":{"shared_loan":"common@0.1.0:fixture_common"}}
             }}"#,
         );
+        #[derive(serde::Deserialize)]
+        struct LegacyFeatureFields {
+            game_features: Vec<String>,
+        }
+        let written = fs::read(dir.path().join(super::IDENTITY)).unwrap();
+        let legacy_reader: LegacyFeatureFields = serde_json::from_slice(&written).unwrap();
         let sdk = super::identity(dir.path()).unwrap();
+        assert_eq!(legacy_reader.game_features, ["shared-shell"]);
+        assert_eq!(sdk.game_features, legacy_reader.game_features);
         assert!(sdk.legacy_game_features().is_err());
         let role = sdk.runtime_role().unwrap();
         assert_eq!(
