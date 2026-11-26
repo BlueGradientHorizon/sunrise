@@ -235,6 +235,39 @@ impl crate::game::ServerGame<'_> {
             .or_default());
         true
     }
+    /// `SpawnPlacements.checkSpawnRules` and the `mob_spawn_placement_check` hook with the light
+    /// reads `light` names: see `LevelSpawningBackend::level_check_spawn_rules`.
+    pub fn level_check_spawn_rules(
+        &self,
+        level: LevelRef,
+        kind: &str,
+        pos: [i32; 3],
+        reason: mod_api::SpawnReason,
+        light: mod_api::LightOverride,
+    ) -> Result<bool, mod_api::LevelReadError> {
+        use mod_api::{LevelReadError, LightOverride};
+        if !self.is_logical_server() {
+            return Err(LevelReadError::Unavailable);
+        }
+        if !self.level_handle_current(level) {
+            return Err(LevelReadError::Stale);
+        }
+        if self.dim.key() != level.dimension() {
+            return Err(LevelReadError::Unavailable);
+        }
+        if !self.world.is_loaded_at(pos[0], pos[1], pos[2]) {
+            return Ok(false);
+        }
+        let ask = |light: Option<i32>| {
+            self.check_spawn_rules_with_light(kind, reason, pos, light)
+                .unwrap_or(false)
+        };
+        Ok(match light {
+            LightOverride::Level(level) => ask(Some(i32::from(level.min(15)))),
+            LightOverride::Any => (0..=15).any(|light| ask(Some(light))),
+            _ => ask(None),
+        })
+    }
     /// `ServerLevel.canSpawnEntitiesInChunk` as natural spawning answers it. None for a
     /// stale handle or on a client.
     pub fn level_can_spawn_entities_in_chunk(

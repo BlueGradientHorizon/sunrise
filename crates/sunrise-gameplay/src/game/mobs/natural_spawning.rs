@@ -1308,6 +1308,35 @@ impl<'a> crate::game::ServerGame<'a> {
             .get(entity)
             .copied()
     }
+
+    /// `SpawnPlacements.checkSpawnRules` for the mob type `kind` at `at`, then the
+    /// `mob_spawn_placement_check` hook, as natural spawning asks it, with every light read
+    /// as `light` when that is `Some` (`FixedLight`). The predicate draws from a copy of the
+    /// level random, so the call leaves the level's stream where it was. None for a kind that
+    /// is not a mob type.
+    pub(in crate::game) fn check_spawn_rules_with_light(
+        &self,
+        kind: &str,
+        reason: Reason,
+        at: [i32; 3],
+        light: Option<i32>,
+    ) -> Option<bool> {
+        use sunrise_sim::mobs::spawn_rules::{FixedLight, check_spawn_rules};
+        let level = self.natural_level();
+        let mob = level.mob_type(kind)?;
+        let mut random = LegacyRandom::from(<(u64, Option<f64>)>::from(&*self.world.random));
+        Some(match light {
+            None => check_spawn_rules(mob.into(), &level, reason, &mut random, at),
+            Some(light) => check_spawn_rules(
+                mob.into(),
+                &FixedLight(&level, light),
+                reason,
+                &mut random,
+                at,
+            ),
+        })
+    }
+
     pub fn natural_level(&self) -> GameLevel<'_, 'a> {
         let mut search = SearchPlayers::default();
         search.refresh(self);
@@ -2622,6 +2651,67 @@ mod tests {
             let fail = run(Some(SpawnCheck::Fail));
             assert_eq!(fail.0, (false, none.0.1));
             assert_eq!(fail.1, (false, first));
+        });
+    }
+
+    /// `check_spawn_rules_with_light` (#6042): the rule reads the light it is given, the
+    /// level's random stays where it was, and `mob_spawn_placement_check` still answers after
+    /// it, whatever light was asked.
+    #[test]
+    #[ignore = "daily"]
+    fn a_light_override_runs_the_rule_then_the_placement_hook() {
+        use crate::game::native_entity_refs::tests::with_game;
+        with_game(|game| {
+            game.world.chunks.insert(
+                (0, 0),
+                std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),
+            );
+            let dirt = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:dirt")
+                .unwrap();
+            game.world.set(8, 63, 8, dirt).unwrap();
+            game.world.health_rules.difficulty = sunrise_world::food::Difficulty::Normal;
+            let before = <(u64, Option<f64>)>::from(&*game.world.random);
+            let ask = |game: &crate::game::ServerGame<'_>, light: i32| {
+                game.check_spawn_rules_with_light(
+                    "minecraft:zombie",
+                    Reason::Natural,
+                    [8, 64, 8],
+                    Some(light),
+                )
+            };
+            assert_eq!(ask(game, 0), Some(true), "a zombie spawns in the dark");
+            assert_eq!(ask(game, 15), Some(false), "and not in full light");
+            assert_eq!(
+                <(u64, Option<f64>)>::from(&*game.world.random),
+                before,
+                "the level random is not moved"
+            );
+            assert_eq!(
+                game.check_spawn_rules_with_light(
+                    "minecraft:no_such_mob",
+                    Reason::Natural,
+                    [8, 64, 8],
+                    None
+                ),
+                None
+            );
+            let with = |game: &crate::game::ServerGame<'_>, answer: SpawnCheck, light: i32| {
+                mod_platform::testing::with_mods(
+                    vec![mod_api::ModEntry::new(
+                        "spawn-checks",
+                        Box::new(ChecksMod(answer)),
+                    )]
+                    .into(),
+                    || ask(game, light),
+                )
+            };
+            assert_eq!(with(game, SpawnCheck::Fail, 0), Some(false));
+            assert_eq!(with(game, SpawnCheck::Succeed, 15), Some(true));
+            assert_eq!(with(game, SpawnCheck::Default, 15), Some(false));
         });
     }
 

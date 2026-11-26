@@ -50,6 +50,62 @@ mod tests {
         }
     }
 
+    /// `LevelRef::check_spawn_rules` (#6042): the light override decides a dark-only rule, `Any`
+    /// finds the dark, and a stale handle, a level not in place and a client refuse.
+    #[test]
+    #[ignore = "daily"]
+    fn a_level_checks_spawn_rules_with_the_light_a_mod_names() {
+        use mod_api::{LevelReadError, LightOverride, SpawnReason};
+        with_game(|game| {
+            game.world
+                .chunks
+                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+            let dirt = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:dirt")
+                .unwrap();
+            game.world.set(8, 63, 8, dirt).unwrap();
+            game.world.health_rules.difficulty = sunrise_world::food::Difficulty::Normal;
+            let level = game.level(game.dim.id()).unwrap();
+            let host: &dyn Host = game;
+            let ask = |light| {
+                level.check_spawn_rules(
+                    host,
+                    "minecraft:zombie",
+                    [8, 64, 8],
+                    SpawnReason::Natural,
+                    light,
+                )
+            };
+            assert_eq!(ask(LightOverride::Level(0)), Ok(true));
+            assert_eq!(ask(LightOverride::Level(15)), Ok(false));
+            assert_eq!(ask(LightOverride::Level(200)), Ok(false), "clamped to 15");
+            assert_eq!(ask(LightOverride::Any), Ok(true));
+            let at = |kind, pos| {
+                level.check_spawn_rules(host, kind, pos, SpawnReason::Natural, LightOverride::Any)
+            };
+            assert_eq!(
+                at("minecraft:zombie", [900, 64, 900]),
+                Ok(false),
+                "unloaded"
+            );
+            assert_eq!(at("minecraft:no_such_mob", [8, 64, 8]), Ok(false));
+            let stale = LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
+            assert_eq!(
+                stale.check_spawn_rules(
+                    host,
+                    "minecraft:zombie",
+                    [8, 64, 8],
+                    SpawnReason::Natural,
+                    LightOverride::Any
+                ),
+                Err(LevelReadError::Stale)
+            );
+        });
+    }
+
     /// A cow (no jockey or rider rolls) spawns through the entity type's own path: constructed,
     /// then finalized with the caller's reason, and it joins not persistent. Every refusal
     /// spawns nothing and tells no mod.

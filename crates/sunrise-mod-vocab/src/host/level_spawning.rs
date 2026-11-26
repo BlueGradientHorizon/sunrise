@@ -23,6 +23,26 @@ pub trait LevelSpawningBackend {
     /// its spawner uses: the chunk is loaded. Reads parked levels and loads
     /// nothing. None on a client and for a stale handle.
     fn level_can_spawn_entities_in_chunk(&self, level: LevelRef, pos: [i32; 2]) -> Option<bool>;
+    /// Side: server.
+    /// `SpawnPlacements.checkSpawnRules` for the mob type `kind` at `pos` in the level in place:
+    /// the type's registered placement predicate (vanilla's, or one a mod registered through
+    /// `register_spawn_placement`) with the light reads `light` names, then the
+    /// `mob_spawn_placement_check` hook as natural spawning asks it (NeoForge's
+    /// `MobSpawnEvent.SpawnPlacementCheck`), so other mods' spawn checks apply. `reason` is
+    /// the reason the rule and the hook are told. The predicate draws from a copy of the level
+    /// random: the call moves nothing. With [`LightOverride::Any`] the hook runs once per light
+    /// level tried, so a listener must be a pure function of its inputs, as it must on replayed
+    /// ticks. `Ok(false)` for an unloaded position and for a kind that is not a mob type;
+    /// `Err(Stale)` for a stale handle and `Err(Unavailable)` on a client or for a level not in
+    /// place.
+    fn level_check_spawn_rules(
+        &self,
+        level: LevelRef,
+        kind: &str,
+        pos: [i32; 3],
+        reason: SpawnReason,
+        light: LightOverride,
+    ) -> Result<bool, LevelReadError>;
 }
 /// The handles' writes of the `level_spawning` area, implemented by the game and reached through [`BackendMut`].
 // hidden: a handle's backend, reached through `Backend`; mods call the handle, never this trait
