@@ -1393,9 +1393,6 @@ mod native_hover_name_tests;
 #[path = "game/modding/native_humanoid_setup_anim_tests.rs"]
 mod native_humanoid_setup_anim_tests;
 #[cfg(test)]
-#[path = "game/modding/native_living_model_posed_tests.rs"]
-mod native_living_model_posed_tests;
-#[cfg(test)]
 #[path = "game/modding/native_ignited_by_lava_tests.rs"]
 mod native_ignited_by_lava_tests;
 #[path = "game/modding/native_instance_groups.rs"]
@@ -1493,6 +1490,9 @@ mod native_living_body;
 mod native_living_effects;
 #[path = "game/modding/native_living_flags.rs"]
 mod native_living_flags;
+#[cfg(test)]
+#[path = "game/modding/native_living_model_posed_tests.rs"]
+mod native_living_model_posed_tests;
 #[path = "game/modding/native_living_position.rs"]
 mod native_living_position;
 #[path = "game/modding/native_living_refs.rs"]
