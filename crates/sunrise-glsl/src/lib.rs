@@ -23,8 +23,8 @@
 //!   channel of an `ivec4`: wgpu has no texel buffers. Like any block the caller gives beyond
 //!   its own, it is bound at [`Translated::other_binding`], and refused when not given.
 //!
-//! Each line keeps where it came from through every rewrite ([`Expanded`]), so an error names the
-//! file (the stage's or an include's id) and the line the author wrote ([`Error`]).
+//! Rewrites keep where the code came from ([`Expanded`]), so an error names the file (the
+//! stage's or an include's id), line and column the author wrote ([`Error`]).
 //!
 //! A caller that writes the stage as naga reads it itself (`sunrise-shaders`, for Iris/OptiFine
 //! programs) compiles it through [`compile_stage`] instead, its own resources moved through a
@@ -484,8 +484,8 @@ fn in_stage(stage: ShaderStage, mut error: Error) -> Error {
 /// The program of `sources` under `inputs`, its vertex stage fed by `glue`. Blocks and samplers
 /// beyond [`Inputs::blocks`] and [`Inputs::samplers`] are bound at [`Translated::other`]'s
 /// bindings when `provided` says yes to their name (a block's and a sampler's alike: the caller
-/// knows which kind each one is), and are an error otherwise. Errors name the file and line the
-/// author wrote ([`Error`]).
+/// knows which kind each one is), and are an error otherwise. Errors name the file, line and
+/// column the author wrote when available ([`Error`]).
 pub fn translate(
     sources: &Stages,
     inputs: &Inputs,
@@ -1059,7 +1059,8 @@ impl std::fmt::Display for ImportError {
 /// reaches under them are resolved, and macros an included file defines govern the rest of its
 /// caller; without, every branch's are. The expansion is bounded (16 levels, [`MAX_PASTES`]
 /// pastes, [`MAX_EXPANDED`] bytes kept, [`MAX_SCANNED`] bytes scanned). Each line of the result
-/// keeps the file and line it came from ([`Expanded`]), and a refusal names the directive's.
+/// keeps the file, line and columns it came from ([`Expanded`]), and a refusal names its
+/// directive's file and line.
 pub fn expand_includes(
     text: &str,
     file: &str,
@@ -1135,37 +1136,39 @@ fn expand_with(
             dir: &str,
             depth: u32,
         ) -> Result<(), ImportError> {
-            let clean;
-            let mut physical = Vec::new();
-            let text = if self.conditions.is_some() {
-                // Splicing precedes comment removal. Remember the first physical line of
-                // each logical line, including in continued directives and line comments.
-                let mut joined = String::with_capacity(text.len());
-                physical.push(1u32);
-                for (n, line) in text.split_inclusive('\n').enumerate() {
-                    if let Some(part) = line
+            let mut authored = Lines::default();
+            let mut physical = vec![1u32];
+            let splice = self.conditions.is_some();
+            for (n, line) in text.split_inclusive('\n').enumerate() {
+                let origin = Origin {
+                    file,
+                    line: n as u32 + 1,
+                };
+                // Splicing precedes comment removal. The directive's line is the first one
+                // of the logical line; each piece still has its own physical position.
+                if splice
+                    && let Some(part) = line
                         .strip_suffix("\\\r\n")
                         .or_else(|| line.strip_suffix("\\\n"))
-                    {
-                        joined.push_str(part);
-                    } else {
-                        joined.push_str(line);
-                        physical.push(n as u32 + 2);
-                    }
+                {
+                    authored.push_authored(part, origin);
+                } else {
+                    authored.push_authored(line, origin);
+                    physical.push(n as u32 + 2);
                 }
-                clean = strip_comments(&joined);
+            }
+            let clean;
+            let text = if splice {
+                clean = strip_comments(authored.text());
                 &clean
             } else {
-                text
+                authored.text()
             };
             let mut branches = import_conditions::Conditionals::default();
             let mut line_offset = 0i64;
             for (n, line) in text.lines().enumerate() {
                 // The line the author wrote it on: the first of a continued line.
-                let written = physical
-                    .get(n)
-                    .copied()
-                    .unwrap_or_else(|| u32::try_from(n + 1).unwrap_or(u32::MAX));
+                let written = physical[n];
                 let origin = Some(Origin {
                     file,
                     line: written,
@@ -1232,7 +1235,10 @@ fn expand_with(
                         }
                     }
                     "version" | "extension" => {}
-                    _ => self.out.push(line, origin),
+                    _ => {
+                        let at = line.as_ptr() as usize - text.as_ptr() as usize;
+                        self.out.push_spanned(line, origin, &authored, at..at + line.len());
+                    }
                 }
                 self.out.push("\n", origin);
                 if self.out.text().len() > MAX_EXPANDED {
@@ -1893,8 +1899,8 @@ impl Names {
     }
 }
 
-/// One stage written again for naga (see the module's notes), each line keeping where it came
-/// from; an error at the line it is about.
+/// One stage written again for naga (see the module's notes), each piece keeping where it came
+/// from. Generated declarations point back to the declarations they replace.
 fn rewrite(
     source: &Expanded,
     stage: ShaderStage,
@@ -1930,13 +1936,17 @@ fn rewrite(
     };
     for (n, (here, source_line)) in lines_at(text).enumerate() {
         let origin = source.lines.origin(n);
-        let at = |message: String| source.error_at(Some(here), message);
-        let write = |out: &mut Lines, code: &str| out.push(code, origin);
-        for (_, line) in declaration_lines(source_line) {
+        for (offset, line) in declaration_lines(source_line) {
+            let from = here + offset;
             let Some(found) = declared(line) else {
-                write(&mut out, line);
-                write(&mut out, "\n");
+                out.push_spanned(line, origin, &source.lines, from..from + line.len());
+                out.push("\n", origin);
                 continue;
+            };
+            let declaration_at = from + line.len() - line.trim_start().len();
+            let at = |message: String| source.error_at(Some(declaration_at), message);
+            let write = |out: &mut Lines, code: &str| {
+                out.push_replacement(code, origin, &source.lines, declaration_at);
             };
             match found {
                 Declared::Storage(block) => {
@@ -2008,8 +2018,11 @@ fn rewrite(
                     };
                     write(
                         &mut out,
-                        &format!("layout(std140, set = {set}, binding = {binding}) {tail}\n"),
+                        &format!("layout(std140, set = {set}, binding = {binding}) "),
                     );
+                    let tail_at = tail.as_ptr() as usize - text.as_ptr() as usize;
+                    out.push_spanned(tail, origin, &source.lines, tail_at..tail_at + tail.len());
+                    write(&mut out, "\n");
                 }
                 Declared::TexelBuffer(decl) => {
                     let (set, binding) = match inputs
@@ -2249,7 +2262,7 @@ fn main_at(text: &str) -> impl Iterator<Item = usize> + '_ {
         .map(|r| r.start)
 }
 
-/// Parses and validates one stage; errors at the file and line each part of it came from. A
+/// Parses and validates one stage; errors at the file, line and column its code came from. A
 /// block or sampler the stage reads that the pipeline does not provide is refused with its name
 /// in [`Error::unprovided`].
 fn compile(
@@ -3031,6 +3044,7 @@ mod tests {
             vec![Error {
                 file: VSH_FILE.into(),
                 line: 2,
+                column: 24,
                 unprovided: Some("Day".into()),
                 message: "vertex shader: Day is not a block or sampler of this pipeline".into(),
             }]
@@ -3042,6 +3056,7 @@ mod tests {
             vec![Error {
                 file: FSH_FILE.into(),
                 line: 2,
+                column: 1,
                 unprovided: Some("Bounds".into()),
                 message: "fragment shader: Bounds is not a block or sampler of this pipeline"
                     .into(),
@@ -3432,6 +3447,7 @@ void main() { }
             vec![Error {
                 file: VSH_FILE.into(),
                 line: 2,
+                column: 1,
                 unprovided: Some("Lightmap".into()),
                 message: "vertex shader: Lightmap is not a block or sampler of this pipeline"
                     .into(),
@@ -3450,6 +3466,7 @@ void main() { }
             vec![Error {
                 file: VSH_FILE.into(),
                 line: 2,
+                column: 0,
                 unprovided: None,
                 message: "minecraft:shaders/include/nothing.glsl not found".into(),
             }]
@@ -3465,6 +3482,7 @@ void main() { }
             vec![Error {
                 file: VSH_FILE.into(),
                 line: 3,
+                column: 0,
                 unprovided: None,
                 message: "minecraft:shaders/include/nothing.glsl not found".into(),
             }]
@@ -3477,6 +3495,7 @@ void main() { }
             vec![Error {
                 file: VSH_FILE.into(),
                 line: 5,
+                column: 0,
                 unprovided: None,
                 message: "minecraft:shaders/include/nothing.glsl not found".into(),
             }]
@@ -3503,6 +3522,7 @@ void main() { }
             vec![Error {
                 file: VSH_FILE.into(),
                 line: 3,
+                column: 0,
                 unprovided: None,
                 message: "minecraft:shaders/include/nothing.glsl: not text".into(),
             }]
@@ -3715,6 +3735,7 @@ void main() { }
             vec![Error {
                 file: "demo:custom/core/test.vsh".into(),
                 line: 4,
+                column: 24,
                 unprovided: Some("Extra".into()),
                 message: "vertex shader: Extra is not a block or sampler of this pipeline".into(),
             }]

@@ -663,6 +663,7 @@ fn an_expansion_past_the_budget_is_refused_where_it_is() {
     let refused = Error {
         file: tests::VSH_FILE.into(),
         line: 42,
+        column: 1,
         unprovided: None,
         message: directives::stopped(crate::macros::Stop::Work),
     };
