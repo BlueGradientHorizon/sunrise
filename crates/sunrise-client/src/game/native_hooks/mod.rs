@@ -568,6 +568,9 @@ mod screen_transparent_background;
 mod screenshot;
 mod section_visibility;
 mod server_chat;
+pub(in crate::game) mod server_level_event;
+#[cfg(test)]
+mod server_level_event_tests;
 mod server_tick_rate_changed;
 mod set_placed_by;
 mod should_cause_block_break_reset;

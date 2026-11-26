@@ -6337,7 +6337,19 @@ impl Game<'_> {
     }
     /// Side effects reported by the behaviour library, in vanilla order.
     fn process_level_events(&mut self) -> Result<()> {
-        let events = std::mem::take(&mut self.level_events);
+        let mut events = std::mem::take(&mut self.level_events);
+        // A mod's `server_level_event` may keep a level event from going out.
+        if self.is_logical_server()
+            && mod_api::__private::listened(mod_api::HookId::ServerLevelEvent)
+            && !native_hooks::server_level_event::LevelEventsAsked::marked()
+        {
+            events.retain(|event| match *event {
+                LevelEvent::LevelEvent { id, pos, data, .. } => {
+                    !self.server_level_event_canceled(id, [pos.x, pos.y, pos.z], data, false)
+                }
+                _ => true,
+            });
+        }
         self.lan_record_events(&events);
         dispense_fixture::record_events(&events);
         for event in events {
