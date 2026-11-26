@@ -49,7 +49,7 @@ pub struct GeneralEntityRecord {
     pub no_gravity: bool,
     /// `Entity.onGround`, saved as `OnGround`; absent means false.
     pub on_ground: bool,
-    /// `Entity.fallDistance`, saved as `fall_distance`; absent means zero.
+    /// `Entity.fallDistance`, saved as `fall_distance`; absent or not a number means zero.
     pub fall_distance: f64,
     /// The type envelope: which registered type owns the payload, at which
     /// schema version, with which bounded payload bytes.
@@ -470,16 +470,9 @@ fn read_general_record(
         .and_then(sunrise_client::entity_nbt::decode_custom_name_text);
     let custom_name_visible = sunrise_client::entity_nbt::flag(tag, format::CUSTOM_NAME_VISIBLE);
     let no_gravity = sunrise_client::entity_nbt::flag(tag, format::NO_GRAVITY);
-    let on_ground = sunrise_client::entity_nbt::flag(tag, format::ON_GROUND);
-    let fall_distance = match tag.get(format::FALL_DISTANCE) {
-        None => 0.0,
-        Some(Tag::Double(bits)) => f64::from_bits(*bits),
-        Some(_) => {
-            return Err(GeneralRecordError::InvalidEnvelope {
-                field: format::FALL_DISTANCE,
-            });
-        }
-    };
+    // `Entity.load`: `getBooleanOr("OnGround", false)` and `getDoubleOr("fall_distance", 0.0)`,
+    // which read any number and default on a missing key or another tag.
+    let (on_ground, fall_distance) = sunrise_client::entity_nbt::ground_from_nbt(tag);
     let payload_version = match tag.get(format::PAYLOAD_VERSION) {
         None => 0,
         Some(Tag::Short(version)) => u16::from_ne_bytes(version.to_ne_bytes()),
@@ -763,16 +756,24 @@ impl EntityRules for GeneralRow {}
 impl_joined!(GeneralRow);
 
 impl GeneralRow {
+    /// `Entity.getEyeY`: the feet plus `EntityDimensions.defaultEyeHeight`, `height * 0.85F`.
+    fn eye_y(feet_y: f64, height: f64) -> f64 {
+        feet_y + f64::from(height as f32 * 0.85_f32)
+    }
+
     /// `Entity.commonTick` and `Entity.baseTick` for one tick of the row, before its type's
     /// tick runs: `tickCount`, the old position and rotation, the boarding cooldown, then
-    /// `updateFluidInteraction` (a current pushes the velocity unless the row rides or has
-    /// `noPhysics`; water resets the fall and lava halves it) and `checkBelowWorld`. `bounds` is the
-    /// row's box at its position; `scan` measures the fluids for it, the position and the eye
-    /// height and may add a current to the velocity it is given. False when the row fell below the world (`min_y - 64`): the
-    /// caller discards it. Gravity, drag and moves are the type's own tick.
+    /// `updateFluidInteraction` (a current pushes the velocity, as `isPushedByFluid` allows, also
+    /// a riding row's, which is zeroed first as `rideTick` does; water resets the fall and lava
+    /// halves it) and `checkBelowWorld`. `bounds` is the row's box at its position and `height`
+    /// the type's declared height, whose `0.85F` is its eye height; `scan` measures the fluids for
+    /// the box, the position and the eye's height and may add a current to the velocity it is
+    /// given. False when the row fell below the world (`min_y - 64`): the caller discards it.
+    /// Gravity, drag and moves are the type's own tick.
     pub(super) fn base_tick(
         &mut self,
         bounds: Aabb,
+        height: f64,
         mounted: bool,
         min_y: i32,
         scan: impl FnOnce(Aabb, Vec3, f64, &mut Vec3) -> sunrise_client::mobs::living::Fluids,
@@ -786,14 +787,13 @@ impl GeneralRow {
             self.velocity = Vec3::ZERO;
         }
         let was_eye_in_water = self.fluids.eye_in_water;
-        let (at, eye) = (self.position, bounds.max_position().y);
-        let pushed = !mounted && !self.no_physics && self.is_pushed_by_fluid();
+        let (at, eye) = (self.position, Self::eye_y(self.position.y, height));
         let mut unpushed = self.velocity;
         let mut fluids = scan(
             bounds,
             at,
             eye,
-            if pushed {
+            if self.is_pushed_by_fluid() {
                 &mut self.velocity
             } else {
                 &mut unpushed
@@ -812,10 +812,12 @@ impl GeneralRow {
         self.position.y >= f64::from(min_y - 64)
     }
 
-    /// The end of `Entity.move` for a collided move that wanted `wanted` and resolved to
-    /// `moved`, whatever its cause: the collision flags and the ground, `checkFallDamage`'s
-    /// fall distance, and the velocity a blocked axis loses (`restituteMovementAfterCollisions`
-    /// with no bounce). A `noPhysics` row skips all of it.
+    /// The part of the end of `Entity.move` that needs no level, for a collided move that wanted
+    /// `wanted` and resolved to `moved`, whatever its cause: the collision flags and the ground,
+    /// and `checkFallDamage`'s fall distance. `Game::finish_general_move` runs the rest, in
+    /// `Entity.move`'s order: the fall-reset ray before the placement, then
+    /// `restituteMovementAfterCollisions` and `getBlockSpeedFactor` after this. A `noPhysics` row
+    /// skips all of it.
     pub(in crate::game) fn finish_move(&mut self, wanted: Vec3, moved: Vec3) {
         use sunrise_world::entity_move::different;
         if self.no_physics {
@@ -834,15 +836,6 @@ impl GeneralRow {
         }
         if self.on_ground {
             self.fall_distance = 0.0;
-        }
-        if blocked_x {
-            self.velocity.x = 0.0;
-        }
-        if blocked_z {
-            self.velocity.z = 0.0;
-        }
-        if self.vertical_collision {
-            self.velocity.y = 0.0;
         }
     }
 }
@@ -1583,8 +1576,9 @@ impl Entity for GeneralRow {
         self.no_physics
     }
     /// Places the row by the movement the collision scan resolved (or, with `noPhysics`, the
-    /// whole requested one). `Entity.move`'s end, the collision flags, the blocked axes and the
-    /// fall check, is [`GeneralRow::finish_move`], run by the caller once the scan is known.
+    /// whole requested one). `Entity.move`'s end, the collision flags and the fall check, is
+    /// [`GeneralRow::finish_move`], and its restitution and speed factor are
+    /// `Game::finish_general_move`, run by the caller once the scan is known.
     fn move_entity(&mut self, gate: &mut MoveGate, movement: Vec3) {
         if gate.skipped() {
             return;
@@ -1613,6 +1607,12 @@ impl Entity for GeneralRow {
     }
     fn is_pickable(&self) -> bool {
         general_type_catalog().pickable(self.type_slot)
+    }
+    fn fluid_eye_y(&self) -> f64 {
+        Self::eye_y(
+            self.position.y,
+            general_type_catalog().dimensions(self.type_slot).1,
+        )
     }
     fn selector_target(&self) -> Option<Target> {
         Some(Target::General(self.id))

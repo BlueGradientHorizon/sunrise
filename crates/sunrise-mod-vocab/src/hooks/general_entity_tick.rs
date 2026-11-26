@@ -7,9 +7,11 @@ pub trait Hooks {
     /// registry owns (#792 stage 4). The row's `Entity.commonTick` and
     /// `Entity.baseTick` have run first: its tick count went up, its previous
     /// position is its current one, its boarding cooldown counted down, and
-    /// `updateFluidInteraction` refreshed its fluids, pushed its velocity by a
-    /// current (not while it rides or has `noPhysics`), reset its fall distance
-    /// in water and halved it in lava. A row below the world
+    /// `updateFluidInteraction` refreshed its fluids (the eye is `0.85` of the
+    /// type's height above its feet), pushed its velocity by a current
+    /// (`isPushedByFluid`; a riding row's velocity is zeroed first, as
+    /// `rideTick` does, and the current then pushes it too), reset its fall
+    /// distance in water and halved it in lava. A row below the world
     /// (`y < min_y - 64`, `checkBelowWorld`) is discarded there and hears no
     /// tick. Nothing applies gravity or moves the row: the listener's own
     /// gravity, drag and `move_by` do, as a vanilla `Entity` subclass's

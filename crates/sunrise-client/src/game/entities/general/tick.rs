@@ -240,8 +240,10 @@ impl Game<'_> {
         let row = &mut self.resident_entities.general.rows[index];
         let id = row.id;
         let bounds = super::Entity::bounds(row);
+        let (_, height) = general_type_catalog().dimensions(row.type_slot);
         let alive = row.base_tick(
             bounds,
+            height,
             mount.is_some(),
             min_y,
             |bounds, at, eye, velocity| {

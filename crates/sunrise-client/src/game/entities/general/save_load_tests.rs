@@ -1959,6 +1959,41 @@ fn a_general_records_no_gravity_ground_and_fall_survive_save_and_load() {
     assert_eq!(loaded.fall_distance, 0.0);
 }
 
+/// `Entity.load`'s `getDoubleOr("fall_distance", 0.0)` reads any number and takes the default for
+/// another tag, where the record's own fields would refuse: a wrong-typed fall distance loads as zero.
+#[test]
+fn a_general_records_fall_distance_reads_any_number_and_defaults_otherwise() {
+    let record = GeneralEntityRecord {
+        position: [0.5, 64.0, 0.5],
+        velocity: [0.0; 3],
+        rotation: [0.0; 2],
+        owner: None,
+        custom_name: None,
+        custom_name_visible: false,
+        no_gravity: false,
+        on_ground: false,
+        fall_distance: 2.5,
+        uuid: [1, 2, 3, 4],
+        envelope: GeneralTypeEnvelope {
+            type_key: "mymod:robot".to_owned(),
+            payload_version: 3,
+            payload_bytes: Vec::new(),
+        },
+        passengers: Vec::new(),
+    };
+    let with = |value: Tag| {
+        let Tag::Compound(mut map) = record.to_tag() else {
+            panic!("a record is a compound");
+        };
+        map.insert("fall_distance".into(), value);
+        record_from_compound(&Tag::Compound(map)).unwrap().fall_distance
+    };
+    assert_eq!(with(Tag::Int(3)), 3.0);
+    assert_eq!(with(Tag::Float(1.5f32.to_bits())), 1.5);
+    assert_eq!(with(Tag::String("far".into())), 0.0);
+    assert_eq!(with(Tag::List(Vec::new())), 0.0);
+}
+
 /// A live general row's name and visibility: loaded from its save, read through its handle
 /// (`EntityRef::name` and the styled `EntityRef::custom_name`), matched by `@e[name=...]` (an
 /// unnamed row is not), changed by a mod and saved again.
