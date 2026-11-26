@@ -56,6 +56,26 @@ class Visibility(unittest.TestCase):
         self.assertEqual([(item["test"], item["kind"]) for item in json.loads(report_text)["problems"]],
                          [(name, "failed")])
 
+    def test_repeated_event_loop_errors_share_the_diagnostic_budget(self):
+        name = "画面::draw"
+        output = target(1, f"test {name} ... FAILED\n" + "screen-effect event loop error: synthetic\n" * 120,
+                        summary(failed=1))
+        failure = f"  failed test: {name}\n  panic context missing from captured output\n"
+        category = "screen-effect event loop error: details withheld\n"
+        records = (failure + category * 3).encode("utf-8")
+        process = subprocess.CompletedProcess([], 101, output)
+        with patch.object(ignored_tests, "FAILURE_TOTAL_BYTES", len(records)), \
+                patch.object(ignored_tests, "listed_entries", return_value=[]), \
+                patch.object(ignored_tests.subprocess, "run", return_value=process):
+            with contextlib.redirect_stdout(io.StringIO()) as standalone:
+                self.assertEqual(ignored_tests.run_leg("example", []), {name: False})
+            with contextlib.redirect_stdout(io.StringIO()) as shared:
+                self.assertEqual(ignored_tests.main(["example", "other"]), 1)
+        for log in (standalone, shared):
+            payload = "".join(line for line in log.getvalue().splitlines(keepends=True)
+                              if line.startswith(("  failed test:", "  panic context", "screen-effect", "::error::")))
+            self.assertEqual(payload.encode("utf-8"), records)
+
     def test_unquoted_compiler_payloads_are_never_published(self):
         with contextlib.redirect_stdout(io.StringIO()) as log:
             ignored_tests.compile_diagnostics("error: PRIVATE_RESOURCE_CONTENT\n"
