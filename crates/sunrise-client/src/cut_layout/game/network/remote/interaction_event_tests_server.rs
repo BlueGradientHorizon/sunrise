@@ -73,8 +73,8 @@ fn a_placed_powder_snow_bucket_leaves_a_bucket_in_hand_on_both_sides() {
     }
 
     mod_platform::testing::with_mods(Vec::new().into(), || {
-        with_interaction_server_game(run);
-        with_interaction_client_game(run);
+        with_interaction_server_game(|game| run(game));
+        with_interaction_client_game(|game| run(game));
     });
 }
 
@@ -981,7 +981,8 @@ fn phase_events_replace_the_behaviour_before_its_part_on_both_sides() {
         };
         assert!(!use_block(game));
         assert!(observer.0.lock().unwrap().steps.is_empty());
-        game.inventory[game.selected]
+        let selected = game.selected;
+        game.inventory[selected]
             .as_mut()
             .unwrap()
             .data_mut()

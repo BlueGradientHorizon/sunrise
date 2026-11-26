@@ -120,7 +120,7 @@ pub(crate) mod tests {
         leashed(1, here, me);
         leashed(2, Vec3::new(feet[0] + 40.0, feet[1], feet[2]), me);
         leashed(3, here, someone_else);
-        game.inventory[game.selected] = Some(sunrise_items::items::ItemStack::new("minecraft:firework_rocket", 1));
+        game.common.inventory[game.common.selected] = Some(sunrise_items::items::ItemStack::new("minecraft:firework_rocket", 1));
         let stack = game.inventory[game.selected].clone().unwrap();
         game.start_audio_capture();
 

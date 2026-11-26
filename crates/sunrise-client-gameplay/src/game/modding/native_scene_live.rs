@@ -527,7 +527,7 @@ fn entity_quads(verts: &[Vertex], quads: &mut Vec<SceneQuad>) {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
 impl crate::game::ClientGame<'_> {
     /// The live particles of the mod's scene `id`: positions, previous positions and ages.
     pub fn scene_particles(

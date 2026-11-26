@@ -1,6 +1,5 @@
 use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_sim::projectiles::ProjectileKind;
-use sunrise_gameplay_common::game_side;
 
 #[test]
 #[ignore = "daily"]
@@ -99,23 +98,31 @@ fn ender_pearl_clears_impulse_before_next_fall() {
         },
     )
     .unwrap();
-    let player = game.player.as_mut().unwrap();
+    use sunrise_gameplay_common::game::{Side as _, side_ops::tables::SideOps as _};
+    let (common, state) = (&mut game.common, &game.server);
+    let player = common.player.as_mut().unwrap();
     assert_eq!(player.position, destination);
     assert_eq!(player.fall_distance, 0.0);
-    let side = game_side!(game);
+    let level = state.level_ref(common.dim, common.native_lifecycle.epoch());
+    let side = sunrise_gameplay_common::game_side!(
+        common,
+        (state.lan_acting_uuid(), level, state.session_lock_active()),
+        state.side_level_features(common.level.enabled_features.as_arc()),
+        state.side_game_tag_items(&common.res)
+    );
     let damaged = MotionWorld {
         side: &side,
         entities: &[],
         player,
-        scene: &mut game.world,
-        assets: &game.pack.assets,
-        collision_binding: game.collision,
-        resources: game.motion,
-        health: &game.health_resources,
-        tag_items: Some(game.res.items()),
-        loop_context: &game.loop_context,
+        scene: &mut common.world,
+        assets: &common.pack.assets,
+        collision_binding: common.collision,
+        resources: common.motion,
+        health: &common.health_resources,
+        tag_items: Some(common.res.items()),
+        loop_context: &common.loop_context,
         damage_hooks: &sunrise_sim::health::DamageHooks::NONE,
-        block_registries: Some(&game.ui.registries),
+        block_registries: Some(&common.ui.registries),
     }
     .cause_mount_fall(10.0, 1.0)
     .unwrap();

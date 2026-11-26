@@ -191,14 +191,14 @@ use mod_api::ServerHost;
                 crate::game::server_side::entity_server::taken_pass_tests::SlotIdentities::default(
                 );
             identities.observe(
-                &mut game.falling,
-                game.native_lifecycle.epoch().unwrap(),
+                &mut game.common.falling,
+                game.common.native_lifecycle.epoch().unwrap(),
                 |f| f.id,
             );
             game.assign_pending_join_ids();
             identities.observe(
-                &mut game.falling,
-                game.native_lifecycle.epoch().unwrap(),
+                &mut game.common.falling,
+                game.common.native_lifecycle.epoch().unwrap(),
                 |f| f.id,
             );
             assert_eq!(game.server.next_entity, base + 5);

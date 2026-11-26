@@ -96,8 +96,8 @@ pub(crate) fn matrix(mods: mod_api::Mods) {
             .unwrap()
             .prepared()
             .to_owned();
-        with_interaction_server_game_at(root.clone(), run);
-        with_interaction_client_game_at(root, run);
+        with_interaction_server_game_at(root.clone(), |game| run(game));
+        with_interaction_client_game_at(root, |game| run(game));
     });
 }
 

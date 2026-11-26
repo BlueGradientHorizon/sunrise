@@ -541,7 +541,10 @@ use super::*;
             // The owner's file as last saved, with an experience total the panicking tick's
             // state (37) differs from.
             game.level.xp_total = 11;
-            game.level.write_player(root, game.res.items()).unwrap();
+            game.common
+                .level
+                .write_player(root, game.common.res.items())
+                .unwrap();
             let owner_file = std::fs::read_dir(root.join("players").join("data"))
                 .unwrap()
                 .next()

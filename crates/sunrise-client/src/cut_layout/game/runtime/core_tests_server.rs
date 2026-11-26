@@ -231,7 +231,8 @@ fn right_click_block_controls_cauldron_use() {
             game.level_set_block(level, [0, 64, 0], empty, BlockUpdateFlags::NEIGHBORS),
             Ok(true)
         );
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:water_bucket", 1));
+        game.common.inventory[game.common.selected] =
+            Some(ItemStack::new("minecraft:water_bucket", 1));
         let hit = Hit {
             pos: [0, 64, 0],
             face: [0, 1, 0],
@@ -247,7 +248,8 @@ fn right_click_block_controls_cauldron_use() {
             game.level_set_block(level, hit.pos, empty, BlockUpdateFlags::NEIGHBORS),
             Ok(true)
         );
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:water_bucket", 1));
+        game.common.inventory[game.common.selected] =
+            Some(ItemStack::new("minecraft:water_bucket", 1));
         game.server_set_acting_sneak(true);
         game.use_hand(Some(&hit)).unwrap();
         assert_ne!(game.world.block(0, 64, 0), empty);
@@ -266,7 +268,7 @@ fn right_click_block_controls_cauldron_use() {
         use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
         let entity = game.new_block_entity("minecraft:campfire").unwrap();
         game.world.block_entities.insert((0, 64, 0), entity);
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:beef", 2));
+        game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:beef", 2));
         allowed.store(false, Ordering::SeqCst);
         game.use_hand(Some(&hit)).unwrap();
         assert_eq!(game.inventory[game.selected].as_ref().unwrap().count, 2);
@@ -294,7 +296,7 @@ fn right_click_block_controls_cauldron_use() {
         );
         mob.extra.leash = Some(sunrise_sim::mobs::leash::Holder::Player);
         game.mobs.push(mob);
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:lead", 1));
+        game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:lead", 1));
         game.server.guest_use = Some(GuestUse::on_block(Hand::Main));
         game.server.forced_hit = Some(hit);
         cancel.store(true, Ordering::SeqCst);

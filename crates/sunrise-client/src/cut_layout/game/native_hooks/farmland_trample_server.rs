@@ -15,7 +15,7 @@ pub(crate) mod tests {
     use sunrise_core::geometry::Vec3;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
-    use sunrise_gameplay_common::{game_side, world_items};
+    use sunrise_gameplay_common::game_side;
 
     #[test]
     #[ignore = "daily"]
@@ -101,20 +101,32 @@ pub(crate) mod tests {
                                 PlayerMotion::new(game.motion, Vec3::new(1.5, LANDING_Y, 1.5))
                                     .unwrap();
                             guest.fall_distance = 0.125;
-                            let side = game_side!(game);
+                            let (player_uuid, level, session_lock) =
+                                sunrise_gameplay_common::game::side_ops::world::WorldSideGameExt::side_game_side_meta(game);
+                            let side = game_side!(
+                                game.common,
+                                (player_uuid, level, session_lock),
+                                game.common.level.enabled_features.as_arc(),
+                                session_lock.then(|| game.common.res.items())
+                            );
+                            let items = match (&game.common.server_items, game.server.world_tables.0.as_ref()) {
+                                (Some(items), _) => &**items,
+                                (None, Some(tables)) => &tables.items,
+                                (None, None) => game.common.res.items(),
+                            };
                             let mut motion = MotionWorld {
                                 side: &side,
                                 entities: &[],
                                 player: &mut guest,
-                                scene: &mut game.world,
-                                assets: &game.pack.assets,
-                                collision_binding: game.collision,
-                                resources: game.motion,
-                                health: &game.health_resources,
-                                tag_items: Some(world_items!(game)),
-                                loop_context: &game.loop_context,
-                                damage_hooks: &game.damage_hooks,
-                                block_registries: Some(&game.pack.block_registries),
+                                scene: &mut game.common.world,
+                                assets: &game.common.pack.assets,
+                                collision_binding: game.common.collision,
+                                resources: game.common.motion,
+                                health: &game.common.health_resources,
+                                tag_items: Some(items),
+                                loop_context: &game.common.loop_context,
+                                damage_hooks: &game.common.damage_hooks,
+                                block_registries: Some(&game.common.pack.block_registries),
                             };
                             assert!(
                                 motion

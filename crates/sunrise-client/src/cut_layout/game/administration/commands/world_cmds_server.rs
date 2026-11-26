@@ -268,9 +268,9 @@ use crate::game::server_side::commands::world_cmds::vehicle_damage_command_tests
             for rx in &receivers {
                 attribute_chat_count(rx);
             }
-            game.side.chat_capture = Some(Vec::new());
+            game.server.chat_capture = Some(Vec::new());
             let accepted = game.run_command("attribute Bob minecraft:armor base set 4");
-            let issuer = game.side.chat_capture.take().unwrap();
+            let issuer = game.server.chat_capture.take().unwrap();
             // This assertion fails old on the actual guest model, not feedback alone.
             assert_eq!(
                 game.for_player(Target::Guest(2), |g| g
@@ -315,11 +315,11 @@ use crate::game::server_side::commands::world_cmds::vehicle_damage_command_tests
                     .unwrap()),
                 Some(20.0)
             );
-            game.side.chat_capture = Some(Vec::new());
+            game.server.chat_capture = Some(Vec::new());
             assert!(
                 !game.run_command("attribute Bob minecraft:armor modifier remove h082:missing")
             );
-            let errors = game.side.chat_capture.take().unwrap();
+            let errors = game.server.chat_capture.take().unwrap();
             assert_eq!(errors.len(), 1);
             assert!(errors[0].plain().contains("h082:missing"));
             assert_eq!(
@@ -327,9 +327,9 @@ use crate::game::server_side::commands::world_cmds::vehicle_damage_command_tests
                 0,
                 "error returns to issuer"
             );
-            game.side.chat_capture = Some(Vec::new());
+            game.server.chat_capture = Some(Vec::new());
             assert!(game.run_command("attribute Bob minecraft:armor base reset"));
-            assert_eq!(game.side.chat_capture.take().unwrap().len(), 1);
+            assert_eq!(game.server.chat_capture.take().unwrap().len(), 1);
             assert_eq!(
                 game.for_player(Target::Guest(2), |g| g
                     .player
@@ -340,7 +340,7 @@ use crate::game::server_side::commands::world_cmds::vehicle_damage_command_tests
                 Some(0.0)
             );
             assert_eq!(game.acting_uuid(), host_uuid);
-            assert_eq!(game.side.lan_acting, None);
+            assert_eq!(game.server.lan_acting, None);
             assert_eq!(game.dim, dimension);
             assert_eq!(game.world.game_time, clock);
             assert_eq!(game.player.as_ref().unwrap().health.health(), 20.0);
@@ -378,15 +378,15 @@ use crate::game::server_side::commands::world_cmds::vehicle_damage_command_tests
                     "modifier remove h082:reply",
                 ] {
                     let command = format!("attribute {target} minecraft:armor {operation}");
-                    game.side.chat_capture = Some(Vec::new());
-                    game.side.cmds.0.results = Some(Vec::new());
+                    game.server.chat_capture = Some(Vec::new());
+                    game.server.cmds.0.results = Some(Vec::new());
                     assert!(game.run_command(&command), "{command}");
-                    let messages = game.side.chat_capture.take().unwrap();
+                    let messages = game.server.chat_capture.take().unwrap();
                     assert_eq!(messages.len(), 1, "{command}");
                     let components: Vec<_> = messages.iter().map(|m| m.component()).collect();
                     println!(
                         "H082_EXISTING {}",
-                        serde_json::json!({"command":command,"messages":components,"results":game.side.cmds.0.results.take().unwrap()})
+                        serde_json::json!({"command":command,"messages":components,"results":game.server.cmds.0.results.take().unwrap()})
                     );
                 }
             }

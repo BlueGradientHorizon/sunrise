@@ -320,7 +320,7 @@ mod completed_test_coordinate_feedback_tests {
 mod added_test_summary_context_tests;
 #[cfg(test)]
 mod registered_game_test_tests {
-    use sunrise_gameplay::game::test_instances::TestDefSample;
+    use sunrise_gameplay::game::server_side::test_instances::TestDefSample as _;
 use super::*;
     use mod_api::{GameTestContext, GameTestFunction, GameTestResult, GameTests};
     use sunrise_gameplay::game::game_tests::{Info, Runner, Tracked};

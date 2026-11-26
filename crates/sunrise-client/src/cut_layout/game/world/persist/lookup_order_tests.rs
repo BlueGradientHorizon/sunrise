@@ -173,8 +173,9 @@ pub(crate) fn run_chunk_loaded_families_keep_vanilla_lookup_and_save_order() {
         lookup.push(snapshot(game));
         // The TNT falls from section 4 into section -2, behind the armor stand.
         // Its id since the reload: the map still holds the one it had before.
-        let uuids = &game.persist.uuids;
+        let uuids = &game.common.persist.uuids;
         let tnt = game
+            .common
             .tnts
             .iter_mut()
             .find(|t| uuids.get(&t.id) == Some(&[2703, 0, 0, 1]));

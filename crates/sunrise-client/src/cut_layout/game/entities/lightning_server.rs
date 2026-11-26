@@ -177,7 +177,7 @@ pub(crate) mod tests {
                     0.0,
                 ));
                 if player {
-                    game.inventory[game.selected] =
+                    game.common.inventory[game.common.selected] =
                         Some(sunrise_items::items::ItemStack::new("minecraft:shears", 1));
                     assert!(
                         game.interact_mob(Some(sunrise_gameplay_common::game::InteractTarget {

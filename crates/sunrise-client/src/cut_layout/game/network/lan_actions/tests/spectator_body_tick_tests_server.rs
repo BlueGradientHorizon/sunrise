@@ -84,7 +84,7 @@ fn pre_teleport_to_unloaded_edge_keeps_the_resolved_body_tick() {
                     for z in -2..=2 {
                         game.server
                             .streaming
-                            .insert_remote(&mut game.world, Chunk::empty(x, z));
+                            .insert_remote(&mut game.common.world, Chunk::empty(x, z));
                     }
                 }
                 game.world.chunks.remove(&(1, 0));

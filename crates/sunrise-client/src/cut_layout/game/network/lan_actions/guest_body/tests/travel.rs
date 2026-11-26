@@ -77,9 +77,11 @@ pub(crate) fn with_player(
             },
         )
         .unwrap();
-        game.server
-            .streaming
-            .insert_remote(&mut game.world, Chunk::empty(0, 0));
+        {
+            let (common, server) =
+                sunrise_gameplay_common::game::SideGame::common_and_state_mut(&mut *game);
+            server.streaming.insert_remote(&mut common.world, Chunk::empty(0, 0));
+        }
         let mut guest = online_guest(1);
         guest.loaded = true;
         guest.load_timeout = 0;

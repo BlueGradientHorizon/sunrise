@@ -10,7 +10,7 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
     #[test]
     #[ignore = "daily"]
     fn block_menu_click_keeps_spent_action_on_cancellation() {
-        use sunrise_gameplay_common::game::lan_actions::shared::MenuOpen;
+        use sunrise_gameplay_common::game::lan_actions::MenuOpen;
         use mod_api::BlockUpdateFlags;
         use std::sync::Arc;
         use sunrise_core::nbt::Tag;
@@ -339,7 +339,7 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
                     inside: false,
                 };
                 game.world.set(0, 64, 4, lever).unwrap();
-                game.inventory[game.selected] =
+                game.common.inventory[game.common.selected] =
                     Some(sunrise_items::items::ItemStack::new("minecraft:stick", 1));
                 for (answer, item_uses, powered, swings) in [
                     (Answer::Success, 0, false, 1),
@@ -358,7 +358,7 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
                         user.empty_clicks.lock().unwrap().len() - empty_before,
                         usize::from(answer == Answer::TryWithEmptyHand),
                     );
-                    assert_eq!(game.inventory[game.selected].as_ref().unwrap().count, 1);
+                    assert_eq!(game.common.inventory[game.common.selected].as_ref().unwrap().count, 1);
                     assert_eq!(game.swings_started - before, swings);
                     assert_eq!(user.item_uses.load(SeqCst), item_uses);
                     assert_eq!(game.world.block(0, 64, 4) != lever, powered);
@@ -398,14 +398,14 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
                     (Some(Answer::Pass), cauldron, "minecraft:water_bucket", 4),
                 ] {
                     game.world.set(5, 64, 4, cauldron).unwrap();
-                    game.inventory[game.selected] = Some(sunrise_items::items::ItemStack::new(
+                    game.common.inventory[game.common.selected] = Some(sunrise_items::items::ItemStack::new(
                         "minecraft:water_bucket",
                         1,
                     ));
                     *user.answer.lock().unwrap() = answer;
                     assert!(game.use_hand(Some(&cauldron_hit)).unwrap());
                     assert_eq!(game.world.block(5, 64, 4), expected);
-                    let held = game.inventory[game.selected].as_ref().unwrap();
+                    let held = game.common.inventory[game.common.selected].as_ref().unwrap();
                     assert_eq!((&*held.item, held.count), (bucket, 1));
                     assert_eq!(user.item_uses.load(SeqCst), item_calls);
                 }
@@ -553,7 +553,7 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
                     .default_state("minecraft:redstone_ore")
                     .unwrap();
                 game.world.set(11, 64, 4, ore).unwrap();
-                game.inventory[game.selected] =
+                game.common.inventory[game.common.selected] =
                     Some(sunrise_items::items::ItemStack::new("minecraft:stone", 1));
                 let ore_hit = sunrise_gameplay_common::game::Hit {
                     pos: [11, 64, 4],
@@ -571,7 +571,7 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
                     game.with_props(ore, &[("lit", "true")]).unwrap()
                 );
                 *user.answer.lock().unwrap() = Some(Answer::TryWithEmptyHand);
-                game.inventory[game.selected] =
+                game.common.inventory[game.common.selected] =
                     Some(sunrise_items::items::ItemStack::new("minecraft:stick", 1));
 
                 // The hook precedes the pot's wobble and the bookshelf's removal.

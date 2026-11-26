@@ -382,7 +382,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             );
             assert!(events.lock().unwrap().is_empty());
             if case == "mount" {
-                game.mobs.push(sunrise_sim::mobs::Mob::new(
+                game.common.mobs.push(sunrise_sim::mobs::Mob::new(
                     31,
                     game.common.res.mob_types().get("minecraft:horse").unwrap().clone(),
                     sunrise_core::geometry::Vec3::new(0.0, 0.0, 0.0),

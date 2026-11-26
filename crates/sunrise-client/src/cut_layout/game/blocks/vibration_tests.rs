@@ -198,20 +198,27 @@ fn a_landing_posts_the_block_game_event_its_rule_posts() {
     let land = |game: &mut sunrise_gameplay::game::ServerGame<'_>, state| {
         let mut player = PlayerMotion::new(game.motion, Vec3::new(2.5, 5.0, 3.5)).unwrap();
         {
-            let side = game_side!(game);
+            let (player_uuid, level, session_lock) =
+                sunrise_gameplay_common::game::side_ops::world::WorldSideGameExt::side_game_side_meta(game);
+            let side = game_side!(
+                game.common,
+                (player_uuid, level, session_lock),
+                game.common.level.enabled_features.as_arc(),
+                session_lock.then(|| game.common.res.items())
+            );
             let mut world = MotionWorld {
                 side: &side,
                 entities: &[],
                 player: &mut player,
-                scene: &mut game.world,
-                assets: &game.pack.assets,
-                collision_binding: game.collision,
-                resources: game.motion,
-                health: &game.health_resources,
-                tag_items: Some(game.res.items()),
-                loop_context: &game.loop_context,
-                damage_hooks: &game.damage_hooks,
-                block_registries: Some(&game.ui.registries),
+                scene: &mut game.common.world,
+                assets: &game.common.pack.assets,
+                collision_binding: game.common.collision,
+                resources: game.common.motion,
+                health: &game.common.health_resources,
+                tag_items: Some(game.common.res.items()),
+                loop_context: &game.common.loop_context,
+                damage_hooks: &game.common.damage_hooks,
+                block_registries: Some(&game.common.ui.registries),
             };
             FallDamageWorld::fall_on(&mut world, state, at, 3.0).unwrap();
         }

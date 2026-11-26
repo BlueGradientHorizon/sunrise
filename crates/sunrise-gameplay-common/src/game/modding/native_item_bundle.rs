@@ -166,7 +166,7 @@ pub trait NativeItemBundleGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         )))
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
      fn item_bundle_slots(
         &self,
         stack: &ItemStack,
@@ -174,7 +174,7 @@ pub trait NativeItemBundleGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         self.bundle_slots(stack, &BundleConfig::vanilla()).unwrap()
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
      fn item_bundle_capacity(
         &self,
         stack: &ItemStack,
@@ -185,7 +185,7 @@ pub trait NativeItemBundleGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             .unwrap()
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
      fn item_bundle_insert_slot(
         &self,
         stack: &ItemStack,
@@ -196,7 +196,7 @@ pub trait NativeItemBundleGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             .unwrap()
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
      fn item_bundle_extract(
         &self,
         stack: &ItemStack,

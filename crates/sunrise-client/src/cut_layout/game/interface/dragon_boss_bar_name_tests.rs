@@ -64,7 +64,7 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
     // chunks are, so the fight's next player scan adopts or makes its dragon.
     {
         let streaming = &mut game.server.streaming;
-        let world = &mut game.world;
+        let world = &mut game.common.world;
         for z in -2..=1 {
             for x in -2..=1 {
                 streaming.insert_remote(world, Chunk::empty(x, z));

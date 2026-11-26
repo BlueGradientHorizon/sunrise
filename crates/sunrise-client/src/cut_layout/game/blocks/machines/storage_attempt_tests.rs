@@ -407,7 +407,7 @@ fn default_fixture(name: &str, test: impl FnOnce(&mut sunrise_gameplay::game::Se
     });
 }
 
-fn place(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: Pos, block: &str) {
+fn place<'g>(game: &mut impl sunrise_gameplay_common::game::SideGame<'g>, pos: Pos, block: &str) {
     let state = game.pack.assets.registry.default_state(block).unwrap();
     game.world.set(pos.0, pos.1, pos.2, state).unwrap();
 }
@@ -1548,9 +1548,10 @@ fn extract_notifications_cross_signal_each_tick_and_comparator_ticks_every_secon
                 vec![Some(ItemStack::new("minecraft:stone", 64)), None],
             );
             probe.rules.lock().unwrap().slots = Some(1);
+            let above_state = game.world.block(8, 65, 8).0;
             game.world.block_entities.set_mod_containers(
                 [(
-                    game.world.block(8, 65, 8).0,
+                    above_state,
                     Arc::new(ModContainer {
                         slots: 1,
                         inputs: vec![0],

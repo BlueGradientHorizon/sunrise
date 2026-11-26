@@ -1459,12 +1459,12 @@ fn client_startup_finishes_configs_before_the_first_runtime_callback() {
                         // even on the title screen, without a world or renderer.
                         started.native_client_tick_pre();
                         assert_eq!(
-                            started.side.chat_ui.options.resource_error.as_deref(),
+                            started.client.chat_ui.options.resource_error.as_deref(),
                             pack_error
                         );
                         let mut expected = vec!["setup", "Client", "Common", "screen"];
                         if pack_error.is_some() {
-                            assert!(started.side.chat_ui.options.resource_packs_open());
+                            assert!(started.client.chat_ui.options.resource_packs_open());
                             expected.push("screen");
                         }
                         expected.push("tick");

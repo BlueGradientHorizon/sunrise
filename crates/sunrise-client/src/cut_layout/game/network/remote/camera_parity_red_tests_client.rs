@@ -1345,9 +1345,9 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
                 .add(&ParticleOptions::simple(ParticleType::Flame), pos, [0.0; 3]);
             // ParticleEngine::add queues into `pending` (vanilla `particlesToAdd`) until the next tick.
             let level = ParticleLevel {
-                world: &game.world,
-                facts: game.res.facts(),
-                collision: game.collision,
+                world: &game.common.world,
+                facts: game.common.res.facts(),
+                collision: game.common.collision,
                 player: None,
                 cached_chunk: std::cell::Cell::new(None),
             };

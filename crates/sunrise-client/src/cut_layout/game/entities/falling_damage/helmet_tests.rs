@@ -45,10 +45,11 @@ pub(crate) fn run_falling_impacts_wear_the_helmet_before_normal_armor_and_reduct
     // Equipment breaks are server notifications, with no local visual RNG.
     game.server.lan_acting = Some(1);
     let position = Vec3::new(4.5, 100.0, 4.5);
-    game.falling.push(FallingBlock {
+    game.common.falling.push(FallingBlock {
         size_answer: None,
         id: 71,
         state: game
+            .common
             .pack
             .assets
             .registry

@@ -491,8 +491,8 @@ use sunrise_mod_runtime::attachments::{
                         _ => transferred!(mobs),
                     }
                     assert!(source_index.lock().unwrap().snapshot(&key).is_empty());
-                    let destination_index =
-                        game.attachment_indexes.entry(game.dim).or_default().clone();
+                    let dim = game.dim;
+                    let destination_index = game.attachment_indexes.entry(dim).or_default().clone();
                     let rows = destination_index.lock().unwrap().snapshot(&key);
                     assert_eq!(rows.len(), usize::from(bound));
                     if let Some(old) = old {

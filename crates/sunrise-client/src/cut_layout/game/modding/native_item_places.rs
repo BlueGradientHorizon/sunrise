@@ -1040,14 +1040,14 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 .as_mut()
                 .unwrap()
                 .hub
-                .resend_menu(1, window, &game.world);
+                .resend_menu(1, window, &game.common.world);
             let _ = cursor_packets(&rx);
             game.server
                 .lan
                 .as_mut()
                 .unwrap()
                 .hub
-                .sync_containers(&game.world);
+                .sync_containers(&game.common.world);
             assert!(cursor_packets(&rx).is_empty());
 
             let open_menu = {
@@ -1082,14 +1082,14 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 .as_mut()
                 .unwrap()
                 .hub
-                .sync_containers(&game.world);
+                .sync_containers(&game.common.world);
             assert_eq!(cursor_packets(&rx), vec![acting_net]);
             game.server
                 .lan
                 .as_mut()
                 .unwrap()
                 .hub
-                .sync_containers(&game.world);
+                .sync_containers(&game.common.world);
             game.server.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
             assert!(cursor_packets(&rx).is_empty());
         });
@@ -1882,9 +1882,9 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
         use mod_api::EquipmentSlot;
         with_game(|game| {
             zombie(game);
-            game.mobs.push(sunrise_sim::mobs::Mob::new(
+            game.common.mobs.push(sunrise_sim::mobs::Mob::new(
                 31,
-                game.res
+                game.common.res
                     .mob_types()
                     .get("minecraft:zombie")
                     .unwrap()

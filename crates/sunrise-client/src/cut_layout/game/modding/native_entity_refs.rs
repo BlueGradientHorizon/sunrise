@@ -3324,7 +3324,8 @@ use sunrise_gameplay_common::{game_side, world_biomes};
             game.outline_boxes([0, 64, 0]),
             vec![[0.0, 64.0, 0.0, 1.0, 65.0, 1.0]]
         );
-        game.inventory[game.selected].as_mut().unwrap().item = "minecraft:scaffolding".into();
+        game.common.inventory[game.common.selected].as_mut().unwrap().item =
+            "minecraft:scaffolding".into();
         let scaffolding = shape(&mut game, "minecraft:scaffolding", BlockShapeKind::Outline);
         assert!(!scaffolding.is_empty());
         assert_ne!(scaffolding, vec![[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]]);

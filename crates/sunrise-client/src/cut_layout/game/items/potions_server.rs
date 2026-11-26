@@ -22,7 +22,7 @@ pub(crate) mod tests {
     use sunrise_gameplay_common::game::client_side::potions::tests::OtherEffectMod;
     use sunrise_sim::motion::PlayerMotion;
 
-    pub(in crate::game) fn effect_test_mod(
+    pub(crate) fn effect_test_mod(
         extra: impl IntoIterator<Item = mod_api::ModEntry>,
     ) -> std::sync::Arc<std::sync::atomic::AtomicUsize> {
         use mod_api::{self, *};

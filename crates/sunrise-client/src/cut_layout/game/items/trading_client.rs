@@ -52,7 +52,7 @@ pub(crate) mod select_on_a_server_tests {
             assert_eq!(picked, [0]);
             // Shift-clicking result predicts the move while merchant effects stay on the server.
             let traded = game.stats.get("custom", "minecraft:traded_with_villager");
-            game.remote_menu_ops(&[(Some(sunrise_client_gameplay::game::client_side::trading_client::RESULT), 0, sunrise_sim::menu::Input::QuickMove)]);
+            game.remote_menu_ops(&[(Some(sunrise_gameplay_common::game::stations_common::RESULT), 0, sunrise_sim::menu::Input::QuickMove)]);
             let mut changed = Vec::new();
             while let Ok((id, bytes)) = peer.recv() {
                 if let Ok(S::ContainerClick(p)) = S::decode(id, &bytes) {

@@ -126,8 +126,9 @@ fn tracking_emitters_follow_the_packet_target() {
     // the next particle tick keeps emitting at the old entity's final body.
     game.client.particles.0.requested = Some(Vec::new());
     let last = [18.0, 65.0, -2.0];
-    game.mob_index
-        .get_mut(&mut game.mobs, target as u32)
+    game.common
+        .mob_index
+        .get_mut(&mut game.common.mobs, target as u32)
         .unwrap()
         .position = Vec3::new(last[0], last[1], last[2]);
     game.handle_packet(C::RemoveEntities(play::RemoveEntities {

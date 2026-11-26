@@ -247,7 +247,7 @@ pub(crate) mod falling_live_adoption_tests {
             let before = game.falling[index].clone();
             assert!(before.join.is_joined());
             assert_eq!((before.age, before.drop_item), (5, true));
-            let next_id = game.side.next_entity;
+            let next_id = game.server.next_entity;
             let clock = game.world.game_time;
             assert!(!game.run_command(&format!("data merge entity {uuid} {{Time:5}}")));
             assert!(
@@ -302,7 +302,7 @@ pub(crate) mod falling_live_adoption_tests {
             );
             assert_eq!(saved.get("Silent"), Some(&Tag::Byte(1)));
             assert_eq!(game.falling.len(), 1);
-            assert_eq!(game.side.next_entity, next_id);
+            assert_eq!(game.server.next_entity, next_id);
             assert_eq!(game.world.game_time, clock);
         });
     }

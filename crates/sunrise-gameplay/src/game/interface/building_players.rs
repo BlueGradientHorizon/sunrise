@@ -25,7 +25,7 @@ pub(in crate::game) fn shared(players: impl IntoIterator<Item = BuildingPlayer>)
 /// The players' boxes a guest's turn sees: the borrowed ancestor bodies, and
 /// the hub's bodies but for the actor.
 #[derive(Default)]
-pub(in crate::game) struct BuildingPlayers {
+pub struct BuildingPlayers {
     ancestors: Vec<BuildingPlayer>,
     actor: Option<u32>,
     hub: HubBodies,
@@ -67,7 +67,7 @@ impl BuildingPlayers {
         }
     }
 
-    pub(in crate::game::server_side) fn boxes(&self, dimension: Dim) -> Vec<([f64; 3], [f64; 3])> {
+    pub fn boxes(&self, dimension: Dim) -> Vec<([f64; 3], [f64; 3])> {
         // Hub conns are unique, so only the ancestors can already hold one.
         let hub =
             self.hub.iter().map(Cell::get).filter(|p| {

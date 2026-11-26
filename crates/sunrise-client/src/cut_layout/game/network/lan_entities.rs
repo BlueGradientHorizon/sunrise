@@ -71,11 +71,11 @@ use super::*;
                     game.crystals[0].id,
                     game.bolts[0].id,
                     game.ominous_spawners[0].id,
-                    *sunrise_gameplay::game::server_side::potions_server::thrown_ids(&mut game.potions)
+                    *sunrise_gameplay::game::server_side::potions_server::thrown_ids(&mut game.common.potions)
                         .next()
                         .unwrap(),
-                    *game.end.eye_ids().next().unwrap(),
-                    game.breath_clouds[0].id,
+                    *game.common.end.eye_ids().next().unwrap(),
+                    game.common.breath_clouds[0].id,
                 ];
                 assert_eq!(
                     ids,

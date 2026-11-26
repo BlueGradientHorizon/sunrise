@@ -69,7 +69,7 @@ fn gear_swapped_and_swapped_back_before_the_tick_keeps_its_modifiers() {
         game.lan_guest_packet(1, S::SetCarriedItem(play::SetCarriedItem { slot: 1 }));
         for _ in 0..2 {
             game.as_guest(1, |g| {
-                std::mem::swap(&mut g.armor[0], &mut g.inventory[1]);
+                std::mem::swap(&mut g.common.armor[0], &mut g.common.inventory[1]);
                 let head = g.armor[0].clone();
                 g.player_equipped("head", head.as_ref());
                 g.apply_equipment();

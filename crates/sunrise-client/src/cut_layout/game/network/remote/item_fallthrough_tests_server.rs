@@ -121,7 +121,7 @@ fn server_use_item_packet_fires_once_after_use_item_on_with_block_crosshair() {
             game.world.set(0, 64, 0, stone).unwrap();
             game.set_test_forced_hit(Some(hit()));
             game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
-                g.common.inventory[g.common.selected] = Some(ItemStack::new("minecraft:apple", 1));
+                g.inventory[g.selected] = Some(ItemStack::new("minecraft:apple", 1));
             });
             *observer.0.lock().unwrap() = Controls {
                 item_on_answer: Some(Answer::Pass),

@@ -120,11 +120,11 @@ pub(crate) mod attach_tests {
         let mut cow = Mob::new(1, kind, Vec3::new(1.5, 64.0, 0.5), 0.0);
         cow.extra.leash_pending = Some(Pending::Uuid([9, 9, 9, 9]));
         game.mobs.push(cow);
-        game.inventory[game.selected] = Some(sunrise_items::items::ItemStack::new("minecraft:lead", 1));
+        game.common.inventory[game.common.selected] = Some(sunrise_items::items::ItemStack::new("minecraft:lead", 1));
 
         assert!(game.interact_leash(0, "minecraft:lead"));
         assert_eq!(game.mobs[0].extra.leash, Some(Holder::Player));
-        assert!(game.inventory[game.selected].is_none(), "the lead is spent");
+        assert!(game.common.inventory[game.common.selected].is_none(), "the lead is spent");
         game.mobs[0].age = 101;
         game.tick_leads();
         assert_eq!(game.mobs[0].extra.leash, Some(Holder::Player));

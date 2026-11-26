@@ -43,9 +43,10 @@ fn open_mod_menu(
     game.world
         .block_entities
         .insert(pos, BlockEntity::Mod(Box::new(block)));
+    let state = game.world.block(pos.0, pos.1, pos.2).0;
     game.world.block_entities.set_mod_containers(
         [(
-            game.world.block(pos.0, pos.1, pos.2).0,
+            state,
             std::sync::Arc::new(sunrise_level::containers::ModContainer {
                 slots: 3,
                 ..Default::default()

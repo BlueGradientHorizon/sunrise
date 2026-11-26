@@ -320,7 +320,7 @@ fn a_bound_ticked_cart_publishes_its_moved_position_before_pushing() {
 #[ignore = "daily"]
 fn a_bound_tnt_cart_passes_interaction_without_priming() {
     bound_cart_case(CartKind::Tnt, |game| {
-        game.inventory[game.selected] = Some(ItemStack::new("minecraft:fire_charge", 1));
+        game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:fire_charge", 1));
         // MinecartTNT inherits Entity.interact (PASS), even with a fire charge.
         assert!(!game.interact_cart(Some(InteractTarget {
             id: 71,

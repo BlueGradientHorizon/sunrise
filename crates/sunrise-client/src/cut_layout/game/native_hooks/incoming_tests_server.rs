@@ -41,7 +41,7 @@ fn held_durability_retains_the_stack_hand_and_explicit_break_slot() {
     game.server.lan_acting = Some(1);
     game.hand = Hand::Off;
     let main = ItemStack::new("minecraft:stick", 3);
-    game.inventory[game.selected] = Some(main.clone());
+    game.common.inventory[game.common.selected] = Some(main.clone());
     let max = game
         .items()
         .get("minecraft:flint_and_steel")

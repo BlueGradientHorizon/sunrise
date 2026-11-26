@@ -258,7 +258,7 @@ fn continuations_preserve_listener_hand_writes(
     game.inventory[slot] = Some(bow.clone());
     game.offhand = Some(named_stack("minecraft:arrow", 1));
     observer.0.lock().unwrap().hand_write = Some(HandWrite::MoveBowAndReplace(replacement));
-    game.tick_crossbow(slot, sunrise_gameplay::game::sunrise_gameplay_common::game::CommonGame::charge_ticks(&bow), &bow);
+    game.tick_crossbow(slot, sunrise_gameplay_common::game::CommonGame::charge_ticks(&bow), &bow);
     let notice = take_notice(observer, Some(Hand::Off), "minecraft:arrow", 0);
     assert!(
         notice.in_hand.is_none(),
@@ -292,7 +292,7 @@ fn continuations_preserve_listener_hand_writes(
     game.inventory[slot] = Some(bow.clone());
     game.offhand = None;
     game.using = None;
-    game.tick_crossbow(slot, sunrise_gameplay::game::sunrise_gameplay_common::game::CommonGame::charge_ticks(&bow), &bow);
+    game.tick_crossbow(slot, sunrise_gameplay_common::game::CommonGame::charge_ticks(&bow), &bow);
     assert!(game.stack_in(slot).is_none());
     let notice = take_notice(observer, Some(Hand::Main), "minecraft:crossbow", 0);
     assert_eq!(notice.original, bow.try_into_api().unwrap());

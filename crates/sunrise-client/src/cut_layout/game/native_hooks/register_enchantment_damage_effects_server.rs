@@ -115,7 +115,7 @@ use super::*;
                             .iter()
                             .map(|&(id, level)| (id.into(), level))
                             .collect();
-                        game.inventory[game.selected] = Some(weapon);
+                        game.common.inventory[game.common.selected] = Some(weapon);
                         game.server.attack_ticks = 100;
                         let before = game.mobs[0].health;
                         game.attack_mob(0);

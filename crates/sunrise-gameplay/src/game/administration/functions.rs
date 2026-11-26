@@ -27,7 +27,7 @@ pub(in crate::game) struct Scheduled {
     pub seq: u64,
 }
 #[derive(Default)]
-pub(in crate::game) struct FnState {
+pub struct FnState {
     pub store: DataStore,
     pub packs: Vec<Arc<DataPack>>,
     /// Enabled pack ids, in load order (later overrides earlier).

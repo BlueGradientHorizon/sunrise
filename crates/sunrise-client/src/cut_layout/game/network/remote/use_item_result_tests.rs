@@ -13,7 +13,7 @@ fn default_part_answer_preserves_vanilla_shield_use() {
     }
 
     mod_platform::testing::with_mods(Vec::<mod_api::ModEntry>::new().into(), || {
-        with_interaction_server_game(run);
-        with_interaction_client_game(run);
+        with_interaction_server_game(|game| run(game));
+        with_interaction_client_game(|game| run(game));
     });
 }

@@ -258,7 +258,7 @@ pub(crate) mod tests {
                 "minecraft:carrot_on_a_stick"
             };
             let hand = row["hand"].as_str().unwrap();
-            server.inventory[server.selected] = match hand {
+            server.common.inventory[server.common.selected] = match hand {
                 "main" => Some(ItemStack::new(stick, 1)),
                 "wrong" => Some(ItemStack::new(wrong, 1)),
                 _ => None,

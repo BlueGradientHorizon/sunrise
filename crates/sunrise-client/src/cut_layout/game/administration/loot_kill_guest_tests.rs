@@ -127,7 +127,7 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::
     guest.inventory[0] = Some(sword);
     game.server.lan.as_mut().unwrap().hub.guests.push(guest);
     game.player.as_mut().unwrap().position = Vec3::new(4.5, 100.0, 4.5);
-    game.inventory[game.selected] = Some(ItemStack::new("minecraft:diamond_sword", 1));
+    game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:diamond_sword", 1));
     assert!(game.run_command("setblock 8 100 8 chest"));
     assert!(game.run_command("difficulty normal"));
     let still = "NoAI:1b,NoGravity:1b,PersistenceRequired:1b,Silent:1b";
@@ -197,7 +197,7 @@ fn loot_kill_as_a_guest_is_killed_by_that_player() {
     // The host's own place and stack are its own again.
     let p = game.player.as_ref().unwrap().position;
     assert_eq!([p.x, p.y, p.z], [4.5, 100.0, 4.5]);
-    let held = game.inventory[game.selected].as_ref().unwrap();
+    let held = game.common.inventory[game.common.selected].as_ref().unwrap();
     assert_eq!(
         (&*held.item, held.data().is_some()),
         ("minecraft:diamond_sword", false)

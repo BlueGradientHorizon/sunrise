@@ -134,7 +134,7 @@ fn indexed_pickup_keeps_bound_survivors_and_processes_shifted_tail() {
                     registrations.observe_one(item, level.epoch(), id);
                 }
                 let mut table = EntityTable::new(Journal::default());
-                game.dropped.bind_residency(
+                game.common.dropped.bind_residency(
                     &table.producer(),
                     Owner {
                         dimension: game.common.dim.key(),

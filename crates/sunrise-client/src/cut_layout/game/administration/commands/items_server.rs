@@ -15,10 +15,10 @@ use crate::game::server_side::commands::items::mob_equipment_command_tests::with
         use sunrise_items::enchant::EffectContext;
         with_game(|game| {
             let clock = game.world.game_time;
-            game.side.world_root =
+            game.server.world_root =
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                     .join("enchantment-catalog-world");
-            let pack = game.side.world_root.join("datapacks/catalog");
+            let pack = game.server.world_root.join("datapacks/catalog");
             let definitions = pack.join("data/wpenchant/enchantment");
             std::fs::create_dir_all(&definitions).unwrap();
             std::fs::write(
@@ -40,7 +40,7 @@ use crate::game::server_side::commands::items::mob_equipment_command_tests::with
             )
             .unwrap();
             std::fs::write(
-                game.side.world_root.join("datapacks.json"),
+                game.server.world_root.join("datapacks.json"),
                 r#"{"enabled":["file/catalog"]}"#,
             )
             .unwrap();
@@ -50,7 +50,7 @@ use crate::game::server_side::commands::items::mob_equipment_command_tests::with
             let features = game.level.enabled_features.clone();
             let stack = game.reload_datapacks(false, &features).unwrap();
             assert!(
-                game.side
+                game.server
                     .fns
                     .0
                     .store

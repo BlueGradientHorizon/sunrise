@@ -119,8 +119,8 @@ pub(crate) fn run_portal_contact_and_waiting_handoff_match_vanilla_counters()
     let mut runtime = Vec::new();
     for (step, ticks) in [1, 3, 1, 1, 8].into_iter().enumerate() {
         if step == 2 {
-            game.world
-                .set(entry.x, entry.y, entry.z, game.res.facts().air)
+            game.common.world
+                .set(entry.x, entry.y, entry.z, game.common.res.facts().air)
                 .unwrap();
         }
         for _ in 0..ticks {

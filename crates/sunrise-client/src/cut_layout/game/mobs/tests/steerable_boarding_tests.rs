@@ -193,7 +193,7 @@ pub(crate) fn run_interact_with_a_pig_or_strider() {
             .unwrap();
             game.server
                 .streaming
-                .insert_remote(&mut game.world, Chunk::empty(0, 0));
+                .insert_remote(&mut game.common.world, Chunk::empty(0, 0));
             game.server.next_entity = OTHER_PLAYER + 1;
             let report = std::env::var_os("SUNRISE_STEERABLE_BOARDING_REPORT");
             let mut rows = serde_json::Map::new();

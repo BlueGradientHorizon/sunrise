@@ -335,8 +335,25 @@ pub(crate) fn adv_done(game: &sunrise_gameplay::game::ServerGame<'_>, id: &str) 
         .is_some_and(|idx| game.adv.progress.done(&game.adv.tree.list[idx]))
 }
 
-#[allow(unused_imports)]
-pub(crate) use sunrise_gameplay::game::client_side::creatures_client::projectiles_120_124_tests::step_recording;
+pub(crate) fn step_recording(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+) -> (
+    Vec<(&'static str, [f64; 3], Option<Who>)>,
+    BTreeMap<String, usize>,
+) {
+    use sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS;
+
+    game.start_audio_capture();
+    TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+    game.tick_server(false).unwrap();
+    let events = TEST_POSTED_EVENTS.with(|e| e.borrow_mut().take().unwrap_or_default());
+    let mut sounds = BTreeMap::new();
+    for sound in std::mem::take(&mut game.server.pending_sounds) {
+        *sounds.entry(sound.event).or_insert(0) += 1;
+    }
+    game.stop_audio_capture();
+    (events, sounds)
+}
 
 pub(crate) fn land_positions_match(
     events: &[(&'static str, [f64; 3], Option<Who>)],

@@ -117,7 +117,13 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
                 player.set_walking_speed_base(0.1).unwrap();
                 player.ground.on_ground = true;
                 player.velocity = Vec3::new(0.2, 0.0, 0.0);
-                let side = game_side!(game, game.side_game_side_meta());
+                let (player_uuid, level, session_lock) = game.side_game_side_meta();
+                let side = game_side!(
+                    game.common,
+                    (player_uuid, level, session_lock),
+                    game.common.level.enabled_features.as_arc(),
+                    session_lock.then(|| game.common.res.items())
+                );
                 let mut world = MotionWorld {
                     side: &side,
                     entities: &[],

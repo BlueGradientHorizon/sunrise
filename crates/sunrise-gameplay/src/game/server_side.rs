@@ -934,7 +934,7 @@ pub struct ServerState {
     /// took is still there, so a half of a double chest (or the container)
     /// going away closes it.
     pub open_container_slots: Option<((i32, i32, i32), usize)>,
-    pub(in crate::game::server_side) destroy_delay: u32,
+    pub destroy_delay: u32,
     /// The prepared world is installed. The session lock is taken earlier so tag
     /// reads see ready tables, and is not this marker: a final save before the
     /// prepared `Level` is installed would replace the world with placeholder state.

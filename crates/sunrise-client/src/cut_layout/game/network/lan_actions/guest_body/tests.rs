@@ -1,4 +1,10 @@
-use {crate::game::lan_actions::guest_body::*, sunrise_gameplay_common::game::lan_actions::guest_body::{CommittedMove, Guest, MotionResources, PlayerMotion, Vec3, initialize}};
+use crate::game::lan_actions::guest_body::*;
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::lan_actions::guest_body::initialize;
+use sunrise_sim::{
+    lan::{guest::Guest, hub::CommittedMove},
+    motion::{MotionResources, PlayerMotion},
+};
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_core::random::RandomSource;
 use sunrise_level::assets::Assets;
@@ -179,9 +185,11 @@ fn guest_equipment_changes_powder_snow_support_on_the_same_move() {
 
             with_game(|game| {
                 open_to_lan(game);
-                game.server
-                    .streaming
-                    .insert_remote(&mut game.world, Chunk::empty(0, 0));
+                {
+                    let (common, server) =
+                        sunrise_gameplay_common::game::SideGame::common_and_state_mut(&mut *game);
+                    server.streaming.insert_remote(&mut common.world, Chunk::empty(0, 0));
+                }
                 let snow = game
                     .pack
                     .assets
@@ -316,9 +324,11 @@ pub(crate) fn breathing_guest_tick(meddle: bool) -> (Option<String>, i32, i32) {
         || {
             with_game(|game| {
                 open_to_lan(game);
-                game.server
-                    .streaming
-                    .insert_remote(&mut game.world, Chunk::empty(0, 0));
+                {
+                    let (common, server) =
+                        sunrise_gameplay_common::game::SideGame::common_and_state_mut(&mut *game);
+                    server.streaming.insert_remote(&mut common.world, Chunk::empty(0, 0));
+                }
                 let mut guest = online_guest(1);
                 guest.loaded = true;
                 guest.position = [1.5, 64.0, 1.5];

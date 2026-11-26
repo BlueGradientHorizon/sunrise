@@ -470,7 +470,7 @@ use super::*;
                         let dim = if death { Dim::Overworld } else { Dim::End };
                         game.enter_level(dim).unwrap();
                         game.server.streaming.insert_remote(
-                            &mut game.world,
+                            &mut game.common.world,
                             sunrise_level::chunk::Chunk::empty(0, 0),
                         );
                         if !death {

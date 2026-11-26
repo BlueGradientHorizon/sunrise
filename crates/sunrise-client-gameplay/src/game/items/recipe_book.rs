@@ -116,7 +116,7 @@ pub struct RecipeUi {
 /// The recipe viewer channels the server said it answers: `sunrise:recipe_transfer`
 /// and `sunrise:recipe_check` (`lan::recipes::advertise_viewer_channels`).
 #[derive(Clone, Copy, Debug, Default)]
-pub(in crate::game) struct ViewerChannels {
+pub struct ViewerChannels {
     pub(in crate::game) transfer: bool,
     pub check: bool,
 }

@@ -18,7 +18,7 @@ fn game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
 }
 
 /// A digging sniffer at `(8.5, 100, 8.5)`, facing +z, its head above the stone.
-fn digging_sniffer(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> (u32, [i32; 3]) {
+fn digging_sniffer<'g>(game: &mut impl sunrise_gameplay_common::game::SideGame<'g>) -> (u32, [i32; 3]) {
     let kind = game
         .res
         .mob_types()

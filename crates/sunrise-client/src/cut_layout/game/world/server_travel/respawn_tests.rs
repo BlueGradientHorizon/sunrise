@@ -23,7 +23,7 @@ fn put_guest_in_end_exit(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     game.enter_level(Dim::End).unwrap();
     game.server
         .streaming
-        .insert_remote(&mut game.world, Chunk::empty(0, 0));
+        .insert_remote(&mut game.common.world, Chunk::empty(0, 0));
     assert!(
         game.set_state_named([0, 100, 0], "minecraft:end_portal", &[])
             .unwrap()
@@ -325,7 +325,7 @@ fn a_cold_end_exit_keeps_ticking_the_source_player_before_the_fallback_veto() {
                     Some(sunrise_items::items::ItemStack::new("minecraft:bow", 1));
                 assert!(g.start_using_item());
                 g.add_cooldown(Arc::from("minecraft:ender_pearl"), 1);
-                g.side.destroy_delay = 2;
+                g.server.destroy_delay = 2;
                 g.player.as_mut().unwrap().health.tick_count = 10;
                 slot
             })
@@ -338,7 +338,7 @@ fn a_cold_end_exit_keeps_ticking_the_source_player_before_the_fallback_veto() {
             game.as_guest(2, |g| {
                 (
                     g.player.as_ref().unwrap().health.tick_count,
-                    g.side.destroy_delay,
+                    g.server.destroy_delay,
                     g.using,
                     g.cooldowns.is_on_cooldown("minecraft:ender_pearl"),
                 )

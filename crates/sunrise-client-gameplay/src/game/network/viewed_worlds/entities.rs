@@ -23,18 +23,18 @@ pub(in crate::game) const MAX_TABLE: usize = 256;
 /// One entity of a viewed level, as its packets left it. Nothing reads it but the tests until a
 /// viewed level is drawn (gap 13).
 #[cfg_attr(not(test), allow(dead_code))]
-pub(in crate::game) struct ViewedEntity {
-    pub(in crate::game) uuid: u128,
+pub struct ViewedEntity {
+    pub uuid: u128,
     /// Its type's id in the `minecraft:entity_type` registry.
-    pub(in crate::game) kind: i32,
+    pub kind: i32,
     /// `AddEntity`'s data field (a falling block's state, a projectile's owner...).
-    pub(in crate::game) data: i32,
-    pub(in crate::game) position: [f64; 3],
+    pub data: i32,
+    pub position: [f64; 3],
     /// Where the next relative move counts from (`VecDeltaCodec.base`).
     base: [f64; 3],
     /// Yaw, pitch and head yaw, in degrees.
-    pub(in crate::game) rotation: (f32, f32, f32),
-    pub(in crate::game) on_ground: bool,
+    pub rotation: (f32, f32, f32),
+    pub on_ground: bool,
     pub(in crate::game) velocity: [f64; 3],
     /// Its synched data, by index: serializer and value.
     pub(in crate::game) values: FxHashMap<u8, (i32, Value)>,
@@ -50,13 +50,13 @@ pub(in crate::game) struct ViewedEntity {
 
 /// A viewed world's entities, by id.
 #[derive(Default)]
-pub(in crate::game) struct ViewedEntities {
+pub struct ViewedEntities {
     entities: FxHashMap<i32, ViewedEntity>,
 }
 
 impl ViewedEntities {
     /// Entity `id`, if the world holds it: where a sound bound to it is heard (`sounds`).
-    pub(in crate::game::client_side) fn get(&self, id: i32) -> Option<&ViewedEntity> {
+    pub fn get(&self, id: i32) -> Option<&ViewedEntity> {
         self.entities.get(&id)
     }
     #[cfg(test)]
