@@ -2338,7 +2338,7 @@ impl crate::game::ClientGame<'_> {
                         let mut progress =
                             g.client.hand_strength.scale(0.0, g.main_hand_attack_speed());
                         g.native_hotbar_attack_indicator_progress(
-                            native_hooks::HotbarAttackIndicatorProgressCall {
+                            crate::game::native_hooks::HotbarAttackIndicatorProgressCall {
                                 progress: &mut progress,
                             },
                         );
