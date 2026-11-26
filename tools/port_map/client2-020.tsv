@@ -1,4 +1,4 @@
-WorldSelectionList.pollLevelsIgnoreErrors	inline	crates/sunrise-client/src/save/worlds.rs::list_worlds	the list is read at once, so there is no pending state; a world whose level.dat fails to read is skipped; the upload filter is Realms only, not ported
+WorldSelectionList.pollLevelsIgnoreErrors	inline	crates/sunrise-client/src/save/worlds.rs::list_worlds	the list is read at once, so there is no pending state; a candidate with a missing or unreadable level.dat stays listed as corrupted; the upload filter is Realms only, not ported
 WorldSelectionList.extractWidgetRenderState	inline	crates/sunrise-client/src/title/draw.rs::Title::draw_with_items	the list comes from recent_worlds, re-read at most every 2 seconds, not on every frame
 WorldSelectionList.handleNewLevels	inline	crates/sunrise-client/src/title.rs::Title::enter_singleplayer	no worlds opens the new-world screen; otherwise the list is Mode::Select; the Realms upload empty entry is skipped
 WorldSelectionList.updateFilter	inline	crates/sunrise-client/src/title.rs::Title::visible_worlds	the search text is applied at each draw; there is no refill step

@@ -31,7 +31,7 @@ pub struct WorldEntry {
 }
 impl WorldEntry {
     /// `LevelSummary.isCompatible`: the saved series is this build's.
-    pub(crate) fn compatible(&self) -> bool {
+    fn compatible(&self) -> bool {
         self.incompatible.is_none()
     }
     /// `LevelSummary.isDisabled`.

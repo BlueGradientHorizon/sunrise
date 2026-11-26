@@ -24,7 +24,7 @@ DerivedLevelData	skip:debug		crash report category
 LevelData	skip:debug		crash report category
 LevelStorageSource.createAccess	port	crates/sunrise-client/src/save/session.rs::SessionLock::acquire	gap: minor: takes the folder's session lock; there is no separate access object
 LevelStorageSource.createDefault	skip:java		factory for the source with its symlink validator
-LevelStorageSource.findLevelCandidates	inline	crates/sunrise-client/src/save/worlds.rs::list_worlds	folders with a readable level.dat
+LevelStorageSource.findLevelCandidates	inline	crates/sunrise-client/src/save/worlds.rs::list_worlds	folders with a regular level.dat or level.dat_old, whether or not the data can be read
 LevelStorageSource.getFileModificationTime	inline	crates/sunrise-client/src/save/worlds.rs::list_worlds	level.dat mtime, used when LastPlayed is absent
 LevelStorageSource.getLevelDataAndDimensions	port	crates/sunrise-client/src/save/level.rs::Level::read	gap: minor: reads level.dat; dimension and world-gen registry setup happen elsewhere
 LevelStorageSource.isNewLevelIdAcceptable	port	crates/sunrise-client/src/title.rs::Title::target_folder	gap: minor: sanitises the name and picks a free folder instead of rejecting it
