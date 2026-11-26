@@ -819,10 +819,9 @@ def outcome(name, script, passed, elapsed, trace_path, hasher=None):
     """The record of a finished harness, from its trace. With a hasher, also the content hash of each dependency."""
     record = {"status": "pass" if passed else "fail", "seconds": round(elapsed, 1),
               "finished": time.strftime("%Y-%m-%dT%H:%M:%S"), "host": HOST}
-    try:
-        trace = json.loads(Path(trace_path).read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        trace = None  # killed before writing it, or the disk was full: the pass can't be keyed
+    # No trace file: the harness was killed before writing it, so the pass can't be keyed. A trace that exists is
+    # written whole (trace_main), so one that cannot be read or parsed is an error.
+    trace = json.loads(Path(trace_path).read_text(encoding="utf-8")) if Path(trace_path).is_file() else None
     if trace:
         record["dependencies"], record["artifacts"] = dependencies(trace, harness_settings(script).get("PARITY_RUST_SCOPE"))
         if "peak_bytes" in trace:
@@ -1399,7 +1398,9 @@ def trace_main(output, script, arguments):
             peak = max(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss, resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss)
             peak //= 1024 if sys.platform == "darwin" else 1  # bytes on macOS, KiB elsewhere
             trace["peak_bytes"] = peak * 1024
-        Path(output).write_text(json.dumps(trace))
+        temporary = Path(f"{output}.{os.getpid()}.tmp")
+        temporary.write_text(json.dumps(trace))
+        temporary.replace(output)
 
     atexit.register(write)
     sys.addaudithook(audit)
@@ -1557,10 +1558,7 @@ def affected_harnesses(found, records, changed, reach=True, base=None):
     # Parses are keyed by content, so every worktree sharing the vanilla data shares them.
     cache_path = (SHARED if SHARED.is_dir() else STATE_DIR) / "reach-cache.json"
     if reach and any(path.startswith("crates/") for path in changed):
-        try:
-            cache = json.loads(cache_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            cache = {}
+        cache = json.loads(cache_path.read_text(encoding="utf-8")) if cache_path.is_file() else {}
         graph = parity_reach.SourceGraph(ROOT, rust_code, cache)
         # A changed file that differs in more than its `mod` declarations counts as soon as a harness reaches it,
         # so the search for that harness can stop there.
@@ -1647,7 +1645,7 @@ def share_of(path, found, parser):
     plan and the tree disagree, which is refused rather than silently run as something else."""
     try:
         names = json.loads(Path(path).read_text(encoding="utf-8"))
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError) as error:  # the command line's boundary: a share file the plan job did not write ends the run with a usage error
         parser.error(f"--harness-file: {path}: {error}")
     if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
         parser.error(f"--harness-file: {path} is not a JSON list of harness names")
