@@ -308,8 +308,6 @@ impl MotionWorld<'_, '_, '_> {
         }
         Ok(keys)
     }
-    /// The `#[replaceable]` wrapper lives in `motion.rs`; its key is the module
-    /// that holds the `impl`.
     pub(super) fn finish_local_tick_body(&mut self, keys: crate::sprint::Keys) -> Result<()> {
         self.player.shift_key_down = keys.shift;
         let direction = keys.direction();

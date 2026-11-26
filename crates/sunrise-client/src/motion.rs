@@ -1392,10 +1392,6 @@ impl RestitutionWorld for MotionWorld<'_, '_, '_> {
         Ok(())
     }
 }
-// `#[replaceable]` targets are keyed by the module holding the `impl`, so these
-// two wrappers stay here even though their bodies moved to `integrate`. Moving
-// them would rename every native mod's target and the `fn-replace-check` entry
-// in `tools/ci/fn-replace-check/lower/sunrise-mod.toml`.
 impl MotionWorld<'_, '_, '_> {
     /// Finish the live client tick with the fluid and sprint decisions already applied.
     #[sunrise_mod_api_macros::replaceable]
