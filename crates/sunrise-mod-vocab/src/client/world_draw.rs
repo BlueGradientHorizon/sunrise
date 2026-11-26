@@ -141,8 +141,10 @@ pub struct NameTagOptions {
     /// The world size of one text pixel: the label is drawn under `PoseStack.scale(scale,
     /// -scale, scale)` where a name tag uses `0.025` ([`NameTagOptions::NAME_TAG_SCALE`]), so
     /// `0.05` draws text twice a name tag's size and `0.0125` half. The label still sits 0.5
-    /// above `at`, as a name tag sits above its entity. A scale that is not finite, or is zero
-    /// or negative, refuses the label with [`DrawError::InvalidScale`].
+    /// above `at`, as a name tag sits above its entity, and the backdrop's gap behind the text
+    /// scales with the text. A scale that is not finite, or is zero or negative, refuses the
+    /// label with [`DrawError::InvalidScale`]; one so large the text's positions overflow f32,
+    /// with [`DrawError::NonFinite`].
     pub scale: f32,
 }
 impl Default for NameTagOptions {
@@ -151,14 +153,31 @@ impl Default for NameTagOptions {
     }
 }
 // The scale is compared by its bits, so the options stay `Eq` as before the field existed.
+// Both sides are destructured whole, so a field added later must be compared here too.
 impl PartialEq for NameTagOptions {
     fn eq(&self, other: &Self) -> bool {
-        self.see_through == other.see_through
-            && self.background == other.background
-            && self.light == other.light
-            && self.faded_alpha == other.faded_alpha
-            && self.exact_light == other.exact_light
-            && self.scale.to_bits() == other.scale.to_bits()
+        let Self {
+            see_through,
+            background,
+            light,
+            faded_alpha,
+            exact_light,
+            scale,
+        } = *self;
+        let Self {
+            see_through: other_see_through,
+            background: other_background,
+            light: other_light,
+            faded_alpha: other_faded_alpha,
+            exact_light: other_exact_light,
+            scale: other_scale,
+        } = *other;
+        see_through == other_see_through
+            && background == other_background
+            && light == other_light
+            && faded_alpha == other_faded_alpha
+            && exact_light == other_exact_light
+            && scale.to_bits() == other_scale.to_bits()
     }
 }
 impl Eq for NameTagOptions {}

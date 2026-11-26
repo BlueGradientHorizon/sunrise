@@ -321,13 +321,17 @@ impl ClientGame<'_> {
             .extend_from_slice(see_through);
     }
     /// A mod's label as `SubmitNodeCollection.submitNameTag` draws a name: 0.5 above `at`,
-    /// facing the camera, 0.025 blocks a font pixel. See-through, twice: opaque white text in
-    /// the world, its light raised to at least 2 unless `exact_light` (no backdrop), and the
-    /// faded text on the backdrop over everything, unlit. Otherwise once, depth tested and
+    /// facing the camera, `options.scale` blocks a font pixel (a name tag's 0.025 by default).
+    /// See-through, twice: opaque white text in the world, its light raised to at least 2
+    /// unless `exact_light` (no backdrop), and the faded text on the backdrop over everything,
+    /// unlit. Otherwise once, depth tested and
     /// translucent: the faded text on the backdrop in the caller's light. The faded text's alpha
     /// (unless `faded_alpha`) and the backdrop's follow the player's text background opacity.
-    /// Refused whole, before layout, for a position that is not finite; any newly
-    /// rasterized glyphs are uploaded with the label.
+    /// Refused whole, before layout, for a position that is not finite
+    /// ([`DrawError::NonFinite`]) or a scale that is not finite and positive
+    /// ([`DrawError::InvalidScale`]); after layout, for a finite scale whose text positions
+    /// overflow f32 ([`DrawError::NonFinite`]). Any newly rasterized glyphs are uploaded with
+    /// the label, and also when it is refused after layout, as the atlas already holds them.
     pub(in crate::game) fn native_world_name_tag(
         &self,
         draw: &mut WorldGeometry,
@@ -375,6 +379,13 @@ impl ClientGame<'_> {
             let lit = sunrise_client::block_entity_render::vertex_light(light);
             quads(faded, backdrop, 0, lit, &mut world)
         };
+        // A finite scale can still overflow the camera-relative positions (f32::MAX): refused
+        // as any draw whose coordinates overflow f32, with nothing drawn.
+        let finite = |v: &Vertex| v.pos.iter().all(|c| c.is_finite());
+        if !world.iter().chain(&see_through).all(finite) {
+            self.client.text_patches.borrow_mut().append(&mut patches);
+            return Err(DrawError::NonFinite);
+        }
         draw.label(from_camera.length_squared(), &world, &see_through);
         self.client.text_patches.borrow_mut().append(&mut patches);
         Ok(())

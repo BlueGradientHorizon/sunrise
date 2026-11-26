@@ -713,15 +713,18 @@ pub trait WorldDrawContext {
     }
     /// A label at world position `at`, drawn as vanilla draws a name tag
     /// (`SubmitNodeCollection.submitNameTag`): 0.5 blocks above `at`, facing the camera,
-    /// 0.025 blocks per font pixel (so it shrinks with distance; scale by distance yourself
-    /// for a constant screen size), centred, in `text`'s styles. Without
+    /// [`NameTagOptions::scale`] blocks per font pixel, a name tag's 0.025 unless
+    /// [`NameTagOptions::with_scale`] sets another (so it shrinks with distance; scale by
+    /// distance yourself for a constant screen size), centred, in `text`'s styles. Without
     /// [`NameTagOptions::see_through`] it is drawn once, as a sneaking name: depth tested and
     /// translucent, the faded text on the backdrop, in [`NameTagOptions::light`] as given. With
     /// it, twice, as an unsneaking name: opaque in the world (sky and block light each at least
     /// 2, or exactly [`NameTagOptions::light`] with [`NameTagOptions::exact_light`]), and
     /// faded on the backdrop over everything, walls included, unlit. Labels draw with the
     /// world's name tags, far to near, whatever the stage.
-    /// Refuses a non-finite `at` ([`DrawError::NonFinite`]); on `Err` nothing is drawn.
+    /// Refuses a non-finite `at`, or text positions that overflow f32 at a huge scale
+    /// ([`DrawError::NonFinite`]), and a scale that is not finite, or is zero or negative
+    /// ([`DrawError::InvalidScale`]); on `Err` nothing is drawn.
     /// Only visible text and styles are used, not click, hover or opaque metadata.
     fn name_tag(
         &mut self,
