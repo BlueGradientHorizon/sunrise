@@ -7,10 +7,7 @@ pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// The complete batch is validated atomically; any invalid declaration
     /// refuses the generation. Multiple categories may share a recipe type.
     /// This does not yet add tabs or book displays.
-     fn native_recipe_book_categories(
-        &mut self,
-        categories: &mut Vec<RecipeBookCategory>,
-    ) {
+    fn native_recipe_book_categories(&mut self, categories: &mut Vec<RecipeBookCategory>) {
         crate::game::native_hooks::fire::FireHooks::fire_recipe_book_categories(self, categories);
     }
 }

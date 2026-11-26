@@ -130,7 +130,10 @@ impl ServerGame<'_> {
     /// `Player.canInteractWithEntity(box, 3.0)` as the server checks an
     /// attack packet: the projectile's box within the reach plus 3 of the eyes.
     pub(in crate::game::server_side) fn within_interaction_range(&self, i: usize) -> bool {
-        let (Some(eye), Some(p)) = (self.common.eye_position(), self.common.creatures.projectiles.get(i)) else {
+        let (Some(eye), Some(p)) = (
+            self.common.eye_position(),
+            self.common.creatures.projectiles.get(i),
+        ) else {
             return false;
         };
         let b = p.bounds();
@@ -173,7 +176,8 @@ impl ServerGame<'_> {
     pub(in crate::game::server_side) fn turn_projectile(&mut self, i: usize) -> bool {
         let (pitch, yaw) = (self.common.pitch, self.common.yaw);
         let (guest, owner_uuid) = (self.server.lan_acting, Some(self.acting_player_uuid()));
-        self.common.creatures
+        self.common
+            .creatures
             .projectiles
             .update(i, |p| attack_deflect(p, pitch, yaw, owner_uuid, guest))
     }
@@ -213,7 +217,8 @@ impl ServerGame<'_> {
         let turned = self.turn_projectile(i);
         self.swing_arm();
         let from = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z]);
         if let Some(at) = from {
@@ -242,8 +247,8 @@ impl ServerGame<'_> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-    use sunrise_gameplay_common::game::deflect_common::{PICK_RADIUS, attackable, redirectable};
     use sunrise_core::geometry::Aabb;
+    use sunrise_gameplay_common::game::deflect_common::{PICK_RADIUS, attackable, redirectable};
 
     /// `Projectile.getPickRadius`: `isPickable() ? 1.0F : 0.0F` (`ShulkerBullet` inherits this).
     fn pick_radius(p: &Projectile) -> f64 {

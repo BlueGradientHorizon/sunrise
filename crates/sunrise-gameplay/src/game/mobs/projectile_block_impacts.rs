@@ -1,7 +1,7 @@
 //! Block callbacks shared by thrown projectiles and fishing bobbers.
-use sunrise_gameplay_common::game::creatures::ProjectileHitter;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::creatures::ProjectileHitter;
 use sunrise_sim::mobs::Who;
 
 impl crate::game::ServerGame<'_> {

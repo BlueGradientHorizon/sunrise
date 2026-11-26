@@ -45,7 +45,9 @@ impl ClientGame<'_> {
 
     /// Whether the local player can move itself rather than being held in place.
     pub(in crate::game::client_side) fn can_move_local_player(&self) -> bool {
-        self.common.riding.is_none() && self.common.sleeping.is_none() && self.client.screen != super::Screen::Dead
+        self.common.riding.is_none()
+            && self.common.sleeping.is_none()
+            && self.client.screen != super::Screen::Dead
     }
 
     pub(in crate::game) fn player_reset_fall_distance(

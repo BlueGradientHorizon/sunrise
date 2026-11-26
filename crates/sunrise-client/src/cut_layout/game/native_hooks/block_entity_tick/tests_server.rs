@@ -1,13 +1,13 @@
-use sunrise_gameplay_common::game::TryIntoApi;
-use mod_api::BlockEntityScope;
-use sunrise_level::containers::BlockEntity;
 use super::tick_tests::*;
 use super::*;
-use sunrise_gameplay_common::game::Dim;
-use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
+use mod_api::BlockEntityScope;
 use mod_api::BlockUpdateFlags;
 use std::sync::Arc;
+use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
+use sunrise_gameplay_common::game::Dim;
+use sunrise_gameplay_common::game::TryIntoApi;
 use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
 use sunrise_level::containers::ModContainer;
 
 #[test]

@@ -1,8 +1,8 @@
 //! A remote catalogue supplies recipe membership, never the client's local recipe JSON.
 use super::*;
-use sunrise_gameplay_common::game::native_book_displays::Resources;
 use std::collections::{BTreeMap, BTreeSet};
 use std::result::Result;
+use sunrise_gameplay_common::game::native_book_displays::Resources;
 use sunrise_sim::recipe_book::{DisplayResources, ModBookIndex, placement_sync as sync};
 struct RemoteResources<'a, 'w> {
     inner: Resources<'a, 'w, crate::game::ClientGame<'w>>,
@@ -108,10 +108,13 @@ impl crate::game::ClientGame<'_> {
                 let expected = mod_api::RecipeBookLayout::registered(identity.menu.as_str())
                     .map(|(_, _, layout)| layout);
                 let matches = expected.as_ref() == Some(&layout)
-                    && Resources(self, std::marker::PhantomData).menu_layout(identity.menu.as_str()) == Some(storage);
+                    && Resources(self, std::marker::PhantomData)
+                        .menu_layout(identity.menu.as_str())
+                        == Some(storage);
                 let epoch = identity.epoch;
                 let started = self
-                    .common.native_net
+                    .common
+                    .native_net
                     .placement
                     .client
                     .start(identity, layout, total);
@@ -136,7 +139,8 @@ impl crate::game::ClientGame<'_> {
                     return;
                 }
                 let Ok(Some(data)) = self
-                    .common.native_net
+                    .common
+                    .native_net
                     .placement
                     .client
                     .part(epoch, number, offset, bytes)
@@ -146,7 +150,8 @@ impl crate::game::ClientGame<'_> {
                 match self.load_remote_mod_book_catalogue(&data) {
                     Ok(index) => {
                         if self
-                            .common.native_net
+                            .common
+                            .native_net
                             .placement
                             .client
                             .accept_catalog(data.identity.clone())
@@ -175,8 +180,12 @@ impl crate::game::ClientGame<'_> {
             sync::Frame::Reply { selection, outcome } => {
                 if self.native_book_placement_window().as_ref()
                     == self.common.native_net.placement.client.window()
-                    && let Some(outcome) =
-                        self.common.native_net.placement.client.reply(&selection, outcome)
+                    && let Some(outcome) = self
+                        .common
+                        .native_net
+                        .placement
+                        .client
+                        .reply(&selection, outcome)
                 {
                     self.common.native_net.placement.deadline = None;
                     match outcome {
@@ -201,7 +210,8 @@ impl crate::game::ClientGame<'_> {
                 reason,
             } => {
                 if self
-                    .common.native_net
+                    .common
+                    .native_net
                     .placement
                     .client
                     .refused(epoch, number, window, nonce)

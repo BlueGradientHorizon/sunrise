@@ -1,7 +1,7 @@
 //! Client item-model lighting queries.
 use super::*;
-use sunrise_gameplay_common::game::api_values::engine_display_context;
 use sunrise_client::cit::Hand as CitHand;
+use sunrise_gameplay_common::game::api_values::engine_display_context;
 
 impl crate::game::ClientGame<'_> {
     /// `ItemStackRenderState.usesBlockLight` of `stack` resolved for `context`.

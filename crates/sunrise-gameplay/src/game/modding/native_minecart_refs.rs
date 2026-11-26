@@ -203,7 +203,8 @@ impl crate::game::ServerGame<'_> {
         };
         if self.common.carts[index].kind != CartKind::Tnt
             || !self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
         {

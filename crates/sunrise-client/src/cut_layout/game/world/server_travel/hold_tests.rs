@@ -1,11 +1,11 @@
 //! A `tp` inside a level to chunks not lit yet holds the player (their client's moves are ignored,
 //! `Guest::landing`) until the chunks are lit; however the hold ends, the moves are heard again (#15727).
-use {sunrise_gameplay::game::lan::LanHost, sunrise_gameplay::game::lan::LanSettings};
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_core::geometry::Vec3;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
+use {sunrise_gameplay::game::lan::LanHost, sunrise_gameplay::game::lan::LanSettings};
 
 const CONN: u32 = 7;
 const FAR: f64 = 96_000.5;
@@ -496,10 +496,15 @@ fn a_world_spawn_search_keeps_movement_held_between_candidate_chunks() {
         // with only four of its rows lit when the player requests a respawn.
         let spawn = [16, 100, 16];
         game.level.world_spawn = Some(spawn);
-        game.server.lan.as_mut().unwrap().hub.update_guest(CONN, |g| {
-            g.dead = true;
-            g.health = 0.0;
-        });
+        game.server
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .update_guest(CONN, |g| {
+                g.dead = true;
+                g.health = 0.0;
+            });
         game.guest_respawn(CONN);
         // A deterministic search starts at (-48, -48), outside the newly lit square.
         // This is the search state an arrival pass keeps when a candidate is missing.

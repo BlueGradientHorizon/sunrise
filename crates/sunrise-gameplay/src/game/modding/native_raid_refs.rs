@@ -171,11 +171,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The living raiders of one wave (`groupRaiderMap.get(wave)`).
-    pub fn raid_wave_raiders(
-        &self,
-        raid: RaidRef,
-        wave: i32,
-    ) -> Option<Vec<EntityRef>> {
+    pub fn raid_wave_raiders(&self, raid: RaidRef, wave: i32) -> Option<Vec<EntityRef>> {
         Some(
             self.native_raid_members(raid)?
                 .filter(|m| sunrise_sim::mobs::raider::state(m).is_some_and(|s| s.wave == wave))

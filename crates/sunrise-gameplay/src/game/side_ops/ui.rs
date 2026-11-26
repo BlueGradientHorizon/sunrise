@@ -1,4 +1,3 @@
-
 #[allow(unused_variables)]
 impl SideOps for crate::game::server_side::ServerState {
     type Game<'g> = crate::game::ServerGame<'g>;
@@ -16,6 +15,6 @@ impl SideOps for crate::game::server_side::ServerState {
         game.server_level_min_y()
     }
 }
-use sunrise_gameplay_common::game::side_ops::ui::SideOps;
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::game::side_ops::ui::SideOps;
 use sunrise_sim::entities::ItemSplash;

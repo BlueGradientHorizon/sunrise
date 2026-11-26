@@ -37,16 +37,14 @@ pub(in crate::game) fn record(
     true
 }
 
-pub(in crate::game) fn finish(
-    game: &mut crate::game::ServerGame<'_>,
-    mut steps: Steps,
-) {
+pub(in crate::game) fn finish(game: &mut crate::game::ServerGame<'_>, mut steps: Steps) {
     if steps.enabled {
         {
             let live = &mut game.common.native_lifecycle.entity_sections.projectile_live;
             live.clear();
             live.extend(
-                game.common.creatures
+                game.common
+                    .creatures
                     .projectiles
                     .iter()
                     .map(|projectile| projectile.id),
@@ -71,10 +69,7 @@ pub(in crate::game) fn finish(
     game.native_lifecycle.entity_sections.projectile_ids = steps.seen;
 }
 
-pub(in crate::game) fn teleport_player(
-    game: &mut crate::game::ServerGame<'_>,
-    to: Vec3,
-) {
+pub(in crate::game) fn teleport_player(game: &mut crate::game::ServerGame<'_>, to: Vec3) {
     game.stop_riding();
     let from = game.player.as_ref().map(|player| player.position);
     if let Some(player) = game.player.as_mut() {

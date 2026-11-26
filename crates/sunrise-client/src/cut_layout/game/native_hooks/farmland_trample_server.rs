@@ -1,10 +1,7 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use crate::game::native_hooks::farmland_trample::tests::Choice;
     use crate::game::native_hooks::farmland_trample::tests::FIELD;
     use crate::game::native_hooks::farmland_trample::tests::Gardener;
@@ -13,9 +10,10 @@ pub(crate) mod tests {
     use crate::game::native_hooks::farmland_trample::tests::Trace;
     use mod_api::*;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game_side;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
-    use sunrise_gameplay_common::game_side;
 
     #[test]
     #[ignore = "daily"]
@@ -39,8 +37,11 @@ pub(crate) mod tests {
                     || {
                         with_game(|game| {
                             game.options.dedicated = Some(Vec::new());
-                            let (common, server) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
-                            server.streaming.insert_remote(&mut common.world, Chunk::empty(0, 0));
+                            let (common, server) =
+                                sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
+                            server
+                                .streaming
+                                .insert_remote(&mut common.world, Chunk::empty(0, 0));
                             let registry = game.pack.assets.registry;
                             let farmland = registry.default_state("minecraft:farmland").unwrap();
                             let [x, y, z] = FIELD;
@@ -53,7 +54,9 @@ pub(crate) mod tests {
                                     &game.world,
                                     registry,
                                     &mut lent,
-                                    Some(sunrise_gameplay_common::game::tables::GameItems::items(&*game)),
+                                    Some(sunrise_gameplay_common::game::tables::GameItems::items(
+                                        &*game,
+                                    )),
                                     Some(&game.pack.block_registries),
                                     &game.damage_hooks,
                                 );
@@ -109,7 +112,10 @@ pub(crate) mod tests {
                                 game.common.level.enabled_features.as_arc(),
                                 session_lock.then(|| game.common.res.items())
                             );
-                            let items = match (&game.common.server_items, game.server.world_tables.0.as_ref()) {
+                            let items = match (
+                                &game.common.server_items,
+                                game.server.world_tables.0.as_ref(),
+                            ) {
                                 (Some(items), _) => &**items,
                                 (None, Some(tables)) => &tables.items,
                                 (None, None) => game.common.res.items(),

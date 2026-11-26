@@ -47,7 +47,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_world::registry::BlockStateId;
 
 #[allow(unused_imports)]
-pub use {sunrise_gameplay_common::game::commands_common::*};
+pub use sunrise_gameplay_common::game::commands_common::*;
 
 macro_rules! target_entity_mut {
     ($game:expr, $target:expr, $e:ident => $body:expr) => {{
@@ -67,7 +67,9 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn syntax_failure(&mut self, e: &CommandError, command: &str) {
         self.command_failure(e.message.clone());
         if let Some(context) =
-            sunrise_gameplay_common::game::commands_common::format_syntax_failure_context(e, command)
+            sunrise_gameplay_common::game::commands_common::format_syntax_failure_context(
+                e, command,
+            )
         {
             self.command_failure(context);
         }
@@ -281,11 +283,7 @@ impl crate::game::ServerGame<'_> {
     /// (the entity ids are unique across the loaded levels) and put the
     /// level back afterwards. `f` does not run when no level holds the
     /// entity.
-    pub fn in_target_level<R>(
-        &mut self,
-        t: Target,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> Option<R> {
+    pub fn in_target_level<R>(&mut self, t: Target, f: impl FnOnce(&mut Self) -> R) -> Option<R> {
         let dim = self.resident_target_dimension(t)?;
         if dim == self.common.dim {
             return Some(f(self));
@@ -379,7 +377,8 @@ impl crate::game::ServerGame<'_> {
             let own = self.source_entity() == Some(t);
             let told = !own
                 && self
-                    .common.ui
+                    .common
+                    .ui
                     .rules
                     .bool_at(sunrise_game_data::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
             let changed = self.for_player(t, |g| {
@@ -598,7 +597,13 @@ impl crate::game::ServerGame<'_> {
                 }
             }
             Target::Projectile(id) => {
-                if let Some(i) = self.common.creatures.projectiles.iter().position(|a| a.id == id) {
+                if let Some(i) = self
+                    .common
+                    .creatures
+                    .projectiles
+                    .iter()
+                    .position(|a| a.id == id)
+                {
                     self.common.creatures.projectiles.update(i, |a| {
                         a.position = v;
                         a.previous = v;
@@ -819,7 +824,12 @@ impl crate::game::ServerGame<'_> {
             Some(Arg::Resource(c)) => c.clone(),
             _ => match self.dimension_type().default_clock.clone() {
                 Some(clock) => clock,
-                None => return Err(err("commands.time.no_default_clock", &[&self.common.dim.id()])),
+                None => {
+                    return Err(err(
+                        "commands.time.no_default_clock",
+                        &[&self.common.dim.id()],
+                    ));
+                }
             },
         };
         let total = self.common.command_clock_time(&clock);
@@ -1044,7 +1054,8 @@ impl crate::game::ServerGame<'_> {
             name: b.id.clone(),
             properties: b.properties.iter().cloned().collect(),
         };
-        self.common.pack
+        self.common
+            .pack
             .assets
             .registry
             .resolve(&state)
@@ -1073,7 +1084,10 @@ impl crate::game::ServerGame<'_> {
     ) -> bool {
         block_input_matches(
             self.common.pack.assets.registry,
-            [&self.common.res.items().block_tags, &self.items().block_tags],
+            [
+                &self.common.res.items().block_tags,
+                &self.items().block_tags,
+            ],
             b,
             state,
         )
@@ -1167,7 +1181,8 @@ impl crate::game::ServerGame<'_> {
         // LevelChunk.setBlockState creates it when the block, not the state, is still
         // there after onPlace: a powered hopper turns itself `enabled=false`.
         let landed = self.common.world.block(pos[0], pos[1], pos[2]);
-        let needs_entity = !self.common.world.block_entities.stateful_entity(landed.0) && old != new;
+        let needs_entity =
+            !self.common.world.block_entities.stateful_entity(landed.0) && old != new;
         if needs_entity
             && self.common.res.facts().get(landed).name == new
             && !self.sculk_place_entity(landed)
@@ -1334,7 +1349,12 @@ impl crate::game::ServerGame<'_> {
                 }
             }
         }
-        if !self.common.world.chunks.contains_key(&(p[0] >> 4, p[2] >> 4)) {
+        if !self
+            .common
+            .world
+            .chunks
+            .contains_key(&(p[0] >> 4, p[2] >> 4))
+        {
             return Err(err("argument.pos.unloaded", &[]));
         }
         if p[1] < self.common.world.shape.min_y || p[1] >= self.common.world.shape.max_y() {
@@ -1709,7 +1729,8 @@ impl crate::game::ServerGame<'_> {
         if predicate.tag {
             let tag = predicate.id.trim_start_matches("minecraft:");
             return self
-                .common.res
+                .common
+                .res
                 .items()
                 .item_tags
                 .get(tag)
@@ -2053,7 +2074,8 @@ impl crate::game::ServerGame<'_> {
                 max_y: self.common.world.top_y() - 1,
             };
             let found = self
-                .common.end
+                .common
+                .end
                 .locator()
                 .and_then(|t| t.find_closest_biome(&search));
             let Some((name, p)) = found else {
@@ -2088,7 +2110,11 @@ impl crate::game::ServerGame<'_> {
         };
         let names = self.structure_names(&s);
         let from = origin.map(|v| v.floor() as i32);
-        let found = self.common.end.locator().and_then(|t| t.locate(&names, from, 100));
+        let found = self
+            .common
+            .end
+            .locator()
+            .and_then(|t| t.locate(&names, from, 100));
         let Some((name, p)) = found else {
             return Err(CommandError::new(Text::tr(
                 "commands.locate.structure.not_found",
@@ -2369,7 +2395,10 @@ pub(in crate::game) mod forced_respawn_tests {
 
         mod_platform::testing::with_mods(Vec::new().into(), || {
             with_guests(|game| {
-                use sunrise_gameplay_common::game::{chat_common::ChatCommonGameExt1 as _, commands_common::CommandsCommonGameExt2 as _};
+                use sunrise_gameplay_common::game::{
+                    chat_common::ChatCommonGameExt1 as _,
+                    commands_common::CommandsCommonGameExt2 as _,
+                };
                 game.build_registries();
                 for x in -2..=2 {
                     for z in -2..=2 {
@@ -2442,7 +2471,6 @@ pub(in crate::game) mod forced_respawn_tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
-
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

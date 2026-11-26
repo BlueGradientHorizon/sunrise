@@ -2,13 +2,13 @@
 //! item carrying the `death_protection` component, whatever item it is, and
 //! entity event 35 on the client).
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::totem_common::TOTEM;
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{
     block_entity_render::vertex_light,
     mesher::Vertex,
     particles::{TrackingBody, TrackingTarget},
 };
+use sunrise_gameplay_common::game::totem_common::TOTEM;
 use sunrise_items::items::ItemStack;
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
@@ -111,10 +111,10 @@ impl ClientGame<'_> {
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod death_protection_tests {
-    use sunrise_gameplay_common::game::totem_common::death_protection_of;
     use serde_json::json;
     use sunrise_assets::item_model::ItemModels;
     use sunrise_core::nbt::Tag;
+    use sunrise_gameplay_common::game::totem_common::death_protection_of;
     use sunrise_items::items::ItemStack;
 
     /// The lookup gives what the stack's whole component map gives, for

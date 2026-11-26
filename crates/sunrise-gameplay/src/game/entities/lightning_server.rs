@@ -5,12 +5,12 @@ use super::{
     },
     minecarts_server::CartHit,
 };
-use sunrise_gameplay_common::game::lightning_common::{Bolt, StrikeState};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
+use sunrise_gameplay_common::game::lightning_common::{Bolt, StrikeState};
 use sunrise_sim::advancements::EntityView;
 use sunrise_sim::mobs::{Damage, DamageKind, Species};
 use sunrise_world::level::Ticks;
@@ -81,7 +81,10 @@ impl crate::game::ServerGame<'_> {
                         if d > i64::from(RANGE * RANGE) || best.is_some_and(|(b, _)| d >= b) {
                             continue;
                         }
-                        let surface = self.common.world.world_surface(p[0], p[2], |s| facts.is_air(s));
+                        let surface = self
+                            .common
+                            .world
+                            .world_surface(p[0], p[2], |s| facts.is_air(s));
                         if p[1] == surface - 1 {
                             best = Some((d, p));
                         }
@@ -105,7 +108,8 @@ impl crate::game::ServerGame<'_> {
         }
         let sees_sky = |g: &Self, p: [i32; 3]| g.world.light(p[0], p[1], p[2]) >> 4 == 15;
         let mut candidates: Vec<[i32; 3]> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter(|m| m.alive())
             .map(|m| {
@@ -119,7 +123,8 @@ impl crate::game::ServerGame<'_> {
             .filter(|p| sees_sky(self, *p))
             .collect();
         if let Some(p) = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .filter(|p| !p.health.dead_or_dying())
             .map(|p| {
@@ -138,7 +143,8 @@ impl crate::game::ServerGame<'_> {
         }
         if !candidates.is_empty() {
             let i = self
-                .common.world
+                .common
+                .world
                 .random
                 .next_int_bound(candidates.len() as i32)
                 .unwrap_or(0) as usize;
@@ -169,7 +175,8 @@ impl crate::game::ServerGame<'_> {
         self.common.bolts.retain(|b| b.id != id);
         if self.common.bolts.len() != before {
             if let Some(uuid) = uuid {
-                self.common.score
+                self.common
+                    .score
                     .board
                     .entity_removed(&sunrise_sim::save::uuid_text(uuid));
             }
@@ -259,7 +266,8 @@ impl crate::game::ServerGame<'_> {
         if let Some(target) = self.level_entity(vehicle as i32) {
             return self.target_position(target);
         }
-        self.common.player
+        self.common
+            .player
             .as_ref()
             .filter(|p| p.entity_id as u32 == vehicle)
             .map(|p| [p.position.x, p.position.y, p.position.z])
@@ -269,7 +277,12 @@ impl crate::game::ServerGame<'_> {
             let p = seat.passenger_position(0.0);
             return Some([p.x, p.y, p.z]);
         }
-        if let Some(mob) = self.common.mobs.iter().find(|m| m.id == vehicle && !m.removed) {
+        if let Some(mob) = self
+            .common
+            .mobs
+            .iter()
+            .find(|m| m.id == vehicle && !m.removed)
+        {
             let y = mob.position.y + f64::from(mob.height());
             return Some([mob.position.x, y, mob.position.z]);
         }
@@ -349,7 +362,8 @@ impl crate::game::ServerGame<'_> {
             let mount_gone = mount.is_some_and(|vehicle| {
                 self.level_entity(vehicle as i32).is_none()
                     && !self
-                        .common.player
+                        .common
+                        .player
                         .as_ref()
                         .is_some_and(|p| p.entity_id as u32 == vehicle)
             });
@@ -458,7 +472,8 @@ impl crate::game::ServerGame<'_> {
                     continue;
                 };
                 let (mut strike, cause) = self
-                    .common.bolts
+                    .common
+                    .bolts
                     .update(i, |b| (std::mem::take(&mut b.strike), b.cause));
                 let struck = self.thunder_hit_state(id, at, &mut strike);
                 if let Some(i) = self.common.bolts.iter().position(|b| b.id == id) {
@@ -487,7 +502,14 @@ impl crate::game::ServerGame<'_> {
             at[2].floor() as i32,
         ];
         let state = self.common.world.block(p[0], p[1], p[2]);
-        if !self.common.res.facts().get(state).name.ends_with("lightning_rod") {
+        if !self
+            .common
+            .res
+            .facts()
+            .get(state)
+            .name
+            .ends_with("lightning_rod")
+        {
             return;
         }
         let registry = self.common.pack.assets.registry;
@@ -545,7 +567,8 @@ impl crate::game::ServerGame<'_> {
             ..Default::default()
         };
         let viewers: Vec<EntityView> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter(|m| m.alive() && !hit.contains(&m.id))
             .filter(|m| in_viewer_box(at, [m.position.x, m.position.y, m.position.z]))
@@ -554,7 +577,8 @@ impl crate::game::ServerGame<'_> {
         // The item entities in the box are viewers too (`getEntities` is every entity).
         let mut viewers = viewers;
         viewers.extend(
-            self.common.dropped
+            self.common
+                .dropped
                 .iter()
                 .filter(|e| !hit_items.contains(&e.id))
                 .filter(|e| in_viewer_box(at, [e.position.x, e.position.y, e.position.z]))
@@ -983,7 +1007,14 @@ impl crate::game::ServerGame<'_> {
             .candidates
             .retain(|&(x, z)| levels.random_ticking(x, z));
         for (cx, cz) in scratch.candidates.drain(..) {
-            if self.common.world.random.next_int_bound(100_000).unwrap_or(1) != 0 {
+            if self
+                .common
+                .world
+                .random
+                .next_int_bound(100_000)
+                .unwrap_or(1)
+                != 0
+            {
                 continue;
             }
             // getBlockRandomPos(minX, 0, minZ, 15)
@@ -998,16 +1029,19 @@ impl crate::game::ServerGame<'_> {
             // Skeleton trap: the local effective difficulty / 100
             // (`getCurrentDifficultyAt(pos)`).
             let difficulty = f64::from(
-                self.common.local_difficulty([f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2])])
+                self.common
+                    .local_difficulty([f64::from(pos[0]), f64::from(pos[1]), f64::from(pos[2])])
                     .effective,
             );
             let below = &self
-                .common.res
+                .common
+                .res
                 .facts()
                 .get(self.common.world.block(pos[0], pos[1] - 1, pos[2]))
                 .name;
             let trap = self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
                 && self.common.world.random.next_double() < difficulty * 0.01

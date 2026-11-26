@@ -69,7 +69,9 @@ pub struct PickupReads {
 /// The one thing a pickup decision plans: that the click runs. The write set is the click's own.
 struct PickupPlan;
 
-impl<'a, 'g, S: crate::game::SideGame<'g>> ActionTarget<GameHost<'a, 'g, S>> for PickupTarget<'_, S> {
+impl<'a, 'g, S: crate::game::SideGame<'g>> ActionTarget<GameHost<'a, 'g, S>>
+    for PickupTarget<'_, S>
+{
     type Reads = PickupReads;
     type View = PickupReads;
     type Plan = PickupPlan;
@@ -139,7 +141,7 @@ pub trait StackedOnOtherGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     ///
     /// With no listener on this side this is `perform(self, None)` and nothing else: no
     /// transaction, no decision, no allocation.
-     fn stacked_pickup<'p>(
+    fn stacked_pickup<'p>(
         &mut self,
         route: MenuId,
         frozen: StackedClick,
@@ -215,7 +217,6 @@ pub trait StackedOnOtherGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> StackedOnOtherGameExt1<'__sg> for G {}
-
 
 /// Whether any listener active on `server` side answers `item_stacked_on_other`.
 pub fn stacked_listened_for_side(server: bool) -> bool {

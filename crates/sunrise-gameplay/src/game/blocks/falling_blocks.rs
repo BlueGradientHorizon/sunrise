@@ -33,7 +33,8 @@ impl crate::game::ServerGame<'_> {
     /// `entities` are the boxes that stop its move.
     pub fn tick_one_falling(&mut self, i: usize, entities: &[Aabb]) -> Result<()> {
         let entity_drops = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS);
         // Like boats, tick an unbound state clone while the resident owner keeps

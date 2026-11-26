@@ -4,18 +4,20 @@
 //! burning one, so the command fails while the stand changes
 //! (tools/test_stand_command_hurt_parity.py measures the same on vanilla 26.3).
 use super::*;
+use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::Arc;
+use sunrise_core::position::ChunkPos;
 use sunrise_gameplay_common::game::Options;
 use sunrise_gameplay_common::game::Progress;
 use sunrise_gameplay_common::game::Resources;
-use crate::game::load_resources;
 use sunrise_gameplay_common::game::execution_role;
-use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::Who;
 
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::game::ServerGame<'_> {
+fn game(
+    resources: &mut Option<std::sync::Arc<Resources>>,
+) -> sunrise_gameplay::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -187,11 +189,13 @@ fn damage_immunity_on_worn_boots_refuses_campfire_but_not_in_fire_or_wrong_slot(
 }
 
 fn capture() {
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
 
 fn take_events() -> Vec<(&'static str, [f64; 3], Option<sunrise_sim::mobs::Who>)> {
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| events.borrow_mut().take().unwrap_or_default())
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|events| events.borrow_mut().take().unwrap_or_default())
 }
 
 #[test]
@@ -465,7 +469,8 @@ fn events(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     f: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) -> Vec<(&'static str, Option<Who>)> {
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|e| *e.borrow_mut() = Some(Vec::new()));
     f(game);
     sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| {
         e.borrow_mut()

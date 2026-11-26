@@ -27,9 +27,7 @@ pub(in crate::game) fn title_target_id(target: ScreenTarget) -> Option<&'static 
     }
 }
 
-pub fn observed_overlay_id(
-    overlays: &[(bool, &'static str)],
-) -> Option<&'static str> {
+pub fn observed_overlay_id(overlays: &[(bool, &'static str)]) -> Option<&'static str> {
     overlays.iter().find_map(|(open, id)| open.then_some(*id))
 }
 

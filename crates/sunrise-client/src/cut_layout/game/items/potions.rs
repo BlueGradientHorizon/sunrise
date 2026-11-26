@@ -1,14 +1,12 @@
-
-
 #![cfg(test)]
 use sunrise_level::particle_options::ParticleType;
 #[cfg(test)]
 #[cfg(feature = "client")]
 pub(crate) mod tests {
 
-use super::*;
+    use super::*;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn typed_cloud_remote_metadata_keeps_valid_options_on_malformed_update() {
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
@@ -27,7 +25,8 @@ use super::*;
         sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
             let entries = [mod_api::ModEntry::new("test", Box::new(MeasuredParticle))];
             mod_platform::__private::part_tests::install_parts_fixture(&entries).unwrap();
-            sunrise_gameplay_common::game::mods::resolve_particle_providers(&Default::default()).unwrap();
+            sunrise_gameplay_common::game::mods::resolve_particle_providers(&Default::default())
+                .unwrap();
             let id = 42_i32;
             let particle = Particle {
                 id: 0,
@@ -67,11 +66,13 @@ use super::*;
             };
             options.truncate(1);
             game.remote_projectile_data(id, &[(10, serializer::PARTICLE, Value::Particle(bad))]);
-            assert_eq!(game.client.remote_clouds[0].particle.typed_particle, original);
+            assert_eq!(
+                game.client.remote_clouds[0].particle.typed_particle,
+                original
+            );
         });
     }
 }
-
 
 #[cfg(feature = "client")]
 #[cfg(test)]

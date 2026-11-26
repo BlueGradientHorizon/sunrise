@@ -40,13 +40,16 @@ fn object_interactions_pass_and_swing_vanilla() {
 #[test]
 #[ignore = "daily"]
 fn transactional_bucket_hands_reach_the_owning_client() {
-    use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
     use mod_api::{
         HostTransaction, ITEM_FLUIDS, ItemPlace, ServerHost, resource_util::move_resources,
     };
     use sunrise_items::items::ItemStack;
     use sunrise_protocol::{buf::Reader, packets::play::Clientbound as C};
     use sunrise_sim::lan::{Out, PlayerSender};
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_gameplay::game::native_guest_turn_tests::with_guests,
+    };
 
     with_guests(|server| {
         let (tx, rx) = std::sync::mpsc::channel();

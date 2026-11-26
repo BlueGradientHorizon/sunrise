@@ -1,7 +1,5 @@
 //! Explosion resistance reads through native mod handles on a fresh game.
 #![cfg(test)]
-use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_with_game_stack, sunrise_gameplay::game::native_entity_refs::tests::with_game_role};
 use mod_api::{
     Block, BlockPart, BlockState, BlocksEvent, EntityRef, ExplosionInteraction,
     ExplosionResistance::{self, NoResistance, Resists, Unavailable},
@@ -14,8 +12,13 @@ use std::sync::{
     atomic::{AtomicI32, Ordering},
 };
 use sunrise_core::position::ChunkPos;
+use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::projectiles::ProjectileKind;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_with_game_stack,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_role,
+};
 
 /// The one position where [`Spot`] answers.
 const SPOT: [i32; 3] = [6, 80, 1];
@@ -147,7 +150,8 @@ fn with_resisting_mod(
                 let _build = BUILD
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
-                sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap()
+                sunrise_gameplay_common::game::mods::content_root(&base, &Default::default())
+                    .unwrap()
             };
             with_game_role(
                 root.prepared().to_path_buf(),

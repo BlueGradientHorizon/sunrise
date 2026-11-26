@@ -171,10 +171,7 @@ pub struct ModsState {
 }
 
 impl ModsState {
-    pub fn capture_code_switches(
-        &mut self,
-        disabled: &std::collections::BTreeSet<String>,
-    ) {
+    pub fn capture_code_switches(&mut self, disabled: &std::collections::BTreeSet<String>) {
         self.code_switches = Some(Arc::new(CodeSwitches {
             disabled: disabled.clone(),
             applied: Default::default(),
@@ -224,10 +221,7 @@ impl ModsState {
         }
     }
 
-    pub fn apply_code_switches(
-        &self,
-        disabled: &std::collections::BTreeSet<String>,
-    ) {
+    pub fn apply_code_switches(&self, disabled: &std::collections::BTreeSet<String>) {
         let (effective, _) = self.reconcile_code_switches(disabled);
         for id in mod_api::__private::installed_code_ids() {
             mod_api::__private::set_mod_enabled(id, !effective.contains(id));
@@ -445,9 +439,7 @@ pub(in crate::game) fn builtin_registries(
 /// Freeze native component IDs before reading content or opening a connection.
 /// With no mod registering any, nothing is installed, which every reader
 /// treats as no custom components, and `registries.json` isn't read.
-pub fn register_components(
-    root: &std::path::Path,
-) -> sunrise_game_data::Result<()> {
+pub fn register_components(root: &std::path::Path) -> sunrise_game_data::Result<()> {
     let mut names = Vec::new();
     crate::game::native_hooks::native_component_types(&RegistrationContext::new(), &mut names);
     if names.is_empty() {
@@ -753,9 +745,7 @@ impl std::error::Error for DisabledServingHost {}
 
 /// Validate namespace ownership and `served_by` rules before installing the
 /// frozen `PackageInfo` inventory that registration hooks read.
-pub fn validate_startup_packages(
-    sources: &ModsState,
-) -> sunrise_game_data::Result<()> {
+pub fn validate_startup_packages(sources: &ModsState) -> sunrise_game_data::Result<()> {
     for selected in sources.selected.iter() {
         let manifest = &selected.package.manifest;
         if let Some(host) = manifest.served_by.as_deref()
@@ -1604,9 +1594,7 @@ pub(in crate::game) fn register_menu_types(
 }
 
 /// The embedded inventory, formatted for the crash report.
-pub fn native_mods_detail(
-    built: &[mod_api::__private::native::BuiltMod],
-) -> Option<String> {
+pub fn native_mods_detail(built: &[mod_api::__private::native::BuiltMod]) -> Option<String> {
     let list = built
         .iter()
         .map(|m| format!("{} {}", m.id, m.version))
@@ -1827,10 +1815,9 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-
     /// Publish the initial generation's captured settings to its loop readers.
     /// An integrated server has a distinct origin and captures its own inputs.
-     fn refresh_loop_context(&mut self) -> sunrise_game_data::Result<()> {
+    fn refresh_loop_context(&mut self) -> sunrise_game_data::Result<()> {
         let role = self.options.execution_role;
         let load = self.res.core.item_data.context();
         let context = if load.origin() == role.data_load_origin() {
@@ -1842,7 +1829,7 @@ pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         Ok(())
     }
 
-     fn install_loop_context(&mut self, context: PreparedLoopContext) {
+    fn install_loop_context(&mut self, context: PreparedLoopContext) {
         self.protect_condition_root();
         self.loop_context = context.game;
         self.refresh_recipe_property_context();
@@ -1854,7 +1841,7 @@ pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// Apply the player's switches at the canonical native dispatch boundary.
-     fn sync_native_switches(&self) {
+    fn sync_native_switches(&self) {
         let (effective, _) = self
             .mods
             .reconcile_code_switches(&crate::game::Side::mods_list(self.side_state()).disabled);
@@ -1865,7 +1852,7 @@ pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Lists the installed mods on the Mods page. Content mods load with the resources
     /// (`content_root`); native ones are built into the game (`native_hooks.rs`). Unsupported
     /// files get the same unreadable-file row as any other invalid package.
-     fn start_mods(&mut self) {
+    fn start_mods(&mut self) {
         let dir = crate::game::game_dir().join(mod_list::DIR);
         let mut paths = sunrise_mod_package::find(&dir);
         paths.retain(|p| !self.mods.dev.contains(p));
@@ -1921,7 +1908,11 @@ pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         crate::game::Side::mods_list_mut(self.side_state_mut()).info = info;
         (self.mods.content_ids, self.mods.live_ids) = (content_ids, live_ids);
         if self.mods.applied.is_none() {
-            self.mods.applied = Some(crate::game::Side::mods_list(self.side_state()).enabled.clone());
+            self.mods.applied = Some(
+                crate::game::Side::mods_list(self.side_state())
+                    .enabled
+                    .clone(),
+            );
         }
         if self.mods.code_switches.is_none() {
             let (common, state) = self.common_and_state_mut();
@@ -1957,7 +1948,6 @@ pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> ModGameExt1<'__sg> for G {}
 
-
 /// Mob types loaded from a scratch root whose `entity-types.json` has a
 /// zombie, a villager, a wandering trader, a wolf, a cat and a parrot, and the
 /// rows a content root writes for a mod's types (`mod_content`): `ruby:ghoul`
@@ -1973,7 +1963,10 @@ pub fn living_mod_types()
 
 #[cfg(any(test, feature = "test-support"))]
 pub fn with_living_mod_type_fixture<R>(
-    run: impl FnOnce(&Path, std::collections::HashMap<String, std::sync::Arc<sunrise_sim::mobs::MobType>>) -> R,
+    run: impl FnOnce(
+        &Path,
+        std::collections::HashMap<String, std::sync::Arc<sunrise_sim::mobs::MobType>>,
+    ) -> R,
 ) -> R {
     let zombie =
         r#""width":0.6,"height":1.95,"eye_height":1.74,"category":"monster","fire_immune":false"#;
@@ -2104,9 +2097,7 @@ pub(in crate::game) fn collect_poi_extensions(
 /// (`native_register_cauldron_fluid_content`), resolved against `registry` once its block
 /// definitions are published, in one table with vanilla's water and lava, which the fluid
 /// capability reads; collected again when the resources reload. Each refusal is logged once.
-pub fn register_cauldron_fluid_contents(
-    registry: &sunrise_world::registry::BlockRegistry,
-) {
+pub fn register_cauldron_fluid_contents(registry: &sunrise_world::registry::BlockRegistry) {
     let (contents, refusals) = collect_cauldron_fluid_contents(registry);
     for refusal in refusals {
         log::warn!("Sunrise: cauldron fluid content refused: {refusal}");

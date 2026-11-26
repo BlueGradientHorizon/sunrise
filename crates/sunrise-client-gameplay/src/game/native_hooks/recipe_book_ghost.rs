@@ -1,5 +1,3 @@
-
-
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// A mod menu's recipe-book ghosts, as the game maps them for the menu's layout: the part of the

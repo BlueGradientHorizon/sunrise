@@ -5,15 +5,15 @@
 pub(in crate::game) mod below_world;
 
 use super::InteractTarget;
-use sunrise_gameplay_common::game::boats_common::{
-    BUBBLE_DOWN_EVENT, BUBBLE_TIME, BUBBLE_UP_EVENT, Boat, WIDTH, reached_cells,
-};
 use std::sync::Arc;
 use sunrise_core::nbt::Tag;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
+};
+use sunrise_gameplay_common::game::boats_common::{
+    BUBBLE_DOWN_EVENT, BUBBLE_TIME, BUBBLE_UP_EVENT, Boat, WIDTH, reached_cells,
 };
 use sunrise_items::{blocks::Fluid, items::ItemStack};
 use sunrise_sim::motion::RiddenBoat;
@@ -145,7 +145,8 @@ impl crate::game::ServerGame<'_> {
             i = match self.common.boats.get(i) {
                 Some(b) if b.id == id => i + 1,
                 _ => self
-                    .common.boats
+                    .common
+                    .boats
                     .iter()
                     .position(|b| b.id == id)
                     .map_or(i, |k| k + 1),
@@ -312,7 +313,8 @@ impl crate::game::ServerGame<'_> {
     /// `BaseFireBlock.fireDamage` of a fire block at `p`.
     pub(in crate::game::server_side) fn fire_damage_at(&self, p: [i32; 3]) -> Option<f32> {
         match &*self
-            .common.res
+            .common
+            .res
             .facts()
             .get(self.common.world.block(p[0], p[1], p[2]))
             .name
@@ -329,7 +331,8 @@ impl crate::game::ServerGame<'_> {
         if self.common.boats[i].fire_ticks <= 0 {
             return false;
         }
-        let burn = self.common.boats[i].fire_ticks % 20 == 0 && !self.in_lava(self.common.boats[i].bounds());
+        let burn = self.common.boats[i].fire_ticks % 20 == 0
+            && !self.in_lava(self.common.boats[i].bounds());
         self.common.boats.update(i, |b| b.fire_ticks -= 1);
         burn && self.burn_boat(i, 1.0, "minecraft:on_fire")
     }
@@ -388,7 +391,8 @@ impl crate::game::ServerGame<'_> {
                 in_snow |= !snow.is_empty();
                 if self.common.boats[i].fire_ticks > 0
                     && self
-                        .common.ui
+                        .common
+                        .ui
                         .rules
                         .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
                 {
@@ -398,7 +402,9 @@ impl crate::game::ServerGame<'_> {
                 }
                 if water || !snow.is_empty() {
                     // clearFire
-                    self.common.boats.update(i, |b| b.fire_ticks = b.fire_ticks.min(0));
+                    self.common
+                        .boats
+                        .update(i, |b| b.fire_ticks = b.fire_ticks.min(0));
                 }
             }
             let now = self.common.boats.update(i, |b| {
@@ -424,7 +430,8 @@ impl crate::game::ServerGame<'_> {
     /// Whether the water at cell `p` reaches a box whose bottom is `low`
     /// (`Entity.collidedWithFluid`).
     pub(in crate::game::server_side) fn water_reaches(&self, p: [i32; 3], low: f64) -> bool {
-        self.common.fluid_height_of(p[0], p[1], p[2], Some(Fluid::Water))
+        self.common
+            .fluid_height_of(p[0], p[1], p[2], Some(Fluid::Water))
             .is_some_and(|(height, _)| low + 1.0e-5 < f64::from(p[1]) + f64::from(height))
     }
     /// `VehicleEntity.hurtServer` for fire (`inFire`, `onFire`), which an
@@ -496,7 +503,8 @@ impl crate::game::ServerGame<'_> {
         for x in (lo.x + e).floor() as i32..=(hi.x - e).floor() as i32 {
             for y in (lo.y + e).floor() as i32..=(hi.y - e).floor() as i32 {
                 for z in (lo.z + e).floor() as i32..=(hi.z - e).floor() as i32 {
-                    if let Some((height, _)) = self.common.fluid_height_of(x, y, z, Some(Fluid::Lava))
+                    if let Some((height, _)) =
+                        self.common.fluid_height_of(x, y, z, Some(Fluid::Lava))
                         && lo.y + e < f64::from(y) + f64::from(height)
                     {
                         return true;
@@ -511,7 +519,8 @@ impl crate::game::ServerGame<'_> {
     /// keeps only the part of the passenger's box above its own top, so a boat
     /// bobbing on water never sinks the passenger's eyes or body.
     pub(in crate::game::server_side) fn riding_boat_fluid_box(&self) -> Option<RiddenBoat> {
-        self.common.boats
+        self.common
+            .boats
             .iter()
             .find(|b| Some(b.id) == self.common.riding)
             .map(|b| RiddenBoat {
@@ -564,8 +573,16 @@ impl crate::game::ServerGame<'_> {
         let (x, z) = (b.position.x + escape.x, b.position.z + escape.z);
         let top = b.bounds().max_position().y;
         let (bx, by, bz) = (x.floor() as i32, top.floor() as i32, z.floor() as i32);
-        let below = self.common.res.facts().get(self.common.world.block(bx, by - 1, bz));
-        let here = self.common.res.facts().get(self.common.world.block(bx, by, bz));
+        let below = self
+            .common
+            .res
+            .facts()
+            .get(self.common.world.block(bx, by - 1, bz));
+        let here = self
+            .common
+            .res
+            .facts()
+            .get(self.common.world.block(bx, by, bz));
         if below.fluid != Fluid::Water
             && !here.full_collision
             && (below.full_collision || below.legacy_solid)
@@ -613,7 +630,8 @@ impl crate::game::ServerGame<'_> {
         }
         // BoatItem.use: ENTITY_PLACE at the hit (the boat's position), by the player.
         let at = self
-            .common.boats
+            .common
+            .boats
             .last()
             .map(|b| [b.position.x, b.position.y, b.position.z]);
         if let Some(at) = at {
@@ -634,8 +652,12 @@ impl crate::game::ServerGame<'_> {
         target: Option<InteractTarget>,
     ) -> bool {
         let Some((i, d)) = (match target {
-            Some(t) => sunrise_gameplay_common::game::item_actions::named_entity(&self.common.boats, t.id, |b| b.id)
-                .map(|i| (i, 0.0)),
+            Some(t) => sunrise_gameplay_common::game::item_actions::named_entity(
+                &self.common.boats,
+                t.id,
+                |b| b.id,
+            )
+            .map(|i| (i, 0.0)),
             None => self.boat_hit(),
         }) else {
             return false;
@@ -651,7 +673,9 @@ impl crate::game::ServerGame<'_> {
             return true;
         }
         // ChestBoat.interact: sneaking (or a full seat) opens the chest.
-        if self.common.boats[i].chest && (sneaking || self.common.riding.is_some() || !self.boat_has_room(i)) {
+        if self.common.boats[i].chest
+            && (sneaking || self.common.riding.is_some() || !self.boat_has_room(i))
+        {
             self.open_chest_boat_container(i);
             self.swing_arm();
             return true;
@@ -685,7 +709,8 @@ impl crate::game::ServerGame<'_> {
         // `startOpen` shares one container, it does not reset it: a stand-in
         // another player's menu is still editing over stays as it is.
         if !self.common.world.block_entities.contains_key(&key) {
-            self.common.world
+            self.common
+                .world
                 .block_entities
                 .insert(key, sunrise_level::containers::BlockEntity::Chest(items));
         }
@@ -727,7 +752,10 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn strike_boat(&mut self, i: usize) {
         let area = self.common.boats[i].bounds();
         // Player.attack's full damage against the boat's entity type.
-        let (kind, id) = (self.common.boats[i].entity_type(), self.common.boats[i].id as i32);
+        let (kind, id) = (
+            self.common.boats[i].entity_type(),
+            self.common.boats[i].id as i32,
+        );
         let (damage, scale, _, magic) = self.melee_damage(&kind, false, Some(id as u32));
         let sweep = self.sweep_before_hit(&kind, false);
         let chest = self.common.boats[i].chest;
@@ -762,7 +790,8 @@ impl crate::game::ServerGame<'_> {
             && hurt == Some(true)
             && !self.common.creative
             && self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS)
         {
@@ -778,10 +807,12 @@ impl crate::game::ServerGame<'_> {
                 // not LivingEntity.knockback (no resistance or velocity halving).
                 if !destroyed {
                     let (x, z) = self.extra_knockback_direction();
-                    self.common.boats
+                    self.common
+                        .boats
                         .update(i, |b| b.velocity.x += f64::from(-(x as f32) * knockback));
                     self.common.boats.update(i, |b| b.velocity.y += 0.1);
-                    self.common.boats
+                    self.common
+                        .boats
                         .update(i, |b| b.velocity.z += f64::from(-(z as f32) * knockback));
                 }
                 self.special_attack_slowdown(knockback);
@@ -813,24 +844,23 @@ impl crate::game::ServerGame<'_> {
     pub fn unpack_boat_loot(&mut self, i: usize, player: bool) {
         let player = player.then(|| self.native_acting_player()).flatten();
         self.unpack_loot(
-            sunrise_gameplay_common::game::container_loot_level::LootTarget::Boat(self.common.boats[i].id),
+            sunrise_gameplay_common::game::container_loot_level::LootTarget::Boat(
+                self.common.boats[i].id,
+            ),
             player,
         );
     }
 
-    pub fn hurt_boat_result(
-        &mut self,
-        i: usize,
-        mut damage: f32,
-        creative: bool,
-    ) -> Option<bool> {
+    pub fn hurt_boat_result(&mut self, i: usize, mut damage: f32, creative: bool) -> Option<bool> {
         let id = self.common.boats[i].id;
         if self
-            .common.persist
+            .common
+            .persist
             .destroying_vehicles
             .contains(&super::commands::Target::Boat(id))
             || self
-                .common.persist
+                .common
+                .persist
                 .preparing_vehicle_removals
                 .contains(&super::commands::Target::Boat(id))
         {
@@ -844,7 +874,8 @@ impl crate::game::ServerGame<'_> {
         let Some(i) = self.common.boats.iter().position(|b| {
             b.id == id
                 && !self
-                    .common.persist
+                    .common
+                    .persist
                     .removals
                     .contains(&crate::game::commands::Target::Boat(id))
         }) else {
@@ -880,7 +911,8 @@ impl crate::game::ServerGame<'_> {
             // the death path only, and only with `entity_drops` on.
             if !creative
                 && self
-                    .common.ui
+                    .common
+                    .ui
                     .rules
                     .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS)
             {
@@ -907,7 +939,7 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-use sunrise_gameplay_common::game::server_side::boats::tests::boat;
+    use sunrise_gameplay_common::game::server_side::boats::tests::boat;
 
     use super::*;
     use sunrise_gameplay_common::game::boats_common::{
@@ -935,14 +967,6 @@ use sunrise_gameplay_common::game::server_side::boats::tests::boat;
         assert_eq!(registered_boat("minecraft:bamboo_boat", &registry), None);
         assert_eq!(registered_boat("minecraft:pig", &registry), None);
     }
-
-    
-
-    
-
-    
-
-    
 
     /// `AbstractBoat.tickBubbleColumn` on a client: the wobble grows while the
     /// bubble time runs and fades after.

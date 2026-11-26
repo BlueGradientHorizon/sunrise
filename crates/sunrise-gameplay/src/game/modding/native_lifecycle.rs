@@ -31,7 +31,8 @@ impl crate::game::ServerGame<'_> {
         self.common.entity_initialization = Default::default();
         self.common.attachment_indexes.clear();
         self.common.passages.retire_world();
-        self.common.native_lifecycle
+        self.common
+            .native_lifecycle
             .begin_open(self.native_lifecycle_authority());
     }
 
@@ -112,7 +113,11 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub fn native_lifecycle_server_tick_start(&mut self, world_running: bool) {
-        if let Some((context, phase)) = self.common.native_lifecycle.server_tick_start(world_running) {
+        if let Some((context, phase)) = self
+            .common
+            .native_lifecycle
+            .server_tick_start(world_running)
+        {
             self.native_console_lines();
             self.common.native_lifecycle.read_scope = true;
             self.native_server_tick(&context, phase);
@@ -138,7 +143,8 @@ impl crate::game::ServerGame<'_> {
         }) {
             return Err(ScheduleError::Unavailable);
         }
-        self.common.native_lifecycle
+        self.common
+            .native_lifecycle
             .tasks
             .schedule(owner, delay_ticks, task)
     }

@@ -25,7 +25,8 @@ pub trait Hooks {
     /// tooltip box and components are not drawn and `render_tooltip_texture` is not asked.
     /// Asked each frame a tooltip shows, only while a mod listens. An input conversion
     /// refusal skips Pre and leaves the prepared tooltip intact. Client-side.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::render_tooltip_pre::ClientGame<'_>::native_render_tooltip_pre", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::render_tooltip_pre::ClientGame<'_>::native_render_tooltip_pre",
         receiver = "read",
         dispatch = "api_carrier",
         side = "client",

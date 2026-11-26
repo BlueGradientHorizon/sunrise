@@ -24,9 +24,7 @@ impl mod_api::RuntimeFileSource for PackageRuntime {
 /// The runtime files of every package that declares `[runtime]`, by mod id. A compiled native
 /// mod's were checked when the game validated its package at startup (a mismatch ends the
 /// start there, as any compiled mod's package failing to read does: `mod-host/src/loading.rs`).
-pub fn sources(
-    mods: &ModsState,
-) -> BTreeMap<String, Arc<dyn mod_api::RuntimeFileSource>> {
+pub fn sources(mods: &ModsState) -> BTreeMap<String, Arc<dyn mod_api::RuntimeFileSource>> {
     let mut sources: BTreeMap<String, Arc<dyn mod_api::RuntimeFileSource>> = BTreeMap::new();
     for package in mods.native.packages() {
         if let Some(runtime) = &package.runtime {

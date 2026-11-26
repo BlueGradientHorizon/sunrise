@@ -1,6 +1,5 @@
 use super::{connect_menu_test, spawn_menu_test};
 use crate::game::remote::tests::menu_packets_tests::packets_through_pong;
-use {sunrise_gameplay_common::game::Screen, sunrise_gameplay_common::game::in_own_process, sunrise_gameplay_common::mount_rules::CHEST, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use std::time::{Duration, Instant};
 use sunrise_client::hud::HudBatch;
 use sunrise_core::{geometry::Vec3, nbt::Tag};
@@ -13,6 +12,11 @@ use sunrise_protocol::{
     },
 };
 use sunrise_sim::{menu::Input, mobs::Mob};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay_common::game::Screen, sunrise_gameplay_common::game::in_own_process,
+    sunrise_gameplay_common::mount_rules::CHEST,
+};
 
 #[test]
 #[ignore = "daily"]

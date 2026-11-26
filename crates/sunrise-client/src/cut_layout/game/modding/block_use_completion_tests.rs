@@ -1,14 +1,16 @@
-use sunrise_gameplay_common::game::TryIntoApi;
-use sunrise_gameplay_common::game::Hit;
-use sunrise_sim::first_person_sim::Hand;
-use sunrise_items::items::ItemStack;
 use super::*;
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
+use sunrise_gameplay_common::game::Hit;
+use sunrise_gameplay_common::game::TryIntoApi;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::first_person_sim::Hand;
 
-use sunrise_gameplay::game::server_side::advancements::block_use_recording::{Recording, SEEN, counts};
+use sunrise_gameplay::game::server_side::advancements::block_use_recording::{
+    Recording, SEEN, counts,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -667,7 +669,11 @@ fn block_use_registry_guard_final_hand_matches_original() {
     });
 }
 
-fn run_block_use_regression(g: &mut sunrise_gameplay::game::ServerGame<'_>, packet: bool, stack: ItemStack) {
+fn run_block_use_regression(
+    g: &mut sunrise_gameplay::game::ServerGame<'_>,
+    packet: bool,
+    stack: ItemStack,
+) {
     let hit = Hit {
         pos: [3, 64, 4],
         face: [0, 1, 0],

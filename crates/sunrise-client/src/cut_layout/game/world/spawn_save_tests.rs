@@ -1,12 +1,12 @@
 //! Publishing spawn batches must not expose a partially published snapshot.
-use std::path::PathBuf;
-use sunrise_core::geometry::Vec3;
 use super::*;
 use mod_api::{EntityJoinLevelEvent, Flow, Hooks, ServerHost};
+use std::path::PathBuf;
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
+use sunrise_core::geometry::Vec3;
 
 #[derive(Default)]
 struct SaveOnSpawnJoin {

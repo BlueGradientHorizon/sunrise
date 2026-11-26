@@ -1,7 +1,7 @@
 //! Server-side entity-bound player sound broadcast and entity sound state lookup.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::entity_sounds_common::saved_silent;
 use sunrise_game_data::sound_source::SoundEntityState;
+use sunrise_gameplay_common::game::entity_sounds_common::saved_silent;
 
 impl ServerGame<'_> {
     pub(in crate::game) fn server_play_player_bound_sound(
@@ -43,10 +43,9 @@ impl ServerGame<'_> {
             });
         }
         if let Some(guest) = self.server.lan.as_ref().and_then(|host| {
-            host.hub
-                .guests
-                .iter()
-                .find(|g| g.entity_id as u32 == id && g.placed && g.dimension == self.common.dim.id())
+            host.hub.guests.iter().find(|g| {
+                g.entity_id as u32 == id && g.placed && g.dimension == self.common.dim.id()
+            })
         }) {
             return Some(SoundEntityState {
                 position: guest.position,
@@ -61,7 +60,8 @@ impl ServerGame<'_> {
                 removed: false,
             });
         }
-        self.common.mobs
+        self.common
+            .mobs
             .iter()
             .find(|m| m.id == id)
             .map(|m| SoundEntityState {

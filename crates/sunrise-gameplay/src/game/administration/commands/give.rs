@@ -1,8 +1,8 @@
 //! `/give`'s handing over of one stack.
 use super::Target;
-use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
 use mod_api::SoundSource;
 use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
 use sunrise_items::items::ItemStack;
 
 pub(in crate::game) enum GiveItem {

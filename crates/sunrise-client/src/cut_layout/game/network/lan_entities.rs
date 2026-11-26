@@ -1,11 +1,9 @@
-
-
 #![cfg(test)]
 use sunrise_core::nbt::Tag;
 use sunrise_sim::lan::entity::EntityState;
 #[cfg(test)]
 pub(crate) mod tests {
-macro_rules! pending {
+    macro_rules! pending {
         ($list:expr) => {{
             let list = &mut $list;
             let mut owner = list.remove(list.len() - 1);
@@ -14,9 +12,9 @@ macro_rules! pending {
         }};
     }
 
-use super::*;
+    use super::*;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn tracking_ids_preserve_all_family_interleaving() {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
@@ -46,8 +44,14 @@ use super::*;
             pending!(game.crystals);
             pending!(game.ominous_spawners);
             pending!(game.breath_clouds);
-            game.bolts
-                .push(sunrise_gameplay_common::game::lightning_common::Bolt::new(0, [1.0, 70.0, 1.0], true).0);
+            game.bolts.push(
+                sunrise_gameplay_common::game::lightning_common::Bolt::new(
+                    0,
+                    [1.0, 70.0, 1.0],
+                    true,
+                )
+                .0,
+            );
             sunrise_client_gameplay::game::client_side::potions::add_remote_thrown(
                 &mut game.potions,
                 0,
@@ -71,9 +75,11 @@ use super::*;
                     game.crystals[0].id,
                     game.bolts[0].id,
                     game.ominous_spawners[0].id,
-                    *sunrise_gameplay::game::server_side::potions_server::thrown_ids(&mut game.common.potions)
-                        .next()
-                        .unwrap(),
+                    *sunrise_gameplay::game::server_side::potions_server::thrown_ids(
+                        &mut game.common.potions,
+                    )
+                    .next()
+                    .unwrap(),
                     *game.common.end.eye_ids().next().unwrap(),
                     game.common.breath_clouds[0].id,
                 ];
@@ -93,7 +99,7 @@ use super::*;
             }
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn tracking_ids_refuse_bound_zero_owners() {
         for kind in ["minecraft:falling_block", "minecraft:arrow"] {
@@ -125,7 +131,7 @@ use super::*;
             });
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn tracking_ids_only_number_the_spawn_buffer_during_a_taken_pass() {
         macro_rules! check {
@@ -191,7 +197,7 @@ use super::*;
             game.ominous_spawners
         );
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn late_dragon_ids_reserve_parts_before_crystals() {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
@@ -219,7 +225,7 @@ use super::*;
             }
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn kept_display_data_is_what_a_build_gives() {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {

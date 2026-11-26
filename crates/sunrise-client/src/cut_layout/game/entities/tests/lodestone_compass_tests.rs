@@ -2,13 +2,16 @@
 //! entity to the item model, so a framed compass's needle reads the frame's
 //! position and yaw; and only `CompassItem.inventoryTick` ticks a
 //! `LodestoneTracker`, so any other item carrying the component keeps it.
-use sunrise_gameplay::game::game_tests::tests::server_game;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role};
 use crate::game::{Audio, Settings, load_resources};
 use sunrise_core::nbt::Tag;
 use sunrise_core::random::LegacyRandom;
+use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::entities::ItemFrame;
+use {
+    sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    sunrise_gameplay_common::game::execution_role,
+};
 
 /// The lodestone at `pos` (the `target` of a `LodestoneTracker`).
 fn tracker(pos: [i32; 3]) -> Tag {
@@ -96,11 +99,16 @@ fn client_game<'a>(
 /// The `item/compass_NN` sprite the renderer draws for the frame's item: the
 /// item quad's four atlas corners fall inside exactly one of the 32 compass
 /// sprites `compass.json` dispatches over.
-fn drawn_needle(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, frame: ItemFrame) -> String {
+fn drawn_needle(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    frame: ItemFrame,
+) -> String {
     game.item_frames = Default::default();
     game.item_frames.push(frame);
     // The camera sits at the frame, so the frame passes `shouldRender`.
-    let camera = glam::DVec3::from(sunrise_gameplay_common::game::frames_common::center(&game.item_frames[0]));
+    let camera = glam::DVec3::from(sunrise_gameplay_common::game::frames_common::center(
+        &game.item_frames[0],
+    ));
     let mut out = Vec::new();
     game.frame_geometry(camera, 0.0, &mut out);
     let near =

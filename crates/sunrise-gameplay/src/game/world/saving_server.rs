@@ -1,16 +1,16 @@
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::saving::CLOSING_SNAPSHOT_BUDGET;
-use sunrise_gameplay_common::game::saving::CLOSING_SNAPSHOTS_PER_FRAME;
-use sunrise_gameplay_common::game::saving::ClosingSave;
-use sunrise_gameplay_common::game::saving::SNAPSHOT_BUDGET;
-use sunrise_gameplay_common::game::saving::SNAPSHOTS_PER_FRAME;
-use sunrise_gameplay_common::game::saving::Stage;
 use std::{
     collections::{HashSet, VecDeque},
     sync::mpsc::{Receiver, TryRecvError},
     time::{Duration, Instant},
 };
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::saving::CLOSING_SNAPSHOT_BUDGET;
+use sunrise_gameplay_common::game::saving::CLOSING_SNAPSHOTS_PER_FRAME;
+use sunrise_gameplay_common::game::saving::ClosingSave;
+use sunrise_gameplay_common::game::saving::SNAPSHOT_BUDGET;
+use sunrise_gameplay_common::game::saving::SNAPSHOTS_PER_FRAME;
+use sunrise_gameplay_common::game::saving::Stage;
 
 impl ServerGame<'_> {
     #[inline(always)]
@@ -28,10 +28,11 @@ impl ServerGame<'_> {
             self.common.world.modified.remove(&key);
             let chunks = self.with_entities(self.common.world.chunks.get(&key));
             self.native_full_chunk_snapshots(&chunks);
-            self.server
-                .save
-                .0
-                .save_later(&chunks, self.common.pack.assets.registry, world_biomes!(self))?;
+            self.server.save.0.save_later(
+                &chunks,
+                self.common.pack.assets.registry,
+                world_biomes!(self),
+            )?;
             keys.pop_front();
             if started.elapsed() >= budget {
                 break;
@@ -65,7 +66,10 @@ impl ServerGame<'_> {
         if keys.is_empty() {
             self.prune_entity_memory();
             self.save_raids();
-            self.server.save.0.save_attachments(&self.common.world.attachments)?;
+            self.server
+                .save
+                .0
+                .save_attachments(&self.common.world.attachments)?;
             self.save_chunk_tickets()?;
             self.save_game_metadata()?;
             Ok(Some(self.server.save.0.flush_later()?))
@@ -124,18 +128,23 @@ impl ServerGame<'_> {
             }
         }
         let keys: Vec<_> = self.common.world.modified.iter().copied().collect();
-        self.server.save.0.save_attachments(&self.common.world.attachments)?;
+        self.server
+            .save
+            .0
+            .save_attachments(&self.common.world.attachments)?;
         // ChunkMap.save calls tryMarkSaved before creating the snapshot. A record failure
         // finishes this attempt and does not put the mark back.
         for key in &keys {
             self.common.world.modified.remove(key);
         }
-        let chunks = self.with_entities(keys.iter().filter_map(|k| self.common.world.chunks.get(k)));
+        let chunks =
+            self.with_entities(keys.iter().filter_map(|k| self.common.world.chunks.get(k)));
         self.native_full_chunk_snapshots(&chunks);
-        self.server
-            .save
-            .0
-            .save_later(&chunks, self.common.pack.assets.registry, world_biomes!(self))?;
+        self.server.save.0.save_later(
+            &chunks,
+            self.common.pack.assets.registry,
+            world_biomes!(self),
+        )?;
         // Prepare entities while the chunk writer runs, then use one barrier.
         if !wait {
             self.common.world.modified.autosaved(&keys, Instant::now());
@@ -158,7 +167,8 @@ impl ServerGame<'_> {
         reply: std::sync::mpsc::Sender<String>,
     ) -> Result<ClosingSave> {
         if all {
-            self.common.world
+            self.common
+                .world
                 .modified
                 .extend(self.common.world.chunks.keys().copied());
         }
@@ -173,10 +183,7 @@ impl ServerGame<'_> {
 
     /// Advance a server-owned staged save by one step. Returns `Ok(true)` once finished.
     #[allow(dead_code)]
-    pub fn poll_server_closing_save(
-        &mut self,
-        save: &mut ClosingSave,
-    ) -> Result<bool> {
+    pub fn poll_server_closing_save(&mut self, save: &mut ClosingSave) -> Result<bool> {
         let defers = !matches!(save.stage, Stage::Server | Stage::Quit)
             && save.started.elapsed() < Duration::from_secs(30);
         if defers && self.defer_chunk_disk_save() {
@@ -284,10 +291,7 @@ impl ServerGame<'_> {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn test_poll_server_closing_save(
-        &mut self,
-        save: &mut ClosingSave,
-    ) -> Result<bool> {
+    pub fn test_poll_server_closing_save(&mut self, save: &mut ClosingSave) -> Result<bool> {
         self.poll_server_closing_save(save)
     }
 }

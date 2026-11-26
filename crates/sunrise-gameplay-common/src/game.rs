@@ -219,6 +219,8 @@ pub mod block_items;
 pub mod block_notifications;
 #[path = "game/runtime/blockctl.rs"]
 pub mod blockctl;
+#[path = "game/interface/books_common.rs"]
+pub mod books_common;
 #[path = "game/mobs/breezes.rs"]
 pub mod breezes;
 #[path = "game/blocks/brush.rs"]
@@ -235,6 +237,8 @@ pub mod cartography;
 pub mod cauldron_prediction;
 #[path = "game/blocks/cauldrons.rs"]
 pub mod cauldrons;
+#[path = "game/interface/chat_common.rs"]
+pub mod chat_common;
 #[path = "game/world/class_tags.rs"]
 pub mod class_tags;
 #[cfg(test)]
@@ -242,38 +246,26 @@ pub mod class_tags;
 pub mod class_tags_tests;
 #[path = "game/items/clip_ray.rs"]
 pub mod clip_ray;
+#[path = "game/world/clocks.rs"]
+pub mod clocks;
 #[path = "game/entities/closest_space.rs"]
 pub mod closest_space;
 #[path = "game/entities/collision_source.rs"]
 pub mod collision_source;
-#[path = "game/interface/books_common.rs"]
-pub mod books_common;
-#[path = "game/interface/chat_common.rs"]
-pub mod chat_common;
-#[path = "game/world/clocks.rs"]
-pub mod clocks;
 #[path = "game/administration/command_blocks_common.rs"]
 pub mod command_blocks_common;
 #[path = "game/interface/command_registries.rs"]
 pub mod command_registries;
 #[path = "game/administration/commands_common.rs"]
 pub mod commands_common;
-#[path = "game/blocks/machines/crafter_common.rs"]
-pub mod crafter_common;
-#[path = "game/world/integrated_common.rs"]
-pub mod integrated_common;
-#[path = "game/runtime/memory_common.rs"]
-pub mod memory_common;
-#[path = "game/items/stack_names.rs"]
-pub mod stack_names;
-#[path = "game/world/world_entry_common.rs"]
-pub mod world_entry_common;
 #[path = "game/world/condition_reload_state.rs"]
 pub mod condition_reload_state;
 #[path = "game/modding/consume_effect_dispatch.rs"]
 pub mod consume_effect_dispatch;
 #[path = "game/mobs/copper_golems.rs"]
 pub mod copper_golems;
+#[path = "game/blocks/machines/crafter_common.rs"]
+pub mod crafter_common;
 #[path = "game/mobs/creatures/mod.rs"]
 pub mod creatures;
 #[path = "game/modding/data_map_files.rs"]
@@ -296,32 +288,58 @@ pub mod entity_type_rows;
 pub mod equip_answers;
 #[path = "game/runtime/execution_role.rs"]
 pub mod execution_role;
+#[path = "game/world/integrated_common.rs"]
+pub mod integrated_common;
 #[path = "game/modding/item_snapshot.rs"]
 pub mod item_snapshot;
+#[path = "game/runtime/memory_common.rs"]
+pub mod memory_common;
+#[path = "game/items/stack_names.rs"]
+pub mod stack_names;
 #[path = "game/world/tables.rs"]
 pub mod tables;
+#[path = "game/world/world_entry_common.rs"]
+pub mod world_entry_common;
 #[allow(unused_imports)]
 pub use tables::level_suffocation_of;
-#[path = "game/side_ops/mod.rs"]
-pub mod side_ops;
+#[path = "game/modding/api_values_common.rs"]
+pub mod api_values_common;
+#[path = "game/blocks/beacon_common.rs"]
+pub mod beacon_common;
+#[path = "game/mobs/beehives_common.rs"]
+pub mod beehives_common;
+#[path = "game/blocks/block_edits_common.rs"]
+pub mod block_edits_common;
+#[path = "game/blocks/block_entity_anims_common.rs"]
+pub mod block_entity_anims_common;
+#[path = "game/blocks/block_props.rs"]
+pub mod block_props;
+#[path = "game/entities/boats_common.rs"]
+pub mod boats_common;
+#[path = "game/blocks/bookshelves_common.rs"]
+pub mod bookshelves_common;
+#[path = "game/mobs/dragon_common.rs"]
+pub mod dragon_common;
+#[path = "game/entities/entity_common.rs"]
+pub mod entity_common;
+#[path = "game/modding/entity_initialization_common.rs"]
+pub mod entity_initialization_common;
+#[path = "game/modding/entity_sizes_common.rs"]
+pub mod entity_sizes_common;
+#[path = "game/mobs/fangs_common.rs"]
+pub mod fangs_common;
 #[path = "game/entities/fireworks.rs"]
 pub mod fireworks;
 #[path = "game/modding/fluid_interactions.rs"]
 pub mod fluid_interactions;
+#[path = "game/interface/game_mode_common.rs"]
+pub mod game_mode_common;
 #[path = "game/items/glide_wear.rs"]
 pub mod glide_wear;
 #[path = "game/modding/global_loot_modifiers.rs"]
 pub mod global_loot_modifiers;
-#[path = "game/interface/game_mode_common.rs"]
-pub mod game_mode_common;
 #[path = "game/items/held_items.rs"]
 pub mod held_items;
-#[path = "game/modding/native_entity_refs_common.rs"]
-pub mod native_entity_refs_common;
-#[path = "game/entities/pick_ray.rs"]
-pub mod pick_ray;
-#[path = "game/player_identity.rs"]
-pub mod player_identity;
 #[path = "game/interface/hit.rs"]
 pub mod hit;
 pub mod host;
@@ -339,6 +357,8 @@ pub mod item_entity_spawn;
 pub mod item_use_stacks;
 #[path = "game/administration/jigsaw_blocks.rs"]
 pub mod jigsaw_blocks;
+#[path = "game/blocks/jukebox_common.rs"]
+pub mod jukebox_common;
 #[path = "game/network/lan_actions/mod.rs"]
 pub mod lan_actions;
 #[path = "game/runtime/launch_api.rs"]
@@ -349,6 +369,8 @@ pub mod launch_options;
 pub mod level_access;
 #[path = "game/modding/level_control_hooks.rs"]
 pub mod level_control_hooks;
+#[path = "game/world/light_emission.rs"]
+pub mod light_emission;
 #[path = "game/modding/load_conditions.rs"]
 pub mod load_conditions;
 #[path = "game/blocks/location_world.rs"]
@@ -363,10 +385,14 @@ pub mod menu_clicks;
 pub mod minecarts;
 #[path = "game/modding/mod_api_host.rs"]
 pub mod mod_api_host;
+#[path = "game/modding/mod_api_host_common.rs"]
+pub mod mod_api_host_common;
 #[path = "game/modding/mod_crafting_commands.rs"]
 pub mod mod_crafting_commands;
 #[path = "game/modding/mods/mod.rs"]
 pub mod mods;
+#[path = "game/mobs/mounts_common.rs"]
+pub mod mounts_common;
 #[path = "game/entities/move_gate.rs"]
 pub mod move_gate;
 #[path = "game/blocks/moving_pistons.rs"]
@@ -387,16 +413,18 @@ pub mod native_block_tables;
 pub mod native_book_displays;
 #[path = "game/modding/native_book_placement.rs"]
 pub mod native_book_placement;
+#[path = "game/modding/native_bots_common.rs"]
+pub mod native_bots_common;
 #[path = "game/modding/native_cauldron_contents.rs"]
 pub mod native_cauldron_contents;
 #[path = "game/modding/native_chunk_generator.rs"]
 pub mod native_chunk_generator;
+#[path = "game/modding/native_collision_exclusions.rs"]
+pub mod native_collision_exclusions;
 #[path = "game/modding/native_collision_shape.rs"]
 pub mod native_collision_shape;
 #[path = "game/modding/native_components.rs"]
 pub mod native_components;
-#[path = "game/modding/native_collision_exclusions.rs"]
-pub mod native_collision_exclusions;
 #[path = "game/modding/native_configs.rs"]
 pub mod native_configs;
 #[path = "game/modding/native_content_items.rs"]
@@ -416,6 +444,8 @@ pub mod native_effect_category;
 #[cfg(test)]
 #[path = "game/modding/native_entity_move_tests.rs"]
 pub mod native_entity_move_tests;
+#[path = "game/modding/native_entity_refs_common.rs"]
+pub mod native_entity_refs_common;
 #[path = "game/modding/native_entity_selectors.rs"]
 pub mod native_entity_selectors;
 #[path = "game/modding/native_feature_types.rs"]
@@ -428,6 +458,8 @@ pub mod native_game_rules_read;
 pub mod native_give_stack;
 #[path = "game/modding/native_ground.rs"]
 pub mod native_ground;
+#[path = "game/modding/native_harvest_queries_common.rs"]
+pub mod native_harvest_queries_common;
 #[path = "game/modding/native_hit_effects.rs"]
 pub mod native_hit_effects;
 pub mod native_hooks;
@@ -445,6 +477,8 @@ pub mod native_item_registry;
 pub mod native_knockback_credit;
 #[path = "game/modding/native_level_signals.rs"]
 pub mod native_level_signals;
+#[path = "game/modding/native_lifecycle_common.rs"]
+pub mod native_lifecycle_common;
 #[path = "game/modding/native_living_absorption.rs"]
 pub mod native_living_absorption;
 #[path = "game/modding/native_living_blocking.rs"]
@@ -454,6 +488,8 @@ pub mod native_living_body;
 #[cfg(test)]
 #[path = "game/modding/native_living_travel_tests.rs"]
 pub mod native_living_travel_tests;
+#[path = "game/modding/native_menu_refs_common.rs"]
+pub mod native_menu_refs_common;
 #[path = "game/modding/native_motion.rs"]
 pub mod native_motion;
 #[path = "game/modding/native_namespaced_id.rs"]
@@ -498,6 +534,10 @@ pub mod native_world_columns;
 pub mod native_worldgen;
 #[path = "game/modding/native_worldgen_parts.rs"]
 pub mod native_worldgen_parts;
+#[path = "game/mobs/ominous_item_spawner/common.rs"]
+pub mod ominous_item_spawner_common;
+#[path = "game/modding/pack_finders/common.rs"]
+pub mod pack_finders_common;
 #[cfg(sunrise_parity_fixtures)]
 #[path = "game/parity_fixtures.rs"]
 pub mod parity_fixtures;
@@ -506,8 +546,16 @@ pub mod part_admission;
 #[cfg(test)]
 #[path = "game/modding/part_admission_tests.rs"]
 pub mod part_admission_tests;
+#[path = "game/entities/passengers_common.rs"]
+pub mod passengers_common;
 #[path = "game/modding/payload_transport.rs"]
 pub mod payload_transport;
+#[path = "game/entities/pick_entity_common.rs"]
+pub mod pick_entity_common;
+#[path = "game/entities/pick_ray.rs"]
+pub mod pick_ray;
+#[path = "game/mobs/piglins_common.rs"]
+pub mod piglins_common;
 #[path = "game/blocks/piston_carry.rs"]
 pub mod piston_carry;
 #[path = "game/world/piston_nbt.rs"]
@@ -516,6 +564,10 @@ pub mod piston_nbt;
 pub mod piston_push;
 #[path = "game/entities/player_equip.rs"]
 pub mod player_equip;
+#[path = "game/player_identity.rs"]
+pub mod player_identity;
+#[path = "game/blocks/potent_sulfur_common.rs"]
+pub mod potent_sulfur_common;
 #[path = "game/blocks/powder_snow.rs"]
 pub mod powder_snow;
 #[path = "game/items/primary_items.rs"]
@@ -546,10 +598,10 @@ pub mod scheduled_tasks;
 #[cfg(feature = "client")]
 #[path = "game/interface/screen_backgrounds.rs"]
 pub mod screen_backgrounds;
-#[path = "game/blocks/block_entity_anims_common.rs"]
-pub mod block_entity_anims_common;
-#[path = "game/world/light_emission.rs"]
-pub mod light_emission;
+#[path = "game/blocks/shelf_common.rs"]
+pub mod shelf_common;
+#[path = "game/side_ops/mod.rs"]
+pub mod side_ops;
 #[path = "game/modding/slot_rules.rs"]
 pub mod slot_rules;
 #[path = "game/interface/smithing_icons.rs"]
@@ -567,6 +619,10 @@ pub mod startup_options;
 pub mod startup_progress;
 #[path = "game/modding/state_resolver.rs"]
 pub mod state_resolver;
+#[path = "game/blocks/stations_common.rs"]
+pub mod stations_common;
+#[path = "game/world/storage_common.rs"]
+pub mod storage_common;
 #[path = "game/administration/structures.rs"]
 pub mod structures;
 #[path = "game/administration/test_entities.rs"]
@@ -594,74 +650,12 @@ pub mod weather;
 pub mod world_entry;
 #[path = "game/items/worn_boots.rs"]
 pub mod worn_boots;
-#[path = "game/modding/api_values_common.rs"]
-pub mod api_values_common;
-#[path = "game/blocks/beacon_common.rs"]
-pub mod beacon_common;
-#[path = "game/mobs/beehives_common.rs"]
-pub mod beehives_common;
-#[path = "game/blocks/block_edits_common.rs"]
-pub mod block_edits_common;
-#[path = "game/blocks/block_props.rs"]
-pub mod block_props;
-#[path = "game/entities/boats_common.rs"]
-pub mod boats_common;
-#[path = "game/blocks/bookshelves_common.rs"]
-pub mod bookshelves_common;
-#[path = "game/mobs/dragon_common.rs"]
-pub mod dragon_common;
-#[path = "game/entities/entity_common.rs"]
-pub mod entity_common;
-#[path = "game/modding/entity_initialization_common.rs"]
-pub mod entity_initialization_common;
-#[path = "game/modding/entity_sizes_common.rs"]
-pub mod entity_sizes_common;
-#[path = "game/mobs/fangs_common.rs"]
-pub mod fangs_common;
-#[path = "game/blocks/jukebox_common.rs"]
-pub mod jukebox_common;
-#[path = "game/modding/mod_api_host_common.rs"]
-pub mod mod_api_host_common;
-#[path = "game/mobs/mounts_common.rs"]
-pub mod mounts_common;
-#[path = "game/modding/native_bots_common.rs"]
-pub mod native_bots_common;
-#[path = "game/modding/native_harvest_queries_common.rs"]
-pub mod native_harvest_queries_common;
-#[path = "game/modding/native_lifecycle_common.rs"]
-pub mod native_lifecycle_common;
-#[path = "game/modding/native_menu_refs_common.rs"]
-pub mod native_menu_refs_common;
-#[path = "game/mobs/ominous_item_spawner/common.rs"]
-pub mod ominous_item_spawner_common;
-#[path = "game/modding/pack_finders/common.rs"]
-pub mod pack_finders_common;
-#[path = "game/entities/passengers_common.rs"]
-pub mod passengers_common;
-#[path = "game/entities/pick_entity_common.rs"]
-pub mod pick_entity_common;
-#[path = "game/mobs/piglins_common.rs"]
-pub mod piglins_common;
-#[path = "game/blocks/potent_sulfur_common.rs"]
-pub mod potent_sulfur_common;
-#[path = "game/blocks/shelf_common.rs"]
-pub mod shelf_common;
-#[path = "game/blocks/stations_common.rs"]
-pub mod stations_common;
-#[path = "game/world/storage_common.rs"]
-pub mod storage_common;
-#[allow(unused_imports)]
-pub use sunrise_gameplay_common::lan::idle as lan_idle;
-#[allow(unused_imports)]
-pub use sunrise_gameplay_common::{interaction_shapes, item_areas, mob_index};
-#[allow(unused_imports)]
-pub use held_items::interact_location;
-pub use hit::Hit;
-#[allow(unused_imports)]
-pub use sunrise_level::random_source;
 #[allow(unused_imports)]
 pub use self::api_values::TryIntoApi;
 pub use api_values::{block_jump_factor, block_speed_factor, is_ladder};
+#[allow(unused_imports)]
+pub use held_items::interact_location;
+pub use hit::Hit;
 pub use launch_options::Options;
 pub use mod_api::game::DataMapType;
 pub use native_configs::ConfigFile;
@@ -688,28 +682,17 @@ pub use sunrise_core::{
 #[allow(unused_imports)]
 pub use sunrise_core::{geometry::Vec3, random::RandomSource};
 #[allow(unused_imports)]
+pub use sunrise_gameplay_common::lan::idle as lan_idle;
+#[allow(unused_imports)]
+pub use sunrise_gameplay_common::{interaction_shapes, item_areas, mob_index};
+#[allow(unused_imports)]
+pub use sunrise_level::random_source;
+#[allow(unused_imports)]
 pub use sunrise_level::spans::{startup, time as span};
 pub use sunrise_level::testgen::TestTerrain;
 #[allow(unused_imports)]
 pub use sunrise_mod_package::selection::{Argument, LaunchArguments};
 pub use sunrise_sim::item_names::Names;
-#[allow(unused_imports)]
-pub use {
-    sunrise_game_data::Result,
-    sunrise_items::blocks::BlockFacts, sunrise_items::blocks::Fluid,
-    sunrise_items::items::ItemStack, sunrise_items::items::Items, sunrise_level::assets::Assets,
-    sunrise_level::biome::Biomes, sunrise_level::collisions,
-    sunrise_level::containers::BlockEntity, sunrise_level::containers::Providers,
-    sunrise_level::environment::Environment, sunrise_level::light::LightTables,
-    sunrise_level::spans, sunrise_level::world::World, sunrise_sim::clock::FixedStep,
-    sunrise_sim::crafting::Recipes, sunrise_sim::entities::Experience,
-    sunrise_sim::entities::ExperienceOrb, sunrise_sim::entities::ItemEntity,
-    sunrise_sim::first_person_sim::Hand, sunrise_sim::first_person_sim::SwingAnimation,
-    sunrise_sim::furnace::FurnaceCooking, sunrise_sim::mobs::Mob, sunrise_sim::mobs::MobType,
-    sunrise_sim::mobs::MobTypes, sunrise_sim::motion::MotionResources,
-    sunrise_sim::motion::PlayerMotion, sunrise_sim::save::Level, sunrise_sim::save::Persistent,
-    sunrise_sim::save::SaveDir, sunrise_sim::sprint::Keys, sunrise_sim::vanillagen::VanillaTerrain,
-};
 #[allow(unused_imports)]
 pub use {
     sunrise_core::dimension::Dimension as LevelDimension,
@@ -726,6 +709,22 @@ pub use {
         },
         registry::BlockStateId,
     },
+};
+#[allow(unused_imports)]
+pub use {
+    sunrise_game_data::Result, sunrise_items::blocks::BlockFacts, sunrise_items::blocks::Fluid,
+    sunrise_items::items::ItemStack, sunrise_items::items::Items, sunrise_level::assets::Assets,
+    sunrise_level::biome::Biomes, sunrise_level::collisions,
+    sunrise_level::containers::BlockEntity, sunrise_level::containers::Providers,
+    sunrise_level::environment::Environment, sunrise_level::light::LightTables,
+    sunrise_level::spans, sunrise_level::world::World, sunrise_sim::clock::FixedStep,
+    sunrise_sim::crafting::Recipes, sunrise_sim::entities::Experience,
+    sunrise_sim::entities::ExperienceOrb, sunrise_sim::entities::ItemEntity,
+    sunrise_sim::first_person_sim::Hand, sunrise_sim::first_person_sim::SwingAnimation,
+    sunrise_sim::furnace::FurnaceCooking, sunrise_sim::mobs::Mob, sunrise_sim::mobs::MobType,
+    sunrise_sim::mobs::MobTypes, sunrise_sim::motion::MotionResources,
+    sunrise_sim::motion::PlayerMotion, sunrise_sim::save::Level, sunrise_sim::save::Persistent,
+    sunrise_sim::save::SaveDir, sunrise_sim::sprint::Keys, sunrise_sim::vanillagen::VanillaTerrain,
 };
 
 /// A frame's finished meshes up to this many upload at once, unqueued.
@@ -1732,7 +1731,6 @@ pub struct CommonGame<'a> {
     pub border: sunrise_level::worldborder::WorldBorder,
     pub adv: advancements_common::AdvState,
     pub fangs: fangs_common::FangState,
-    
 }
 /// The open world's dimensions past vanilla's three. One per process, as a window
 /// and its server thread name the same dimensions.
@@ -2275,10 +2273,7 @@ impl crate::game::CommonGame<'_> {
 
     /// The cauldron at `pos`, and whether water is above it
     /// (`CauldronInteractions.isUnderWater`).
-    pub fn cauldron_at(
-        &self,
-        pos: [i32; 3],
-    ) -> Option<(sunrise_world::chunk::BlockState, bool)> {
+    pub fn cauldron_at(&self, pos: [i32; 3]) -> Option<(sunrise_world::chunk::BlockState, bool)> {
         let registry = self.pack.assets.registry;
         let id = self.world.block(pos[0], pos[1], pos[2]);
         let state = registry
@@ -2367,7 +2362,10 @@ impl crate::game::CommonGame<'_> {
 pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The level's dimension type: a mod's or a data pack's own when it has one, else the
     /// built-in level's.
-    fn dimension_type<'__loan>(&'__loan self) -> &sunrise_world::dimension_type::DimensionFacts where '__sg: '__loan {
+    fn dimension_type<'__loan>(&'__loan self) -> &sunrise_world::dimension_type::DimensionFacts
+    where
+        '__sg: '__loan,
+    {
         // A client of a server has the facts its server sent for the level, which are its own,
         // not the table the server's levels (in this process, for an integrated server) read.
         let remote = side_ops::world::SideOps::side_remote_dimension_context(self.side_state());
@@ -2388,7 +2386,10 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     fn dimension_facts_for<'__loan>(
         &'__loan self,
         key: sunrise_core::LevelKey,
-    ) -> &sunrise_world::dimension_type::DimensionFacts where '__sg: '__loan {
+    ) -> &sunrise_world::dimension_type::DimensionFacts
+    where
+        '__sg: '__loan,
+    {
         use sunrise_world::dimension_type::DimensionFacts;
         if let Some((name, facts)) =
             side_ops::world::SideOps::side_remote_dimension_context(self.side_state())
@@ -2520,7 +2521,7 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             _ => [None; 2],
         }
     }
-     fn sync_player_body(&mut self) {
+    fn sync_player_body(&mut self) {
         self.sync_main_hand();
         let glider = self.glider_worn();
         let sleeping = self.sleeping.is_some();
@@ -2544,7 +2545,8 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         let nudge = self.closest_space_nudge();
         let fast_lava = self.dimension_type().fast_lava;
         let blind = self.potions.effects.get("blindness").is_some();
-        let server_owns_glide = !side_ops::world::SideOps::side_client_has_integrated(self.side_state());
+        let server_owns_glide =
+            !side_ops::world::SideOps::side_client_has_integrated(self.side_state());
         let (common, state) = self.common_and_state_mut();
         let Some(player) = common.player.as_mut() else {
             return;
@@ -2573,11 +2575,7 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// the swing from being sent back to the player who made it). `thrown_from_hand` names the
     /// player as the thrower, as the drop key does. The item's id, none for an empty stack or a
     /// toss a mod canceled.
-     fn drop_stack_from_eyes(
-        &mut self,
-        stack: ItemStack,
-        thrown_from_hand: bool,
-    ) -> Option<u32> {
+    fn drop_stack_from_eyes(&mut self, stack: ItemStack, thrown_from_hand: bool) -> Option<u32> {
         self.side_drop_stack_from_eyes(stack, thrown_from_hand)
     }
     /// Run vanilla block behaviour against the world through `LevelAccess`.
@@ -2599,14 +2597,10 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         self.side_with_level_access(true, |behaviours, level, ticks| f(behaviours, level, ticks))
     }
 
-     fn native_block_ignite_allowed(
-        &mut self,
-        pos: BlockPos,
-        cause: &'static str,
-    ) -> bool {
+    fn native_block_ignite_allowed(&mut self, pos: BlockPos, cause: &'static str) -> bool {
         self.with_level(|_, level, _| level.allow_block_ignite(pos, cause))
     }
-     fn native_cauldron_level_change_allowed(
+    fn native_cauldron_level_change_allowed(
         &mut self,
         pos: BlockPos,
         from: i32,
@@ -2892,7 +2886,7 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// The brush's `ProjectileUtil.getHitResultOnViewVector` excludes only the source entity.
-     fn mob_hit_within(&self, reach: f64) -> Option<(usize, f64, [f64; 3])> {
+    fn mob_hit_within(&self, reach: f64) -> Option<(usize, f64, [f64; 3])> {
         let source = self.side_pick_camera_id();
         let (eye, dir) = self.aim()?;
         let mut nearest = f64::INFINITY;
@@ -2918,7 +2912,7 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
     /// `Player.isSweepAttack` with the player's speed as it is, then
     /// `native_sweep_attack`, on either side: whether the hit on `target` sweeps.
-     fn sweep_decision(&mut self, scale: f32, crit: bool, target: &str) -> bool {
+    fn sweep_decision(&mut self, scale: f32, crit: bool, target: &str) -> bool {
         let Some(p) = self.player.as_ref() else {
             return false;
         };
@@ -3003,7 +2997,7 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// or shovel on the block at `pos`, without doing it: the new state, its
     /// sound, loot table, the durability it costs, its particle and its
     /// transform type.
-     fn block_transform(
+    fn block_transform(
         &self,
         stack: &ItemStack,
         hit: &Hit,
@@ -3165,7 +3159,7 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         self.level_set(pos, id)?;
         Ok(true)
     }
-     fn can_place_used_fire(&mut self, target: [i32; 3]) -> bool {
+    fn can_place_used_fire(&mut self, target: [i32; 3]) -> bool {
         let pos = BlockPos::new(target[0], target[1], target[2]);
         let direction = match ((self.yaw / 90.0 + 0.5).floor() as i32).rem_euclid(4) {
             0 => Direction::South,
@@ -3182,12 +3176,11 @@ pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
     /// `Player.giveExperiencePoints`: `add_experience_levels` runs once for each
     /// level gained or lost, and the mods hear of the level change once.
-     fn give_experience_points(&mut self, points: i32) {
+    fn give_experience_points(&mut self, points: i32) {
         self.side_give_experience_points(points);
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> GameGameExt1<'__sg> for G {}
-
 
 /// `mark_motion` ids of entities that aren't mobs or dropped items (boats, minecarts, armor
 /// stands, item frames, paintings, primed TNT, falling blocks, rockets, tridents, thrown
@@ -3206,7 +3199,6 @@ impl crate::game::CommonGame<'_> {}
 
 // Out-of-line init bundles for wrapped Game fields so finish_construct's unoptimised stack stays small.
 
-
 pub struct WrappedPrepInit {
     pub item_features: sunrise_items::creative_catalog::ItemFeatureRequirements,
     pub level: Level,
@@ -3224,10 +3216,6 @@ pub struct WrappedPrepInit {
 pub struct ConstructInit<const NO_SLOT: bool>;
 
 impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
-    
-    
-    
-    
     #[inline(never)]
     fn build_loop_context(
         res: &Resources,
@@ -3235,12 +3223,13 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
     ) -> Arc<sunrise_world::native_load_context::LoopContext> {
         Arc::new(res.core.item_data.context().loop_context(loop_side, []))
     }
-    
-    
-    
+
     #[inline(never)]
     #[allow(clippy::boxed_local)]
-    pub fn assemble_common<'a>(res: &'a Arc<Resources>, wp: Box<WrappedPrepInit>) -> CommonGame<'a> {
+    pub fn assemble_common<'a>(
+        res: &'a Arc<Resources>,
+        wp: Box<WrappedPrepInit>,
+    ) -> CommonGame<'a> {
         let loop_side = wp.options.execution_role.loop_side();
         let mod_sources = wp.options.mods.clone();
         let creative = wp.options.creative;
@@ -3911,8 +3900,7 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait GameGameExt3<'__sg>: crate::game::SideGame<'__sg> {
-
-     fn resident_source_target_visible(
+    fn resident_source_target_visible(
         &self,
         dimension: mod_api::DimensionKey,
         target: commands_common::Target,
@@ -3959,10 +3947,16 @@ pub use side_ops::ui::UiSideGameExt as _;
 pub use side_ops::world::WorldSideGameExt as _;
 pub use tables::GameItems as _;
 pub use tables::WorldTablesExt as _;
-pub use weather::WeatherGameExt as _;
 pub use transactions::TransactionsGameExt as _;
+pub use weather::WeatherGameExt as _;
 
-pub trait SideGame<'g>: std::ops::DerefMut<Target = CommonGame<'g>> + sunrise_sim::crafting::CraftingRemainder + sunrise_sim::menu::SlotRules + crate::game::item_snapshot::ItemBoundary + Sized {
+pub trait SideGame<'g>:
+    std::ops::DerefMut<Target = CommonGame<'g>>
+    + sunrise_sim::crafting::CraftingRemainder
+    + sunrise_sim::menu::SlotRules
+    + crate::game::item_snapshot::ItemBoundary
+    + Sized
+{
     type State: Side<Nominal<'g> = Self>
         + crate::game::side_ops::blocks::SideOps<Game<'g> = Self>
         + crate::game::side_ops::events::SideOps<Game<'g> = Self>
@@ -3978,15 +3972,22 @@ pub trait SideGame<'g>: std::ops::DerefMut<Target = CommonGame<'g>> + sunrise_si
         + crate::game::side_ops::tables::SideOps<Game<'g> = Self>
         + crate::game::side_ops::ui::SideOps<Game<'g> = Self>
         + crate::game::side_ops::world::SideOps<Game<'g> = Self>;
-    fn common(&self) -> &CommonGame<'g> { self }
-    fn common_mut(&mut self) -> &mut CommonGame<'g> { self }
+    fn common(&self) -> &CommonGame<'g> {
+        self
+    }
+    fn common_mut(&mut self) -> &mut CommonGame<'g> {
+        self
+    }
     fn side_state(&self) -> &Self::State;
     fn side_state_mut(&mut self) -> &mut Self::State;
 
-    fn host_side(&mut self) -> mod_api::HostSide<'_> { Self::State::host_side(self) }
-    fn as_host(&self) -> &dyn mod_api::Host { Self::State::as_host(self) }
+    fn host_side(&mut self) -> mod_api::HostSide<'_> {
+        Self::State::host_side(self)
+    }
+    fn as_host(&self) -> &dyn mod_api::Host {
+        Self::State::as_host(self)
+    }
     fn common_and_state_mut(&mut self) -> (&mut CommonGame<'g>, &mut Self::State);
-
 }
 
 use crate::game::side_ops::events::EventsSideGameExt as _;

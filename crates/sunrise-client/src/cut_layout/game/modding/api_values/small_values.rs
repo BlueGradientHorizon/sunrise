@@ -1,10 +1,8 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod recipe_tests {
     use sunrise_gameplay_common::game::native_hooks::base::BaseGameExt1;
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn recipe_json_text_fields() {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {

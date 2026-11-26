@@ -1,15 +1,12 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::fangs_common::fang_attack_pitch;
 use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::fangs_common::fang_attack_pitch;
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_sim::mobs::anim::Poses;
 
 /// One of the twelve `crit` particles `EvokerFangs.tick` spawns on a client
 /// when `lifeTicks` hits 14. The box is 0.5 wide (`getBbWidth() * 0.5`).
-pub fn fang_crit(
-    random: &mut impl RandomSource,
-    pos: [f64; 3],
-) -> ([f64; 3], [f64; 3]) {
+pub fn fang_crit(random: &mut impl RandomSource, pos: [f64; 3]) -> ([f64; 3], [f64; 3]) {
     let half = 0.5 * 0.5;
     let x = pos[0] + (random.next_double() * 2.0 - 1.0) * half;
     let y = pos[1] + 0.05 + random.next_double();
@@ -101,7 +98,8 @@ impl ClientGame<'_> {
     /// tracks carry no Silent flag, so the sound always plays.
     pub(in crate::game::client_side) fn remote_fangs_event(&mut self, id: u32, event: i8) {
         let sound = self
-            .common.fangs
+            .common
+            .fangs
             .list
             .iter()
             .position(|f| f.id == id)

@@ -23,7 +23,8 @@ impl crate::game::ServerGame<'_> {
             hit,
         );
         if !self
-            .common.hook
+            .common
+            .hook
             .as_ref()
             .is_some_and(|h| h.id == id && h.join == join)
         {
@@ -31,7 +32,8 @@ impl crate::game::ServerGame<'_> {
         }
         let h = self.common.hook.extract()?;
         if self
-            .common.persist
+            .common
+            .persist
             .removals
             .contains(&super::super::commands::Target::Hook(id))
         {

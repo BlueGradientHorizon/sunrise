@@ -13,7 +13,8 @@ pub trait Hooks {
     /// expose their channel and raw bytes, as `client_packet` does for the packets that arrive.
     /// Play-phase pongs pass through this hook; return `Flow::Cancel` to drop a packet.
     /// Beyond NeoForge: there is no counterpart. Diverges from upstream: new hook.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::client_packet_send::ClientGame<'_>::native_client_packet_send", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::client_packet_send::ClientGame<'_>::native_client_packet_send",
         receiver = "read",
         dispatch = "flat",
         side = "client",

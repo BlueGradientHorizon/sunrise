@@ -1,11 +1,9 @@
-
-
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_core::geometry::{Aabb, Vec3};
+    use sunrise_core::geometry::{Aabb, Vec3};
 
-/// `FishingHookRenderer.getPlayerHandPos` in first person on HotSpot 25.0.4.1: the camera at
+    /// `FishingHookRenderer.getPlayerHandPos` in first person on HotSpot 25.0.4.1: the camera at
     /// yaw 30 looking straight up, fov 70 on 854 x 480, the right arm mid-swing (0.5). The
     /// offset from the eye, as double bits.
     #[test]
@@ -24,7 +22,7 @@ use sunrise_core::geometry::{Aabb, Vec3};
             ]
         );
     }
-#[test]
+    #[test]
     fn removing_one_of_two_remote_hooks_clears_owner_fishing() {
         let mut hooks = Vec::new();
         crate::game::client_side::fishing_client::push_remote_hook(

@@ -1,12 +1,12 @@
 //! `StonecutterScreen.containerChanged` (`StonecutterScreen.java:205-209`): the
 //! recipe list goes back to the top whenever the menu's input container
 //! changes, and only then.
+use super::*;
 use sunrise_gameplay_common::game::stations_common::INPUT;
 use sunrise_gameplay_common::game::stations_common::Kind;
 use sunrise_gameplay_common::game::stations_common::RESULT;
 use sunrise_gameplay_common::game::stations_common::Station;
 use sunrise_items::items::ItemStack;
-use super::*;
 use sunrise_sim::menu::Input;
 
 fn deepslate(count: u32) -> ItemStack {

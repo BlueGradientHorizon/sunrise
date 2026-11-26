@@ -1,5 +1,3 @@
-
-
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn native_recipe_sources(
         &mut self,

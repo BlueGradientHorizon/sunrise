@@ -1,8 +1,10 @@
+use super::*;
 use sunrise_client::hud::HudBatch;
 use sunrise_client::hud::rgba;
-use super::*;
+use sunrise_client_gameplay::game::native_hooks::{
+    OpenNativeMenu, OpenNativeScreen, seed_native_menu,
+};
 use sunrise_gameplay_common::game::Screen;
-use sunrise_client_gameplay::game::native_hooks::{OpenNativeMenu, OpenNativeScreen, seed_native_menu};
 
 #[test]
 #[ignore = "daily"]

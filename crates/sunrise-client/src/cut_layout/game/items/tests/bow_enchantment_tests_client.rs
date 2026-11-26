@@ -1,4 +1,7 @@
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
+use {
+    crate::game::load_resources, crate::settings::Settings, sunrise_gameplay_common::game::Options,
+    sunrise_gameplay_common::game::Progress,
+};
 
 /// A game on the prepared resources with a creative player (as `crossbow.rs`).
 pub(crate) fn game_with_player<'a>(
@@ -21,7 +24,8 @@ pub(crate) fn game_with_player<'a>(
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.to_path_buf();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         res,

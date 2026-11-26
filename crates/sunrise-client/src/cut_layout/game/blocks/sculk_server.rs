@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_level::containers::BlockEntity;
@@ -8,10 +6,10 @@ use sunrise_sim::mobs::Species;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use super::*;
-use sunrise_level::sculk::Context;
+    use super::*;
+    use sunrise_level::sculk::Context;
 
-/// The wardens that hear an event are those in the list when it is
+    /// The wardens that hear an event are those in the list when it is
     /// posted, however the list changed since the last one.
     #[test]
     #[ignore = "daily"]
@@ -80,18 +78,20 @@ use sunrise_level::sculk::Context;
     }
 }
 
-
 #[cfg(test)]
 pub(crate) mod command_damage_listener_tests {
     use super::*;
-    use sunrise_level::sculk::Info;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
     use crate::game::{Settings, load_resources};
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;
+    use sunrise_level::sculk::Info;
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 
-    fn selected(game: &sunrise_gameplay::game::ServerGame<'_>, key: (i32, i32, i32)) -> Option<(Info, i64)> {
+    fn selected(
+        game: &sunrise_gameplay::game::ServerGame<'_>,
+        key: (i32, i32, i32),
+    ) -> Option<(Info, i64)> {
         let Some(BlockEntity::Sculk(sensor)) = game.world.block_entities.get(&key) else {
             panic!("actual command-created sensor must be registered");
         };
@@ -120,7 +120,8 @@ pub(crate) mod command_damage_listener_tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,

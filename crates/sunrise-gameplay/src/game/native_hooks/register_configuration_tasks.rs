@@ -1,4 +1,3 @@
-
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn native_register_configuration_tasks(
         &mut self,

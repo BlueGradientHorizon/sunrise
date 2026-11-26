@@ -240,7 +240,9 @@ impl crate::game::ServerGame<'_> {
         };
         // A source entity that is gone reads as none (VibrationInfo.getEntity).
         let alive = |w: Option<Who>| match w {
-            Some(Who::Mob(id)) if !self.common.mobs.iter().any(|m| m.id == id && !m.removed) => None,
+            Some(Who::Mob(id)) if !self.common.mobs.iter().any(|m| m.id == id && !m.removed) => {
+                None
+            }
             other => other,
         };
         format!(
@@ -269,7 +271,9 @@ impl crate::game::ServerGame<'_> {
     ) -> String {
         let state = self.common.world.block(p[0], p[1], p[2]);
         let mut line = self.fixture_state_text(state);
-        if let Some(BlockEntity::Sculk(e)) = self.common.world.block_entities.get(&(p[0], p[1], p[2])) {
+        if let Some(BlockEntity::Sculk(e)) =
+            self.common.world.block_entities.get(&(p[0], p[1], p[2]))
+        {
             let vibration = |line: &mut String| {
                 let v = &e.vibration;
                 let _ = write!(
@@ -331,7 +335,8 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game::server_side) fn sculk_fixture_reset(&mut self, s: &Scenario) -> Result<()> {
-        self.common.world = sunrise_gameplay_common::game::world_for_mods(self.common.res.facts().air, 0);
+        self.common.world =
+            sunrise_gameplay_common::game::world_for_mods(self.common.res.facts().air, 0);
         let plains = u32::from(world_biomes!(self).id("minecraft:plains"));
         let layers = [
             self.fixture_state("minecraft:bedrock")?,
@@ -354,8 +359,12 @@ impl crate::game::ServerGame<'_> {
                 for x in 0..16 {
                     for z in 0..16 {
                         for (y, layer) in layers.iter().enumerate() {
-                            self.common.world
-                                .set(cx * 16 + x, MIN_Y + y as i32, cz * 16 + z, *layer)?;
+                            self.common.world.set(
+                                cx * 16 + x,
+                                MIN_Y + y as i32,
+                                cz * 16 + z,
+                                *layer,
+                            )?;
                         }
                     }
                 }
@@ -383,7 +392,8 @@ impl crate::game::ServerGame<'_> {
             ("raids", false),
             ("spawn_wardens", s.wardens),
         ] {
-            self.common.ui
+            self.common
+                .ui
                 .rules
                 .set(rule, sunrise_game_data::gamerules::Value::Bool(value));
         }
@@ -472,7 +482,8 @@ impl crate::game::ServerGame<'_> {
         let mut sources: Vec<u32> = Vec::new();
         for spec in &s.mobs {
             let kind = self
-                .common.res
+                .common
+                .res
                 .mob_types()
                 .get(&spec.kind)
                 .cloned()
@@ -545,7 +556,8 @@ impl crate::game::ServerGame<'_> {
             }
             let tr = self.server.sculk.tracker;
             let dark = self
-                .common.potions
+                .common
+                .potions
                 .effects
                 .get("darkness")
                 .map_or("-".to_owned(), |e| e.duration.to_string());
@@ -558,7 +570,8 @@ impl crate::game::ServerGame<'_> {
                 lines.push(now);
             }
             let mut fresh: Vec<&Mob> = self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .filter(|m| !known.contains(&m.id))
                 .collect();
@@ -755,7 +768,8 @@ impl crate::game::ServerGame<'_> {
                         .and_then(|a| a.parse::<f32>().ok())
                         .unwrap_or(1000.0);
                     let at = self
-                        .common.player
+                        .common
+                        .player
                         .as_ref()
                         .map(|p| [p.position.x, p.position.y, p.position.z])
                         .unwrap_or_default();
@@ -814,7 +828,8 @@ impl crate::game::ServerGame<'_> {
         // in this tick's entity phase: seed them now, as they are seeded
         // after the tick.
         let mut born: Vec<u32> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .map(|m| m.id)
             .filter(|id| !known.contains(id))

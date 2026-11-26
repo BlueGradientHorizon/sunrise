@@ -1,5 +1,3 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 impl crate::game::ServerGame<'_> {
     #[cfg(any(test, feature = "test-support"))]

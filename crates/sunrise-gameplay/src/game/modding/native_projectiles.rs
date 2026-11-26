@@ -5,9 +5,9 @@
 //! through whatever it hit.
 use super::{commands::Target, dragon_common::SPECIAL, lan_pvp::meets_players};
 use crate::game::native_hooks::mob_kind;
-use sunrise_gameplay_common::game::creatures::TargetQuery;
 use std::ops::Range;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_gameplay_common::game::creatures::TargetQuery;
 use sunrise_level::fast_hash::{FxHashMap, FxHashSet};
 use sunrise_sim::{
     arrows::{ArrowEvent, ArrowSound},
@@ -489,7 +489,10 @@ impl crate::game::ServerGame<'_> {
             let from = p.position;
             (p, pending.keep, hit) = self.broken_vehicle_retick(before.clone());
             pending.target = self.native_impact_target(hit);
-            self.common.creatures.projectiles.store_back(index, p.clone());
+            self.common
+                .creatures
+                .projectiles
+                .store_back(index, p.clone());
             self.entity_section_step(p.id, from.components(), p.position.components());
             if self.projectile_removal_pending(p.id) {
                 return None;

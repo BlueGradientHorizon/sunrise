@@ -1,25 +1,23 @@
-
-
 #![cfg(test)]
-use sunrise_gameplay_common::game::execution_role;
+use crate::game::load_resources;
+use crate::settings::Settings;
 use std::path::PathBuf;
 use std::time::Instant;
 use sunrise_gameplay::game::world_loading::WorldRequest;
-use sunrise_sim::save::Level;
-use crate::game::load_resources;
-use crate::settings::Settings;
-use sunrise_gameplay_common::game::Progress;
 use sunrise_gameplay_common::game::Options;
+use sunrise_gameplay_common::game::Progress;
+use sunrise_gameplay_common::game::execution_role;
+use sunrise_sim::save::Level;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use super::*;
+    use super::*;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn recovered_world_uses_the_pack_flat_generator_before_its_first_save() {
-        use sunrise_gameplay_common::game::execution_role::ExecutionRole::DedicatedServer;
         use std::fs;
+        use sunrise_gameplay_common::game::execution_role::ExecutionRole::DedicatedServer;
         use sunrise_sim::save;
 
         let scratch = tempfile::tempdir().unwrap();
@@ -104,12 +102,14 @@ use super::*;
             },
         );
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn both_server_roles_record_regions_before_world_generation() {
         mod_platform::__private::initialize().unwrap();
         use super::super::native_entity_refs::tests::with_game_role;
-        use sunrise_gameplay_common::game::execution_role::ExecutionRole::{DedicatedServer, IntegratedServer};
+        use sunrise_gameplay_common::game::execution_role::ExecutionRole::{
+            DedicatedServer, IntegratedServer,
+        };
         struct Regions;
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for Regions {
@@ -174,11 +174,14 @@ use super::*;
     }
 }
 
-
 #[cfg(test)]
 mod unused_feature_startup_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::growth_features, sunrise_gameplay_common::game::pack_discovery::data_repository, sunrise_gameplay_common::game::world_preload::worldgen_overrides_of};
+    use {
+        sunrise_gameplay_common::game::growth_features,
+        sunrise_gameplay_common::game::pack_discovery::data_repository,
+        sunrise_gameplay_common::game::world_preload::worldgen_overrides_of,
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -287,7 +290,11 @@ mod unused_feature_startup_tests {
 #[cfg(test)]
 mod unused_feature_preservation_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::growth_features, sunrise_gameplay_common::game::pack_discovery::data_repository, sunrise_gameplay_common::game::world_preload::worldgen_overrides_of};
+    use {
+        sunrise_gameplay_common::game::growth_features,
+        sunrise_gameplay_common::game::pack_discovery::data_repository,
+        sunrise_gameplay_common::game::world_preload::worldgen_overrides_of,
+    };
 
     #[test]
     #[ignore = "daily"]

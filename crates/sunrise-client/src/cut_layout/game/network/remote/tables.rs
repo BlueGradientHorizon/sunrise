@@ -1,17 +1,20 @@
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::tables::GameItems;
-use {sunrise_client_lib::audio::Audio, crate::settings::Settings, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role::ExecutionRole, crate::game::load_resources};
     use std::{collections::HashSet, sync::Arc};
     use sunrise_core::nbt::Tag;
+    use sunrise_gameplay_common::game::tables::GameItems;
     use sunrise_items::items::ItemStack;
     use sunrise_protocol::{
         connection::Pipe,
         packets::configuration::{RegistryTags, TagEntry, UpdateTags},
     };
     use sunrise_sim::mobs::equip::equippable_in_slot;
+    use {
+        crate::game::load_resources, crate::settings::Settings, sunrise_client_lib::audio::Audio,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        sunrise_gameplay_common::game::execution_role::ExecutionRole,
+    };
 
     fn client<'a>(
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
@@ -92,12 +95,13 @@ use {sunrise_client_lib::audio::Audio, crate::settings::Settings, sunrise_gamepl
                         ("allowed_entities", Tag::String("#can_equip_saddle".into())),
                     ])),
                 );
-                let assert_equips = |game: &sunrise_client_gameplay::game::ClientGame<'_>, allowed, denied| {
-                    for stack in [&saddle, &patched] {
-                        assert!(equippable_in_slot(game.items(), stack, "saddle", allowed));
-                        assert!(!equippable_in_slot(game.items(), stack, "saddle", denied));
-                    }
-                };
+                let assert_equips =
+                    |game: &sunrise_client_gameplay::game::ClientGame<'_>, allowed, denied| {
+                        for stack in [&saddle, &patched] {
+                            assert!(equippable_in_slot(game.items(), stack, "saddle", allowed));
+                            assert!(!equippable_in_slot(game.items(), stack, "saddle", denied));
+                        }
+                    };
 
                 // Configuration stores the tags before the client installs the server tables.
                 Arc::make_mut(&mut game.client.remote.as_mut().unwrap().registries)

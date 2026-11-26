@@ -129,7 +129,8 @@ impl crate::game::ServerGame<'_> {
     /// What the ticks left: where every mob stands and what every container holds.
     fn hot_level_state(&self) -> (Vec<[u64; 3]>, Vec<((i32, i32, i32), u32)>) {
         let mobs = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .map(|mob| {
                 [
@@ -140,7 +141,8 @@ impl crate::game::ServerGame<'_> {
             })
             .collect();
         let mut held: Vec<_> = self
-            .common.world
+            .common
+            .world
             .block_entities
             .iter()
             .map(|(at, entity)| {

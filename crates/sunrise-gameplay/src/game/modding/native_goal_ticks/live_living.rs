@@ -1,7 +1,7 @@
 //! Reads from the actual mob loaned to the active goal, or a disjoint live mob.
 use super::{GoalCx, Resolved};
-use sunrise_gameplay_common::game::native_equipment_read::{hand_slot, lend_equipment};
 use mod_api::{ActiveEffect, EffectKey, EquipmentSlot, Hand, ItemStackView, LivingRef, Pose};
+use sunrise_gameplay_common::game::native_equipment_read::{hand_slot, lend_equipment};
 use sunrise_items::items::EntityTypeTags;
 use sunrise_sim::mobs::Mob;
 use sunrise_sim::mobs::{finalize, villager};

@@ -1,5 +1,4 @@
 use super::*;
-use {crate::game::client_side::resource_tables_client::ClientMobTables, crate::game::client_side::resource_tables_client::ClientResources, crate::game::client_side::resource_tables_client::load_animate_tables, sunrise_gameplay_common::game::world_rest_common, sunrise_gameplay_common::game::world_rest_common::RestPresentation, sunrise_gameplay_common::game::world_rest_common::ServerRestPresentation};
 use std::path::Path;
 use sunrise_assets::resource_source::ResourceRoot;
 use sunrise_protocol::registry::Builtin;
@@ -7,6 +6,14 @@ use sunrise_sim::mobs::spawner::SpawnerTypeFacts;
 use sunrise_world::{
     attributes::entity::Catalog as Attributes, block_render::FaceVisibility,
     item_defaults::ItemDefaults,
+};
+use {
+    crate::game::client_side::resource_tables_client::ClientMobTables,
+    crate::game::client_side::resource_tables_client::ClientResources,
+    crate::game::client_side::resource_tables_client::load_animate_tables,
+    sunrise_gameplay_common::game::world_rest_common,
+    sunrise_gameplay_common::game::world_rest_common::RestPresentation,
+    sunrise_gameplay_common::game::world_rest_common::ServerRestPresentation,
 };
 
 pub(in crate::game) type LoadedWorldRest = (WorldRest, Option<ClientResources>);
@@ -191,8 +198,10 @@ pub(in crate::game) fn load_world_rest(
         let presentation = ClientRestPresentation {
             entity_models,
             visibility,
-            builtin: sunrise_gameplay_common::game::villager_client::builtin_registries(resource_root.prepared())
-                .unwrap_or_default(),
+            builtin: sunrise_gameplay_common::game::villager_client::builtin_registries(
+                resource_root.prepared(),
+            )
+            .unwrap_or_default(),
         };
         world_rest_common::load_world_rest(
             resource_root,

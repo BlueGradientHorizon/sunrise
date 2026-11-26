@@ -28,7 +28,12 @@ impl crate::game::ClientGame<'_> {
             }
         }
         for (ty, key, count) in known {
-            self.common.stats.values.entry(ty).or_default().insert(key, count);
+            self.common
+                .stats
+                .values
+                .entry(ty)
+                .or_default()
+                .insert(key, count);
         }
         Ok(())
     }
@@ -97,7 +102,8 @@ impl crate::game::ClientGame<'_> {
         }
         let v = i32::from(p.value);
         match self
-            .common.container
+            .common
+            .container
             .and_then(|key| self.common.world.block_entities.get_mut(&key))
         {
             Some(BlockEntity::Furnace(f)) => match p.id {
@@ -141,7 +147,10 @@ impl crate::game::ClientGame<'_> {
         {
             let (pop, old) = match p.slot {
                 45 => (9, self.common.offhand.as_ref()),
-                s => (s as usize - 36, self.common.inventory[s as usize - 36].as_ref()),
+                s => (
+                    s as usize - 36,
+                    self.common.inventory[s as usize - 36].as_ref(),
+                ),
             };
             if old.is_none_or(|old| old.count < new.count) {
                 self.client.hotbar_pop[pop] = 5;
@@ -233,10 +242,11 @@ impl crate::game::ClientGame<'_> {
         self.refresh_debug_renderers();
         // LocalPlayer.setReducedDebugInfo always rebuilds, also on a second login.
         self.client.debug_entries.0.invalidate();
-        self.client.streaming.radius = sunrise_gameplay_common::game::streaming_radius::streaming_radius_for(
-            self.client.settings.render_distance,
-            Some(p.chunk_radius),
-        );
+        self.client.streaming.radius =
+            sunrise_gameplay_common::game::streaming_radius::streaming_radius_for(
+                self.client.settings.render_distance,
+                Some(p.chunk_radius),
+            );
 
         // handleLogin: startWaitingForNewLevel(.., Reason.OTHER).
         self.enter_remote_dimension(
@@ -550,7 +560,8 @@ impl crate::game::ClientGame<'_> {
                     && let Some(index) = self.common.mob_index.find(&self.common.mobs, id)
                 {
                     let spectator = r.remote_player_info_game_mode(id as i32) == Some(SPECTATOR);
-                    self.common.mobs
+                    self.common
+                        .mobs
                         .update(index, |mob| mob.extra.spectator = spectator);
                 }
             }
@@ -561,9 +572,14 @@ impl crate::game::ClientGame<'_> {
         self.reset_client_item_use();
         // The new LocalPlayer copies reduced debug info through its setter.
         self.client.debug_entries.0.invalidate();
-        let old_player = self.client.remote.as_ref().map(|r| (r.entity_id, r.profile));
+        let old_player = self
+            .client
+            .remote
+            .as_ref()
+            .map(|r| (r.entity_id, r.profile));
         if let Some((_, uuid)) = old_player {
-            self.common.forget_entity_initialization(Holder::Player(uuid));
+            self.common
+                .forget_entity_initialization(Holder::Player(uuid));
         }
         if let Some(r) = self.client.remote.as_ref() {
             self.client.audio.0.remove_sound_entity(r.entity_id as u32);
@@ -612,7 +628,8 @@ impl crate::game::ClientGame<'_> {
             .is_some_and(|r| r.level != p.spawn.dimension);
         let died = self.client.screen == Screen::Dead
             || self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .is_some_and(|m| m.health.health() <= 0.0);
         let reason = sunrise_client::level_loading::reason_for_respawn(
@@ -645,7 +662,8 @@ impl crate::game::ClientGame<'_> {
         // handleRespawn adds the new LocalPlayer after what the kept
         // level holds; a new level holds nothing yet.
         let before: std::collections::HashSet<u32> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .map(|m| m.id)
             .chain(self.common.boats.iter().map(|b| b.id))
@@ -735,7 +753,11 @@ impl crate::game::ClientGame<'_> {
             .remote
             .as_ref()
             .is_none_or(|r| r.show_death_screen);
-        if p.health <= 0.0 && shown && self.client.screen != Screen::Dead && self.common.player.is_some() {
+        if p.health <= 0.0
+            && shown
+            && self.client.screen != Screen::Dead
+            && self.common.player.is_some()
+        {
             self.close_dialogs();
             self.set_screen(Screen::Dead);
             self.client.chat_ui.death_time = 0;
@@ -774,10 +796,14 @@ impl crate::game::ClientGame<'_> {
             // Inventory.EQUIPMENT_SLOT_MAPPING: SLOT_OFFHAND, SLOT_BODY_ARMOR, SLOT_SADDLE.
             40 => self.common.offhand = stack,
             41 => {
-                self.common.equipment.set(sunrise_items::equipment::BODY, stack);
+                self.common
+                    .equipment
+                    .set(sunrise_items::equipment::BODY, stack);
             }
             42 => {
-                self.common.equipment.set(sunrise_items::equipment::SADDLE, stack);
+                self.common
+                    .equipment
+                    .set(sunrise_items::equipment::SADDLE, stack);
             }
             _ => {}
         }

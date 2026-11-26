@@ -13,7 +13,8 @@ impl crate::game::ClientGame<'_> {
         remote.camera = None;
         remote.detached_camera = None;
         let player = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map(|_| (remote.entity_id, remote.profile));
         self.clear_spectated_entity_post_effect();
@@ -55,11 +56,12 @@ impl crate::game::ClientGame<'_> {
                 category: &category,
                 tag: &tag,
             };
-            self.stations().recipes.with_stonecutting(
-                names.stonecutting(&self.common.recipe_tables.server_properties.stonecutter, |stack| {
-                    self.decode_remote_stack(stack)
-                }),
-            )
+            self.stations()
+                .recipes
+                .with_stonecutting(names.stonecutting(
+                    &self.common.recipe_tables.server_properties.stonecutter,
+                    |stack| self.decode_remote_stack(stack),
+                ))
         });
         if let Some((station, ui)) = self.station_and_ui_mut()
             && station.kind == sunrise_gameplay_common::game::stations_common::Kind::Stonecutter

@@ -3,8 +3,8 @@
 //! and `handleSetEntityData`): the server simulates them, the client draws
 //! them where it says and interpolates their moves.
 use super::{FallingBlock, fireworks::fireworks_of};
-use sunrise_gameplay_common::game::native_ticks::{TickRound, places_of, slot_place};
 use sunrise_core::{geometry::Vec3, position::BlockPos, random::RandomSource};
+use sunrise_gameplay_common::game::native_ticks::{TickRound, places_of, slot_place};
 use sunrise_items::items::ItemStack;
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_protocol::entity_data::Value;
@@ -41,7 +41,13 @@ impl crate::game::ClientGame<'_> {
     /// into twenty particles in its colour. The server turns it into a plain
     /// arrow and does not send the colour again, so it stops here.
     pub(in crate::game::client_side) fn remote_arrow_puff(&mut self, id: u32) {
-        let Some(i) = self.common.creatures.projectiles.iter().position(|p| p.id == id) else {
+        let Some(i) = self
+            .common
+            .creatures
+            .projectiles
+            .iter()
+            .position(|p| p.id == id)
+        else {
             return;
         };
         let Some((at, color)) = self.common.creatures.projectiles.update(i, |p| {
@@ -197,7 +203,8 @@ impl crate::game::ClientGame<'_> {
             } else if let Some(i) = self.common.falling.iter().position(|f| f.id == id) {
                 // FallingBlockEntity.DATA_START_POS (the model's seed).
                 if let (8, Value::Pos(p)) = (index, value) {
-                    self.common.falling
+                    self.common
+                        .falling
                         .update(i, |f| f.start_pos = BlockPos::new(p[0], p[1], p[2]));
                 }
             } else if let Some(c) = self.common.crystals.iter_mut().find(|c| c.id == id) {
@@ -218,7 +225,13 @@ impl crate::game::ClientGame<'_> {
                     (11, Value::Byte(loyalty)) => t.loyalty = u32::from(*loyalty as u8),
                     _ => {}
                 }
-            } else if let Some(i) = self.common.creatures.projectiles.iter().position(|p| p.id == id) {
+            } else if let Some(i) = self
+                .common
+                .creatures
+                .projectiles
+                .iter()
+                .position(|p| p.id == id)
+            {
                 self.common.creatures.projectiles.update(i, |p| {
                     match (&mut p.kind, index, value) {
                         // Entity.DATA_SHARED_FLAGS_ID's FLAG_ONFIRE: Entity.isOnFire on
@@ -284,7 +297,13 @@ impl crate::game::ClientGame<'_> {
         let (id, Some((yaw, pitch))) = (id as u32, rotation) else {
             return;
         };
-        if let Some(i) = self.common.creatures.projectiles.iter().position(|p| p.id == id) {
+        if let Some(i) = self
+            .common
+            .creatures
+            .projectiles
+            .iter()
+            .position(|p| p.id == id)
+        {
             self.common.creatures.projectiles.update(i, |p| {
                 p.yaw = yaw;
                 p.pitch = pitch;
@@ -327,7 +346,11 @@ impl crate::game::ClientGame<'_> {
         };
         if !self.common.clock.runs_normally()
             || self.common.player.is_none()
-            || !self.common.rockets.iter().any(|r| r.attached_to == Some(me))
+            || !self
+                .common
+                .rockets
+                .iter()
+                .any(|r| r.attached_to == Some(me))
         {
             return;
         }
@@ -339,15 +362,13 @@ impl crate::game::ClientGame<'_> {
             self.pick_section_move(r.id, r.position.components());
             self.rocket_spark(r);
         }
-        self.common.rockets
+        self.common
+            .rockets
             .restore(rockets, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
     }
 
     /// One tick of interpolation, as `tick_remote_objects`.
-    pub fn tick_remote_projectiles(
-        &mut self,
-        mut step: impl FnMut(u32, Vec3) -> Vec3,
-    ) {
+    pub fn tick_remote_projectiles(&mut self, mut step: impl FnMut(u32, Vec3) -> Vec3) {
         self.tick_remote_fangs();
         // PrimedTnt.tick runs on a client too: it falls, bounces and burns its
         // fuse down (the swell and flash follow it) between the server's
@@ -406,7 +427,8 @@ impl crate::game::ClientGame<'_> {
             let _ = self.client_fall_step(f);
             self.pick_section_move(f.id, f.position.components());
         });
-        self.common.falling
+        self.common
+            .falling
             .restore(falling, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         // Projectiles tick on the client too and fly on between the tracker's
         // updates (10 to 20 ticks apart); a block stops them there, and only
@@ -423,7 +445,9 @@ impl crate::game::ClientGame<'_> {
                 } else {
                     round.add(
                         p.id,
-                        sunrise_gameplay_common::game::native_ticks::TickKind::Fixed(p.entity_type()),
+                        sunrise_gameplay_common::game::native_ticks::TickKind::Fixed(
+                            p.entity_type(),
+                        ),
                     );
                 }
             }
@@ -431,7 +455,10 @@ impl crate::game::ClientGame<'_> {
                 alone_any |= !self.common.tridents.is_empty();
             } else {
                 for t in self.common.tridents.iter() {
-                    round.add(t.id, sunrise_gameplay_common::game::native_ticks::TickKind::Fixed(TRIDENT));
+                    round.add(
+                        t.id,
+                        sunrise_gameplay_common::game::native_ticks::TickKind::Fixed(TRIDENT),
+                    );
                 }
             }
             self.native_tick_pre_batch(&mut round);
@@ -510,7 +537,8 @@ impl crate::game::ClientGame<'_> {
         self.native_tick_post_batch(round);
         self.arrow_effect_particles();
         let trails: Vec<Vec3> = self
-            .common.creatures
+            .common
+            .creatures
             .projectiles
             .iter()
             .filter(|p| has_smoke_trail(&p.kind))
@@ -529,7 +557,10 @@ impl crate::game::ClientGame<'_> {
         nested_spawn_tests::after_lift(self, nested_spawn_tests::Point::RemoteRocket);
         for r in &mut rockets {
             let side_server = self.game_side_client();
-            r.remote_step(self.common.body_motion(&client_game_side!(self, side_server)));
+            r.remote_step(
+                self.common
+                    .body_motion(&client_game_side!(self, side_server)),
+            );
             if let Some(target) = r.attached_to {
                 if me == Some(target) {
                     self.pick_section_move(r.id, r.position.components());
@@ -548,7 +579,8 @@ impl crate::game::ClientGame<'_> {
             self.pick_section_move(r.id, r.position.components());
             self.rocket_spark(r);
         }
-        self.common.rockets
+        self.common
+            .rockets
             .restore(rockets, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         for c in &mut self.common.crystals {
             c.time += 1;
@@ -801,12 +833,17 @@ impl crate::game::ClientGame<'_> {
         JoinList<sunrise_sim::thrown_trident::ThrownTrident>,
         (bool, bool),
     ) {
-        self.common.creatures
+        self.common
+            .creatures
             .projectiles
             .restore(projectiles, RestoreOrder::SurvivorsFirst);
-        self.common.tridents
+        self.common
+            .tridents
             .restore(tridents, RestoreOrder::SurvivorsFirst);
-        let stamps = (self.common.creatures.projectiles.stamp(), self.common.tridents.stamp());
+        let stamps = (
+            self.common.creatures.projectiles.stamp(),
+            self.common.tridents.stamp(),
+        );
         tell(self);
         let changed = (
             self.common.creatures.projectiles.stamp() != stamps.0,
@@ -887,7 +924,8 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn dragon_breath_trails(&mut self) {
         let trail = ParticleOptions::simple(ParticleType::DragonBreath);
         let at: Vec<Vec3> = self
-            .common.creatures
+            .common
+            .creatures
             .projectiles
             .iter()
             .filter(|p| p.kind == ProjectileKind::DragonFireball)
@@ -904,7 +942,8 @@ impl crate::game::ClientGame<'_> {
     /// 0.3125 box (`getRandomX(0.5)`, `getRandomY`, `getRandomZ(0.5)`).
     pub(in crate::game::client_side) fn shulker_bullet_trails(&mut self) {
         let bullets: Vec<Vec3> = self
-            .common.creatures
+            .common
+            .creatures
             .projectiles
             .iter()
             .filter(|p| matches!(p.kind, ProjectileKind::ShulkerBullet { .. }))
@@ -946,28 +985,32 @@ impl crate::game::ClientGame<'_> {
         let (yaw, pitch) = rotation;
         match kind {
             "minecraft:evoker_fangs" => self.common.insert_fangs(id, position, yaw, 0, 0),
-            "minecraft:tnt" => self.common.tnts.push(sunrise_gameplay_common::game::tnt_common::PrimedTnt {
-                size_answer: None,
-                attachment_lifetime: Default::default(),
-                rotation: [0.0, 0.0],
-                join: Default::default(),
-                no_gravity: false,
-                id,
-                position: at,
-                previous: at,
-                velocity,
-                fuse: 80,
-                ticks: 0,
-                ground: Default::default(),
-                fall_distance: 0.0,
-                stuck: Vec3::ZERO,
-                in_water: false,
-                owner: None,
-                guest: None,
-                power: 4.0,
-                used_portal: false,
-                block_state: None,
-            }),
+            "minecraft:tnt" => {
+                self.common
+                    .tnts
+                    .push(sunrise_gameplay_common::game::tnt_common::PrimedTnt {
+                        size_answer: None,
+                        attachment_lifetime: Default::default(),
+                        rotation: [0.0, 0.0],
+                        join: Default::default(),
+                        no_gravity: false,
+                        id,
+                        position: at,
+                        previous: at,
+                        velocity,
+                        fuse: 80,
+                        ticks: 0,
+                        ground: Default::default(),
+                        fall_distance: 0.0,
+                        stuck: Vec3::ZERO,
+                        in_water: false,
+                        owner: None,
+                        guest: None,
+                        power: 4.0,
+                        used_portal: false,
+                        block_state: None,
+                    })
+            }
             // FallingBlockEntity.recreateFromPacket: the block state is the data.
             "minecraft:falling_block" => self.common.falling.push(FallingBlock {
                 size_answer: None,
@@ -1001,7 +1044,8 @@ impl crate::game::ClientGame<'_> {
                 self.common.tridents.push(t);
             }
             "minecraft:firework_rocket" => {
-                self.common.rockets
+                self.common
+                    .rockets
                     .push(super::fireworks::Rocket::remote(id, at, velocity));
             }
             "minecraft:splash_potion"
@@ -1024,7 +1068,8 @@ impl crate::game::ClientGame<'_> {
                 random: sunrise_level::random_source::entity(),
             }),
             "minecraft:eye_of_ender" => {
-                self.common.end
+                self.common
+                    .end
                     .add_remote_eye(id, position, [velocity.x, velocity.y, velocity.z])
             }
             // FishingHook.recreateFromPacket: the owner's id is the data.
@@ -1043,10 +1088,14 @@ impl crate::game::ClientGame<'_> {
                 let drawn = sunrise_sim::mobs::entity_random(id, at)
                     .next_int_bound(100_000)
                     .unwrap_or(0);
-                let time =
-                    sunrise_gameplay_common::game::dragon_common::Crystal::start_time(at, drawn, self.common.clock.still());
-                self.common.crystals
-                    .push(sunrise_gameplay_common::game::dragon_common::Crystal::new(id, at, true, time));
+                let time = sunrise_gameplay_common::game::dragon_common::Crystal::start_time(
+                    at,
+                    drawn,
+                    self.common.clock.still(),
+                );
+                self.common.crystals.push(
+                    sunrise_gameplay_common::game::dragon_common::Crystal::new(id, at, true, time),
+                );
             }
             _ => {
                 let Some(k) = projectile_kind(kind) else {
@@ -1333,7 +1382,6 @@ use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
 
 use sunrise_gameplay_common::game::fireworks::FireworksGameExt1 as _;
 
-
 use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
 
 #[cfg(feature = "client")]
@@ -1353,10 +1401,7 @@ pub(in crate::game) mod nested_spawn_tests {
     }
     type Spawn = fn(&mut crate::game::ClientGame<'_>, u32);
     thread_local! { static PENDING: Cell<Option<(Point, Spawn)>> = const { Cell::new(None) }; }
-    pub(super) fn after_lift(
-        game: &mut crate::game::ClientGame<'_>,
-        point: Point,
-    ) {
+    pub(super) fn after_lift(game: &mut crate::game::ClientGame<'_>, point: Point) {
         if let Some((expected, spawn)) = PENDING.get()
             && point == expected
         {
@@ -1406,7 +1451,8 @@ pub(in crate::game) mod nested_spawn_tests {
                 .registry
                 .default_state("minecraft:slime_block")
                 .unwrap();
-            game.common.world
+            game.common
+                .world
                 .chunks
                 .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
             game.world.set(4, 63, 4, slime).unwrap();

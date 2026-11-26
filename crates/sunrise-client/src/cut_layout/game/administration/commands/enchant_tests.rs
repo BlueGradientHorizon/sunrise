@@ -1,6 +1,9 @@
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::finalize::{MAINHAND, item_stack};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 pub(crate) const TRIDENT: &str = "minecraft:trident";
 pub(crate) const RIPTIDE: &str = "minecraft:riptide";

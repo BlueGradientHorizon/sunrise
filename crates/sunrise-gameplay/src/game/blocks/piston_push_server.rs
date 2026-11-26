@@ -1,16 +1,16 @@
 //! Server-side piston, shulker lid, block-push-up, and forced entity move passes.
 use super::move_gate::MoveWho;
+use crate::game::server_side::minecarts_server::CartHit;
+use sunrise_core::geometry::{
+    Aabb, Axis, COLLISION_EPSILON, Direction, ShapeOp, Vec3, entity_collision_bounds,
+};
+use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::game::collision_source::Mover;
 use sunrise_gameplay_common::game::entity::{Entity, EntityHandle, with_entity, with_entity_mut};
 use sunrise_gameplay_common::game::piston_push::{
     Body, Lid, Push, PushTarget, ShulkerPush, StepHeights, first_axis_direction, pushed_movement,
     shulker_lid,
 };
-use crate::game::server_side::minecarts_server::CartHit;
-use sunrise_core::geometry::{
-    Aabb, Axis, COLLISION_EPSILON, Direction, ShapeOp, Vec3, entity_collision_bounds,
-};
-use sunrise_core::position::BlockPos;
 use sunrise_level::collisions::{SceneCollisions, with_piston_noclip};
 use sunrise_sim::entity_rules::EntityRules;
 use sunrise_sim::join_seq::{JoinSeq, Joined};
@@ -133,7 +133,12 @@ impl crate::game::ServerGame<'_> {
         for x in lo.x.floor() as i32..=hi.x.floor() as i32 {
             for y in lo.y.floor() as i32..=hi.y.floor() as i32 {
                 for z in lo.z.floor() as i32..=hi.z.floor() as i32 {
-                    let name = &self.common.res.facts().get(self.common.world.block(x, y, z)).name;
+                    let name = &self
+                        .common
+                        .res
+                        .facts()
+                        .get(self.common.world.block(x, y, z))
+                        .name;
                     if let Some(s) = sunrise_sim::projectiles::stuck_speed_of(name) {
                         stuck = Some(s);
                     }
@@ -141,7 +146,8 @@ impl crate::game::ServerGame<'_> {
             }
         }
         if let Some(stuck) = stuck {
-            self.common.creatures
+            self.common
+                .creatures
                 .projectiles
                 .update(i, |p| p.stuck_speed = stuck);
         }
@@ -258,7 +264,8 @@ impl crate::game::ServerGame<'_> {
         target: MoveWho,
         no_physics: bool,
     ) -> bool {
-        self.common.lid_spares_with_root(lid, root, target, self.push_root(target), no_physics)
+        self.common
+            .lid_spares_with_root(lid, root, target, self.push_root(target), no_physics)
     }
 
     /// `BlockAttachedEntity.move`: a lid that moves a painting, an item frame
@@ -273,7 +280,8 @@ impl crate::game::ServerGame<'_> {
         };
         let mut i = 0;
         while i < self.common.paintings.len() {
-            if !(meets(self.common.paintings[i].bounds()) && self.break_painting_by(i, false, None)) {
+            if !(meets(self.common.paintings[i].bounds()) && self.break_painting_by(i, false, None))
+            {
                 i += 1;
             }
         }
@@ -387,8 +395,12 @@ impl crate::game::ServerGame<'_> {
         if placed {
             if lid_move && let MoveWho::Entity(EntityHandle::Boat(i)) = target {
                 let boat = &self.common.boats[i];
-                let fall = self.common.vehicle_fall_reset(boat.fall_distance, body.position, moved);
-                self.common.boats.update(i, |boat| boat.fall_distance = fall);
+                let fall = self
+                    .common
+                    .vehicle_fall_reset(boat.fall_distance, body.position, moved);
+                self.common
+                    .boats
+                    .update(i, |boat| boat.fall_distance = fall);
             }
             self.apply_push(&mut gate, target, moved);
         }
@@ -406,7 +418,9 @@ impl crate::game::ServerGame<'_> {
             let boat = &self.common.boats[i];
             if self.boat_can_simulate_movement(boat.id) {
                 let fall = self.common.boat_fall(boat, moved.y);
-                self.common.boats.update(i, |boat| boat.fall_distance = fall);
+                self.common
+                    .boats
+                    .update(i, |boat| boat.fall_distance = fall);
             }
         }
         if let Some(target) =
@@ -494,9 +508,10 @@ impl crate::game::ServerGame<'_> {
             binding: self.common.collision,
             subject: None,
         };
-        let Ok(shape) = self
-            .common.collision
-            .collision_shape(&mut scene, state, [pos.x, pos.y, pos.z])
+        let Ok(shape) =
+            self.common
+                .collision
+                .collision_shape(&mut scene, state, [pos.x, pos.y, pos.z])
         else {
             return;
         };
@@ -514,7 +529,8 @@ impl crate::game::ServerGame<'_> {
                 binding: self.common.collision,
                 subject: None,
             };
-            self.common.collision
+            self.common
+                .collision
                 .collision_shape(&mut scene, piston.moved_state, [pos.x, pos.y, pos.z])
                 .ok()
                 .and_then(|s| s.bounds())
@@ -645,7 +661,8 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<MoveWho> {
         match hint {
             MoveWho::Player => self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .filter(|p| p.entity_id as u32 == id)
                 .map(|_| hint),
@@ -669,7 +686,8 @@ impl crate::game::ServerGame<'_> {
     /// `Entity.getStepHeight` for each body, read once.
     pub(in crate::game) fn push_step_heights(&mut self) -> StepHeights {
         let player = self
-            .common.player
+            .common
+            .player
             .as_mut()
             .and_then(|p| p.attribute("minecraft:step_height").ok())
             .map_or(0.6, |v| v as f32);
@@ -714,7 +732,8 @@ impl crate::game::ServerGame<'_> {
         let body = match target {
             // PistonMovingBlockEntity collects a resident stand regardless of health.
             MoveWho::Entity(handle @ EntityHandle::ArmorStand(i)) if pos.is_some() => {
-                (!self.common.armor_stands[i].is_removed()).then(|| self.common.listed_body(handle, pos))
+                (!self.common.armor_stands[i].is_removed())
+                    .then(|| self.common.listed_body(handle, pos))
             }
             _ => self.push_body(target, pos, steps),
         }?;
@@ -1059,7 +1078,8 @@ impl crate::game::ServerGame<'_> {
                     }
                 }));
                 lent.give_back(&mut self.common.world);
-                self.common.mobs
+                self.common
+                    .mobs
                     .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
                 if let Err(payload) = result {
                     std::panic::resume_unwind(payload);
@@ -1108,7 +1128,8 @@ impl crate::game::ServerGame<'_> {
                 }
                 EntityHandle::Falling(i) => self.finish_falling_piston_move(i, moved),
                 EntityHandle::Cart(i) => {
-                    let (distance, landing) = self.cart_move_fall(&self.common.carts[i], from, moved);
+                    let (distance, landing) =
+                        self.cart_move_fall(&self.common.carts[i], from, moved);
                     self.common.carts.update(i, |c| c.fall_distance = distance);
                     if !self.finish_cart_landing(landing, effect, |game, power| {
                         let mut cart = game.carts[i].clone();
@@ -1148,7 +1169,9 @@ impl crate::game::ServerGame<'_> {
             EntityHandle::Tnt(_) => "minecraft:tnt",
             EntityHandle::Rocket(_) => "minecraft:firework_rocket",
             EntityHandle::Trident(_) => "minecraft:trident",
-            EntityHandle::ArmorStand(_) => sunrise_gameplay_common::game::armor_stands_common::TYPE_ID,
+            EntityHandle::ArmorStand(_) => {
+                sunrise_gameplay_common::game::armor_stands_common::TYPE_ID
+            }
             EntityHandle::Mob(_) | EntityHandle::General(_) => {
                 return Some(MoveWho::Entity(handle));
             }
@@ -1196,7 +1219,8 @@ impl crate::game::ServerGame<'_> {
                     return Ok(None);
                 };
                 let side = server_game_side!(self);
-                let _sections = section_scope.map(|scope| scope.begin(&mut self.common.native_lifecycle));
+                let _sections =
+                    section_scope.map(|scope| scope.begin(&mut self.common.native_lifecycle));
                 let mut $world = MotionWorld {
                     side: &side,
                     entities: &entities,
@@ -1245,7 +1269,8 @@ impl crate::game::ServerGame<'_> {
             }
         }
         Ok(self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map(|player| player.position.subtract(before)))
     }
@@ -1268,7 +1293,10 @@ impl crate::game::ServerGame<'_> {
                 binding: self.common.collision,
                 subject: None,
             };
-            self.common.collision.collision_shape(&mut scene, state, at).ok()
+            self.common
+                .collision
+                .collision_shape(&mut scene, state, at)
+                .ok()
         };
         let (Some(old_shape), Some(new_shape)) = (shape(old), shape(new)) else {
             return write(self);
@@ -1372,7 +1400,8 @@ impl crate::game::ServerGame<'_> {
         if write(self) {
             for (_, id, _, moved) in lift {
                 if let Some((from, to, _)) = moved {
-                    self.common.entity_section_entered(id, from.components(), to);
+                    self.common
+                        .entity_section_entered(id, from.components(), to);
                 }
             }
             return true;
@@ -1391,12 +1420,17 @@ impl crate::game::ServerGame<'_> {
             match target {
                 MoveWho::Player => self.common.player.as_mut().unwrap().position = from,
                 MoveWho::Guest(conn) => {
-                    self.server.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
-                        g.position = from.components();
-                        if let (Some(m), Some(y)) = (&mut g.motion, motion_y) {
-                            m.position.y = y;
-                        }
-                    });
+                    self.server
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .update_guest(conn, |g| {
+                            g.position = from.components();
+                            if let (Some(m), Some(y)) = (&mut g.motion, motion_y) {
+                                m.position.y = y;
+                            }
+                        });
                 }
                 MoveWho::Entity(handle) => with_entity_mut!(self, handle, entity => {
                     *entity.position_mut() = from;
@@ -1444,7 +1478,10 @@ impl crate::game::ServerGame<'_> {
             stand.ground.horizontal_collision =
                 different(wanted.x, moved.x) || different(wanted.z, moved.z);
             if authoritative || wanted.y.abs() > 0.0 {
-                let items = match (&self.common.server_items, self.server.world_tables.0.as_ref()) {
+                let items = match (
+                    &self.common.server_items,
+                    self.server.world_tables.0.as_ref(),
+                ) {
                     (Some(items), _) => &**items,
                     (None, Some(tables)) => &tables.items,
                     (None, None) => self.common.res.items(),

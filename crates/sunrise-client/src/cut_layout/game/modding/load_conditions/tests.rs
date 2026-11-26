@@ -1,4 +1,3 @@
-use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
 use mod_api::__private::{game::RegistrationContextNew, reload::ReloadStageError};
 use mod_api::{
     ConditionError, Hooks, Identifier, LoadCondition, ModEntry, RegisterLoadConditionsEvent,
@@ -7,6 +6,7 @@ use mod_api::{
 use serde_json::{Value, json};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
 struct Flag(Arc<AtomicUsize>, Arc<AtomicUsize>);
 impl LoadCondition for Flag {
     fn test(&self, args: &Value) -> std::result::Result<bool, ConditionError> {
@@ -475,7 +475,10 @@ fn load_conditions_refuse_a_builtin_id_at_startup_even_if_ignored() {
             || {
                 let sources = sunrise_gameplay_common::game::mods::ModsState::default();
                 let inventory = sunrise_mod_package::enabled::EnabledMods::default();
-                let error = sunrise_gameplay_common::game::load_conditions::conditions_for_mods(&sources, &inventory).unwrap_err();
+                let error = sunrise_gameplay_common::game::load_conditions::conditions_for_mods(
+                    &sources, &inventory,
+                )
+                .unwrap_err();
                 assert_eq!(
                     error,
                     format!("mod compat cannot register condition {name}: that ID is built in")
@@ -498,7 +501,10 @@ fn load_conditions_admit_registered_foreign_ids_but_refuse_every_unknown_id() {
         || {
             let sources = sunrise_gameplay_common::game::mods::ModsState::default();
             let inventory = sunrise_mod_package::enabled::EnabledMods::default();
-            let conditions = sunrise_gameplay_common::game::load_conditions::conditions_for_mods(&sources, &inventory).unwrap();
+            let conditions = sunrise_gameplay_common::game::load_conditions::conditions_for_mods(
+                &sources, &inventory,
+            )
+            .unwrap();
             let file = |id: &str| json!({"neoforge:conditions":[{"type":id, "value":true}]});
             assert!(conditions.allows_file(&file("c:config"), "data/demo/advancement/known.json"));
             assert!(conditions.allows_file(
@@ -536,20 +542,27 @@ fn load_conditions_disabled_owner_does_not_execute_registered_handler() {
             let inventory = sunrise_mod_package::enabled::EnabledMods::default();
             let file = json!({"neoforge:conditions":[{"type":"testmod:flag","value":true}]});
             assert!(
-                sunrise_gameplay_common::game::load_conditions::conditions_for_mods(&sources, &inventory)
-                    .unwrap()
-                    .allows_file(&file, "flag.json")
+                sunrise_gameplay_common::game::load_conditions::conditions_for_mods(
+                    &sources, &inventory
+                )
+                .unwrap()
+                .allows_file(&file, "flag.json")
             );
             assert!(mod_api::__private::set_mod_enabled("testmod", false));
-            let disabled = sunrise_gameplay_common::game::load_conditions::conditions_for_mods(&sources, &inventory).unwrap();
+            let disabled = sunrise_gameplay_common::game::load_conditions::conditions_for_mods(
+                &sources, &inventory,
+            )
+            .unwrap();
             assert!(!disabled.allows_file(&file, "flag.json"));
             assert_eq!(disabled.check_errors(), Ok(()));
             assert_eq!(count.load(Ordering::SeqCst), 1);
             assert!(mod_api::__private::set_mod_enabled("testmod", true));
             assert!(
-                sunrise_gameplay_common::game::load_conditions::conditions_for_mods(&sources, &inventory)
-                    .unwrap()
-                    .allows_file(&file, "flag.json")
+                sunrise_gameplay_common::game::load_conditions::conditions_for_mods(
+                    &sources, &inventory
+                )
+                .unwrap()
+                .allows_file(&file, "flag.json")
             );
             assert_eq!(count.load(Ordering::SeqCst), 2);
         },
@@ -589,7 +602,11 @@ fn registered_reads_the_candidate_packs_not_the_last_load() {
         "worldgen/biome/test:off".into(),
         vec![br#"{"neoforge:conditions":[{"type":"neoforge:never"}]}"#.to_vec()],
     ));
-    let first = sunrise_gameplay_common::game::load_conditions::candidate_registries(root.path(), &files, &admission);
+    let first = sunrise_gameplay_common::game::load_conditions::candidate_registries(
+        root.path(),
+        &files,
+        &admission,
+    );
     let first = sunrise_world::conditions::LoadConditions::new([]).with_registries(
         first
             .iter()
@@ -602,7 +619,11 @@ fn registered_reads_the_candidate_packs_not_the_last_load() {
     assert!(first.allows(&registered("minecraft:worldgen/biome", "minecraft:plains")));
     assert!(!first.allows(&registered("minecraft:worldgen/biome", "test:off")));
     assert!(first.allows(&registered("minecraft:item", "minecraft:stone")));
-    let next = sunrise_gameplay_common::game::load_conditions::candidate_registries(root.path(), &pack(&[]), &admission);
+    let next = sunrise_gameplay_common::game::load_conditions::candidate_registries(
+        root.path(),
+        &pack(&[]),
+        &admission,
+    );
     let next = sunrise_world::conditions::LoadConditions::new([]).with_registries(
         next.iter()
             .map(|(registry, ids)| (registry.as_str(), ids.iter().map(String::as_str))),

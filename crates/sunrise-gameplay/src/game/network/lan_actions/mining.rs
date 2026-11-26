@@ -18,10 +18,16 @@ impl crate::game::ServerGame<'_> {
         if !host.hub.guests.update(gi, |g| g.may_reach_block(pos)) {
             return Err(ActionRefused::OutOfReach);
         }
-        let (min_y, max_y) = (self.common.world.shape.min_y, self.common.world.shape.max_y() - 1);
+        let (min_y, max_y) = (
+            self.common.world.shape.min_y,
+            self.common.world.shape.max_y() - 1,
+        );
         if !(min_y..=max_y).contains(&pos[1])
             || self.under_spawn_protection(gi, pos)
-            || !self.common.border.contains(f64::from(pos[0]), f64::from(pos[2]))
+            || !self
+                .common
+                .border
+                .contains(f64::from(pos[0]), f64::from(pos[2]))
         {
             return Err(ActionRefused::Protected);
         }

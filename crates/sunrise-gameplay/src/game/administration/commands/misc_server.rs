@@ -1,7 +1,7 @@
 use super::{Arg, Context, R, Target, err};
-use sunrise_gameplay_common::game::chat_common::PLAYER_NAME;
 use sunrise_core::random::RandomSource;
 use sunrise_game_data::text::{self, Text};
+use sunrise_gameplay_common::game::chat_common::PLAYER_NAME;
 
 impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn cmd_random(&mut self, id: &str, ctx: &Context) -> R<i32> {
@@ -82,7 +82,11 @@ impl crate::game::ServerGame<'_> {
                     .get(&s, seed)
                     .next_int_between_inclusive(min, max)
             }
-            _ => self.common.world.random.next_int_between_inclusive(min, max),
+            _ => self
+                .common
+                .world
+                .random
+                .next_int_between_inclusive(min, max),
         }
         .unwrap_or(min);
         if id == "random.roll" {
@@ -97,7 +101,11 @@ impl crate::game::ServerGame<'_> {
             );
             // PlayerList.broadcastSystemMessage: every player hears the roll,
             // the source's own copy with the captured output it has (`/say`'s).
-            let captured = self.server.chat_capture.as_ref().and(self.server.lan_acting);
+            let captured = self
+                .server
+                .chat_capture
+                .as_ref()
+                .and(self.server.lan_acting);
             if let Some(host) = &self.server.lan {
                 let content = sunrise_sim::lan::data::component_nbt(&line.component());
                 match captured {
@@ -141,7 +149,8 @@ impl crate::game::ServerGame<'_> {
         // Only the local player can be on the receiving end.
         let player_name = PLAYER_NAME.to_owned();
         let player_in_team = self
-            .common.score
+            .common
+            .score
             .board
             .players_team(&player_name)
             .is_some_and(|t| t.name == team.name);

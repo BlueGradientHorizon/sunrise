@@ -1,24 +1,22 @@
-
-
 #[cfg(test)]
 #[cfg(feature = "client")]
 pub(crate) mod tests {
 
-use super::*;
+    use super::*;
 
-use crate::game::server_side::lightning_server::{in_viewer_box, thunder_strike_column};
+    use crate::game::server_side::lightning_server::{in_viewer_box, thunder_strike_column};
 
-use mod_api::{self, ServerHost};
+    use mod_api::{self, ServerHost};
 
-use std::sync::Arc;
+    use std::sync::Arc;
 
-use sunrise_core::geometry::Vec3;
+    use sunrise_core::geometry::Vec3;
 
-use sunrise_sim::mobs::{Anim, Brain, Mob, MobType, Species};
+    use sunrise_sim::mobs::{Anim, Brain, Mob, MobType, Species};
 
-use sunrise_world::level::Ticks;
+    use sunrise_world::level::Ticks;
 
-#[test]
+    #[test]
     fn viewer_box_reaches_15_around_and_down_and_21_up() {
         let bolt = [0.0, 64.0, 0.0];
         assert!(in_viewer_box(bolt, [15.0, 49.0, -15.0]));
@@ -27,7 +25,7 @@ use sunrise_world::level::Ticks;
         assert!(!in_viewer_box(bolt, [0.0, 48.5, 0.0]));
         assert!(!in_viewer_box(bolt, [15.5, 64.0, 0.0]));
     }
-/// `ServerLevel.tickThunder` picks its strike column from `Level.randValue`
+    /// `ServerLevel.tickThunder` picks its strike column from `Level.randValue`
     /// (`Ticks::block_random_pos`), using bits `2..=5` for X and `10..=13` for Z
     /// rather than drawing from `Level.random`.
     #[test]
@@ -41,7 +39,7 @@ use sunrise_world::level::Ticks;
             assert_eq!(thunder_strike_column(&mut ticks, cx, cz), expected);
         }
     }
-/// `EntityStruckByLightningEvent`: each struck pig is asked with the bolt;
+    /// `EntityStruckByLightningEvent`: each struck pig is asked with the bolt;
     /// the spared one stays a pig, the other becomes a zombified piglin, and
     /// both still count as hit.
     #[test]

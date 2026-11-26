@@ -1,42 +1,40 @@
-
-
 #![cfg(test)]
 use mod_api::EntityRef;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_entity_state_common::NativeEntityStateCommonGameExt1 as _;
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1;
-use sunrise_gameplay::game::server_side::native_entity_state::tests::with_player;
+    use sunrise_gameplay::game::server_side::native_entity_state::tests::with_player;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_entity_state_common::NativeEntityStateCommonGameExt1 as _;
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+    use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1;
 
-use super::*;
+    use super::*;
 
-use sunrise_sim::{
+    use sunrise_sim::{
         mobs::{Mob, Species},
         motion::PlayerMotion,
         thrown_trident::ThrownTrident,
     };
 
-use super::super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
+    use super::super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 
-use super::super::native_guest_turn_tests::with_guests;
+    use super::super::native_guest_turn_tests::with_guests;
 
-use mod_api::MainHand;
+    use mod_api::MainHand;
 
-use sunrise_protocol::entity_data::{Value, serializer};
+    use sunrise_protocol::entity_data::{Value, serializer};
 
-use sunrise_protocol::packets::play::{self, Clientbound as C};
+    use sunrise_protocol::packets::play::{self, Clientbound as C};
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn tick_count_reads_supported_entities_and_refuses_others() {
-        use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
         use super::super::native_entity_refs::tests::bind_local_player;
         use super::super::native_guest_turn_tests::with_guests;
         use mod_api::WorldEpoch;
         use sunrise_core::geometry::Vec3;
+        use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
         use sunrise_items::items::ItemStack;
         use sunrise_sim::entities::ExperienceOrb;
         use sunrise_sim::motion::PlayerMotion;
@@ -122,28 +120,29 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
             let cart = game.entity(44).unwrap();
             assert_eq!(cart.tick_count(game), Some(5));
 
-            game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(
-                45,
-                "oak".into(),
-                Vec3::ZERO,
-                0.0,
-            ));
+            game.boats
+                .push(sunrise_gameplay_common::game::boats_common::Boat::new(
+                    45,
+                    "oak".into(),
+                    Vec3::ZERO,
+                    0.0,
+                ));
             let boat = game.entity(45).unwrap();
             assert_eq!(boat.tick_count(game), None);
             let stale = EntityRef::new(WorldEpoch::new(mob.epoch().get() + 1), mob.id());
             assert_eq!(stale.tick_count(game), None);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn portal_cooldown_reads_simulated_kinds_and_refuses_others() {
         use super::super::native_guest_turn_tests::with_guests;
+        use mod_api::WorldEpoch;
+        use sunrise_core::{geometry::Vec3, position::BlockPos};
         use sunrise_gameplay_common::game::{
             Dim, FallingBlock, boats_common::Boat, fireworks::Rocket, minecarts::CartKind,
             minecarts::Minecart,
         };
-        use mod_api::WorldEpoch;
-        use sunrise_core::{geometry::Vec3, position::BlockPos};
         use sunrise_items::items::ItemStack;
         use sunrise_sim::entities::{ArmorStand, ExperienceOrb};
         use sunrise_sim::projectiles::{Projectile, ProjectileKind};
@@ -308,7 +307,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
             assert_eq!(mob.portal_cooldown(game), Some(299));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn portal_cooldown_write_is_refused_for_an_acting_guest() {
         use super::super::native_guest_turn_tests::with_guests;
@@ -333,7 +332,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
             assert_eq!(guest.portal_cooldown(game), Some(7));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn on_fire_reads_timers_immunity_and_client_shared_flag() {
         mod_platform::testing::with_mods(Vec::new().into(), || {
@@ -449,7 +448,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn under_water_reads_previous_eye_sample_and_current_contact_on_both_sides() {
         fn check_under_water<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
@@ -503,7 +502,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn secondary_use_reads_reachable_client_handles_and_keeps_server_flags() {
         use sunrise_core::geometry::Vec3;
@@ -548,11 +547,11 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn client_fluid_reads_use_cached_local_and_tracked_bodies() {
-        use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
         use super::super::native_entity_refs::tests::with_client_game;
+        use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
         use sunrise_core::geometry::Vec3;
         use sunrise_protocol::packets::play;
 
@@ -634,7 +633,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
             assert_eq!(local.eye_fluid(&*game as &dyn mod_api::ClientHost), None);
         });
     }
-/// A client reads every entity it tracks as the server sent it: a mob's left-handed flag
+    /// A client reads every entity it tracks as the server sent it: a mob's left-handed flag
     /// (`Mob.DATA_MOB_FLAGS_ID`) and another player's main hand (`Avatar.DATA_PLAYER_MAIN_HAND`);
     /// its own player follows its Main Hand option. An entity that isn't living, and one the
     /// client doesn't track, has none.
@@ -696,7 +695,8 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
                     game.entity(33).unwrap(),
                 );
                 let local = game.local_player().unwrap().entity();
-                let read = |game: &sunrise_client_gameplay::game::ClientGame<'_>, entity: EntityRef| {
+                let read = |game: &sunrise_client_gameplay::game::ClientGame<'_>,
+                            entity: EntityRef| {
                     let host: &dyn mod_api::ClientHost = game;
                     entity.main_arm(host)
                 };
@@ -730,7 +730,7 @@ use sunrise_protocol::packets::play::{self, Clientbound as C};
             });
         });
     }
-/// A server reads a player's main arm from the Main Hand its client reported, and a mob's
+    /// A server reads a player's main arm from the Main Hand its client reported, and a mob's
     /// from its left-handed flag.
     #[test]
     #[ignore = "daily"]

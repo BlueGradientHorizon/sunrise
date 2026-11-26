@@ -1,10 +1,12 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use mod_api::{ProfileResolution, ServerHost};
+    use {
+        sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game,
+        sunrise_gameplay_common::game::execution_role::ExecutionRole,
+    };
 
     /// A name `StringUtil.isValidPlayerName` refuses answers at once with no profile, as
     /// `fetchByName` does without a request.

@@ -4,9 +4,12 @@
 //! when it has none (a player has no `minecraft:follow_range`), before any
 //! modifier is added or removed. The same id on an attribute the player does
 //! have still works.
-use {crate::game::*, sunrise_gameplay_common::game::{Mob, Resources, Vec3, entity}};
 use std::sync::Arc;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{Mob, Resources, Vec3, entity},
+};
 
 pub(crate) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,

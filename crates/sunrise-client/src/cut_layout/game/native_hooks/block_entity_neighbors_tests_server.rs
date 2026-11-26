@@ -1,4 +1,3 @@
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use crate::game::native_hooks::block_entity_neighbors_tests::Listener;
 use mod_api::*;
 use std::sync::{
@@ -6,6 +5,7 @@ use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_level::chunk::Chunk;
 
 #[test]

@@ -7,12 +7,7 @@ impl crate::game::CommonGame<'_> {
     /// twenty, else a parent's colour by the breeding parent's own coin toss.
     /// Called before the child exists, where vanilla draws it; None for any
     /// other species.
-    pub fn bred_rabbit_variant(
-        &mut self,
-        parent: u32,
-        p: &Mob,
-        q: Option<&Mob>,
-    ) -> Option<u8> {
+    pub fn bred_rabbit_variant(&mut self, parent: u32, p: &Mob, q: Option<&Mob>) -> Option<u8> {
         if p.species() != Species::Rabbit {
             return None;
         }

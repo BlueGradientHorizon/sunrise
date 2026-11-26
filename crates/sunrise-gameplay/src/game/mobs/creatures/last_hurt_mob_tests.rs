@@ -1,5 +1,8 @@
-use {crate::game::creatures::*, sunrise_gameplay_common::game::creatures::{Hit, Mob, Projectile, ProjectileKind, Vec3, Who}};
 use mod_api::LivingRef;
+use {
+    crate::game::creatures::*,
+    sunrise_gameplay_common::game::creatures::{Hit, Mob, Projectile, ProjectileKind, Vec3, Who},
+};
 
 pub const PLAYER: u32 = 20;
 pub const PIG: u32 = 71;
@@ -13,12 +16,7 @@ pub fn living(game: &crate::game::ServerGame<'_>, id: u32) -> LivingRef {
         .expect("living entity")
 }
 
-pub fn add_mob(
-    game: &mut crate::game::ServerGame<'_>,
-    id: u32,
-    kind: &str,
-    x: f64,
-) {
+pub fn add_mob(game: &mut crate::game::ServerGame<'_>, id: u32, kind: &str, x: f64) {
     let kind = game.common.res.mob_types().get(kind).unwrap().clone();
     let mut mob = Mob::new(id, kind, Vec3::new(x, 80.0, 0.5), 0.0);
     mob.no_ai = true;
@@ -27,11 +25,7 @@ pub fn add_mob(
     game.common.mobs.push(mob);
 }
 
-pub fn shoot(
-    game: &mut crate::game::ServerGame<'_>,
-    owner: Who,
-    kind: ProjectileKind,
-) {
+pub fn shoot(game: &mut crate::game::ServerGame<'_>, owner: Who, kind: ProjectileKind) {
     let at = game.common.mobs[0].position;
     let mut shot = Projectile::new(kind, at, Some(owner));
     shot.velocity = Vec3::new(0.0, 0.0, 2.0);

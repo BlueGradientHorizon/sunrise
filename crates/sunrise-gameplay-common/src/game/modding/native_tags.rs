@@ -17,11 +17,7 @@ pub fn is_in_tag(items: Option<&Items>, item: ItemKey, tag: TagKey) -> Option<bo
 }
 /// `DamageSource.is(TagKey)` over the damage type registry and tags `items` was bound to at
 /// its last reload. The tag's name is read on the call, so a key made after that reload resolves.
-pub fn damage_type_in_tag(
-    items: Option<&Items>,
-    damage_type: &str,
-    tag: TagKey,
-) -> Option<bool> {
+pub fn damage_type_in_tag(items: Option<&Items>, damage_type: &str, tag: TagKey) -> Option<bool> {
     let items = items?;
     mod_api::__private::with_tag_name(tag, |name| items.damage_type_in_tag(damage_type, name?))
 }
@@ -427,5 +423,3 @@ mod tests {
         assert_eq!(TagView(None).items(tag), TagMembers::Unavailable);
     }
 }
-
-

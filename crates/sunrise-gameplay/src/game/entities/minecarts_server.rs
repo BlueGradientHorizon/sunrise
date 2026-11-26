@@ -1,4 +1,12 @@
 use super::{Hit, InteractTarget, Keys, entity::Entity};
+#[allow(unused_imports)]
+use std::sync::Arc;
+use sunrise_core::{
+    geometry::{Aabb, Vec3, trig},
+    position::BlockPos,
+    random::RandomSource,
+};
+use sunrise_game_data::scoreboard::pushable_by;
 use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_gameplay_common::game::minecarts::CART_KEY_Y;
 use sunrise_gameplay_common::game::minecarts::CartKind;
@@ -22,14 +30,6 @@ use sunrise_gameplay_common::game::{
     api_values::TryIntoApi, cart_rails::dispatch_cart_rail_direction,
     native_level_signals::ReadLevel,
 };
-#[allow(unused_imports)]
-use std::sync::Arc;
-use sunrise_core::{
-    geometry::{Aabb, Vec3, trig},
-    position::BlockPos,
-    random::RandomSource,
-};
-use sunrise_game_data::scoreboard::pushable_by;
 use sunrise_gameplay_common::minecart_cells::CartCells;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
@@ -159,12 +159,7 @@ impl CartIndex {
     }
     /// The slots of the mobs whose box may meet `area` into `out`;
     /// false means the caller must walk them all.
-    pub fn mobs_near(
-        &mut self,
-        mobs: &JoinList<Mob>,
-        area: Aabb,
-        out: &mut Vec<u32>,
-    ) -> bool {
+    pub fn mobs_near(&mut self, mobs: &JoinList<Mob>, area: Aabb, out: &mut Vec<u32>) -> bool {
         if !Self::usable() {
             return false;
         }
@@ -221,10 +216,14 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         self.common.store_cart_items(key);
-        let guest_viewers =
-            self.server.lan.as_ref().is_some_and(|host| {
-                sunrise_gameplay_common::game::CommonGame::vehicle_has_other_viewers(None, &host.hub.guests, None, key)
-            });
+        let guest_viewers = self.server.lan.as_ref().is_some_and(|host| {
+            sunrise_gameplay_common::game::CommonGame::vehicle_has_other_viewers(
+                None,
+                &host.hub.guests,
+                None,
+                key,
+            )
+        });
         if !guest_viewers {
             self.common.world.block_entities.remove(&key);
         }
@@ -244,7 +243,8 @@ impl crate::game::ServerGame<'_> {
                 for (_, rider, player) in self.seated_passengers(c.id) {
                     if !player
                         && self
-                            .common.mob_object(rider)
+                            .common
+                            .mob_object(rider)
                             .is_some_and(|mob| !mob.removed && mob.extra.mount == Some(c.id))
                     {
                         self.dismount_mob_from_cart(rider, c);
@@ -432,13 +432,17 @@ impl crate::game::ServerGame<'_> {
         };
         // The stored cart is the one a plate counts: it takes the moved cart
         // for the walk and hands back what the walk left.
-        self.common.carts.update(i, |stored| std::mem::swap(stored, c));
+        self.common
+            .carts
+            .update(i, |stored| std::mem::swap(stored, c));
         self.with_level(|b, level, ticks| {
             for p in hits {
                 b.entity_inside(level, ticks, p);
             }
         });
-        self.common.carts.update(i, |stored| std::mem::swap(stored, c));
+        self.common
+            .carts
+            .update(i, |stored| std::mem::swap(stored, c));
         let _ = self.server_process_level_events();
     }
     /// `lavaHurt` twice a tick in lava: from `LavaFluid.entityInside` in the
@@ -498,7 +502,11 @@ impl crate::game::ServerGame<'_> {
     /// `AbstractMinecart.isRedstoneConductor`: the block state's own flag
     /// (soul sand conducts without a full collision shape).
     pub(in crate::game::server_side) fn conductor(&self, x: i32, y: i32, z: i32) -> bool {
-        self.common.res.behaviours().facts(self.common.world.block(x, y, z)).flags
+        self.common
+            .res
+            .behaviours()
+            .facts(self.common.world.block(x, y, z))
+            .flags
             & sunrise_world::level::data::state_flags::CONDUCTOR
             != 0
     }
@@ -540,8 +548,12 @@ impl crate::game::ServerGame<'_> {
     /// (`Entity.interact` passes), so nothing here lights it.
     pub fn interact_cart(&mut self, target: Option<InteractTarget>) -> bool {
         let Some((i, d)) = (match target {
-            Some(t) => sunrise_gameplay_common::game::item_actions::named_entity(&self.common.carts, t.id, |c| c.id)
-                .map(|i| (i, 0.0)),
+            Some(t) => sunrise_gameplay_common::game::item_actions::named_entity(
+                &self.common.carts,
+                t.id,
+                |c| c.id,
+            )
+            .map(|i| (i, 0.0)),
             None => self.cart_hit(),
         }) else {
             return false;
@@ -580,7 +592,11 @@ impl crate::game::ServerGame<'_> {
                     };
                     c.fuel = next;
                     if c.fuel > 0 {
-                        let p = self.common.player.as_ref().map_or(c.position, |p| p.position);
+                        let p = self
+                            .common
+                            .player
+                            .as_ref()
+                            .map_or(c.position, |p| p.position);
                         c.push = Vec3::new(c.position.x - p.x, 0.0, c.position.z - p.z);
                     }
                     true
@@ -620,7 +636,8 @@ impl crate::game::ServerGame<'_> {
     /// every cart alike (`cart_max_speed` cuts a furnace minecart's).
     pub(in crate::game::server_side) fn max_speed_new(&self, c: &Minecart) -> f64 {
         f64::from(
-            self.common.ui
+            self.common
+                .ui
                 .rules
                 .int_at(sunrise_game_data::gamerules::vanilla::MAX_MINECART_SPEED),
         ) * if c.in_water { 0.5 } else { 1.0 }
@@ -901,12 +918,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `applyNaturalSlowdown` (with `MinecartFurnace`'s push); `factor` is
     /// `getSlowdownFactor`: 0.997 riding, the empty cart's own by behavior.
-    pub fn natural_slowdown(
-        &self,
-        c: &mut Minecart,
-        ridden: bool,
-        factor: f64,
-    ) -> Vec3 {
+    pub fn natural_slowdown(&self, c: &mut Minecart, ridden: bool, factor: f64) -> Vec3 {
         let mut v = c.velocity;
         let water = c.in_water;
         if c.kind == CartKind::Furnace {
@@ -1053,7 +1065,8 @@ impl crate::game::ServerGame<'_> {
         // `startOpen` shares one container, it does not reset it: a stand-in
         // another player's menu is still editing over stays as it is.
         if !self.common.world.block_entities.contains_key(&key) {
-            self.common.world
+            self.common
+                .world
                 .block_entities
                 .insert(key, BlockEntity::Chest(c.items.clone()));
         }
@@ -1082,7 +1095,9 @@ impl crate::game::ServerGame<'_> {
         let reach = f64::from(0.2f32);
         let id = self.common.carts[i].id;
         let pos = self.common.carts[i].position;
-        let hitbox = self.common.carts[i].bounds().inflate(Vec3::new(reach, 0.0, reach));
+        let hitbox = self.common.carts[i]
+            .bounds()
+            .inflate(Vec3::new(reach, 0.0, reach));
         let mut near = std::mem::take(&mut index.near);
         let mut occupied = self.has_seated_passengers(id);
         if !index.mobs_near(&self.common.mobs, hitbox, &mut near) {
@@ -1141,11 +1156,13 @@ impl crate::game::ServerGame<'_> {
                 continue;
             }
             let other = self.common.mobs[j].position;
-            let Some(v) = sunrise_gameplay_common::game::boats_common::push_impulse(pos, other) else {
+            let Some(v) = sunrise_gameplay_common::game::boats_common::push_impulse(pos, other)
+            else {
                 continue;
             };
             if !occupied {
-                self.common.carts
+                self.common
+                    .carts
                     .update(i, |c| c.velocity = c.velocity.subtract(v));
             }
             let m = &mut self.common.mobs[j];
@@ -1175,7 +1192,8 @@ impl crate::game::ServerGame<'_> {
         );
         self.server.next_entity += 1;
         let cart = Minecart::new(self.server.next_entity, kind, at);
-        self.common.world
+        self.common
+            .world
             .modified
             .insert((hit.pos[0] >> 4, hit.pos[2] >> 4));
         self.common.carts.push(cart);
@@ -1189,7 +1207,10 @@ impl crate::game::ServerGame<'_> {
             );
         }
         // MinecartItem.useOn: ENTITY_PLACE at the rail, by the player, with the block under it.
-        let below = self.common.world.block(hit.pos[0], hit.pos[1] - 1, hit.pos[2]);
+        let below = self
+            .common
+            .world
+            .block(hit.pos[0], hit.pos[1] - 1, hit.pos[2]);
         self.post_block_game_event(
             "minecraft:entity_place",
             hit.pos,
@@ -1230,8 +1251,9 @@ impl crate::game::ServerGame<'_> {
                 pushers.push((Vec3::new(x, y, z), g.bounds()));
             }
         }
-        let cells =
-            sunrise_sim::mobs::seen_grid::SeenGrid::new(self.common.carts.iter().map(Minecart::bounds));
+        let cells = sunrise_sim::mobs::seen_grid::SeenGrid::new(
+            self.common.carts.iter().map(Minecart::bounds),
+        );
         let mut near = Vec::new();
         for (feet, bb) in pushers {
             if !cells.candidates(bb, &mut near) {
@@ -1320,7 +1342,9 @@ impl crate::game::ServerGame<'_> {
     /// and before the next one does, is what splits stacked carts apart.
     pub fn push_from_cart(&mut self, i: usize, index: &mut CartIndex) {
         let reach = f64::from(0.2f32);
-        let hitbox = self.common.carts[i].bounds().inflate(Vec3::new(reach, 0.0, reach));
+        let hitbox = self.common.carts[i]
+            .bounds()
+            .inflate(Vec3::new(reach, 0.0, reach));
         let mut near = std::mem::take(&mut index.near);
         if !index.carts_near(&self.common.carts, i, hitbox, &mut near) {
             near.clear();
@@ -1531,10 +1555,13 @@ impl crate::game::ServerGame<'_> {
             self.cart_inside_blocks(c, slot, here, here);
         }
         self.push_from_ticked_cart(c, slot, index);
-        c.in_water = c
-            .push_by_fluid(&self.common.world, &self.common.res.motion().fluids, &self.common.loop_context)
-            .0
-            > 0.0;
+        c.in_water =
+            c.push_by_fluid(
+                &self.common.world,
+                &self.common.res.motion().fluids,
+                &self.common.loop_context,
+            )
+            .0 > 0.0;
         if c.in_water {
             c.fall_distance = 0.0;
         }
@@ -1586,7 +1613,12 @@ impl crate::game::ServerGame<'_> {
     }
     /// The rider's tick: the cart moves with the rider's input as its push.
     pub fn tick_cart_riding(&mut self, keys: Keys) -> bool {
-        let Some(i) = self.common.carts.iter().position(|c| Some(c.id) == self.common.riding) else {
+        let Some(i) = self
+            .common
+            .carts
+            .iter()
+            .position(|c| Some(c.id) == self.common.riding)
+        else {
             return false;
         };
         if keys.shift {
@@ -1687,7 +1719,9 @@ impl crate::game::ServerGame<'_> {
     }
     pub(in crate::game::server_side) fn unpack_cart_loot(&mut self, i: usize) {
         self.unpack_loot(
-            sunrise_gameplay_common::game::container_loot_level::LootTarget::Cart(self.common.carts[i].id),
+            sunrise_gameplay_common::game::container_loot_level::LootTarget::Cart(
+                self.common.carts[i].id,
+            ),
             self.native_acting_player(),
         );
     }

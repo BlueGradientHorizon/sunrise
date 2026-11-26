@@ -6,7 +6,8 @@ pub trait Hooks {
     /// given, in order, as (id, level). `item` is the enchanted stack (an
     /// enchanted book for a book). Fires after the levels are paid, before
     /// `enchant_item`. Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::player_enchant_item::ServerGame<'_>::native_player_enchant_item", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::player_enchant_item::ServerGame<'_>::native_player_enchant_item",
         dispatch = "flat",
         side = "server",
         contract = "listen",

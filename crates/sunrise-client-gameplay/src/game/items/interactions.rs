@@ -4,8 +4,8 @@
 //! swings), `CONSUME` otherwise (the click still goes to the server, nothing
 //! behind them is used).
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::interactions_common::RemoteInteraction;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::interactions_common::RemoteInteraction;
 use sunrise_protocol::entity_data::Value;
 
 #[cfg(feature = "client")]

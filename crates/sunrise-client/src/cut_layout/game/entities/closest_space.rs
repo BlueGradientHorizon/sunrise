@@ -1,22 +1,23 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::tables::GameItems;
-use std::sync::Arc;
+    use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::tables::GameItems;
     use sunrise_sim::motion::PlayerMotion;
 
     #[test]
     #[ignore = "daily"]
     fn a_player_nudges_out_of_a_rotated_collider_as_from_stone() {
-        use {sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game};
         use sunrise_core::geometry::{
             Aabb,
             oriented::{ColliderBoxes, Frame, OrientedCollider},
         };
         use sunrise_world::moving_colliders::{Placed, Prepared, in_level};
+        use {
+            crate::game::server_side::native_entity_refs::tests::with_client_game,
+            sunrise_gameplay_common::game::in_own_process,
+        };
 
         in_own_process(
             "game::closest_space::tests::a_player_nudges_out_of_a_rotated_collider_as_from_stone",

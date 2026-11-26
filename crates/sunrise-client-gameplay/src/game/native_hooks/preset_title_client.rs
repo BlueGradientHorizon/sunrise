@@ -17,11 +17,7 @@ impl crate::game::ClientGame<'_> {
             })
     }
     /// Forward a mouse press to the open bound preset editor.
-    pub fn preset_editor_mouse_clicked(
-        &self,
-        button: i32,
-        double_click: bool,
-    ) -> bool {
+    pub fn preset_editor_mouse_clicked(&self, button: i32, double_click: bool) -> bool {
         let Some(session) = self
             .preset_editor_title()
             .and_then(|title| title.preset_editor_session())

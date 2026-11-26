@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod player_heart_type_tests {

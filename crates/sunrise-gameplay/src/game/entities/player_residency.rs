@@ -58,7 +58,8 @@ impl crate::game::ServerGame<'_> {
                     .identity()
                     .map(|identity| identity.id.get()),
                 None => self
-                    .common.resident_entities
+                    .common
+                    .resident_entities
                     .local_player
                     .identity()
                     .map(|identity| identity.id.get()),
@@ -95,7 +96,8 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn bind_current_hook_residency(&mut self) {
         let journal = self.common.resident_entities.table.borrow().producer();
         let (owner, source) = self
-            .common.hook
+            .common
+            .hook
             .resident_location()
             .map(|at| (at.owner, at.source))
             .unwrap_or_else(|| {
@@ -127,10 +129,15 @@ impl crate::game::ServerGame<'_> {
         journal: &Journal,
     ) {
         self.common.resident_entities.local_player.rebind(journal);
-        let body_id = self.common.player.as_ref().map(|player| player.entity_id as u32);
+        let body_id = self
+            .common
+            .player
+            .as_ref()
+            .map(|player| player.entity_id as u32);
         if self.server.lan_acting.is_some()
             || self
-                .common.resident_entities
+                .common
+                .resident_entities
                 .local_player
                 .identity()
                 .is_some_and(|identity| Some(identity.id.get()) != body_id)
@@ -153,7 +160,8 @@ impl crate::game::ServerGame<'_> {
             for &conn in &self.server.lan_guest_swaps {
                 if let Some(index) = host.hub.guests.connection_index(conn) {
                     let guest = &host.hub.guests[index];
-                    if self.server.lan_acting != Some(conn) || body_id != Some(guest.entity_id as u32)
+                    if self.server.lan_acting != Some(conn)
+                        || body_id != Some(guest.entity_id as u32)
                     {
                         guest.residency.extract();
                     }
@@ -195,9 +203,9 @@ impl crate::game::ServerGame<'_> {
         use super::entity_residency::SlotAccess;
         use sunrise_mod_runtime::attachments::HasAttachmentLifetime;
         match at.source {
-            Source::LocalPlayer => {
-                SlotAccess::Done(visit(self.common.player_state.attachments.attachment_lifetime()))
-            }
+            Source::LocalPlayer => SlotAccess::Done(visit(
+                self.common.player_state.attachments.attachment_lifetime(),
+            )),
             Source::Guest(conn) => {
                 if self.server.lan_acting == Some(conn) {
                     return SlotAccess::Done(visit(
@@ -218,8 +226,9 @@ impl crate::game::ServerGame<'_> {
                 let hook = if caster == self.server.lan_acting {
                     self.common.hook.as_mut()
                 } else {
-                    caster
-                        .and_then(|conn| self.server.lan.as_mut()?.play.get_mut(&conn)?.hook.as_mut())
+                    caster.and_then(|conn| {
+                        self.server.lan.as_mut()?.play.get_mut(&conn)?.hook.as_mut()
+                    })
                 };
                 let Some(hook) = hook else {
                     return SlotAccess::Missing;
@@ -244,7 +253,13 @@ impl crate::game::ServerGame<'_> {
                     return None;
                 }
                 let player = self.common.player.as_ref()?;
-                if self.common.resident_entities.local_player.identity()?.id.get()
+                if self
+                    .common
+                    .resident_entities
+                    .local_player
+                    .identity()?
+                    .id
+                    .get()
                     != player.entity_id as u32
                 {
                     return None;
@@ -272,7 +287,9 @@ impl crate::game::ServerGame<'_> {
                         Target::Player,
                     )
                 } else {
-                    if sunrise_gameplay_common::game::Side::lan_guest_swaps(&self.server).contains(&conn) {
+                    if sunrise_gameplay_common::game::Side::lan_guest_swaps(&self.server)
+                        .contains(&conn)
+                    {
                         return None;
                     }
                     (
@@ -289,7 +306,9 @@ impl crate::game::ServerGame<'_> {
                             return None;
                         }
                         let hook = self.common.hook.as_ref()?;
-                        if hook.caster_generation != self.common.resident_entities.local_player.join() {
+                        if hook.caster_generation
+                            != self.common.resident_entities.local_player.join()
+                        {
                             return None;
                         }
                         hook
@@ -301,10 +320,14 @@ impl crate::game::ServerGame<'_> {
                             .guests
                             .connection_index(conn)
                             .map(|index| &host.hub.guests[index]);
-                        let hook = if sunrise_gameplay_common::game::Side::lan_acting(&self.server) == Some(conn) {
+                        let hook = if sunrise_gameplay_common::game::Side::lan_acting(&self.server)
+                            == Some(conn)
+                        {
                             self.common.hook.as_ref()?
                         } else {
-                            if sunrise_gameplay_common::game::Side::lan_guest_swaps(&self.server).contains(&conn) {
+                            if sunrise_gameplay_common::game::Side::lan_guest_swaps(&self.server)
+                                .contains(&conn)
+                            {
                                 return None;
                             }
                             host.play.get(&conn)?.hook.as_ref()?

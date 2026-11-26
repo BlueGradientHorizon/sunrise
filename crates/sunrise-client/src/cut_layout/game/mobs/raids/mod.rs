@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 #[path = "tests/bed_loss.rs"]
@@ -19,10 +17,10 @@ pub(crate) mod spawn_placement_tests;
 
 #[cfg(test)]
 pub(crate) mod entity_ticking_tests {
-    use sunrise_client_lib::raid::RaidLevel;
-use sunrise_gameplay::game::server_side::raids::Lvl;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use std::{collections::HashSet, sync::Arc};
+    use sunrise_client_lib::raid::RaidLevel;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay::game::server_side::raids::Lvl;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::ticket_levels::Sources;
 

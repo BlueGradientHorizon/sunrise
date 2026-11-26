@@ -1,16 +1,14 @@
-
-
 #![cfg(test)]
 use mod_api::LevelRef;
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::execution_role::ExecutionRole;
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::{Hooks, RaidStateChangeEvent, ServerHost, WorldEpoch};
     use mod_api::{RaidRef, RaidStatus};
     use std::sync::{Arc, Mutex};
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::execution_role::ExecutionRole;
     use sunrise_sim::mobs::{Mob, raider};
 
     type RaidObservation = (RaidRef, String, Option<RaidStatus>, bool);

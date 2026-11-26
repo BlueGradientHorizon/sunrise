@@ -197,7 +197,8 @@ impl crate::game::ServerGame<'_> {
             // `getChestVehicleSlot` takes any index below `getContainerSize`.
             Owner::Entity(Target::Cart(id)) => {
                 let size = self
-                    .common.carts
+                    .common
+                    .carts
                     .iter()
                     .find(|c| c.id == *id)
                     .map_or(0, |c| c.kind.slots());
@@ -434,7 +435,8 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn block_container_size(&self, p: [i32; 3]) -> Option<usize> {
         let size = match self.common.world.block_entities.get(&(p[0], p[1], p[2]))? {
             BlockEntity::Mod(_) => self
-                .common.world
+                .common
+                .world
                 .block_entities
                 .mod_container(self.common.world.block(p[0], p[1], p[2]).0)
                 .map_or(0, |c| c.slots),
@@ -480,10 +482,15 @@ impl crate::game::ServerGame<'_> {
         };
         // SulfurCube.getEquipmentSlotForItem: swallowable items occupy the body slot.
         if let Slot::Mob(id, "body") = slot
-            && self.common.mobs.iter().find(|m| m.id == *id).is_some_and(|m| {
-                m.species() == sunrise_sim::mobs::Species::SulfurCube
-                    && sunrise_sim::mobs::sulfur_cube::swallowable(m, &stack.item)
-            })
+            && self
+                .common
+                .mobs
+                .iter()
+                .find(|m| m.id == *id)
+                .is_some_and(|m| {
+                    m.species() == sunrise_sim::mobs::Species::SulfurCube
+                        && sunrise_sim::mobs::sulfur_cube::swallowable(m, &stack.item)
+                })
         {
             return true;
         }
@@ -889,12 +896,6 @@ pub(in crate::game) use crate::game::server_side::commands_server::items::regist
             expected
         );
     }
-
-    
-
-    
-
-    
 }
 
 #[cfg(test)]

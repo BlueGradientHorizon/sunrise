@@ -1,10 +1,8 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod equippable_slot_tests {
     use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1;
-use sunrise_items::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
     /// `Equippable.slot`: armour goes where it is worn, a plain item goes nowhere.
     #[test]
@@ -21,13 +19,16 @@ use sunrise_items::items::ItemStack;
 
 #[cfg(test)]
 pub(crate) mod enchantment_conflict_tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::tables::GameItems;
-use sunrise_gameplay_common::game::native_components::ItemStack;
-    use {sunrise_gameplay_common::game::api_values::stack_value, sunrise_gameplay_common::game::api_values::test_snapshot};
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::{Identifier, ItemResource, LevelRef, WorldEpoch};
     use sunrise_core::random::RandomSource;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::native_components::ItemStack;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::tables::GameItems;
+    use {
+        sunrise_gameplay_common::game::api_values::stack_value,
+        sunrise_gameplay_common::game::api_values::test_snapshot,
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -106,13 +107,14 @@ use sunrise_gameplay_common::game::native_components::ItemStack;
 
 #[cfg(test)]
 pub(crate) mod item_resource_property_tests {
+    use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
     use sunrise_gameplay_common::game::tables::GameItems;
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
-pub(crate) fn engine(
+    pub(crate) fn engine(
         resource: &mod_api::ItemResource,
         count: u32,
     ) -> sunrise_items::items::ItemStack {
-        sunrise_gameplay_common::game::api_values::stack_value(&resource.to_stack(count).unwrap()).unwrap()
+        sunrise_gameplay_common::game::api_values::stack_value(&resource.to_stack(count).unwrap())
+            .unwrap()
     }
     #[allow(unused_imports)]
     use serde_json::Value;
@@ -199,13 +201,13 @@ pub(crate) use crate::game::server_side::native_components_server::item_resource
         sunrise_gameplay::game::native_entity_refs::tests::with_game_at(root.clone(), |game| {
             let save_root = game.test_save_root();
             game.test_acquire_session_lock(&save_root);
-            let wood = ItemResource::of(&sunrise_gameplay_common::game::api_values::test_snapshot(&ItemStack::new(
-                "minecraft:wooden_sword",
-                1,
-            )));
-            let plank = ItemResource::of(&sunrise_gameplay_common::game::api_values::test_snapshot(
-                &ItemStack::new("minecraft:oak_planks", 1),
+            let wood = ItemResource::of(&sunrise_gameplay_common::game::api_values::test_snapshot(
+                &ItemStack::new("minecraft:wooden_sword", 1),
             ));
+            let plank =
+                ItemResource::of(&sunrise_gameplay_common::game::api_values::test_snapshot(
+                    &ItemStack::new("minecraft:oak_planks", 1),
+                ));
             assert!(wood.repairable(game, &plank));
             assert!(sunrise_sim::stations::is_valid_repair_item(
                 &game.items().enchantments,
@@ -219,7 +221,9 @@ pub(crate) use crate::game::server_side::native_components_server::item_resource
                 "minecraft:iron_ingot"
             ));
             let stack = ItemStack::new("minecraft:iron_sword", 1);
-            let resource = ItemResource::of(&sunrise_gameplay_common::game::api_values::test_snapshot(&stack));
+            let resource = ItemResource::of(
+                &sunrise_gameplay_common::game::api_values::test_snapshot(&stack),
+            );
             let bar = resource.bar(game).unwrap();
             // The independent oracle records the equivalent effective damage as a stack patch.
             let expected: Value = include_str!(concat!(
@@ -273,10 +277,9 @@ pub(crate) use crate::game::server_side::native_components_server::item_resource
             assert!(inherited.foil(game));
             assert!(engine(&inherited, 1).has_foil(glint));
 
-            let base = ItemResource::of(&sunrise_gameplay_common::game::api_values::test_snapshot(&ItemStack::new(
-                "sunrise:consumable_fixture",
-                2,
-            )));
+            let base = ItemResource::of(&sunrise_gameplay_common::game::api_values::test_snapshot(
+                &ItemStack::new("sunrise:consumable_fixture", 2),
+            ));
             let consumable = ComponentId::new("minecraft:consumable").unwrap();
             let patched = base
                 .with_component(
@@ -320,7 +323,7 @@ pub(crate) use crate::game::server_side::native_components_server::item_resource
 #[cfg(test)]
 pub(crate) mod hot_key_tests {
     use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1;
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn resolved_keys_select_fuel_and_compost_metadata() {
         mod_platform::testing::with_mods(Vec::new().into(), || {
@@ -337,12 +340,17 @@ pub(crate) mod hot_key_tests {
 
 #[cfg(test)]
 pub(crate) mod combat_query_tests {
-    use sunrise_gameplay_common::game::api_values::test_snapshot;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-    use {crate::game::native_components::*, sunrise_gameplay_common::game::native_components::{ItemStack, stack_attack_bonus_preview, stack_can_be_hurt_by}};
     use sunrise_core::geometry::{Aabb, Vec3};
     use sunrise_core::random::RandomSource;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::api_values::test_snapshot;
     use sunrise_sim::motion::PlayerMotion;
+    use {
+        crate::game::native_components::*,
+        sunrise_gameplay_common::game::native_components::{
+            ItemStack, stack_attack_bonus_preview, stack_can_be_hurt_by,
+        },
+    };
 
     fn actor(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> mod_api::LivingRef {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
@@ -517,7 +525,9 @@ pub(crate) mod combat_query_tests {
             assert_eq!(overridden.causing, Some(target));
             game.common.inventory[game.common.selected] = Some(mace);
             assert_eq!(
-                sunrise_gameplay_common::game::creatures::source_damage_type(game.attack_source([0.0; 3])),
+                sunrise_gameplay_common::game::creatures::source_damage_type(
+                    game.attack_source([0.0; 3])
+                ),
                 "minecraft:magic"
             );
 
@@ -651,7 +661,9 @@ pub(crate) mod combat_query_tests {
                 9.0
             );
             assert_eq!(
-                sunrise_gameplay_common::game::creatures::source_damage_type(game.attack_source([0.0; 3])),
+                sunrise_gameplay_common::game::creatures::source_damage_type(
+                    game.attack_source([0.0; 3])
+                ),
                 "minecraft:magic"
             );
             patch(&mut sword, "!minecraft:enchantments", serde_json::json!({}));
@@ -675,14 +687,15 @@ pub(crate) mod combat_query_tests {
                 7.0
             );
             assert_eq!(
-                sunrise_gameplay_common::game::creatures::source_damage_type(game.attack_source([0.0; 3])),
+                sunrise_gameplay_common::game::creatures::source_damage_type(
+                    game.attack_source([0.0; 3])
+                ),
                 "minecraft:player_attack"
             );
         });
     }
 }
 use sunrise_gameplay_common::game::tables::GameItems as _;
-
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 

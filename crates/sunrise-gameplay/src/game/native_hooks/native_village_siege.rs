@@ -1,5 +1,3 @@
-
-
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
     /// A village siege found a spawn position on the server. Set `canceled`

@@ -4,11 +4,11 @@ use super::{
     entity::{Entity, with_entity, with_entity_mut},
     move_gate::MoveWho,
 };
+use sunrise_core::geometry::{Axis, Vec3};
 use sunrise_gameplay_common::game::piston_push::{
     StepHeights,
     carrying::{Rider, support_of},
 };
-use sunrise_core::geometry::{Axis, Vec3};
 use sunrise_world::entity_move::MoverType;
 use sunrise_world::moving_colliders::{self, Prepared};
 

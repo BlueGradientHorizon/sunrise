@@ -1,10 +1,10 @@
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use serde::Deserialize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_level::containers::BlockEntity;
@@ -100,8 +100,7 @@ fn fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_do_not_tick() {
     run_fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_do_not_tick();
 }
 
-pub(crate) fn run_fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_do_not_tick()
- {
+pub(crate) fn run_fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_do_not_tick() {
     let witness = load_witness();
     assert_eq!(witness.game_version, "26.3");
     assert!(!witness.cases.is_empty());

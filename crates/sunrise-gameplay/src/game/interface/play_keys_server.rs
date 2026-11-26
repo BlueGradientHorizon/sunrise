@@ -11,8 +11,12 @@ impl crate::game::ServerGame<'_> {
         if self.common.spectator() {
             return;
         }
-        let heard = mod_api::__private::listened(mod_api::HookId::PlayerSwapHands)
-            .then(|| (self.common.inventory[self.common.selected].clone(), self.common.offhand.clone()));
+        let heard = mod_api::__private::listened(mod_api::HookId::PlayerSwapHands).then(|| {
+            (
+                self.common.inventory[self.common.selected].clone(),
+                self.common.offhand.clone(),
+            )
+        });
         if let Some((old_main, old_off)) = &heard {
             let (mut to_main, mut to_off, mut cancel) = (old_off.clone(), old_main.clone(), false);
             let (uuid, name) = (self.own_uuid(), self.own_profile_name());
@@ -20,11 +24,20 @@ impl crate::game::ServerGame<'_> {
             if cancel {
                 return;
             }
-            (self.common.inventory[self.common.selected], self.common.offhand) = (to_main, to_off);
+            (
+                self.common.inventory[self.common.selected],
+                self.common.offhand,
+            ) = (to_main, to_off);
         } else {
-            std::mem::swap(&mut self.common.offhand, &mut self.common.inventory[self.common.selected]);
+            std::mem::swap(
+                &mut self.common.offhand,
+                &mut self.common.inventory[self.common.selected],
+            );
         }
-        let (offhand, main) = (self.common.offhand.clone(), self.common.inventory[self.common.selected].clone());
+        let (offhand, main) = (
+            self.common.offhand.clone(),
+            self.common.inventory[self.common.selected].clone(),
+        );
         let (old_main, old_off) = match &heard {
             Some((old_main, old_off)) => (old_main.as_ref(), old_off.as_ref()),
             None => (offhand.as_ref(), main.as_ref()),
@@ -130,8 +143,6 @@ pub(in crate::game) mod swap_hands_tests {
             );
         });
     }
-
-    
 }
 
 use sunrise_gameplay_common::game::player_equip::PlayerEquipGameExt1 as _;

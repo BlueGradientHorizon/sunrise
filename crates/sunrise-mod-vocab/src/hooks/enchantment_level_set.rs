@@ -8,7 +8,8 @@ pub trait Hooks {
     /// `level` to change the offer; a level below `row + 1` offers nothing,
     /// as vanilla's. Asked for each row in order, before
     /// `prepare_item_enchant`. Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::enchantment_level_set::ServerGame<'_>::native_enchantment_level_set", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::enchantment_level_set::ServerGame<'_>::native_enchantment_level_set",
         dispatch = "flat",
         side = "server",
         contract = "listen",

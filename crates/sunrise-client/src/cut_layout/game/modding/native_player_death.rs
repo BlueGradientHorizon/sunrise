@@ -1,23 +1,21 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-use mod_api::__private::game::Fields;
-use sunrise_gameplay_common::game::native_player_death::tests::at;
+    use mod_api::__private::game::Fields;
+    use sunrise_gameplay_common::game::native_player_death::tests::at;
 
-use sunrise_gameplay_common::game::native_player_death::tests::new_guest;
+    use sunrise_gameplay_common::game::native_player_death::tests::new_guest;
 
-use sunrise_gameplay::game::native_player_death::tests::add_guest;
+    use sunrise_gameplay::game::native_player_death::tests::add_guest;
 
-use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::with_game;
 
-use mod_api::{GlobalPos, Identifier, PlayerRef};
+    use mod_api::{GlobalPos, Identifier, PlayerRef};
 
-use sunrise_core::position::BlockPos;
+    use sunrise_core::position::BlockPos;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_players_last_death_location_reads_from_their_record() {
         with_game(|game| {
@@ -104,7 +102,7 @@ use sunrise_core::position::BlockPos;
             assert_eq!(player.last_death_location(&*game), None);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn the_acting_players_location_reads_and_writes_through_their_turn() {
         with_game(|game| {
@@ -134,7 +132,7 @@ use sunrise_core::position::BlockPos;
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn the_death_location_survives_a_playerdata_save_and_load() {
         use sunrise_sim::lan::playerdata;
@@ -165,12 +163,18 @@ use sunrise_core::position::BlockPos;
             );
 
             // Put in place of the saved one, it reads through the handle.
-            game.server.lan.as_mut().unwrap().hub.guests.replace(0, fresh);
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .replace(0, fresh);
             assert_eq!(player.last_death_location(&*game), Some(at([4, 70, -9])));
             std::fs::remove_dir_all(&world).unwrap();
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_death_records_the_floored_block_and_dimension() {
         with_game(|game| {

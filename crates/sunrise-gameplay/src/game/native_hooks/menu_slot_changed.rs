@@ -1,5 +1,3 @@
-
-
 impl crate::game::ServerGame<'_> {
     /// Non-result container slots of mod menu type `menu` changed on the server
     /// (`Container.setItem` / `AbstractContainerMenu.slotsChanged`). Listeners may push

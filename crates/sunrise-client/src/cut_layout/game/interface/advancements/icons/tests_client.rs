@@ -1,4 +1,7 @@
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+};
 #[path = "helpers.rs"]
 mod helpers;
 use helpers::{assert_icon, batch, fixture, glint_vertices};
@@ -34,9 +37,12 @@ fn advancement_icons_reach_local_and_remote_ui_surfaces() {
     with_client_game(|game| {
         let tree = Tree::load(&fixture().join("data"));
         if case == "local" {
-            use sunrise_gameplay_common::game::advancements_common::text_of;
-            use {sunrise_client_gameplay::game::client_side::advancement_toast::Toast, sunrise_client_gameplay::game::client_side::advancement_toast::toast_label};
             use sunrise_game_data::text::Text;
+            use sunrise_gameplay_common::game::advancements_common::text_of;
+            use {
+                sunrise_client_gameplay::game::client_side::advancement_toast::Toast,
+                sunrise_client_gameplay::game::client_side::advancement_toast::toast_label,
+            };
             game.adv.tree = Arc::new(tree);
             game.adv.loaded = true;
             let tree = game.adv.tree.clone();

@@ -49,7 +49,8 @@ impl crate::game::ServerGame<'_> {
     }
 
     fn native_projectile(&self, projectile: ProjectileRef) -> Option<&Projectile> {
-        self.common.creatures
+        self.common
+            .creatures
             .projectiles
             .get(self.native_projectile_index(projectile)?)
     }
@@ -97,7 +98,9 @@ impl crate::game::ServerGame<'_> {
                 self.target_by_uuid(ints_uuid(uuid))?
             }
             // A trident belongs to the guest who threw it, else the host.
-            Backing::Trident(i) => self.common.tridents[i].guest.map_or(Target::Player, Target::Guest),
+            Backing::Trident(i) => self.common.tridents[i]
+                .guest
+                .map_or(Target::Player, Target::Guest),
             Backing::Rocket(i) => {
                 let r = &self.common.rockets[i];
                 match r.owner {
@@ -310,7 +313,9 @@ impl crate::game::ServerGame<'_> {
             .native_projectile_backing(projectile)
             .ok_or(PierceLevelError::Stale)?;
         match backing {
-            Backing::List(index) if self.common.creatures.projectiles[index].arrow.is_some() => Ok(index),
+            Backing::List(index) if self.common.creatures.projectiles[index].arrow.is_some() => {
+                Ok(index)
+            }
             _ => Err(PierceLevelError::NotArrow),
         }
     }
@@ -335,7 +340,8 @@ impl crate::game::ServerGame<'_> {
         level: i8,
     ) -> Result<(), PierceLevelError> {
         let index = self.native_arrow_index(projectile)?;
-        self.common.creatures
+        self.common
+            .creatures
             .projectiles
             .update(index, |p| p.arrow.as_mut().unwrap().pierce = level as u8);
         Ok(())

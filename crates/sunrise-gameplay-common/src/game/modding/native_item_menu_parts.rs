@@ -24,11 +24,7 @@ fn refuse_stack(hook: &str, item: &str, error: super::api_values::StackReadError
 
 /// Ask the parts of `stack`'s item whether the grindstone repairs it. With no part on the item,
 /// nothing is converted and `can_repair` keeps its answer.
-pub fn can_grindstone_repair(
-    context: &LoopContext,
-    stack: &ItemStack,
-    can_repair: &mut bool,
-) {
+pub fn can_grindstone_repair(context: &LoopContext, stack: &ItemStack, can_repair: &mut bool) {
     if !mod_api::__private::item_listens(mod_api::HookId::CanGrindstoneRepair, &stack.item) {
         return;
     }
@@ -42,11 +38,7 @@ pub fn can_grindstone_repair(
 
 /// Ask the parts of `stack`'s item whether two of it combine in a crafting grid. With no part on
 /// the item, nothing is converted and `repairable` keeps its answer.
-pub fn is_combine_repairable(
-    context: &LoopContext,
-    stack: &ItemStack,
-    repairable: &mut bool,
-) {
+pub fn is_combine_repairable(context: &LoopContext, stack: &ItemStack, repairable: &mut bool) {
     if !mod_api::__private::item_listens(mod_api::HookId::IsCombineRepairable, &stack.item) {
         return;
     }
@@ -60,11 +52,7 @@ pub fn is_combine_repairable(
 
 /// Ask the parts of `stack`'s item whether it may go inside an item that holds items. With no
 /// part on the item, nothing is converted and `fits` keeps its answer.
-pub fn can_fit_inside_container_items(
-    context: &LoopContext,
-    stack: &ItemStack,
-    fits: &mut bool,
-) {
+pub fn can_fit_inside_container_items(context: &LoopContext, stack: &ItemStack, fits: &mut bool) {
     let hook = mod_api::HookId::CanFitInsideContainerItems;
     if !mod_api::__private::item_listens(hook, &stack.item) {
         return;

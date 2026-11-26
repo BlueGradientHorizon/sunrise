@@ -1,4 +1,3 @@
-
 #[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
@@ -17,6 +16,6 @@ impl SideOps for crate::game::client_side::ClientState {
         game.client_level_min_y()
     }
 }
-use sunrise_gameplay_common::game::side_ops::ui::SideOps;
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::game::side_ops::ui::SideOps;
 use sunrise_sim::entities::ItemSplash;

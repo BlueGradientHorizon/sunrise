@@ -1,10 +1,13 @@
 //! Exercise the real local-player movement caller with and without a native listener.
-use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{Keys, Vec3, motion, movement, tick}};
-use std::sync::Arc;
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use mod_api::{ClientHost, Hooks, MovementInputUpdateEvent};
+use std::sync::Arc;
 use sunrise_sim::motion::PlayerMotion;
 use winit::keyboard::KeyCode;
+use {
+    crate::game::remote::*,
+    sunrise_gameplay_common::game::remote::{Keys, Vec3, motion, movement, tick},
+};
 
 pub(crate) struct Native;
 #[mod_api::__subscriptions]

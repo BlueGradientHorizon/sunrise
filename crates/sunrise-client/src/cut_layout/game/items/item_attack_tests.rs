@@ -1,14 +1,14 @@
 //! The held item's say on a player's blow and swing: `ItemPart::on_left_click_entity` and
 //! `ItemPart::on_entity_swing` heard by a trait mod through the game's own paths.
-use sunrise_gameplay_common::game::creatures::SpawnSite;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use mod_api::{
     self, Flow, Hooks, HostSide, HurtEnemyEvent, ItemPart, OnEntitySwingEvent,
     OnLeftClickEntityEvent, Registrar, RegistrationContext, ServerHost,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
+use sunrise_gameplay_common::game::creatures::SpawnSite;
 use {
     sunrise_items::items::ItemStack, sunrise_sim::first_person_sim::Hand,
     sunrise_sim::first_person_sim::SwingAnimation, sunrise_sim::motion::PlayerMotion,
@@ -187,7 +187,8 @@ fn a_part_keeps_the_swing_from_starting() {
             let mut player = PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap();
             player.entity_id = 7;
             game.player = Some(player);
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:stick", 1));
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:stick", 1));
             game.offhand = Some(ItemStack::new("minecraft:stone", 1));
 
             // Not canceled: the swing starts as before.

@@ -37,7 +37,10 @@ impl crate::game::ServerGame<'_> {
                     };
                     let drops = match json["random_sequence"].as_str() {
                         Some(sequence) => {
-                            let random = self.server.rand_sequences.get(sequence, self.common.level.seed);
+                            let random = self
+                                .server
+                                .rand_sequences
+                                .get(sequence, self.common.level.seed);
                             server_world_items!(self).inline_loot_table_for_command(
                                 &json,
                                 held.as_ref(),
@@ -64,7 +67,8 @@ impl crate::game::ServerGame<'_> {
                     };
                     let drops = match server_world_items!(self).loot_sequence(&table) {
                         Some(seq) => {
-                            let random = self.server.rand_sequences.get(&seq, self.common.level.seed);
+                            let random =
+                                self.server.rand_sequences.get(&seq, self.common.level.seed);
                             server_world_items!(self).loot_table_for_command(
                                 &table,
                                 false,
@@ -157,7 +161,9 @@ impl crate::game::ServerGame<'_> {
                     Some(Some(Target::Guest(conn))) => self
                         .player_entity_id_by_connection(Some(conn))
                         .map(|id| id as u32),
-                    Some(Some(target)) => sunrise_gameplay_common::game::commands_common::target_id(target),
+                    Some(Some(target)) => {
+                        sunrise_gameplay_common::game::commands_common::target_id(target)
+                    }
                     Some(None) => None,
                 };
                 // The hook may borrow the live level mutably. Keep a read-only
@@ -167,7 +173,8 @@ impl crate::game::ServerGame<'_> {
                     chunks.insert(key, chunk.clone());
                 }
                 let items = self
-                    .common.server_items
+                    .common
+                    .server_items
                     .clone()
                     .unwrap_or_else(|| std::sync::Arc::new(world_items!(self).clone()));
                 let registry = self.common.pack.assets.registry;

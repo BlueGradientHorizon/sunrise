@@ -1,11 +1,7 @@
+use super::*;
+use mod_api::{EntityRef, LivingRef};
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
-use sunrise_gameplay_common::game::Dim;
-use sunrise_sim::mobs::Damage;
-use sunrise_sim::mobs::MobEvent;
-use sunrise_sim::mobs::Who;
-use sunrise_sim::projectiles::ProjectileKind;
-use super::*;
 use sunrise_gameplay::game::creatures::last_hurt_mob_tests::MOB;
 use sunrise_gameplay::game::creatures::last_hurt_mob_tests::MOB_AGE;
 use sunrise_gameplay::game::creatures::last_hurt_mob_tests::PIG;
@@ -16,10 +12,18 @@ use sunrise_gameplay::game::creatures::last_hurt_mob_tests::add_mob;
 use sunrise_gameplay::game::creatures::last_hurt_mob_tests::arrow;
 use sunrise_gameplay::game::creatures::last_hurt_mob_tests::living;
 use sunrise_gameplay::game::creatures::last_hurt_mob_tests::shoot;
-use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
-use mod_api::{EntityRef, LivingRef};
+use sunrise_gameplay_common::game::Dim;
 use sunrise_level::chunk::Chunk;
+use sunrise_sim::mobs::Damage;
+use sunrise_sim::mobs::MobEvent;
+use sunrise_sim::mobs::Who;
 use sunrise_sim::motion::PlayerMotion;
+use sunrise_sim::projectiles::ProjectileKind;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 #[test]
 #[ignore = "daily"]

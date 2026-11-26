@@ -1,9 +1,4 @@
-use sunrise_core::geometry::Vec3;
-use sunrise_protocol::packets::play;
-use sunrise_protocol::packets::play::Clientbound as C;
 use super::super::*;
-use sunrise_gameplay_common::game::Screen;
-use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use crate::game::remote::abilities::gamemode_split_tests::SELF_NAME;
 use crate::game::remote::abilities::gamemode_split_tests::SELF_UUID;
 use crate::game::remote::abilities::gamemode_split_tests::abilities_packet;
@@ -17,7 +12,12 @@ use crate::game::remote::abilities::gamemode_split_tests::player_info_add_mode;
 use crate::game::remote::abilities::gamemode_split_tests::position_packet;
 use crate::game::remote::abilities::gamemode_split_tests::run_local_tick;
 use crate::game::remote::abilities::gamemode_split_tests::spawn_info;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::Screen;
 use sunrise_protocol::connection::ConnReader;
+use sunrise_protocol::packets::play;
+use sunrise_protocol::packets::play::Clientbound as C;
 
 pub(crate) fn run_resolved_player_info_retains_identity_across_remove_and_readd_26_3() {
     sunrise_gameplay_common::game::in_own_process(

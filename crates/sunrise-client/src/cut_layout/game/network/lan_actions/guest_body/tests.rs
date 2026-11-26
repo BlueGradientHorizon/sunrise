@@ -1,15 +1,15 @@
 use crate::game::lan_actions::guest_body::*;
+use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_core::geometry::Vec3;
+use sunrise_core::random::RandomSource;
 use sunrise_gameplay_common::game::lan_actions::guest_body::initialize;
+use sunrise_level::assets::Assets;
+use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::lan::{Joined, PlayerSender, guest::SavedBody};
 use sunrise_sim::{
     lan::{guest::Guest, hub::CommittedMove},
     motion::{MotionResources, PlayerMotion},
 };
-use std::sync::{Arc, atomic::AtomicI32, mpsc};
-use sunrise_core::random::RandomSource;
-use sunrise_level::assets::Assets;
-use sunrise_protocol::packets::configuration::ClientInformation;
-use sunrise_sim::lan::{Joined, PlayerSender, guest::SavedBody};
 
 #[path = "tests/fall_reset.rs"]
 pub(crate) mod fall_reset;
@@ -177,18 +177,23 @@ fn guest_equipment_changes_powder_snow_support_on_the_same_move() {
     sunrise_gameplay_common::game::in_own_process(
         "game::lan_actions::guest_body::tests::guest_equipment_changes_powder_snow_support_on_the_same_move",
         || {
-            use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-            use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest as online_guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
             use sunrise_core::position::BlockPos;
+            use sunrise_gameplay::game::native_entity_refs::tests::with_game;
             use sunrise_items::items::ItemStack;
             use sunrise_level::chunk::Chunk;
+            use {
+                sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+                sunrise_gameplay_common::game::server_side::native_item_places::tests::guest as online_guest,
+            };
 
             with_game(|game| {
                 open_to_lan(game);
                 {
                     let (common, server) =
                         sunrise_gameplay_common::game::SideGame::common_and_state_mut(&mut *game);
-                    server.streaming.insert_remote(&mut common.world, Chunk::empty(0, 0));
+                    server
+                        .streaming
+                        .insert_remote(&mut common.world, Chunk::empty(0, 0));
                 }
                 let snow = game
                     .pack
@@ -306,9 +311,12 @@ impl mod_api::Hooks for Breather {
 /// read, then the air and the chestplate's damage the tick left.
 pub(crate) fn breathing_guest_tick(meddle: bool) -> (Option<String>, i32, i32) {
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-    use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest as online_guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
     use sunrise_items::items::ItemStack;
     use sunrise_level::chunk::Chunk;
+    use {
+        sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+        sunrise_gameplay_common::game::server_side::native_item_places::tests::guest as online_guest,
+    };
 
     let helmet = Arc::new(std::sync::Mutex::new(None));
     let mut left = (0, 0);
@@ -327,7 +335,9 @@ pub(crate) fn breathing_guest_tick(meddle: bool) -> (Option<String>, i32, i32) {
                 {
                     let (common, server) =
                         sunrise_gameplay_common::game::SideGame::common_and_state_mut(&mut *game);
-                    server.streaming.insert_remote(&mut common.world, Chunk::empty(0, 0));
+                    server
+                        .streaming
+                        .insert_remote(&mut common.world, Chunk::empty(0, 0));
                 }
                 let mut guest = online_guest(1);
                 guest.loaded = true;
@@ -367,12 +377,7 @@ pub(crate) fn breathing_guest_tick(meddle: bool) -> (Option<String>, i32, i32) {
     (helmet, left.0, i32::try_from(left.1).unwrap())
 }
 
-pub(crate) fn assert_isolated_breathing_tick(
-    name: &str,
-    meddle: bool,
-    air: i32,
-    damage: i32,
-) {
+pub(crate) fn assert_isolated_breathing_tick(name: &str, meddle: bool, air: i32, damage: i32) {
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
         &format!("game::lan_actions::guest_body::tests::{name}"),
         "SUNRISE_GUEST_BREATHING_CHILD",

@@ -1,13 +1,13 @@
 //! Prepare server listeners against the new packs before publishing any data.
-use mod_api::__private::game::*;
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::function_pack_stack::PackStack;
-use sunrise_gameplay_common::game::packs_common::reload_files;
+use mod_api::__private::game::*;
 use mod_api::{
     __private::reload::{ReloadStageError, RetainedEntry, apply_listeners, prepare_listeners},
     FileToIdConverter, HookId, Identifier, ServerReloadContext, ServerReloadListener,
     ServerReloadResources,
 };
+use sunrise_gameplay_common::game::function_pack_stack::PackStack;
+use sunrise_gameplay_common::game::packs_common::reload_files;
 use sunrise_level::datapack::DataStore;
 
 pub(in crate::game) type PreparedReload = PreparedStep<Box<DataStore>>;
@@ -40,7 +40,7 @@ fn functions_store(stack: &PackStack) -> DataStore {
 }
 
 pub(in crate::game) trait PackStackServerExt: Sized {
-fn reload_context(
+    fn reload_context(
         &self,
         listener: &Identifier,
         converter: &FileToIdConverter,
@@ -68,7 +68,8 @@ impl ServerGame<'_> {
         )
         .map_err(|error| {
             ReloadStageError::OriginalJars(
-                sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(&error).unwrap(),
+                sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(&error)
+                    .unwrap(),
             )
         })?;
         let mut listeners = <mod_api::ServerListenerRegistry as mod_api::__private::game::ServerReloadListenersOrder>::new();

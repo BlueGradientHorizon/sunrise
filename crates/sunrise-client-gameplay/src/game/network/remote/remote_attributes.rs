@@ -18,7 +18,8 @@ impl ClientGame<'_> {
         {
             return Some(value);
         }
-        self.common.motion
+        self.common
+            .motion
             .attributes
             .default_base(&tracked.kind, attribute)
     }
@@ -45,7 +46,8 @@ impl ClientGame<'_> {
             .iter()
             .find(|snapshot| snapshot.attribute == attribute.registry_id())?;
         Some(
-            self.common.motion
+            self.common
+                .motion
                 .attributes
                 .attribute(attribute)
                 .definition
@@ -82,11 +84,17 @@ impl ClientGame<'_> {
             let mut updates = Vec::new();
             for snapshot in values {
                 if let Some((attr, reg)) = self
-                    .common.motion
+                    .common
+                    .motion
                     .attributes
                     .attributes()
                     .find(|(attr, _)| attr.registry_id() == snapshot.attribute)
-                    && self.common.motion.attributes.default_base(&kind, attr).is_some()
+                    && self
+                        .common
+                        .motion
+                        .attributes
+                        .default_base(&kind, attr)
+                        .is_some()
                 {
                     updates.push((attr, reg.definition.sanitize(snapshot_value(snapshot))));
                 }
@@ -107,8 +115,17 @@ impl ClientGame<'_> {
         let speed = self.remote_attribute_value("minecraft:movement_speed", values);
         let jump = self.remote_attribute_value("minecraft:jump_strength", values);
         let nameplate = self.remote_nameplate_values(values);
-        let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, id as u32) else {
-            if let Some(a) = self.common.armor_stands.iter_mut().find(|a| a.id == id as u32) {
+        let Some(m) = self
+            .common
+            .mob_index
+            .get_mut(&mut self.common.mobs, id as u32)
+        else {
+            if let Some(a) = self
+                .common
+                .armor_stands
+                .iter_mut()
+                .find(|a| a.id == id as u32)
+            {
                 if let Some(value) = nameplate.name_tag {
                     a.nameplate.name_tag = Some(value);
                 }

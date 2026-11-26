@@ -1,9 +1,9 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod local_sound_tests {
-    use sunrise_gameplay_common::game::native_hooks::render_gui_pre::local_sound_tests::Mod;
     use mod_api::ModEntry;
     use mod_platform::testing::with_mods;
+    use sunrise_gameplay_common::game::native_hooks::render_gui_pre::local_sound_tests::Mod;
 
     /// A sound a screen hook plays through its read-only host is held, then played by the
     /// next audio update, before its tick.

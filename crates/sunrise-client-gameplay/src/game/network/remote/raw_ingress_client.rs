@@ -415,7 +415,12 @@ impl crate::game::ClientGame<'_> {
                 // unload comes before the configuration screen, not
                 // after the next login's load.
                 self.forget_all_remote_columns();
-                if let Some(old) = self.client.remote.as_mut().and_then(|r| r.heard_level.take()) {
+                if let Some(old) = self
+                    .client
+                    .remote
+                    .as_mut()
+                    .and_then(|r| r.heard_level.take())
+                {
                     self.native_client_level_unload(&old);
                 }
                 // Minecraft.clearClientLevel -> updateLevelInEngines(null) stops

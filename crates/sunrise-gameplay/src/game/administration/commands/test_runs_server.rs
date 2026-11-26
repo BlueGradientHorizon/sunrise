@@ -2,8 +2,12 @@ use super::{Arg, Context, R, err};
 use crate::game::commands::test_runs::Finder;
 use crate::game::commands::test_runs::Pos;
 use crate::game::commands::test_runs::rotation_for_steps;
-use {sunrise_gameplay_common::game::Dim, crate::game::game_tests::Grid, crate::game::game_tests::Info, crate::game::game_tests::Retry, crate::game::game_tests::RunnerOptions, crate::game::game_tests::verify_batches, crate::game::test_instances::TestDef};
 use sunrise_game_data::text::{self, Text};
+use {
+    crate::game::game_tests::Grid, crate::game::game_tests::Info, crate::game::game_tests::Retry,
+    crate::game::game_tests::RunnerOptions, crate::game::game_tests::verify_batches,
+    crate::game::test_instances::TestDef, sunrise_gameplay_common::game::Dim,
+};
 
 impl crate::game::ServerGame<'_> {
     /// The tests a finder gives (`findTests`), by id.

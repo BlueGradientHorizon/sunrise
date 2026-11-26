@@ -1,13 +1,13 @@
 //! Disk regression for saves requested by native listeners during entity passes.
-use std::path::PathBuf;
-use sunrise_core::geometry::Vec3;
-use sunrise_items::items::ItemStack;
 use super::*;
 use mod_api::{Hooks, ItemPickedUpEvent, ServerHost};
+use std::path::PathBuf;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
 };
+use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
 
 #[derive(Default)]
 struct SaveOnPickup {
@@ -53,22 +53,24 @@ fn save_requested_during_pickup_keeps_lifted_items_on_disk() {
                 Some(Default::default()),
             ));
             game.options.dedicated = Some(Vec::new());
-            game.server.server_lists.0 = Some(Arc::new(Mutex::new(sunrise_gameplay::game::dedicated::Lists {
-                ops: OpList::new(root.join("ops.json")),
-                white: WhiteList::new(root.join("whitelist.json")),
-                bans: BanList::new(root.join("bans.json")),
-                ip_bans: IpBanList::new(root.join("ip-bans.json")),
-                use_whitelist: false,
-                enforce_whitelist: false,
-                op_level: 4,
-                player_idle_timeout: 0,
-                stop: false,
-                autosave: true,
-            })));
+            game.server.server_lists.0 = Some(Arc::new(Mutex::new(
+                sunrise_gameplay::game::dedicated::Lists {
+                    ops: OpList::new(root.join("ops.json")),
+                    white: WhiteList::new(root.join("whitelist.json")),
+                    bans: BanList::new(root.join("bans.json")),
+                    ip_bans: IpBanList::new(root.join("ip-bans.json")),
+                    use_whitelist: false,
+                    enforce_whitelist: false,
+                    op_level: 4,
+                    player_idle_timeout: 0,
+                    stop: false,
+                    autosave: true,
+                },
+            )));
             game.build_registries();
-            game.ui.dispatcher = sunrise_gameplay_common::game::chat_common::SessionDispatcher(Arc::new(
-                sunrise_command::vanilla::build_for(false, true),
-            ));
+            game.ui.dispatcher = sunrise_gameplay_common::game::chat_common::SessionDispatcher(
+                Arc::new(sunrise_command::vanilla::build_for(false, true)),
+            );
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

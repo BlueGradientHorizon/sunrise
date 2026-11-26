@@ -7,7 +7,8 @@ pub trait Hooks {
     /// on its own, by `/tick sprint stop` or by `/tick freeze`, the rate then being what it was.
     /// `host.tick_stats()` reads the rate. A client told the server's rate is not a server:
     /// nothing fires there. Server-side. Beyond NeoForge: there is no counterpart.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::server_tick_rate_changed::ServerGame<'_>::native_server_tick_rate_changed", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::server_tick_rate_changed::ServerGame<'_>::native_server_tick_rate_changed",
         dispatch = "flat",
         side = "server",
         contract = "listen",

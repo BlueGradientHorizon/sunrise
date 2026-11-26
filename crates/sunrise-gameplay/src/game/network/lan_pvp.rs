@@ -205,7 +205,8 @@ impl crate::game::ServerGame<'_> {
         let disable_blocking = if self.common.using.is_some() {
             0.0
         } else {
-            self.common.held()
+            self.common
+                .held()
                 .map_or(0.0, |stack| self.items().weapon_disable_blocking(stack))
         };
         let ignite = self.weapon_ignite_seconds();
@@ -299,14 +300,16 @@ impl crate::game::ServerGame<'_> {
         let answer = sunrise_sim::health::can_harm_player(
             attacker,
             victim,
-            self.common.ui
+            self.common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::PVP),
             attacker_team,
             victim_team,
         );
         #[cfg(test)]
-        let answer = sunrise_gameplay_common::game::rule_replacements::harm(attacker, victim).unwrap_or(answer);
+        let answer = sunrise_gameplay_common::game::rule_replacements::harm(attacker, victim)
+            .unwrap_or(answer);
         let _ = (attacker, victim);
         answer
     }
@@ -315,11 +318,7 @@ impl crate::game::ServerGame<'_> {
     /// `attacker` (connections), or by the player in place when none: a player's projectile or
     /// trident, which the victim's hurt refuses when it answers false. A guest no longer here
     /// is entity -1, on no team.
-    pub fn guest_may_harm(
-        &self,
-        attacker: Option<u32>,
-        victim: u32,
-    ) -> bool {
+    pub fn guest_may_harm(&self, attacker: Option<u32>, victim: u32) -> bool {
         let board = &self.common.score.board;
         let guest = |conn: u32| {
             self.server
@@ -535,7 +534,11 @@ impl crate::game::ServerGame<'_> {
             // The sweep around the player that was hit, as its attacker.
             let (area, id) = match victim {
                 Victim::Guest(conn) => {
-                    let g = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn));
+                    let g = self
+                        .server
+                        .lan
+                        .as_ref()
+                        .and_then(|host| host.hub.guest(conn));
                     (g.map(guest_bounds), g.map_or(-1, |g| g.entity_id))
                 }
             };
@@ -646,17 +649,21 @@ impl crate::game::ServerGame<'_> {
     /// by the caller.
     pub(in crate::game::server_side) fn player_sweep(&mut self, base: f32, scale: f32) -> Sweep {
         let from = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map_or([0.0; 3], |p| [p.position.x, p.position.y, p.position.z]);
         let custom_damage = self
-            .common.held()
+            .common
+            .held()
             .filter(|_| self.stations().enchantments.has_custom_damage_effects())
             .zip(self.common.player.as_ref())
             .map(|(held, player)| {
                 let weapon = self.common.item_combat_stack(held);
                 let motion = (player.fall_distance, player.fall_flying);
-                let damage_type = self.common.stack_melee_damage_type(Some(&weapon), motion, true);
+                let damage_type = self
+                    .common
+                    .stack_melee_damage_type(Some(&weapon), motion, true);
                 SweepDamage {
                     weapon,
                     attacker: player.entity_id as u32,
@@ -734,7 +741,8 @@ impl crate::game::ServerGame<'_> {
         let attacker = match sweep.attacker {
             Some(conn) => self.player_attacker(Some(conn)),
             None => self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .map(|p| (p.entity_id as u32, self.target_name(Target::Player))),
         };

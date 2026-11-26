@@ -1,7 +1,10 @@
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_gameplay_common::game::native_item_bundle::NativeItemBundleGameExt1 as _;
-use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
 use sunrise_items::items::ItemStack;
+use {
+    sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+    sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -103,10 +106,12 @@ fn bundle_items_place_handler_reads_and_rolls_back() {
             "minecraft:ender_pearl"
         );
         assert_eq!(
-            sunrise_gameplay_common::game::api_values::stack_value(handler.resource(game, 1).unwrap().as_stack())
-                .unwrap()
-                .item
-                .as_ref(),
+            sunrise_gameplay_common::game::api_values::stack_value(
+                handler.resource(game, 1).unwrap().as_stack()
+            )
+            .unwrap()
+            .item
+            .as_ref(),
             "minecraft:arrow"
         );
         let result = game.storage_transaction(|host, tx| {
@@ -150,8 +155,8 @@ fn nested_bundle_weight_limits_arrow_capacity_and_insertion() {
 #[test]
 #[ignore = "daily"]
 fn stacked_bundle_insertion_splits_one_and_restores_inventory_on_abort() {
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use mod_api::{ITEM_ITEMS, ItemPlace};
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     with_game(|game| {
         game.creative = false;
         open_to_lan(game);
@@ -268,10 +273,7 @@ fn mod_registered_bundle_items_uses_weight_and_front_extraction() {
 
 #[cfg(test)]
 mod custom_bundle_integration_tests {
-    use sunrise_gameplay_common::game::tables::GameItems;
-use super::*;
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
-    use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
+    use super::*;
     use mod_api::{
         BundleConfig, BundleItems, ComponentTypesEvent, Flow, Hooks, Host, HostSide, ITEM_ITEMS,
         ItemDestroyedEvent, ItemPart, ItemPlace, ItemResource, ItemStackedOnOtherEvent, ModEntry,
@@ -283,6 +285,9 @@ use super::*;
         atomic::{AtomicBool, Ordering},
     };
     use sunrise_core::nbt::Tag;
+    use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::tables::GameItems;
     use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
 
     const POUCH_COMPONENT: &str = "pouch:contents";
@@ -882,7 +887,6 @@ use super::*;
         });
     }
 }
-
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 

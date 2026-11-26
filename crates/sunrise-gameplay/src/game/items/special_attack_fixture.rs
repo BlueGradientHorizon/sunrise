@@ -1,11 +1,9 @@
 //! Scoped Player.attack follow-up probe; invoked by the dispenser's headless world.
-use super::{
-    minecarts::{CartKind, Minecart},
-};
-use sunrise_gameplay_common::game::{boats_common::Boat, dragon_common::Dragon};
+use super::minecarts::{CartKind, Minecart};
 use serde_json::Value;
 use sunrise_core::geometry::Vec3;
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::{boats_common::Boat, dragon_common::Dragon};
 use sunrise_items::item_data::parse_stack;
 use sunrise_sim::{
     entities::{ArmorStand, ItemFrame, Painting},
@@ -53,7 +51,8 @@ impl crate::game::ServerGame<'_> {
         };
         self.common.creative = creative;
         self.common.inventory.fill(None);
-        self.common.inventory[self.common.selected] = parse_stack(op["item"].as_str().unwrap_or("-"))?;
+        self.common.inventory[self.common.selected] =
+            parse_stack(op["item"].as_str().unwrap_or("-"))?;
         self.common.offhand = None;
         // Every case installed a fresh player attribute map; the previous
         // actor's applied-effect cache must not suppress this actor's modifiers.
@@ -75,7 +74,9 @@ impl crate::game::ServerGame<'_> {
             }
             "cart" => {
                 let id = self.take_entity_id();
-                self.common.carts.push(Minecart::new(id, CartKind::Rideable, at));
+                self.common
+                    .carts
+                    .push(Minecart::new(id, CartKind::Rideable, at));
                 self.common.carts[0].bounds().center()
             }
             "stand" => {
@@ -154,7 +155,10 @@ impl crate::game::ServerGame<'_> {
             }
             _ => return Err(format!("unknown special attack target {kind}").into()),
         };
-        let eye = self.common.eye_position().ok_or("special attack player missing")?;
+        let eye = self
+            .common
+            .eye_position()
+            .ok_or("special attack player missing")?;
         let dx = center.x - eye[0];
         let dy = center.y - eye[1];
         let dz = center.z - eye[2];
@@ -166,15 +170,25 @@ impl crate::game::ServerGame<'_> {
             "boat" => Some(self.common.boats.first().is_none_or(|b| b.hurt_time > 0)),
             "cart" => Some(self.common.carts.first().is_none_or(|c| c.hurt_time > 0)),
             "stand" => Some(
-                self.common.armor_stands
+                self.common
+                    .armor_stands
                     .first()
                     .is_none_or(|s| !op["break"].as_bool().unwrap_or(false) && s.last_hit == 100),
             ),
-            "dragon" => Some(self.common.dragon.as_ref().is_some_and(|d| d.health < 200.0)),
+            "dragon" => Some(
+                self.common
+                    .dragon
+                    .as_ref()
+                    .is_some_and(|d| d.health < 200.0),
+            ),
             _ => None,
         };
         let outcome = accepted.map_or("control", |hit| if hit { "accepted" } else { "unchanged" });
-        let player = self.common.player.take().ok_or("special attack player missing")?;
+        let player = self
+            .common
+            .player
+            .take()
+            .ok_or("special attack player missing")?;
         Ok(vec![format!(
             "special {outcome} {:08x} {:016x} {:016x} {} {}",
             player.health.food.exhaustion.to_bits(),

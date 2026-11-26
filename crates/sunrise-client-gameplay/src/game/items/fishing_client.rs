@@ -1,11 +1,11 @@
 use super::billboard_axes;
-use sunrise_gameplay_common::game::fishing_common::{
-    Hook, HookLerp, State, bite_impulse, bounds, resting, synchronized_random,
-};
 use sunrise_client::{gizmos::Line, mesher::Vertex};
 use sunrise_core::{
     geometry::{Vec3, trig},
     random::LegacyRandom,
+};
+use sunrise_gameplay_common::game::fishing_common::{
+    Hook, HookLerp, State, bite_impulse, bounds, resting, synchronized_random,
 };
 use sunrise_level::random_source;
 use sunrise_protocol::entity_data::Value;
@@ -20,7 +20,8 @@ impl crate::game::ClientGame<'_> {
         out: &mut Vec<Vertex>,
     ) {
         let hooks: Vec<glam::DVec3> = self
-            .common.hook_position(alpha)
+            .common
+            .hook_position(alpha)
             .into_iter()
             .chain(self.remote_hook_ends(alpha).into_iter().map(|(h, _)| h))
             .collect();
@@ -43,7 +44,8 @@ impl crate::game::ClientGame<'_> {
         let uv = [[r.u0, r.v1], [r.u1, r.v1], [r.u1, r.v0], [r.u0, r.v0]];
         for p in hooks {
             let light =
-                self.common.world
+                self.common
+                    .world
                     .light(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
             let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
             let corners = [
@@ -102,7 +104,8 @@ impl crate::game::ClientGame<'_> {
             _ => State::Flying,
         };
         if let Some(h) = self
-            .common.hook
+            .common
+            .hook
             .as_mut()
             .filter(|h| h.id == id && self.client.remote.is_some())
         {
@@ -286,7 +289,8 @@ impl crate::game::ClientGame<'_> {
             h.position = h.lerp.step(h.position);
             let before = h.position;
             let owner = self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == h.owner)
                 .map(|m| m.position);
@@ -305,7 +309,10 @@ impl crate::game::ClientGame<'_> {
     /// from a quarter block above the hook to the rod in its owner's hand,
     /// `width` pixels wide (`Window.getAppropriateLineWidth`).
     pub(in crate::game) fn fishing_line(&self, alpha: f64, size: [u32; 2]) -> Vec<Line> {
-        let own = self.common.hook_position(alpha).zip(self.rod_hand_position(alpha));
+        let own = self
+            .common
+            .hook_position(alpha)
+            .zip(self.rod_hand_position(alpha));
         let width = sunrise_client::gfx::outline_width(size[0]);
         let mut lines = Vec::new();
         for (hook, hand) in own.into_iter().chain(self.remote_hook_ends(alpha)) {

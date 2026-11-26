@@ -5,10 +5,10 @@
 //! `maps/last_id.dat`, the 128x128 texture in an atlas slot, the two-handed
 //! first-person view and maps in item frames.
 use crate::game::ServerGame;
+use sunrise_core::nbt::Tag;
 use sunrise_gameplay_common::game::maps::{
     Framed, Key, MapData, PLAYER, StaticDecoration, decoration_sprite, map_id,
 };
-use sunrise_core::nbt::Tag;
 use sunrise_items::{blocks::Fluid, items::ItemStack};
 
 /// The host among a map's holders (the guests are their connections).
@@ -75,7 +75,10 @@ impl ServerGame<'_> {
         self.common.dim.id()
     }
     pub(in crate::game::server_side) fn map_path(&self, name: &str) -> std::path::PathBuf {
-        self.server.world_root.join("data/minecraft/maps").join(name)
+        self.server
+            .world_root
+            .join("data/minecraft/maps")
+            .join(name)
     }
     /// `f` of map `id`'s data: the loaded map, else its `.dat` read without keeping it, so a
     /// read needs no `&mut`. None for a map id nothing made.
@@ -85,7 +88,8 @@ impl ServerGame<'_> {
         f: impl FnOnce(&MapData) -> R,
     ) -> Option<R> {
         map_read(
-            self.common.transactions
+            self.common
+                .transactions
                 .iter()
                 .rev()
                 .find_map(|level| level.new_maps.get(&id))
@@ -104,7 +108,8 @@ impl ServerGame<'_> {
     /// loaded from `data/minecraft/maps/<id>.dat` on first use.
     pub fn map(&mut self, id: i32) -> Option<&mut MapData> {
         if let Some(data) = self
-            .common.transactions
+            .common
+            .transactions
             .iter_mut()
             .rev()
             .find_map(|level| level.new_maps.get_mut(&id))
@@ -132,7 +137,8 @@ impl ServerGame<'_> {
     /// Peeking must not dirty the persisted counter, even on a save with no maps.
     pub fn peek_map_id(&self) -> i32 {
         if let Some(id) = self
-            .common.transactions
+            .common
+            .transactions
             .iter()
             .rev()
             .find_map(|level| level.new_maps.last_key_value().map(|(&id, _)| id))
@@ -163,10 +169,7 @@ impl ServerGame<'_> {
         }
     }
     /// Maps made by exploration map trades: (id, target, zoom, decoration).
-    pub fn register_exploration_maps(
-        &mut self,
-        made: Vec<(i32, [i32; 3], u8, String)>,
-    ) {
+    pub fn register_exploration_maps(&mut self, made: Vec<(i32, [i32; 3], u8, String)>) {
         let dimension = self.dimension_id().to_owned();
         for (id, at, zoom, _) in made {
             // MapItem.applyNewSavedData: tracking, unlimited tracking.
@@ -181,11 +184,7 @@ impl ServerGame<'_> {
     /// structure of the tag around `origin`, a new map centred on it with its
     /// biome preview and target decoration. False when nothing is found: the
     /// loot table's `filtered` map_id check would have discarded the item.
-    pub fn resolve_pending_map(
-        &mut self,
-        item: &mut ItemStack,
-        origin: [f64; 3],
-    ) -> bool {
+    pub fn resolve_pending_map(&mut self, item: &mut ItemStack, origin: [f64; 3]) -> bool {
         let Some(map) = sunrise_sim::structure_blocks::take_pending_map(item) else {
             return true;
         };
@@ -201,7 +200,8 @@ impl ServerGame<'_> {
         let names = self.structure_tag(&map.destination);
         let from = origin.map(|v| v.floor() as i32);
         let found = self
-            .common.end
+            .common
+            .end
             .locator()
             .filter(|_| !names.is_empty())
             .and_then(|t| {
@@ -229,11 +229,7 @@ impl ServerGame<'_> {
     }
     /// The unsearched exploration maps of a container being opened
     /// (`RandomizableContainer.unpackLootTable` runs the function then).
-    pub fn resolve_container_maps(
-        &mut self,
-        key: (i32, i32, i32),
-        origin: [f64; 3],
-    ) {
+    pub fn resolve_container_maps(&mut self, key: (i32, i32, i32), origin: [f64; 3]) {
         use sunrise_level::containers::BlockEntity;
         let Some(BlockEntity::Chest(slots)) = self.common.world.block_entities.get(&key) else {
             return;
@@ -248,14 +244,16 @@ impl ServerGame<'_> {
             .map(|(i, _)| i)
             .collect();
         for i in pending {
-            let Some(BlockEntity::Chest(slots)) = self.common.world.block_entities.get_mut(&key) else {
+            let Some(BlockEntity::Chest(slots)) = self.common.world.block_entities.get_mut(&key)
+            else {
                 return;
             };
             let Some(mut item) = slots[i].take() else {
                 continue;
             };
             let keep = self.resolve_pending_map(&mut item, origin);
-            if let Some(BlockEntity::Chest(slots)) = self.common.world.block_entities.get_mut(&key) {
+            if let Some(BlockEntity::Chest(slots)) = self.common.world.block_entities.get_mut(&key)
+            {
                 slots[i] = keep.then_some(item);
             }
         }
@@ -376,9 +374,10 @@ impl ServerGame<'_> {
         }
         // EmptyMapItem.use: consumed, then counted.
         self.award_stat("used", "minecraft:map", 1);
-        if let (Some(player), Some(name)) =
-            (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-        {
+        if let (Some(player), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             self.native_player_map_filled(player, &name, id);
         }
         self.server_play_player_bound_sound(
@@ -419,7 +418,13 @@ impl ServerGame<'_> {
             return false;
         }
         let [x, y, z] = hit.pos;
-        let block = self.common.res.facts().get(self.common.world.block(x, y, z)).name.clone();
+        let block = self
+            .common
+            .res
+            .facts()
+            .get(self.common.world.block(x, y, z))
+            .name
+            .clone();
         if !self.named_block_in_tag("minecraft:banners", &block) {
             return false;
         }
@@ -440,8 +445,16 @@ impl ServerGame<'_> {
     /// `CompassItem.inventoryTick`: each compass the player carries whose
     /// lodestone is gone loses its target (`inventory_tick`).
     pub fn tick_lodestone_compasses(&mut self) {
-        let (world, facts, dim) = (&self.common.world, self.common.res.facts(), self.common.dim.id());
-        let stacks = self.common.inventory.iter_mut().chain([&mut self.common.offhand]);
+        let (world, facts, dim) = (
+            &self.common.world,
+            self.common.res.facts(),
+            self.common.dim.id(),
+        );
+        let stacks = self
+            .common
+            .inventory
+            .iter_mut()
+            .chain([&mut self.common.offhand]);
         for stack in stacks.chain(self.common.armor.iter_mut()).flatten() {
             super::inventory_tick::compass_inventory_tick(world, facts, dim, stack);
         }
@@ -461,7 +474,8 @@ impl ServerGame<'_> {
         worn: &[Option<ItemStack>],
     ) -> bool {
         let tag = self
-            .common.res
+            .common
+            .res
             .items()
             .item_tags
             .get("minecraft:map_invisibility_equipment");
@@ -486,13 +500,17 @@ impl ServerGame<'_> {
                 self.common.inventory[i] = keep.then_some(item);
             }
         }
-        let held: Vec<i32> = [Some(self.common.selected), Some(super::shield::OFFHAND_SLOT)]
-            .into_iter()
-            .flatten()
-            .filter_map(|i| self.common.stack_in(i).and_then(map_id))
-            .collect();
+        let held: Vec<i32> = [
+            Some(self.common.selected),
+            Some(super::shield::OFFHAND_SLOT),
+        ]
+        .into_iter()
+        .flatten()
+        .filter_map(|i| self.common.stack_in(i).and_then(map_id))
+        .collect();
         let carried: Vec<(i32, Vec<StaticDecoration>)> = self
-            .common.inventory
+            .common
+            .inventory
             .iter()
             .chain(std::iter::once(&self.common.offhand))
             .flatten()
@@ -551,7 +569,8 @@ impl ServerGame<'_> {
         let now = self.common.world.game_time;
         if now % 10 == 0 && host.hub.here(g) {
             let framed: Vec<(i32, Framed, bool)> = self
-                .common.item_frames
+                .common
+                .item_frames
                 .iter()
                 // ServerEntity.sendChanges: only a framed MapItem (a filled
                 // map), not any stack that carries a map id.
@@ -599,7 +618,8 @@ impl ServerGame<'_> {
         };
         for id in ids {
             if let Some(p) = self
-                .common.maps
+                .common
+                .maps
                 .data
                 .get_mut(&id)
                 .and_then(|m| m.update_packet(id, conn, kind))
@@ -669,7 +689,12 @@ impl ServerGame<'_> {
                 let dither_black = d2 > (radius - 2) * (radius - 2);
                 let min_x = (cx / scale + img_x - 64) * scale;
                 let min_z = (cz / scale + img_y - 64) * scale;
-                if !self.common.world.chunks.contains_key(&(min_x >> 4, min_z >> 4)) {
+                if !self
+                    .common
+                    .world
+                    .chunks
+                    .contains_key(&(min_x >> 4, min_z >> 4))
+                {
                     continue;
                 }
                 let mut counts: Vec<(u8, u32)> = Vec::new();
@@ -704,18 +729,29 @@ impl ServerGame<'_> {
                             } else {
                                 loop {
                                     y -= 1;
-                                    color =
-                                        self.common.res.facts().get(self.common.world.block(x, y, z)).map_color;
+                                    color = self
+                                        .common
+                                        .res
+                                        .facts()
+                                        .get(self.common.world.block(x, y, z))
+                                        .map_color;
                                     if color != 0 || y <= min_y {
                                         break;
                                     }
                                 }
-                                let f = self.common.res.facts().get(self.common.world.block(x, y, z));
+                                let f = self
+                                    .common
+                                    .res
+                                    .facts()
+                                    .get(self.common.world.block(x, y, z));
                                 if y > min_y && f.fluid != Fluid::None {
                                     let mut solid = y - 1;
                                     loop {
-                                        let below =
-                                            self.common.res.facts().get(self.common.world.block(x, solid, z));
+                                        let below = self
+                                            .common
+                                            .res
+                                            .facts()
+                                            .get(self.common.world.block(x, solid, z));
                                         solid -= 1;
                                         water_depth += 1;
                                         if solid <= min_y || below.fluid == Fluid::None {
@@ -797,7 +833,10 @@ impl ServerGame<'_> {
                 ("DataVersion", Tag::Int(sunrise_world::DATA_VERSION)),
             ]);
             if let Err(e) = sunrise_sim::save::write_dat(
-                &self.server.world_root.join("data/minecraft/maps/last_id.dat"),
+                &self
+                    .server
+                    .world_root
+                    .join("data/minecraft/maps/last_id.dat"),
                 tag,
             ) {
                 log::warn!("Sunrise: the next map id is not saved: {e}");
@@ -820,7 +859,8 @@ impl ServerGame<'_> {
         }
         let [x, y, z] = hit.pos;
         if self
-            .common.res
+            .common
+            .res
             .facts()
             .get(self.common.world.block(x, y, z))
             .name
@@ -871,11 +911,11 @@ pub(in crate::game) mod save_tests;
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
+    use sunrise_core::nbt::JavaString;
     use sunrise_gameplay_common::game::maps::{
         Decoration, clamp_map_coordinate, decoration_pose, decoration_pose_at, decoration_rotation,
         packed_rgba,
     };
-    use sunrise_core::nbt::JavaString;
 
     #[test]
     fn packed_map_color_decodes_palette_and_shade() {
@@ -1014,8 +1054,6 @@ pub(in crate::game) mod tests {
         map.add_item_decorations(vec![target("absent".into(), 200.0)], 2);
         assert_eq!(map.decorations.len(), 2);
     }
-
-    
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;

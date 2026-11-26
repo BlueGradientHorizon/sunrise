@@ -105,8 +105,8 @@ fn item_part_results_control_real_server_and_client_use() {
                     &format!("client=false, guest={guest}"),
                     |game| {
                         game.server.use_failed = false;
-                        game.server.guest_use =
-                            guest.then_some(sunrise_gameplay_common::game::GuestUse::Item(Hand::Main));
+                        game.server.guest_use = guest
+                            .then_some(sunrise_gameplay_common::game::GuestUse::Item(Hand::Main));
                     },
                 );
             }

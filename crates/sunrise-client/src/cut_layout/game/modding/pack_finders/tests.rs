@@ -1,14 +1,21 @@
 use mod_api::PackFinders;
-use sunrise_gameplay_common::game::pack_finders_common::CommonGameExt1;
-use {crate::game::pack_discovery::*, sunrise_gameplay_common::game::pack_discovery::{HookId, ModsState, PackDiscoveryContext, PackFinderError, PackPosition, PackRegistration, PackSource, PackType, Registry, ResourceSource, Source, StartupDiscovery, data_packs, data_repository, discover}};
-use sunrise_client_gameplay::game::client_side::pack_discovery_client::into_resource_pack;
 use mod_api::{AddPackFindersEvent, Hooks, Identifier, ModEntry};
 use mod_platform::testing::with_mods;
 use std::{fs, io::Write, path::PathBuf};
+use sunrise_client_gameplay::game::client_side::pack_discovery_client::into_resource_pack;
 use sunrise_client_render::packs;
 use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::pack_finders_common::CommonGameExt1;
 use sunrise_level::datapack::{DataStore, FunctionLine};
 use sunrise_level::pack_meta::{RESOURCE_FORMAT, SelectionModel};
+use {
+    crate::game::pack_discovery::*,
+    sunrise_gameplay_common::game::pack_discovery::{
+        HookId, ModsState, PackDiscoveryContext, PackFinderError, PackPosition, PackRegistration,
+        PackSource, PackType, Registry, ResourceSource, Source, StartupDiscovery, data_packs,
+        data_repository, discover,
+    },
+};
 
 const ASSET_PACK: &str = "assets/packmod/resourcepacks/optional";
 const DATA_PACK: &str = "data/packmod/datapacks/optional";
@@ -227,8 +234,11 @@ fn both_startup_repositories_lend_only_available_text_services() {
 #[test]
 #[ignore = "daily"]
 fn live_pack_rediscovery_can_read_a_registered_client_setting() {
-    use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use mod_api::{HostSide, Registrar, RegistrationContext, SettingSpec};
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    };
 
     if run_fresh_cases(
         "game::pack_discovery::tests::live_pack_rediscovery_can_read_a_registered_client_setting",
@@ -293,7 +303,11 @@ fn hidden_packs_reach_the_screens_marked_hidden_and_still_apply() {
             .into_iter()
             .map(into_resource_pack)
             .collect();
-        let infos = sunrise_client_gameplay::game::client_side::packs::pack_infos(&fixture.root, &[], &packs);
+        let infos = sunrise_client_gameplay::game::client_side::packs::pack_infos(
+            &fixture.root,
+            &[],
+            &packs,
+        );
         let info = infos
             .iter()
             .find(|info| info.id == fixture.asset_id())
@@ -325,7 +339,11 @@ fn contributed_packs_are_discoverable_and_only_selected_resources_apply() {
                 .map(into_resource_pack)
                 .collect();
             assert_eq!(packs.len(), 1);
-            let infos = sunrise_client_gameplay::game::client_side::packs::pack_infos(&fixture.root, &[], &packs);
+            let infos = sunrise_client_gameplay::game::client_side::packs::pack_infos(
+                &fixture.root,
+                &[],
+                &packs,
+            );
             assert!(
                 infos
                     .iter()

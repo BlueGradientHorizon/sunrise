@@ -8,7 +8,7 @@ use sunrise_sim::save;
 
 pub trait NativeBlockEntityReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Read a configured mod holder's declared internal item slot, without automation policy.
-     fn block_entity_item_slot(
+    fn block_entity_item_slot(
         &self,
         entity: BlockEntityRef,
         slot: u32,
@@ -24,7 +24,7 @@ pub trait NativeBlockEntityReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         Ok(block_entity.items.get(slot as usize).cloned().flatten())
     }
 
-     fn native_block_entity_target<'a>(
+    fn native_block_entity_target<'a>(
         &'a self,
         entity: BlockEntityRef,
     ) -> Option<(&'a World, &'a BlockEntity)>
@@ -37,22 +37,14 @@ pub trait NativeBlockEntityReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// Find a block entity in a loaded chunk of an open level, or on a client in
     /// the level it shows.
-     fn block_entity(
-        &self,
-        level: LevelRef,
-        pos: [i32; 3],
-    ) -> Option<BlockEntityRef> {
+    fn block_entity(&self, level: LevelRef, pos: [i32; 3]) -> Option<BlockEntityRef> {
         let world = self.native_level_read_world(level)?;
         world_block_entity(world, level, pos)
     }
 
     /// `block_entity`, also for a block entity temporarily taken out by an engine operation:
     /// its generation stays in place while it is out.
-     fn block_entity_identity(
-        &self,
-        level: LevelRef,
-        pos: [i32; 3],
-    ) -> Option<BlockEntityRef> {
+    fn block_entity_identity(&self, level: LevelRef, pos: [i32; 3]) -> Option<BlockEntityRef> {
         let world = self.native_level_read_world(level)?;
         if !world.loaded(pos[0], pos[2]) {
             return None;
@@ -64,10 +56,7 @@ pub trait NativeBlockEntityReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// The block entity's type (`BlockEntity.getType`).
-     fn block_entity_kind(
-        &self,
-        entity: BlockEntityRef,
-    ) -> Option<BlockEntityTypeKey> {
+    fn block_entity_kind(&self, entity: BlockEntityRef) -> Option<BlockEntityTypeKey> {
         let (world, block_entity) = self.native_block_entity_target(entity)?;
         let [x, y, z] = entity.fields().position;
         let block = &self.pack.assets.registry.state(world.block(x, y, z))?.name;
@@ -75,29 +64,26 @@ pub trait NativeBlockEntityReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// The block entity's position.
-     fn block_entity_position(
-        &self,
-        entity: BlockEntityRef,
-    ) -> Option<[i32; 3]> {
+    fn block_entity_position(&self, entity: BlockEntityRef) -> Option<[i32; 3]> {
         self.native_block_entity_target(entity)?;
         Some(entity.fields().position)
     }
 
     /// The block entity's level.
-     fn block_entity_level(&self, entity: BlockEntityRef) -> Option<LevelRef> {
+    fn block_entity_level(&self, entity: BlockEntityRef) -> Option<LevelRef> {
         self.native_block_entity_target(entity)?;
         Some(entity.fields().level)
     }
 
     /// The data saved without identity or position metadata
     /// (`BlockEntity.saveWithoutMetadata`).
-     fn block_entity_data(&self, entity: BlockEntityRef) -> Option<Compound> {
+    fn block_entity_data(&self, entity: BlockEntityRef) -> Option<Compound> {
         let world = self.native_level_read_world(entity.fields().level)?;
         world_block_entity_data(world, self.pack.assets.registry, self.res.items(), entity)
     }
 
     /// The resident lock, independent of the block entity's synthesized save payload.
-     fn block_entity_lock<'a>(&'a self, entity: BlockEntityRef) -> Option<&'a Compound>
+    fn block_entity_lock<'a>(&'a self, entity: BlockEntityRef) -> Option<&'a Compound>
     where
         '__sg: 'a,
     {
@@ -111,10 +97,7 @@ pub trait NativeBlockEntityReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// A snapshot of a mod block entity's menu data slots, on the server or in the
     /// client's copy. None for a stale/missing/vanilla entity. Item storage is separate.
-     fn block_entity_data_slots(
-        &self,
-        entity: BlockEntityRef,
-    ) -> Option<Vec<i32>> {
+    fn block_entity_data_slots(&self, entity: BlockEntityRef) -> Option<Vec<i32>> {
         let (_, BlockEntity::Mod(block_entity)) = self.native_block_entity_target(entity)? else {
             return None;
         };
@@ -122,7 +105,6 @@ pub trait NativeBlockEntityReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeBlockEntityReadGameExt1<'__sg> for G {}
-
 
 /// A mod's data payload as the block entity takes it: without the fields the engine owns, which
 /// are its identity and position, and its published shapes (`set_shapes` alone writes those).
@@ -239,11 +221,7 @@ pub(in crate::game) fn part_snapshot(
 
 /// The handle of the loaded block entity at `pos`, without loading a chunk or taking one
 /// temporarily absent from the resident table.
-pub fn world_block_entity(
-    world: &World,
-    level: LevelRef,
-    pos: [i32; 3],
-) -> Option<BlockEntityRef> {
+pub fn world_block_entity(world: &World, level: LevelRef, pos: [i32; 3]) -> Option<BlockEntityRef> {
     loaded_block_entity(world, pos)?;
     block_entity_handle(world, level, pos)
 }
@@ -283,10 +261,7 @@ fn resident_block_entity(world: &World, entity: BlockEntityRef) -> Option<&Block
     loaded_block_entity(world, fields.position)
 }
 
-pub fn loaded_block_entity(
-    world: &World,
-    [x, y, z]: [i32; 3],
-) -> Option<&BlockEntity> {
+pub fn loaded_block_entity(world: &World, [x, y, z]: [i32; 3]) -> Option<&BlockEntity> {
     if !world.loaded(x, z) || !world.shape.contains_y(y) {
         return None;
     }

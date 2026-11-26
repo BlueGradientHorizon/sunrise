@@ -1,25 +1,54 @@
 pub use crate::game_facade::*;
-#[cfg(all(test, feature = "client"))]
-pub(crate) use sunrise_client_gameplay::hud_gates::{block_outline_drawn, debug_crosshair_drawn};
+#[cfg(test)]
+pub(crate) use resource_load::{load_resources, load_resources_skip_lang, load_resources_uncached};
 #[cfg(all(test, feature = "client"))]
 pub(crate) use sunrise_client_gameplay::game::client_side::test_key_codes::{
     drop_held_behind_dialog, gameplay_has_keyboard, glfw_button, glfw_modifiers, keyboard_button,
 };
-#[cfg(test)]
-pub(crate) use resource_load::{load_resources, load_resources_skip_lang, load_resources_uncached};
+#[cfg(all(test, feature = "client"))]
+pub(crate) use sunrise_client_gameplay::hud_gates::{block_outline_drawn, debug_crosshair_drawn};
 #[path = "../benchmark_retention.rs"]
 pub(crate) mod benchmark_retention;
 #[cfg(any(test, not(feature = "client")))]
 #[path = "../server_startup_settings.rs"]
 mod server_startup_settings;
-use std::sync::Arc;
-use std::time::Instant;
-use sunrise_game_data::Result;
-use sunrise_world::level::Behaviours;
 #[cfg(feature = "client")]
 use crate::settings::Settings;
-#[cfg(feature = "client")] use sunrise_client_lib::audio::Audio;
-use sunrise_gameplay_common::game::resource_load::Progress;
+use std::sync::Arc;
+use std::time::Instant;
+#[cfg(feature = "client")]
+use sunrise_client_gameplay::game::client_side::activity;
+#[cfg(feature = "client")]
+use sunrise_client_gameplay::game::client_side::launch_options_client::is_client_start;
+#[cfg(feature = "client")]
+use sunrise_client_gameplay::game::client_side::launch_options_client::read_client_auth;
+#[cfg(feature = "client")]
+use sunrise_client_gameplay::game::client_side::loading_screen::run_event_loop;
+#[cfg(feature = "client")]
+use sunrise_client_gameplay::game::client_side::loading_screen::unclean_start_recovery;
+#[cfg(feature = "client")]
+use sunrise_client_gameplay::game::client_side::loading_window::start_client_game;
+#[cfg(feature = "client")]
+use sunrise_client_gameplay::game::client_side::narrator;
+#[cfg(feature = "client")]
+use sunrise_client_gameplay::game::client_side::no_resources;
+#[cfg(feature = "client")]
+use sunrise_client_gameplay::game::client_side::resource_load_client::StartupLoadContext;
+#[cfg(feature = "client")]
+use sunrise_client_gameplay::game::client_side::resource_load_client::load_resources_sync;
+#[cfg(feature = "client")]
+use sunrise_client_gameplay::game::client_side::resource_loader::run_loading;
+#[cfg(feature = "client")]
+use sunrise_client_gameplay::game::client_side::{mods_client, packs::startup_root};
+#[cfg(feature = "client")]
+use sunrise_client_lib::audio::Audio;
+use sunrise_game_data::Result;
+#[cfg(feature = "client")]
+use sunrise_gameplay::game::server_side::integrated::{run_component_harness_on_server, serve};
+use sunrise_gameplay::game::server_side::{
+    loading_server::{configure_launch_spans, start_dedicated_game},
+    resource_load_server::load_resources_server,
+};
 use sunrise_gameplay_common::game::api_values::package_snapshot;
 use sunrise_gameplay_common::game::execution_role;
 use sunrise_gameplay_common::game::mods;
@@ -33,26 +62,11 @@ use sunrise_gameplay_common::game::native_structure_types;
 use sunrise_gameplay_common::game::options_path;
 use sunrise_gameplay_common::game::pack_discovery::data_packs;
 use sunrise_gameplay_common::game::preflight_resources;
-use sunrise_gameplay_common::game::resource_load::synchronous_startup;
+use sunrise_gameplay_common::game::resource_load::Progress;
 #[cfg(feature = "client")]
-use sunrise_gameplay::game::server_side::integrated::{run_component_harness_on_server, serve};
-use sunrise_gameplay::game::server_side::{
-    loading_server::{configure_launch_spans, start_dedicated_game},
-    resource_load_server::load_resources_server,
-};
-#[cfg(feature = "client")] use sunrise_client_gameplay::game::client_side::resource_load_client::StartupLoadContext;
-#[cfg(feature = "client")] use sunrise_client_gameplay::game::client_side::activity;
-#[cfg(feature = "client")] use sunrise_client_gameplay::game::client_side::{mods_client, packs::startup_root};
-#[cfg(feature = "client")] use sunrise_client_gameplay::game::client_side::launch_options_client::is_client_start;
-#[cfg(feature = "client")] use sunrise_gameplay_common::game::resource_load::launch_world;
-#[cfg(feature = "client")] use sunrise_client_gameplay::game::client_side::resource_load_client::load_resources_sync;
-#[cfg(feature = "client")] use sunrise_client_gameplay::game::client_side::narrator;
-#[cfg(feature = "client")] use sunrise_client_gameplay::game::client_side::no_resources;
-#[cfg(feature = "client")] use sunrise_client_gameplay::game::client_side::launch_options_client::read_client_auth;
-#[cfg(feature = "client")] use sunrise_client_gameplay::game::client_side::loading_screen::run_event_loop;
-#[cfg(feature = "client")] use sunrise_client_gameplay::game::client_side::resource_loader::run_loading;
-#[cfg(feature = "client")] use sunrise_client_gameplay::game::client_side::loading_window::start_client_game;
-#[cfg(feature = "client")] use sunrise_client_gameplay::game::client_side::loading_screen::unclean_start_recovery;
+use sunrise_gameplay_common::game::resource_load::launch_world;
+use sunrise_gameplay_common::game::resource_load::synchronous_startup;
+use sunrise_world::level::Behaviours;
 
 #[cfg(test)]
 #[path = "game/mobs/allay_jukebox_source_tests.rs"]
@@ -610,23 +624,16 @@ pub(crate) fn run_with(
         #[cfg(feature = "client")]
         mods_client::register_standalone_models(options.execution_role);
         #[cfg(feature = "client")]
-        mods_client::register_layer_definitions(
-            options.execution_role,
-            &vanilla_root,
-        )?;
+        mods_client::register_layer_definitions(options.execution_role, &vanilla_root)?;
         #[cfg(feature = "client")]
         mods_client::register_debug_entries(options.execution_role);
         #[cfg(feature = "client")]
         mods_client::register_gui_layers(options.execution_role);
         #[cfg(feature = "client")]
-        mods_client::register_client_tooltip_component_factories(
-            options.execution_role,
-        );
+        mods_client::register_client_tooltip_component_factories(options.execution_role);
         mods::register_map_decoration_types();
         #[cfg(feature = "client")]
-        mods_client::register_range_select_item_model_properties(
-            options.execution_role,
-        );
+        mods_client::register_range_select_item_model_properties(options.execution_role);
         #[cfg(feature = "client")]
         mods_client::register_select_item_model_properties(options.execution_role);
         #[cfg(feature = "client")]
@@ -782,14 +789,16 @@ pub(crate) fn run_with(
     )
 }
 
+#[path = "game/server_side.rs"]
+pub(crate) mod server_side;
 #[cfg(test)]
 #[path = "game/interface/tests/sign_use_tests.rs"]
 mod sign_use_tests;
-#[path = "game/server_side.rs"]
-pub(crate) mod server_side;
 
 #[cfg(test)]
-pub(crate) use server_side::{entity_server, game_tests, native_entity_refs, native_guest_turn_tests};
+pub(crate) use server_side::{
+    entity_server, game_tests, native_entity_refs, native_guest_turn_tests,
+};
 
 #[path = "game/runtime/transactions.rs"]
 pub(crate) mod transactions;

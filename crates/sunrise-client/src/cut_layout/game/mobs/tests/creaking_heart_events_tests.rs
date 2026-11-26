@@ -4,13 +4,13 @@
 //! `BLOCK_PLACE` from the heart's own state (`creakingHurt`), and shearing a
 //! copper golem posts `SHEAR` at the golem from the player
 //! (`CopperGolem.mobInteract`).
-use sunrise_core::geometry::Vec3;
-use sunrise_sim::motion::PlayerMotion;
 use super::super::*;
 use std::sync::Arc;
+use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::{Species, Who};
+use sunrise_sim::motion::PlayerMotion;
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
@@ -48,9 +48,11 @@ fn posted(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     f: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
 ) -> Vec<(&'static str, [f64; 3], Option<Who>)> {
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|e| *e.borrow_mut() = Some(Vec::new()));
     f(game);
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| e.borrow_mut().take().unwrap_or_default())
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|e| e.borrow_mut().take().unwrap_or_default())
 }
 
 /// A heart between pale oak logs, its ticker run until it spawns its creaking.
@@ -79,10 +81,11 @@ fn a_heart_spawn_posts_entity_place_and_the_poof() {
     let mut resources = None;
     let mut game = game(&mut resources);
     game.start_audio_capture();
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|e| *e.borrow_mut() = Some(Vec::new()));
     let (id, at) = heart_with_a_creaking(&mut game);
-    let events =
-        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| e.borrow_mut().take().unwrap_or_default());
+    let events = sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|e| e.borrow_mut().take().unwrap_or_default());
     let places: Vec<_> = events
         .iter()
         .filter(|(event, ..)| *event == "minecraft:entity_place")

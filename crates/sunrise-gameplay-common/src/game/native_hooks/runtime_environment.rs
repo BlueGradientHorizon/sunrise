@@ -1,6 +1,5 @@
 //! Metadata reads use the bootstrap snapshot, never the world's logical side.
 
-
 impl crate::game::CommonGame<'_> {
     pub fn dist(&self) -> mod_api::Dist {
         sunrise_level::runtime_env::runtime_environment::get().dist()

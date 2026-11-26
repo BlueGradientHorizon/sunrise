@@ -1,5 +1,3 @@
-
-
 #[cfg(test)]
 #[path = "tests/fireworks_events_tests.rs"]
 pub(crate) mod events_tests;
@@ -11,10 +9,18 @@ pub(crate) mod tests {
     #[test]
     fn a_shot_rocket_starts_turned_to_its_motion() {
         use sunrise_core::geometry::Vec3;
-        let mut rocket = sunrise_gameplay_common::game::fireworks::Rocket::remote(1, Vec3::ZERO, Vec3::new(0.0, 0.5, 0.0));
+        let mut rocket = sunrise_gameplay_common::game::fireworks::Rocket::remote(
+            1,
+            Vec3::ZERO,
+            Vec3::new(0.0, 0.5, 0.0),
+        );
         rocket.turn_to_shot();
         assert!((rocket.rotation[1] - 90.0).abs() < 1e-3);
-        let mut rocket = sunrise_gameplay_common::game::fireworks::Rocket::remote(1, Vec3::ZERO, Vec3::new(1.0, 0.0, 1.0));
+        let mut rocket = sunrise_gameplay_common::game::fireworks::Rocket::remote(
+            1,
+            Vec3::ZERO,
+            Vec3::new(1.0, 0.0, 1.0),
+        );
         rocket.turn_to_shot();
         assert!((rocket.rotation[0] - 45.0).abs() < 1e-4);
         assert!(rocket.rotation[1].abs() < 1e-4);
@@ -46,8 +52,12 @@ pub(crate) mod tests {
 
     #[test]
     fn use_on_passes_only_while_gliding() {
-        assert!(sunrise_gameplay_common::game::fireworks::use_on_passes(true));
-        assert!(!sunrise_gameplay_common::game::fireworks::use_on_passes(false));
+        assert!(sunrise_gameplay_common::game::fireworks::use_on_passes(
+            true
+        ));
+        assert!(!sunrise_gameplay_common::game::fireworks::use_on_passes(
+            false
+        ));
     }
 
     /// `FireworkRocketItem.use` on the server, while fall-flying: a lead on a
@@ -58,10 +68,10 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_gliding_firework_drops_leads_and_plays_lead_break() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
         use crate::game::{Settings, load_resources};
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::mobs::{Mob, leash::Holder};
+        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -80,7 +90,8 @@ pub(crate) mod tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let res = loaded.resources;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &res,
@@ -120,7 +131,10 @@ pub(crate) mod tests {
         leashed(1, here, me);
         leashed(2, Vec3::new(feet[0] + 40.0, feet[1], feet[2]), me);
         leashed(3, here, someone_else);
-        game.common.inventory[game.common.selected] = Some(sunrise_items::items::ItemStack::new("minecraft:firework_rocket", 1));
+        game.common.inventory[game.common.selected] = Some(sunrise_items::items::ItemStack::new(
+            "minecraft:firework_rocket",
+            1,
+        ));
         let stack = game.inventory[game.selected].clone().unwrap();
         game.start_audio_capture();
 

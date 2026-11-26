@@ -117,7 +117,11 @@ impl GuestPlay {
     }
     /// Sets `useItemRemaining`; false when no item is in use.
     pub(in crate::game) fn set_use_remaining(&mut self, remaining: i32) -> bool {
-        sunrise_gameplay_common::game::item_use_common::set_remaining(self.using, &mut self.use_duration, remaining)
+        sunrise_gameplay_common::game::item_use_common::set_remaining(
+            self.using,
+            &mut self.use_duration,
+            remaining,
+        )
     }
 }
 
@@ -283,8 +287,8 @@ pub(in crate::game) fn stop_dig(
 
 #[cfg(test)]
 pub(in crate::game) mod recipe_check_budget_tests {
-    use sunrise_gameplay_common::game::lan_actions::RECIPE_CHECK_COST;
     use super::GuestPlay;
+    use sunrise_gameplay_common::game::lan_actions::RECIPE_CHECK_COST;
 
     #[test]
     fn ten_checks_at_once_then_one_each_tick() {

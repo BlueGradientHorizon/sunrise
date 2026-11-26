@@ -1,10 +1,10 @@
 use super::view_vector;
-use sunrise_gameplay_common::game::spear::OWN;
-use sunrise_gameplay_common::game::spear::Target;
 use sunrise_core::{
     geometry::{Vec3, traverse_blocks},
     position::BlockPos,
 };
+use sunrise_gameplay_common::game::spear::OWN;
+use sunrise_gameplay_common::game::spear::Target;
 use sunrise_sim::spear_sim::hits_in_reach;
 use {
     sunrise_items::items::ItemStack, sunrise_level::collisions::SceneCollisions,
@@ -27,7 +27,8 @@ impl crate::game::ServerGame<'_> {
                 return None;
             }
             let shape = self
-                .common.collision
+                .common
+                .collision
                 .collision_shape(&mut scene, state, [p.x, p.y, p.z])
                 .ok()?;
             shape.clip(from, to, p).map(|hit| hit.location)
@@ -127,7 +128,8 @@ impl crate::game::ServerGame<'_> {
             self.server.lan_kinetic_hits.push(actor);
         }
         let who = actor.map_or(OWN, |conn| conn as i32);
-        self.common.kinetic_hit_feedback(who, kinetic, [feet.x, feet.y, feet.z]);
+        self.common
+            .kinetic_hit_feedback(who, kinetic, [feet.x, feet.y, feet.z]);
         let stabbed = self
             .server
             .stabbed
@@ -261,7 +263,8 @@ impl crate::game::ServerGame<'_> {
             self.native_kill_event(i);
         }
         let Some(index) = self
-            .common.mob_index
+            .common
+            .mob_index
             .find(&self.common.mobs, id)
             .filter(|&i| self.common.mobs[i].join == join && !self.common.mobs[i].removed)
         else {
@@ -367,8 +370,9 @@ impl crate::game::ServerGame<'_> {
         let clip = |from, to| self.clip_collider(from, to);
         let mobs = self.common.mobs.len();
         let mut boxes = self.common.hittable_mob_boxes();
-        boxes
-            .extend((self.server.stab_players.iter().enumerate()).map(|(k, p)| (mobs + k, p.bounds)));
+        boxes.extend(
+            (self.server.stab_players.iter().enumerate()).map(|(k, p)| (mobs + k, p.bounds)),
+        );
         hits_in_reach(&boxes, eye, look, movement, reach, clip)
             .into_iter()
             .map(|(i, _)| {

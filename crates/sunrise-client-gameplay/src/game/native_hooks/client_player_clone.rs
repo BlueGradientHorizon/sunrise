@@ -1,5 +1,3 @@
-
-
 /// The hook point after the client replaces its player.
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {

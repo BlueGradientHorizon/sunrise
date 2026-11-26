@@ -1,12 +1,15 @@
-
-
 #![cfg(test)]
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(crate) mod tests {
-    use {sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Hit, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, crate::game::load_resources};
     use sunrise_items::items::ItemStack;
     use sunrise_sim::first_person_sim::Hand;
+    use {
+        crate::game::load_resources, crate::settings::Settings, sunrise_client_lib::audio::Audio,
+        sunrise_gameplay_common::game::Hit, sunrise_gameplay_common::game::Options,
+        sunrise_gameplay_common::game::Progress,
+        sunrise_gameplay_common::game::execution_role::ExecutionRole,
+    };
 
     #[test]
     #[ignore = "daily"]

@@ -11,7 +11,8 @@ impl crate::game::ServerGame<'_> {
     /// not merely unregister the attachment index when the parts are dropped.
     pub fn discard_resident_dragon(&mut self) {
         if let Some(id) = self
-            .common.dragon
+            .common
+            .dragon
             .as_ref()
             .filter(|dragon| dragon.id != 0)
             .map(|dragon| dragon.id)

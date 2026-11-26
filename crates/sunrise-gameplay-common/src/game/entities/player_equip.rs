@@ -25,7 +25,7 @@ pub trait PlayerEquipGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// server does for the creative screen, which sends each changed slot
     /// (`handleSetCreativeModeSlot` sets it by player).
     #[allow(dead_code)]
-     fn player_equipment_changed(&mut self, before: &[Option<ItemStack>; 5]) {
+    fn player_equipment_changed(&mut self, before: &[Option<ItemStack>; 5]) {
         let after = self.player_equipment();
         for (i, slot) in ARMOR.into_iter().chain([OFFHAND]).enumerate() {
             self.player_on_equip(slot, before[i].as_ref(), after[i].as_ref());
@@ -34,12 +34,7 @@ pub trait PlayerEquipGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `LivingEntity.onEquipItem(slot, old, new)` for the player in place
     /// (the host, or a guest inside `as_guest`).
-     fn player_on_equip(
-        &mut self,
-        slot: &str,
-        old: Option<&ItemStack>,
-        new: Option<&ItemStack>,
-    ) {
+    fn player_on_equip(&mut self, slot: &str, old: Option<&ItemStack>, new: Option<&ItemStack>) {
         if !same(old, new) {
             if self.transactions.is_empty() {
                 self.player_equipped(slot, new);
@@ -56,15 +51,13 @@ pub trait PlayerEquipGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> PlayerEquipGameExt1<'__sg> for G {}
 
-
 pub trait PlayerEquipGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// The body of `onEquipItem` once the item changed.
-     fn player_equipped(&mut self, slot: &str, new: Option<&ItemStack>) {
+    fn player_equipped(&mut self, slot: &str, new: Option<&ItemStack>) {
         self.side_player_equipped(slot, new);
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> PlayerEquipGameExt2<'__sg> for G {}
-
 
 use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
 

@@ -174,7 +174,8 @@ impl ClientGame<'_> {
     }
     fn trial_spawner_block_at(&self, key: Pos) -> Option<(TrialState, bool)> {
         let block = self
-            .common.pack
+            .common
+            .pack
             .assets
             .registry
             .state(self.common.world.block(key.0, key.1, key.2))?;
@@ -327,7 +328,11 @@ impl ClientGame<'_> {
                 && let Some(&id) = remote
                     .level_uuids
                     .get(&sunrise_sim::lan::playerdata::ints_uuid(*uuid))
-                && let Some(m) = self.common.mobs.iter().find(|m| m.id == id as u32 && !m.removed)
+                && let Some(m) = self
+                    .common
+                    .mobs
+                    .iter()
+                    .find(|m| m.id == id as u32 && !m.removed)
             {
                 players.push(([m.position.x, m.position.y, m.position.z], m.height()));
             }
@@ -336,7 +341,8 @@ impl ClientGame<'_> {
             return;
         }
         let facing = self
-            .common.pack
+            .common
+            .pack
             .assets
             .registry
             .state(self.common.world.block(pos[0], pos[1], pos[2]))

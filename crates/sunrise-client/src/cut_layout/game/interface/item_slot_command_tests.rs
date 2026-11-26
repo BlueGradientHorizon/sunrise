@@ -18,17 +18,21 @@ fn item_replace_asks_the_slot_predicate_of_a_stand_and_the_dragon() {
         game.build_registries();
         game.ui.registries.permission = 4;
         game.armor_stands.push(ArmorStand::new(16, Vec3::ZERO, 0.0));
-        let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+        let mut dragon =
+            sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
         dragon.id = 17;
         game.dragon.replace(dragon);
         let stand = "@e[type=minecraft:armor_stand,limit=1]";
         let dragon_sel = "@e[type=minecraft:ender_dragon,limit=1]";
-        let replace =
-            |game: &mut sunrise_gameplay::game::ServerGame<'_>, who: &str, slot: &str, item: &str| {
-                game.run_command(&format!("item replace entity {who} {slot} with {item}"));
-            };
-        let stand_slot =
-            |game: &sunrise_gameplay::game::ServerGame<'_>, slot| game.armor_stands[0].equipment[slot].clone();
+        let replace = |game: &mut sunrise_gameplay::game::ServerGame<'_>,
+                       who: &str,
+                       slot: &str,
+                       item: &str| {
+            game.run_command(&format!("item replace entity {who} {slot} with {item}"));
+        };
+        let stand_slot = |game: &sunrise_gameplay::game::ServerGame<'_>, slot| {
+            game.armor_stands[0].equipment[slot].clone()
+        };
         let dragon_slot = |game: &sunrise_gameplay::game::ServerGame<'_>, slot| {
             game.dragon.as_ref().unwrap().equipment[slot].clone()
         };

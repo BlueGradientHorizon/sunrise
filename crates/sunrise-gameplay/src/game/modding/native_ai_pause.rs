@@ -33,7 +33,8 @@ impl crate::game::ServerGame<'_> {
     ) -> Result<(), MobAiPauseRefusal> {
         let id = self.ai_pause_target(mob.entity())?;
         let m = self
-            .common.mobs
+            .common
+            .mobs
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .ok_or(MobAiPauseRefusal::Stale)?;

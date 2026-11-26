@@ -5,13 +5,13 @@
 //! client's draw the gas clouds and the eruption's plume, play its sound and
 //! push the local player, who moves on its own client and not on the server.
 use crate::game::ServerGame;
+use crate::game::server_side::potions_server::mob_effect_id;
+use sunrise_core::{geometry::Aabb, position::BlockPos, random::RandomSource};
+use sunrise_game_data::Result;
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay_common::game::potent_sulfur_common::{
     GEYSER_CONTINUOUS_ACTIVE, GEYSER_ERUPTION_ACTIVE, PassMobs,
 };
-use crate::game::server_side::potions_server::mob_effect_id;
-use sunrise_core::{geometry::Aabb, position::BlockPos, random::RandomSource};
-use sunrise_game_data::Result;
 use sunrise_gameplay_common::potent_sulfur::{
     EFFECT_APPLICATION_FREQUENCY_TICKS, EFFECT_DURATION_IN_TICKS, Geyser, geyser_positional,
     launch_area, nearby_living_area,
@@ -78,7 +78,11 @@ impl ServerGame<'_> {
         if !self.mobs_in_pass(area, &mut near) {
             near.extend(0..self.common.mobs.len() as u32);
         }
-        let level = SulfurLevel::new(&self.common.world, self.common.res.facts(), self.common.collision);
+        let level = SulfurLevel::new(
+            &self.common.world,
+            self.common.res.facts(),
+            self.common.collision,
+        );
         // The gas reads blocks only, so the mobs it reaches can be found
         // before any gets its effect.
         near.retain(|&j| {
@@ -117,11 +121,7 @@ impl ServerGame<'_> {
 
     /// The slots of the mobs whose box may meet `area`, from a grid kept for
     /// the block entity pass; false outside the pass: scan them all.
-    pub fn mobs_in_pass(
-        &mut self,
-        area: Aabb,
-        out: &mut Vec<u32>,
-    ) -> bool {
+    pub fn mobs_in_pass(&mut self, area: Aabb, out: &mut Vec<u32>) -> bool {
         let Some(pass) = self.server.pass_mobs.as_mut() else {
             return false;
         };
@@ -144,7 +144,11 @@ impl ServerGame<'_> {
             p.position.z,
         ];
         let reached = {
-            let level = SulfurLevel::new(&self.common.world, self.common.res.facts(), self.common.collision);
+            let level = SulfurLevel::new(
+                &self.common.world,
+                self.common.res.facts(),
+                self.common.collision,
+            );
             can_be_reached_by_noxious_gas(&level, source, eye)
         };
         if reached {
@@ -172,7 +176,8 @@ impl ServerGame<'_> {
         let Some(source) = self.common.potent_sulfur_source(pos) else {
             return Ok(());
         };
-        let Some(BlockEntity::PotentSulfur(sulfur)) = self.common.world.block_entities.get_mut(&pos)
+        let Some(BlockEntity::PotentSulfur(sulfur)) =
+            self.common.world.block_entities.get_mut(&pos)
         else {
             return Ok(());
         };
@@ -231,7 +236,11 @@ impl ServerGame<'_> {
             return;
         };
         let water_blocks = source[1] - pos.1 - 1;
-        let level = SulfurLevel::new(&self.common.world, self.common.res.facts(), self.common.collision);
+        let level = SulfurLevel::new(
+            &self.common.world,
+            self.common.res.facts(),
+            self.common.collision,
+        );
         let height = unobstructed_block_count(&level, [pos.0, pos.1 + 1, pos.2], water_blocks);
         let area = launch_area(pos, height);
         let limit = f64::from(0.3f32) + f64::from(water_blocks) * 0.1;
@@ -268,7 +277,8 @@ impl ServerGame<'_> {
             pass.wrote(&self.common.mobs);
         }
         for item in self
-            .common.dropped
+            .common
+            .dropped
             .iter_mut()
             .filter(|i| i.bounds().intersects(area))
         {
@@ -276,7 +286,12 @@ impl ServerGame<'_> {
                 item.velocity.y += push;
             }
         }
-        for tnt in self.common.tnts.iter_mut().filter(|t| t.bounds().intersects(area)) {
+        for tnt in self
+            .common
+            .tnts
+            .iter_mut()
+            .filter(|t| t.bounds().intersects(area))
+        {
             if tnt.velocity.y < limit {
                 tnt.velocity.y += push;
             }

@@ -117,10 +117,7 @@ impl ClientGame<'_> {
     }
     /// `ClientPacketListener.handleOpenSignEditor`: the editor on a sign this
     /// client has.
-    pub fn remote_open_sign_editor(
-        &mut self,
-        p: play::OpenSignEditor,
-    ) {
+    pub fn remote_open_sign_editor(&mut self, p: play::OpenSignEditor) {
         let key = (p.pos[0], p.pos[1], p.pos[2]);
         if matches!(
             self.world.block_entities.get(&key),
@@ -164,11 +161,7 @@ impl ClientGame<'_> {
     }
     /// A key and the text it typed on the sign being edited (the keyboard,
     /// or a controller's on-screen keyboard).
-    pub fn sign_input(
-        &mut self,
-        key: Option<KeyCode>,
-        typed: Option<&str>,
-    ) {
+    pub fn sign_input(&mut self, key: Option<KeyCode>, typed: Option<&str>) {
         if self.client.sign_edit.is_none() {
             return;
         }

@@ -21,10 +21,7 @@ pub(in crate::game) fn screen_view_with_id<'a>(
 }
 
 /// `view` as mod `mod_id`'s own screen (`id == "mod"`, `mod_screen == Some(mod_id)`).
-pub fn screen_view_for_mod<'a>(
-    view: &ScreenView<'a>,
-    mod_id: &'a str,
-) -> ScreenView<'a> {
+pub fn screen_view_for_mod<'a>(view: &ScreenView<'a>, mod_id: &'a str) -> ScreenView<'a> {
     ScreenView::from(mod_api::__private::built::ScreenView {
         id: "mod",
         mod_screen: Some(mod_id),

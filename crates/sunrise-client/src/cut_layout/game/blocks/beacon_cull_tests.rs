@@ -1,13 +1,19 @@
 //! `BeaconRenderer.shouldRender`: a beam draws inside the effective render distance, and leaves with its column.
-use {sunrise_gameplay_common::game::execution_role, sunrise_gameplay_common::game::launch_options::Options, sunrise_gameplay_common::game::resource_load::Progress, crate::game::resource_load::load_resources};
 use std::sync::Arc;
 use sunrise_client::{audio::Audio, settings::Settings};
 use sunrise_level::{
     chunk::Chunk,
     containers::{Beacon, BlockEntity},
 };
+use {
+    crate::game::resource_load::load_resources, sunrise_gameplay_common::game::execution_role,
+    sunrise_gameplay_common::game::launch_options::Options,
+    sunrise_gameplay_common::game::resource_load::Progress,
+};
 
-fn game<'a>(resources: &'a mut Option<Arc<sunrise_gameplay_common::game::Resources>>) -> sunrise_client_gameplay::game::ClientGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<Arc<sunrise_gameplay_common::game::Resources>>,
+) -> sunrise_client_gameplay::game::ClientGame<'a> {
     game_as_client(resources, execution_role::ExecutionRole::Client)
 }
 

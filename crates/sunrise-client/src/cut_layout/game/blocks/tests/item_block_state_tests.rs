@@ -2,10 +2,10 @@
 //! `block_state` component asks for with `level.setBlock(pos, modifiedState, 2)`:
 //! the clients are told of the change, the neighbours are not, so a state that
 //! starts providing a signal powers nothing until something else updates it.
-use {sunrise_gameplay_common::game::Hit, sunrise_gameplay::game::game_tests::tests::server_game};
 use sunrise_command::args::GameMode;
 use sunrise_core::nbt::{Compound, JavaString, Tag};
 use sunrise_items::items::ItemStack;
+use {sunrise_gameplay::game::game_tests::tests::server_game, sunrise_gameplay_common::game::Hit};
 
 /// A stack of `item` whose `minecraft:block_state` component holds `props`.
 fn with_block_state(item: &str, props: &[(&str, &str)]) -> ItemStack {
@@ -24,7 +24,11 @@ fn with_block_state(item: &str, props: &[(&str, &str)]) -> ItemStack {
 }
 
 /// One property of the block at `pos`.
-fn property(game: &sunrise_gameplay::game::ServerGame<'_>, pos: [i32; 3], key: &str) -> Option<String> {
+fn property(
+    game: &sunrise_gameplay::game::ServerGame<'_>,
+    pos: [i32; 3],
+    key: &str,
+) -> Option<String> {
     let state = game.world.block(pos[0], pos[1], pos[2]);
     game.pack
         .assets

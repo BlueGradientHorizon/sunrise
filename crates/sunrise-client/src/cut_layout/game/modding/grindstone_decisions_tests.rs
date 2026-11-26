@@ -1,7 +1,6 @@
 //! `grindstone_place` and `grindstone_take` through real listeners: inline dispatch matching
 //! NeoForge `CommonHooks.onGrindstoneChange` and `CommonHooks.onGrindstoneTake`.
 //! The fixtures need prepared resources.
-use {sunrise_gameplay::game::native_guest_turn_tests::with_guests, sunrise_gameplay_common::game::stations_common::{Kind as StationKind, Station}};
 use mod_api::{
     Flow, GrindstonePlaceEvent, GrindstoneTakeEvent, Hooks, HostTransaction, ItemPlace,
     ItemResource, ModEntry, Mods, Registrar, ServerHost,
@@ -9,6 +8,10 @@ use mod_api::{
 use std::cell::{Cell, RefCell};
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::{ContainerClick, Serverbound};
+use {
+    sunrise_gameplay::game::native_guest_turn_tests::with_guests,
+    sunrise_gameplay_common::game::stations_common::{Kind as StationKind, Station},
+};
 
 #[derive(Clone, Default)]
 struct Script {
@@ -179,10 +182,14 @@ fn without_mod(test: impl FnOnce()) {
     mod_platform::testing::with_mods(mods, test);
 }
 
-fn engine_item(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: &str, count: u32) -> ItemStack {
+fn engine_item(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    id: &str,
+    count: u32,
+) -> ItemStack {
     let key = mod_api::__private::item_key(id).unwrap();
     {
-        use {sunrise_gameplay_common::game::api_values::*};
+        use sunrise_gameplay_common::game::api_values::*;
         mod_api::ItemStack::new(key, count)
             .unwrap()
             .try_into_engine(game.items())
@@ -640,7 +647,10 @@ fn an_outer_abort_undoes_an_accepted_grindstone_take() {
                 if !commit {
                     assert_eq!(slot(game, 0), Some(original.clone()));
                     assert_eq!(slot(game, 2), Some(ItemStack::new("minecraft:dirt", 1)));
-                    assert_eq!(game.server.lan.as_ref().unwrap().hub.guests[0].carried, None);
+                    assert_eq!(
+                        game.server.lan.as_ref().unwrap().hub.guests[0].carried,
+                        None
+                    );
                     assert_eq!(game.orbs.len(), 1);
                     let orb = &game.orbs[game.orbs.locate(join).unwrap()];
                     assert_eq!((orb.count, orb.age), (1, 42));

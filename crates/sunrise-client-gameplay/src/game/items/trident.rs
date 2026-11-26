@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use crate::game::client_side::trident_client::remote_tick;
@@ -6,11 +5,8 @@ pub(in crate::game) mod tests {
     use sunrise_sim::thrown_trident::ThrownTrident;
     use sunrise_sim::{mobs::Who, projectiles::ProjectileWorld};
 
-    
-    
-
-struct Air;
-impl ProjectileWorld for Air {
+    struct Air;
+    impl ProjectileWorld for Air {
         fn clip(&self, _: Vec3, _: Vec3) -> Option<(Vec3, [i32; 3], [i32; 3])> {
             None
         }
@@ -31,10 +27,4 @@ impl ProjectileWorld for Air {
         assert!(trident.in_ground);
         assert_eq!(trident.velocity, Vec3::new(1.0, -2.0, 3.0));
     }
-
-    
-
-    
-
-    
 }

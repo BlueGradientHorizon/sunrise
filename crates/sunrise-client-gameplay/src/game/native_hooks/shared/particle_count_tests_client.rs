@@ -184,9 +184,7 @@ pub fn fill(game: &mut crate::game::ClientGame<'_>) {
 
 /// A real offscreen renderer and a world for it to draw; the event loop that returns
 /// holds the window.
-pub fn frame_scene(
-    game: &mut crate::game::ClientGame<'_>,
-) -> winit::event_loop::EventLoop<()> {
+pub fn frame_scene(game: &mut crate::game::ClientGame<'_>) -> winit::event_loop::EventLoop<()> {
     let mut builder = winit::event_loop::EventLoop::builder();
     #[cfg(target_os = "linux")]
     {
@@ -212,20 +210,26 @@ pub fn frame_scene(
         sunrise_client::graphics::ParticleCullingMode::Off;
     let mut chunk = sunrise_level::chunk::Chunk::empty(0, 0);
     chunk.lit = true;
-    game.common.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
-    let mut player = sunrise_sim::motion::PlayerMotion::new(game.common.motion, Vec3::ZERO).unwrap();
+    game.common
+        .world
+        .chunks
+        .insert((0, 0), std::sync::Arc::new(chunk));
+    let mut player =
+        sunrise_sim::motion::PlayerMotion::new(game.common.motion, Vec3::ZERO).unwrap();
     player.position = Vec3::new(0.5, 64.0, 0.5);
     game.common.previous_position = player.position;
     game.common.player = Some(player);
     game.client.particles.0.camera = [0.5, 65.5, 1.5];
     // Ordinary (non-particle) entity geometry and an unrelated item light.
-    game.common.dropped.push(sunrise_sim::entities::ItemEntity::new(
-        2,
-        sunrise_items::items::ItemStack::new("minecraft:torch", 1),
-        Vec3::new(0.5, 65.0, 4.5),
-        Vec3::ZERO,
-        0.0,
-    ));
+    game.common
+        .dropped
+        .push(sunrise_sim::entities::ItemEntity::new(
+            2,
+            sunrise_items::items::ItemStack::new("minecraft:torch", 1),
+            Vec3::new(0.5, 65.0, 4.5),
+            Vec3::ZERO,
+            0.0,
+        ));
     // Only the picked-up stick resolves this custom property. The torch's
     // ordinary model must survive the clear unchanged.
     let renderer = std::sync::Arc::get_mut(&mut game.client.client_pack.item_renderer).unwrap();

@@ -1,16 +1,14 @@
-
-
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::server_side::dragon::tests::flying;
+    use sunrise_gameplay_common::game::server_side::dragon::tests::flying;
 
-use sunrise_core::random::LegacyRandom;
-use sunrise_gameplay_common::game::dragon_common::Phase;
+    use sunrise_core::random::LegacyRandom;
+    use sunrise_gameplay_common::game::dragon_common::Phase;
 
-use crate::game::client_side::dragon_client::breath_puffs;
+    use crate::game::client_side::dragon_client::breath_puffs;
 
-/// `DragonLandingPhase.doClientTick`: eight puffs a tick from the head,
+    /// `DragonLandingPhase.doClientTick`: eight puffs a tick from the head,
     /// along `getHeadLookVector(1)` (a quarter turn of it is thrown away in
     /// vanilla) plus the dragon's own motion.
     #[test]
@@ -44,7 +42,7 @@ use crate::game::client_side::dragon_client::breath_puffs;
             }
         }
     }
-/// `DragonSittingFlamingPhase.doClientTick`: on the even ticks of the first
+    /// `DragonSittingFlamingPhase.doClientTick`: on the even ticks of the first
     /// ten, eight starts each breathe a fan of six puffs down the look line.
     #[test]
     fn a_flaming_dragon_breathes_a_fan_on_every_second_tick() {
@@ -83,7 +81,7 @@ use crate::game::client_side::dragon_client::breath_puffs;
             );
         }
     }
-/// No other phase has a `doClientTick` that breathes.
+    /// No other phase has a `doClientTick` that breathes.
     #[test]
     fn only_the_landing_and_flaming_phases_breathe() {
         let mut random = LegacyRandom::new(3);

@@ -3,10 +3,14 @@
 //! turns it into what `ParticleProvider.createParticle` reads — a block
 //! crumble's block state, a dust transition's colours and scale, a spell's
 //! colour and power, a sculk charge's roll, a vibration's destination.
-use {sunrise_gameplay_common::game::execution_role, sunrise_gameplay_common::game::launch_options::Options, sunrise_gameplay_common::game::resource_load::Progress, crate::game::resource_load::load_resources};
 use mod_api::client::particles::PositionSource;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
+use {
+    crate::game::resource_load::load_resources, sunrise_gameplay_common::game::execution_role,
+    sunrise_gameplay_common::game::launch_options::Options,
+    sunrise_gameplay_common::game::resource_load::Progress,
+};
 use {
     sunrise_client::settings::Settings, sunrise_level::chunk::Chunk,
     sunrise_level::particle_options::ParticleType, sunrise_sim::motion::PlayerMotion,
@@ -165,7 +169,10 @@ fn typed_particle_command_encoder_refusal_does_not_deliver_to_a_guest() {
     ) {
         return;
     }
-    use {sunrise_gameplay::game::lan_particles::tests::MeasuredParticle, sunrise_gameplay::game::server_side::lan_particles::tests::test_hub};
+    use {
+        sunrise_gameplay::game::lan_particles::tests::MeasuredParticle,
+        sunrise_gameplay::game::server_side::lan_particles::tests::test_hub,
+    };
     let entries = [mod_api::ModEntry::new("test", Box::new(MeasuredParticle))];
     mod_platform::__private::part_tests::install_parts_fixture(&entries).unwrap();
     sunrise_gameplay_common::game::mods::resolve_particle_providers(&Default::default()).unwrap();

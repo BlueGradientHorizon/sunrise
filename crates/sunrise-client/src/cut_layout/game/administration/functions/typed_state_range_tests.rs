@@ -1,10 +1,9 @@
-
 #[cfg(test)]
 mod typed_state_range_read_tests {
 
     use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-#[test]
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    #[test]
     #[ignore = "needs prepared resources, actual pack and scratch homes/cwd"]
     fn loaded_pack_state_ranges_match_typed_controls() {
         let mut resources = None;

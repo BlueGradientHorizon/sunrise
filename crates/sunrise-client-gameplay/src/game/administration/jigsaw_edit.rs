@@ -272,7 +272,8 @@ impl crate::game::ClientGame<'_> {
             return;
         };
         let vertical = self
-            .common.jigsaw_front(pos)
+            .common
+            .jigsaw_front(pos)
             .is_some_and(|f| is_vertical_front(&f));
         let editor = JigsawEditor::new(b, vertical);
         self.open_block_editor(pos, Box::new(editor));

@@ -1,5 +1,3 @@
-
-
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "tests/lectern_tests.rs"]

@@ -1,17 +1,18 @@
 use mod_api::{EntityRef, LevelReadError, LevelRef};
 use std::ops::ControlFlow;
+pub use sunrise_gameplay_common::game::test_fixtures::{
+    FRESH_CASE_LIMIT, fixture_block_names, fixture_root, output_within, ran_one_test, record_key,
+    resolve_parts, run_fresh_cases, run_fresh_cases_at_once, run_with_game_stack,
+};
 use sunrise_gameplay_common::game::{
-    GameGameExt1 as _,
-    PackResources, Resources,
+    GameGameExt1 as _, PackResources, Resources,
     execution_role::ExecutionRole,
     native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
     player_identity::PlayerIdentityGameExt1 as _,
     resource_load::Progress,
-    test_fixtures::{acquire_in_process_load_permit, fixture_facts_mut, offline_profiles, tempfile},
-};
-pub use sunrise_gameplay_common::game::test_fixtures::{
-    FRESH_CASE_LIMIT, fixture_block_names, fixture_root, output_within, ran_one_test, record_key,
-    resolve_parts, run_fresh_cases, run_fresh_cases_at_once, run_with_game_stack,
+    test_fixtures::{
+        acquire_in_process_load_permit, fixture_facts_mut, offline_profiles, tempfile,
+    },
 };
 
 pub fn collect_all_entities(
@@ -86,11 +87,7 @@ pub fn prepare_entity_ticking_neighborhood(
 }
 
 /// Bind the fixture body's canonical identity before configuring its acting context.
-pub fn bind_local_player(
-    game: &mut crate::game::ServerGame<'_>,
-    id: u32,
-    uuid: u128,
-) {
+pub fn bind_local_player(game: &mut crate::game::ServerGame<'_>, id: u32, uuid: u128) {
     game.server.next_entity = game.server.next_entity.max(id);
     game.player.as_mut().expect("fixture player body").entity_id =
         i32::try_from(id).expect("fixture entity ID fits the protocol");
@@ -170,15 +167,8 @@ pub fn with_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     with_game_at(fixture_root(), test);
 }
 
-pub fn with_game_at(
-    root: std::path::PathBuf,
-    test: impl FnOnce(&mut crate::game::ServerGame<'_>),
-) {
-    with_game_role(
-        root,
-        ExecutionRole::IntegratedServer,
-        test,
-    );
+pub fn with_game_at(root: std::path::PathBuf, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
+    with_game_role(root, ExecutionRole::IntegratedServer, test);
 }
 
 pub fn with_uncached_game(test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
@@ -202,9 +192,9 @@ pub fn with_game_role_and_facts(
     >,
     test: impl FnOnce(&mut crate::game::ServerGame<'_>),
 ) {
+    use mod_api::Authority;
     use sunrise_gameplay_common::game::Options;
     use sunrise_level::sim_settings::SimSettings;
-    use mod_api::Authority;
 
     sunrise_gameplay_common::game::mods::resolve_particle_providers(
         &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
@@ -214,24 +204,15 @@ pub fn with_game_role_and_facts(
     let settings = SimSettings::default();
     let (mut resources, pack) = load_fixture_server_resources(&root, role);
     if let Some(configure) = configure {
-        configure(
-            pack.assets.registry,
-            fixture_facts_mut(&mut resources),
-        );
+        configure(pack.assets.registry, fixture_facts_mut(&mut resources));
     }
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.execution_role = role;
     options.game_dir = Some(saves.path().to_path_buf());
-    let mut game = crate::game::ServerGame::new(
-        &resources,
-        pack,
-        options,
-        settings,
-        None,
-        offline_profiles,
-    )
-    .unwrap();
+    let mut game =
+        crate::game::ServerGame::new(&resources, pack, options, settings, None, offline_profiles)
+            .unwrap();
     game.reset_entity_residency();
     game.native_lifecycle
         .begin_open(Authority::IntegratedServer);
@@ -269,10 +250,7 @@ pub(in crate::game) fn load_fixture_server_resources(
 }
 
 /// A world with block `support` at (5, 64, 5) and a powered lever on its east face.
-pub fn lever_on(
-    game: &mut crate::game::ServerGame<'_>,
-    support: &str,
-) {
+pub fn lever_on(game: &mut crate::game::ServerGame<'_>, support: &str) {
     use std::sync::Arc;
     use sunrise_level::chunk::Chunk;
 

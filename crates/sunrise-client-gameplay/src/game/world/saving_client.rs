@@ -1,10 +1,10 @@
 use super::loading_frame;
-use sunrise_gameplay_common::game::saving::ClientQuit;
-use sunrise_gameplay_common::game::saving::ClosingSave;
-use sunrise_gameplay_common::game::saving::Stage;
 use std::time::{Duration, Instant};
 use sunrise_client::hud::HudBatch;
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::saving::ClientQuit;
+use sunrise_gameplay_common::game::saving::ClosingSave;
+use sunrise_gameplay_common::game::saving::Stage;
 
 impl crate::game::ClientGame<'_> {
     pub fn begin_closing_save(&mut self, quit: bool) -> Result<()> {
@@ -88,10 +88,7 @@ impl crate::game::ClientGame<'_> {
         Ok(())
     }
     #[cfg(any(test, feature = "test-support"))]
-    pub fn test_seed_pending_server_save(
-        &mut self,
-        reply: std::sync::mpsc::Sender<String>,
-    ) {
+    pub fn test_seed_pending_server_save(&mut self, reply: std::sync::mpsc::Sender<String>) {
         self.client.pending_save.0 = Some(ClosingSave {
             quit: false,
             close: false,

@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tick_target_millis_tests {

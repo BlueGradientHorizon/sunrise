@@ -1,13 +1,8 @@
-
-
 #![cfg(test)]
 use std::sync::Arc;
 use sunrise_client::hud::HudBatch;
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::Screen;
-    use {crate::game::native_hooks::register_preset_editors::*, sunrise_gameplay_common::game::native_hooks::register_preset_editors::{native_register_preset_editors}};
-    use sunrise_client_gameplay::game::WindowKeyInput;
     use mod_api::{
         DrawContext, Hooks, Identifier, ModEntry, PresetEditor, PresetEditorDraft,
         RegisterPresetEditorsEvent, ScreenCharTypedPostEvent, ScreenCharTypedPreEvent,
@@ -21,10 +16,16 @@ pub(crate) mod tests {
         atomic::{AtomicUsize, Ordering},
     };
     use sunrise_client::title::Mode;
+    use sunrise_client_gameplay::game::WindowKeyInput;
+    use sunrise_gameplay_common::game::Screen;
     use sunrise_sim::world_options::WorldOptions;
     use winit::{
         event::{DeviceId, ElementState, MouseButton, WindowEvent},
         keyboard::{KeyCode, PhysicalKey},
+    };
+    use {
+        crate::game::native_hooks::register_preset_editors::*,
+        sunrise_gameplay_common::game::native_hooks::register_preset_editors::native_register_preset_editors,
     };
 
     #[derive(Debug, PartialEq, Eq)]
@@ -337,9 +338,12 @@ pub(crate) mod tests {
             }
         }
 
-        use {sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game};
         use mod_api::__private::game::RegistrationContextNew;
         use sunrise_client::title::preset_editors::PresetEditorFactories;
+        use {
+            crate::game::server_side::native_entity_refs::tests::with_client_game,
+            sunrise_gameplay_common::game::in_own_process,
+        };
 
         // The real-game resource fixture also initializes process-wide engine tables.
         const TEST: &str = "game::native_hooks::register_preset_editors::tests::failed_preset_editor_paint_leaves_stock_frame_and_post";
@@ -561,21 +565,22 @@ pub(crate) mod tests {
                         None,
                         None,
                     );
-                    let window_press = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, key| {
-                        // winit's KeyEvent contains private platform data. Send the key to the
-                        // same dispatcher that receives those events, without OS shortcuts.
-                        game.dispatch_window_key(
-                            &NoopLoop,
-                            WindowKeyInput {
-                                physical: PhysicalKey::Code(key),
-                                state: ElementState::Pressed,
-                                repeat: false,
-                                text: None,
-                                shortcut: None,
-                            },
-                            |_| false,
-                        );
-                    };
+                    let window_press =
+                        |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, key| {
+                            // winit's KeyEvent contains private platform data. Send the key to the
+                            // same dispatcher that receives those events, without OS shortcuts.
+                            game.dispatch_window_key(
+                                &NoopLoop,
+                                WindowKeyInput {
+                                    physical: PhysicalKey::Code(key),
+                                    state: ElementState::Pressed,
+                                    repeat: false,
+                                    text: None,
+                                    shortcut: None,
+                                },
+                                |_| false,
+                            );
+                        };
                     window_press(game, KeyCode::Escape);
                     game.settle_title_mode();
                     assert!(game.preset_editor_title().is_some());
@@ -695,7 +700,10 @@ pub(crate) mod tests {
                         assert_eq!(game.test_title().unwrap().mode.id(), PRESET);
                     };
                     let button_event =
-                        |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, state, button, millis| {
+                        |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                         state,
+                         button,
+                         millis| {
                             game.handle_window_event_inner(
                                 &NoopLoop,
                                 WindowEvent::MouseInput {
@@ -708,24 +716,27 @@ pub(crate) mod tests {
                             );
                             std::mem::take(&mut mouse.lock().unwrap().events)
                         };
-                    let press = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, button, millis| {
+                    let press = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                                 button,
+                                 millis| {
                         button_event(game, ElementState::Pressed, button, millis)
                     };
-                    let editor_press = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
-                                        button,
-                                        millis,
-                                        code,
-                                        double,
-                                        handled| {
-                        assert_eq!(
-                            press(game, button, millis),
-                            [
-                                Pre(code, double),
-                                Editor(code, double),
-                                Post(PRESET, code, double, handled, true)
-                            ]
-                        );
-                    };
+                    let editor_press =
+                        |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                         button,
+                         millis,
+                         code,
+                         double,
+                         handled| {
+                            assert_eq!(
+                                press(game, button, millis),
+                                [
+                                    Pre(code, double),
+                                    Editor(code, double),
+                                    Post(PRESET, code, double, handled, true)
+                                ]
+                            );
+                        };
                     let left = MouseButton::Left;
                     let right = MouseButton::Right;
                     let other = MouseButton::Other(300);

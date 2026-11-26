@@ -3,14 +3,18 @@
 //! its checked table; the client keeps only the surface; the first mod in order wins.
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::LegacyRandom;
-use sunrise_gameplay_common::game::fishing_common::{Hook, State};
 use sunrise_gameplay::game::server_side::fishing::WARNED_TABLES;
+use sunrise_gameplay_common::game::fishing_common::{Hook, State};
 use sunrise_items::items::ItemStack;
 // Included as fishing's child so fixtures can construct its private hook state.
 use super::*;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use std::sync::{Arc, Mutex};
 use sunrise_sim::motion::PlayerMotion;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 const JUNK: &str = "minecraft:gameplay/fishing/junk";
 /// The bobber's caster stands here; a medium's surface is 4 blocks under their feet.

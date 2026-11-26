@@ -1,8 +1,3 @@
-use sunrise_core::random::RandomSource;
-use sunrise_core::{geometry::Vec3, random::{LegacyRandom, LevelRandom}};
-use sunrise_gameplay::village_siege::VillageSiege;
-use sunrise_sim::{mobs::Species, patrol::GameplayAttributes};
-use {sunrise_gameplay_common::game::creatures::SpawnSite, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{
     BlockPos, EntityTypeKey, GeneralEntityCategory, GeneralSavePolicy, Heightmap, Hooks, Host,
     LegacyRandomSource, MobSpawnPlacementCheckEvent, ModEntry, Registrar, RegistrationContext,
@@ -11,7 +6,14 @@ use mod_api::{
 };
 use std::sync::{Arc, Mutex};
 use sunrise_core::nbt::{Compound, Tag};
+use sunrise_core::random::RandomSource;
+use sunrise_core::{
+    geometry::Vec3,
+    random::{LegacyRandom, LevelRandom},
+};
+use sunrise_gameplay::village_siege::VillageSiege;
 use sunrise_level::chunk::{Chunk, Light, block_entity::Next};
+use sunrise_sim::{mobs::Species, patrol::GameplayAttributes};
 use sunrise_sim::{
     mobs::{
         data::Placement,
@@ -21,6 +23,10 @@ use sunrise_sim::{
         trial_spawner::{TrialSpawner, TrialState},
     },
     motion::PlayerMotion,
+};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay_common::game::creatures::SpawnSite,
 };
 
 #[derive(Debug, PartialEq)]

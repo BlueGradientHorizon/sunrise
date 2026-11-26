@@ -1,12 +1,10 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::{EntityRef, ExplosionDetonateEvent, Hooks, ServerHost};
     use std::sync::{Arc, Mutex};
     use sunrise_core::{geometry::Vec3, random::RandomSource};
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_sim::mobs::Mob;
 
     struct Noop;
@@ -364,17 +362,19 @@ mod tests {
             mod_platform::testing::with_mods(mods, || {
                 with_game(|game| {
                     for (id, x) in [(920, -1.0), (921, 1.0)] {
-                        game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(
-                            id,
-                            "oak".into(),
-                            Vec3::new(x, 1.0, 0.0),
-                            0.0,
-                        ));
-                        game.carts.push(sunrise_gameplay_common::game::minecarts::Minecart::new(
-                            id + 10,
-                            sunrise_gameplay_common::game::minecarts::CartKind::Rideable,
-                            Vec3::new(x, 1.0, 2.0),
-                        ));
+                        game.boats
+                            .push(sunrise_gameplay_common::game::boats_common::Boat::new(
+                                id,
+                                "oak".into(),
+                                Vec3::new(x, 1.0, 0.0),
+                                0.0,
+                            ));
+                        game.carts
+                            .push(sunrise_gameplay_common::game::minecarts::Minecart::new(
+                                id + 10,
+                                sunrise_gameplay_common::game::minecarts::CartKind::Rideable,
+                                Vec3::new(x, 1.0, 2.0),
+                            ));
                     }
                     explode(game);
                     assert!(game.boats.iter().all(|boat| ![920, 921].contains(&boat.id)));
@@ -392,12 +392,13 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 for (id, x) in [(940, 8.0), (941, 7.99)] {
-                    game.crystals.push(sunrise_gameplay_common::game::dragon_common::Crystal::new(
-                        id,
-                        Vec3::new(x, 1.0, 0.0),
-                        false,
-                        0,
-                    ));
+                    game.crystals
+                        .push(sunrise_gameplay_common::game::dragon_common::Crystal::new(
+                            id,
+                            Vec3::new(x, 1.0, 0.0),
+                            false,
+                            0,
+                        ));
                 }
                 game.explosion_detonate([0.0, 1.0, 0.0], 3.0, &mut Vec::new());
                 let listed = game.server.combat.0.blast_hit_list.as_ref().unwrap();
@@ -444,12 +445,13 @@ mod tests {
                             zombie(game, id, x);
                             continue;
                         }
-                        game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(
-                            id,
-                            "oak".into(),
-                            Vec3::new(x, 1.0, 0.0),
-                            0.0,
-                        ));
+                        game.boats
+                            .push(sunrise_gameplay_common::game::boats_common::Boat::new(
+                                id,
+                                "oak".into(),
+                                Vec3::new(x, 1.0, 0.0),
+                                0.0,
+                            ));
                     }
                     explode(game);
                     assert!(
@@ -516,19 +518,21 @@ mod tests {
             check_interval: 0,
             custom_name: None,
         });
-        game.crystals.push(sunrise_gameplay_common::game::dragon_common::Crystal::new(
-            954,
-            Vec3::new(2.0, 1.0, 0.0),
-            false,
-            0,
-        ));
+        game.crystals
+            .push(sunrise_gameplay_common::game::dragon_common::Crystal::new(
+                954,
+                Vec3::new(2.0, 1.0, 0.0),
+                false,
+                0,
+            ));
         zombie(game, 955, -2.0);
-        game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(
-            960,
-            "oak".into(),
-            Vec3::new(1.0, 1.0, 0.0),
-            0.0,
-        ));
+        game.boats
+            .push(sunrise_gameplay_common::game::boats_common::Boat::new(
+                960,
+                "oak".into(),
+                Vec3::new(1.0, 1.0, 0.0),
+                0.0,
+            ));
     }
 
     #[test]

@@ -123,8 +123,10 @@ impl crate::game::ServerGame<'_> {
         let command = &text[skip..];
         let d = self.common.ui.dispatcher.0.clone();
         // Server players and lists, not the host's registries: a dedicated server has no local player.
-        let triggers =
-            super::super::scoreboard::trigger_objectives_for(&self.common.score.board, &player_name);
+        let triggers = super::super::scoreboard::trigger_objectives_for(
+            &self.common.score.board,
+            &player_name,
+        );
         let mut players = if self.common.options.dedicated.is_some() {
             Vec::new()
         } else {

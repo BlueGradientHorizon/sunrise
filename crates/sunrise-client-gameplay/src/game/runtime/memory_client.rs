@@ -1,9 +1,9 @@
 use crate::game::ClientGame;
-use {sunrise_gameplay_common::game::memory_common::*};
-use sunrise_gameplay_common::game::owner_link::{ControlRequest, OwnerRequest};
 use serde_json::Value;
 use std::sync::atomic::Ordering;
 use sunrise_client_render::gfx::RendererMemorySnapshot;
+use sunrise_gameplay_common::game::memory_common::*;
+use sunrise_gameplay_common::game::owner_link::{ControlRequest, OwnerRequest};
 use sunrise_sim::server_perf::MemoryCost;
 
 impl ClientGame<'_> {
@@ -21,7 +21,8 @@ impl ClientGame<'_> {
         MemoryInputs {
             render_distance: self.client.streaming.radius,
             client: self
-                .common.options
+                .common
+                .options
                 .dedicated
                 .is_none()
                 .then(|| self.common.world.chunks.values().cloned().collect()),

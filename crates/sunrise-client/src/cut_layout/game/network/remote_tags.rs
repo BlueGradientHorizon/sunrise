@@ -1,39 +1,42 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 #[cfg(any())]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt;
-use sunrise_client_gameplay::game::client_side::remote_tags::{Probe, Seen};
+    use sunrise_client_gameplay::game::client_side::remote_tags::{Probe, Seen};
+    use sunrise_gameplay_common::game::tables::WorldTablesExt;
 
-use sunrise_gameplay_common::game::client_side::remote_tags::login;
+    use sunrise_gameplay_common::game::client_side::remote_tags::login;
 
-use sunrise_gameplay_common::game::client_side::remote_tags::power_update;
+    use sunrise_gameplay_common::game::client_side::remote_tags::power_update;
 
-use sunrise_gameplay_common::game::client_side::remote_tags::update;
+    use sunrise_gameplay_common::game::client_side::remote_tags::update;
 
-use sunrise_gameplay_common::game::native_tags::PACK_BINDING_CASES;
+    use sunrise_gameplay_common::game::native_tags::PACK_BINDING_CASES;
 
-use crate::game::native_entity_refs::tests::with_client_game;
+    use crate::game::native_entity_refs::tests::with_client_game;
 
-use mod_api::{Hooks, Identifier, ModEntry, TagMembers, TagsUpdateCause, TagsUpdatedEvent};
+    use mod_api::{Hooks, Identifier, ModEntry, TagMembers, TagsUpdateCause, TagsUpdatedEvent};
 
-use mod_platform::__private::part_tests::block_key;
+    use mod_platform::__private::part_tests::block_key;
 
-use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex};
 
-use sunrise_protocol::packets::{
+    use sunrise_protocol::packets::{
         configuration::{RegistryTags, TagEntry, UpdateTags},
         play::{self, Clientbound as C},
     };
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn item_tag_lists_follow_server_reload_and_client_packets() {
-        use {sunrise_gameplay::game::lan::sync, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::world_loading::WorldRequest};
         use mod_api::Tags;
+        use {
+            sunrise_gameplay::game::lan::sync,
+            sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+            sunrise_gameplay::game::native_entity_refs::tests::with_game,
+            sunrise_gameplay::game::world_loading::WorldRequest,
+        };
 
         if run_fresh_cases(
             "game::client_side::remote_tags::tests::item_tag_lists_follow_server_reload_and_client_packets",
@@ -173,7 +176,7 @@ use sunrise_protocol::packets::{
             ]
         );
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_client_notice_reads_each_applied_set_of_server_tags() {
         let seen = Arc::new(Mutex::new(Vec::new()));
@@ -240,12 +243,13 @@ use sunrise_protocol::packets::{
                 assert_eq!(seen.lock().unwrap()[1].items, TagMembers::Missing);
                 assert_eq!(seen.lock().unwrap()[1].stick_in_item_tag, Some(false));
 
-                let mut files: Vec<_> = sunrise_gameplay_common::game::native_tags::PACK_BINDING_CASES
-                    .iter()
-                    .map(|(path, bytes, _)| {
-                        (format!("tags/binding:item/{path}"), vec![bytes.to_vec()])
-                    })
-                    .collect();
+                let mut files: Vec<_> =
+                    sunrise_gameplay_common::game::native_tags::PACK_BINDING_CASES
+                        .iter()
+                        .map(|(path, bytes, _)| {
+                            (format!("tags/binding:item/{path}"), vec![bytes.to_vec()])
+                        })
+                        .collect();
                 files.extend([
                     (
                         "tags/test:item/items".into(),
@@ -287,7 +291,9 @@ use sunrise_protocol::packets::{
                     .collect();
                 game.handle_packet(C::UpdateTags(UpdateTags { registries }))
                     .unwrap();
-                for (path, _, is_bound) in sunrise_gameplay_common::game::native_tags::PACK_BINDING_CASES {
+                for (path, _, is_bound) in
+                    sunrise_gameplay_common::game::native_tags::PACK_BINDING_CASES
+                {
                     let key = mod_api::__private::tag_key(
                         &Identifier::parse(&format!("binding:{path}")).unwrap(),
                     )
@@ -352,10 +358,13 @@ use sunrise_protocol::packets::{
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn remote_tag_packets_rebuild_vanilla_enchant_providers_and_transmitters_without_mods() {
-        use {crate::game::client_side::enchant_power_beam_tests::enchant_particles, crate::game::client_side::enchant_power_beam_tests::place};
+        use {
+            crate::game::client_side::enchant_power_beam_tests::enchant_particles,
+            crate::game::client_side::enchant_power_beam_tests::place,
+        };
         mod_platform::testing::with_mods(Vec::new().into(), || {
             with_client_game(|game| {
                 let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
@@ -390,11 +399,14 @@ use sunrise_protocol::packets::{
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn remote_enchant_snapshot_follows_tag_rebinding_and_tags_updated_callbacks() {
-        use {crate::game::client_side::enchant_power_beam_tests::enchant_particles, crate::game::client_side::enchant_power_beam_tests::place};
         use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+        use {
+            crate::game::client_side::enchant_power_beam_tests::enchant_particles,
+            crate::game::client_side::enchant_power_beam_tests::place,
+        };
         static ENABLED: AtomicBool = AtomicBool::new(false);
         static CALLS: AtomicUsize = AtomicUsize::new(0);
         static NOTICES: AtomicUsize = AtomicUsize::new(0);
@@ -507,13 +519,13 @@ use sunrise_protocol::packets::{
             });
         });
     }
-/// A client's damage type tags are the ones its server sent, at join and after a tag
+    /// A client's damage type tags are the ones its server sent, at join and after a tag
     /// update, for its own tag service, a tag listener and the hit host of a mount it predicts.
     #[test]
     #[ignore = "daily"]
     fn a_client_reads_the_damage_type_tags_its_server_sent() {
-        use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
         use mod_api::{LevelHost, Tags};
+        use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
         if run_fresh_cases(
             "game::client_side::remote_tags::tests::a_client_reads_the_damage_type_tags_its_server_sent",
             "SUNRISE_TEST_CLIENT_DAMAGE_TYPE_TAGS",
@@ -579,7 +591,8 @@ use sunrise_protocol::packets::{
             with_client_game(|game| {
                 let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
                 game.connect_local(pipe, "Steve").unwrap();
-                let registries = Arc::make_mut(&mut game.client.remote.as_mut().unwrap().registries);
+                let registries =
+                    Arc::make_mut(&mut game.client.remote.as_mut().unwrap().registries);
                 registries.registries.insert(
                     "minecraft:damage_type".into(),
                     TYPES.map(|name| (name.to_owned(), None)).to_vec(),

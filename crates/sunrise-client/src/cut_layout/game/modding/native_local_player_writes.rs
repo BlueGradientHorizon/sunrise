@@ -1,15 +1,16 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
 
-    use sunrise_gameplay_common::game::piston_push::PistonPushGameExt1;
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1;
-use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use mod_api::HostSide;
     use std::sync::{Arc, Mutex};
+    use sunrise_gameplay_common::game::piston_push::PistonPushGameExt1;
+    use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1;
     use sunrise_protocol::packets::play;
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    };
 
     /// Writes a velocity and a ground flag before the local player's tick, and records what
     /// the tick left of them.
@@ -40,7 +41,8 @@ use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunr
     fn loaded_client(
         game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     ) -> sunrise_protocol::connection::ConnReader {
-        game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+        game.options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(client, "writes").unwrap();
         let remote = game.client.remote.as_mut().unwrap();
@@ -55,9 +57,10 @@ use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunr
         .unwrap();
         player.entity_id = remote.entity_id;
         game.player = Some(player);
-        game.client
-            .streaming
-            .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
+        game.client.streaming.insert_remote(
+            &mut game.common.world,
+            sunrise_level::chunk::Chunk::empty(0, 0),
+        );
         sunrise_protocol::connection::Connection::local(server)
             .split()
             .0
@@ -335,9 +338,10 @@ use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunr
                 loaded_client(game);
                 // Keep the tick's normal gravity away from a section boundary.
                 game.player.as_mut().unwrap().position.y = 64.5;
-                game.client
-                    .streaming
-                    .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(1, 0));
+                game.client.streaming.insert_remote(
+                    &mut game.common.world,
+                    sunrise_level::chunk::Chunk::empty(1, 0),
+                );
                 game.tick_remote().unwrap();
                 assert_eq!(
                     *crossings.lock().unwrap(),
@@ -377,9 +381,10 @@ use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunr
         .unwrap();
         player.entity_id = remote.entity_id;
         game.player = Some(player);
-        game.client
-            .streaming
-            .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
+        game.client.streaming.insert_remote(
+            &mut game.common.world,
+            sunrise_level::chunk::Chunk::empty(0, 0),
+        );
         peer
     }
 
@@ -427,14 +432,21 @@ use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunr
     #[test]
     #[ignore = "daily"]
     fn player_collision_flags_distinguish_a_ceiling_from_the_floor_and_a_wall() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, crate::game::server_side::native_entity_refs::tests::with_client_game};
         use sunrise_core::geometry::Vec3;
         use sunrise_level::chunk::Chunk;
         use sunrise_sim::motion::PlayerMotion;
         use sunrise_world::entity_move::MoverType;
+        use {
+            crate::game::server_side::native_entity_refs::tests::with_client_game,
+            sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+        };
 
         fn check<'g, G: sunrise_gameplay_common::game::SideGame<'g> + mod_api::Host>(game: &mut G) {
-            let player = sunrise_gameplay_common::game::native_server::NativeServerGameExt1::player(game, 456).unwrap();
+            let player =
+                sunrise_gameplay_common::game::native_server::NativeServerGameExt1::player(
+                    game, 456,
+                )
+                .unwrap();
             let stone = game
                 .pack
                 .assets

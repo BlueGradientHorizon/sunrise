@@ -1,13 +1,13 @@
 use crate::game::ServerGame;
+#[allow(unused_imports)]
+use mod_api::__private::game::*;
+#[allow(unused_imports)]
+use std::sync::Arc;
 use sunrise_gameplay_common::game::mods::ModsReload;
 #[cfg(test)]
 use sunrise_gameplay_common::game::mods::ModsState;
 #[cfg(test)]
 use sunrise_gameplay_common::game::mods::content_overlay;
-#[allow(unused_imports)]
-use mod_api::__private::game::*;
-#[allow(unused_imports)]
-use std::sync::Arc;
 
 impl ServerGame<'_> {
     pub(in crate::game) fn begin_condition_reload(
@@ -23,8 +23,11 @@ impl ServerGame<'_> {
             let inventory = sunrise_mod_package::enabled::EnabledMods::read(resources)
                 .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
             self.common.mods.load_condition_candidate = Some(
-                sunrise_gameplay_common::game::load_conditions::conditions_for_mods(&self.common.mods, &inventory)
-                    .map_err(ReloadStageError::DataSource)?,
+                sunrise_gameplay_common::game::load_conditions::conditions_for_mods(
+                    &self.common.mods,
+                    &inventory,
+                )
+                .map_err(ReloadStageError::DataSource)?,
             );
         }
         self.prepare_server_reload(stack)
@@ -69,7 +72,8 @@ impl ServerGame<'_> {
         if self.server.world_root.as_os_str().is_empty() {
             return;
         }
-        if let Err(error) = self.reload_datapacks(true, &self.common.level.enabled_features.clone()) {
+        if let Err(error) = self.reload_datapacks(true, &self.common.level.enabled_features.clone())
+        {
             log::warn!(
                 "Sunrise: content mods data reload failed: {}",
                 error.diagnostic()
@@ -97,17 +101,11 @@ impl crate::game::ServerGame<'_> {
         self.server.session_lock.0 = None;
     }
 
-    pub fn test_set_world_recipes(
-        &mut self,
-        recipes: sunrise_sim::crafting::Recipes,
-    ) {
+    pub fn test_set_world_recipes(&mut self, recipes: sunrise_sim::crafting::Recipes) {
         self.server.world_tables.0.as_mut().unwrap().recipes = recipes;
     }
 
-    pub fn test_update_tickets(
-        &mut self,
-        sources: Option<sunrise_sim::ticket_levels::Sources>,
-    ) {
+    pub fn test_update_tickets(&mut self, sources: Option<sunrise_sim::ticket_levels::Sources>) {
         self.server.tickets.0.update(sources);
     }
 

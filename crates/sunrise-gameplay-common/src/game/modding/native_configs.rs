@@ -161,11 +161,7 @@ impl NativeConfigs {
 
 pub trait NativeConfigsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Asks the mods for their configs and loads those of `kinds`.
-     fn native_configs_load(
-        &mut self,
-        kinds: &[mod_api::ConfigKind],
-        world: Option<&Path>,
-    ) {
+    fn native_configs_load(&mut self, kinds: &[mod_api::ConfigKind], world: Option<&Path>) {
         let config_dir = match crate::game::native_config_dir() {
             Ok(dir) => dir,
             Err(e) => {
@@ -186,7 +182,7 @@ pub trait NativeConfigsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// The window's `Client` and `Common` configs, once: after client setup
     /// and before its title, connection or ordinary runtime callbacks.
-     fn native_configs_client_start(&mut self) {
+    fn native_configs_client_start(&mut self) {
         if !self.native_configs.started {
             use mod_api::ConfigKind::{Client, Common};
             self.native_configs_load(&[Client, Common], None);
@@ -195,7 +191,7 @@ pub trait NativeConfigsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// A server about to open `world`: a dedicated server loads its
     /// `Common` configs too, a single player's server thread only `Server`.
-     fn native_configs_server_start(&mut self, world: &Path, dedicated: bool) {
+    fn native_configs_server_start(&mut self, world: &Path, dedicated: bool) {
         use mod_api::ConfigKind::{Common, Server};
         let kinds: &[mod_api::ConfigKind] = if dedicated && !self.native_configs.started {
             &[Common, Server]
@@ -206,7 +202,7 @@ pub trait NativeConfigsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// Hands changed files over again, at most once a second.
-     fn native_configs_poll(&mut self) {
+    fn native_configs_poll(&mut self) {
         if !self.native_configs.due(Instant::now()) {
             return;
         }
@@ -216,6 +212,5 @@ pub trait NativeConfigsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeConfigsGameExt1<'__sg> for G {}
-
 
 use crate::game::native_hooks::mod_configs::GameHooks as _;

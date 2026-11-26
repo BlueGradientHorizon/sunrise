@@ -48,9 +48,11 @@ impl crate::game::ClientGame<'_> {
         self.observe_light_edits();
         self.ask_edited_light_emission();
         let camera_pos = self.visual_camera_position();
-        if let (Some(map), Some(pos), Some(lod)) =
-            (&self.client.lod_blue_map.0, camera_pos, &mut self.client.lod.0)
-        {
+        if let (Some(map), Some(pos), Some(lod)) = (
+            &self.client.lod_blue_map.0,
+            camera_pos,
+            &mut self.client.lod.0,
+        ) {
             map.set_center(pos[0].floor() as i32, pos[2].floor() as i32);
             for change in map.take_changed() {
                 lod.refresh(change.area, change.widths);
@@ -71,7 +73,10 @@ impl crate::game::ClientGame<'_> {
         self.client.streaming.hold_unknown_tickets();
         self.client.streaming.upload_backlog = self.client.pending_uploads.0.len();
         let plan = sunrise_level::spans::time("streaming_plan", || {
-            let mut step = self.client.streaming.begin_plan_update(&mut self.common.world);
+            let mut step = self
+                .client
+                .streaming
+                .begin_plan_update(&mut self.common.world);
             loop {
                 match step {
                     sunrise_client_render::streaming::PlanStep::Ready(plan) => break plan,
@@ -85,10 +90,15 @@ impl crate::game::ClientGame<'_> {
                 }
             }
         });
-        let (commit, protos) = self.client.streaming.prepare_commit(&mut self.common.world, plan);
+        let (commit, protos) = self
+            .client
+            .streaming
+            .prepare_commit(&mut self.common.world, plan);
         self.client.streaming.submit_protos(protos);
         let (mut uploads, unloaded) = sunrise_level::spans::time("streaming", || {
-            self.client.streaming.complete_commit(&mut self.common.world, commit)
+            self.client
+                .streaming
+                .complete_commit(&mut self.common.world, commit)
         });
         // Sections chosen to mesh wait for the mods' `section_visibility` (none without a mod).
         self.prepare_section_visibility();
@@ -147,7 +157,8 @@ impl crate::game::ClientGame<'_> {
                     self.common.world.block_entities.unload_column(column);
                 }
             });
-            self.common.world
+            self.common
+                .world
                 .block_names
                 .retain(|p, _| !gone.contains(&(p.0 >> 4, p.2 >> 4)));
         }
@@ -188,7 +199,11 @@ impl crate::game::ClientGame<'_> {
             {
                 sunrise_level::spans::time("upload", || {
                     for upload in &uploads {
-                        if self.client.streaming.can_publish_mesh(&self.common.world, upload) {
+                        if self
+                            .client
+                            .streaming
+                            .can_publish_mesh(&self.common.world, upload)
+                        {
                             renderer.upload(upload.key, &upload.mesh);
                             if let Some(flight) = raw_flight.as_deref_mut() {
                                 flight.note_mesh_uploads(1, vertex_bytes(&upload.mesh));
@@ -207,10 +222,14 @@ impl crate::game::ClientGame<'_> {
                 let fresh: sunrise_level::fast_hash::FxHashSet<(i32, i32, i32)> =
                     uploads.iter().map(|upload| upload.key).collect();
                 let current = |upload: &sunrise_client_render::streaming::MeshUpload| {
-                    self.common.world
+                    self.common
+                        .world
                         .chunks
                         .contains_key(&(upload.key.0, upload.key.2))
-                        && self.client.streaming.can_publish_mesh(&self.common.world, upload)
+                        && self
+                            .client
+                            .streaming
+                            .can_publish_mesh(&self.common.world, upload)
                 };
                 // Filtering leaves the surviving waiting run in the same order.
                 let mut spent: Vec<_> = pending
@@ -429,12 +448,12 @@ impl crate::game::ClientGame<'_> {
         // Another level: its own kept chunks. (Another world at the same
         // address, a proxy's next server, comes through a new login; a seed
         // changed at a respawn of the same level is a plugin hiding it.)
-        if self
-            .client
-            .lod_level
-            .as_ref()
-            .is_some_and(|level| self.client.remote.as_ref().is_some_and(|r| r.level != *level))
-        {
+        if self.client.lod_level.as_ref().is_some_and(|level| {
+            self.client
+                .remote
+                .as_ref()
+                .is_some_and(|r| r.level != *level)
+        }) {
             self.clear_lod();
         }
         if self.client.lod_source_attempted {
@@ -449,7 +468,9 @@ impl crate::game::ClientGame<'_> {
             &self.client.remote,
         ) {
             (Some(server), ..) => server
-                .ask(|reply| sunrise_gameplay_common::game::owner_link::OwnerRequest::LodSource(dim, reply))
+                .ask(|reply| {
+                    sunrise_gameplay_common::game::owner_link::OwnerRequest::LodSource(dim, reply)
+                })
                 .flatten(),
             (None, Some(offer), Some(remote)) => {
                 let states = self.common.res.facts().states.len() as u32;
@@ -488,7 +509,10 @@ impl crate::game::ClientGame<'_> {
                         server.maps.clone(),
                         maps,
                         settings.radius_blocks(),
-                        bluemap::Palette::from_game(self.common.pack.assets.registry, self.common.res.biomes()),
+                        bluemap::Palette::from_game(
+                            self.common.pack.assets.registry,
+                            self.common.res.biomes(),
+                        ),
                     ));
                     map.start();
                     map

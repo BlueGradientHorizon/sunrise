@@ -1,4 +1,3 @@
-
 #[cfg(feature = "client")]
 use super::ClientGame;
 use mod_api::prelude;

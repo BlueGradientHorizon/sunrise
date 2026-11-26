@@ -1,14 +1,22 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod conduit_target_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use {sunrise_gameplay_common::game::server_side::block_entity_anims::conduit_target_tests::CONDUIT, sunrise_gameplay::game::server_side::block_entity_anims::conduit_target_tests::attack_conduit_for_test, crate::game::server_side::block_entity_anims::conduit_target_tests::game, sunrise_gameplay::game::server_side::block_entity_anims::conduit_target_tests::summon};
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role, crate::game::{Audio, Settings, load_resources}};
     use std::sync::Arc;
     use sunrise_core::nbt::Tag;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_level::{chunk::Chunk, containers::BlockEntity};
+    use {
+        crate::game::server_side::block_entity_anims::conduit_target_tests::game,
+        sunrise_gameplay::game::server_side::block_entity_anims::conduit_target_tests::attack_conduit_for_test,
+        sunrise_gameplay::game::server_side::block_entity_anims::conduit_target_tests::summon,
+        sunrise_gameplay_common::game::server_side::block_entity_anims::conduit_target_tests::CONDUIT,
+    };
+    use {
+        crate::game::{Audio, Settings, load_resources},
+        sunrise_gameplay_common::game::Options,
+        sunrise_gameplay_common::game::Progress,
+        sunrise_gameplay_common::game::execution_role,
+    };
 
     fn game_with_client(
         resources: &mut Option<Arc<sunrise_gameplay_common::game::Resources>>,
@@ -64,7 +72,9 @@ use {sunrise_gameplay_common::game::server_side::block_entity_anims::conduit_tar
 
     /// A window of one: a client game with no conduit state of its own, and a
     /// conduit block whose block entity arrives from the server.
-    fn client(resources: &mut Option<Arc<sunrise_gameplay_common::game::Resources>>) -> sunrise_client_gameplay::game::ClientGame<'_> {
+    fn client(
+        resources: &mut Option<Arc<sunrise_gameplay_common::game::Resources>>,
+    ) -> sunrise_client_gameplay::game::ClientGame<'_> {
         let mut game = game_with_client(resources, execution_role::ExecutionRole::Client);
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "Window").unwrap();

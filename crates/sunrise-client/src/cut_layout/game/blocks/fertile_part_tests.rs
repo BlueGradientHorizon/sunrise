@@ -1,8 +1,11 @@
 //! A farmland part answers `is_fertile` and `can_be_hydrated` (`IBlockExtension.isFertile`,
 //! `canBeHydrated`) through the game's level, on an authoritative server only.
-use {crate::game::*, sunrise_gameplay_common::game::{BlockPos, api_values, execution_role, mods}};
 use mod_api::{BlockPart, CanBeHydratedEvent, Hooks, IsFertileEvent, LevelHost, Registrar};
 use sunrise_world::level::LevelAccess;
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{BlockPos, api_values, execution_role, mods},
+};
 
 #[derive(Clone)]
 struct Farmland;
@@ -63,7 +66,8 @@ fn a_farmland_part_answers_fertility_and_hydration() {
                 })
             };
             // A client's copy of the level: no part is asked.
-            game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+            game.options.execution_role =
+                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
             let (fertile_asked, farmland_asked, ..) = ask(game);
             assert!(!fertile_asked && !farmland_asked);
             // A server: the farmland's part answers, stone has none.

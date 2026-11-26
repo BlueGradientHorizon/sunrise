@@ -28,7 +28,8 @@ pub trait Hooks {
     /// (matching vanilla `BlockEntity.setChanged` / `AbstractFurnaceBlockEntity.serverTick`).
     /// Normal menu synchronization reads the resident data slots. With no Part
     /// subscribed for this type, the game skips the tick dispatch.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::block_entity_tick::native_block_entity_tick", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::block_entity_tick::native_block_entity_tick",
         receiver = "associated",
         dispatch = "flat",
         side = "server",

@@ -114,7 +114,10 @@ impl ServerGame<'_> {
         };
         let pitch_bend = inserted.count as f32 / self.common.max_stack(inserted) as f32;
         if let (Tag::Compound(map), Some(item)) = (&mut tag, &pot_item) {
-            map.insert("item".into(), save::item_to_nbt(item, self.common.res.items()));
+            map.insert(
+                "item".into(),
+                save::item_to_nbt(item, self.common.res.items()),
+            );
         }
         spill::put_saved_entity(&mut self.common.world, pos, tag);
         // The sherds and item go to the guests (BlockEntityData).

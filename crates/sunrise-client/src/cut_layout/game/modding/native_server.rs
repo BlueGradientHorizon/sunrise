@@ -1,4 +1,3 @@
-
 #![cfg(test)]
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -20,17 +19,17 @@ pub(crate) mod sidebar_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
-use sunrise_gameplay_common::game::in_own_process;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::in_own_process;
+    use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 
-use sunrise_gameplay_common::game::native_server::tests::player_guest;
+    use sunrise_gameplay_common::game::native_server::tests::player_guest;
 
-use sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan;
+    use sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan;
 
-use super::*;
+    use super::*;
 
-/// Box bounds come from mod code: one that is not finite reads no orb and never
+    /// Box bounds come from mod code: one that is not finite reads no orb and never
     /// panics, and an inverted box reads what the ordered one does.
     #[test]
     #[ignore = "daily"]
@@ -80,7 +79,7 @@ use super::*;
         assert_eq!(ids(&game, [2.0, 69.0, 0.0], [0.0, 71.0, 2.0]), [40]);
         assert_eq!(ids(&game, [2.0, 71.0, 2.0], [0.0, 69.0, 0.0]), [40]);
     }
-/// A mod's `announce` reaches the dedicated server's event stream and nothing else's.
+    /// A mod's `announce` reaches the dedicated server's event stream and nothing else's.
     /// The integrated server thread keeps the launch configuration (`options.dedicated`) too,
     /// so it cannot be what decides.
     #[test]
@@ -103,7 +102,7 @@ use super::*;
             );
         }
     }
-pub(crate) fn with_command_sources(
+    pub(crate) fn with_command_sources(
         test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
     ) {
         use sunrise_core::geometry::Vec3;
@@ -141,7 +140,7 @@ pub(crate) fn with_command_sources(
             test(game);
         });
     }
-/// `ChunkWatchEvent`: the hub's records reach the mods in order, each
+    /// `ChunkWatchEvent`: the hub's records reach the mods in order, each
     /// with the player (entity id and UUID, even after they left) and the
     /// chunk in its level; a level the server doesn't hold is skipped.
     #[test]
@@ -185,7 +184,15 @@ pub(crate) fn with_command_sources(
                     run(here, vec![watch(ChunkWatchKind::Unwatch, [1, 2])]),
                 ]);
                 game.run_chunk_watches();
-                assert!(game.server.lan.as_ref().unwrap().hub.chunk_watches.is_empty());
+                assert!(
+                    game.server
+                        .lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .chunk_watches
+                        .is_empty()
+                );
                 assert_eq!(
                     *heard.lock().unwrap(),
                     [
@@ -197,7 +204,7 @@ pub(crate) fn with_command_sources(
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn panicking_command_executors_keep_other_usages_and_only_undo_journaled_writes() {
         sunrise_gameplay_common::game::in_own_process(
@@ -382,7 +389,7 @@ pub(crate) fn with_command_sources(
             },
         );
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn native_unauthorized_commands_never_reach_the_listener() {
         sunrise_gameplay_common::game::in_own_process(
@@ -422,7 +429,9 @@ pub(crate) fn with_command_sources(
                 .into();
                 mod_platform::testing::with_mods(mods, || {
                     sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
-                        sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan(game);
+                        sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan(
+                            game,
+                        );
                         game.register_native_commands();
                         game.server
                             .lan
@@ -483,39 +492,38 @@ pub(crate) fn with_command_sources(
     }
 }
 
-
 #[cfg(test)]
 pub(crate) mod fake_action_tests {
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
-use sunrise_gameplay_common::game::api_values::test_snapshot;
+    use sunrise_gameplay_common::game::api_values::test_snapshot;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
 
-use sunrise_gameplay_common::game::native_server::fake_action_tests::on_top;
+    use sunrise_gameplay_common::game::native_server::fake_action_tests::on_top;
 
-use sunrise_gameplay::game::native_server::fake_action_tests::fake;
+    use sunrise_gameplay::game::native_server::fake_action_tests::fake;
 
-use sunrise_gameplay::game::native_server::fake_action_tests::held;
+    use sunrise_gameplay::game::native_server::fake_action_tests::held;
 
-use sunrise_gameplay::game::native_server::fake_action_tests::place;
+    use sunrise_gameplay::game::native_server::fake_action_tests::place;
 
-use sunrise_gameplay::game::native_server::fake_action_tests::trader;
+    use sunrise_gameplay::game::native_server::fake_action_tests::trader;
 
-use sunrise_gameplay::game::native_server::fake_action_tests::zombie;
+    use sunrise_gameplay::game::native_server::fake_action_tests::zombie;
 
-use mod_api::PlayerAction;
-use sunrise_gameplay_common::game::native_server::Acting;
-use mod_api::{ActionOutcome, ActionRefused, FakeEffect};
+    use mod_api::PlayerAction;
+    use mod_api::{ActionOutcome, ActionRefused, FakeEffect};
+    use sunrise_gameplay_common::game::native_server::Acting;
 
-use mod_api::{BlockHit, Hand, PlayerRef};
+    use mod_api::{BlockHit, Hand, PlayerRef};
 
-use sunrise_items::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
-use sunrise_gameplay_common::game::{
+    use sunrise_gameplay_common::game::{
         boats_common::Boat, minecarts::CART_KEY_Y, minecarts::CartKind, minecarts::Minecart,
     };
 
-/// A fake player's use on a trader frees it again: the session the use
+    /// A fake player's use on a trader frees it again: the session the use
     /// opened closes through the merchant's own close path, so the trader is
     /// not left trading and the next use opens it as the first did.
     #[test]
@@ -547,7 +555,7 @@ use sunrise_gameplay_common::game::{
             );
         });
     }
-/// A chest minecart, a hopper minecart and a chest boat: the items stay
+    /// A chest minecart, a hopper minecart and a chest boat: the items stay
     /// on the vehicle, and the menu's stand-in is out of the level, where a
     /// transfer would edit it instead of the vehicle.
     #[test]
@@ -608,15 +616,19 @@ use sunrise_gameplay_common::game::{
             }
         });
     }
-/// A real guest keeps its vehicle menu over a cart a fake player then
+    /// A real guest keeps its vehicle menu over a cart a fake player then
     /// uses: the refused open closes only a stand-in nobody is looking at,
     /// and the staging does not reset what the viewer's menu is editing.
     #[test]
     #[ignore = "daily"]
     fn a_viewer_keeps_the_vehicle_menu_a_fake_player_used() {
-        use {sunrise_gameplay_common::game::minecarts::CART_KEY_Y, sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
         use sunrise_level::containers::BlockEntity;
         use sunrise_sim::lan::menu::Slots;
+        use {
+            sunrise_gameplay_common::game::minecarts::CART_KEY_Y,
+            sunrise_gameplay_common::game::minecarts::CartKind,
+            sunrise_gameplay_common::game::minecarts::Minecart,
+        };
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             let (player, fake_conn, real_conn) = fake(game, None, 0);
             let at = sunrise_core::geometry::Vec3::new(2.5, 64.0, 0.5);
@@ -712,7 +724,7 @@ use sunrise_gameplay_common::game::{
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn scoped_fake_use_returns_items_and_restores_persistent_state() {
         use mod_api::PlayerActionSetup;
@@ -752,10 +764,9 @@ use sunrise_gameplay_common::game::{
             ));
             let target = game.entity(5000).unwrap();
             let setup = PlayerActionSetup::new(
-                Some(sunrise_gameplay_common::game::api_values::test_snapshot(&ItemStack::new(
-                    "minecraft:bucket",
-                    2,
-                ))),
+                Some(sunrise_gameplay_common::game::api_values::test_snapshot(
+                    &ItemStack::new("minecraft:bucket", 2),
+                )),
                 [0.5, 64.0 + f64::from(1.62_f32), 0.5],
                 170.0,
                 -15.0,
@@ -770,17 +781,15 @@ use sunrise_gameplay_common::game::{
             assert_eq!(result.outcome, ActionOutcome::Consumed);
             assert_eq!(
                 result.held,
-                Some(sunrise_gameplay_common::game::api_values::test_snapshot(&ItemStack::new(
-                    "minecraft:bucket",
-                    1
-                )))
+                Some(sunrise_gameplay_common::game::api_values::test_snapshot(
+                    &ItemStack::new("minecraft:bucket", 1)
+                ))
             );
             assert_eq!(
                 result.other,
-                vec![sunrise_gameplay_common::game::api_values::test_snapshot(&ItemStack::new(
-                    "minecraft:milk_bucket",
-                    1
-                ))]
+                vec![sunrise_gameplay_common::game::api_values::test_snapshot(
+                    &ItemStack::new("minecraft:milk_bucket", 1)
+                )]
             );
             let guest = game.server.lan.as_ref().unwrap().hub.guest(conn).unwrap();
             assert_eq!(guest.position, [0.5, 64.0, 0.5]);
@@ -806,7 +815,7 @@ use sunrise_gameplay_common::game::{
             assert_eq!(game.server.lan.as_ref().unwrap().hub.guests.len(), 2);
         });
     }
-/// An armor stand holding a saved item this build doesn't have hands it to a scoped action:
+    /// An armor stand holding a saved item this build doesn't have hands it to a scoped action:
     /// the stack can't cross, so it goes back into the world where the fake stood, unchanged,
     /// with the default pickup delay, and the result counts it instead of panicking.
     #[test]
@@ -848,7 +857,7 @@ use sunrise_gameplay_common::game::{
             assert_eq!((item.position.x, item.position.z), (0.5, 0.5));
         });
     }
-/// A join listener that keeps item entities out discards the returned stack as it would any
+    /// A join listener that keeps item entities out discards the returned stack as it would any
     /// drop: no item entity is left, and the result does not count it.
     #[test]
     #[ignore = "daily"]
@@ -907,7 +916,7 @@ use sunrise_gameplay_common::game::{
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn scoped_fake_use_restores_the_persistent_menu_owner() {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
@@ -929,10 +938,9 @@ use sunrise_gameplay_common::game::{
                 .inventory = Some(menu);
             place(game, [1, 64, 0], "minecraft:chest");
             let setup = mod_api::PlayerActionSetup::new(
-                Some(sunrise_gameplay_common::game::api_values::test_snapshot(&ItemStack::new(
-                    "minecraft:oak_log",
-                    1,
-                ))),
+                Some(sunrise_gameplay_common::game::api_values::test_snapshot(
+                    &ItemStack::new("minecraft:oak_log", 1),
+                )),
                 [0.5, 64.0 + f64::from(1.62_f32), 0.5],
                 0.0,
                 90.0,
@@ -954,7 +962,7 @@ use sunrise_gameplay_common::game::{
             assert_eq!(restored.carried, Some(ItemStack::new("minecraft:stick", 3)));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn fake_entity_interaction_checks_targets_and_does_not_use_items_in_air() {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
@@ -990,7 +998,7 @@ use sunrise_gameplay_common::game::{
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn mob_target_setters_refuse_persistent_and_acting_fakes() {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
@@ -1016,7 +1024,7 @@ use sunrise_gameplay_common::game::{
             );
         });
     }
-/// `as_guest_at` starts a turn only for the guest it names: another `conn` at that place,
+    /// `as_guest_at` starts a turn only for the guest it names: another `conn` at that place,
     /// a place past the list's end, and a guest already in a turn are refused, not a panic.
     #[test]
     #[ignore = "daily"]
@@ -1047,7 +1055,7 @@ use sunrise_gameplay_common::game::{
             assert_eq!(game.as_guest_at(gi, fake_conn, |_| 7), Ok(7));
         });
     }
-/// 1, 64 and 256 fakes each clicking the stone floor with an empty hand every tick, the full
+    /// 1, 64 and 256 fakes each clicking the stone floor with an empty hand every tick, the full
     /// admission and use path (vanilla passes). Run with `-- --ignored --nocapture`, in release.
     #[test]
     #[ignore = "timing"]
@@ -1070,10 +1078,16 @@ use sunrise_gameplay_common::game::{
                                 .unwrap(),
                         );
                     }
-                    game.server.lan.as_mut().unwrap().hub.guests.update_all(|g| {
-                        g.position = [0.5, 64.0, 0.5];
-                        g.yaw = -90.0;
-                    });
+                    game.server
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .guests
+                        .update_all(|g| {
+                            g.position = [0.5, 64.0, 0.5];
+                            g.yaw = -90.0;
+                        });
                     let target = zombie(game, 5000, [2.0, 64.0, 0.5]);
                     let stone = game
                         .pack
@@ -1116,7 +1130,7 @@ use sunrise_gameplay_common::game::{
             }
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_real_player_is_unaffected_at_every_effect_site() {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
@@ -1162,19 +1176,29 @@ use sunrise_gameplay_common::game::{
     }
 }
 
-
 #[cfg(test)]
 pub(crate) mod player_rule_tests {
-    use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
-    use {crate::game::native_server::*, sunrise_gameplay_common::game::native_server::{GlobalPos, Identifier, PlayerRespawnConfig}};
     use sunrise_core::position::BlockPos;
+    use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
+    use {
+        crate::game::native_server::*,
+        sunrise_gameplay_common::game::native_server::{
+            GlobalPos, Identifier, PlayerRespawnConfig,
+        },
+    };
 
     /// The guests of `with_guests` are rows 0 and 1; both stand in the level in place.
     fn in_this_level(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
         let level = game.dim.id().to_owned();
-        game.server.lan.as_mut().unwrap().hub.guests.update_all(|g| {
-            g.dimension = level.clone();
-        });
+        game.server
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .update_all(|g| {
+                g.dimension = level.clone();
+            });
     }
 
     fn at(dimension: &str, [x, y, z]: [i32; 3]) -> GlobalPos {

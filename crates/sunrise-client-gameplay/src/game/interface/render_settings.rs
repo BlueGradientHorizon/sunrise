@@ -117,16 +117,20 @@ impl crate::game::ClientGame<'_> {
         if let Some(renderer) = &mut self.client.renderer.0 {
             renderer.release_surface();
         }
-        let mut renderer =
-            match self.renderer_for(window, &self.common.pack, &self.client.client_pack, &self.client.gui) {
-                Ok(renderer) => renderer,
-                Err(error) => {
-                    if let Some(renderer) = &mut self.client.renderer.0 {
-                        renderer.recreate_surface()?;
-                    }
-                    return Err(error);
+        let mut renderer = match self.renderer_for(
+            window,
+            &self.common.pack,
+            &self.client.client_pack,
+            &self.client.gui,
+        ) {
+            Ok(renderer) => renderer,
+            Err(error) => {
+                if let Some(renderer) = &mut self.client.renderer.0 {
+                    renderer.recreate_surface()?;
                 }
-            };
+                return Err(error);
+            }
+        };
         let mut world_kept = false;
         if let Some(old) = &mut self.client.renderer.0 {
             renderer.resize(old.config.width, old.config.height);
@@ -147,10 +151,11 @@ impl crate::game::ClientGame<'_> {
     }
 
     fn apply_streaming_settings(&mut self) {
-        let streaming_target = sunrise_gameplay_common::game::streaming_radius::streaming_radius_for(
-            self.client.settings.render_distance,
-            self.client.remote.as_ref().map(|r| r.view_distance),
-        );
+        let streaming_target =
+            sunrise_gameplay_common::game::streaming_radius::streaming_radius_for(
+                self.client.settings.render_distance,
+                self.client.remote.as_ref().map(|r| r.view_distance),
+            );
         let render_distance_changed = self.client.streaming.radius != streaming_target;
         self.client.streaming.radius = streaming_target;
         // Options.renderDistance, biomeBlendRadius, ambientOcclusion,
@@ -273,7 +278,12 @@ impl crate::game::ClientGame<'_> {
     }
 
     pub fn new_renderer(&self, window: Arc<Window>) -> Result<Box<Renderer>> {
-        self.renderer_for(window, &self.common.pack, &self.client.client_pack, &self.client.gui)
+        self.renderer_for(
+            window,
+            &self.common.pack,
+            &self.client.client_pack,
+            &self.client.gui,
+        )
     }
 
     /// A renderer made again from the resources loaded takes over: what named the old one's
@@ -318,7 +328,9 @@ impl crate::game::ClientGame<'_> {
         if let Some(renderer) = self.client.renderer.0.as_mut() {
             renderer.clear_sections(self.common.world.layout());
         }
-        self.client.streaming.reload_sections(&mut self.common.world);
+        self.client
+            .streaming
+            .reload_sections(&mut self.common.world);
     }
 }
 

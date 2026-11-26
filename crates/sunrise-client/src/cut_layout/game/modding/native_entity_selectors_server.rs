@@ -1,14 +1,12 @@
-
-
 #![cfg(test)]
 use sunrise_command::args::Selector;
 #[cfg(test)]
 mod tests {
     use super::*;
     use mod_api::SelectorSort;
-    use sunrise_gameplay::game::commands::Target;
     use std::sync::{Arc, Mutex};
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay::game::commands::Target;
 
     struct Teammates(Arc<Mutex<Vec<(mod_api::CommandSource, u32)>>>);
     impl mod_api::EntitySelectorType for Teammates {

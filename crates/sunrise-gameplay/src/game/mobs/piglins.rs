@@ -46,7 +46,8 @@ impl ServerGame<'_> {
         if target == Who::Mob(mob)
             || sunrise_game_data::scoreboard::teams_allied(self.mob_team(mob), target_team)
             || self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|other| other.id == mob)
                 .is_none_or(|other| other.ai.target.is_some())
@@ -58,7 +59,8 @@ impl ServerGame<'_> {
 
     /// `ItemStack.has(DataComponents.BLOCKS_ATTACKS)` for an item id.
     fn item_blocks_attacks(&self, item: &str) -> bool {
-        self.common.res
+        self.common
+            .res
             .items()
             .get(item)
             .is_some_and(|i| i.blocks_attacks.is_some())
@@ -72,7 +74,8 @@ impl ServerGame<'_> {
     /// `equippable` slot (armour, a shield's off hand), else the main hand.
     fn piglin_slot(&self, item: &str) -> usize {
         let slot = self
-            .common.res
+            .common
+            .res
             .items()
             .get(item)
             .and_then(|i| i.equip_slot.as_deref())
@@ -254,7 +257,8 @@ impl ServerGame<'_> {
     /// table lookup.
     pub(in crate::game::server_side) fn wearing_gold(&self) -> bool {
         let tag = self
-            .common.res
+            .common
+            .res
             .items()
             .item_tags
             .get("minecraft:piglin_safe_armor");
@@ -276,7 +280,8 @@ impl ServerGame<'_> {
     /// take them (`GoToWantedItem`, `Piglin.pickUpItem`).
     pub fn piglin_pickups(&mut self) {
         let griefing = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING);
         if !griefing && !self.grief_hooked() {
@@ -300,7 +305,8 @@ impl ServerGame<'_> {
             let w = self.mob_world_base(&[]);
             let eye = Vec3::new(pos.x, m.eye_y(), pos.z);
             let nearest = self
-                .common.dropped
+                .common
+                .dropped
                 .iter()
                 .enumerate()
                 .map(|(j, e)| (j, e.position.distance_squared(pos)))
@@ -400,11 +406,7 @@ impl ServerGame<'_> {
     }
     /// `PiglinAi.mobInteract`: hand a piglin the held `stack` (`canAdmire`: only
     /// piglin currency is accepted from the hand; other loved items are passed over).
-    pub fn give_piglin(
-        &mut self,
-        index: usize,
-        stack: &ItemStack,
-    ) -> bool {
+    pub fn give_piglin(&mut self, index: usize, stack: &ItemStack) -> bool {
         let m = &self.common.mobs[index];
         if m.species() != Species::Piglin
             || m.is_baby()
@@ -495,7 +497,8 @@ impl ServerGame<'_> {
         let m = &self.common.mobs[i];
         let at = m.position;
         let host = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .filter(|p| !p.health.dead_or_dying() && !self.common.spectator())
             .map(|p| [p.position.x, p.position.y, p.position.z]);
@@ -584,7 +587,8 @@ impl ServerGame<'_> {
             .map(sunrise_sim::lan::playerdata::uuid_ints)
             .or(self.common.level.player_uuid);
         let universal = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::UNIVERSAL_ANGER);
         // The target hook may remove mobs, so the list's end is read at each step.
@@ -635,7 +639,12 @@ impl ServerGame<'_> {
                 sunrise_sim::mobs::TargetChange::Set(Some(sunrise_sim::mobs::Who::Player))
             };
             // The piglin again by its id: one a listener removed is skipped.
-            let Some(i) = self.common.mobs.iter().position(|m| m.id == id && !m.removed) else {
+            let Some(i) = self
+                .common
+                .mobs
+                .iter()
+                .position(|m| m.id == id && !m.removed)
+            else {
                 continue;
             };
             let m = &mut self.common.mobs[i];
@@ -658,7 +667,8 @@ impl ServerGame<'_> {
                 from[2] + (to[2] - from[2]) * f,
             ];
             !self
-                .common.res
+                .common
+                .res
                 .facts()
                 .get(self.common.world.block(
                     p[0].floor() as i32,
@@ -670,7 +680,8 @@ impl ServerGame<'_> {
     }
     /// Whether breaking or opening this block angers piglins.
     pub(in crate::game) fn guarded_by_piglins(&self, name: &str) -> bool {
-        self.common.res
+        self.common
+            .res
             .items()
             .block_tags
             .get("minecraft:guarded_by_piglins")
@@ -698,11 +709,9 @@ fn piglin_replace(
 
 #[cfg(test)]
 mod tests {
-use sunrise_gameplay_common::game::server_side::piglins::tests::armor;
+    use sunrise_gameplay_common::game::server_side::piglins::tests::armor;
 
     use super::*;
-
-    
 
     #[test]
     fn better_helmet_replaces_worse_one() {
@@ -791,14 +800,11 @@ use sunrise_gameplay_common::game::server_side::piglins::tests::armor;
             None
         ));
     }
-
-    
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
@@ -17,47 +15,47 @@ mod owned_slots_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use mod_api::__private::game::Fields;
-use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
-use sunrise_gameplay_common::game::TryIntoApi;
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
-use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;
+    use mod_api::__private::game::Fields;
+    use sunrise_gameplay_common::game::TryIntoApi;
+    use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+    use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;
+    use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 
-use sunrise_gameplay_common::game::server_side::native_menus::tests::MOD_MENU;
+    use sunrise_gameplay_common::game::server_side::native_menus::tests::MOD_MENU;
 
-use sunrise_gameplay_common::game::server_side::native_menus::tests::sent;
+    use sunrise_gameplay_common::game::server_side::native_menus::tests::sent;
 
-use sunrise_gameplay::game::server_side::native_menus::tests::mod_menu_guest;
+    use sunrise_gameplay::game::server_side::native_menus::tests::mod_menu_guest;
 
-use sunrise_gameplay::game::server_side::native_menus::tests::open;
+    use sunrise_gameplay::game::server_side::native_menus::tests::open;
 
-use sunrise_gameplay::game::server_side::native_menus::tests::watched_guest;
+    use sunrise_gameplay::game::server_side::native_menus::tests::watched_guest;
 
-use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::with_game;
 
-use sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan;
+    use sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan;
 
-use super::*;
+    use super::*;
 
-use mod_api::{HostTransaction, ItemPlace, ItemResource, ServerHost, TransactionError};
+    use mod_api::{HostTransaction, ItemPlace, ItemResource, ServerHost, TransactionError};
 
-use mod_api::{MenuReplace, ModMenuOpen};
+    use mod_api::{MenuReplace, ModMenuOpen};
 
-use sunrise_gameplay::game::server_side::native_menus::open_menu_of;
+    use sunrise_gameplay::game::server_side::native_menus::open_menu_of;
 
-use std::sync::{Arc, mpsc};
+    use std::sync::{Arc, mpsc};
 
-use sunrise_protocol::{
+    use sunrise_protocol::{
         buf::Reader,
         packets::play::{self, Clientbound as C, Serverbound as S},
     };
 
-use sunrise_sim::lan::{Out, PlayerSender};
+    use sunrise_sim::lan::{Out, PlayerSender};
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn acting_menu_storage_extraction_rolls_back() {
         mod_platform::testing::with_mods(Vec::<mod_api::ModEntry>::new().into(), || {
@@ -158,7 +156,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             })
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn container_open_handles_follow_supported_menus() {
         use mod_api::{Hooks, ModEntry, Mods, PlayerContainerCloseEvent, PlayerContainerOpenEvent};
@@ -305,7 +303,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             })
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn container_hooks_follow_actual_open_boundaries_without_a_tick() {
         use mod_api::{Hooks, ModEntry, Mods, PlayerContainerCloseEvent, PlayerContainerOpenEvent};
@@ -384,7 +382,12 @@ use sunrise_sim::lan::{Out, PlayerSender};
             if case == "mount" {
                 game.common.mobs.push(sunrise_sim::mobs::Mob::new(
                     31,
-                    game.common.res.mob_types().get("minecraft:horse").unwrap().clone(),
+                    game.common
+                        .res
+                        .mob_types()
+                        .get("minecraft:horse")
+                        .unwrap()
+                        .clone(),
                     sunrise_core::geometry::Vec3::new(0.0, 0.0, 0.0),
                     0.0,
                 ));
@@ -458,7 +461,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             }
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_slot_written_outside_a_click_is_one_set_slot_at_the_next_sync() {
         with_game(|game| {
@@ -509,7 +512,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             assert_eq!(host.menu(123, 1), None);
         });
     }
-/// `menu_set_items` sends the whole contents of the open menu in one packet for its window,
+    /// `menu_set_items` sends the whole contents of the open menu in one packet for its window,
     /// padded to its slots and cut at them, and the screen, the title and the cursor stay.
     #[test]
     #[ignore = "daily"]
@@ -559,7 +562,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             assert!(host.menu(123, window).is_some(), "still the open menu");
         });
     }
-/// A menu opened in the player's own turn, nested in another player's, clears and shows
+    /// A menu opened in the player's own turn, nested in another player's, clears and shows
     /// that player's own cursor and inventory: none of the outer player's stacks reach them.
     #[test]
     #[ignore = "daily"]
@@ -613,7 +616,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_block_entity_menu_parks_only_the_active_guests_cursor() {
         use mod_api::BlockUpdateFlags;
@@ -689,7 +692,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             assert_eq!(hub.guests[1].carried, Some(outer_cursor));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn shutdown_saves_current_and_parked_inventory_cursors() {
         with_game(|game| {
@@ -739,7 +742,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             }
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn cursor_overflow_listeners_see_and_write_only_the_openers_inventory() {
         use mod_api::{
@@ -831,7 +834,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             });
         });
     }
-/// Each refusal has its own name and sends and changes nothing: another window or none
+    /// Each refusal has its own name and sends and changes nothing: another window or none
     /// open, no such player, a stack the game refuses, and a client.
     #[test]
     #[ignore = "daily"]
@@ -879,7 +882,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             // Client refusal is enforced at compile time (`ClientGame` is not a `ServerHost`).
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_menu_opened_in_place_sends_no_close_returns_the_cursor_and_ignores_the_old_window() {
         with_game(|game| {
@@ -1005,7 +1008,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             assert!(close_at < open_at);
         });
     }
-/// [`with_game`] with [`MOD_MENU`] as the thread's menu types, so a test neither depends on
+    /// [`with_game`] with [`MOD_MENU`] as the thread's menu types, so a test neither depends on
     /// registering first nor touches the one-shot process table.
     fn with_mod_menu_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         sunrise_level::containers::with_mod_menu_types(
@@ -1024,7 +1027,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             || with_game(test),
         );
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_mod_menu_opened_in_place_sends_no_close_and_still_closes_the_old_menu() {
         use mod_api::{PlayerContainerCloseEvent, PlayerContainerOpenEvent};
@@ -1186,7 +1189,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             assert!(heard().is_empty());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn mod_menu_backend_payload_and_refusals() {
         if super::super::native_entity_refs::tests::run_fresh_cases(
@@ -1428,7 +1431,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             assert_eq!(game.open_block_menu(conn, chest_pos), MenuOpen::Opened);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn refused_swap_resends_the_menu_and_undisplayed_hotbar() {
         for (player_inventory, button, menu_slots) in [(false, 2, 1), (true, 40, 37)] {
@@ -1526,7 +1529,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             );
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn blockless_menu_data_is_committed_to_only_its_live_generation() {
         use mod_api::{ContainerOpenedEvent, MenuDataRefusal, OpenMenuError};
@@ -1748,12 +1751,11 @@ use sunrise_sim::lan::{Out, PlayerSender};
                             Err(MenuDataRefusal::InvalidIndex)
                         );
                         let resend = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
-                            game.server
-                                .lan
-                                .as_mut()
-                                .unwrap()
-                                .hub
-                                .resend_menu(1, window, &game.common.world);
+                            game.server.lan.as_mut().unwrap().hub.resend_menu(
+                                1,
+                                window,
+                                &game.common.world,
+                            );
                         };
                         game.storage_scope(|game, _| {
                             assert_eq!(menu.set_data_slot(game, 0, i32::MAX), Ok(true));
@@ -1904,7 +1906,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn revision_two_blockless_menu_syncs_only_encodable_indices() {
         use sunrise_protocol::menu_extra::{DATA_CHANNEL, DataSlot};

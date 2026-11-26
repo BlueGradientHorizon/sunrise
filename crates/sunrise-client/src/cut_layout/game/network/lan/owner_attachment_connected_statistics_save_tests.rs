@@ -72,7 +72,8 @@ mod owner_attachment_save_tests {
             &format!("{HERE}::an_autosave_writes_the_owners_live_attachments_to_the_file_it_loads"),
             || {
                 let mut resources = None;
-                let mut game = sunrise_gameplay::game::game_tests::tests::server_game(&mut resources);
+                let mut game =
+                    sunrise_gameplay::game::game_tests::tests::server_game(&mut resources);
                 owned_host(&mut game);
                 // The integrated server has no player of its own: outside a turn, where
                 // the autosave and the pause save run, the owner's map is their record's.
@@ -98,9 +99,11 @@ mod owner_attachment_save_tests {
             &format!("{HERE}::a_save_in_another_players_turn_writes_the_owners_attachments"),
             || {
                 let mut resources = None;
-                let mut game = sunrise_gameplay::game::game_tests::tests::server_game(&mut resources);
+                let mut game =
+                    sunrise_gameplay::game::game_tests::tests::server_game(&mut resources);
                 owned_host(&mut game);
-                let other = sunrise_gameplay_common::game::native_player_death::tests::new_guest(2, 2);
+                let other =
+                    sunrise_gameplay_common::game::native_player_death::tests::new_guest(2, 2);
                 game.server.lan.as_mut().unwrap().hub.guests.push(other);
                 set_value(&mut game, 1, 7);
                 set_value(&mut game, 2, 5);
@@ -122,8 +125,11 @@ mod connected_statistics_save_tests {
     use std::fs;
 
     fn connected_stats_save_control(stale: bool) {
-        use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::server_side::stats};
         use std::sync::{Arc, Mutex};
+        use {
+            sunrise_gameplay::game::server_side::stats,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole,
+        };
         let mut resources = None;
         let mut game = sunrise_gameplay::game::game_tests::tests::server_game(&mut resources);
         game.options.execution_role = ExecutionRole::DedicatedServer;
@@ -157,7 +163,8 @@ mod connected_statistics_save_tests {
             },
         )));
         game.set_allow_commands(true);
-        let _rx = sunrise_gameplay::game::server_side::lan::world_spawn_sync_tests::host_for(&mut game);
+        let _rx =
+            sunrise_gameplay::game::server_side::lan::world_spawn_sync_tests::host_for(&mut game);
         let host = game.server.lan.as_mut().unwrap();
         host.owner = None;
         host.hub
@@ -237,11 +244,15 @@ mod connected_statistics_save_exclusion_tests {
     fn excluded_guest_records_are_not_invented_or_written() {
         let mut resources = None;
         let mut game = sunrise_gameplay::game::game_tests::tests::server_game(&mut resources);
-        let _rx = sunrise_gameplay::game::server_side::lan::world_spawn_sync_tests::host_for(&mut game);
+        let _rx =
+            sunrise_gameplay::game::server_side::lan::world_spawn_sync_tests::host_for(&mut game);
         game.server.world_root = std::env::current_dir().unwrap().join("stats-excluded");
         std::fs::create_dir_all(&game.server.world_root).unwrap();
-        let path =
-            sunrise_gameplay::game::server_side::stats::player_json(&game.server.world_root, "stats", [0, 0, 0, 1]);
+        let path = sunrise_gameplay::game::server_side::stats::player_json(
+            &game.server.world_root,
+            "stats",
+            [0, 0, 0, 1],
+        );
         let mut host = game.server.lan.take().unwrap();
         host.play
             .entry(1)
@@ -265,10 +276,12 @@ mod connected_statistics_save_exclusion_tests {
         game.save_game_metadata().unwrap();
         assert!(!path.exists(), "the existing dedicated gate is preserved");
         game.options.dedicated = Some(Vec::new());
-        game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+        game.options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
         game.save_game_metadata().unwrap();
         assert!(!path.exists(), "the existing nonclient gate is preserved");
-        game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::DedicatedServer;
+        game.options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::DedicatedServer;
         let host = game.server.lan.take().unwrap();
         game.save_game_metadata().unwrap();
         assert!(!path.exists(), "no hub: no substituted record");

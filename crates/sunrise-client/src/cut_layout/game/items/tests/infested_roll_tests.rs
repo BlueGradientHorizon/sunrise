@@ -1,6 +1,5 @@
 //! `LivingEntity.hurtServer` runs `InfestedMobEffect.onMobHurt` for a hit that
 //! was not blocked, even when armor or absorption eats all of it.
-use {crate::settings::Settings, crate::game::load_resources, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role};
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
@@ -9,6 +8,10 @@ use sunrise_level::chunk::Chunk;
 use sunrise_level::effects::EffectInstance;
 use sunrise_sim::mobs::Mob;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    crate::game::load_resources, crate::settings::Settings, sunrise_gameplay_common::game::Options,
+    sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role,
+};
 
 /// A game over 5x5 empty chunks around (0, 0) with a stone floor at y = 3, so
 /// the silverfish the roll spawns at (8.5, 4, 8.5) have a loaded chunk.

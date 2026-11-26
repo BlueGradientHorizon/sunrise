@@ -1,9 +1,9 @@
 //! `FireworkRocketEntity.explode`'s game event and sound gate, and the
 //! `ITEM_USED` an `useOn` counts. Prepared resources only.
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 use crate::game::{Settings, load_resources};
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::LegacyRandom};
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 use {
     sunrise_items::firework::FireworkExplosion, sunrise_items::firework::FireworkShape,
     sunrise_items::items::ItemStack, sunrise_level::chunk::Chunk, sunrise_sim::mobs::Who,
@@ -27,7 +27,8 @@ pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGam
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
@@ -64,7 +65,8 @@ pub(crate) fn twinkling() -> FireworkExplosion {
 
 /// Recording of `Game::post_game_event`, as the sculk tests read it.
 pub(crate) fn start_events() {
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|e| *e.borrow_mut() = Some(Vec::new()));
 }
 
 pub(crate) fn take_explosions() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
@@ -77,7 +79,8 @@ pub(crate) fn take_explosions() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
 }
 
 pub(crate) fn stop_events() {
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = None);
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|e| *e.borrow_mut() = None);
 }
 
 /// `FireworkRocketEntity.explode`: `gameEvent(GameEvent.EXPLODE, getOwner())` at

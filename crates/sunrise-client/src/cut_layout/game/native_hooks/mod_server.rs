@@ -1,5 +1,3 @@
-
-
 #[cfg(test)]
 #[path = "block_entity_neighbors_tests_server.rs"]
 pub(crate) mod block_entity_neighbors_tests;
@@ -24,11 +22,11 @@ pub(crate) mod piston_push_reaction_tests;
 #[path = "placement_context_tests_server.rs"]
 pub(crate) mod placement_context_tests;
 
+#[path = "server_tick_rate_changed_server.rs"]
+pub(crate) mod server_tick_rate_changed;
 #[cfg(test)]
 #[path = "trident_family_tests_server.rs"]
 pub(crate) mod trident_family_tests;
-#[path = "server_tick_rate_changed_server.rs"]
-pub(crate) mod server_tick_rate_changed;
 
 #[path = "register_enchantment_damage_effects_server.rs"]
 pub(crate) mod register_enchantment_damage_effects;

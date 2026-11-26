@@ -1,7 +1,7 @@
 use crate::game::ClientGame;
+use sunrise_game_data::Result;
 use sunrise_gameplay_common::game::integrated_link::NO_ANSWER;
 use sunrise_gameplay_common::game::owner_link::{ControlRequest, OwnerRequest};
-use sunrise_game_data::Result;
 
 impl ClientGame<'_> {
     /// `sunrise-ctl lan op NAME LEVEL`; `None` for any other command.

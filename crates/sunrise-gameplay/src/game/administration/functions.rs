@@ -1,12 +1,9 @@
 //! Data packs in the game: functions (`/function`, `/return`, tick and load
 //! tags, `/schedule`), predicates, `/reload` and `/datapack`.
-use super::{
-    commands::{
-        R, Target, err,
-        execute::{ExecState, Source},
-    },
+use super::commands::{
+    R, Target, err,
+    execute::{ExecState, Source},
 };
-use sunrise_gameplay_common::game::function_pack_stack::PackStack;
 use mod_api::__private::reload::ReloadStageError;
 use std::sync::Arc;
 use sunrise_command::{Arg, Context};
@@ -15,6 +12,7 @@ use sunrise_game_data::{
     scoreboard::bracketed,
     text::{self, Text},
 };
+use sunrise_gameplay_common::game::function_pack_stack::PackStack;
 use sunrise_level::datapack::{self, DataPack, DataStore, Function};
 use sunrise_sim::save;
 
@@ -91,7 +89,9 @@ pub fn pack_stack(
 ) -> PackStack {
     let builtin = (!vanilla_disabled)
         .then(|| DataPack::from_source("vanilla".into(), builtin_source.clone()));
-    let packs = sunrise_gameplay_common::game::pack_discovery::data_repository(world_root, resources, additional);
+    let packs = sunrise_gameplay_common::game::pack_discovery::data_repository(
+        world_root, resources, additional,
+    );
     let enabled = datapack::enabled_ids(world_root, &packs, enabled_features);
     PackStack {
         content: DataPack::from_source("sunrise-content".into(), content_source.clone()),
@@ -161,10 +161,7 @@ impl FnState {
     }
 
     /// The highest enabled world pack providing this data resource.
-    pub fn data_resource(
-        &self,
-        name: &str,
-    ) -> Option<sunrise_assets::resource_source::Resource> {
+    pub fn data_resource(&self, name: &str) -> Option<sunrise_assets::resource_source::Resource> {
         self.pack_sources()
             .find(|source| source.contains(name))
             .map(|source| {
@@ -197,7 +194,9 @@ impl crate::game::ServerGame<'_> {
         if self.server.fns.0.loaded || self.server.world_root.as_os_str().is_empty() {
             return;
         }
-        if let Err(error) = self.reload_datapacks(false, &self.common.level.enabled_features.clone()) {
+        if let Err(error) =
+            self.reload_datapacks(false, &self.common.level.enabled_features.clone())
+        {
             log::warn!("Sunrise: {}", error.diagnostic());
         }
     }
@@ -223,15 +222,19 @@ impl crate::game::ServerGame<'_> {
         )
         .map_err(|error| {
             ReloadStageError::OriginalJars(
-                sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(&error).unwrap(),
+                sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(&error)
+                    .unwrap(),
             )
         })?;
         let next_root = self
-            .common.stage_condition_inventory()
+            .common
+            .stage_condition_inventory()
             .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
         let resources = next_root
             .as_ref()
-            .map_or(self.common.options.resources.as_path(), |root| root.prepared())
+            .map_or(self.common.options.resources.as_path(), |root| {
+                root.prepared()
+            })
             .to_path_buf();
         let data = next_root
             .as_ref()
@@ -239,7 +242,8 @@ impl crate::game::ServerGame<'_> {
         let changes = next_root
             .as_ref()
             .map_or(&self.common.pack.data_changes, |root| root.data_changes());
-        let additional = sunrise_gameplay_common::game::pack_discovery::data_packs(&self.common.mods);
+        let additional =
+            sunrise_gameplay_common::game::pack_discovery::data_packs(&self.common.mods);
         let stack = pack_stack(
             &self.server.world_root,
             &resources,
@@ -251,7 +255,8 @@ impl crate::game::ServerGame<'_> {
         );
         let prepared = self.begin_condition_reload(&stack, &resources)?;
         let context = self
-            .common.prepare_loop_context(&resources)
+            .common
+            .prepare_loop_context(&resources)
             .map_err(|error| ReloadStageError::DataSource(error.to_string()))?;
         let world = if run_load && self.common.is_logical_server() {
             Some(
@@ -272,10 +277,10 @@ impl crate::game::ServerGame<'_> {
                 &self.common.res.core.item_data,
                 &super::pack_files(&tables.tables),
                 &tables.health.damage,
-                tables
-                    .tables
-                    .as_ref()
-                    .map_or_else(|| self.common.res.shared_items(), |tables| tables.items.clone()),
+                tables.tables.as_ref().map_or_else(
+                    || self.common.res.shared_items(),
+                    |tables| tables.items.clone(),
+                ),
                 tables
                     .tables
                     .as_ref()
@@ -450,7 +455,15 @@ impl crate::game::ServerGame<'_> {
             .by_registry
             .entry("minecraft:slot_source".into())
             .or_default();
-        sources.ids = self.server.fns.0.store.slot_sources.keys().cloned().collect();
+        sources.ids = self
+            .server
+            .fns
+            .0
+            .store
+            .slot_sources
+            .keys()
+            .cloned()
+            .collect();
         sources.tags = self
             .server
             .fns
@@ -711,12 +724,7 @@ impl crate::game::ServerGame<'_> {
     // ---- running -----------------------------------------------------------------
 
     /// Run one function with `source`: its commands in order, until a `return`.
-    pub fn run_function(
-        &mut self,
-        f: &Function,
-        args: Option<&Tag>,
-        source: Source,
-    ) -> R<Outcome> {
+    pub fn run_function(&mut self, f: &Function, args: Option<&Tag>, source: Source) -> R<Outcome> {
         let failure = |key: &str, a: &[String]| {
             let args: Vec<&dyn std::fmt::Display> =
                 a.iter().map(|s| s as &dyn std::fmt::Display).collect();
@@ -753,7 +761,8 @@ impl crate::game::ServerGame<'_> {
             }
             if self.server.exec.0.commands
                 > self
-                    .common.ui
+                    .common
+                    .ui
                     .rules
                     .int_at(sunrise_game_data::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
                     .max(1) as u32
@@ -877,7 +886,9 @@ impl crate::game::ServerGame<'_> {
             .as_ref()
             .is_some_and(|p| p.matches(ctx, source))
         {
-            std::sync::Arc::unwrap_or_clone(self.server.exec.0.prepared_function.take().unwrap().call)
+            std::sync::Arc::unwrap_or_clone(
+                self.server.exec.0.prepared_function.take().unwrap().call,
+            )
         } else {
             let Some(call) = self.prepare_function_call(ctx)? else {
                 return Ok(0);
@@ -1016,7 +1027,8 @@ impl crate::game::ServerGame<'_> {
             return None;
         }
         let limit = self
-            .common.ui
+            .common
+            .ui
             .rules
             .int_at(sunrise_game_data::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
             .max(1) as u32;
@@ -1471,7 +1483,8 @@ impl crate::game::ServerGame<'_> {
         // One resolve for the store and the tables, as `/reload`'s is: the
         // timers already in memory stay, and none come back from disk
         // (`ServerFunctionManager` keeps its queue over a pack change).
-        let additional = sunrise_gameplay_common::game::pack_discovery::data_packs(&self.common.mods);
+        let additional =
+            sunrise_gameplay_common::game::pack_discovery::data_packs(&self.common.mods);
         let mut stack = pack_stack(
             &self.server.world_root,
             &self.common.options.resources,
@@ -1522,7 +1535,11 @@ impl crate::game::ServerGame<'_> {
         self.save_datapack_settings();
         self.server.fns.0.load_pending = true;
         self.install_world_tables(world);
-        self.apply_server_reload(prepared, &stack, &self.common.level.enabled_features.clone());
+        self.apply_server_reload(
+            prepared,
+            &stack,
+            &self.common.level.enabled_features.clone(),
+        );
         self.run_native_advancement_grants();
         Ok(())
     }
@@ -1582,8 +1599,8 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::tables::GameItems as _;
     use super::*;
+    use sunrise_gameplay_common::game::tables::GameItems as _;
 
     #[test]
     fn reload_failure_formats_nested_listener_error_source_chain() {
@@ -1639,12 +1656,6 @@ mod tests {
             "{reply}"
         );
     }
-
-    
-
-    
-
-    
 
     #[test]
     #[ignore = "daily"]
@@ -2163,10 +2174,6 @@ mod tests {
         assert!(ran, "the prepared-resource fixture must run this case");
     }
 
-    
-
-    
-
     #[test]
     #[ignore = "daily"]
     #[cfg(any())]
@@ -2294,12 +2301,6 @@ mod tests {
         });
         std::fs::remove_dir_all(root).unwrap();
     }
-
-    
-
-    
-
-    
 
     /// Two packs override the same recipe: the later one in the selected
     /// (`datapacks.json`) order wins, not the later one alphabetically.
@@ -2471,7 +2472,6 @@ include!("functions/typed_state_range_tests.rs");
 #[path = "functions/pack_tag_tests.rs"]
 mod pack_tag_tests;
 
-
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
@@ -2481,4 +2481,3 @@ use sunrise_gameplay_common::game::command_registries::CommandRegistriesGameExt1
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
 use sunrise_gameplay_common::game::mods::ModGameExt1 as _;
-

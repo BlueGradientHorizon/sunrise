@@ -165,11 +165,7 @@ impl OpenTransactions {
         self.retained_original_attachments.pop();
     }
 
-    pub fn close_retained_originals(
-        &self,
-        frame: Option<TransactionFrame>,
-        commit: bool,
-    ) {
+    pub fn close_retained_originals(&self, frame: Option<TransactionFrame>, commit: bool) {
         if let Some(frame) = frame {
             for slot in &self.retained_original_attachments {
                 slot.lock()
@@ -607,12 +603,7 @@ impl Kept {
         }
     }
 
-    pub fn restore_client(
-        self,
-        world: &mut sunrise_level::world::World,
-        removed: bool,
-        pos: Pos,
-    ) {
+    pub fn restore_client(self, world: &mut sunrise_level::world::World, removed: bool, pos: Pos) {
         let current = world.block_entities.generation(&pos);
         let replaced = current != self.generation;
         if replaced && current.is_some() {

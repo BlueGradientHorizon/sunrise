@@ -234,7 +234,6 @@ impl Hook {
     }
 }
 
-
 #[cfg(any(test, feature = "test-support"))]
 impl Hook {
     pub fn set_hooked_in(&mut self, id: u32) {

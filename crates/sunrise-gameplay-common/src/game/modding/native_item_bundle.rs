@@ -31,7 +31,7 @@ pub trait NativeItemBundleGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             .is_some_and(|members| members.contains(item.item.as_ref()))
     }
 
-     fn bundle_slots(
+    fn bundle_slots(
         &self,
         stack: &ItemStack,
         config: &BundleConfig,
@@ -47,7 +47,7 @@ pub trait NativeItemBundleGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         Ok(Some(contents.items().iter().cloned().map(Some).collect()))
     }
 
-     fn bundle_capacity(
+    fn bundle_capacity(
         &self,
         stack: &ItemStack,
         slot: usize,
@@ -66,7 +66,7 @@ pub trait NativeItemBundleGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         Ok(room.unwrap_or(0))
     }
 
-     fn bundle_insert_slot(
+    fn bundle_insert_slot(
         &self,
         stack: &ItemStack,
         slot: usize,
@@ -107,7 +107,7 @@ pub trait NativeItemBundleGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         Ok(Some((moved, changed)))
     }
 
-     fn bundle_extract(
+    fn bundle_extract(
         &self,
         stack: &ItemStack,
         slot: usize,
@@ -142,7 +142,7 @@ pub trait NativeItemBundleGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         Ok(Some((Some(out), changed)))
     }
 
-     fn bundle_metrics(
+    fn bundle_metrics(
         &self,
         stack: &ItemStack,
         config: &BundleConfig,
@@ -166,26 +166,18 @@ pub trait NativeItemBundleGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-     fn item_bundle_slots(
-        &self,
-        stack: &ItemStack,
-    ) -> Option<Vec<Option<ItemStack>>> {
+    fn item_bundle_slots(&self, stack: &ItemStack) -> Option<Vec<Option<ItemStack>>> {
         self.bundle_slots(stack, &BundleConfig::vanilla()).unwrap()
     }
 
     #[cfg(any(test, feature = "test-support"))]
-     fn item_bundle_capacity(
-        &self,
-        stack: &ItemStack,
-        slot: usize,
-        item: &ItemStack,
-    ) -> u32 {
+    fn item_bundle_capacity(&self, stack: &ItemStack, slot: usize, item: &ItemStack) -> u32 {
         self.bundle_capacity(stack, slot, item, &BundleConfig::vanilla())
             .unwrap()
     }
 
     #[cfg(any(test, feature = "test-support"))]
-     fn item_bundle_insert_slot(
+    fn item_bundle_insert_slot(
         &self,
         stack: &ItemStack,
         slot: usize,
@@ -196,7 +188,7 @@ pub trait NativeItemBundleGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-     fn item_bundle_extract(
+    fn item_bundle_extract(
         &self,
         stack: &ItemStack,
         slot: usize,
@@ -207,6 +199,5 @@ pub trait NativeItemBundleGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeItemBundleGameExt1<'__sg> for G {}
-
 
 use crate::game::tables::GameItems as _;

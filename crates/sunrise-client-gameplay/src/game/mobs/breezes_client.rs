@@ -33,7 +33,9 @@ impl ClientGame<'_> {
             let (block, state) = self.common.breeze_ground(&self.common.mobs[i]);
             // `emitGroundParticles` skips an invisible block; the jump trail
             // (`emitJumpTrailParticles`) does not ask.
-            if !jump_trail && self.common.res.facts().get(state).render_shape == RenderShape::Invisible {
+            if !jump_trail
+                && self.common.res.facts().get(state).render_shape == RenderShape::Invisible
+            {
                 continue;
             }
             let Some((sprite, tint)) = self.particle_sprite(state, block) else {

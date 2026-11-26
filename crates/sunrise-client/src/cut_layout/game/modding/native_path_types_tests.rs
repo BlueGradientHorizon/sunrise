@@ -1,5 +1,4 @@
 //! Positional block Parts run against the owning readonly level, not during state resolution.
-use sunrise_gameplay_common::game::GameGameExt1;
 use super::native_entity_refs::tests::with_game;
 use mod_api::{
     AdjacentBlockPathTypeEvent, BlockPart, BlockPathTypeEvent, Hooks, Host, IsPathfindableEvent,
@@ -7,6 +6,7 @@ use mod_api::{
 };
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_sim::mobs::{
     Mob,
     path::{Evaluator, Finder},
@@ -195,7 +195,8 @@ fn a_block_part_reads_a_block_entity_through_its_owning_level() {
         // the level host answers from that level's block entity, not a fixed one.
         let scratch = tempfile::tempdir().unwrap();
         game.server.world_root = scratch.path().to_path_buf();
-        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+            .unwrap();
         game.world.chunks.insert(
             (0, 0),
             std::sync::Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)),

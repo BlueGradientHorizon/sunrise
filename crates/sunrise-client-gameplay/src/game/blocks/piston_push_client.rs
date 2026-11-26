@@ -2,16 +2,16 @@
 //! shulker/shulker-box lid prediction (local player + all intersecting boats), and
 //! moving-collider carry/shove prediction for the local player.
 use super::move_gate::MoveWho;
+use sunrise_core::geometry::{
+    Aabb, Axis, COLLISION_EPSILON, Direction, Vec3, entity_collision_bounds,
+};
+use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::game::collision_source::Mover;
 use sunrise_gameplay_common::game::entity::{Entity, EntityHandle};
 use sunrise_gameplay_common::game::piston_push::{
     Body, Lid, Push, PushTarget, ShulkerPush, carrying::support_of, pushed_movement, shulker_lid,
 };
 use sunrise_gameplay_common::game::remote::passengers::passenger_root;
-use sunrise_core::geometry::{
-    Aabb, Axis, COLLISION_EPSILON, Direction, Vec3, entity_collision_bounds,
-};
-use sunrise_core::position::BlockPos;
 use sunrise_level::collisions::{SceneCollisions, with_piston_noclip};
 use sunrise_sim::entity_rules::EntityRules;
 use sunrise_sim::join_seq::{JoinSeq, Joined};
@@ -44,7 +44,8 @@ impl crate::game::ClientGame<'_> {
         let side = client_game_side!(self, side_server);
         let _sections = section_scope.map(|scope| scope.begin(&mut self.common.native_lifecycle));
         let tag_items = self
-            .common.server_items
+            .common
+            .server_items
             .as_deref()
             .unwrap_or_else(|| self.common.res.items());
         let mut world = MotionWorld {
@@ -63,7 +64,8 @@ impl crate::game::ClientGame<'_> {
         };
         let _ = world.move_ordinary(&mut MoveGate::new(), mover, movement, auto_jump, false)?;
         Ok(self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map(|player| player.position.subtract(before)))
     }
@@ -88,7 +90,8 @@ impl crate::game::ClientGame<'_> {
         };
         let index = self.common.build_piston_index();
         let player_step = self
-            .common.player
+            .common
+            .player
             .as_mut()
             .and_then(|p| p.attribute("minecraft:step_height").ok())
             .map_or(0.6, |v| v as f32);
@@ -145,9 +148,10 @@ impl crate::game::ClientGame<'_> {
             binding: self.common.collision,
             subject: None,
         };
-        let Ok(shape) = self
-            .common.collision
-            .collision_shape(&mut scene, state, [pos.x, pos.y, pos.z])
+        let Ok(shape) =
+            self.common
+                .collision
+                .collision_shape(&mut scene, state, [pos.x, pos.y, pos.z])
         else {
             return;
         };
@@ -165,7 +169,8 @@ impl crate::game::ClientGame<'_> {
                 binding: self.common.collision,
                 subject: None,
             };
-            self.common.collision
+            self.common
+                .collision
                 .collision_shape(&mut scene, piston.moved_state, [pos.x, pos.y, pos.z])
                 .ok()
                 .and_then(|s| s.bounds())
@@ -268,7 +273,8 @@ impl crate::game::ClientGame<'_> {
     fn client_resolve_push_target(&self, selected: PushTarget) -> Option<MoveWho> {
         match selected.hint {
             MoveWho::Player => self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .filter(|p| p.entity_id as u32 == selected.id)
                 .map(|_| MoveWho::Player),
@@ -396,7 +402,9 @@ impl crate::game::ClientGame<'_> {
             let moved = resolved.length_squared() > 1.0e-7
                 || limited.length_squared() - resolved.length_squared() < 1.0e-7;
             if moved && let Some(i) = self.client_resolve_boat(selected) {
-                self.common.boats.update(i, |b| b.move_entity(&mut gate, resolved));
+                self.common
+                    .boats
+                    .update(i, |b| b.move_entity(&mut gate, resolved));
             }
             if let Some(i) = self.client_resolve_boat(selected) {
                 self.client_finish_boat_ground_and_restitution(selected, i, limited, resolved);
@@ -444,10 +452,12 @@ impl crate::game::ClientGame<'_> {
         let boat = &self.common.boats[i];
         let (id, feet, kind) = (boat.id, boat.position, boat.shared_type_name());
         let effect = self
-            .common.body_motion(&client_game_side!(self, side_server))
+            .common
+            .body_motion(&client_game_side!(self, side_server))
             .legacy_contact(feet, &boat.ground);
         let response = self
-            .common.body_motion(&client_game_side!(self, side_server))
+            .common
+            .body_motion(&client_game_side!(self, side_server))
             .restitute(
                 (id, &kind),
                 BodyMove {
@@ -485,7 +495,8 @@ impl crate::game::ClientGame<'_> {
                 }
             }
             if let Some(mount) = self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == id)
                 .and_then(|m| m.extra.mount)
@@ -520,7 +531,8 @@ impl crate::game::ClientGame<'_> {
     pub fn lid_push_local(&mut self, lid: Lid, area: Aabb, movement: Vec3) {
         let root = self.client_lid_root(lid);
         let boats: Vec<_> = self
-            .common.boats
+            .common
+            .boats
             .iter()
             .enumerate()
             .filter(|(_, boat)| !boat.is_removed() && boat.bounds().intersects(area))
@@ -531,7 +543,8 @@ impl crate::game::ClientGame<'_> {
             })
             .collect();
         if self
-            .common.player
+            .common
+            .player
             .as_ref()
             .is_some_and(|p| !p.spectator && p.bounds().intersects(area))
             && !self.common.lid_spares_with_root(
@@ -583,7 +596,9 @@ impl crate::game::ClientGame<'_> {
         }
         let movement = gate.delta();
         if no_physics {
-            self.common.boats.update(i, |b| b.move_entity(&mut gate, movement));
+            self.common
+                .boats
+                .update(i, |b| b.move_entity(&mut gate, movement));
             if let Some(i) = self.client_resolve_boat(selected) {
                 self.record_boat_lid_movement(i, movement);
             }
@@ -617,9 +632,16 @@ impl crate::game::ClientGame<'_> {
         let placed = moved.length_squared() > 1.0e-7
             || movement.length_squared() - moved.length_squared() < 1.0e-7;
         if placed {
-            let fall = self.common.vehicle_fall_reset(self.common.boats[i].fall_distance, body.position, moved);
-            self.common.boats.update(i, |boat| boat.fall_distance = fall);
-            self.common.boats
+            let fall = self.common.vehicle_fall_reset(
+                self.common.boats[i].fall_distance,
+                body.position,
+                moved,
+            );
+            self.common
+                .boats
+                .update(i, |boat| boat.fall_distance = fall);
+            self.common
+                .boats
                 .update(i, |boat| boat.move_entity(&mut gate, moved));
         }
         let Some(i) = self.client_resolve_boat(selected) else {
@@ -661,7 +683,9 @@ impl crate::game::ClientGame<'_> {
                 .is_none_or(|r| r.passenger_vehicle(boat.id).is_none())
         {
             let fall = self.common.boat_fall(boat, moved.y);
-            self.common.boats.update(i, |boat| boat.fall_distance = fall);
+            self.common
+                .boats
+                .update(i, |boat| boat.fall_distance = fall);
         }
         let differs = sunrise_world::entity_move::different;
         if authoritative
@@ -673,10 +697,12 @@ impl crate::game::ClientGame<'_> {
             let boat = &self.common.boats[i];
             let (id, feet, kind) = (boat.id, boat.position, boat.shared_type_name());
             let effect = self
-                .common.body_motion(&client_game_side!(self, side_server))
+                .common
+                .body_motion(&client_game_side!(self, side_server))
                 .legacy_contact(feet, &boat.ground);
             let response = self
-                .common.body_motion(&client_game_side!(self, side_server))
+                .common
+                .body_motion(&client_game_side!(self, side_server))
                 .restitute(
                     (id, &kind),
                     BodyMove {
@@ -746,7 +772,8 @@ impl crate::game::ClientGame<'_> {
             if carry
                 && self.common.riding.is_none()
                 && let Some((player_id, bounds)) = self
-                    .common.player
+                    .common
+                    .player
                     .as_ref()
                     .filter(|p| !p.spectator && p.ground.on_ground)
                     .map(|p| (p.entity_id as u32, p.bounds()))
@@ -761,7 +788,8 @@ impl crate::game::ClientGame<'_> {
                         start.placed().find(|p| p.id == support),
                         self.client_collider_now_frame(support),
                     ) && let Some(bounds) = self
-                        .common.player
+                        .common
+                        .player
                         .as_ref()
                         .filter(|p| !p.spectator)
                         .map(|p| p.bounds())
@@ -828,7 +856,8 @@ impl crate::game::ClientGame<'_> {
                 break;
             }
             let Some((player_id, bounds)) = self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .filter(|p| !p.spectator)
                 .map(|p| (p.entity_id as u32, p.bounds()))

@@ -6,11 +6,13 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn interacting_loot_entity(&mut self) -> sunrise_world::loot::LootEntity {
         let mut entity = self.killer_loot_entity(None);
         entity.on_fire = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .is_some_and(sunrise_sim::motion::PlayerMotion::is_on_fire);
         entity.vehicle = self
-            .common.riding
+            .common
+            .riding
             .and_then(|id| self.vehicle_loot_entity(id))
             .map(Box::new);
         entity
@@ -35,7 +37,8 @@ impl crate::game::ServerGame<'_> {
                 ..LootEntity::default()
             });
         }
-        self.common.carts
+        self.common
+            .carts
             .iter()
             .find(|cart| cart.id == id)
             .map(|cart| LootEntity {
@@ -45,7 +48,8 @@ impl crate::game::ServerGame<'_> {
     }
     /// `Player.getLuck`: the luck attribute (the Luck and Bad Luck effects).
     pub(in crate::game) fn acting_luck(&mut self) -> f32 {
-        self.common.player
+        self.common
+            .player
             .as_mut()
             .and_then(|p| p.attribute("minecraft:luck").ok())
             .unwrap_or(0.0) as f32

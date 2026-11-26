@@ -1,14 +1,22 @@
 use mod_api::LogicalSide;
-use std::sync::Arc;
-use mod_api::{CreativeModeTabs, CreativeTabEdit, CreativeTabEditError, CreativeTabList, CreativeTabPermissions, CreativeTabPlacement, CreativeTabReadError, CreativeTabVisibility};
-use sunrise_items::creative_catalog::Catalog;
-use sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::{display_name, snapshot};
-use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-use {sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::with_game_role};
 use mod_api::prelude::ItemsHost;
 use mod_api::{BuildCreativeModeTabContentsEvent, Hooks, HostSide};
-use std::sync::Mutex;
 use mod_api::{Compound, Tag};
+use mod_api::{
+    CreativeModeTabs, CreativeTabEdit, CreativeTabEditError, CreativeTabList,
+    CreativeTabPermissions, CreativeTabPlacement, CreativeTabReadError, CreativeTabVisibility,
+};
+use std::sync::Arc;
+use std::sync::Mutex;
+use sunrise_gameplay_common::game::execution_role::ExecutionRole;
+use sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::{
+    display_name, snapshot,
+};
+use sunrise_items::creative_catalog::Catalog;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_role,
+};
 
 #[derive(Default)]
 pub(in crate::game) struct Seen {

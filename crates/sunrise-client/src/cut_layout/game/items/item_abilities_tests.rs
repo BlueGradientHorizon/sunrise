@@ -1,9 +1,9 @@
 #![cfg(test)]
-use sunrise_gameplay_common::game::item_abilities::ability;
 use mod_api::{CanPerformActionEvent, Hooks, Host, ItemPart, Registrar, RegistrationContext};
 use std::sync::Arc;
 use sunrise_core::geometry::{Direction, Vec3};
 use sunrise_core::use_animation::UseAnimation;
+use sunrise_gameplay_common::game::item_abilities::ability;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::Mob;
 
@@ -74,7 +74,11 @@ fn add_sheep(game: &mut sunrise_gameplay::game::ServerGame<'_>, x: f64) -> usize
 }
 
 /// Right click on the sheep at `index` holding `stack`.
-fn click_sheep(game: &mut sunrise_gameplay::game::ServerGame<'_>, index: usize, stack: &ItemStack) -> bool {
+fn click_sheep(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    index: usize,
+    stack: &ItemStack,
+) -> bool {
     game.common.inventory[game.common.selected] = Some(stack.clone());
     let id = game.mobs[index].id as i32;
     game.interact_mob(Some(sunrise_gameplay_common::game::InteractTarget {

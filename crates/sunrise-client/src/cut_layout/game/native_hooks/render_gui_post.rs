@@ -1,11 +1,9 @@
-
-
 #![cfg(test)]
 use sunrise_client::extras_hud::Corners;
 use sunrise_client::hud::HudBatch;
 #[cfg(test)]
 mod tests {
-    use {crate::game::native_hooks::render_gui_post::*};
+    use crate::game::native_hooks::render_gui_post::*;
 
     #[test]
     #[ignore = "daily"]

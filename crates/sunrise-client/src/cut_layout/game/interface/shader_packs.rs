@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod player_status_tests {
@@ -8,8 +6,7 @@ pub(crate) mod player_status_tests {
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::motion::PlayerMotion;
 
-    pub(crate) fn stand_player(game: &mut sunrise_gameplay_common::game::CommonGame<'_>)
-    {
+    pub(crate) fn stand_player(game: &mut sunrise_gameplay_common::game::CommonGame<'_>) {
         for chunk in [(-1, -1), (-1, 0), (0, -1), (0, 0)] {
             game.world
                 .chunks
@@ -21,8 +18,7 @@ pub(crate) mod player_status_tests {
     pub(crate) fn rain_on_the_player(
         game: &mut sunrise_gameplay_common::game::CommonGame<'_>,
         raining: bool,
-    )
-    {
+    ) {
         let plains = game.res.biomes().id("minecraft:plains");
         let bottom = game.world.bottom_y() >> 2;
         for x in [-1, 0] {
@@ -37,19 +33,22 @@ pub(crate) mod player_status_tests {
         game.world.weather.settle_levels();
     }
 
-use sunrise_level::{chunk::Chunk, effects::EffectInstance};
+    use sunrise_level::{chunk::Chunk, effects::EffectInstance};
 
-/// On a server's client the player booleans follow what the server sent:
+    /// On a server's client the player booleans follow what the server sent:
     /// `Entity.isCurrentlyGlowing` is shared flag 6 alone (a client never asks the Glowing
     /// effect), `Entity.isVehicle` the passenger list of `SetPassengers`, and the rain the
     /// chunks and weather it was sent.
     #[test]
     #[ignore = "daily"]
     fn pack_status_on_a_server_follows_what_it_sent() {
-        use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
         use sunrise_protocol::{
             entity_data::{Value, serializer},
             packets::play::{self, Clientbound as C},
+        };
+        use {
+            crate::game::server_side::native_entity_refs::tests::with_client_game,
+            sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client,
         };
         with_client_game(|game| {
             let _server = logged_client(game);
@@ -121,7 +120,7 @@ use sunrise_level::{chunk::Chunk, effects::EffectInstance};
             assert!(!game.pack_player_status().wet);
         });
     }
-/// A new `LocalPlayer` starts with default shared flags: after a login, and after a respawn
+    /// A new `LocalPlayer` starts with default shared flags: after a login, and after a respawn
     /// without `KEEP_ENTITY_DATA`, `Entity.isCurrentlyGlowing` is false until the server sets
     /// flag 6 again; a respawn that keeps the data keeps it. `LivingEntity.isAlive` follows the
     /// health the server sent, and the new player is alive.

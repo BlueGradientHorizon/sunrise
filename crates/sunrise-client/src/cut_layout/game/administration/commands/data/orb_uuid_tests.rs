@@ -1,9 +1,9 @@
 // Same logical test module, kept in its own file.
+use crate::game::load_resources;
+use crate::settings::Settings;
+use sunrise_core::nbt::Tag;
 use sunrise_gameplay_common::game::commands_common::Target;
 use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
-use crate::settings::Settings;
-use crate::game::load_resources;
-use sunrise_core::nbt::Tag;
 
 #[test]
 #[ignore = "daily"]
@@ -25,7 +25,8 @@ fn saved_orb_uuid_comes_from_registered_identity_without_or_despite_raw() {
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,

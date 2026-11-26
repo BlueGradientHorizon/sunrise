@@ -22,7 +22,7 @@ pub fn corners(b: Aabb) -> [f64; 6] {
 }
 
 pub trait NativeBotsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-     fn level_collision_boxes(
+    fn level_collision_boxes(
         &self,
         level: mod_api::LevelRef,
         aabb: [f64; 6],
@@ -35,11 +35,7 @@ pub trait NativeBotsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         Some(boxes)
     }
 
-     fn level_has_collisions(
-        &self,
-        level: mod_api::LevelRef,
-        aabb: [f64; 6],
-    ) -> Option<bool> {
+    fn level_has_collisions(&self, level: mod_api::LevelRef, aabb: [f64; 6]) -> Option<bool> {
         let mut any = false;
         self.scan_block_collisions(level, aabb, |found| {
             any = !found.is_empty();
@@ -89,7 +85,6 @@ pub trait NativeBotsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeBotsCommonGameExt1<'__sg> for G {}
-
 
 struct ScanColumns<'w, 'r> {
     scene: SceneCollisions<'w, 'r>,

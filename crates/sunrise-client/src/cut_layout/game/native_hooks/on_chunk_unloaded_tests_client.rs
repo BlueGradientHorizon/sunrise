@@ -1,7 +1,10 @@
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
 use crate::game::native_hooks::on_chunk_unloaded_tests::*;
 use std::time::Duration;
 use sunrise_level::containers::BlockEntity;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+};
 
 #[test]
 #[ignore = "daily"]

@@ -42,12 +42,8 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait NativeEntityMotionValuesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-
     /// The server's copy of the player a target names.
-     fn native_target_guest<'a>(
-        &'a self,
-        t: Target,
-    ) -> Option<&'a sunrise_sim::lan::guest::Guest>
+    fn native_target_guest<'a>(&'a self, t: Target) -> Option<&'a sunrise_sim::lan::guest::Guest>
     where
         '__sg: 'a,
     {
@@ -59,7 +55,7 @@ pub trait NativeEntityMotionValuesGameExt1<'__sg>: crate::game::SideGame<'__sg> 
     }
 
     /// Whether the entity stands on a block (`Entity.onGround`). API 379.
-     fn entity_on_ground(&self, entity: EntityRef) -> Option<bool> {
+    fn entity_on_ground(&self, entity: EntityRef) -> Option<bool> {
         let t = self.native_entity_read_target(entity)?;
         if t == Target::Player
             && let Some(p) = self.player.as_ref()
@@ -83,13 +79,12 @@ pub trait NativeEntityMotionValuesGameExt1<'__sg>: crate::game::SideGame<'__sg> 
     /// The unit vector that points up out of the entity's head
     /// (`Entity.getUpVector`): its view vector turned a quarter of a turn
     /// toward the zenith.
-     fn entity_up_vector(&self, entity: EntityRef) -> Option<[f64; 3]> {
+    fn entity_up_vector(&self, entity: EntityRef) -> Option<[f64; 3]> {
         let [yaw, pitch] = self.entity_rotation(entity)?;
         Some(turned_view_vector(yaw, pitch, -90.0))
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeEntityMotionValuesGameExt1<'__sg> for G {}
-
 
 use crate::game::side_ops::items::ItemsSideGameExt as _;
 

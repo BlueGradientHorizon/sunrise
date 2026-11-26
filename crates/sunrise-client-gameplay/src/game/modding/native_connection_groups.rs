@@ -9,9 +9,7 @@ use sunrise_protocol::{
 #[path = "native_connection_groups/receive.rs"]
 mod receive;
 pub use receive::ReceivedGroup;
-pub(in crate::game) use receive::{
-    GroupUpdates, block_groups, check_group_updates, column_groups,
-};
+pub(in crate::game) use receive::{GroupUpdates, block_groups, check_group_updates, column_groups};
 
 fn payload<'a>(packet: &'a C, channel: &str) -> Option<&'a [u8]> {
     match packet {

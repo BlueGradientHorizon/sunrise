@@ -1,22 +1,20 @@
-
-
 #[cfg(test)]
 #[cfg(feature = "client")]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::client_side::potions::tests::flt;
+    use sunrise_gameplay_common::game::client_side::potions::tests::flt;
 
-use super::*;
+    use super::*;
 
-use crate::game::dragon_common::Breath;
+    use crate::game::dragon_common::Breath;
 
-use crate::game::potions_common::{CloudSettings, PotionCloud};
+    use crate::game::potions_common::{CloudSettings, PotionCloud};
 
-use crate::game::server_side::potions_server::{
+    use crate::game::server_side::potions_server::{
         collect_dragon_breath, mob_can_be_affected, potion_cloud_from_nbt, potion_cloud_to_nbt,
     };
 
-/// `AreaEffectCloud.updateParticle` with a `custom_particle`: the codec's
+    /// `AreaEffectCloud.updateParticle` with a `custom_particle`: the codec's
     /// type and payload win over the potion colour; none falls back to the
     /// entity effect in that colour.
     #[test]
@@ -53,7 +51,7 @@ use crate::game::server_side::potions_server::{
         assert_eq!(effect.ty, ParticleType::EntityEffect);
         assert_eq!(effect.color[..3], [1.0, 128.0 / 255.0, 0.0]);
     }
-/// `AreaEffectCloud.addAdditionalSaveData` writes `custom_particle` back.
+    /// `AreaEffectCloud.addAdditionalSaveData` writes `custom_particle` back.
     #[test]
     fn cloud_custom_particle_survives_a_save() {
         let particle = Tag::compound([("type", Tag::String("flame".into()))]);
@@ -71,7 +69,7 @@ use crate::game::server_side::potions_server::{
         };
         assert_eq!(map.get(&"custom_particle".into()), Some(&particle));
     }
-/// A mod effect's damage type keeps its registry id and tags whether it is
+    /// A mod effect's damage type keeps its registry id and tags whether it is
     /// vanilla's or a datapack's, and one the registry lacks is refused.
     #[test]
     fn effect_damage_sources_retain_their_ids() {
@@ -109,7 +107,7 @@ use crate::game::server_side::potions_server::{
         }
         assert_eq!(NamedDamage::registered(&catalog, "demo:missing"), None);
     }
-/// `AreaEffectCloud.addAdditionalSaveData` with `readAdditionalSaveData`: a
+    /// `AreaEffectCloud.addAdditionalSaveData` with `readAdditionalSaveData`: a
     /// lingering cloud written at a save reads back with its lifetime, radius,
     /// use settings and the effects it sprays, with the hidden and ambient
     /// flags it carried.
@@ -194,7 +192,7 @@ use crate::game::server_side::potions_server::{
             Some("minecraft:area_effect_cloud")
         );
     }
-/// `WitherBoss.canBeAffected` refuses only the wither effect: its `addEffect`
+    /// `WitherBoss.canBeAffected` refuses only the wither effect: its `addEffect`
     /// refuses the rest, but a cloud of strength or healing still counts the boss
     /// as a victim (`AreaEffectCloud.serverTick` asks `canBeAffected`).
     #[test]
@@ -213,7 +211,7 @@ use crate::game::server_side::potions_server::{
             "wither"
         ));
     }
-/// `BottleItem.use`: collecting dragon's breath from an ender dragon's cloud (#8054).
+    /// `BottleItem.use`: collecting dragon's breath from an ender dragon's cloud (#8054).
     #[test]
     fn glass_bottle_collects_dragon_breath_from_dragon_cloud() {
         let player_box = Aabb::new(Vec3::new(-0.3, 64.0, -0.3), Vec3::new(0.3, 65.8, 0.3));
@@ -240,7 +238,7 @@ use crate::game::server_side::potions_server::{
         assert!(collect_dragon_breath(player_box, &mut clouds).is_some());
         assert_eq!(clouds[0].radius, 4.0);
     }
-/// `BottleItem.use`: clouds that are expired, non-dragon, lingering potions,
+    /// `BottleItem.use`: clouds that are expired, non-dragon, lingering potions,
     /// or out of reach cannot be bottled (#8054).
     #[test]
     fn glass_bottle_ignores_non_dragon_or_expired_or_out_of_range_clouds() {

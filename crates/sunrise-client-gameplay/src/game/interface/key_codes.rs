@@ -105,11 +105,7 @@ pub fn keyboard_button(playing: bool, action: KeyAction) -> Option<bool> {
 /// a sign editor, a prompt). Each is a `Screen` in vanilla, so `Gui.setScreen`
 /// runs `KeyMapping.releaseAll` and `Minecraft.tick` skips `handleKeybinds`
 /// while it is up: a mouse button held into it is let go of (#9729).
-pub fn gameplay_has_keyboard(
-    screen: Screen,
-    title: bool,
-    screen_over: bool,
-) -> bool {
+pub fn gameplay_has_keyboard(screen: Screen, title: bool, screen_over: bool) -> bool {
     screen == Screen::Playing && !title && !screen_over
 }
 

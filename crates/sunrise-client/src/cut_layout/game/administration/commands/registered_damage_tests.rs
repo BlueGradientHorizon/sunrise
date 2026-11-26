@@ -1,5 +1,5 @@
-use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_sim::{
     health::{damage_type, source_damage_type},
     mobs::{Damage, DamageKind, NamedDamage as Tags, Who, gear},
@@ -164,8 +164,8 @@ fn damage_command_keeps_explicit_explosion_with_an_attacker() {
 
 #[test]
 fn projectile_and_command_targets_classify_actual_direct_entity_families() {
-    use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_sim::{
         health::{Attack, DirectEntity},
         mobs::{Damage, DamageKind, Who},
@@ -224,51 +224,87 @@ fn projectile_and_command_targets_classify_actual_direct_entity_families() {
     // `/damage` target classification matches vanilla entity class families.
     let projectiles = [large, small, arrow, trident, snowball];
     assert_eq!(
-        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Player), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(
+            Some(Target::Player),
+            &projectiles
+        ),
         DirectEntity::Living
     );
     assert_eq!(
-        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Mob(5)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(
+            Some(Target::Mob(5)),
+            &projectiles
+        ),
         DirectEntity::Living
     );
     assert_eq!(
-        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Stand(6)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(
+            Some(Target::Stand(6)),
+            &projectiles
+        ),
         DirectEntity::Living
     );
     assert_eq!(
-        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Dragon(7)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(
+            Some(Target::Dragon(7)),
+            &projectiles
+        ),
         DirectEntity::Living
     );
     assert_eq!(
-        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Projectile(10)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(
+            Some(Target::Projectile(10)),
+            &projectiles
+        ),
         DirectEntity::LargeFireball
     );
     assert_eq!(
-        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Projectile(11)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(
+            Some(Target::Projectile(11)),
+            &projectiles
+        ),
         DirectEntity::Projectile
     );
     assert_eq!(
-        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Projectile(12)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(
+            Some(Target::Projectile(12)),
+            &projectiles
+        ),
         DirectEntity::Arrow
     );
     assert_eq!(
-        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Projectile(13)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(
+            Some(Target::Projectile(13)),
+            &projectiles
+        ),
         DirectEntity::Arrow
     );
     assert_eq!(
-        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Projectile(14)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(
+            Some(Target::Projectile(14)),
+            &projectiles
+        ),
         DirectEntity::Projectile
     );
     assert_eq!(
-        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Trident(20)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(
+            Some(Target::Trident(20)),
+            &projectiles
+        ),
         DirectEntity::Arrow
     );
     assert_eq!(
-        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Rocket(21)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(
+            Some(Target::Rocket(21)),
+            &projectiles
+        ),
         DirectEntity::Projectile
     );
     assert_eq!(
-        sunrise_gameplay::game::ServerGame::target_direct_entity(Some(Target::Hook(22)), &projectiles),
+        sunrise_gameplay::game::ServerGame::target_direct_entity(
+            Some(Target::Hook(22)),
+            &projectiles
+        ),
         DirectEntity::Projectile
     );
     for other in [
@@ -301,10 +337,16 @@ fn live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
 }
 
 pub(crate) fn run_live_damage_and_blast_creaking_reactions_and_timed_player_credit() {
-    use {sunrise_gameplay_common::game::combat_common::PlayerCredit, sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay_common::game::side_ops::events::{TEST_POSTED_EVENT_ORDER, TEST_POSTED_EVENTS}};
     use mod_api::{ExplosionInteraction, ExplosionSettings};
     use sunrise_core::{geometry::Vec3, position::BlockPos};
     use sunrise_sim::{mobs::creaking, projectiles::ProjectileKind};
+    use {
+        sunrise_gameplay_common::game::combat_common::PlayerCredit,
+        sunrise_gameplay_common::game::commands_common::Target,
+        sunrise_gameplay_common::game::side_ops::events::{
+            TEST_POSTED_EVENT_ORDER, TEST_POSTED_EVENTS,
+        },
+    };
 
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
         "game::server_side::commands::world_cmds::registered_damage_tests::live_damage_and_blast_creaking_reactions_and_timed_player_credit",
@@ -336,11 +378,14 @@ pub(crate) fn run_live_damage_and_blast_creaking_reactions_and_timed_player_cred
         );
         // `CreakingHeartBlockEntity.creakingHurt` from its protector starts the 100-tick emitter.
         use sunrise_level::containers::BlockEntity::CreakingHeart;
-        let heart_emitter =
-            |game: &sunrise_gameplay::game::ServerGame<'_>| match game.world.block_entities.get(&(8, 64, 8)) {
-                Some(CreakingHeart(heart)) => heart.emitter,
-                _ => panic!("the protecting heart is gone"),
-            };
+        let heart_emitter = |game: &sunrise_gameplay::game::ServerGame<'_>| match game
+            .world
+            .block_entities
+            .get(&(8, 64, 8))
+        {
+            Some(CreakingHeart(heart)) => heart.emitter,
+            _ => panic!("the protecting heart is gone"),
+        };
         let clear_emitter = |game: &mut sunrise_gameplay::game::ServerGame<'_>| match game
             .world
             .block_entities
@@ -663,9 +708,9 @@ pub(crate) fn run_live_damage_and_blast_creaking_reactions_and_timed_player_cred
 #[test]
 #[ignore = "daily"]
 fn live_damage_and_blast_ghast_reflected_fireball() {
-    use sunrise_gameplay_common::game::commands_common::Target;
     use mod_api::{ExplosionInteraction, ExplosionSettings};
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_sim::projectiles::ProjectileKind;
 
     with_game(|game| {
@@ -696,15 +741,17 @@ fn live_damage_and_blast_ghast_reflected_fireball() {
             [86, 0, 0, 4],
         );
 
-        let spawn_ghast =
-            |game: &mut sunrise_gameplay::game::ServerGame<'_>, n: u32, health: f32| -> (u32, String) {
-                assert!(game.run_command(&format!(
-                    "summon ghast 4.5 64 4.5 {{UUID:[I;86,0,0,{n}],NoAI:1b,NoGravity:1b}}"
-                )));
-                let g = game.mobs.last_mut().unwrap();
-                g.health = health;
-                (g.id, format!("00000056-0000-0000-0000-{n:012x}"))
-            };
+        let spawn_ghast = |game: &mut sunrise_gameplay::game::ServerGame<'_>,
+                           n: u32,
+                           health: f32|
+         -> (u32, String) {
+            assert!(game.run_command(&format!(
+                "summon ghast 4.5 64 4.5 {{UUID:[I;86,0,0,{n}],NoAI:1b,NoGravity:1b}}"
+            )));
+            let g = game.mobs.last_mut().unwrap();
+            g.health = health;
+            (g.id, format!("00000056-0000-0000-0000-{n:012x}"))
+        };
 
         // Vary damage type with fixed reflected LargeFireball from @p: every type deals 1000.
         for (i, ty) in [

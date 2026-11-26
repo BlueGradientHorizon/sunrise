@@ -198,8 +198,7 @@ pub(crate) fn cases(hand: Hand) -> Vec<Case> {
     cases
 }
 
-pub(crate) fn advancement_tree(game: &mut sunrise_gameplay_common::game::CommonGame<'_>)
-{
+pub(crate) fn advancement_tree(game: &mut sunrise_gameplay_common::game::CommonGame<'_>) {
     use sunrise_sim::advancements as a;
     let mut tree = a::Tree::default();
     for (index, name) in ["item_used_on_block", "default_block_use"]

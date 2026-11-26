@@ -1,15 +1,13 @@
-
-
 #[cfg(test)]
 #[cfg(feature = "client")]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::TryIntoApi;
-use sunrise_gameplay_common::game::api_values::test_snapshot;
+    use sunrise_gameplay_common::game::TryIntoApi;
+    use sunrise_gameplay_common::game::api_values::test_snapshot;
 
-use super::*;
+    use super::*;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn resource_tooltip_uses_inventory_lines_and_explicit_flags() {
         use mod_api::{
@@ -73,7 +71,9 @@ use super::*;
                 stack
                     .data_mut()
                     .set_other("minecraft:item_name", Some(name.clone()));
-                let resource = ItemResource::of(&sunrise_gameplay_common::game::api_values::test_snapshot(&stack));
+                let resource = ItemResource::of(
+                    &sunrise_gameplay_common::game::api_values::test_snapshot(&stack),
+                );
                 let inventory: Vec<_> = game
                     .stack_tooltip_lines(&stack, false, false)
                     .into_iter()
@@ -89,7 +89,9 @@ use super::*;
                     "minecraft:tooltip_display",
                     Some(Tag::compound([("hide_tooltip", Tag::Byte(1))])),
                 );
-                let hidden = ItemResource::of(&sunrise_gameplay_common::game::api_values::test_snapshot(&hidden));
+                let hidden = ItemResource::of(
+                    &sunrise_gameplay_common::game::api_values::test_snapshot(&hidden),
+                );
                 assert!(
                     !hidden
                         .tooltip(game, false, false)
@@ -104,8 +106,9 @@ use super::*;
                         Tag::List(vec![Tag::String("minecraft:attribute_modifiers".into())]),
                     )])),
                 );
-                let attributes_hidden =
-                    ItemResource::of(&sunrise_gameplay_common::game::api_values::test_snapshot(&attributes_hidden));
+                let attributes_hidden = ItemResource::of(
+                    &sunrise_gameplay_common::game::api_values::test_snapshot(&attributes_hidden),
+                );
                 let lines = attributes_hidden.tooltip(game, false, false).unwrap();
                 assert!(lines.contains(&attribute_line));
                 assert!(lines.contains(&TooltipElement::Text(
@@ -147,16 +150,19 @@ use super::*;
             });
         });
     }
-/// A stick's part adds its line where `Item.appendHoverText` does, after the name and before
+    /// A stick's part adds its line where `Item.appendHoverText` does, after the name and before
     /// the advanced id line; `item_tooltip` (`ItemTooltipEvent`) then gets the whole tooltip, with
     /// its flags, and its changes are what shows. A stick whose tooltip is hidden asks neither.
     #[test]
     #[ignore = "daily"]
     fn tooltip_part_lines_come_after_the_name_and_never_for_a_hidden_tooltip() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
         use mod_api::{
             self, ClientHost, Hooks, ItemPart, ItemTooltipEvent, ModEntry, Mods, Registrar,
             TooltipEvent,
+        };
+        use {
+            crate::game::server_side::native_entity_refs::tests::with_client_game,
+            sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
         };
 
         if run_fresh_cases(
@@ -269,14 +275,17 @@ use super::*;
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn item_tooltip_invalid_edit_keeps_other_listeners_lines() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
         use mod_api::{ClientHost, Hooks, ItemTooltipEvent, ModEntry, Mods, Text, TextFormError};
         use std::sync::{
             Arc,
             atomic::{AtomicBool, Ordering},
+        };
+        use {
+            crate::game::server_side::native_entity_refs::tests::with_client_game,
+            sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
         };
 
         if run_fresh_cases(
@@ -345,7 +354,6 @@ use super::*;
         });
     }
 }
-
 
 #[cfg(feature = "client")]
 #[cfg(test)]

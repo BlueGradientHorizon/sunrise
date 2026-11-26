@@ -9,7 +9,8 @@ impl crate::game::ServerGame<'_> {
         player: Option<u32>,
     ) {
         let places: Vec<(u32, Vec3)> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter(|m| m.alive())
             .map(|m| (m.id, m.position))

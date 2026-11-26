@@ -2,11 +2,14 @@
 //! nothing is synced, and a `replace: true` snapshot with the current value when synced
 //! attachments are present.
 use super::transport_tests::{VALUE, store};
-use {sunrise_gameplay_common::game::general::GeneralEntityRecord, sunrise_gameplay_common::game::general::GeneralTypeEnvelope};
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{GeneralEntityCategory, GeneralSavePolicy};
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_mod_runtime::attachments::Holder;
+use {
+    sunrise_gameplay_common::game::general::GeneralEntityRecord,
+    sunrise_gameplay_common::game::general::GeneralTypeEnvelope,
+};
 
 struct Declare;
 #[mod_api::__subscriptions]

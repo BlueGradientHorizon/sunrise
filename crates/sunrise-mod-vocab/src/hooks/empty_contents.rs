@@ -22,7 +22,8 @@ pub trait Hooks {
     /// use (the player keeps the stack, the dispenser fails). A player's
     /// successful pour counts for the `placed_block` criterion. Only the
     /// `ItemPart`s attached to `stack`'s item are asked. Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::empty_contents::ServerGame<'_>::native_empty_contents", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::empty_contents::ServerGame<'_>::native_empty_contents",
         dispatch = "flat",
         side = "server",
         contract = "replace",

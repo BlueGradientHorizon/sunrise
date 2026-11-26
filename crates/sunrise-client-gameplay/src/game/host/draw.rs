@@ -1,8 +1,8 @@
 use mod_api::{prelude::*, *};
-#[cfg(feature = "client")]
-use sunrise_gameplay_common::game::api_values::TryIntoEngine;
 #[cfg(any(test, feature = "test-support"))]
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
+#[cfg(feature = "client")]
+use sunrise_gameplay_common::game::api_values::TryIntoEngine;
 
 /// Borrow `minecraft:default` directly or format another font identifier.
 pub fn font_id_str(id: &mod_api::Identifier) -> std::borrow::Cow<'static, str> {

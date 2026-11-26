@@ -1,15 +1,13 @@
-
-
 #![cfg(test)]
 use sunrise_core::nbt::Tag;
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Compound;
     use sunrise_gameplay::game::commands::data::DataRef;
-    use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-    use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::commands_common::Target;
 
     /// `EntityDataAccessor.setData` keeps the entity's id and UUID: a
     /// `/data merge` that carries a different UUID does not take, and a
@@ -30,20 +28,22 @@ pub(crate) mod tests {
             );
             game.persist.raw.insert(12, Tag::Compound(raw));
             game.persist.uuids.insert(12, [1, 2, 3, 4]);
-            game.server.others.0.push(sunrise_gameplay_common::game::commands_common::OtherEntity {
-                size_answer: None,
-                attachment_lifetime: Default::default(),
-                join: Default::default(),
-                item_transformation: None,
-                knot_check: None,
-                eye: None,
-                interaction: None,
-                id: 12,
-                kind: "minecraft:block_display".into(),
-                position: Vec3::new(0.5, 64.0, 0.5),
-                yaw: 0.0,
-                pitch: 0.0,
-            });
+            game.server.others.0.push(
+                sunrise_gameplay_common::game::commands_common::OtherEntity {
+                    size_answer: None,
+                    attachment_lifetime: Default::default(),
+                    join: Default::default(),
+                    item_transformation: None,
+                    knot_check: None,
+                    eye: None,
+                    interaction: None,
+                    id: 12,
+                    kind: "minecraft:block_display".into(),
+                    position: Vec3::new(0.5, 64.0, 0.5),
+                    yaw: 0.0,
+                    pitch: 0.0,
+                },
+            );
             let mut merge = Compound::new();
             merge.insert(
                 "Pos".into(),
@@ -99,7 +99,10 @@ pub(crate) mod saved_tag_tests;
 pub(crate) mod modern_literal_tests {
     use super::*;
     use sunrise_gameplay::game::commands::execute::ExecState;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -121,7 +124,8 @@ pub(crate) mod modern_literal_tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -215,10 +219,10 @@ pub(crate) mod modern_literal_tests {
 
 #[cfg(test)]
 pub(crate) mod falling_live_adoption_tests {
-    use sunrise_gameplay_common::game::commands_common::Target;
     use crate::game::server_side::commands::data::falling_live_adoption_tests::with_game;
     use sunrise_core::nbt::Tag;
     use sunrise_core::{geometry::Vec3, position::BlockPos};
+    use sunrise_gameplay_common::game::commands_common::Target;
 
     #[test]
     #[ignore = "daily"]

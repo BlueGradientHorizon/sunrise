@@ -1,13 +1,11 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-use super::*;
-use sunrise_sim::save::level_mods;
+    use super::*;
+    use sunrise_sim::save::level_mods;
 
-/// Without the switch the server refuses, naming the switch, and changes nothing in the
+    /// Without the switch the server refuses, naming the switch, and changes nothing in the
     /// world; with it the world opens.
     #[test]
     #[ignore = "daily"]

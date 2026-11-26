@@ -1,14 +1,12 @@
-
-
 #![cfg(test)]
 use serde_json::Value;
 use std::sync::Arc;
 use std::time::Instant;
-use sunrise_gameplay::game::server_side::advancements::View;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::server_side::advancements::View;
 use sunrise_items::items::ItemStack;
-use sunrise_sim::advancements::Tree;
 use sunrise_sim::advancements as adv;
+use sunrise_sim::advancements::Tree;
 #[cfg(test)]
 #[path = "inventory_changed_tests.rs"]
 pub(crate) mod inventory_changed_tests;
@@ -19,9 +17,9 @@ pub(crate) mod progress_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use super::*;
+    use super::*;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn helmet_wear_reports_the_old_stack_and_the_unclamped_damage() {
         const ID: &str = "testmod:wear";
@@ -61,10 +59,14 @@ use super::*;
         });
         std::fs::remove_dir_all(scratch).unwrap();
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn mob_name_components_read_live_text_without_saved_nbt() {
-        use {sunrise_gameplay_common::game::Options, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_gameplay_common::game::Options,
+            sunrise_gameplay_common::game::commands_common::Target,
+        };
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -82,7 +84,8 @@ use super::*;
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -145,10 +148,14 @@ use super::*;
             assert!(!matches(&game, key, serde_json::json!("Bob")));
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn mob_predicate_view_reads_active_effect_instances() {
-        use {sunrise_gameplay_common::game::Options, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_gameplay_common::game::Options,
+            sunrise_gameplay_common::game::commands_common::Target,
+        };
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -166,7 +173,8 @@ use super::*;
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -248,10 +256,13 @@ use super::*;
 
 #[cfg(test)]
 pub(crate) mod structure_tag_tests {
-    use sunrise_gameplay::game::server_side::advancements::View;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use serde_json::json;
+    use sunrise_gameplay::game::server_side::advancements::View;
     use sunrise_sim::advancements::{World, id_matches};
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     /// `LocationPredicate.structures` names a `#tag`: the game's own
     /// `worldgen/structure` tags, and with a world's data packs theirs over
@@ -276,7 +287,8 @@ pub(crate) mod structure_tag_tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -357,15 +369,18 @@ pub(crate) mod structure_tag_tests {
 
 #[cfg(test)]
 pub(crate) mod random_chance_command_tests {
-    use sunrise_core::random::RandomSource;
-use super::*;
-    use sunrise_gameplay_common::game::commands_common::Target;
+    use super::*;
     use sunrise_core::nbt::Tag;
+    use sunrise_core::random::RandomSource;
+    use sunrise_gameplay_common::game::commands_common::Target;
     #[test]
     #[ignore = "daily"]
     fn registered_named_random_chance_uses_real_source_and_world_draws() {
-        use {sunrise_gameplay_common::game::Options, crate::settings::Settings, crate::game::load_resources};
         use std::time::Instant;
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_gameplay_common::game::Options,
+        };
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -383,7 +398,8 @@ use super::*;
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -409,11 +425,13 @@ use super::*;
             "scoreboard players set pack h122 17\n",
         )
         .unwrap();
-        let rows: Vec<Value> =
-            include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../docs/parity/random-chance-seeded.jsonl"))
-                .lines()
-                .map(|s| serde_json::from_str(s).unwrap())
-                .collect();
+        let rows: Vec<Value> = include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../docs/parity/random-chance-seeded.jsonl"
+        ))
+        .lines()
+        .map(|s| serde_json::from_str(s).unwrap())
+        .collect();
         for row in &rows {
             std::fs::write(
                 folder.join(format!("case_{}.json", row["case"])),
@@ -624,11 +642,11 @@ pub(crate) mod custom_data_equipment_tests {
 
 #[cfg(test)]
 pub(crate) mod movement_predicate_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay::game::game_tests::tests::server_game;
     use serde_json::json;
     use sunrise_core::geometry::Vec3;
     use sunrise_core::position::BlockPos;
+    use sunrise_gameplay::game::game_tests::tests::server_game;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_sim::advancements as adv;
 
     #[test]
@@ -704,7 +722,9 @@ use sunrise_gameplay::game::game_tests::tests::server_game;
         assert_eq!(mob.fall_distance, 0.0);
         assert!(mob.no_ai && mob.no_gravity);
         assert!(mob.extra.mount.is_none());
-        let view = game.entity_view_of(sunrise_gameplay_common::game::commands_common::Target::Mob(id));
+        let view = game.entity_view_of(
+            sunrise_gameplay_common::game::commands_common::Target::Mob(id),
+        );
         assert_eq!(view.kind, "minecraft:pig");
         let mut failures = Vec::new();
         for (name, p, want) in probes {

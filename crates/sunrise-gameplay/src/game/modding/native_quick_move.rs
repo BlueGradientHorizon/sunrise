@@ -1,12 +1,12 @@
 //! A shift-click in a mod container's menu, routed by the mods
 //! (`native_menu_quick_move`, `AbstractContainerMenu.quickMoveStack`) before
 //! the game's own routing.
-use super::slot_changes::{SlotChangedBacking, SlotChangedMenu, SlotSnapshots};
 use super::BlockStateId;
-use sunrise_gameplay_common::game::transactions::After;
+use super::slot_changes::{SlotChangedBacking, SlotChangedMenu, SlotSnapshots};
 use crate::game::server_side::native_hooks_server::block_entity_tick::ResidentBlockEntityAccess;
 use mod_api::{BlockEntityRef, BlockEntityScope, BlockEntityTypeKey};
 use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
+use sunrise_gameplay_common::game::transactions::After;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{
     block_entities::Pos,

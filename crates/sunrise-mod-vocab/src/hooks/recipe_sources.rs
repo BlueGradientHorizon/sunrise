@@ -10,7 +10,8 @@ pub trait Hooks {
     /// No answer preserves vanilla placement. The engine takes ingredients and writes
     /// changed containers back, firing `container_changed`; this hook only names sources.
     /// Asked once per recipe-book placement/apply or server transfer check, not per tick.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::recipe_sources::ServerGame<'_>::native_recipe_sources", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::recipe_sources::ServerGame<'_>::native_recipe_sources",
         dispatch = "flat",
         side = "server",
         contract = "collect",

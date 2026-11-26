@@ -1,4 +1,4 @@
-use {crate::game::remote::recipe_properties::*};
+use crate::game::remote::recipe_properties::*;
 use std::sync::Arc;
 
 use sunrise_gameplay_common::game::stations_common::{Kind, Station};
@@ -24,11 +24,13 @@ pub fn cut_pack(root: &std::path::Path) -> impl Fn(&str, &str) {
 
 pub fn place_stonecutter(server: &mut crate::game::ServerGame<'_>) -> Station {
     server
-        .common.world
+        .common
+        .world
         .chunks
         .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     let state = server
-        .common.pack
+        .common
+        .pack
         .assets
         .registry
         .default_state("minecraft:stonecutter")

@@ -1,10 +1,19 @@
 //! The window's first renderer and frames: the renderer built from the prepared textures, the
 //! boot screen's frame, and `start_game`, which turns the loaded resources into a `Game`.
 use super::*;
-use sunrise_gameplay_common::game::integrated_link::{ProfileResolverFactory, RunComponentHarness, Serve};
-use {crate::game::client_side::launch_options_client::is_client_start, crate::game::client_side::resource_tables_client::ClientPackResources, crate::game::client_side::resource_tables_client::ClientResources, crate::game::client_side::resource_tables_client::UiResources, sunrise_gameplay_common::game::integrated_link::ComponentHarness, sunrise_gameplay_common::game::resource_load::WorldRestLoader};
-use sunrise_sim::lan::SessionVerifier;
+use sunrise_gameplay_common::game::integrated_link::{
+    ProfileResolverFactory, RunComponentHarness, Serve,
+};
 use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1 as _;
+use sunrise_sim::lan::SessionVerifier;
+use {
+    crate::game::client_side::launch_options_client::is_client_start,
+    crate::game::client_side::resource_tables_client::ClientPackResources,
+    crate::game::client_side::resource_tables_client::ClientResources,
+    crate::game::client_side::resource_tables_client::UiResources,
+    sunrise_gameplay_common::game::integrated_link::ComponentHarness,
+    sunrise_gameplay_common::game::resource_load::WorldRestLoader,
+};
 
 /// CPU mip chains for the block sprites and world border.
 pub(in crate::game) fn prepare_renderer_textures(

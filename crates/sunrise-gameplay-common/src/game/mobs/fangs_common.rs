@@ -45,14 +45,7 @@ impl FangState {
 }
 
 impl crate::game::CommonGame<'_> {
-    pub fn insert_fangs(
-        &mut self,
-        id: u32,
-        at: [f64; 3],
-        yaw: f32,
-        delay: i32,
-        owner: u32,
-    ) {
+    pub fn insert_fangs(&mut self, id: u32, at: [f64; 3], yaw: f32, delay: i32, owner: u32) {
         self.fangs.list.push(Fangs {
             attachment_lifetime: Default::default(),
             join: Default::default(),

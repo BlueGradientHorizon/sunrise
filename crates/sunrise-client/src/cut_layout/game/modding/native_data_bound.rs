@@ -1,32 +1,30 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::native_data_bound::NativeDataBoundGameExt1;
-use sunrise_gameplay_common::game::native_data_bound::tests::dirt_stack_size;
-use sunrise_gameplay_common::game::native_data_bound::tests::{DefaultsProbe, Probe};
+    use sunrise_gameplay_common::game::native_data_bound::NativeDataBoundGameExt1;
+    use sunrise_gameplay_common::game::native_data_bound::tests::dirt_stack_size;
+    use sunrise_gameplay_common::game::native_data_bound::tests::{DefaultsProbe, Probe};
 
-use sunrise_gameplay_common::game::native_data_bound::tests::install_default_component_loads;
+    use sunrise_gameplay_common::game::native_data_bound::tests::install_default_component_loads;
 
-use sunrise_gameplay_common::game::native_data_bound::tests::login_packet;
+    use sunrise_gameplay_common::game::native_data_bound::tests::login_packet;
 
-use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::with_game;
 
-use mod_api::{
+    use mod_api::{
         DataLoadContext, DefaultComponentsBoundEvent, Hooks, Identifier, ModEntry,
         ModifyDefaultComponentsEvent, ReloadContext, TagsUpdateCause, TagsUpdatedEvent,
     };
 
-use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex};
 
-use sunrise_protocol::packets::{
+    use sunrise_protocol::packets::{
         configuration::{RegistryTags, TagEntry, UpdateTags},
         play::{self, Clientbound as C},
     };
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn defaults_are_announced_bound_before_the_tags() {
         let heard = Arc::new(Mutex::new(Vec::new()));
@@ -43,7 +41,7 @@ use sunrise_protocol::packets::{
             [("bound", reload), ("tags", reload)]
         );
     }
-/// A single player's first open: the data load announces the defaults
+    /// A single player's first open: the data load announces the defaults
     /// bound before the tags, `should_update_static_data()` holds for its
     /// cause, and a listener's read inside the notice returns the stack
     /// size its own `modify_default_components` published.
@@ -105,7 +103,7 @@ use sunrise_protocol::packets::{
         assert!(server.should_update_static_data());
         assert!(!integrated.should_update_static_data());
     }
-/// A remote login: the applied tags announce the defaults bound once,
+    /// A remote login: the applied tags announce the defaults bound once,
     /// with the client cause, before the tags notice; a listener's read
     /// inside returns the published defaults. An update in play refires.
     #[test]

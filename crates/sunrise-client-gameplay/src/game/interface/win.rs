@@ -63,8 +63,8 @@ impl crate::game::ClientGame<'_> {
         sunrise_client::widgets::begin_screen(|| win.screen.screen_info());
         let now = Instant::now();
         // DeltaTracker.getGameTimeDeltaTicks: the frame's length in ticks.
-        let delta_ticks =
-            now.duration_since(win.frame).as_secs_f32() / self.common.clock.tick_duration().as_secs_f32();
+        let delta_ticks = now.duration_since(win.frame).as_secs_f32()
+            / self.common.clock.tick_duration().as_secs_f32();
         win.frame = now;
         let sprite = |n: &str| {
             self.client

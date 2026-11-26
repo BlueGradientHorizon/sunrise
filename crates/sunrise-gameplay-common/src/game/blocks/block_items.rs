@@ -161,13 +161,8 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait BlockItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-
     /// The block entity at `key` as vanilla saves it, with its custom name.
-     fn saved_block_entity(
-        &self,
-        key: (i32, i32, i32),
-        for_save: bool,
-    ) -> Option<Tag> {
+    fn saved_block_entity(&self, key: (i32, i32, i32), for_save: bool) -> Option<Tag> {
         let entity = self.world.block_entities.get(&key)?;
         let block = &self
             .res
@@ -193,11 +188,7 @@ pub trait BlockItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `BlockState.getCloneItemStack` of the block at `pos`, then, with
     /// `include_data`, `ServerGamePacketListenerImpl.addBlockDataToItem`.
-     fn picked_stack(
-        &self,
-        pos: [i32; 3],
-        include_data: bool,
-    ) -> Option<ItemStack> {
+    fn picked_stack(&self, pos: [i32; 3], include_data: bool) -> Option<ItemStack> {
         let mut stack = self.clone_stack(pos, include_data)?;
         if include_data {
             self.add_block_data(pos, &mut stack);
@@ -208,7 +199,7 @@ pub trait BlockItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `ServerGamePacketListenerImpl.addBlockDataToItem`: the block entity at
     /// `pos`, if any, onto `stack` (`BlockItem.setBlockEntityData`, then
     /// `ItemStack.applyComponents(collectComponents())`).
-     fn add_block_data(&self, pos: [i32; 3], stack: &mut ItemStack) {
+    fn add_block_data(&self, pos: [i32; 3], stack: &mut ItemStack) {
         if let Some(saved) = self.saved_block_entity((pos[0], pos[1], pos[2]), true) {
             apply_patch(stack, block_entity_item::pick(&saved));
         }
@@ -216,11 +207,7 @@ pub trait BlockItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `BlockState.getCloneItemStack` of the block at `pos`: the item alone,
     /// with what the block itself puts on it; `include_data` as vanilla passes it.
-     fn clone_stack(
-        &self,
-        pos: [i32; 3],
-        include_data: bool,
-    ) -> Option<ItemStack> {
+    fn clone_stack(&self, pos: [i32; 3], include_data: bool) -> Option<ItemStack> {
         let key = (pos[0], pos[1], pos[2]);
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let facts = self.res.facts().get(state);
@@ -323,7 +310,7 @@ pub trait BlockItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Shared `BlockItem.updateCustomBlockEntityTag` / `updateBlockEntityComponents`
     /// decode and install path; returns `Some(custom_data_loaded)` when the block
     /// entity was replaced.
-     fn apply_placed_item_common(
+    fn apply_placed_item_common(
         &mut self,
         pos: [i32; 3],
         stack: &ItemStack,
@@ -354,7 +341,6 @@ pub trait BlockItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> BlockItemsGameExt1<'__sg> for G {}
-
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
@@ -452,4 +438,3 @@ pub(in crate::game) mod tests {
 use crate::game::side_ops::blocks::BlocksSideGameExt as _;
 
 use crate::game::tables::GameItems as _;
-

@@ -1,12 +1,7 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
 
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use {sunrise_gameplay_common::game::server_side::commands::peaceful_tests::TRADER, crate::game::server_side::commands::peaceful_tests::with_types};
-    use sunrise_gameplay_common::game::execution_role::ExecutionRole;
     use super::super::native_entity_refs::tests::with_game;
     use mod_api::{
         EntityConstructingEvent, EntityJoinLevelEvent, EntityRef, EntitySpawn, FinalizeSpawnEvent,
@@ -15,8 +10,14 @@ use {sunrise_gameplay_common::game::server_side::commands::peaceful_tests::TRADE
     };
     use std::sync::{Arc, Mutex};
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::execution_role::ExecutionRole;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::mobs::spawn_selection::{Category, Counted, SpawnPlayer, SpawnState};
+    use {
+        crate::game::server_side::commands::peaceful_tests::with_types,
+        sunrise_gameplay_common::game::server_side::commands::peaceful_tests::TRADER,
+    };
 
     /// What a spawn told the mods, in order.
     type Heard = Arc<Mutex<Vec<String>>>;

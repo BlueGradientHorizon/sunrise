@@ -7,7 +7,10 @@ use mod_api::{EntityRef, PlayerRef, PlayerWorldRefusal as Refusal, WorldEpoch};
 use sunrise_protocol::packets::play::Clientbound as C;
 
 /// The API's value for a block state of the world.
-fn api_state<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(game: &G, name: &str) -> mod_api::BlockState {
+fn api_state<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+    game: &G,
+    name: &str,
+) -> mod_api::BlockState {
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
     game.pack
         .assets
@@ -275,12 +278,14 @@ fn hide_level_and_nickname_read_back() {
 fn an_unpublished_single_player_world_reads_the_stored_hide_level() {
     with_guests(|game| {
         let owner = game.player(12).unwrap();
-        game.server.serving = Some(sunrise_gameplay::game::server_side::integrated::Serving::fixture(0));
+        game.server.serving =
+            Some(sunrise_gameplay::game::server_side::integrated::Serving::fixture(0));
         assert!(owner.hide(game, Some(2)));
         assert!(owner.set_nickname(game, Some("Cap")));
         assert_eq!(owner.hidden(game), Ok(Some(2)));
         assert_eq!(owner.nickname(game), Ok(Some("Cap")));
-        game.server.serving = Some(sunrise_gameplay::game::server_side::integrated::Serving::fixture(25565));
+        game.server.serving =
+            Some(sunrise_gameplay::game::server_side::integrated::Serving::fixture(25565));
         assert_eq!(owner.hidden(game), Ok(Some(2)));
         assert_eq!(owner.nickname(game), Ok(Some("Cap")));
     });
@@ -312,8 +317,8 @@ fn latency_reads_what_the_keep_alives_measured() {
 #[test]
 #[ignore = "daily"]
 fn player_support_uses_the_footprint_then_the_exact_feet_offset_on_both_sides() {
-    use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
     use mod_api::BlockPos;
+    use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
     use sunrise_core::geometry::Vec3;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;

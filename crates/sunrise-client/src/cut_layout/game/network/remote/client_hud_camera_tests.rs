@@ -85,7 +85,9 @@ pub(in crate::game) fn vanilla_groups(case: &serde_json::Value) -> Groups {
 }
 
 /// The same sprites, decoded from the quads a frame of the game drew.
-pub(in crate::game) fn drawn_groups(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> Groups {
+pub(in crate::game) fn drawn_groups(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+) -> Groups {
     let batch = game.hud_layers(SIZE);
     let rects: Vec<(&str, [f32; 4])> = GROUPS
         .iter()
@@ -119,7 +121,11 @@ pub(in crate::game) fn drawn_groups(game: &mut sunrise_client_gameplay::game::Cl
     groups
 }
 
-pub(in crate::game) fn id(game: &sunrise_client_gameplay::game::ClientGame<'_>, registry: &str, name: &str) -> i32 {
+pub(in crate::game) fn id(
+    game: &sunrise_client_gameplay::game::ClientGame<'_>,
+    registry: &str,
+    name: &str,
+) -> i32 {
     game.client
         .remote
         .as_ref()
@@ -131,7 +137,11 @@ pub(in crate::game) fn id(game: &sunrise_client_gameplay::game::ClientGame<'_>, 
         .unwrap()
 }
 
-pub(in crate::game) fn spawn(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, entity: i32, kind: &str) {
+pub(in crate::game) fn spawn(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    entity: i32,
+    kind: &str,
+) {
     let kind = id(game, "minecraft:entity_type", kind);
     game.handle_packet(C::AddEntity(play::AddEntity {
         id: entity,

@@ -363,7 +363,8 @@ impl WorldRequest {
         )?;
         drop(streaming_step);
         streaming.radius = settings.render_distance;
-        let mut world = sunrise_gameplay_common::game::authoritative_world_for_mods(res, level.seed);
+        let mut world =
+            sunrise_gameplay_common::game::authoritative_world_for_mods(res, level.seed);
         world.attachments = save.load_attachments();
         world.shape = shape;
         world.fast_lava = sunrise_world::dimension_type::DimensionFacts::of_level(
@@ -1123,7 +1124,7 @@ pub(in crate::game::server_side) fn make_streaming(
 
 #[cfg(test)]
 mod tests {
-use sunrise_gameplay_common::game::server_side::world_loading::tests::PACK_BIOME;
+    use sunrise_gameplay_common::game::server_side::world_loading::tests::PACK_BIOME;
 
     use super::*;
     use sunrise_gameplay_common::game::{
@@ -1200,8 +1201,6 @@ use sunrise_gameplay_common::game::server_side::world_loading::tests::PACK_BIOME
         prepare_level_data(role, &world, "world", game.path()).unwrap();
         assert_ne!(std::fs::read(&record).unwrap(), before);
     }
-
-    
 
     /// A world whose level.dat does not read but whose level.dat_old does: only the
     /// dedicated server restores it unasked. Every role here carries the launch configuration
@@ -1336,8 +1335,6 @@ use sunrise_gameplay_common::game::server_side::world_loading::tests::PACK_BIOME
         );
         let _ = std::fs::remove_dir_all(dir);
     }
-
-    
 
     #[test]
     fn the_saved_biome_tests_pack_biome_decodes() {
@@ -1706,8 +1703,6 @@ use sunrise_gameplay_common::game::server_side::world_loading::tests::PACK_BIOME
         assert!(open(Dim::Overworld).is_none());
         let _ = std::fs::remove_dir_all(world);
     }
-
-    
 
     #[test]
     fn worker_panics_reach_the_client() {

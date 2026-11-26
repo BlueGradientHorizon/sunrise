@@ -1,9 +1,13 @@
 //! `Enderman.hurtServer` teleports inside the hurt the game layer deals.
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay::game::server_side::explosion::BlockInteraction, crate::game::load_resources};
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::{Mob, MobEvent};
+use {
+    crate::game::load_resources, crate::settings::Settings,
+    sunrise_gameplay::game::server_side::explosion::BlockInteraction,
+    sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+};
 
 /// A game over 5x5 empty chunks around (0, 0) with a stone floor at y = 3:
 /// every enderman teleport from (8.5, 4, 8.5) lands on it or fails.
@@ -27,7 +31,8 @@ fn floored_game<'a>(
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.to_path_buf();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let resources = resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         resources,
@@ -367,18 +372,20 @@ fn a_teleporting_shulker_posts_teleport_where_it_stood() {
             "seed {seed}: the game event is not between the sound and level event: {events:?}"
         );
         game.mobs.push(mob);
-        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+            .with(|events| *events.borrow_mut() = Some(Vec::new()));
         game.handle_mob_events(events).unwrap();
-        let posted: Vec<_> = sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| {
-            events
-                .borrow_mut()
-                .take()
-                .unwrap_or_default()
-                .into_iter()
-                .filter(|(event, _, _)| *event == "minecraft:teleport")
-                .map(|(_, pos, source)| (pos, source))
-                .collect()
-        });
+        let posted: Vec<_> = sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+            .with(|events| {
+                events
+                    .borrow_mut()
+                    .take()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .filter(|(event, _, _)| *event == "minecraft:teleport")
+                    .map(|(_, pos, source)| (pos, source))
+                    .collect()
+            });
         assert_eq!(
             posted,
             [(old_center, Some(sunrise_sim::mobs::Who::Mob(id)))],

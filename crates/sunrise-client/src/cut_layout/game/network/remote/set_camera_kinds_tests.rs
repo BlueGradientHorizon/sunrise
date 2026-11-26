@@ -1,13 +1,16 @@
-use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
-use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
 use mod_api::ClientHost;
 use sunrise_client::level_loading::Reason;
+use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::{
     connection::Pipe,
     packets::play::{self, Clientbound as C, SpawnInfo},
 };
 use sunrise_sim::motion::PlayerMotion;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle,
+};
 
 #[test]
 #[ignore = "run by tools/test_camera_parity.py"]
@@ -24,7 +27,9 @@ pub(in crate::game) fn run_set_camera_follows_the_real_26_3_clients_camera_for_e
         )
     });
     with_client_game(|game| {
-        let camera = |game: &sunrise_client_gameplay::game::ClientGame<'_>| (game as &dyn ClientHost).camera_entity();
+        let camera = |game: &sunrise_client_gameplay::game::ClientGame<'_>| {
+            (game as &dyn ClientHost).camera_entity()
+        };
         game.native_lifecycle = NativeLifecycle::default();
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "SetCameraKinds").unwrap();

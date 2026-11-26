@@ -1,5 +1,5 @@
-use sunrise_gameplay_common::game::api_values::block_state;
 use crate::game::client_side::native_scene::SceneBlock;
+use sunrise_gameplay_common::game::api_values::block_state;
 
 /// Prepare borrowed scene blocks, with a refusal naming the invalid block.
 /// Conversion allocates one engine vector per scene draw, but never clones entity

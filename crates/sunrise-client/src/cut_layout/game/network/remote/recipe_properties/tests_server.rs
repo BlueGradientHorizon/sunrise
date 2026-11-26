@@ -1,17 +1,21 @@
-use std::sync::Arc;
-use sunrise_items::items::ItemStack;
-use sunrise_protocol::packets::play::Clientbound as C;
-use sunrise_protocol::packets::play::Serverbound as S;
 use super::*;
+use std::sync::Arc;
 use sunrise_gameplay::game::remote::recipe_properties::tests::cut_pack;
 use sunrise_gameplay::game::remote::recipe_properties::tests::place_stonecutter;
-use {sunrise_gameplay_common::game::lan_actions::GuestCommand, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
+use sunrise_items::items::ItemStack;
 use sunrise_mod_package::content::RECIPE_PRIORITIES_PATH;
+use sunrise_protocol::packets::play::Clientbound as C;
+use sunrise_protocol::packets::play::Serverbound as S;
 use sunrise_protocol::{
     buf::Reader,
     packets::recipes::{HolderSet, SlotDisplay, UpdateRecipes},
 };
 use sunrise_sim::lan::{Out, PlayerSender};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_guest_turn_tests::with_guests,
+    sunrise_gameplay_common::game::lan_actions::GuestCommand,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -51,7 +55,8 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
     }"#,
     );
     with_guests(|server| {
-        let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(server, false);
+        let _serving =
+            sunrise_gameplay::game::server_side::integrated::tests::install_serving(server, false);
         server.server.world_root = root.to_owned();
         let (tx, rx) = std::sync::mpsc::channel();
         let host = server.server.lan.as_mut().unwrap();
@@ -91,7 +96,8 @@ fn guest_stonecutter_uses_packet_tags_components_and_authoritative_buttons() {
         server.lan_guest_packet(12, click(0, 0));
         with_client_game(|client| {
             let (mut peer, _writer) = super::super::tests::connect_menu_test(client);
-            let deliver = |client: &mut sunrise_client_gameplay::game::ClientGame<'_>, expect_closed: bool| {
+            let deliver = |client: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                           expect_closed: bool| {
                 let mut recipes = None;
                 for out in rx.try_iter() {
                     let bodies = match out {
@@ -308,7 +314,8 @@ fn guest_stonecutter_waits_for_deferred_recipe_publication() {
         );
     }
     with_guests(|server| {
-        let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(server, false);
+        let _serving =
+            sunrise_gameplay::game::server_side::integrated::tests::install_serving(server, false);
         server.server.world_root = root.to_owned();
         let (tx, rx) = std::sync::mpsc::channel();
         let host = server.server.lan.as_mut().unwrap();

@@ -1,15 +1,19 @@
-use sunrise_gameplay_common::game::GameGameExt1;
 use crate::game::client_side::potions::cloud_water_tests::offset_coord;
 use crate::game::client_side::potions::cloud_water_tests::parse_double_bits;
 use crate::game::client_side::potions::cloud_water_tests::parse_motion_bits;
 use crate::game::client_side::potions::cloud_water_tests::read_witness;
-use sunrise_gameplay::game::commands::data::DataRef;
-use sunrise_gameplay_common::game::dragon_common::Breath;
-use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use serde_json::Value;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
+use sunrise_gameplay::game::commands::data::DataRef;
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::dragon_common::Breath;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+    sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 pub(crate) fn run_a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_it() {
     let witness = read_witness();
@@ -89,7 +93,11 @@ pub(crate) fn run_a_cloud_in_water_resets_its_fall_distance_and_a_dry_one_keeps_
                 // Saved chunk view (`potion_cloud_to_nbt`).
                 let saved = {
                     let cloud = game.breath_clouds.iter().find(|c| c.id == *id).unwrap();
-                    sunrise_gameplay::game::server_side::potions_server::potion_cloud_to_nbt(cloud, *uuid, game.persist_raw(*id))
+                    sunrise_gameplay::game::server_side::potions_server::potion_cloud_to_nbt(
+                        cloud,
+                        *uuid,
+                        game.persist_raw(*id),
+                    )
                 };
                 assert_eq!(
                     saved.get("fall_distance").cloned(),

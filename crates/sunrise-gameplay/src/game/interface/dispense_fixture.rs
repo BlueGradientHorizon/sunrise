@@ -3,9 +3,7 @@
 //! every case (a dispenser or dropper with items, blocks and target entities
 //! around it) through `dispense_from` on a fresh headless world and prints what
 //! changed in the format of `VanillaDispenserOracle`.
-use super::{
-    dispenser::{Slot, body_equipment_species, mob_set_slot, mob_slot_item},
-};
+use super::dispenser::{Slot, body_equipment_species, mob_set_slot, mob_slot_item};
 use serde_json::Value;
 use std::{cell::RefCell, collections::HashMap, fmt::Write as _, io::Write as _, sync::Arc};
 use sunrise_command::args::GameMode;
@@ -141,7 +139,8 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game::server_side) fn fixture_reset(&mut self, seed: i64) {
-        self.common.world = sunrise_gameplay_common::game::world_for_mods(self.common.res.facts().air, seed);
+        self.common.world =
+            sunrise_gameplay_common::game::world_for_mods(self.common.res.facts().air, seed);
         // The oracle level is plains everywhere (bone meal's flowers, freezing).
         let plains = u32::from(world_biomes!(self).id("minecraft:plains"));
         for cx in -2..=2 {
@@ -255,7 +254,8 @@ impl crate::game::ServerGame<'_> {
         // CrafterBlock.newBlockEntity copies the state's triggered flag;
         // CrafterBlockEntity.setSlotState disables only empty slots.
         let crafter_positions: Vec<(i32, i32, i32)> = self
-            .common.world
+            .common
+            .world
             .block_entities
             .iter()
             .filter(|(_, e)| matches!(e, BlockEntity::Crafter(_)))
@@ -264,7 +264,8 @@ impl crate::game::ServerGame<'_> {
         for p in crafter_positions {
             let state = self.common.world.block(p.0, p.1, p.2);
             let triggered = self
-                .common.pack
+                .common
+                .pack
                 .assets
                 .registry
                 .state(state)
@@ -381,7 +382,8 @@ impl crate::game::ServerGame<'_> {
             self.dispense_from(origin, state)?;
             // CrafterBlockEntity.serverTick, the crafting animation running down.
             let mut crafters: Vec<(i32, i32, i32)> = self
-                .common.world
+                .common
+                .world
                 .block_entities
                 .iter()
                 .filter(|(_, e)| matches!(e, BlockEntity::Crafter(_)))
@@ -396,7 +398,8 @@ impl crate::game::ServerGame<'_> {
         }
 
         let mut out = Vec::new();
-        let mut changed: Vec<(i32, i32, i32)> = self.common.world.block_log.take().unwrap_or_default();
+        let mut changed: Vec<(i32, i32, i32)> =
+            self.common.world.block_log.take().unwrap_or_default();
         // Quiet edits such as a sapling advancing its stage do not send a client update.
         // Compare the input cells too, rather than using network notifications as all edits.
         changed.extend(before.keys().copied());
@@ -404,7 +407,12 @@ impl crate::game::ServerGame<'_> {
         changed.dedup();
         for p in changed {
             let now = self.common.world.block(p.0, p.1, p.2).0;
-            if before.get(&p).copied().unwrap_or(self.common.res.facts().air.0) != now {
+            if before
+                .get(&p)
+                .copied()
+                .unwrap_or(self.common.res.facts().air.0)
+                != now
+            {
                 out.push(format!("set {},{},{} {now}", p.0, p.1, p.2));
             }
         }
@@ -429,7 +437,8 @@ impl crate::game::ServerGame<'_> {
             }
         }
         let mut crafters: Vec<_> = self
-            .common.world
+            .common
+            .world
             .block_entities
             .iter()
             .filter_map(|(p, e)| match e {
@@ -456,7 +465,8 @@ impl crate::game::ServerGame<'_> {
         }
         // A spawner's next spawn data (its id and number of keys), potentials and delay.
         let mut spawners: Vec<_> = self
-            .common.world
+            .common
+            .world
             .block_entities
             .iter()
             .filter_map(|(p, e)| match e {
@@ -702,7 +712,10 @@ impl crate::game::ServerGame<'_> {
             .map(|s| s.item.clone())
             .collect();
         items.dedup();
-        let used_before: Vec<_> = items.iter().map(|i| self.common.stats.get("used", i)).collect();
+        let used_before: Vec<_> = items
+            .iter()
+            .map(|i| self.common.stats.get("used", i))
+            .collect();
         // The top face, or the case's `face`, clicked at its centre.
         let face = match op["face"].as_str() {
             Some("down") => [0, -1, 0],
@@ -746,7 +759,8 @@ impl crate::game::ServerGame<'_> {
             }
         }
         let using = self
-            .common.using
+            .common
+            .using
             .and_then(|(slot, _)| self.common.stack_in(slot))
             .map_or("-".to_owned(), |s| s.item.to_string());
         out.push(format!(
@@ -779,7 +793,8 @@ impl crate::game::ServerGame<'_> {
             .ok_or("empty blocking stack")?;
         // Reload the stack just as a player inventory does between sessions.
         let saved = sunrise_items::item_nbt::item_to_nbt(&stack, self.common.res.items());
-        self.common.inventory[self.common.selected] = sunrise_items::item_nbt::item_from_nbt(&saved);
+        self.common.inventory[self.common.selected] =
+            sunrise_items::item_nbt::item_from_nbt(&saved);
         let (creative, mode) = (self.common.creative, self.common.mode);
         self.common.creative = op["creative"].as_bool().unwrap_or(false);
         self.common.mode = if self.common.creative {
@@ -869,7 +884,8 @@ impl crate::game::ServerGame<'_> {
         let (bonus, hurt) = match targets.first() {
             Some(&Target::Mob(id)) => {
                 let index = self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter()
                     .position(|m| m.id == id)
                     .ok_or("the target is gone")?;
@@ -878,7 +894,8 @@ impl crate::game::ServerGame<'_> {
                 let join = self.common.mobs[index].join;
                 let (hurt, _) = self.hurt_by_player(index, base + bonus, source);
                 let index = self
-                    .common.mob_index
+                    .common
+                    .mob_index
                     .find(&self.common.mobs, id)
                     .filter(|&i| self.common.mobs[i].join == join && !self.common.mobs[i].removed)
                     .ok_or("the target is gone")?;
@@ -895,7 +912,8 @@ impl crate::game::ServerGame<'_> {
             }
             Some(&Target::Stand(id)) => {
                 let index = self
-                    .common.armor_stands
+                    .common
+                    .armor_stands
                     .iter()
                     .position(|s| s.id == id)
                     .ok_or("the target is gone")?;
@@ -910,7 +928,8 @@ impl crate::game::ServerGame<'_> {
         // the combat record with its statistic, the hurt sound where it
         // stands and the damage game event of the health it lost.
         let events = self
-            .common.player
+            .common
+            .player
             .as_mut()
             .map(|p| std::mem::take(&mut p.events))
             .unwrap_or_default();
@@ -921,7 +940,8 @@ impl crate::game::ServerGame<'_> {
             }
         }
         if self
-            .common.player
+            .common
+            .player
             .as_ref()
             .is_some_and(|p| p.health.health() < 20.0)
         {
@@ -1021,8 +1041,13 @@ impl crate::game::ServerGame<'_> {
         slot: usize,
         stack: Option<ItemStack>,
     ) {
-        let jukebox =
-            &*self.common.res.facts().get(self.common.world.block(p.0, p.1, p.2)).name == "minecraft:jukebox";
+        let jukebox = &*self
+            .common
+            .res
+            .facts()
+            .get(self.common.world.block(p.0, p.1, p.2))
+            .name
+            == "minecraft:jukebox";
         match self.common.world.block_entities.get_mut(&p) {
             Some(BlockEntity::Jukebox(j)) => j.items[0] = stack,
             Some(BlockEntity::Lectern(l)) => l.book = stack,
@@ -1065,7 +1090,8 @@ impl crate::game::ServerGame<'_> {
     ) {
         use sunrise_core::nbt::Tag;
         let name = self
-            .common.res
+            .common
+            .res
             .facts()
             .get(self.common.world.block(p.0, p.1, p.2))
             .name
@@ -1216,7 +1242,8 @@ impl crate::game::ServerGame<'_> {
         op: &Value,
     ) -> Result<String> {
         let kind = self
-            .common.res
+            .common
+            .res
             .mob_types()
             .get("minecraft:villager")
             .cloned()
@@ -1261,8 +1288,11 @@ impl crate::game::ServerGame<'_> {
             self.common.carts.push(c);
             return Ok(Target::Cart(id));
         }
-        if let Some((wood, chest)) = sunrise_gameplay_common::game::boats_common::any_boat_wood(kind) {
-            let mut boat = sunrise_gameplay_common::game::boats_common::Boat::new(id, wood.into(), at, yaw);
+        if let Some((wood, chest)) =
+            sunrise_gameplay_common::game::boats_common::any_boat_wood(kind)
+        {
+            let mut boat =
+                sunrise_gameplay_common::game::boats_common::Boat::new(id, wood.into(), at, yaw);
             if chest {
                 boat = boat.with_chest();
             }
@@ -1282,7 +1312,8 @@ impl crate::game::ServerGame<'_> {
             return Ok(Target::Stand(id));
         }
         let t = self
-            .common.res
+            .common
+            .res
             .mob_types()
             .get(kind)
             .cloned()
@@ -1369,8 +1400,18 @@ impl crate::game::ServerGame<'_> {
         target: &Target,
     ) -> impl Iterator<Item = (usize, &ItemStack)> {
         let items = match *target {
-            Target::Boat(id) => self.common.boats.iter().find(|b| b.id == id).map(|b| &b.items),
-            Target::Cart(id) => self.common.carts.iter().find(|c| c.id == id).map(|c| &c.items),
+            Target::Boat(id) => self
+                .common
+                .boats
+                .iter()
+                .find(|b| b.id == id)
+                .map(|b| &b.items),
+            Target::Cart(id) => self
+                .common
+                .carts
+                .iter()
+                .find(|c| c.id == id)
+                .map(|c| &c.items),
             Target::Mob(_) | Target::Stand(_) => None,
         };
         items
@@ -1455,17 +1496,22 @@ impl crate::game::ServerGame<'_> {
                         let _ = write!(line, " {name}={item}x1");
                     }
                 }
-                let ready =
-                    match s {
-                        Species::Sheep => Some(!x.sheared && !m.is_baby()),
-                        Species::Mooshroom => Some(!m.is_baby()),
-                        Species::Bogged => Some(!x.sheared),
-                        Species::SnowGolem => Some(!x.sheared),
-                        Species::CopperGolem => Some(self.common.golem_shearable(
-                            self.common.mobs.iter().position(|o| o.id == id).unwrap_or(0),
-                        )),
-                        _ => None,
-                    };
+                let ready = match s {
+                    Species::Sheep => Some(!x.sheared && !m.is_baby()),
+                    Species::Mooshroom => Some(!m.is_baby()),
+                    Species::Bogged => Some(!x.sheared),
+                    Species::SnowGolem => Some(!x.sheared),
+                    Species::CopperGolem => Some(
+                        self.common.golem_shearable(
+                            self.common
+                                .mobs
+                                .iter()
+                                .position(|o| o.id == id)
+                                .unwrap_or(0),
+                        ),
+                    ),
+                    _ => None,
+                };
                 if let Some(r) = ready {
                     line.push_str(if r { " ready" } else { " unready" });
                 }
@@ -1516,7 +1562,12 @@ impl crate::game::ServerGame<'_> {
             }
             l
         };
-        for m in self.common.mobs.iter().filter(|m| !old_mobs.contains(&m.id)) {
+        for m in self
+            .common
+            .mobs
+            .iter()
+            .filter(|m| !old_mobs.contains(&m.id))
+        {
             let (p, v) = (m.position, m.velocity);
             out.push(line(&m.kind.id, [p.x, p.y, p.z], [v.x, v.y, v.z], ""));
         }
@@ -1530,7 +1581,8 @@ impl crate::game::ServerGame<'_> {
             ));
         }
         for s in self
-            .common.armor_stands
+            .common
+            .armor_stands
             .iter()
             .filter(|s| !old_stands.contains(&s.id))
         {
@@ -1590,7 +1642,12 @@ impl crate::game::ServerGame<'_> {
                 &format!("fuse={}", t.fuse),
             ));
         }
-        for b in self.common.boats.iter().filter(|b| !old_vehicles.contains(&b.id)) {
+        for b in self
+            .common
+            .boats
+            .iter()
+            .filter(|b| !old_vehicles.contains(&b.id))
+        {
             let kind = b.entity_type();
             let (p, v) = (b.position, b.velocity);
             out.push(line(&kind, [p.x, p.y, p.z], [v.x, v.y, v.z], ""));
@@ -1608,7 +1665,12 @@ impl crate::game::ServerGame<'_> {
                 ));
             }
         }
-        for c in self.common.carts.iter().filter(|c| !old_vehicles.contains(&c.id)) {
+        for c in self
+            .common
+            .carts
+            .iter()
+            .filter(|c| !old_vehicles.contains(&c.id))
+        {
             let (p, v) = (c.position, c.velocity);
             out.push(line(c.kind.id(), [p.x, p.y, p.z], [v.x, v.y, v.z], ""));
         }

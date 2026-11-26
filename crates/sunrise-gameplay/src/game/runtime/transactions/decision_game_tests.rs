@@ -1,16 +1,24 @@
 //! Adapter fixtures run the real Game transaction open/close, root journal,
 //! deferred drops, and save gate. They need resources; the acceptance matrix
 //! coordinator fixtures in decision_tests.rs do not.
-use sunrise_gameplay_common::game::transactions::decision::storage::{ActionHost, GameHost};
-use {crate::game::transactions::decision::*, sunrise_gameplay_common::game::transactions::decision::{Effect, Identity, ItemStack, Menu, Mutation, Outcome, Reply, Side, Step, run, storage, tests}};
 use crate::game::native_entity_refs::tests::with_game;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::transactions::decision::storage::{ActionHost, GameHost};
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::entities::ArmorStand;
+use {
+    crate::game::transactions::decision::*,
+    sunrise_gameplay_common::game::transactions::decision::{
+        Effect, Identity, ItemStack, Menu, Mutation, Outcome, Reply, Side, Step, run, storage,
+        tests,
+    },
+};
 
 fn identity(game: &mut crate::game::ServerGame<'_>) -> Identity {
-    game.common.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
+    game.common
+        .armor_stands
+        .push(ArmorStand::new(13, Vec3::ZERO, 0.0));
     let holder = game.entity(13).expect("fixture holder");
     Identity {
         side: Side::Server,
@@ -190,7 +198,9 @@ fn real_save_gate_and_save_all_refuse_action_savepoint() {
                     &menu,
                     |_, s| tests::placement(s),
                     |host| {
-                        assert!(sunrise_gameplay_common::game::CommonGame::admit_entity_save().is_err());
+                        assert!(
+                            sunrise_gameplay_common::game::CommonGame::admit_entity_save().is_err()
+                        );
                         assert_eq!(
                             host.game.save_all_reply().translation_key(),
                             Some("commands.save.failed")
@@ -289,7 +299,9 @@ fn abandoned_token_releases_real_save_gate_and_publishes_nothing() {
                     &menu,
                     |_, view| tests::placement(view),
                     |host| {
-                        assert!(sunrise_gameplay_common::game::CommonGame::admit_entity_save().is_err());
+                        assert!(
+                            sunrise_gameplay_common::game::CommonGame::admit_entity_save().is_err()
+                        );
                         host.game
                             .drop_after_commit(1, ItemStack::new("minecraft:dirt", 2));
                         panic!("listener trap with a live decision");

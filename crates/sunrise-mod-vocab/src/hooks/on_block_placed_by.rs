@@ -29,7 +29,8 @@ including clearing a completed wither pattern. A refusal, placement failure,
 `setPlacedBy` never fires it. Items without a
 subscribed Part cost one `item_listens` lookup and no stack conversion.
 "##]
-    #[hook(target = "sunrise_gameplay::game::native_hooks::on_block_placed_by::ServerGame<'_>::native_on_block_placed_by", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::on_block_placed_by::ServerGame<'_>::native_on_block_placed_by",
         side = "server",
         contract = "listen",
         scope = "item",

@@ -17,7 +17,9 @@ impl ClientGame<'_> {
     pub(in crate::game) fn refresh_biome_colors(&mut self) {
         // A world's own table is asked from the biome files' colours each
         // time, so a mod's colours do not stack; a plain world's is the pack's.
-        if let (Some(base), Some(current)) = (&self.common.world_biomes_base, &self.common.world_biomes) {
+        if let (Some(base), Some(current)) =
+            (&self.common.world_biomes_base, &self.common.world_biomes)
+        {
             let Some(biomes) = base.recolored_from(current, |biome, colors| {
                 self.native_biome_colors(biome, colors)
             }) else {

@@ -1,5 +1,3 @@
-
-
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     #[cfg(test)]

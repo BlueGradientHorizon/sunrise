@@ -1,28 +1,33 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 #[cfg(feature = "client")]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
-use sunrise_gameplay_common::game::in_own_process;
+    use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
+    use sunrise_gameplay_common::game::in_own_process;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn equipment_camera_overlays_emit_in_vanilla_slot_order() {
-        use {sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game};
         use sunrise_client::hud::Rect;
         use sunrise_core::{geometry::Vec3, nbt::Tag};
         use sunrise_items::items::ItemStack;
         use sunrise_level::camera_math::CameraType;
+        use {
+            crate::game::server_side::native_entity_refs::tests::with_client_game,
+            sunrise_gameplay_common::game::in_own_process,
+        };
 
         in_own_process(
             "game::client_side::render_tick::tests::equipment_camera_overlays_emit_in_vanilla_slot_order",
             || {
                 with_client_game(|game| {
                     game.player = Some(
-                        sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(0.5, 64.0, 0.5)).unwrap(),
+                        sunrise_sim::motion::PlayerMotion::new(
+                            game.motion,
+                            Vec3::new(0.5, 64.0, 0.5),
+                        )
+                        .unwrap(),
                     );
                     game.client.camera_type = CameraType::FirstPerson;
                     game.client.chat_ui.hide_gui = false;
@@ -153,7 +158,6 @@ use sunrise_gameplay_common::game::in_own_process;
         );
     }
 }
-
 
 #[cfg(feature = "client")]
 #[cfg(test)]

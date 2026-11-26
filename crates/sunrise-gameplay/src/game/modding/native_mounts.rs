@@ -28,11 +28,20 @@ impl crate::game::ServerGame<'_> {
         target: Target,
         effects: impl FnOnce(&mut Self),
     ) -> Option<()> {
-        if self.common.target_removed(&target) || !self.common.persist.preparing_vehicle_removals.insert(target) {
+        if self.common.target_removed(&target)
+            || !self
+                .common
+                .persist
+                .preparing_vehicle_removals
+                .insert(target)
+        {
             return None;
         }
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| effects(self)));
-        self.common.persist.preparing_vehicle_removals.remove(&target);
+        self.common
+            .persist
+            .preparing_vehicle_removals
+            .remove(&target);
         if let Err(payload) = result {
             std::panic::resume_unwind(payload);
         }
@@ -58,7 +67,11 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<R> {
         let id = self.network_entity_id(target)? as u32;
         let y = self.target_position(target)?[1];
-        if self.common.persist.preparing_vehicle_removals.contains(&target)
+        if self
+            .common
+            .persist
+            .preparing_vehicle_removals
+            .contains(&target)
             || !self.common.persist.destroying_vehicles.insert(target)
         {
             return None;
@@ -142,11 +155,13 @@ impl crate::game::ServerGame<'_> {
         let kind = match rider {
             Some(id) => self.common.mob_object(id).map_or_else(
                 || {
-                    self.common.general_object(id).map_or_else(String::new, |row| {
-                        super::general::general_type_catalog()
-                            .key(row.type_slot)
-                            .to_owned()
-                    })
+                    self.common
+                        .general_object(id)
+                        .map_or_else(String::new, |row| {
+                            super::general::general_type_catalog()
+                                .key(row.type_slot)
+                                .to_owned()
+                        })
                 },
                 mob_kind,
             ),
@@ -163,7 +178,10 @@ impl crate::game::ServerGame<'_> {
             mounting,
             canceled: &mut canceled,
         });
-        self.common.persist.mount_notifications.remove(&notification);
+        self.common
+            .persist
+            .mount_notifications
+            .remove(&notification);
         !canceled
     }
 

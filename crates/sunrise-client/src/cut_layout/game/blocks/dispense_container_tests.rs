@@ -2,7 +2,6 @@
 //! that returns it fills and empties a bucket-like container (its empty and full forms
 //! different items), picks up before it places, sends the remainder into the dispenser or out
 //! of its front, and dispenses an unchanged container where nothing moves.
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::api_values::test_snapshot, sunrise_gameplay::game::dispense_fixture, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay_common::game::transactions::After};
 use mod_api::{prelude::ItemsServerHost, *};
 use std::sync::{Arc, Mutex};
 use sunrise_core::{
@@ -11,6 +10,12 @@ use sunrise_core::{
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_world::{fluid::FluidKind, registry::BlockStateId};
+use {
+    sunrise_gameplay::game::dispense_fixture,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::api_values::test_snapshot,
+    sunrise_gameplay_common::game::transactions::After,
+};
 
 /// The dispenser, facing east, and the block in front of it.
 const DISPENSER: [i32; 3] = [5, 64, 5];
@@ -389,7 +394,10 @@ fn set_front(game: &mut sunrise_gameplay::game::ServerGame<'_>, name: &str) {
 }
 
 /// The dispenser dispenses `stack` from its slot: what the slot holds then.
-fn dispense(game: &mut sunrise_gameplay::game::ServerGame<'_>, stack: ItemStack) -> Option<ItemStack> {
+fn dispense(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    stack: ItemStack,
+) -> Option<ItemStack> {
     let at = (DISPENSER[0], DISPENSER[1], DISPENSER[2]);
     game.dispense_item(at, Direction::East, stack)
         .unwrap()

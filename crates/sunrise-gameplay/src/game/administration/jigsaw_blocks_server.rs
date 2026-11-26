@@ -61,7 +61,12 @@ impl ServerGame<'_> {
         conn: u32,
         p: play::SetJigsawBlock,
     ) {
-        let Some(g) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(g) = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+        else {
             return;
         };
         let allowed = g.creative() && g.permission >= 2;
@@ -74,7 +79,12 @@ impl ServerGame<'_> {
 
     /// `handleJigsawGenerate` for a guest.
     pub(in crate::game) fn lan_jigsaw_generate(&mut self, conn: u32, p: play::JigsawGenerate) {
-        let Some(g) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(g) = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+        else {
             return;
         };
         let allowed = g.creative() && g.permission >= 2;
@@ -100,7 +110,8 @@ impl ServerGame<'_> {
         let position = [pos.0 + step[0], pos.1 + step[1], pos.2 + step[2]];
         // registry.getOrThrow(pool): an unknown pool throws, ending the packet.
         if !self
-            .common.ui
+            .common
+            .ui
             .registries
             .ids("minecraft:worldgen/template_pool")
             .contains(&pool)

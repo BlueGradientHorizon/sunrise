@@ -21,7 +21,8 @@ impl ServerGame<'_> {
     pub(in crate::game::server_side) fn potion_in_tag(&self, stack: &ItemStack, tag: &str) -> bool {
         stack.custom_potion_effects().is_empty()
             && stack.potion().is_some_and(|potion| {
-                self.common.res
+                self.common
+                    .res
                     .stations()
                     .trades
                     .potion_tags
@@ -100,7 +101,8 @@ impl ServerGame<'_> {
         if !self.named_block_in_tag("minecraft:campfires", name) {
             return None;
         }
-        self.common.pack
+        self.common
+            .pack
             .assets
             .registry
             .state(state)
@@ -116,12 +118,7 @@ impl ServerGame<'_> {
     /// (`Enderman.hurtServer`); one in `#extinguishes_entities` puts out
     /// those that burn; one in `#rehydrates_axolotls` refills the air of
     /// the axolotls in the box.
-    pub fn affect_entities_around(
-        &mut self,
-        stack: &ItemStack,
-        at: Vec3,
-        by_player: bool,
-    ) {
+    pub fn affect_entities_around(&mut self, stack: &ItemStack, at: Vec3, by_player: bool) {
         let hurts = self.potion_in_tag(stack, "minecraft:hurts_water_sensitive_entities");
         let extinguishes = self.potion_in_tag(stack, "minecraft:extinguishes_entities");
         // The potion's box is 0.25 wide and high.
@@ -214,7 +211,8 @@ impl ServerGame<'_> {
                 [at.x + 0.125 + 4.0, at.y + 0.25 + 2.0, at.z + 0.125 + 4.0],
             );
             for m in self
-                .common.mobs
+                .common
+                .mobs
                 .iter_mut()
                 .filter(|m| m.species() == Species::Axolotl && !m.removed)
             {

@@ -5,7 +5,8 @@ impl crate::game::ServerGame<'_> {
     /// discarded. An unprimed cart survives, including its current tick.
     pub fn explode_cart(&mut self, c: &mut Minecart, speed_sqr: f64) -> bool {
         let explodes = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES);
         if !explodes && c.fuse < 0 {

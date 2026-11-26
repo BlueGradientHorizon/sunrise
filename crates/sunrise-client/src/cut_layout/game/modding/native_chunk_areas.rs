@@ -1,10 +1,6 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::server_side::view_pass::tests::Sent, sunrise_gameplay::game::server_side::view_pass::tests::host_a_viewer, crate::game::server_side::view_pass::tests::open_game, sunrise_gameplay_common::game::server_side::view_pass::tests::sent};
     use mod_api::{
         ChunkArea,
         ChunkAreaMode::*,
@@ -15,7 +11,15 @@ use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::server_s
         sync::mpsc::Receiver,
         time::{Duration, Instant},
     };
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
     use sunrise_sim::lan::{Out, viewed_levels::areas as engine};
+    use {
+        crate::game::server_side::view_pass::tests::open_game,
+        sunrise_gameplay::game::server_side::view_pass::tests::host_a_viewer,
+        sunrise_gameplay_common::game::Dim,
+        sunrise_gameplay_common::game::server_side::view_pass::tests::Sent,
+        sunrise_gameplay_common::game::server_side::view_pass::tests::sent,
+    };
 
     fn in_mod(id: &'static str) -> ModGuard {
         mod_platform::content::crash::enter_native_mod(ModCall {

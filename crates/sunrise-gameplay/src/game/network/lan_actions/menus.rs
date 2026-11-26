@@ -4,11 +4,7 @@ impl crate::game::ServerGame<'_> {
     /// Finish the menu handoff after the guest's use. As in
     /// `ChestBlock.useWithoutItem`, the block has already decided its use
     /// result independently of what `ServerPlayer.openMenu` does.
-    pub fn lan_open_container(
-        &mut self,
-        conn: u32,
-        pos: (i32, i32, i32),
-    ) -> MenuOpen {
+    pub fn lan_open_container(&mut self, conn: u32, pos: (i32, i32, i32)) -> MenuOpen {
         if pos.1 == sunrise_gameplay_common::game::minecarts::CART_KEY_Y {
             return self.lan_open_vehicle_container(conn, pos);
         }
@@ -19,7 +15,8 @@ impl crate::game::ServerGame<'_> {
     pub fn open_block_menu(&mut self, conn: u32, pos: (i32, i32, i32)) -> MenuOpen {
         let generation = self.common.world.block_entities.generation(&pos);
         let name = &self
-            .common.res
+            .common
+            .res
             .facts()
             .get(self.common.world.block(pos.0, pos.1, pos.2))
             .name;
@@ -285,16 +282,17 @@ impl crate::game::ServerGame<'_> {
         conn: u32,
         pos: (i32, i32, i32),
     ) -> MenuOpen {
-        let entity_type = if let Some(cart) = self.common.carts.iter().find(|c| c.id as i32 == pos.2) {
-            cart.kind.id().to_owned()
-        } else if let Some(boat) = self.common.boats.iter().find(|b| b.id as i32 == pos.2) {
-            if !boat.chest {
+        let entity_type =
+            if let Some(cart) = self.common.carts.iter().find(|c| c.id as i32 == pos.2) {
+                cart.kind.id().to_owned()
+            } else if let Some(boat) = self.common.boats.iter().find(|b| b.id as i32 == pos.2) {
+                if !boat.chest {
+                    return MenuOpen::NoProvider;
+                }
+                boat.entity_type()
+            } else {
                 return MenuOpen::NoProvider;
-            }
-            boat.entity_type()
-        } else {
-            return MenuOpen::NoProvider;
-        };
+            };
         // `createMenu` (ChestMenu.threeRows or a HopperMenu), and
         // `MenuProvider.getDisplayName`, the vehicle's name key.
         let Some((menu, _)) = sunrise_level::containers::vehicle_menu(&entity_type) else {
@@ -315,7 +313,8 @@ impl crate::game::ServerGame<'_> {
         // backs is not this use's to remove: the close is only for the one
         // nobody is looking at.
         let boat = self
-            .common.boats
+            .common
+            .boats
             .iter()
             .position(|b| b.id as i32 == pos.2 && b.chest);
         let spectator_pending = boat.is_some_and(|i| {
@@ -531,8 +530,12 @@ impl crate::game::ServerGame<'_> {
         let Some(host) = self.server.lan.as_ref() else {
             return;
         };
-        let other_viewers =
-            sunrise_gameplay_common::game::CommonGame::vehicle_has_other_viewers(self.common.container, &host.hub.guests, Some(conn), key);
+        let other_viewers = sunrise_gameplay_common::game::CommonGame::vehicle_has_other_viewers(
+            self.common.container,
+            &host.hub.guests,
+            Some(conn),
+            key,
+        );
         self.common.store_cart_items(key);
         if !other_viewers {
             self.common.world.block_entities.remove(&key);

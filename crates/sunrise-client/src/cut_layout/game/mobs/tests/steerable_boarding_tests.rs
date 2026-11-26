@@ -1,6 +1,5 @@
 //! Witness for `Pig.mobInteract` and `Strider.mobInteract`: the real guest
 //! Interact route, with only the world and connection constructed by the test.
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::lan::LanSettings, sunrise_gameplay::game::native_entity_refs::tests};
 use serde_json::json;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_core::geometry::Vec3;
@@ -20,6 +19,11 @@ use sunrise_sim::{
         hub::HubConfig,
     },
     mobs::Mob,
+};
+use {
+    sunrise_gameplay::game::lan::LanSettings, sunrise_gameplay::game::native_entity_refs::tests,
+    sunrise_gameplay_common::game::Dim,
+    sunrise_gameplay_common::game::execution_role::ExecutionRole,
 };
 
 const TEST: &str =

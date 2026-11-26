@@ -1,10 +1,13 @@
 use sunrise_core::geometry::Vec3;
 // Test module extracted without changing its logical path.
-use {crate::game::server_side::commands::*};
+use crate::game::server_side::commands::*;
+use sunrise_core::nbt::parse_snbt;
 use sunrise_gameplay_common::game::BlockEntity;
 use sunrise_gameplay_common::game::commands_common::Target;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
-use sunrise_core::nbt::parse_snbt;
+use {
+    crate::game::load_resources, crate::settings::Settings, sunrise_gameplay_common::game::Options,
+    sunrise_gameplay_common::game::Progress,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -26,7 +29,8 @@ fn kill_spills_explicit_vehicle_contents_after_menu_writeback() {
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
@@ -79,7 +83,11 @@ fn kill_spills_explicit_vehicle_contents_after_menu_writeback() {
             Some(&sunrise_core::nbt::Tag::IntArray(uuid.to_vec()))
         );
         // The active menu's actual edited slot must win over the older model.
-        let key = (i32::MAX - 15, sunrise_gameplay_common::game::minecarts::CART_KEY_Y, id as i32);
+        let key = (
+            i32::MAX - 15,
+            sunrise_gameplay_common::game::minecarts::CART_KEY_Y,
+            id as i32,
+        );
         if container {
             slots[0].as_mut().unwrap().count = 4;
             game.world

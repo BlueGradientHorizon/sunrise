@@ -2,8 +2,8 @@
 //! see-through, shrinks with distance as a name tag does, is refused whole for text too deep
 //! or a position that is not finite, draws as vanilla's name tags in its light and the
 //! player's text background opacity.
-use crate::game::host::draw::GameWorldDrawContext;
 use super::native_entity_refs::tests::with_client_game;
+use crate::game::host::draw::GameWorldDrawContext;
 use glam::{DVec3, Mat4, Vec3};
 use mod_api::{DrawError, Hooks, NameTagOptions, Text, WorldDrawContext};
 use sunrise_client::block_entity_render::vertex_light;

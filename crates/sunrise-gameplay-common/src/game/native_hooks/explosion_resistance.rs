@@ -19,7 +19,7 @@ pub trait ExplosionResistanceGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The resistance the parts of `state` at `pos` give it against `explosion`, in place of
     /// its static one, on a logical server. A negative or non-finite answer is refused and a
     /// panicking part contained, both with a warning: None keeps the static value.
-     fn part_explosion_resistance(
+    fn part_explosion_resistance(
         &mut self,
         pos: [i32; 3],
         state: BlockStateId,
@@ -53,6 +53,5 @@ pub trait ExplosionResistanceGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> ExplosionResistanceGameExt1<'__sg> for G {}
-
 
 use crate::game::GameGameExt1 as _;

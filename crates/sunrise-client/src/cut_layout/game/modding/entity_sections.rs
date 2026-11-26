@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 #[path = "entity_sections/tests.rs"]

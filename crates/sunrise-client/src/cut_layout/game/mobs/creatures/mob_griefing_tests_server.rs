@@ -1,7 +1,10 @@
 use super::super::native_entity_refs::tests::with_game;
-use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
-use sunrise_gameplay_common::game::creatures::mob_griefing_tests::Deny;
 use std::sync::Arc;
+use sunrise_gameplay_common::game::creatures::mob_griefing_tests::Deny;
+use {
+    sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+    sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+};
 
 /// `EntityMobGriefingEvent`: the mod's answer for one entity reaches the
 /// game's checks and the mob AI's; another entity keeps the rule, and a
@@ -64,7 +67,10 @@ fn a_mod_denies_one_entity_griefing() {
             // `shouldAffectBlocklikeEntities` asks for the exploding entity: a
             // blast that keeps blocks spares decorations when the mod denies
             // it, and reaches them for another exploding entity.
-            use {sunrise_gameplay::game::server_side::explosion::BlockInteraction::Destroy, sunrise_gameplay::game::server_side::explosion::BlockInteraction::Keep};
+            use {
+                sunrise_gameplay::game::server_side::explosion::BlockInteraction::Destroy,
+                sunrise_gameplay::game::server_side::explosion::BlockInteraction::Keep,
+            };
             game.server.combat.0.explosion_source = Some(denied);
             assert!(game.blast_spares_decorations(Keep));
             assert!(!game.blast_spares_decorations(Destroy));

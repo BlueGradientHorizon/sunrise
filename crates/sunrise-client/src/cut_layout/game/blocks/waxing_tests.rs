@@ -1,8 +1,8 @@
 //! Honeycomb (the player's and the dispenser's, both through `honeycomb_waxed`) and the axe's
 //! scrape and wax-off (`axe_mapped`), with and without the world's NeoForge block maps.
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::ToolAbility::{AxeScrape, AxeWaxOff};
 use std::sync::Arc;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_world::level::{BlockMapValue, BlockMaps};
 use sunrise_world::registry::BlockStateId;
 

@@ -763,8 +763,9 @@ impl Loading {
                         self.settings.sunrise.shader_pack = key;
                         self.save_menu_settings();
                     }
-                    self.settings.shader_packs =
-                        sunrise_client::shader_pack_list::scan(&crate::game::ClientGame::shader_packs_dir());
+                    self.settings.shader_packs = sunrise_client::shader_pack_list::scan(
+                        &crate::game::ClientGame::shader_packs_dir(),
+                    );
                 }
                 Event::ShaderPack => self.save_menu_settings(),
                 Event::OpenShaderOptions => {
@@ -1176,11 +1177,7 @@ impl Loading {
         self.menu.key_synthetic = was;
     }
 
-    pub fn menu_event(
-        &mut self,
-        event_loop: &dyn EventLoopCtl,
-        event: WindowEvent,
-    ) -> Result<()> {
+    pub fn menu_event(&mut self, event_loop: &dyn EventLoopCtl, event: WindowEvent) -> Result<()> {
         // The buttons crates add to the title screen show by what is installed now
         // (`sunrise_hooks::title`), as on the game's own title screen.
         self.sync_title_mods();

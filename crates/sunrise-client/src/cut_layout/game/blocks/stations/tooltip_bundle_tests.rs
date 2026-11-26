@@ -1,13 +1,13 @@
-use sunrise_gameplay_common::game::TryIntoApi;
+use super::*;
 use mod_api::TooltipElement;
-use sunrise_client_gameplay::game::client_item_extensions::DEFAULT_TOOLTIP_FONT_ID;
-use sunrise_client_gameplay::game::client_side::stations::tooltip::PreparedTooltipItem;
+use mod_api::{ClientHost, Hooks, ModEntry, Mods, RenderTooltipGatherComponentsEvent};
 use sunrise_client::hud::HudBatch;
 use sunrise_client::hud::rgba;
-use sunrise_items::items::ItemStack;
-use super::*;
+use sunrise_client_gameplay::game::client_item_extensions::DEFAULT_TOOLTIP_FONT_ID;
+use sunrise_client_gameplay::game::client_side::stations::tooltip::PreparedTooltipItem;
 use sunrise_client_gameplay::game::host::draw::EngineTooltipFont;
-use mod_api::{ClientHost, Hooks, ModEntry, Mods, RenderTooltipGatherComponentsEvent};
+use sunrise_gameplay_common::game::TryIntoApi;
+use sunrise_items::items::ItemStack;
 
 struct Edit(bool);
 #[mod_api::__subscriptions]
@@ -49,20 +49,22 @@ fn run(mode: Option<bool>, test: impl FnOnce(&mut sunrise_client_gameplay::game:
 fn run_mods(mods: Mods, test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
     mod_platform::testing::with_mods(mods.clone(), || {
         mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
-        sunrise_client_gameplay::game::client_side::native_entity_refs::tests::with_client_game(|game| {
-            game.client.gui.atlas.sprites.insert(
-                "container/bundle/slot_background".into(),
-                sunrise_client::hud::Rect {
-                    u0: 0.25,
-                    v0: 0.25,
-                    u1: 0.5,
-                    v1: 0.5,
-                    w: 24,
-                    h: 24,
-                },
-            );
-            test(game);
-        })
+        sunrise_client_gameplay::game::client_side::native_entity_refs::tests::with_client_game(
+            |game| {
+                game.client.gui.atlas.sprites.insert(
+                    "container/bundle/slot_background".into(),
+                    sunrise_client::hud::Rect {
+                        u0: 0.25,
+                        v0: 0.25,
+                        u1: 0.5,
+                        v1: 0.5,
+                        w: 24,
+                        h: 24,
+                    },
+                );
+                test(game);
+            },
+        )
     });
 }
 fn bundle() -> ItemStack {
@@ -82,7 +84,12 @@ fn draw(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, stack: &ItemSt
     );
     batch
 }
-fn grid(game: &sunrise_client_gameplay::game::ClientGame<'_>, batch: &HudBatch, y: f32, present: bool) {
+fn grid(
+    game: &sunrise_client_gameplay::game::ClientGame<'_>,
+    batch: &HudBatch,
+    y: f32,
+    present: bool,
+) {
     // Positioner: x + 12, y - 12. Slot right-aligned: 22 + 72 = 94.
     let mut expected = HudBatch::scratch([320, 240]);
     sunrise_client::ui::nine_slice(

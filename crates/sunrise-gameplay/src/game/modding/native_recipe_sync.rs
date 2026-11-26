@@ -38,8 +38,10 @@ impl ServerGame<'_> {
     }
 
     fn ask_recipe_for_conn(&mut self, conn: u32) {
-        let (Some(epoch), Some(host)) = (self.common.native_lifecycle.epoch(), self.server.lan.as_ref())
-        else {
+        let (Some(epoch), Some(host)) = (
+            self.common.native_lifecycle.epoch(),
+            self.server.lan.as_ref(),
+        ) else {
             return;
         };
         let Some(g) = host.hub.guest(conn) else {

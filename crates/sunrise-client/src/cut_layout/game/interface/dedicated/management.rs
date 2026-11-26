@@ -1,14 +1,12 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use super::*;
-use serde_json::json;
+    use super::*;
+    use serde_json::json;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn management_online_skips_fake_players_by_name_and_id() {
         sunrise_gameplay::game::native_guest_turn_tests::with_guests(|game| {

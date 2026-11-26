@@ -1,4 +1,9 @@
-use {sunrise_client_lib::audio::Audio, crate::settings::Settings, crate::game::load_resources, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::Screen, sunrise_gameplay_common::game::execution_role::ExecutionRole};
+use {
+    crate::game::load_resources, crate::settings::Settings, sunrise_client_lib::audio::Audio,
+    sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    sunrise_gameplay_common::game::Screen,
+    sunrise_gameplay_common::game::execution_role::ExecutionRole,
+};
 
 /// A mod's pre-filled chat opens only over the world, with its text
 /// typed in and nothing sent.
@@ -60,13 +65,25 @@ fn mod_open_chat_fills_the_box_only_over_the_world() {
     assert!(game.open_chat("/tp ").is_ok());
     assert!(game.client.screen == Screen::Chat);
     assert_eq!(
-        game.client.chat_ui.chat_screen.as_ref().unwrap().input.value,
+        game.client
+            .chat_ui
+            .chat_screen
+            .as_ref()
+            .unwrap()
+            .input
+            .value,
         "/tp "
     );
     // The chat is a screen too: a second call doesn't replace what's typed.
     assert!(game.open_chat("hello").is_err());
     assert_eq!(
-        game.client.chat_ui.chat_screen.as_ref().unwrap().input.value,
+        game.client
+            .chat_ui
+            .chat_screen
+            .as_ref()
+            .unwrap()
+            .input
+            .value,
         "/tp "
     );
 }

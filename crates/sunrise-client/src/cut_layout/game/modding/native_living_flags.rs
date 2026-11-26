@@ -1,22 +1,20 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
-use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt4;
-use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1;
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
-use super::super::native_entity_refs::tests::{record_key, with_game};
-    use sunrise_gameplay_common::game_side;
+    use super::super::native_entity_refs::tests::{record_key, with_game};
     use mod_api::{
         BlockPart, EntityRef, Hooks, LivingRef, LoopContext, MakesOpenTrapdoorAboveClimbableEvent,
         Registrar, WorldEpoch,
     };
     use sunrise_core::geometry::Vec3;
     use sunrise_core::position::BlockPos;
+    use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1;
+    use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
+    use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt4;
+    use sunrise_gameplay_common::game_side;
     use sunrise_sim::entities::ArmorStand;
     use sunrise_sim::mobs::{Mob, villager};
     use sunrise_sim::motion::{MotionWorld, PlayerMotion};
@@ -219,8 +217,11 @@ use super::super::native_entity_refs::tests::{record_key, with_game};
         dedicated: bool,
         owner: bool,
     ) {
-        use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::server_side::lan::LanSettings};
         use sunrise_sim::lan::{NetConfig, hub::HubConfig};
+        use {
+            sunrise_gameplay::game::server_side::lan::LanSettings,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole,
+        };
         game.options.execution_role = if dedicated {
             ExecutionRole::DedicatedServer
         } else {
@@ -989,7 +990,10 @@ use super::super::native_entity_refs::tests::{record_key, with_game};
 
     /// Whether the player, as entity `id` at `(5.5, 64, 5.5)`, climbs by its own motion, and the
     /// block it then remembers climbing.
-    fn player_climbs(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: i32) -> (bool, Option<BlockPos>) {
+    fn player_climbs(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        id: i32,
+    ) -> (bool, Option<BlockPos>) {
         let mut player = PlayerMotion::new(game.motion, Vec3::new(5.5, 64.0, 5.5)).unwrap();
         player.entity_id = id;
         use sunrise_gameplay_common::game::side_ops::world::WorldSideGameExt as _;

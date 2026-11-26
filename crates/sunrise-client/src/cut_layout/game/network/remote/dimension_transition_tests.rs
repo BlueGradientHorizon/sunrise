@@ -1,8 +1,6 @@
 #[test]
 #[ignore = "daily"]
 fn dimension_transition_screen_is_selected_at_entry_drawn_and_dropped() {
-    use sunrise_gameplay_common::game::Screen;
-    use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::__private::game::RegistrationContextNew;
     use mod_api::{
@@ -11,6 +9,8 @@ fn dimension_transition_screen_is_selected_at_entry_drawn_and_dropped() {
     };
     use std::sync::Mutex;
     use sunrise_client::{hud::HudBatch, level_loading::Reason};
+    use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
+    use sunrise_gameplay_common::game::Screen;
     use sunrise_protocol::packets::play::{self, Clientbound as C};
 
     const OWNER: &str = "transition_test";

@@ -2,8 +2,8 @@
 #[path = "pick_sections.rs"]
 pub(in crate::game) mod pick_sections;
 
-use crate::game::{ClientGame, pick_accumulator::PickDispatchExt as _};
 use super::pick_ray::{PickAccumulator, PickCandidate, pick_ray_segment};
+use crate::game::{ClientGame, pick_accumulator::PickDispatchExt as _};
 use mod_api::{BlockPos, CrosshairTarget, EntityRef};
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_sim::save::uuid_text;
@@ -16,7 +16,12 @@ pub(in crate::game) use sunrise_gameplay_common::game::pick_entity_common::{
 impl ClientGame<'_> {
     pub(in crate::game::client_side) fn client_has_pick_result(&self, id: i32) -> bool {
         let uid = id as u32;
-        if self.common.creatures.projectiles.iter().any(|p| p.id == uid)
+        if self
+            .common
+            .creatures
+            .projectiles
+            .iter()
+            .any(|p| p.id == uid)
             || self.common.tridents.iter().any(|t| t.id == uid)
             || self.common.rockets.iter().any(|r| r.id == uid)
             || self.common.tnts.iter().any(|t| t.id == uid)
@@ -28,7 +33,8 @@ impl ClientGame<'_> {
                 .as_ref()
                 .is_some_and(|r| r.general.rows.contains_key(&id))
             || self
-                .common.resident_entities
+                .common
+                .resident_entities
                 .general
                 .rows
                 .iter()
@@ -76,15 +82,13 @@ impl ClientGame<'_> {
         })
     }
 
-    pub fn crosshair_block_target(
-        &self,
-        hit: super::Hit,
-    ) -> Option<CrosshairTarget> {
+    pub fn crosshair_block_target(&self, hit: super::Hit) -> Option<CrosshairTarget> {
         use sunrise_gameplay_common::game::api_values::TryIntoApi;
         Some(CrosshairTarget::Block {
             pos: BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]),
             state: self
-                .common.world
+                .common
+                .world
                 .block(hit.pos[0], hit.pos[1], hit.pos[2])
                 .try_into_api()
                 .ok()?,

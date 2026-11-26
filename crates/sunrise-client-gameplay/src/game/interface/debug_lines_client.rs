@@ -1,12 +1,12 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::debug_lines::LOOKING_AT_RANGE;
-use sunrise_gameplay_common::game::debug_lines::SERVER_ENTRIES;
 use sunrise_client::{
     debug_entries::{self, ENTRIES},
     debug_overlay as overlay,
     debug_overlay::Displayer,
 };
 use sunrise_core::java_number;
+use sunrise_gameplay_common::game::debug_lines::LOOKING_AT_RANGE;
+use sunrise_gameplay_common::game::debug_lines::SERVER_ENTRIES;
 use sunrise_world::heightmap::HeightmapType;
 
 #[derive(Clone, Debug, Default)]
@@ -81,7 +81,12 @@ impl ClientGame<'_> {
             return;
         }
         if let Some(chunk) = self.common.world.chunks.get(&(x >> 4, z >> 4))
-            && let Some(biome) = self.common.res.biomes().list.get(chunk.biome(x, y, z) as usize)
+            && let Some(biome) = self
+                .common
+                .res
+                .biomes()
+                .list
+                .get(chunk.biome(x, y, z) as usize)
         {
             d.line(format!("Biome: {}", biome.name));
         }
@@ -464,7 +469,8 @@ impl ClientGame<'_> {
     ) -> (String, Vec<(&'static str, String)>) {
         use sunrise_items::blocks::Fluid;
         let f = self
-            .common.res
+            .common
+            .res
             .facts()
             .get(self.common.world.block(pos[0], pos[1], pos[2]));
         let kind = match f.fluid {

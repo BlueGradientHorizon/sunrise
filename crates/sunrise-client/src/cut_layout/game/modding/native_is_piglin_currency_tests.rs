@@ -7,7 +7,6 @@
 //! `PiglinAi` flow by hand; the world is ticked for real. `admireGoldItem` sets `ADMIRING_ITEM`
 //! for `ADMIRE_DURATION` (119) ticks: `MemorySlot.tick` counts it down in the next 119 brain
 //! ticks, and clears it in the 120th, whose `StopHoldingItemIfNoLongerAdmiring` barters.
-use {sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{Hooks, Host, IsPiglinCurrencyEvent, ItemPart, Registrar, RegistrationContext};
 use std::sync::Arc;
 use sunrise_core::nbt::{Compound, JavaString, Tag};
@@ -15,6 +14,11 @@ use sunrise_core::position::ChunkPos;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::first_person_sim::Hand;
 use sunrise_sim::mobs::{Mob, Species, piglin};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 /// An emerald is currency when it carries `minecraft:custom_data`.
 #[derive(Clone)]
@@ -197,14 +201,22 @@ fn a_part_makes_a_coin_currency_and_refuses_the_gold_ingot_isolated() {
             // A plain emerald isn't currency: the click passes and the player keeps 3.
             let p = add_piglin(game, -24.5, -24.5, None, false);
             assert!(!click(game, p, ItemStack::new(EMERALD, 3)));
-            assert_eq!(game.common.inventory[game.common.selected].as_ref().unwrap().count, 3);
+            assert_eq!(
+                game.common.inventory[game.common.selected]
+                    .as_ref()
+                    .unwrap()
+                    .count,
+                3
+            );
             assert_eq!(off_hand(game, p), None);
 
             // Hand-over of a coin: the click is taken, one coin, data and all, leaves the hand for
             // the off hand. It is admired for 119 ticks, then bartered in the 120th: gone,
             // barter thrown.
             assert!(click(game, p, coins(3)));
-            let held = game.common.inventory[game.common.selected].as_ref().unwrap();
+            let held = game.common.inventory[game.common.selected]
+                .as_ref()
+                .unwrap();
             assert_eq!((&*held.item, held.count), (EMERALD, 2));
             let admired = off_hand(game, p).unwrap();
             assert_eq!((&*admired.item, admired.count), (EMERALD, 1));
@@ -235,7 +247,13 @@ fn a_part_makes_a_coin_currency_and_refuses_the_gold_ingot_isolated() {
             // Refusing gold: a piglin with a golden sword doesn't take the ingot from the hand.
             let p = add_piglin(game, 24.5, 24.5, Some(GOLDEN_SWORD), false);
             assert!(!click(game, p, ItemStack::new(GOLD_INGOT, 1)));
-            assert_eq!(game.common.inventory[game.common.selected].as_ref().unwrap().count, 1);
+            assert_eq!(
+                game.common.inventory[game.common.selected]
+                    .as_ref()
+                    .unwrap()
+                    .count,
+                1
+            );
             assert_eq!(off_hand(game, p), None);
             // A dropped ingot is still picked up and admired (`#piglin_loved`), then kept: the
             // sword stays in the main hand, the ingot goes to the inventory, nothing bartered.
@@ -297,7 +315,13 @@ fn without_parts_only_the_gold_ingot_is_currency_isolated() {
         // A coin is just an emerald: the click passes and the player keeps 3.
         let p = add_piglin(game, -24.5, -24.5, None, false);
         assert!(!click(game, p, coins(3)));
-        assert_eq!(game.common.inventory[game.common.selected].as_ref().unwrap().count, 3);
+        assert_eq!(
+            game.common.inventory[game.common.selected]
+                .as_ref()
+                .unwrap()
+                .count,
+            3
+        );
         assert_eq!(off_hand(game, p), None);
 
         // A gold ingot is taken, and lost to a hit: an adult keeps nothing.

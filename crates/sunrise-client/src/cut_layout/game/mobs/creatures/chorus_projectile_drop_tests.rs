@@ -1,10 +1,16 @@
-use sunrise_gameplay_common::game::GameGameExt1;
-use {crate::game::creatures::*, sunrise_gameplay_common::game::creatures::{BlockPos, Mob, Result, Vec3, Who}};
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    crate::game::creatures::*,
+    sunrise_gameplay_common::game::creatures::{BlockPos, Mob, Result, Vec3, Who},
+};
+use {
+    crate::game::load_resources, crate::settings::Settings, sunrise_gameplay_common::game::Options,
+    sunrise_gameplay_common::game::Progress,
+};
 pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
@@ -27,7 +33,8 @@ pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGam
         std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
             .join(format!("h116-{:?}", std::thread::current().id())),
     );
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
@@ -56,7 +63,12 @@ pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGam
     test(&mut game);
 }
 
-pub(crate) fn source(game: &mut sunrise_gameplay::game::ServerGame<'_>, x: i32, z: i32, block: &str) {
+pub(crate) fn source(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    x: i32,
+    z: i32,
+    block: &str,
+) {
     assert!(game.world.chunks.contains_key(&(0, 0)));
     assert!(game.run_command(&format!("setblock {x} 199 {z} end_stone strict")));
     assert!(game.run_command(&format!("setblock {x} 200 {z} {block} strict")));

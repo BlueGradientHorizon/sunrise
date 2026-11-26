@@ -5,8 +5,6 @@
 //! while paused or frozen; a type that didn't declare them never; a copy removed or whose column
 //! the server forgets not again; and a server, the world's own ticks, never. A spawner between
 //! them in the ticker list ticks between them, from the same list.
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
-use sunrise_gameplay::game::world_loading::WorldRequest;
 use mod_api::{
     BlockEntityClientTickEvent, BlockEntityClientTicksEvent, BlockEntityDataReceivedEvent,
     BlockEntityPart, BlockPart, BlocksEvent, ClientHost, ClientTickPostEvent, ClientTickPreEvent,
@@ -16,7 +14,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 use sunrise_core::nbt::{Compound, Tag};
+use sunrise_gameplay::game::world_loading::WorldRequest;
 use sunrise_level::containers::BlockEntity;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+};
 
 pub(crate) const HUM: &str = "client_tick_probe:hum";
 pub(crate) const QUIET: &str = "client_tick_probe:quiet";
@@ -179,7 +182,10 @@ pub(crate) fn rpm(rpm: i32) -> Compound {
 
 /// One frame: what the server sent is handled (`update_world`, which a frame runs before its
 /// ticks), then `steps` client ticks. Returns what the probe heard.
-pub(crate) fn frame(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, steps: u32) -> Vec<String> {
+pub(crate) fn frame(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    steps: u32,
+) -> Vec<String> {
     game.side_update_world();
     game.client_tick_steps(steps, None).unwrap();
     take_events()

@@ -1,5 +1,4 @@
 //! Resource-backed Game screen hooks rendered by the real software-Vulkan HUD pipeline.
-use sunrise_gameplay_common::game::Screen;
 use mod_api::{
     ClientHost, Hooks, ModEntry, ScreenRenderBackgroundEvent, ScreenRenderForegroundEvent,
 };
@@ -12,6 +11,7 @@ use sunrise_client::{
     gfx::entity_pixel_test::render_hud,
     hud::{HudBatch, rgba},
 };
+use sunrise_gameplay_common::game::Screen;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 
@@ -90,7 +90,10 @@ fn pixel(pixels: &[u8], x: u32, y: u32) -> [u8; 4] {
         .unwrap()
 }
 
-fn overlay_reference(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, carried: bool) -> Vec<u8> {
+fn overlay_reference(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    carried: bool,
+) -> Vec<u8> {
     let mut batch = HudBatch::scratch(SIZE);
     batch.fill(
         &game.client.gui.atlas,

@@ -1,7 +1,6 @@
 //! Authoritative placement: detached calculation, journaled writes, then publication.
 use super::{
-    native_book_backings::Backings, native_book_grid::Session,
-    native_book_scope::MenuSnapshot,
+    native_book_backings::Backings, native_book_grid::Session, native_book_scope::MenuSnapshot,
 };
 use mod_api::{HostTransaction, ItemPlace, ItemResource, MenuSlotBacking, ServerHost};
 use sunrise_gameplay_common::game::api_values::TryIntoApi;

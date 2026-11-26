@@ -14,7 +14,8 @@ pub trait Hooks {
     /// Runs with a read-only client Host, only in Hotbar mode with a visible HUD and a
     /// player camera, outside spectator mode. It does not run if the original hotbar body
     /// is cancelled, replaced or skipped by a wrapper.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::hotbar_attack_indicator_progress::ClientGame<'_>::native_hotbar_attack_indicator_progress", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::hotbar_attack_indicator_progress::ClientGame<'_>::native_hotbar_attack_indicator_progress",
         receiver = "read",
         side = "client",
         contract = "listen",

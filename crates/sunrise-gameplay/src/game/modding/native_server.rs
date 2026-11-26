@@ -1,20 +1,18 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod fake_action_tests {
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+    #[cfg(test)]
+    use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_server::fake_action_tests::on_top;
+    use sunrise_gameplay_common::game::native_server::fake_action_tests::on_top;
 
-use mod_api::{ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
+    use mod_api::{ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
 
-use mod_api::{BlockHit, Hand, PlayerRef};
+    use mod_api::{BlockHit, Hand, PlayerRef};
 
-use sunrise_items::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
-/// A server with a real guest (uuid 1) and a fake (uuid 2) standing at (0.5, 64, 0.5) on
+    /// A server with a real guest (uuid 1) and a fake (uuid 2) standing at (0.5, 64, 0.5) on
     /// a stone floor, holding `item`, in game mode `mode`: the fake's handle and both conns.
     pub fn fake(
         game: &mut crate::game::ServerGame<'_>,
@@ -59,11 +57,7 @@ use sunrise_items::items::ItemStack;
         });
         (player, fake, real)
     }
-pub fn place(
-        game: &mut crate::game::ServerGame<'_>,
-        pos: [i32; 3],
-        state: &str,
-    ) {
+    pub fn place(game: &mut crate::game::ServerGame<'_>, pos: [i32; 3], state: &str) {
         // `name[key=value,...]`, as a command writes a state.
         let (name, props) = state.split_once('[').unwrap_or((state, "]"));
         let properties = props
@@ -79,15 +73,12 @@ pub fn place(
         let id = game.pack.assets.registry.resolve(&state).unwrap();
         game.world.set(pos[0], pos[1], pos[2], id).unwrap();
     }
-pub fn held(
-        game: &crate::game::ServerGame<'_>,
-        uuid: u128,
-    ) -> Option<ItemStack> {
+    pub fn held(game: &crate::game::ServerGame<'_>, uuid: u128) -> Option<ItemStack> {
         let host = game.server.lan.as_ref().unwrap();
         let g = host.hub.guests.iter().find(|g| g.uuid == uuid).unwrap();
         g.inventory[g.selected].clone()
     }
-/// A wandering trader at `at`, entity id `id`, and its handle.
+    /// A wandering trader at `at`, entity id `id`, and its handle.
     pub fn trader(
         game: &mut crate::game::ServerGame<'_>,
         id: u32,
@@ -108,8 +99,8 @@ pub fn held(
         ));
         mod_api::EntityRef::new(game.native_lifecycle.epoch().unwrap(), id)
     }
-#[cfg(test)]
-#[test]
+    #[cfg(test)]
+    #[test]
     #[ignore = "daily"]
     fn a_fake_uses_items_through_the_players_own_path() {
         use crate::game::native_entity_refs::tests::with_game;
@@ -129,9 +120,15 @@ pub fn held(
         // empties when used, by its ray from the eyes (looking straight down here).
         with_game(|game| {
             let (player, ..) = fake(game, Some("minecraft:water_bucket"), 0);
-            game.server.lan.as_mut().unwrap().hub.guests.update_all(|g| {
-                g.pitch = 90.0;
-            });
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update_all(|g| {
+                    g.pitch = 90.0;
+                });
             assert_eq!(
                 game.player_perform_action(player, on_top([1, 63, 0])),
                 Ok(ActionOutcome::Passed)
@@ -163,7 +160,7 @@ pub fn held(
             assert_eq!(held(game, 2), None);
         });
     }
-/// A zombie standing at `at`, entity id `id`, and its handle.
+    /// A zombie standing at `at`, entity id `id`, and its handle.
     pub fn zombie(
         game: &mut crate::game::ServerGame<'_>,
         id: u32,
@@ -184,20 +181,26 @@ pub fn held(
         ));
         mod_api::EntityRef::new(game.native_lifecycle.epoch().unwrap(), id)
     }
-#[cfg(test)]
-pub(in crate::game) fn health(game: &crate::game::ServerGame<'_>, id: u32) -> f32 {
+    #[cfg(test)]
+    pub(in crate::game) fn health(game: &crate::game::ServerGame<'_>, id: u32) -> f32 {
         game.mobs.iter().find(|m| m.id == id).unwrap().health
     }
-#[cfg(test)]
-#[test]
+    #[cfg(test)]
+    #[test]
     #[ignore = "daily"]
     fn a_fake_attacks_through_the_players_own_path() {
         use crate::game::native_entity_refs::tests::with_game;
         with_game(|game| {
             let (player, fake_conn, _) = fake(game, None, 0);
-            game.server.lan.as_mut().unwrap().hub.guests.update_all(|g| {
-                g.yaw = -90.0;
-            });
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update_all(|g| {
+                    g.yaw = -90.0;
+                });
             // A fist does 1 (the attack damage attribute's base), scaled by the attack strength
             // of a player that hasn't waited (`getAttackStrengthScale(0.5)`: 0.5 of a 5-tick
             // delay, 0.1, so 0.2 + 0.1² × 0.8 = 0.208), then by a zombie's 2 armour
@@ -245,8 +248,8 @@ pub(in crate::game) fn health(game: &crate::game::ServerGame<'_>, id: u32) -> f3
             );
         });
     }
-#[cfg(test)]
-#[test]
+    #[cfg(test)]
+    #[test]
     #[ignore = "daily"]
     fn a_fake_breaks_blocks_at_once_by_the_game_modes_rules() {
         use crate::game::native_entity_refs::tests::with_game;
@@ -282,9 +285,15 @@ pub(in crate::game) fn health(game: &crate::game::ServerGame<'_>, id: u32) -> f3
                 Some("minecraft:bedrock")
             );
             place(game, [3, 64, 3], "minecraft:stone");
-            game.server.lan.as_mut().unwrap().hub.guests.update_all(|g| {
-                g.position = [-6.5, 64.0, -6.5];
-            });
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .update_all(|g| {
+                    g.position = [-6.5, 64.0, -6.5];
+                });
             assert_eq!(
                 game.player_perform_action(player, PlayerAction::BreakBlock { pos: [3, 64, 3] }),
                 Err(ActionRefused::OutOfReach)
@@ -321,8 +330,8 @@ pub(in crate::game) fn health(game: &crate::game::ServerGame<'_>, id: u32) -> f3
             });
         }
     }
-#[cfg(test)]
-#[test]
+    #[cfg(test)]
+    #[test]
     #[ignore = "daily"]
     fn a_fakes_effects_are_stopped_where_they_start() {
         use crate::game::native_entity_refs::tests::with_game;

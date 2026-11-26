@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -149,7 +147,8 @@ pub(crate) mod tests {
                                 [Some("refresh"), Some("replacement")]
                             );
                             assert!(mod_api::__private::set_mod_enabled("replacement", true));
-                            let commands = game.server.native_commands.0.registered.as_ref().unwrap();
+                            let commands =
+                                game.server.native_commands.0.registered.as_ref().unwrap();
                             assert!(!commands.levels.contains_key("before"));
                             assert!(commands.levels.contains_key("after"));
                             let dispatcher = &game.ui.dispatcher.0;
@@ -646,32 +645,32 @@ pub(crate) mod tests {
 #[cfg(test)]
 pub(crate) mod fake_action_tests {
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
-use sunrise_gameplay_common::game::api_values::test_snapshot;
+    use sunrise_gameplay_common::game::api_values::test_snapshot;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
 
-use sunrise_gameplay_common::game::native_server::fake_action_tests::on_top;
+    use sunrise_gameplay_common::game::native_server::fake_action_tests::on_top;
 
-use sunrise_gameplay::game::native_server::fake_action_tests::fake;
+    use sunrise_gameplay::game::native_server::fake_action_tests::fake;
 
-use sunrise_gameplay::game::native_server::fake_action_tests::held;
+    use sunrise_gameplay::game::native_server::fake_action_tests::held;
 
-use sunrise_gameplay::game::native_server::fake_action_tests::place;
+    use sunrise_gameplay::game::native_server::fake_action_tests::place;
 
-use sunrise_gameplay::game::respawn_anchor::RespawnConfig;
+    use sunrise_gameplay::game::respawn_anchor::RespawnConfig;
 
-use sunrise_gameplay_common::game::stations_common::{Kind, Station};
+    use sunrise_gameplay_common::game::stations_common::{Kind, Station};
 
-use sunrise_gameplay_common::game::native_server::Acting;
+    use sunrise_gameplay_common::game::native_server::Acting;
 
-use mod_api::{ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
+    use mod_api::{ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
 
-use mod_api::{BlockHit, Hand};
+    use mod_api::{BlockHit, Hand};
 
-use sunrise_items::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_fakes_action_is_refused_before_anything_runs() {
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -706,7 +705,7 @@ use sunrise_items::items::ItemStack;
             assert!(!game.server.fake_action.0.acting());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_fakes_action_leaves_the_per_action_state_as_it_was() {
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -730,7 +729,7 @@ use sunrise_items::items::ItemStack;
             assert!(game.server.guest_use.is_none());
         });
     }
-/// A fake player's click on a shulker box or an ender chest is refused
+    /// A fake player's click on a shulker box or an ender chest is refused
     /// at the open: no open count climbs, no stand-in chest enters the level
     /// and no lid opens.
     #[test]
@@ -798,7 +797,7 @@ use sunrise_items::items::ItemStack;
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn scoped_fake_use_hooks_see_the_setup_and_fail_is_not_consumed() {
         use mod_api::{Flow, Hooks, HostSide, PlayerActionSetup, RightClickBlockEvent};
@@ -843,10 +842,9 @@ use sunrise_items::items::ItemStack;
                             game,
                             on_top([1, 63, 0]),
                             PlayerActionSetup::new(
-                                Some(sunrise_gameplay_common::game::api_values::test_snapshot(&ItemStack::new(
-                                    "minecraft:oak_log",
-                                    1,
-                                ))),
+                                Some(sunrise_gameplay_common::game::api_values::test_snapshot(
+                                    &ItemStack::new("minecraft:oak_log", 1),
+                                )),
                                 [0.5, 64.0 + f64::from(1.62_f32), 0.5],
                                 123.0,
                                 17.0,
@@ -861,10 +859,9 @@ use sunrise_items::items::ItemStack;
                     assert_eq!(result.outcome, ActionOutcome::Passed);
                     assert_eq!(
                         result.held,
-                        Some(sunrise_gameplay_common::game::api_values::test_snapshot(&ItemStack::new(
-                            "minecraft:oak_log",
-                            1
-                        )))
+                        Some(sunrise_gameplay_common::game::api_values::test_snapshot(
+                            &ItemStack::new("minecraft:oak_log", 1)
+                        ))
                     );
                     assert!(game.server.use_failed, "outer per-action flag restored");
                     let level = game.level(game.dim.id()).unwrap();
@@ -878,7 +875,7 @@ use sunrise_items::items::ItemStack;
             },
         );
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn scoped_fake_use_uses_viewpoint_secondary_use_and_restores_on_refusal() {
         use mod_api::PlayerActionSetup;
@@ -886,9 +883,9 @@ use sunrise_items::items::ItemStack;
             let (player, conn, _) = fake(game, Some("minecraft:diamond"), 1);
             let setup = |item, sneaking| {
                 PlayerActionSetup::new(
-                    Some(sunrise_gameplay_common::game::api_values::test_snapshot(&ItemStack::new(
-                        item, 1,
-                    ))),
+                    Some(sunrise_gameplay_common::game::api_values::test_snapshot(
+                        &ItemStack::new(item, 1),
+                    )),
                     [0.5, 64.0 + f64::from(1.62_f32), 0.5],
                     0.0,
                     90.0,
@@ -909,10 +906,9 @@ use sunrise_items::items::ItemStack;
             assert_eq!(result.outcome, ActionOutcome::Consumed);
             assert_eq!(
                 result.held,
-                Some(sunrise_gameplay_common::game::api_values::test_snapshot(&ItemStack::new(
-                    "minecraft:bucket",
-                    1
-                )))
+                Some(sunrise_gameplay_common::game::api_values::test_snapshot(
+                    &ItemStack::new("minecraft:bucket", 1)
+                ))
             );
             let level = game.level(game.dim.id()).unwrap();
             assert_eq!(
@@ -988,7 +984,7 @@ use sunrise_items::items::ItemStack;
             assert_eq!(guest.position, [0.5, 64.0, 0.5]);
         });
     }
-/// Each field holds a value the use can't have written, so a swap that
+    /// Each field holds a value the use can't have written, so a swap that
     /// forgets one fails whether the use changed it or not.
     #[test]
     #[ignore = "daily"]
@@ -1033,10 +1029,9 @@ use sunrise_items::items::ItemStack;
             assert!(game.world.block_entities.get(&stand_in).is_some());
 
             let setup = PlayerActionSetup::new(
-                Some(sunrise_gameplay_common::game::api_values::test_snapshot(&ItemStack::new(
-                    "minecraft:fishing_rod",
-                    1,
-                ))),
+                Some(sunrise_gameplay_common::game::api_values::test_snapshot(
+                    &ItemStack::new("minecraft:fishing_rod", 1),
+                )),
                 [0.5, 64.0 + f64::from(1.62_f32), 0.5],
                 0.0,
                 0.0,

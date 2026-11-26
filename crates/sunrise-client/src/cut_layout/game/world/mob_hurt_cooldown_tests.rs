@@ -1,8 +1,14 @@
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, Instant, PathBuf, Vec3, execution_role, game_dir, hit}};
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    crate::game::load_resources, crate::settings::Settings, sunrise_gameplay_common::game::Options,
+    sunrise_gameplay_common::game::Progress,
+};
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{Arc, Instant, PathBuf, Vec3, execution_role, game_dir, hit},
+};
 
 fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -26,7 +32,8 @@ fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
             .join(format!("h248-{:?}", std::thread::current().id())),
     );
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,

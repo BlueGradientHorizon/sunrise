@@ -1,11 +1,11 @@
-use sunrise_gameplay_common::game::boats_common::BoatStatusGameExt;
+use super::*;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use sunrise_core::geometry::Aabb;
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::boats_common::Boat;
-use super::*;
+use sunrise_gameplay_common::game::boats_common::BoatStatusGameExt;
 use sunrise_gameplay_common::game::boats_common::Status;
-use std::sync::atomic::Ordering;
 
 #[test]
 #[ignore = "daily"]

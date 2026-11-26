@@ -1,16 +1,14 @@
-
-
 #![cfg(test)]
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use super::*;
-use sunrise_gameplay_common::game::crossbow_common::{ARROW, CROSSBOW};
+    use super::*;
+    use sunrise_gameplay_common::game::crossbow_common::{ARROW, CROSSBOW};
 
-pub(crate) use crate::game::client_side::crossbow_client::tests::game_with_player;
+    pub(crate) use crate::game::client_side::crossbow_client::tests::game_with_player;
 
-/// `Projectile.applyOnProjectileSpawned` runs `EnchantmentHelper.onProjectileSpawned`
+    /// `Projectile.applyOnProjectileSpawned` runs `EnchantmentHelper.onProjectileSpawned`
     /// for the weapon an arrow is fired from, bow or crossbow, so a Flame
     /// crossbow shoots burning arrows: Flame's `Ignite(constant(100))` is 100
     /// seconds, 2000 ticks, on every arrow of a Multishot volley (#10482).

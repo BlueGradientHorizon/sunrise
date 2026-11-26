@@ -12,7 +12,8 @@ vanilla clients (whose brand isn't Sunrise's) get the list without it. `DATA_EFF
 result, as `areAllEffectsAmbient`: only effects visible after the mods count. As in vanilla it is asked when the
 entity's effects change, not every tick, and the answers are sent until the next change; with no listener nothing is
 kept and vanilla's list goes out. The window's own player draws its swirls from its own effects."#]
-    #[hook(target = "sunrise_gameplay::game::native_hooks::effect_particle_modification::ServerGame<'_>::native_effect_particle_modification", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::effect_particle_modification::ServerGame<'_>::native_effect_particle_modification",
         receiver = "read",
         dispatch = "flat",
         side = "server",

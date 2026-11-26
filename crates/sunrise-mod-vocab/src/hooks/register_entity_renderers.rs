@@ -88,7 +88,8 @@ Post receive `model: None`. Boats, displays and the other
 projectiles come in follow-ups of #860. A renderer that returns an `Err` or panics is logged once with
 the error and asked no more until the next resource load resolves it again. What it drew that frame is
 dropped, and until then its type draws as it would without one."#]
-    #[hook(target = "sunrise_gameplay_common::game::native_hooks::register_entity_renderers::native_register_entity_renderers", 
+    #[hook(
+        target = "sunrise_gameplay_common::game::native_hooks::register_entity_renderers::native_register_entity_renderers",
         receiver = "associated",
         dispatch = "flat",
         side = "client",

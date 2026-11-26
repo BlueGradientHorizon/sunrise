@@ -45,7 +45,8 @@ impl crate::game::ServerGame<'_> {
     ) -> Vec<Pos> {
         let limit = i64::from(radius) * i64::from(radius);
         let mut found: Vec<Pos> = self
-            .common.world
+            .common
+            .world
             .block_entities
             .iter()
             .filter(|(_, e)| {

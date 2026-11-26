@@ -1,10 +1,10 @@
 //! A real idle server tick must not sweep or read the attachment index.
-use sunrise_gameplay_common::game::GameGameExt1;
-use std::sync::Arc;
-use sunrise_gameplay_common::game::Dim;
 use super::*;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use std::sync::Arc;
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::Dim;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_mod_runtime::attachments::ATTACHMENTS_KEY;
 
 #[test]

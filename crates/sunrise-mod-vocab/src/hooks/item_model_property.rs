@@ -35,7 +35,8 @@ decode and bake nodes at resource load, and the baked renderer reads a borrowed
 `SpecialModelStack` and submits geometry when the node is drawn. An unknown special type is a
 load error for the enclosing item definition."#]
     /// `bundle_selected` is the runtime bundle selection index; -1 means none.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::item_model_property::ClientGame<'_>::native_item_model_property", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::item_model_property::ClientGame<'_>::native_item_model_property",
         receiver = "read",
         dispatch = "flat",
         side = "client",

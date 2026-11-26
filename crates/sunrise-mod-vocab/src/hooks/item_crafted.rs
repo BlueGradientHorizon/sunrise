@@ -14,7 +14,8 @@ pub trait Hooks {
     /// crafting table, on the integrated server and a dedicated server, guests
     /// included, and not for a stonecutter's, a smithing table's or a
     /// furnace's result. Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::item_crafted::ServerGame<'_>::native_item_crafted", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::item_crafted::ServerGame<'_>::native_item_crafted",
         dispatch = "flat",
         side = "server",
         contract = "listen",

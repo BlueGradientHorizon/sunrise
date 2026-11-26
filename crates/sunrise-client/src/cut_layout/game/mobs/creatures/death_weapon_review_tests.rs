@@ -1,3 +1,5 @@
+use super::tests::isolated;
+use crate::game::creatures::death_weapon::*;
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::Damage;
@@ -6,8 +8,6 @@ use sunrise_sim::mobs::Mob;
 use sunrise_sim::mobs::Who;
 use sunrise_sim::projectiles::Projectile;
 use sunrise_sim::projectiles::ProjectileKind;
-use super::tests::isolated;
-use {crate::game::creatures::death_weapon::*};
 
 pub(crate) fn fixture(
     expected: Option<ItemStack>,
@@ -158,7 +158,8 @@ fn death_weapon_riptide_iii_uses_spin_trident() {
         trident.enchant("minecraft:riptide", 3);
         fixture(Some(trident.clone()), |game| {
             player(game);
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:diamond_sword", 1));
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:diamond_sword", 1));
             let motion = game.player.as_mut().unwrap();
             motion.auto_spin_attack_ticks = 20;
             motion.auto_spin_attack_item = Some(trident);
@@ -184,7 +185,8 @@ fn death_weapon_harming_potion_does_not_read_thrower_sword() {
     }
     fixture_with_source(None, Some(("minecraft:indirect_magic", 11)), |game| {
         player(game);
-        game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:diamond_sword", 1));
+        game.common.inventory[game.common.selected] =
+            Some(ItemStack::new("minecraft:diamond_sword", 1));
         let mut target = victim(game);
         target.health = 1.0;
         let at = target.position;

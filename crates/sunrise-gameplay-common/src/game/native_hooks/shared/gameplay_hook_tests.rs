@@ -25,7 +25,8 @@ fn loot_table_load_stays_hookable() {
 
 #[test]
 fn lifecycle_source_stays_hookable() {
-    let source = include_str!("../../../../../sunrise-gameplay/src/game/modding/native_lifecycle.rs");
+    let source =
+        include_str!("../../../../../sunrise-gameplay/src/game/modding/native_lifecycle.rs");
     let code = source.split("#[cfg(test)]").next().unwrap_or_default();
     for line in code.lines().filter(|l| !l.trim_start().starts_with("//")) {
         assert!(!line.contains("cfg"), "a cfg in lifecycle source: {line}");

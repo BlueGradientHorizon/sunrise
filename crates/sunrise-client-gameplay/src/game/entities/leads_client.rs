@@ -140,7 +140,8 @@ impl ClientGame<'_> {
             let mut ends: Vec<(glam::DVec3, glam::DVec3, bool)> = Vec::new();
             let quad = match (holder, quad) {
                 (Holder::Mob(id), Some(offsets)) => self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter()
                     .find(|o| o.id == id)
                     .and_then(|o| leash::quad_holder_offsets(o).map(|h| (o, h, offsets))),
@@ -191,7 +192,8 @@ impl ClientGame<'_> {
                 ends.push((start, end, true));
             }
             let light = |p: glam::DVec3| {
-                self.common.world
+                self.common
+                    .world
                     .light(p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32)
             };
             // Block and sky light averaged between the two ends.
@@ -306,8 +308,11 @@ impl ClientGame<'_> {
             -1.0
         };
         if self.client.camera_type.is_first_person() {
-            let (yaw, pitch) =
-                rope_hold_angles((self.common.yaw, self.common.pitch), self.client.rope_rot_old, alpha as f32);
+            let (yaw, pitch) = rope_hold_angles(
+                (self.common.yaw, self.common.pitch),
+                self.client.rope_rot_old,
+                alpha as f32,
+            );
             let v = glam::DVec3::new(0.39 * hand_dir, -0.6, 0.3);
             // Vec3.xRot(-pitch) then yRot(-yaw).
             let (s, c) = ((-pitch).sin(), (-pitch).cos());
@@ -320,8 +325,11 @@ impl ClientGame<'_> {
         // Player.getRopeHoldPosition: the view's pitch eased toward `xRotO`,
         // the body's yaw between `yBodyRotO` and `yBodyRot`, from
         // `getPosition(partialTick)`.
-        let (_, x_rot) =
-            rope_hold_angles((self.common.yaw, self.common.pitch), self.client.rope_rot_old, alpha as f32);
+        let (_, x_rot) = rope_hold_angles(
+            (self.common.yaw, self.common.pitch),
+            self.client.rope_rot_old,
+            alpha as f32,
+        );
         let t = alpha as f32;
         let y_rot = self.client.player_model.as_ref().map_or(
             f64::from(self.common.yaw * (std::f32::consts::PI / 180.0)),

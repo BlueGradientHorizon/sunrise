@@ -82,11 +82,7 @@ impl crate::game::ServerGame<'_> {
     /// to the level, then runs `applyOnProjectileSpawned` with `stack`, the
     /// item it was made from (the held or dispensed stack, an arrow's ammo).
     /// The projectile's id.
-    pub fn spawn_projectile(
-        &mut self,
-        projectile: Projectile,
-        stack: &ItemStack,
-    ) -> u32 {
+    pub fn spawn_projectile(&mut self, projectile: Projectile, stack: &ItemStack) -> u32 {
         let id = self.add_projectile(projectile);
         self.apply_on_projectile_spawned(id, stack);
         id
@@ -207,7 +203,11 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game::server_side) fn spawned_projectile(&self, id: u32) -> Option<&Projectile> {
-        self.common.creatures.projectiles.iter().find(|p| p.id == id)
+        self.common
+            .creatures
+            .projectiles
+            .iter()
+            .find(|p| p.id == id)
     }
 
     /// `EnchantmentEntityEffect.apply` on the new projectile `id`, at its
@@ -227,41 +227,51 @@ impl crate::game::ServerGame<'_> {
             }
             return;
         }
-        let Some(index) = self.common.creatures.projectiles.iter().position(|p| p.id == id) else {
+        let Some(index) = self
+            .common
+            .creatures
+            .projectiles
+            .iter()
+            .position(|p| p.id == id)
+        else {
             return;
         };
-        let sound = self.common.creatures.projectiles.update(index, |p| match kind {
-            SpawnedEffect::Ignite => {
-                p.ignite_for_seconds(level_value(&effect["duration"], level));
-                None
-            }
-            // Entity.addDeltaMovement skips a non-finite impulse; the motion
-            // is sent either way (syncVelocity).
-            SpawnedEffect::Impulse => {
-                let impulse = look_impulse(effect, level, p.yaw, p.pitch);
-                if impulse.is_finite() {
-                    p.velocity = p.velocity.add_vector(impulse);
+        let sound = self
+            .common
+            .creatures
+            .projectiles
+            .update(index, |p| match kind {
+                SpawnedEffect::Ignite => {
+                    p.ignite_for_seconds(level_value(&effect["duration"], level));
+                    None
                 }
-                p.needs_sync = true;
-                None
-            }
-            // A new projectile is never silent: the volume, then the pitch,
-            // from its random, at its position.
-            SpawnedEffect::Sound => {
-                let sound = level_sound(effect, level)?;
-                let volume = float_provider(&effect["volume"])?;
-                let pitch = float_provider(&effect["pitch"])?;
-                let volume = volume.sample(&mut p.random.0);
-                let pitch = pitch.sample(&mut p.random.0);
-                Some((
-                    sound,
-                    [p.position.x, p.position.y, p.position.z],
-                    volume,
-                    pitch,
-                ))
-            }
-            SpawnedEffect::AllOf | SpawnedEffect::Inert => None,
-        });
+                // Entity.addDeltaMovement skips a non-finite impulse; the motion
+                // is sent either way (syncVelocity).
+                SpawnedEffect::Impulse => {
+                    let impulse = look_impulse(effect, level, p.yaw, p.pitch);
+                    if impulse.is_finite() {
+                        p.velocity = p.velocity.add_vector(impulse);
+                    }
+                    p.needs_sync = true;
+                    None
+                }
+                // A new projectile is never silent: the volume, then the pitch,
+                // from its random, at its position.
+                SpawnedEffect::Sound => {
+                    let sound = level_sound(effect, level)?;
+                    let volume = float_provider(&effect["volume"])?;
+                    let pitch = float_provider(&effect["pitch"])?;
+                    let volume = volume.sample(&mut p.random.0);
+                    let pitch = pitch.sample(&mut p.random.0);
+                    Some((
+                        sound,
+                        [p.position.x, p.position.y, p.position.z],
+                        volume,
+                        pitch,
+                    ))
+                }
+                SpawnedEffect::AllOf | SpawnedEffect::Inert => None,
+            });
         if let Some((sound, at, volume, pitch)) = sound {
             self.server_play_sound_on(
                 mod_api::SoundSource::Neutral as usize,

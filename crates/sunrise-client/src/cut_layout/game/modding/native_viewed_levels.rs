@@ -1,16 +1,25 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use {sunrise_gameplay_common::game::api_values::TryIntoApi, sunrise_gameplay::game::native_entity_refs::tests::collect_entities_in, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::client_side::viewed_worlds::tests::client, crate::game::client_side::viewed_worlds::tests::close, crate::game::client_side::viewed_worlds::tests::column, crate::game::client_side::viewed_worlds::tests::layered, crate::game::client_side::viewed_worlds::tests::open, crate::game::client_side::viewed_worlds::tests::run, crate::game::client_side::viewed_worlds::tests::spawn};
     use mod_api::{
         BlockFace, BlockState, ClipBlock, ClipFluid, Host, LevelReadError, LevelRef, LightLayer,
         WorldEpoch,
     };
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_protocol::packets::play::{self, Clientbound as C};
     use sunrise_world::registry::BlockStateId;
+    use {
+        crate::game::client_side::viewed_worlds::tests::client,
+        crate::game::client_side::viewed_worlds::tests::close,
+        crate::game::client_side::viewed_worlds::tests::column,
+        crate::game::client_side::viewed_worlds::tests::layered,
+        crate::game::client_side::viewed_worlds::tests::open,
+        crate::game::client_side::viewed_worlds::tests::run,
+        crate::game::client_side::viewed_worlds::tests::spawn,
+        sunrise_gameplay::game::native_entity_refs::tests::collect_entities_in,
+        sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+        sunrise_gameplay_common::game::api_values::TryIntoApi,
+    };
 
     const NETHER: &str = "minecraft:the_nether";
     /// The distinguishing block of 9c's fixture: air in the viewed Nether, stone in the

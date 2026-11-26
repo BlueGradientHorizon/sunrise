@@ -78,7 +78,8 @@ impl crate::game::ServerGame<'_> {
     fn native_dragon_valid_target(&self, target: Target) -> bool {
         match target {
             Target::Mob(id) => self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .any(|m| m.id == id && !m.removed && m.alive() && !m.invulnerable_flag),
             Target::Player | Target::Guest(_) => self

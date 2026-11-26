@@ -39,7 +39,8 @@ keep declarative motion. Reload drops the previous sprite set's live provider pa
 Each visible particle also calls `ParticleProvider::extract` with the current frame. The default
 submits its normal quad. An override may append independently placed opaque or translucent
 quads to its own sprite atlas or emit nothing."#]
-    #[hook(target = "sunrise_gameplay_common::game::native_hooks::register_particle_providers::native_register_particle_providers", 
+    #[hook(
+        target = "sunrise_gameplay_common::game::native_hooks::register_particle_providers::native_register_particle_providers",
         receiver = "associated",
         dispatch = "flat",
         side = "client",

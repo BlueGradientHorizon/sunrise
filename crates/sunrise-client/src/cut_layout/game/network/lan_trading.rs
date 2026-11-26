@@ -1,32 +1,26 @@
-
-
 #![cfg(test)]
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer;
     use sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn;
+    use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer;
 
-use sunrise_gameplay_common::game::TryIntoApi;
-use sunrise_gameplay_common::game::tables::GameItems;
+    use sunrise_gameplay_common::game::TryIntoApi;
+    use sunrise_gameplay_common::game::tables::GameItems;
 
+    use sunrise_gameplay::game::server_side::lan_trading::tests::open_trade;
 
-use sunrise_gameplay::game::server_side::lan_trading::tests::open_trade;
+    use super::super::native_entity_refs::tests::with_game;
 
+    use super::*;
 
-use super::super::native_entity_refs::tests::with_game;
+    use mod_api::ServerHost;
 
+    use sunrise_protocol::packets::play;
 
+    use sunrise_sim::merchant;
 
-use super::*;
-
-use mod_api::ServerHost;
-
-use sunrise_protocol::packets::play;
-
-use sunrise_sim::merchant;
-
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn changing_an_open_merchant_to_an_unknown_profession_closes_without_trading() {
         use sunrise_core::nbt::Tag;
@@ -66,7 +60,9 @@ use sunrise_sim::merchant;
                 .unwrap()
                 .slots[0] = Some(wheat);
             let mut tag = game
-                .command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Mob(40))
+                .command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Mob(
+                    40,
+                ))
                 .unwrap();
             if let Tag::Compound(data) = &mut tag {
                 data.insert(
@@ -78,8 +74,11 @@ use sunrise_sim::merchant;
                     ]),
                 );
             }
-            game.apply_entity_nbt(sunrise_gameplay_common::game::commands_common::Target::Mob(40), tag)
-                .unwrap();
+            game.apply_entity_nbt(
+                sunrise_gameplay_common::game::commands_common::Target::Mob(40),
+                tag,
+            )
+            .unwrap();
             assert!(
                 game.server.lan.as_ref().unwrap().menus[&12]
                     .merchant
@@ -122,8 +121,11 @@ use sunrise_sim::merchant;
                 |_| None,
                 &Default::default(),
             );
-            game.apply_entity_nbt(sunrise_gameplay_common::game::commands_common::Target::Mob(40), tag)
-                .unwrap();
+            game.apply_entity_nbt(
+                sunrise_gameplay_common::game::commands_common::Target::Mob(40),
+                tag,
+            )
+            .unwrap();
             assert_eq!(game.server.missing_professions.len(), 1);
             let second = spawn(game, 41, "minecraft:villager");
             let mut tag = sunrise_sim::entity_nbt::mob_to_nbt(
@@ -179,7 +181,7 @@ use sunrise_sim::merchant;
             }
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn explicit_nbt_offers_and_xp_override_the_live_trade() {
         use sunrise_core::nbt::Tag;
@@ -228,7 +230,7 @@ use sunrise_sim::merchant;
             assert_eq!(game.mobs[0].extra.villager_level, 4);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_merchant_edit_reaches_the_guest_trading_with_it() {
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
@@ -323,7 +325,7 @@ use sunrise_sim::merchant;
             assert_eq!(villager.trading_player(game), None);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_lowered_level_still_levels_up_with_the_next_trade_set() {
         with_game(|game| {
@@ -375,7 +377,7 @@ use sunrise_sim::merchant;
             assert!(game.lan_trade_session(12).unwrap().sequences.is_empty());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_type_change_reaches_the_open_session_before_a_level_up() {
         with_game(|game| {
@@ -392,9 +394,9 @@ use sunrise_sim::merchant;
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
-#[cfg(any())]
+    #[cfg(any())]
     fn a_trade_hook_fired_by_a_real_select_can_write_the_open_trade() {
         use mod_api::{self, Hooks, TradeSelectEvent};
         struct Observer(Seen);

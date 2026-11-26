@@ -1,11 +1,11 @@
-use sunrise_gameplay_common::game::GameGameExt1;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 
 pub(crate) fn with_role_game(
     role: sunrise_gameplay_common::game::execution_role::ExecutionRole,

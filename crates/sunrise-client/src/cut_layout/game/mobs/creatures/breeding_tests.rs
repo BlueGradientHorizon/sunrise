@@ -1,4 +1,9 @@
-use {crate::game::creatures::*, sunrise_gameplay_common::game::creatures::{Mob, MobEvent, MobWorld, Species, Vec3, breeding, breeding_credit, seen}};
+use {
+    crate::game::creatures::*,
+    sunrise_gameplay_common::game::creatures::{
+        Mob, MobEvent, MobWorld, Species, Vec3, breeding, breeding_credit, seen,
+    },
+};
 
 use sunrise_core::random::LegacyRandom;
 use sunrise_sim::mobs::{
@@ -212,8 +217,8 @@ fn first_chicken_breed_matches_without_mods_and_with_an_empty_mod() {
 #[test]
 #[ignore = "daily"]
 fn empty_mod_never_defers_breeding_xp() {
-    use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
     use mod_api::{self, Hooks};
+    use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
     if run_fresh_cases(
         "game::creatures::breeding_tests::empty_mod_never_defers_breeding_xp",
         "SUNRISE_EMPTY_BREED_CHILD",

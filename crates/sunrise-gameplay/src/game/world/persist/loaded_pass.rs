@@ -74,7 +74,12 @@ impl crate::game::ServerGame<'_> {
                 self.restored_vehicle(uuid).is_some() || self.target_with_uuid(uuid).is_some()
             });
             if !duplicate {
-                self.common.persist.unknown.entry(key).or_default().push(tag);
+                self.common
+                    .persist
+                    .unknown
+                    .entry(key)
+                    .or_default()
+                    .push(tag);
             }
             return;
         }
@@ -107,7 +112,11 @@ impl crate::game::ServerGame<'_> {
         ) && let Some(at) = entity_nbt::position(&tag)
         {
             let key = anon_key(&kind, at);
-            let was = self.common.persist.anon.insert(key.clone(), (at, tag.clone()));
+            let was = self
+                .common
+                .persist
+                .anon
+                .insert(key.clone(), (at, tag.clone()));
             self.common.journal_anon((key, was));
         }
         // Kinds outside `entity_lists!` first, then the listed kinds
@@ -141,7 +150,12 @@ impl crate::game::ServerGame<'_> {
                     self.load_other(tag, &kind);
                 }
             } else {
-                self.common.persist.unknown.entry(key).or_default().push(tag);
+                self.common
+                    .persist
+                    .unknown
+                    .entry(key)
+                    .or_default()
+                    .push(tag);
             }
         }
         // PersistentEntitySectionManager.addEntity: every kind that

@@ -1,7 +1,10 @@
 //! `BlockStates::requires_correct_tool` through the game's block facts:
 //! `BlockState.requiresCorrectToolForDrops()` for vanilla's blocks.
 
-use {sunrise_gameplay_common::game::native_block_tables::BlockTables, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay_common::game::native_block_tables::BlockTables,
+};
 
 /// Stone, ores and obsidian need a correct tool; dirt, logs and air don't.
 #[test]

@@ -125,7 +125,8 @@ impl crate::game::ServerGame<'_> {
             return false;
         }
         let tag = self
-            .common.persist
+            .common
+            .persist
             .raw
             .entry(id)
             .or_insert_with(|| Tag::Compound(Compound::new()));
@@ -290,11 +291,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `Display.setShadowRadius`. False for a value that isn't finite.
-    pub fn display_set_shadow_radius(
-        &mut self,
-        display: DisplayRef,
-        radius: f32,
-    ) -> bool {
+    pub fn display_set_shadow_radius(&mut self, display: DisplayRef, radius: f32) -> bool {
         self.display_put_float(display, "shadow_radius", radius)
     }
 
@@ -355,11 +352,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `Display.setTransformationInterpolationDuration`.
-    pub fn display_set_interpolation_duration(
-        &mut self,
-        display: DisplayRef,
-        ticks: i32,
-    ) -> bool {
+    pub fn display_set_interpolation_duration(&mut self, display: DisplayRef, ticks: i32) -> bool {
         self.display_put(display, None, "interpolation_duration", Tag::Int(ticks))
     }
 
@@ -372,11 +365,7 @@ impl crate::game::ServerGame<'_> {
     /// `Display.setTransformationInterpolationDelay`. Like vanilla, every
     /// call is sent to the clients that track the display, even with the
     /// delay it already has, and each client restarts its interpolation.
-    pub fn display_set_start_interpolation(
-        &mut self,
-        display: DisplayRef,
-        ticks: i32,
-    ) -> bool {
+    pub fn display_set_start_interpolation(&mut self, display: DisplayRef, ticks: i32) -> bool {
         let Some((_, id)) = self.display_entity(display) else {
             return false;
         };
@@ -392,11 +381,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `Display.setPosRotInterpolationDuration`, kept from 0 to 59 as
     /// vanilla's load keeps it.
-    pub fn display_set_teleport_duration(
-        &mut self,
-        display: DisplayRef,
-        ticks: i32,
-    ) -> bool {
+    pub fn display_set_teleport_duration(&mut self, display: DisplayRef, ticks: i32) -> bool {
         let ticks = Tag::Int(ticks.clamp(0, 59));
         self.display_put(display, None, "teleport_duration", ticks)
     }
@@ -548,7 +533,13 @@ impl crate::game::ServerGame<'_> {
         let (_, tag) = self.display_tag(display, Some(DisplayKind::Block))?;
         tag.get("block_state")
             .and_then(|t| self.state_from_nbt(t))
-            .or_else(|| self.common.pack.assets.registry.default_state("minecraft:air"))
+            .or_else(|| {
+                self.common
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:air")
+            })
     }
 
     /// `BlockDisplay.setBlockState`; false for another kind of display or an unknown state.

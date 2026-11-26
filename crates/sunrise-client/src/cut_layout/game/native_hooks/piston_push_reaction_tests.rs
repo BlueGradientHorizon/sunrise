@@ -1,5 +1,3 @@
-use sunrise_gameplay_common::game::GameGameExt1;
-use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_role, crate::game::server_side::native_entity_refs::tests::with_game_role_client};
 use mod_api::*;
 use std::{
     collections::HashMap,
@@ -13,9 +11,16 @@ use sunrise_core::{
     position::{BlockPos, ChunkPos},
     random::LegacyRandom,
 };
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_world::{
     level::{Behaviours, BlockEntityNeighbors, LevelAccess, PushReaction as EngineReaction, Ticks},
     registry::{BlockRegistry, BlockStateId},
+};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_game_role_client,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_role,
+    sunrise_gameplay_common::game::execution_role::ExecutionRole,
 };
 
 pub(crate) struct ReactionPart {
@@ -111,11 +116,7 @@ impl LevelAccess for Level {
         self.time
     }
 }
-pub(crate) fn state(
-    registry: &BlockRegistry,
-    name: &str,
-    props: &[(&str, &str)],
-) -> BlockStateId {
+pub(crate) fn state(registry: &BlockRegistry, name: &str, props: &[(&str, &str)]) -> BlockStateId {
     registry
         .resolve(&sunrise_world::chunk::BlockState {
             name: name.into(),
@@ -251,7 +252,8 @@ fn piston_push_reaction_parts_cache_reload_and_replay() {
     mod_platform::testing::with_mods(mods.clone(), || {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
         fn check<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
             game: &mut G,
             client: bool,
@@ -271,10 +273,13 @@ fn piston_push_reaction_parts_cache_reload_and_replay() {
             let fixed_api = host.block_state_id("test:fixed").unwrap();
             let torch = host.block_state_id("minecraft:torch").unwrap();
             // The callback view exposes the same table, without needing a resident block.
-            let level = sunrise_gameplay_common::game::native_level_signals::ReadLevel::new(game, LevelRef::new(
+            let level = sunrise_gameplay_common::game::native_level_signals::ReadLevel::new(
+                game,
+                LevelRef::new(
                     game.native_lifecycle.epoch().unwrap(),
                     DimensionKey::OVERWORLD,
-                ));
+                ),
+            );
             for facts in [host.block_states(), level.block_states()] {
                 for (state, expected) in [
                     (torch, PushReaction::Popped),

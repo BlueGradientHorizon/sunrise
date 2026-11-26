@@ -1,11 +1,17 @@
 // `client_block_changed` through the real client: server updates, batched section updates,
 // predictions and their reconciliation each tell a changed block once, after the write.
-use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
-use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{BlockStateId, C, Chunk, play}};
 use mod_api::{ClientBlockChangedEvent, ClientHost};
 use std::sync::{Arc, Mutex};
+use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 use sunrise_core::position::BlockPos;
+use {
+    crate::game::remote::*,
+    sunrise_gameplay_common::game::remote::{BlockStateId, C, Chunk, play},
+};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+};
 
 /// What a listener heard: the dimension, the position, the old and new blocks, whether it was
 /// predicted, and the block the level reads there inside the listener.
@@ -46,7 +52,10 @@ fn change(pos: [i32; 3], old: &str, new: &str, predicted: bool) -> Heard {
     (id("overworld"), pos, id(old), id(new), predicted, id(new))
 }
 
-fn with_client(name: &str, test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, BlockStateId)) {
+fn with_client(
+    name: &str,
+    test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, BlockStateId),
+) {
     let selector = format!("game::remote::tests::client_block_changed_tests::{name}");
     if run_fresh_cases(&selector, "SUNRISE_CLIENT_BLOCK_CHANGED_CHILD", &["map"]) {
         return;
@@ -90,7 +99,11 @@ fn with_client(name: &str, test: impl FnOnce(&mut sunrise_client_gameplay::game:
     });
 }
 
-fn update(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, pos: [i32; 3], state: BlockStateId) {
+fn update(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    pos: [i32; 3],
+    state: BlockStateId,
+) {
     game.handle_packet(C::BlockUpdate(play::BlockUpdate {
         pos,
         state: state.0 as i32,

@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 /// Through the game's generated dispatch: the context a drawing hook gets clips what the mod
 /// draws, names its refusals, and closes a clip the mod left open when the call returns.

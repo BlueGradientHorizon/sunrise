@@ -4,13 +4,15 @@
 //! nothing (tools/test_inline_feature_parse_parity.py measures the same on
 //! vanilla 26.3).
 use super::*;
-use std::sync::Arc;
-use sunrise_gameplay_common::game::{Options, Resources};
 use crate::game::load_resources;
-use sunrise_gameplay_common::game::resource_load::Progress;
 use crate::settings::Settings;
+use std::sync::Arc;
+use sunrise_gameplay_common::game::resource_load::Progress;
+use sunrise_gameplay_common::game::{Options, Resources};
 
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::game::ServerGame<'_> {
+fn game(
+    resources: &mut Option<std::sync::Arc<Resources>>,
+) -> sunrise_gameplay::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -31,7 +33,8 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         res,

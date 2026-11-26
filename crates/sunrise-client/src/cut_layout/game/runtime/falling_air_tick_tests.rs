@@ -1,8 +1,8 @@
-use {crate::game::*, sunrise_gameplay_common::game::{Vec3}};
 use std::sync::Arc;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
+use {crate::game::*, sunrise_gameplay_common::game::Vec3};
 
 #[test]
 #[ignore = "daily"]

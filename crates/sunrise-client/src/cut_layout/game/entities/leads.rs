@@ -1,10 +1,11 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod attach_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::load_resources, crate::settings::Settings};
     use sunrise_core::geometry::Vec3;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     /// A game with resources but no level: a test pushes the mobs it needs
     /// and drives the lead code alone.
@@ -28,7 +29,8 @@ pub(crate) mod attach_tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let res = resources.insert(loaded.resources);
         let mut game = sunrise_gameplay::game::ServerGame::new(
             res,
@@ -120,11 +122,15 @@ pub(crate) mod attach_tests {
         let mut cow = Mob::new(1, kind, Vec3::new(1.5, 64.0, 0.5), 0.0);
         cow.extra.leash_pending = Some(Pending::Uuid([9, 9, 9, 9]));
         game.mobs.push(cow);
-        game.common.inventory[game.common.selected] = Some(sunrise_items::items::ItemStack::new("minecraft:lead", 1));
+        game.common.inventory[game.common.selected] =
+            Some(sunrise_items::items::ItemStack::new("minecraft:lead", 1));
 
         assert!(game.interact_leash(0, "minecraft:lead"));
         assert_eq!(game.mobs[0].extra.leash, Some(Holder::Player));
-        assert!(game.common.inventory[game.common.selected].is_none(), "the lead is spent");
+        assert!(
+            game.common.inventory[game.common.selected].is_none(),
+            "the lead is spent"
+        );
         game.mobs[0].age = 101;
         game.tick_leads();
         assert_eq!(game.mobs[0].extra.leash, Some(Holder::Player));

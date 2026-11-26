@@ -3,7 +3,8 @@ use super::*;
 impl crate::game::ServerGame<'_> {
     /// `Player.attack`: the attack damage attribute with held and effect modifiers.
     pub fn attack_damage(&mut self) -> f32 {
-        self.common.player
+        self.common
+            .player
             .as_mut()
             .and_then(|p| p.attribute("minecraft:attack_damage").ok())
             .unwrap_or(1.0) as f32

@@ -64,8 +64,11 @@ fn a_ridden_hopper_cart_takes_one_item_a_tick() {
     // `tick_cart_riding`, as the server's guests' turns do.
     let mount = sunrise_gameplay_common::game::commands_common::Target::Cart(1);
     assert!(
-        game.ride_mount(sunrise_gameplay_common::game::commands_common::Target::Player, mount)
-            .is_ok(),
+        game.ride_mount(
+            sunrise_gameplay_common::game::commands_common::Target::Player,
+            mount
+        )
+        .is_ok(),
         "`/ride` mounts a player on a hopper minecart"
     );
     assert_eq!(game.riding, Some(1), "the rider is in the first cart");

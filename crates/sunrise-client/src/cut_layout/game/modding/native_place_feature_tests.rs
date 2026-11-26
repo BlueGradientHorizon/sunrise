@@ -1,9 +1,9 @@
 //! `level.place_feature` through the public handle: a tree placed as `/place feature` places it,
 //! a feature with no room, and a literal test for each refusal.
 
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{LevelRef, PlaceFeatureRefusal, WorldEpoch};
 use std::sync::Arc;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_level::chunk::Chunk;
 
 /// The 3x3 chunks around (100, 100): a dirt floor at y 63 under open air, or, with `buried`,
@@ -121,7 +121,8 @@ fn stale_and_other_levels_are_refused_by_name() {
             stale(overworld).place_feature(game, "minecraft:oak", AT),
             Err(PlaceFeatureRefusal::Stale)
         );
-        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+            .unwrap();
         assert_eq!(
             overworld.place_feature(game, "minecraft:oak", AT),
             Err(PlaceFeatureRefusal::NotInPlace)

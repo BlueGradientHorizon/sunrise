@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod lectern_book_removal_tests {
@@ -29,7 +27,8 @@ pub(crate) mod lectern_book_removal_tests {
             }),
         );
         game.set_lectern_property(key, "has_book", true);
-        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+            .with(|e| *e.borrow_mut() = Some(Vec::new()));
 
         game.set_lectern_has_book(key, false, None);
 

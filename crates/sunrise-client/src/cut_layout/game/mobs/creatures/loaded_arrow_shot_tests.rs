@@ -1,4 +1,3 @@
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
 use sunrise_level::chunk::Chunk;
@@ -6,6 +5,10 @@ use sunrise_sim::{
     mobs::Who,
     motion::PlayerMotion,
     projectiles::{Projectile, ProjectileKind},
+};
+use {
+    crate::game::load_resources, crate::settings::Settings, sunrise_gameplay_common::game::Options,
+    sunrise_gameplay_common::game::Progress,
 };
 pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -29,7 +32,8 @@ pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGam
         std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
             .join(format!("h114-{:?}", std::thread::current().id())),
     );
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
@@ -66,7 +70,8 @@ pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGam
     test(&mut game);
 }
 pub(crate) fn start_events() {
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|v| *v.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|v| *v.borrow_mut() = Some(Vec::new()));
 }
 pub(crate) fn take_shots() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
     sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|v| {
@@ -77,7 +82,8 @@ pub(crate) fn take_shots() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
     })
 }
 pub(crate) fn stop_events() {
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|v| *v.borrow_mut() = None);
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|v| *v.borrow_mut() = None);
 }
 pub(crate) fn owner(game: &sunrise_gameplay::game::ServerGame<'_>) -> u32 {
     game.mobs
@@ -130,12 +136,13 @@ fn a_landing_orb_posts_hit_ground_after_a_fall() {
                 in_water: true,
             },
         );
-        let events: Vec<_> = sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|v| {
-            std::mem::take(v.borrow_mut().as_mut().unwrap())
-                .into_iter()
-                .filter(|e| e.0 == "minecraft:hit_ground")
-                .collect()
-        });
+        let events: Vec<_> = sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+            .with(|v| {
+                std::mem::take(v.borrow_mut().as_mut().unwrap())
+                    .into_iter()
+                    .filter(|e| e.0 == "minecraft:hit_ground")
+                    .collect()
+            });
         stop_events();
         assert_eq!(events.len(), 1);
         assert_eq!(game.orbs[i].fall_distance, 0.0);

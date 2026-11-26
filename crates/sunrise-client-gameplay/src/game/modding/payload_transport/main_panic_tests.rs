@@ -64,7 +64,8 @@ fn a_panicking_main_payload_refunds_its_journal_and_preserves_unrelated_delivery
     )]
     .into();
     mod_platform::testing::with_mods(mods, || {
-        sunrise_gameplay_common::game::api_values::install_parts(mod_api::__private::mods()).unwrap();
+        sunrise_gameplay_common::game::api_values::install_parts(mod_api::__private::mods())
+            .unwrap();
         with_game(|game| {
             let transport = Transport::capture(Side::Server).unwrap();
             transport

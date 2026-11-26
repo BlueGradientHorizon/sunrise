@@ -69,58 +69,63 @@ fn thousand_live_block_entity_ticks() {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_api::__private::mark_game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
-        sunrise_gameplay::game::native_entity_refs::tests::with_game_at(root.prepared().to_path_buf(), |game| {
-            for x in 0..4 {
-                for z in 0..4 {
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+        sunrise_gameplay::game::native_entity_refs::tests::with_game_at(
+            root.prepared().to_path_buf(),
+            |game| {
+                for x in 0..4 {
+                    for z in 0..4 {
+                        game.world
+                            .chunks
+                            .insert((x, z), Arc::new(Chunk::empty(x, z)));
+                    }
+                }
+                let block = game
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("live_bench:ticker")
+                    .unwrap();
+                let positions: Vec<_> = (0..1000).map(|i| (i % 40, 64, i / 40)).collect();
+                for &pos in positions.iter().chain(std::iter::once(&(0, 63, 0))) {
+                    game.world.set(pos.0, pos.1, pos.2, block).unwrap();
+                    let mut entity =
+                        ModBlockEntity::new("live_bench:ticker".into(), Default::default());
+                    entity.data = vec![0];
                     game.world
-                        .chunks
-                        .insert((x, z), Arc::new(Chunk::empty(x, z)));
+                        .block_entities
+                        .insert(pos, BlockEntity::Mod(Box::new(entity)));
                 }
-            }
-            let block = game
-                .pack
-                .assets
-                .registry
-                .default_state("live_bench:ticker")
-                .unwrap();
-            let positions: Vec<_> = (0..1000).map(|i| (i % 40, 64, i / 40)).collect();
-            for &pos in positions.iter().chain(std::iter::once(&(0, 63, 0))) {
-                game.world.set(pos.0, pos.1, pos.2, block).unwrap();
-                let mut entity =
-                    ModBlockEntity::new("live_bench:ticker".into(), Default::default());
-                entity.data = vec![0];
-                game.world
-                    .block_entities
-                    .insert(pos, BlockEntity::Mod(Box::new(entity)));
-            }
-            let mut times = Vec::with_capacity(240);
-            for round in 0..260 {
-                let start = Instant::now();
-                for &pos in &positions {
-                    game.tick_mod_block_entity(pos);
+                let mut times = Vec::with_capacity(240);
+                for round in 0..260 {
+                    let start = Instant::now();
+                    for &pos in &positions {
+                        game.tick_mod_block_entity(pos);
+                    }
+                    let elapsed = start.elapsed().as_nanos();
+                    if round >= 20 {
+                        times.push(elapsed);
+                    }
                 }
-                let elapsed = start.elapsed().as_nanos();
-                if round >= 20 {
-                    times.push(elapsed);
+                times.sort_unstable();
+                if mode == "write" {
+                    let BlockEntity::Mod(sink) =
+                        game.world.block_entities.get(&(0, 63, 0)).unwrap()
+                    else {
+                        panic!("sink removed")
+                    };
+                    assert_eq!(sink.data, [260_000]);
                 }
-            }
-            times.sort_unstable();
-            if mode == "write" {
-                let BlockEntity::Mod(sink) = game.world.block_entities.get(&(0, 63, 0)).unwrap()
-                else {
-                    panic!("sink removed")
-                };
-                assert_eq!(sink.data, [260_000]);
-            }
-            println!(
-                "LIVE_BENCH mode={mode} holders=1000 samples={} median_ns={} p95_ns={} p99_ns={}",
-                times.len(),
-                times[120],
-                times[228],
-                times[237]
-            );
-        });
+                println!(
+                    "LIVE_BENCH mode={mode} holders=1000 samples={} median_ns={} p95_ns={} p99_ns={}",
+                    times.len(),
+                    times[120],
+                    times[228],
+                    times[237]
+                );
+            },
+        );
     });
 }
 
@@ -152,7 +157,9 @@ pub(super) fn with_mod_parts(name: &str, test: impl FnOnce(std::path::PathBuf)) 
     });
 }
 
-pub(super) fn mod_holder(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> mod_api::BlockEntityRef {
+pub(super) fn mod_holder(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+) -> mod_api::BlockEntityRef {
     game.options.dedicated = Some(Vec::new());
     game.world
         .chunks
@@ -323,69 +330,74 @@ fn a_declared_type_ticks_once_whichever_path_named_it() {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_api::__private::mark_game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
-        sunrise_gameplay::game::native_entity_refs::tests::with_game_at(root.prepared().to_path_buf(), |game| {
-            game.options.dedicated = Some(Vec::new());
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let registry = game.pack.assets.registry;
-            let press = registry.default_state(BOTH_BLOCK).unwrap();
-            let bare = registry.default_state(BARE_BLOCK).unwrap();
-            game.world.set(1, 64, 1, press).unwrap();
-            game.world.set(2, 64, 1, bare).unwrap();
-            for (pos, kind) in [
-                ((1, 64, 1), "tick_paths:both"),
-                ((2, 64, 1), "tick_paths:bare"),
-            ] {
-                game.world.block_entities.insert(
-                    pos,
-                    BlockEntity::Mod(Box::new(ModBlockEntity::new(
-                        kind.into(),
-                        Default::default(),
-                    ))),
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+        sunrise_gameplay::game::native_entity_refs::tests::with_game_at(
+            root.prepared().to_path_buf(),
+            |game| {
+                game.options.dedicated = Some(Vec::new());
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                let registry = game.pack.assets.registry;
+                let press = registry.default_state(BOTH_BLOCK).unwrap();
+                let bare = registry.default_state(BARE_BLOCK).unwrap();
+                game.world.set(1, 64, 1, press).unwrap();
+                game.world.set(2, 64, 1, bare).unwrap();
+                for (pos, kind) in [
+                    ((1, 64, 1), "tick_paths:both"),
+                    ((2, 64, 1), "tick_paths:bare"),
+                ] {
+                    game.world.block_entities.insert(
+                        pos,
+                        BlockEntity::Mod(Box::new(ModBlockEntity::new(
+                            kind.into(),
+                            Default::default(),
+                        ))),
+                    );
+                }
+                // The type's own ticker is the one decision: the part's answer
+                // for the press block, nothing for the bare declaration.
+                assert!(game.native_ticks(BOTH_BLOCK));
+                assert!(!game.native_ticks(BARE_BLOCK));
+                // The level's ticking list carries exactly the ticker's answer:
+                // one slot for the press, none for the bare declaration.
+                let states = game.ticking_states();
+                game.world.block_entities.set_states(states);
+                let tickers = game.world.block_entity_tickers();
+                assert_eq!(
+                    tickers.iter().filter(|(pos, _)| *pos == (1, 64, 1)).count(),
+                    1
                 );
-            }
-            // The type's own ticker is the one decision: the part's answer
-            // for the press block, nothing for the bare declaration.
-            assert!(game.native_ticks(BOTH_BLOCK));
-            assert!(!game.native_ticks(BARE_BLOCK));
-            // The level's ticking list carries exactly the ticker's answer:
-            // one slot for the press, none for the bare declaration.
-            let states = game.ticking_states();
-        game.world.block_entities.set_states(states);
-            let tickers = game.world.block_entity_tickers();
-            assert_eq!(
-                tickers.iter().filter(|(pos, _)| *pos == (1, 64, 1)).count(),
-                1
-            );
-            assert!(
-                !tickers.iter().any(|(pos, _)| *pos == (2, 64, 1)),
-                "a type with no ticker never reaches the ticking list"
-            );
-            // Exactly one tick per game tick, the type named by both paths:
-            // the declaration and the part each count once, not twice.
-            for expected in [1, 2, 3] {
-                game.tick_mod_block_entity((1, 64, 1));
-                let BlockEntity::Mod(entity) = game.world.block_entities.get(&(1, 64, 1)).unwrap()
+                assert!(
+                    !tickers.iter().any(|(pos, _)| *pos == (2, 64, 1)),
+                    "a type with no ticker never reaches the ticking list"
+                );
+                // Exactly one tick per game tick, the type named by both paths:
+                // the declaration and the part each count once, not twice.
+                for expected in [1, 2, 3] {
+                    game.tick_mod_block_entity((1, 64, 1));
+                    let BlockEntity::Mod(entity) =
+                        game.world.block_entities.get(&(1, 64, 1)).unwrap()
+                    else {
+                        panic!("press entity missing")
+                    };
+                    assert_eq!(entity.data, vec![1; expected]);
+                }
+                // A declared type with no listener stays inert through its tick
+                // call: no data, no write.
+                game.tick_mod_block_entity((2, 64, 1));
+                let BlockEntity::Mod(entity) = game.world.block_entities.get(&(2, 64, 1)).unwrap()
                 else {
-                    panic!("press entity missing")
+                    panic!("bare entity missing")
                 };
-                assert_eq!(entity.data, vec![1; expected]);
-            }
-            // A declared type with no listener stays inert through its tick
-            // call: no data, no write.
-            game.tick_mod_block_entity((2, 64, 1));
-            let BlockEntity::Mod(entity) = game.world.block_entities.get(&(2, 64, 1)).unwrap()
-            else {
-                panic!("bare entity missing")
-            };
-            assert!(
-                entity.data.is_empty(),
-                "a type no path gave a ticker changes nothing"
-            );
-            assert_eq!(entity.revision().changes(), 0, "no listener, no write");
-        });
+                assert!(
+                    entity.data.is_empty(),
+                    "a type no path gave a ticker changes nothing"
+                );
+                assert_eq!(entity.revision().changes(), 0, "no listener, no write");
+            },
+        );
     });
 }
 

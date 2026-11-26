@@ -464,10 +464,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ItemUtils.onContainerDestroyed`: spilled stacks use their own constructor
     /// motion (0.2 up and ±0.1 sideways), leaving the level random untouched.
-    pub fn spawn_destroyed_contents(
-        &mut self,
-        destroyed: Vec<(ItemStack, Vec3)>,
-    ) {
+    pub fn spawn_destroyed_contents(&mut self, destroyed: Vec<(ItemStack, Vec3)>) {
         for (stack, at) in destroyed {
             self.spawn_item_own(stack, [at.x, at.y, at.z], 0);
         }
@@ -876,11 +873,7 @@ impl crate::game::ServerGame<'_> {
     /// `at` (the eyes less 0.3): slots 0..36, armor feet to head (36..39),
     /// the off hand (40), each thrown in a random direction. The mods hear
     /// the drops (`native_living_drops`) before they join the level.
-    pub fn drop_inventory(
-        &mut self,
-        at: [f64; 3],
-        dying: &creatures::DyingDrops<'_>,
-    ) {
+    pub fn drop_inventory(&mut self, at: [f64; 3], dying: &creatures::DyingDrops<'_>) {
         let mut stacks: Vec<ItemStack> = Vec::new();
         if !self
             .common

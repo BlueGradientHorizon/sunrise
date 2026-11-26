@@ -1,5 +1,3 @@
-
-
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
     /// `MinecraftServer.onTickRateChanged`, before the autosave wait is adjusted: `/tick rate`

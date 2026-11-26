@@ -1,5 +1,3 @@
-
-
 #[cfg(test)]
 #[path = "borrowed_panic_tests_server.rs"]
 pub(crate) mod borrowed_panic_tests;

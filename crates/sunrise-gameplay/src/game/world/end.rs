@@ -3,13 +3,13 @@
 //! sky. The dragon fight itself lives in game/mobs/dragon.rs: the podium is
 //! inactive until the dragon dies.
 use super::Dim;
-use sunrise_gameplay_common::game::end_state::{Arriving, END_SPAWN, GatewayArrival, GatewayJob};
 use sunrise_core::{
     geometry::Vec3,
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::end_state::{Arriving, END_SPAWN, GatewayArrival, GatewayJob};
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::{
@@ -84,17 +84,14 @@ impl crate::game::ServerGame<'_> {
 impl crate::game::ServerGame<'_> {
     /// EnderEyeItem.useOn: fill an empty End portal frame, then light the
     /// portal when the ring of twelve filled frames is complete.
-    pub fn use_ender_eye(
-        &mut self,
-        stack: &ItemStack,
-        use_on_block: bool,
-    ) -> Result<bool> {
+    pub fn use_ender_eye(&mut self, stack: &ItemStack, use_on_block: bool) -> Result<bool> {
         if &*stack.item != "minecraft:ender_eye" {
             return Ok(false);
         }
         let registry = self.common.pack.assets.registry;
         let target = self.pick().and_then(|hit| {
-            let state = registry.state(self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]))?;
+            let state =
+                registry.state(self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]))?;
             (state.name == "minecraft:end_portal_frame").then(|| (hit, state.clone()))
         });
         let Some((hit, state)) = target else {
@@ -282,7 +279,10 @@ impl crate::game::ServerGame<'_> {
                 f64::from(c.pos[2]) + 0.5,
             ));
         }
-        Some(fallback_spawn(self.common.spawn, self.common.level.world_spawn))
+        Some(fallback_spawn(
+            self.common.spawn,
+            self.common.level.world_spawn,
+        ))
     }
 
     /// Where an End portal's traveller lands once `target` has loaded, and
@@ -332,7 +332,11 @@ impl crate::game::ServerGame<'_> {
         // ServerPlayer.findRespawnPositionAndUseSpawnBlock: where the bed or
         // anchor puts the player, facing it; else onto the spawn column.
         let mut target = target;
-        if let Some(c) = self.server.respawn_config.filter(|c| c.dim == self.common.dim) {
+        if let Some(c) = self
+            .server
+            .respawn_config
+            .filter(|c| c.dim == self.common.dim)
+        {
             if let Some((at, yaw, pitch)) = self.find_respawn_and_use(c, false)? {
                 return Ok(Some((at, [Some(yaw), Some(pitch)])));
             }
@@ -364,7 +368,12 @@ impl crate::game::ServerGame<'_> {
         finder: &mut Option<PlayerSpawnFinder>,
     ) -> std::result::Result<Vec3, (i32, i32)> {
         let (x, z) = (target.x.floor() as i32, target.z.floor() as i32);
-        if let Some(world) = self.common.level.world_spawn.filter(|w| w[0] == x && w[2] == z) {
+        if let Some(world) = self
+            .common
+            .level
+            .world_spawn
+            .filter(|w| w[0] == x && w[2] == z)
+        {
             return self.search_spawn(world, finder);
         }
         let y = self.common.land_column(x, z).map_or(target.y, f64::from);
@@ -406,7 +415,11 @@ impl crate::game::ServerGame<'_> {
         let mut y = (0..256)
             .rev()
             .find(|&y| {
-                let f = self.common.res.facts().get(self.common.world.block(0, y, 0));
+                let f = self
+                    .common
+                    .res
+                    .facts()
+                    .get(self.common.world.block(0, y, 0));
                 (f.full_collision || f.fluid != sunrise_items::blocks::Fluid::None)
                     && !f.name.ends_with("_leaves")
             })
@@ -562,7 +575,8 @@ impl crate::game::ServerGame<'_> {
                 }
             }
         }
-        self.common.world
+        self.common
+            .world
             .block_entities
             .get_or_insert_with((origin[0], origin[1], origin[2]), || {
                 BlockEntity::EndGateway(Default::default())
@@ -586,7 +600,8 @@ impl crate::game::ServerGame<'_> {
             return Ok(());
         }
         if let BlockEntity::EndGateway(g) = self
-            .common.world
+            .common
+            .world
             .block_entities
             .get_or_insert_with((gateway[0], gateway[1], gateway[2]), || {
                 BlockEntity::EndGateway(Default::default())
@@ -604,7 +619,8 @@ impl crate::game::ServerGame<'_> {
         gateway: [i32; 3],
     ) -> Option<([i32; 3], bool)> {
         match self
-            .common.world
+            .common
+            .world
             .block_entities
             .get(&(gateway[0], gateway[1], gateway[2]))
         {
@@ -622,7 +638,8 @@ impl crate::game::ServerGame<'_> {
     ) -> (GatewayJob, Vec3) {
         let job = GatewayJob::for_gateway(
             gateway,
-            self.common.world
+            self.common
+                .world
                 .block_entities
                 .get(&(gateway[0], gateway[1], gateway[2])),
         );
@@ -650,7 +667,8 @@ impl crate::game::ServerGame<'_> {
 
     pub(in crate::game::server_side) fn chunk_empty(&self, x: f64, z: f64) -> Option<bool> {
         let chunk = self
-            .common.world
+            .common
+            .world
             .chunks
             .get(&((x / 16.0).floor() as i32, (z / 16.0).floor() as i32))?;
         Some(chunk.sections.iter().all(|s| s.is_uniform(0)))
@@ -713,7 +731,8 @@ impl crate::game::ServerGame<'_> {
             }))),
             GatewayJob::Find { gateway, exact } => {
                 if !self
-                    .common.world
+                    .common
+                    .world
                     .chunks
                     .contains_key(&(gateway[0] >> 4, gateway[2] >> 4))
                 {
@@ -749,12 +768,14 @@ impl crate::game::ServerGame<'_> {
                         for x in cx * 16..cx * 16 + 16 {
                             if &*self.block_name([x, y, z]) != "minecraft:end_stone"
                                 || self
-                                    .common.res
+                                    .common
+                                    .res
                                     .facts()
                                     .get(self.common.world.block(x, y + 1, z))
                                     .full_collision
                                 || self
-                                    .common.res
+                                    .common
+                                    .res
                                     .facts()
                                     .get(self.common.world.block(x, y + 2, z))
                                     .full_collision
@@ -843,18 +864,21 @@ impl crate::game::ServerGame<'_> {
         let ticking = self.entity_ticking_area();
         let ticks = |at: Vec3| ticking(at.x.floor() as i32, at.z.floor() as i32);
         let items: Vec<(u32, Vec3, f32, f32)> = self
-            .common.dropped
+            .common
+            .dropped
             .iter()
             .filter(|e| ticks(e.position))
             .map(|e| (e.id, e.position, 0.25, 0.25))
             .collect();
         let mobs: Vec<(u32, Vec3, f32, f32)> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter(|m| ticks(m.position) && self.mob_portal_eligible(m))
             .map(|m| (m.id, m.position, m.width(), m.height()))
             .chain(
-                self.common.boats
+                self.common
+                    .boats
                     .iter()
                     .filter(|b| ticks(b.position) && self.vehicle_can_use_portal(b.id))
                     .map(|b| {
@@ -867,7 +891,8 @@ impl crate::game::ServerGame<'_> {
                     }),
             )
             .chain(
-                self.common.carts
+                self.common
+                    .carts
                     .iter()
                     .filter(|c| ticks(c.position) && self.vehicle_can_use_portal(c.id))
                     .map(|c| {
@@ -892,7 +917,8 @@ impl crate::game::ServerGame<'_> {
         }
         // A pearl's move this tick, from where it started it.
         let pearls: Vec<(u32, Option<Who>, Option<u32>, BlockPos)> = self
-            .common.creatures
+            .common
+            .creatures
             .projectiles
             .iter()
             .filter(|p| ticks(p.position))
@@ -917,7 +943,8 @@ impl crate::game::ServerGame<'_> {
                 continue;
             }
             let delay = self.dimension_changing_delay(id);
-            self.common.end
+            self.common
+                .end
                 .gateways
                 .entry(id)
                 .or_default()
@@ -947,7 +974,11 @@ impl crate::game::ServerGame<'_> {
     /// `Entity.getPortalCooldown` of an ender pearl: only an End gateway gives
     /// it one (zero when it has none).
     pub(in crate::game::server_side) fn pearl_portal_cooldown(&self, id: u32) -> i32 {
-        self.common.end.gateways.get(&id).map_or(0, |t| t.cooldown())
+        self.common
+            .end
+            .gateways
+            .get(&id)
+            .map_or(0, |t| t.cooldown())
     }
 
     /// `Entity.handlePortal` for the entities in an End gateway: they go
@@ -956,12 +987,12 @@ impl crate::game::ServerGame<'_> {
         self.handle_end_gateway_portals_phase(false);
     }
 
-    pub fn handle_end_gateway_portals_phase(
-        &mut self,
-        after_move: bool,
-    ) {
+    pub fn handle_end_gateway_portals_phase(&mut self, after_move: bool) {
         // Nobody in a gateway: nothing to look up.
-        if !self.common.is_logical_server() || self.common.dim != Dim::End || self.common.end.gateways.is_empty() {
+        if !self.common.is_logical_server()
+            || self.common.dim != Dim::End
+            || self.common.end.gateways.is_empty()
+        {
             return;
         }
         // `handlePortal` runs in the entity's tick: one past the simulation
@@ -969,26 +1000,31 @@ impl crate::game::ServerGame<'_> {
         let ticking = self.entity_ticking_area();
         let ticks = |at: Vec3| ticking(at.x.floor() as i32, at.z.floor() as i32);
         let ids: Vec<(u32, bool, bool)> = self
-            .common.dropped
+            .common
+            .dropped
             .iter()
             .map(|e| (e.id, true, ticks(e.position)))
             .chain(
-                self.common.mobs
+                self.common
+                    .mobs
                     .iter()
                     .map(|m| (m.id, self.mob_portal_eligible(m), ticks(m.position))),
             )
             .chain(
-                self.common.boats
+                self.common
+                    .boats
                     .iter()
                     .map(|b| (b.id, self.vehicle_can_use_portal(b.id), ticks(b.position))),
             )
             .chain(
-                self.common.carts
+                self.common
+                    .carts
                     .iter()
                     .map(|c| (c.id, self.vehicle_can_use_portal(c.id), ticks(c.position))),
             )
             .chain(
-                self.common.creatures
+                self.common
+                    .creatures
                     .projectiles
                     .iter()
                     .filter(|p| matches!(p.kind, ProjectileKind::EnderPearl))
@@ -1002,7 +1038,10 @@ impl crate::game::ServerGame<'_> {
             Arriving::Pearl(p) => p.id,
             Arriving::Live(id) => *id,
         }));
-        self.common.end.gateways.retain(|id, _| present.contains(id));
+        self.common
+            .end
+            .gateways
+            .retain(|id, _| present.contains(id));
         let mut leaving: Vec<(u32, BlockPos)> = Vec::new();
         for (id, allowed, ticking) in ids {
             if !ticking {
@@ -1014,7 +1053,8 @@ impl crate::game::ServerGame<'_> {
                 continue;
             }
             let is_pearl = self
-                .common.creatures
+                .common
+                .creatures
                 .projectiles
                 .iter()
                 .any(|p| p.id == id && matches!(p.kind, ProjectileKind::EnderPearl));
@@ -1065,7 +1105,13 @@ impl crate::game::ServerGame<'_> {
             }
             return;
         }
-        if let Some(i) = self.common.creatures.projectiles.iter().position(|p| p.id == id) {
+        if let Some(i) = self
+            .common
+            .creatures
+            .projectiles
+            .iter()
+            .position(|p| p.id == id)
+        {
             let pearl = Box::new(self.common.creatures.projectiles.remove(i));
             self.native_leave_skip(id);
             let (job, target) = self.gateway_job([gateway.x, gateway.y, gateway.z]);
@@ -1103,7 +1149,11 @@ impl crate::game::ServerGame<'_> {
         arrival: GatewayArrival,
     ) -> Option<GatewayArrival> {
         let chunk = |at: Vec3| ((at.x.floor() as i32) >> 4, (at.z.floor() as i32) >> 4);
-        if !self.common.world.chunks.contains_key(&chunk(arrival.target))
+        if !self
+            .common
+            .world
+            .chunks
+            .contains_key(&chunk(arrival.target))
             || arrival
                 .job
                 .source_chunk()
@@ -1167,7 +1217,8 @@ impl crate::game::ServerGame<'_> {
         });
         let tickets = self.common.end.tickets.iter().filter(|_| in_end);
         let sources = self
-            .common.end
+            .common
+            .end
             .arrivals
             .iter()
             .filter_map(|a| a.job.source_chunk());
@@ -1326,12 +1377,6 @@ pub(in crate::game) mod tests {
             );
         }
     }
-
-    
-
-    
-
-    
 
     /// `endFlashPosition`'s direction: the flash sprite's centre, 100 blocks away.
     #[test]

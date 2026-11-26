@@ -1,13 +1,13 @@
 //! Actual departure/recreation and TNT blasts, not calls to the arrival-effects helper.
+use super::*;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
-use sunrise_gameplay_common::game::Dim;
-use super::*;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay::game::server_side::nether_portal::{arrival_from_tag, arrival_tag};
+use sunrise_gameplay_common::game::Dim;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
-use sunrise_gameplay::game::server_side::nether_portal::{arrival_from_tag, arrival_tag};
 use sunrise_sim::nether_portal::PortalState;
 
 fn prepare(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
@@ -22,7 +22,11 @@ fn prepare(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
 
 /// Capture a real portal traveller, open its destination, and light its arrival
 /// area. A restarted waiting arrival has only its saved payload, not a live token.
-fn depart(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32, restart_waiting: bool) -> Vec3 {
+fn depart(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    id: u32,
+    restart_waiting: bool,
+) -> Vec3 {
     let entry = BlockPos::new(8, 70, 8);
     let portal = game
         .pack
@@ -58,8 +62,7 @@ fn portal_arrival_effects_merge_items_before_their_first_tick() {
     run_portal_arrival_effects_merge_items_before_their_first_tick();
 }
 
-pub(crate) fn run_portal_arrival_effects_merge_items_before_their_first_tick()
-{
+pub(crate) fn run_portal_arrival_effects_merge_items_before_their_first_tick() {
     for (incoming, waiting, incoming_age, waiting_age, restart) in [
         (3, 5, 5999, 41, false),
         (5, 3, 7, 41, true),
@@ -160,8 +163,7 @@ fn portal_arrival_effects_tnt_protection_is_live_but_not_saved() {
     run_portal_arrival_effects_tnt_protection_is_live_but_not_saved();
 }
 
-pub(crate) fn run_portal_arrival_effects_tnt_protection_is_live_but_not_saved()
- {
+pub(crate) fn run_portal_arrival_effects_tnt_protection_is_live_but_not_saved() {
     for restart_waiting in [false, true] {
         with_game(|game| {
             prepare(game);
@@ -184,8 +186,11 @@ pub(crate) fn run_portal_arrival_effects_tnt_protection_is_live_but_not_saved()
                 assert!(saved.get(key).is_none());
             }
             let id = game.tnts[0].id;
-            game.apply_entity_nbt(sunrise_gameplay_common::game::commands_common::Target::Tnt(id), saved.clone())
-                .unwrap();
+            game.apply_entity_nbt(
+                sunrise_gameplay_common::game::commands_common::Target::Tnt(id),
+                saved.clone(),
+            )
+            .unwrap();
             assert!(
                 game.tnts[0].used_portal,
                 "loading data into the live instance does not reset it"
@@ -285,8 +290,7 @@ fn portal_arrival_effects_join_removals_cannot_consume_live_stacks() {
     run_portal_arrival_effects_join_removals_cannot_consume_live_stacks();
 }
 
-pub(crate) fn run_portal_arrival_effects_join_removals_cannot_consume_live_stacks()
- {
+pub(crate) fn run_portal_arrival_effects_join_removals_cannot_consume_live_stacks() {
     for portal in [true, false] {
         for remove_incoming in [false, true] {
             let armed = Arc::new(AtomicBool::new(false));
@@ -402,8 +406,7 @@ fn portal_arrival_effects_nested_spawns_do_not_hide_the_real_arrival() {
     run_portal_arrival_effects_nested_spawns_do_not_hide_the_real_arrival();
 }
 
-pub(crate) fn run_portal_arrival_effects_nested_spawns_do_not_hide_the_real_arrival()
- {
+pub(crate) fn run_portal_arrival_effects_nested_spawns_do_not_hide_the_real_arrival() {
     for portal in [true, false] {
         let armed = Arc::new(AtomicBool::new(false));
         let calls = Arc::new(AtomicU32::new(0));

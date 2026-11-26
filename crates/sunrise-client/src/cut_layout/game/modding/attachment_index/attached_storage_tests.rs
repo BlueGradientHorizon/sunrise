@@ -1,17 +1,17 @@
 //! Stock attached storage (`AttachedItems`, `AttachedEnergy`) through real holder writes and
 //! the transaction journal.
-use std::sync::Arc;
-use sunrise_mod_runtime::attachments::Holder;
-use sunrise_gameplay_common::game::Dim;
 use super::*;
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{
     AttachedEnergy, AttachedItems, AttachmentType, EnergyHandler, HostTransaction, ITEM_STACKS,
     ItemResource, ResourceHandler, ServerHost, StackList,
 };
+use std::sync::Arc;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::Dim;
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
+use sunrise_mod_runtime::attachments::Holder;
 
 static ITEMS: AttachmentType<StackList<ItemResource>> = AttachmentType {
     namespace: "storage_test",

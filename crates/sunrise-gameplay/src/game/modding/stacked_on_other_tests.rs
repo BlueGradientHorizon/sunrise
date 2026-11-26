@@ -1103,9 +1103,12 @@ pub(in crate::game) mod families {
     #[test]
     #[ignore = "daily"]
     fn the_trading_menu_decides_the_pickup() {
-        use {sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer, crate::game::server_side::native_merchant_refs::tests::spawn};
         use sunrise_gameplay_common::game::trading_common::MerchantState;
         use sunrise_sim::merchant::{Session, Trader};
+        use {
+            crate::game::server_side::native_merchant_refs::tests::spawn,
+            sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer,
+        };
         let window = std::cell::Cell::new(0);
         family(
             |game| {
@@ -2107,9 +2110,12 @@ pub mod item_part_tests {
                 //    a direct PICKUP during an active drag ONLY resets the drag without firing
                 //    Parts or mutating slots, and a 2-slot drag does not dispatch Parts.
                 {
-                    use {sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer, crate::game::server_side::native_merchant_refs::tests::spawn};
                     use sunrise_gameplay_common::game::trading_common::MerchantState;
                     use sunrise_sim::merchant::{Session, Trader};
+                    use {
+                        crate::game::server_side::native_merchant_refs::tests::spawn,
+                        sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer,
+                    };
 
                     spawn(game, 61, "minecraft:villager");
                     game.mobs[0].position = sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5);
@@ -2385,7 +2391,9 @@ pub mod item_part_tests {
                         trace().is_empty(),
                         "direct pickup during active mount drag must only reset drag"
                     );
-                    assert!(game.server.lan.as_ref().unwrap().hub.guests[0].inventory[10].is_none());
+                    assert!(
+                        game.server.lan.as_ref().unwrap().hub.guests[0].inventory[10].is_none()
+                    );
                 }
             });
         });

@@ -1,4 +1,3 @@
-
 #[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
@@ -66,10 +65,7 @@ impl SideOps for crate::game::client_side::ClientState {
     fn side_update_chunk_tickets(game: &mut Self::Game<'_>) {
         game.client_update_chunk_tickets()
     }
-    fn side_section_mesh_pending_in(
-        game: &Self::Game<'_>,
-        section: (i32, i32, i32),
-    ) -> bool {
+    fn side_section_mesh_pending_in(game: &Self::Game<'_>, section: (i32, i32, i32)) -> bool {
         game.client_section_mesh_pending_in(section)
     }
     fn side_landing_change_cancelled(
@@ -115,12 +111,12 @@ impl SideOps for crate::game::client_side::ClientState {
         game.client_game_side_meta()
     }
 }
-use sunrise_gameplay_common::game::side_ops::world::SideOps;
-use sunrise_gameplay_common::game::Dim;
-use sunrise_gameplay_common::game::commands_common::Target;
-use sunrise_gameplay_common::game::GameLevel;
 use sunrise_core::position::BlockPos;
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::Dim;
+use sunrise_gameplay_common::game::GameLevel;
+use sunrise_gameplay_common::game::commands_common::Target;
+use sunrise_gameplay_common::game::side_ops::world::SideOps;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk_streamer::ChunkState;
 use sunrise_level::environment::Environment;

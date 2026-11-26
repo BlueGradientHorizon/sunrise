@@ -24,19 +24,23 @@ impl crate::game::ServerGame<'_> {
         }
         if left {
             let eye = self.give_eye();
-            self.after_commit(sunrise_gameplay_common::game::transactions::After::GiveRest {
-                uuid,
-                rest: stack,
-                owner,
-                dim,
-                eye,
-            });
+            self.after_commit(
+                sunrise_gameplay_common::game::transactions::After::GiveRest {
+                    uuid,
+                    rest: stack,
+                    owner,
+                    dim,
+                    eye,
+                },
+            );
         } else {
-            self.after_commit(sunrise_gameplay_common::game::transactions::After::GivePickup {
-                uuid,
-                dim,
-                prototype: ItemStack { count: 1, ..stack },
-            });
+            self.after_commit(
+                sunrise_gameplay_common::game::transactions::After::GivePickup {
+                    uuid,
+                    dim,
+                    prototype: ItemStack { count: 1, ..stack },
+                },
+            );
         }
         None
     }

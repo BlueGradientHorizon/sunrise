@@ -1,18 +1,16 @@
-
-
 #[cfg(any())]
 #[cfg(feature = "client")]
 pub mod tests {
 
-use mod_api::{self, BonemealEvent, BonemealSource, Flow, Hooks, HostSide};
+    use mod_api::{self, BonemealEvent, BonemealSource, Flow, Hooks, HostSide};
 
-use std::sync::{Mutex, MutexGuard, PoisonError};
+    use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use sunrise_core::{geometry::Direction, position::BlockPos};
+    use sunrise_core::{geometry::Direction, position::BlockPos};
 
-use sunrise_items::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
-/// A dispenser at (0, 64, 1) facing young wheat, with `meal` listening:
+    /// A dispenser at (0, 64, 1) facing young wheat, with `meal` listening:
     /// what the slot holds after one dispense, and the wheat's age.
     pub fn dispense(meal: Meal, target: &str) -> (Option<ItemStack>, i32) {
         heard().clear();

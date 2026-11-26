@@ -1,18 +1,7 @@
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::game::TryIntoApi;
-use sunrise_gameplay_common::game::native_hooks::block_entity_on_load::BlockEntityOnLoadGameExt1;
+use super::*;
 use mod_api::BlockEntityRef;
-use sunrise_core::nbt::Compound;
-use sunrise_level::block_entities::Pos;
-use sunrise_level::containers::ModBlockEntity as EngineBlockEntity;
-use sunrise_gameplay::game::server_side::native_hooks_server::block_entity_tick::{Loan, ResidentBlockEntityAccess};
 use mod_api::BlockEntityScope;
 use mod_api::ServerHost;
-use sunrise_core::nbt::Tag;
-use sunrise_level::containers::BlockEntity;
-use sunrise_world::registry::BlockStateId;
-use super::*;
-use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
 use mod_api::{
     BlockEdit, BlockEntityLoadAdditionalEvent, BlockEntityPart, BlockEntitySaveAdditionalEvent,
     BlockEntityTickEvent, BlockPart, BlockRun, BlockUpdateFlags, Direction, EntityJoinLevelEvent,
@@ -24,12 +13,30 @@ use std::sync::{
     atomic::{AtomicU32, Ordering},
 };
 use sunrise_core::geometry::Vec3;
+use sunrise_core::nbt::Compound;
+use sunrise_core::nbt::Tag;
+use sunrise_gameplay::game::server_side::native_hooks_server::block_entity_tick::{
+    Loan, ResidentBlockEntityAccess,
+};
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::TryIntoApi;
+use sunrise_gameplay_common::game::native_hooks::block_entity_on_load::BlockEntityOnLoadGameExt1;
 use sunrise_items::items::ItemStack;
+use sunrise_level::block_entities::Pos;
+use sunrise_level::containers::BlockEntity;
+use sunrise_level::containers::ModBlockEntity as EngineBlockEntity;
 use sunrise_level::{
     chunk::Chunk,
     containers::{ModBlockEntityFields, ModContainer},
 };
 use sunrise_sim::motion::PlayerMotion;
+use sunrise_world::registry::BlockStateId;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+};
 
 pub(crate) const POS: Pos = (1, 64, 1);
 pub(crate) const CHUNK: (i32, i32) = (0, 0);
@@ -264,9 +271,12 @@ pub(in crate::game) enum Retake {
 #[test]
 #[ignore = "daily"]
 fn aborted_block_entity_edits_preserve_a_queued_client_update() {
-    use {sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_guest_turn_tests::with_guests_at};
     use sunrise_protocol::{buf::Reader, packets::play::Clientbound};
     use sunrise_sim::lan::{Out, PlayerSender};
+    use {
+        sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+        sunrise_gameplay::game::native_guest_turn_tests::with_guests_at,
+    };
 
     const NAME: &str = "game::server_side::native_hooks_server::block_entity_tick::tick_tests::aborted_block_entity_edits_preserve_a_queued_client_update";
     if run_fresh_cases(NAME, "SUNRISE_RESIDENT_VIEW_SYNC", &["run"]) {
@@ -292,7 +302,9 @@ fn aborted_block_entity_edits_preserve_a_queued_client_update() {
     mod_platform::testing::with_mods(mods.clone(), || {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_api::__private::mark_game_thread();
-        let root = sunrise_gameplay_common::game::mods::content_root(&fixture_root(), &Default::default()).unwrap();
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&fixture_root(), &Default::default())
+                .unwrap();
         with_guests_at(root.prepared().to_owned(), |game| {
             let hub = &mut game.server.lan.as_mut().unwrap().hub;
             let kind = hub
@@ -377,7 +389,8 @@ fn aborted_block_entity_edits_preserve_a_queued_client_update() {
                     });
                 assert_eq!(result, Err(mod_api::TransactionError::Aborted(())));
 
-                let (common, server) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
+                let (common, server) =
+                    sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
                 server
                     .lan
                     .as_mut()
@@ -392,7 +405,8 @@ fn aborted_block_entity_edits_preserve_a_queued_client_update() {
 
                 // A later sync of the restored entity must not replay either batch.
                 game.block_entity_sync(AT);
-                let (common, server) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
+                let (common, server) =
+                    sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
                 server
                     .lan
                     .as_mut()
@@ -1104,7 +1118,9 @@ impl Hooks for Effects {
     }
 }
 
-pub(crate) fn with_ticker(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Effects)) {
+pub(crate) fn with_ticker(
+    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Effects),
+) {
     with_ticker_mods(None, test);
 }
 
@@ -1120,7 +1136,8 @@ pub(crate) fn with_ticker_mods(
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_api::__private::mark_game_thread();
         let base = sunrise_gameplay::game::native_entity_refs::tests::fixture_root();
-        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
         with_game_at(root.prepared().to_owned(), |game| test(game, &effects));
     });
 }
@@ -1128,7 +1145,11 @@ pub(crate) fn with_ticker_mods(
 #[test]
 #[ignore = "daily"]
 fn an_invalid_resident_block_entity_is_not_dispatched() {
-    use {sunrise_gameplay::game::block_entity_ticks::BlockEntityTick, sunrise_gameplay::game::block_entity_ticks::BlockEntityTickSlot, sunrise_gameplay_common::game::published_loops::LoopFlow};
+    use {
+        sunrise_gameplay::game::block_entity_ticks::BlockEntityTick,
+        sunrise_gameplay::game::block_entity_ticks::BlockEntityTickSlot,
+        sunrise_gameplay_common::game::published_loops::LoopFlow,
+    };
 
     struct Invalidate {
         glass: BlockStateId,
@@ -1349,16 +1370,17 @@ fn chunk_save_reloads_reordered_slotless_items() {
         };
         let initial = Tag::List(vec![item(1), item(0)]);
         let reordered = Tag::List(vec![item(0), item(1)]);
-        let write_items =
-            |game: &mut sunrise_gameplay::game::ServerGame<'_>, subject: BlockEntityRef, items: Tag| {
-                let mut access = access(game, subject);
-                let mut scope = BlockEntityScope::new(&mut access);
-                assert_eq!(
-                    scope.with_view(|mut view| view.set_nbt("Items".into(), Some(items))),
-                    Some(true)
-                );
-                subject.set_changed(scope.host()).unwrap();
-            };
+        let write_items = |game: &mut sunrise_gameplay::game::ServerGame<'_>,
+                           subject: BlockEntityRef,
+                           items: Tag| {
+            let mut access = access(game, subject);
+            let mut scope = BlockEntityScope::new(&mut access);
+            assert_eq!(
+                scope.with_view(|mut view| view.set_nbt("Items".into(), Some(items))),
+                Some(true)
+            );
+            subject.set_changed(scope.host()).unwrap();
+        };
         let save_reload = |game: &sunrise_gameplay::game::ServerGame<'_>| {
             let snapshots = game.with_entities([game.world.chunks.get(&CHUNK).unwrap()]);
             let registry = game.pack.assets.registry;

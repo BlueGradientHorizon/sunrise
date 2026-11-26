@@ -1,25 +1,13 @@
 use self::screen_view::{screen_view_for_mod, screen_view_with_id};
-use crate::game::client_side::screen_build::ObservedScreen;
+use crate::game::client_side::key_codes::{glfw_button, glfw_modifiers};
 #[allow(unused_imports)]
 use crate::game::client_side::native_panel_recipes::RecipePage;
-use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-pub use sunrise_gameplay_common::game::native_hooks::NativeRecipeView;
-pub use sunrise_gameplay_common::game::native_hooks::NativeRecipes;
-use sunrise_gameplay_common::game::native_hooks::camera_math::bounded_shake;
-use sunrise_gameplay_common::game::native_hooks::client_packet_view;
-use sunrise_gameplay_common::game::native_hooks::mod_menu;
-use sunrise_gameplay_common::game::native_hooks::screen_chars::chars_to_type;
-use sunrise_gameplay_common::game::native_hooks::serverbound_packet_view;
-use sunrise_gameplay_common::game::native_hooks::shake_pose;
-use sunrise_gameplay_common::game::native_hooks::sound_and_shader_helpers::sound_id;
-use sunrise_gameplay_common::game::native_hooks::sound_and_shader_helpers::{finite, finite_params, local_sound_ok};
-pub use sunrise_gameplay_common::game::native_hooks::*;
+use crate::game::client_side::screen_build::ObservedScreen;
 use mod_api::game::Shake;
 use mod_api::{
     self, Answered, ClientModifiers, EntityRef, PlayerRef, RecipeBookCategory, ScreenId,
     ScreenOpening, ScreenTarget,
 };
-use crate::game::client_side::key_codes::{glfw_button, glfw_modifiers};
 pub use mod_api::{BlockRim, ColoredLight, PanelEvent, ScreenView};
 use mod_api::{CameraType, SoundPlay, SoundRef};
 use mod_api::{FluidStack, LogicalSide, TriState};
@@ -32,6 +20,20 @@ use sunrise_client::{
     music::{Music, MusicLayer},
 };
 use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::execution_role::ExecutionRole;
+pub use sunrise_gameplay_common::game::native_hooks::NativeRecipeView;
+pub use sunrise_gameplay_common::game::native_hooks::NativeRecipes;
+use sunrise_gameplay_common::game::native_hooks::camera_math::bounded_shake;
+use sunrise_gameplay_common::game::native_hooks::client_packet_view;
+use sunrise_gameplay_common::game::native_hooks::mod_menu;
+use sunrise_gameplay_common::game::native_hooks::screen_chars::chars_to_type;
+use sunrise_gameplay_common::game::native_hooks::serverbound_packet_view;
+use sunrise_gameplay_common::game::native_hooks::shake_pose;
+use sunrise_gameplay_common::game::native_hooks::sound_and_shader_helpers::sound_id;
+use sunrise_gameplay_common::game::native_hooks::sound_and_shader_helpers::{
+    finite, finite_params, local_sound_ok,
+};
+pub use sunrise_gameplay_common::game::native_hooks::*;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{biome::BiomeColors, block_entities::Pos, containers::BlockEntity};
 use sunrise_mod_package::mod_list::{
@@ -50,8 +52,6 @@ impl mod_api::PackDiscoveryContext for crate::game::ClientGame<'_> {
         Some(self)
     }
 }
-
-
 
 #[path = "base_client.rs"]
 pub(in crate::game) mod base;
@@ -77,8 +77,6 @@ pub(in crate::game) mod camera_pose;
 #[path = "camera_read_client.rs"]
 pub(in crate::game) mod camera_read;
 
-
-
 #[path = "client_gui_state_client.rs"]
 pub(in crate::game) mod client_gui_state;
 
@@ -88,8 +86,6 @@ pub(in crate::game) mod client_input_reads;
 #[path = "client_input_reads_tests_client.rs"]
 pub(in crate::game) mod client_input_reads_tests;
 
-
-
 #[path = "client_pick_client.rs"]
 pub(in crate::game) mod client_pick;
 
@@ -98,10 +94,6 @@ pub(in crate::game) mod client_text;
 
 #[path = "creative_tabs_read_client.rs"]
 pub(in crate::game) mod creative_tabs_read;
-
-
-
-
 
 #[path = "draw_measures_client.rs"]
 pub(in crate::game) mod draw_measures;
@@ -127,8 +119,6 @@ pub(in crate::game) mod muffle_sounds;
 #[path = "panel_recipes_client.rs"]
 pub(in crate::game) mod panel_recipes;
 
-
-
 #[path = "preset_title_client.rs"]
 pub(in crate::game) mod preset_title;
 
@@ -147,22 +137,8 @@ pub(in crate::game) mod register_gui_layers;
 #[path = "register_preset_editors_client.rs"]
 pub(in crate::game) mod register_preset_editors;
 
-
-
-
-
-
-
-
-
-
-
 #[path = "screen_hovered_stack_client.rs"]
 pub(in crate::game) mod screen_hovered_stack;
-
-
-
-
 
 #[path = "use_item_hand_client.rs"]
 pub(in crate::game) mod use_item_hand;
@@ -177,11 +153,7 @@ pub(in crate::game) mod system_helpers;
 pub(in crate::game) mod world_helpers;
 
 #[cfg(any(test, feature = "test-support"))]
-pub fn seed_native_menu(
-    game: &mut crate::game::ClientGame<'_>,
-    window: i32,
-    name: &str,
-) -> u64 {
+pub fn seed_native_menu(game: &mut crate::game::ClientGame<'_>, window: i32, name: &str) -> u64 {
     if game.client.remote.is_none() {
         let (pipe, _server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(pipe, "Native screen fixture").unwrap();
@@ -256,7 +228,13 @@ impl crate::game::ClientGame<'_> {
         if screen != Screen::Inventory {
             if self.active_native_screen().is_some() {
                 self.remote_close_container();
-            } else if self.client.mod_screen.0.as_ref().is_some_and(|s| s.detached) {
+            } else if self
+                .client
+                .mod_screen
+                .0
+                .as_ref()
+                .is_some_and(|s| s.detached)
+            {
                 self.remove_remote_menu_screen();
             }
         }
@@ -342,7 +320,8 @@ impl crate::game::ClientGame<'_> {
         }
         let has_level = self.client.remote.as_ref().is_some_and(|r| r.has_level());
         let dead = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .is_some_and(|player| player.health.health() <= 0.0);
         let title = if has_level {
@@ -410,7 +389,9 @@ impl crate::game::ClientGame<'_> {
             self.client.chat_ui.death_confirm = None;
         }
         if let Some(mut title) = title {
-            title.set_rule_registry(Arc::new(sunrise_gameplay_common::game::api_values::game_rule_registry()));
+            title.set_rule_registry(Arc::new(
+                sunrise_gameplay_common::game::api_values::game_rule_registry(),
+            ));
             self.stage_title(title);
             self.client.screen = Screen::Playing;
             self.client.native_mod_screen = None;
@@ -464,12 +445,7 @@ impl crate::game::ClientGame<'_> {
     /// The open mod screen: a plain panel with its slots' frames, the mod's
     /// drawing over it, then the title and the inventory's label. False when
     /// none is showing.
-    pub fn draw_native_screen(
-        &self,
-        batch: &mut HudBatch,
-        ox: f32,
-        oy: f32,
-    ) -> bool {
+    pub fn draw_native_screen(&self, batch: &mut HudBatch, ox: f32, oy: f32) -> bool {
         let Some(s) = self.shown_native_screen() else {
             return false;
         };
@@ -532,10 +508,7 @@ impl crate::game::ClientGame<'_> {
         true
     }
     /// The open mod screen's tooltip under the cursor.
-    pub(crate) fn draw_native_screen_tooltip(
-        &mut self,
-        batch: &mut HudBatch,
-    ) {
+    pub(crate) fn draw_native_screen_tooltip(&mut self, batch: &mut HudBatch) {
         // Over no item: an empty slot still gets the mod's hint (which fuel it takes).
         // A carried stack hides only slot tooltips, as AbstractContainerScreen's;
         // the screen's other parts keep theirs, as a vanilla widget's tooltip does.
@@ -642,12 +615,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// A data slot of window `window`'s menu (`ContainerSetData`); false
     /// when no mod screen is showing for that active remote window.
-    pub fn native_screen_data(
-        &mut self,
-        window: i32,
-        index: usize,
-        value: i32,
-    ) -> bool {
+    pub fn native_screen_data(&mut self, window: i32, index: usize, value: i32) -> bool {
         if self.shown_active_native_screen().is_none() {
             return false;
         }
@@ -686,11 +654,7 @@ impl crate::game::ClientGame<'_> {
         self.native_screen_press_at(&batch, right)
     }
     /// Dispatch a press in the given GUI viewport, with inventory slots taking priority.
-    pub fn native_screen_press_at(
-        &mut self,
-        batch: &HudBatch,
-        right: bool,
-    ) -> bool {
+    pub fn native_screen_press_at(&mut self, batch: &HudBatch, right: bool) -> bool {
         let Some(screen) = self.shown_native_screen() else {
             return false;
         };
@@ -915,9 +879,10 @@ impl crate::game::ClientGame<'_> {
             overlay: self.client.screen == Screen::Playing || self.observed_overlay_now().is_some(),
             mod_screen: view.mod_screen.map(str::to_owned),
             menu: view.menu.map(str::to_owned),
-            menu_generation: (self.client.screen == Screen::Inventory && !self.screen_over_playing())
-                .then(|| self.client.remote.as_ref().map(|r| r.menu.generation))
-                .flatten(),
+            menu_generation: (self.client.screen == Screen::Inventory
+                && !self.screen_over_playing())
+            .then(|| self.client.remote.as_ref().map(|r| r.menu.generation))
+            .flatten(),
             dialog_key: (view.id == "dialog").then(|| match self.dialog_screen_key() {
                 (true, _, _) => (true, false, None),
                 key => key,
@@ -980,11 +945,7 @@ impl crate::game::ClientGame<'_> {
     /// sets the overlay and `screen_init_post` follows. Returns whether
     /// `open` ran. With no mod loaded, on a server's `Game` and on a guest's
     /// behalf, `open` just runs.
-    pub fn open_screen_overlay(
-        &mut self,
-        id: &'static str,
-        open: impl FnOnce(&mut Self),
-    ) -> bool {
+    pub fn open_screen_overlay(&mut self, id: &'static str, open: impl FnOnce(&mut Self)) -> bool {
         if !self.screen_hooks_heard() {
             open(self);
             self.release_mappings_on_screen_open();
@@ -1088,10 +1049,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `screen` as the screen hooks see it while it opens or closes: no
     /// renderer (a test, a window not yet up) leaves its rectangle empty.
-    pub(crate) fn screen_change_view(
-        &self,
-        screen: Screen,
-    ) -> ScreenView<'_> {
+    pub(crate) fn screen_change_view(&self, screen: Screen) -> ScreenView<'_> {
         let rect = match &self.client.renderer.0 {
             Some(renderer) => self.screen_rect(
                 &HudBatch::new(
@@ -1168,11 +1126,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `ScreenEvent.CharacterTyped.Post` for a character that neither mounted
     /// widgets nor any text box took, on the captured receiving screen.
-    pub(crate) fn screen_chars_post_on(
-        &self,
-        receiver: Option<&ObservedScreen>,
-        c: char,
-    ) {
+    pub(crate) fn screen_chars_post_on(&self, receiver: Option<&ObservedScreen>, c: char) {
         if !mod_api::__private::listened(mod_api::HookId::ScreenCharTypedPost) {
             return;
         }
@@ -1369,10 +1323,7 @@ impl crate::game::ClientGame<'_> {
         );
         canceled
     }
-    pub(crate) fn screen_mouse_dragged(
-        &self,
-        delta: [f32; 2],
-    ) -> ScreenMousePre {
+    pub(crate) fn screen_mouse_dragged(&self, delta: [f32; 2]) -> ScreenMousePre {
         if self.pad_synthetic_input() || delta == [0.0; 2] {
             return ScreenMousePre::NotFired;
         }
@@ -1406,17 +1357,19 @@ impl crate::game::ClientGame<'_> {
             ))
         }
     }
-    pub(crate) fn screen_overlay_view(
-        &self,
-        id: &'static str,
-    ) -> ScreenView<'_> {
-        let rect = self.client.renderer.0.as_ref().map_or([0.0; 4], |renderer| {
-            let batch = HudBatch::new(
-                [renderer.config.width, renderer.config.height],
-                self.client.settings.gui_scale_inputs(),
-            );
-            [0.0, 0.0, batch.width, batch.height]
-        });
+    pub(crate) fn screen_overlay_view(&self, id: &'static str) -> ScreenView<'_> {
+        let rect = self
+            .client
+            .renderer
+            .0
+            .as_ref()
+            .map_or([0.0; 4], |renderer| {
+                let batch = HudBatch::new(
+                    [renderer.config.width, renderer.config.height],
+                    self.client.settings.gui_scale_inputs(),
+                );
+                [0.0, 0.0, batch.width, batch.height]
+            });
         ScreenView::from(mod_api::__private::built::ScreenView {
             id,
             mod_screen: None,
@@ -1450,11 +1403,7 @@ impl crate::game::ClientGame<'_> {
     /// printable one snapshots the current receiving screen, is offered to
     /// `native_screen_char_typed_pre`, and `take` gets it unless cancelled,
     /// before the next is offered. A control character goes straight to `take`.
-    pub(crate) fn screen_text_each(
-        &mut self,
-        text: &str,
-        mut take: impl FnMut(&mut Self, &str),
-    ) {
+    pub(crate) fn screen_text_each(&mut self, text: &str, mut take: impl FnMut(&mut Self, &str)) {
         let mut encoded = [0; 4];
         for c in text.chars() {
             if c.is_control() {
@@ -1637,7 +1586,9 @@ impl crate::game::ClientGame<'_> {
     /// The shown native screen whose remote window is still the active logical menu.
     pub(in crate::game) fn shown_active_native_screen(&self) -> Option<&OpenNativeScreen> {
         self.active_native_screen().filter(|s| {
-            s.shown && self.client.screen == Screen::Inventory && self.common.container == Some(s.menu.key)
+            s.shown
+                && self.client.screen == Screen::Inventory
+                && self.common.container == Some(s.menu.key)
         })
     }
     #[cfg(any(test, feature = "test-support"))]
@@ -1696,11 +1647,7 @@ impl crate::game::ClientGame<'_> {
             regions: &[],
         }))
     }
-    pub(crate) fn track_drag_button(
-        &mut self,
-        button: MouseButton,
-        pressed: bool,
-    ) {
+    pub(crate) fn track_drag_button(&mut self, button: MouseButton, pressed: bool) {
         // Any release ends the drag, as vanilla's `MouseHandler.onButton` clears `activeButton`:
         // left down, right down, left up sends no drag while right is still held.
         self.client.drag_button = pressed.then_some(button);
@@ -1744,7 +1691,9 @@ impl crate::game::ClientGame<'_> {
     }
     /// Shows `title` (`Minecraft.setScreen(new TitleScreen())`) with the game-rule registry attached.
     pub fn show_title(&mut self, mut title: sunrise_client::title::Title) {
-        title.set_rule_registry(Arc::new(sunrise_gameplay_common::game::api_values::game_rule_registry()));
+        title.set_rule_registry(Arc::new(
+            sunrise_gameplay_common::game::api_values::game_rule_registry(),
+        ));
         self.show_title_with_registry(title);
     }
     /// Admission for ordinary toasts; mandatory callback-panic diagnostics bypass mod admission.
@@ -1774,9 +1723,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// Local player's heart kind (`Hud.HeartType.forPlayer`, then `player_heart_type`).
-    pub fn player_heart_kind(
-        &mut self,
-    ) -> Option<mod_api::client::hud_layout::HeartKind> {
+    pub fn player_heart_kind(&mut self) -> Option<mod_api::client::hud_layout::HeartKind> {
         use mod_api::client::hud_layout::HeartKind;
         let p = self.common.player.as_ref()?;
         let effects = &self.common.potions.effects;
@@ -1836,21 +1783,13 @@ impl crate::game::ClientGame<'_> {
         .any(mod_api::__private::listened)
     }
     /// `Render.Pre`: whether the screen draws.
-    pub(crate) fn screen_render_begin(
-        &self,
-        draw: &mut HudBatch,
-        screen: &ScreenView<'_>,
-    ) -> bool {
+    pub(crate) fn screen_render_begin(&self, draw: &mut HudBatch, screen: &ScreenView<'_>) -> bool {
         let mut canceled = false;
         self.native_screen_render_pre(draw, screen, &mut canceled);
         !canceled
     }
     /// `Render.Post`, including when Pre cancelled the screen's drawing.
-    pub(crate) fn screen_render_end(
-        &self,
-        draw: &mut HudBatch,
-        screen: &ScreenView<'_>,
-    ) {
+    pub(crate) fn screen_render_end(&self, draw: &mut HudBatch, screen: &ScreenView<'_>) {
         self.native_screen_render_post(draw, screen);
     }
     /// Borrowed `ScreenView` of the open screen for this frame.
@@ -2001,11 +1940,12 @@ impl crate::game::ClientGame<'_> {
                     label: k.label.clone(),
                     key: k.key.clone(),
                     modifiers: k.modifiers.bits,
-                    context: sunrise_gameplay_common::game::api_values::TryIntoEngine::try_into_engine(
-                        &k.context,
-                        &(),
-                    )
-                    .unwrap(),
+                    context:
+                        sunrise_gameplay_common::game::api_values::TryIntoEngine::try_into_engine(
+                            &k.context,
+                            &(),
+                        )
+                        .unwrap(),
                     category: k.category.clone(),
                 })
                 .collect();
@@ -2153,9 +2093,7 @@ impl crate::game::ClientGame<'_> {
     pub fn test_renderer_mut(&mut self) -> &mut Option<Box<sunrise_client_render::gfx::Renderer>> {
         &mut self.client.renderer.0
     }
-    pub fn test_window_mut(
-        &mut self,
-    ) -> &mut Option<std::sync::Arc<winit::window::Window>> {
+    pub fn test_window_mut(&mut self) -> &mut Option<std::sync::Arc<winit::window::Window>> {
         &mut self.client.window.0
     }
     pub fn test_pad(&self) -> &crate::game::pad::Pads {
@@ -2167,8 +2105,6 @@ impl crate::game::ClientGame<'_> {
 #[cfg(any())]
 #[path = "block_particle_effects_tests_client.rs"]
 pub(in crate::game) mod block_particle_effects_tests;
-
-
 
 #[cfg(test)]
 #[path = "shared/slot_icon_tests_client.rs"]

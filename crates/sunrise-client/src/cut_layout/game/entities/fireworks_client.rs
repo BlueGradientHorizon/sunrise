@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
@@ -10,10 +8,13 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_flying_rocket_opens_a_motion_run_of_its_own() {
-        use {crate::game::load_resources, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
         use crate::settings::Settings;
         use sunrise_client_lib::audio::Audio;
         use sunrise_core::geometry::Vec3;
+        use {
+            crate::game::load_resources, sunrise_gameplay_common::game::Options,
+            sunrise_gameplay_common::game::Progress,
+        };
 
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -54,7 +55,11 @@ pub(crate) mod tests {
         let camera = glam::DVec3::new(0.5, 64.0, 0.5);
         let start = Vec3::new(0.5, 64.0, 4.5);
         game.rockets
-            .push(sunrise_gameplay_common::game::fireworks::Rocket::remote(77, start, Vec3::ZERO));
+            .push(sunrise_gameplay_common::game::fireworks::Rocket::remote(
+                77,
+                start,
+                Vec3::ZERO,
+            ));
         let id = sunrise_gameplay_common::game::MOTION_OBJECT | 77;
         // One frame's motion runs: the rocket's vertices open a run under its own id, and
         // a camera-only run (id 0) closes it so nothing drawn after takes its motion.
@@ -109,7 +114,8 @@ pub(crate) mod tests {
             }
             game.client.particles.0.sounds.clear();
             for _ in 0..20 {
-                let (common, client) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
+                let (common, client) =
+                    sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
                 let level = ParticleLevel {
                     world: &common.world,
                     facts: common.res.facts(),

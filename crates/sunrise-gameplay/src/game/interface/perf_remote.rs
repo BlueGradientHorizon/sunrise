@@ -1,11 +1,11 @@
 //! A guest's `sunrise:perf` requests (docs/perf-platform.md §4.2): who may profile this server, the one capture at a time, and the log lines about it.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::profile_capture_common::{Live, Target, reports_dir, shown};
 use std::fs::File;
 use std::io::Read;
 use std::path::PathBuf;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
+use sunrise_gameplay_common::game::profile_capture_common::{Live, Target, reports_dir, shown};
 use sunrise_perf_format::v1::{StopReason, Trigger};
 use sunrise_protocol::packets::{configuration::CustomPayload, play};
 use sunrise_sim::perf_net::{
@@ -71,7 +71,12 @@ fn window(wanted: &Wanted) -> String {
 impl ServerGame<'_> {
     /// A `sunrise:perf` payload from `conn`.
     pub(in crate::game::server_side) fn guest_perf(&mut self, conn: u32, data: &[u8]) {
-        let Some(guest) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(guest) = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+        else {
             return;
         };
         let name = guest.name.clone();

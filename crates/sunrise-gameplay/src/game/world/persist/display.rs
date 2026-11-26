@@ -1,8 +1,10 @@
-use sunrise_gameplay_common::game::{commands_common::OtherEntity, entity_memory::ItemDisplayTransformation};
 use sunrise_core::nbt::Tag;
 use sunrise_game_data::{
     nbt_path::int_value,
     scoreboard::{component_tag, tag_to_json},
+};
+use sunrise_gameplay_common::game::{
+    commands_common::OtherEntity, entity_memory::ItemDisplayTransformation,
 };
 use sunrise_items::item_nbt::{item_from_nbt, item_to_nbt};
 use sunrise_sim::{

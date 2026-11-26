@@ -4,8 +4,8 @@
 //! target away. The rest of a weapon hit (`Player.itemAttackInteraction`)
 //! is here too: `hurtEnemy`, the post-attack enchantments and `postHurtEnemy`.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::mace_common::{KNOCKBACK_RADIUS, can_smash, stack_smash_damage};
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_gameplay_common::game::mace_common::{KNOCKBACK_RADIUS, can_smash, stack_smash_damage};
 use sunrise_items::{
     enchant::{EffectContext, Enchantments},
     items::{ItemStack, Items},
@@ -138,7 +138,8 @@ impl ServerGame<'_> {
     }
     /// `MaceItem.canSmashAttack` for the player: falling and not gliding.
     pub(in crate::game::server_side) fn can_smash_attack(&self) -> bool {
-        self.common.player
+        self.common
+            .player
             .as_ref()
             .is_some_and(|p| can_smash(p.fall_distance, p.fall_flying))
     }
@@ -150,18 +151,23 @@ impl ServerGame<'_> {
     /// The damage source of the player's hit from `from` with the held item.
     pub fn attack_source(&self, from: [f64; 3]) -> Damage {
         let motion = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map_or((0.0, false), |p| (p.fall_distance, p.fall_flying));
-        let name = self.common.stack_melee_damage_type(self.common.held(), motion, true);
+        let name = self
+            .common
+            .stack_melee_damage_type(self.common.held(), motion, true);
         let mut source = match name.as_str() {
             "minecraft:mace_smash" => Damage::mace(from),
             _ => Damage::player(from),
         };
         if name != "minecraft:mace_smash"
             && name != "minecraft:player_attack"
-            && let Some(named) =
-                sunrise_sim::mobs::NamedDamage::registered(&self.common.health_resources.damage, &name)
+            && let Some(named) = sunrise_sim::mobs::NamedDamage::registered(
+                &self.common.health_resources.damage,
+                &name,
+            )
         {
             source.kind = sunrise_sim::mobs::DamageKind::Named(named);
         }
@@ -181,7 +187,8 @@ impl ServerGame<'_> {
         let held = self.common.item_combat_stack(&held);
         let source = self.common.stack_melee_damage_type(
             Some(&held),
-            self.common.player
+            self.common
+                .player
                 .as_ref()
                 .map_or((0.0, false), |p| (p.fall_distance, p.fall_flying)),
             true,
@@ -193,7 +200,8 @@ impl ServerGame<'_> {
             is_direct: true,
             damage_type: Some(&source),
             direct_motion: self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .map(|p| (p.fall_distance, p.fall_flying)),
             items: Some(server_world_items!(self)),
@@ -217,7 +225,8 @@ impl ServerGame<'_> {
         match who? {
             sunrise_sim::mobs::Who::Player => {
                 let p = self.common.player.as_ref()?;
-                let look = sunrise_world::view_direction::view_vector(self.common.pitch, self.common.yaw);
+                let look =
+                    sunrise_world::view_direction::view_vector(self.common.pitch, self.common.yaw);
                 Some(sunrise_sim::mobs::Aim {
                     eye: self.common.eye_position()?,
                     look: [look.x, look.y, look.z],
@@ -264,15 +273,13 @@ impl ServerGame<'_> {
     /// `LivingEntity.hurtServer` of the mob at `index` by the player's hit:
     /// the weapon's `armor_effectiveness` enchantments (Breach) thin its armor.
     /// Returns whether the hurt landed and whether it killed, before death listeners ran.
-    pub fn hurt_by_player(
-        &mut self,
-        index: usize,
-        amount: f32,
-        source: Damage,
-    ) -> (bool, bool) {
+    pub fn hurt_by_player(&mut self, index: usize, amount: f32, source: Damage) -> (bool, bool) {
         let attack = self.attack_of_who(Some(sunrise_sim::mobs::Who::Player));
-        let plan =
-            self.prepare_knockback_credit(self.common.mobs[index].id as i32, source.attacker, &attack);
+        let plan = self.prepare_knockback_credit(
+            self.common.mobs[index].id as i32,
+            source.attacker,
+            &attack,
+        );
         let held = self.common.held().cloned();
         let aim = self.attacker_aim(source.attacker);
         let kind = self.common.mobs[index].kind.id.clone();
@@ -337,7 +344,8 @@ impl ServerGame<'_> {
         let killed = hurt && old_health > 0.0 && !self.common.mobs[index].alive();
         let _ = self.handle_mob_events(hits);
         let Some(index) = self
-            .common.mob_index
+            .common
+            .mob_index
             .find(&self.common.mobs, id)
             .filter(|&i| self.common.mobs[i].join == join && !self.common.mobs[i].removed)
         else {
@@ -355,7 +363,8 @@ impl ServerGame<'_> {
             self.mob_damage_event(id);
         }
         if let Some(index) = self
-            .common.mob_index
+            .common
+            .mob_index
             .find(&self.common.mobs, id)
             .filter(|&i| self.common.mobs[i].join == join && !self.common.mobs[i].removed)
         {
@@ -369,7 +378,8 @@ impl ServerGame<'_> {
     /// as `damage_dealt_absorbed` when it is the player (`LivingEntity.actuallyHurt`).
     pub(in crate::game) fn settle_dealt_absorbed(&mut self, by_player: bool) {
         let absorbed: i32 = self
-            .common.mobs
+            .common
+            .mobs
             .iter_mut()
             .map(|m| std::mem::take(&mut m.dealt_absorbed))
             .fold(0, i32::saturating_add);
@@ -535,7 +545,8 @@ impl ServerGame<'_> {
             smash_push(center, heavy, m.position, &mut m.velocity, resistance);
         }
         for s in self
-            .common.armor_stands
+            .common
+            .armor_stands
             .iter_mut()
             .filter(|s| !s.marker && target != Spared::Stand(s.id))
         {
@@ -617,7 +628,8 @@ impl ServerGame<'_> {
         // The enchantment's `sweeping_damage_ratio` attribute modifier (level /
         // (level + 1)) on the attribute's 0 to 1 range.
         let ratio = self
-            .common.res
+            .common
+            .res
             .stations()
             .enchantments
             .attribute_add(
@@ -627,7 +639,11 @@ impl ServerGame<'_> {
             .clamp(0.0, 1.0) as f32;
         // `f` of doSweepAttack: the attack damage attribute after
         // baseDamageScaleFactor (a sweep is never a smash or a critical hit).
-        let spin = self.common.player.as_ref().map_or(0.0, |p| p.auto_spin_attack_dmg);
+        let spin = self
+            .common
+            .player
+            .as_ref()
+            .map_or(0.0, |p| p.auto_spin_attack_dmg);
         let attribute = if spin > 0.0 {
             spin
         } else {
@@ -713,7 +729,8 @@ impl ServerGame<'_> {
                     self.native_kill_event(i);
                 }
                 let Some(i) = self
-                    .common.mob_index
+                    .common
+                    .mob_index
                     .find(&self.common.mobs, id)
                     .filter(|&i| self.common.mobs[i].join == join && !self.common.mobs[i].removed)
                 else {
@@ -788,8 +805,6 @@ pub(in crate::game) mod tests {
         let scaled = sweep_base_damage(0.5, 8.0, 0.95);
         assert!((scaled - (1.0 + 0.5 * 8.0 * (0.2 + 0.95 * 0.95 * 0.8))).abs() < 1e-6);
     }
-
-    
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;

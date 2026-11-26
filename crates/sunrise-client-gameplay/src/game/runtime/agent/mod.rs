@@ -6,11 +6,9 @@
 
 use sunrise_client_gameplay::agent_navigation as navigation;
 
+use super::Screen;
 #[cfg(feature = "client")]
 use super::event_loop::EventLoopCtl;
-use super::Screen;
-use sunrise_gameplay_common::game::integrated_link::NO_ANSWER;
-use sunrise_gameplay_common::game::owner_link::{ControlRequest, OwnerRequest};
 use navigation::{Cell, Node, Plan, Progress};
 use serde_json::{Value, json};
 use std::{
@@ -23,6 +21,8 @@ use sunrise_client::held::Source;
 use sunrise_client::{block_entity_anim::Ticker, widgets};
 use sunrise_core::geometry::Vec3;
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::integrated_link::NO_ANSWER;
+use sunrise_gameplay_common::game::owner_link::{ControlRequest, OwnerRequest};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::{Species, villager::VILLAGER_TYPES};
 use sunrise_world::registry::BlockStateId;
@@ -393,14 +393,23 @@ impl crate::game::ClientGame<'_> {
             _ => {}
         }
         // The lines of a sign, as this client has them.
-        if let Some(sunrise_level::containers::BlockEntity::Sign(sign)) =
-            self.common.world.block_entities.get(&(pos[0], pos[1], pos[2]))
+        if let Some(sunrise_level::containers::BlockEntity::Sign(sign)) = self
+            .common
+            .world
+            .block_entities
+            .get(&(pos[0], pos[1], pos[2]))
         {
             v["sign"] = json!({ "front": sign.front.lines, "back": sign.back.lines });
         }
         // A block a piston moves, as this client animates it: its own
         // PistonMovingBlockEntity, which a block event's moveBlocks made.
-        if let Some((_, piston)) = self.common.world.moving_pistons.iter().find(|(p, _)| *p == pos) {
+        if let Some((_, piston)) = self
+            .common
+            .world
+            .moving_pistons
+            .iter()
+            .find(|(p, _)| *p == pos)
+        {
             v["moving"] = json!({ "progress": piston.progress, "extending": piston.extending });
         }
         v
@@ -504,7 +513,8 @@ impl crate::game::ClientGame<'_> {
     }
     pub(in crate::game::client_side) fn inventory_counts(&self) -> BTreeMap<String, i64> {
         counts(
-            self.common.inventory
+            self.common
+                .inventory
                 .iter()
                 .chain(self.common.armor.iter())
                 .chain(std::iter::once(&self.common.offhand))
@@ -931,10 +941,19 @@ impl crate::game::ClientGame<'_> {
         blocked: &[(Node, Node)],
     ) -> Option<Plan> {
         navigation::find_path(from, goal, near, blocked, |n| {
-            if !self.common.world.chunks.contains_key(&(n[0] >> 4, n[2] >> 4)) {
+            if !self
+                .common
+                .world
+                .chunks
+                .contains_key(&(n[0] >> 4, n[2] >> 4))
+            {
                 return None;
             }
-            let f = self.common.res.facts().get(self.common.world.block(n[0], n[1], n[2]));
+            let f = self
+                .common
+                .res
+                .facts()
+                .get(self.common.world.block(n[0], n[1], n[2]));
             Some(Cell {
                 solid: f.full_collision || f.legacy_solid,
                 fluid: f.fluid != sunrise_items::blocks::Fluid::None,
@@ -1001,7 +1020,8 @@ impl crate::game::ClientGame<'_> {
         }
         if let Some(p) = in_the_way {
             let name = &self
-                .common.res
+                .common
+                .res
                 .facts()
                 .get(self.common.world.block(p[0], p[1], p[2]))
                 .name;
@@ -1033,11 +1053,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// A left or right click, as the mouse would.
-    pub fn agent_mouse(
-        &mut self,
-        button: MouseButton,
-        pressed: bool,
-    ) -> Result<()> {
+    pub fn agent_mouse(&mut self, button: MouseButton, pressed: bool) -> Result<()> {
         self.mouse_mapping(button, pressed, Source::Agent)
     }
     /// Ends the running agent command (and a turn) with `why`, so the agent
@@ -1214,11 +1230,13 @@ impl crate::game::ClientGame<'_> {
                     for z in lo[2]..=hi[2] {
                         for x in lo[0]..=hi[0] {
                             let packed = self
-                                .common.world
+                                .common
+                                .world
                                 .chunks
                                 .get(&(x >> 4, z >> 4))
                                 .filter(|_| {
-                                    (self.common.world.bottom_y()..self.common.world.top_y()).contains(&y)
+                                    (self.common.world.bottom_y()..self.common.world.top_y())
+                                        .contains(&y)
                                 })
                                 .map(|c| c.light(x & 15, y, z & 15));
                             let digit = |v: u8| char::from_digit(u32::from(v), 16).unwrap_or('.');
@@ -1295,7 +1313,11 @@ impl crate::game::ClientGame<'_> {
                 for &k in &keys {
                     self.press_device_key(k, Source::Agent);
                 }
-                let from = self.common.player.as_ref().map_or(Vec3::ZERO, |p| p.position);
+                let from = self
+                    .common
+                    .player
+                    .as_ref()
+                    .map_or(Vec3::ZERO, |p| p.position);
                 let until = Instant::now() + Duration::from_secs_f64(seconds);
                 self.start_task(
                     "move",
@@ -1393,7 +1415,8 @@ impl crate::game::ClientGame<'_> {
                     Some("entity") => {
                         let id: u32 = a.get(1, "ID")?.parse()?;
                         let m = self
-                            .common.mobs
+                            .common
+                            .mobs
                             .iter()
                             .find(|m| m.id == id)
                             .ok_or_else(|| format!("no entity {id}"))?;
@@ -1435,7 +1458,8 @@ impl crate::game::ClientGame<'_> {
                 let id = a.pos.first().map(|i| i.parse::<u32>()).transpose()?;
                 if let Some(id) = id {
                     let m = self
-                        .common.mobs
+                        .common
+                        .mobs
                         .iter()
                         .find(|m| m.id == id)
                         .ok_or_else(|| format!("no entity {id}"))?;
@@ -1501,11 +1525,14 @@ impl crate::game::ClientGame<'_> {
                     self.select_item(&namespaced(item))?;
                 }
                 let held = self
-                    .common.held()
+                    .common
+                    .held()
                     .ok_or("nothing in hand to place; select an item")?;
                 let held = held.item.clone();
                 let before = self.common.world.block(pos[0], pos[1], pos[2]);
-                if !self.common.res.facts().get(before).replaceable && !self.common.res.facts().is_air(before) {
+                if !self.common.res.facts().get(before).replaceable
+                    && !self.common.res.facts().is_air(before)
+                {
                     return Err(format!(
                         "{pos:?} holds {}; break it first",
                         self.res.facts().get(before).name
@@ -1877,13 +1904,21 @@ impl crate::game::ClientGame<'_> {
 
     /// Select the hotbar slot holding `item`.
     pub(in crate::game::client_side) fn select_item(&mut self, item: &str) -> Result<()> {
-        if let Some(i) =
-            (0..9).find(|&i| self.common.inventory[i].as_ref().is_some_and(|s| &*s.item == item))
-        {
+        if let Some(i) = (0..9).find(|&i| {
+            self.common.inventory[i]
+                .as_ref()
+                .is_some_and(|s| &*s.item == item)
+        }) {
             self.common.selected = i;
             return Ok(());
         }
-        if self.common.inventory.iter().flatten().any(|s| &*s.item == item) {
+        if self
+            .common
+            .inventory
+            .iter()
+            .flatten()
+            .any(|s| &*s.item == item)
+        {
             return Err(format!(
                 "{item} is in the main inventory, not the hotbar; move it with open-inventory and click-slot"
             )
@@ -2077,7 +2112,8 @@ impl crate::game::ClientGame<'_> {
     }
 
     pub(in crate::game::client_side) fn position(&self) -> [f64; 3] {
-        self.common.player
+        self.common
+            .player
             .as_ref()
             .map_or([0.0; 3], |p| [p.position.x, p.position.y, p.position.z])
     }
@@ -2130,7 +2166,11 @@ impl crate::game::ClientGame<'_> {
             } => {
                 if self.common.ticks >= *release_tick || timed_out {
                     self.release_device_key(&KeyCode::Space, Source::Agent);
-                    let on_ground = self.common.player.as_ref().is_some_and(|p| p.ground.on_ground);
+                    let on_ground = self
+                        .common
+                        .player
+                        .as_ref()
+                        .is_some_and(|p| p.ground.on_ground);
                     if on_ground || timed_out {
                         return Some(
                             json!({ "ok": true, "from_y": from_y, "position": self.position() }),
@@ -2328,7 +2368,11 @@ impl crate::game::ClientGame<'_> {
         timed_out: bool,
     ) -> Option<Value> {
         let p = self.position();
-        let on_ground = self.common.player.as_ref().is_some_and(|p| p.ground.on_ground);
+        let on_ground = self
+            .common
+            .player
+            .as_ref()
+            .is_some_and(|p| p.ground.on_ground);
         let horizontal =
             |a: [f64; 3], b: [f64; 3]| ((a[0] - b[0]).powi(2) + (a[2] - b[2]).powi(2)).sqrt();
         if navigation::arrived(p, g.target, g.near) {
@@ -2408,7 +2452,8 @@ impl crate::game::ClientGame<'_> {
         // Step up onto the next block, or out of water.
         let in_water = {
             let b = p.map(|v| v.floor() as i32);
-            self.common.res
+            self.common
+                .res
                 .facts()
                 .get(self.common.world.block(b[0], b[1], b[2]))
                 .fluid
@@ -2496,7 +2541,9 @@ impl crate::game::ClientGame<'_> {
             .filter(|id| self.common.dropped.iter().any(|i| i.id == **id))
             .count();
         let until = b.collect_until.unwrap_or(0);
-        if (self.common.ticks < until && (remaining > 0 || self.common.ticks < b.broke_tick + 3)) && !timed_out {
+        if (self.common.ticks < until && (remaining > 0 || self.common.ticks < b.broke_tick + 3))
+            && !timed_out
+        {
             return None;
         }
         Some(json!({
@@ -2521,8 +2568,6 @@ impl crate::game::ClientGame<'_> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-
-    
 
     #[test]
     fn whole_goto_coordinates_name_a_block() {

@@ -130,7 +130,12 @@ impl crate::game::ServerGame<'_> {
         let padding = self.test_holder_padding(at);
         let low =
             TestInstanceBlock::structure_pos_of([at.0 + padding, at.1 + padding, at.2 + padding]);
-        let bedrock = self.common.pack.assets.registry.default_state("minecraft:bedrock");
+        let bedrock = self
+            .common
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:bedrock");
         if bedrock.is_some() {
             for x in low[0]..low[0] + size[0] {
                 for z in low[2]..low[2] + size[2] {

@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::Mob;
@@ -61,9 +59,10 @@ mod tests {
                     game.mobs
                         .push(Mob::new(id, kind, Vec3::new(0.5, y, 0.5), 0.0));
                 }
-                let worn = |game: &sunrise_gameplay::game::ServerGame<'_>, index: usize, slot: Slot| {
-                    finalize::item(&game.mobs[index], slot.index()).map(|item| item.to_string())
-                };
+                let worn =
+                    |game: &sunrise_gameplay::game::ServerGame<'_>, index: usize, slot: Slot| {
+                        finalize::item(&game.mobs[index], slot.index()).map(|item| item.to_string())
+                    };
                 let helmet = ItemStack::new("minecraft:iron_helmet", 1);
                 sunrise_gameplay_common::game::equip_answers::take_equip_conversions();
                 // The zombie is refused, and nothing it was asked about changed.
@@ -104,7 +103,10 @@ mod tests {
                     Some("minecraft:diamond_helmet")
                 );
                 assert!(asked.lock().unwrap().is_empty());
-                assert_eq!(sunrise_gameplay_common::game::equip_answers::take_equip_conversions(), 0);
+                assert_eq!(
+                    sunrise_gameplay_common::game::equip_answers::take_equip_conversions(),
+                    0
+                );
             });
         });
     }

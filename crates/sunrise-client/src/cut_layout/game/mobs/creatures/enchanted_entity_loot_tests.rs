@@ -1,6 +1,6 @@
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::ServerHost;
 use std::sync::{Arc, Mutex};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_sim::mobs::Damage;
 
 /// What the mod read through its handles, of one question.
@@ -13,10 +13,7 @@ pub(in crate::game) struct Heard {
     pub(in crate::game) level: u32,
 }
 /// Answers every question with level `self.1`.
-pub(crate) struct Answer(
-    pub(crate) Arc<Mutex<Vec<Heard>>>,
-    pub(crate) u32,
-);
+pub(crate) struct Answer(pub(crate) Arc<Mutex<Vec<Heard>>>, pub(crate) u32);
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Answer {
     fn enchanted_entity_loot(

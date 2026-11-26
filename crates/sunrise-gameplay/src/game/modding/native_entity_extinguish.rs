@@ -38,7 +38,12 @@ impl crate::game::ServerGame<'_> {
                 true
             }
             Some(Target::Stand(id)) => {
-                let Some(index) = self.common.armor_stands.iter().position(|stand| stand.id == id) else {
+                let Some(index) = self
+                    .common
+                    .armor_stands
+                    .iter()
+                    .position(|stand| stand.id == id)
+                else {
                     return false;
                 };
                 let stand = &self.common.armor_stands[index];

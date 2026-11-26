@@ -77,7 +77,8 @@ impl crate::game::ClientGame<'_> {
         }
         // Entity.getTeam: a mob is on a team by its UUID, a player by
         // its profile name (`Game::scoreboard_name`).
-        self.common.persist
+        self.common
+            .persist
             .uuids
             .insert(p.id as u32, sunrise_sim::lan::playerdata::uuid_ints(p.uuid));
         let holder = if kind == "minecraft:player" {
@@ -143,7 +144,11 @@ impl crate::game::ClientGame<'_> {
             if let Some(pl) = self.common.player.as_mut() {
                 pl.health.animate_hurt_dir(p.yaw);
             }
-        } else if let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, p.id as u32) {
+        } else if let Some(m) = self
+            .common
+            .mob_index
+            .get_mut(&mut self.common.mobs, p.id as u32)
+        {
             m.hurt_time = 10;
             if &*m.kind.id == "minecraft:player" {
                 m.extra.hurt_dir = p.yaw;
@@ -219,13 +224,24 @@ impl crate::game::ClientGame<'_> {
                 Some(&block) => Some(Holder::Knot(block)),
                 // Not a known knot yet: kept by id until the knot
                 // arrives (game/network/remote_objects.rs).
-                None if self.common.boats.iter().any(|b| b.id == d as u32) => Some(Holder::Boat(d as u32)),
+                None if self.common.boats.iter().any(|b| b.id == d as u32) => {
+                    Some(Holder::Boat(d as u32))
+                }
                 None => Some(Holder::Mob(d as u32)),
             },
         };
-        if let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, p.source as u32) {
+        if let Some(m) = self
+            .common
+            .mob_index
+            .get_mut(&mut self.common.mobs, p.source as u32)
+        {
             m.extra.leash = holder;
-        } else if let Some(i) = self.common.boats.iter().position(|b| b.id == p.source as u32) {
+        } else if let Some(i) = self
+            .common
+            .boats
+            .iter()
+            .position(|b| b.id == p.source as u32)
+        {
             self.common.boats.update(i, |b| {
                 // A leashed boat or raft (AbstractBoat is Leashable).
                 b.leash = holder;
@@ -269,7 +285,11 @@ impl crate::game::ClientGame<'_> {
             .is_some_and(|r| r.entity_id == p.id)
         {
             self.swing_hand(hand, animation);
-        } else if let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, p.id as u32) {
+        } else if let Some(m) = self
+            .common
+            .mob_index
+            .get_mut(&mut self.common.mobs, p.id as u32)
+        {
             m.swing_hand_modified(hand == Hand::Off, animation);
         }
     }
@@ -282,19 +302,22 @@ impl crate::game::ClientGame<'_> {
         // the orb, item or arrow, whoever collects it (the server sends
         // none); an entity this client doesn't track sounds at this player.
         let orb_at = self
-            .common.orbs
+            .common
+            .orbs
             .iter()
             .find(|o| o.id == p.item as u32)
             .map(|o| o.position);
         let orb = orb_at.is_some();
         let item = self.common.dropped.iter().find(|d| d.id == p.item as u32);
         let shot = self
-            .common.creatures
+            .common
+            .creatures
             .projectiles
             .iter()
             .find(|s| s.id == p.item as u32);
         let shot = shot.map(|s| s.position).or_else(|| {
-            self.common.tridents
+            self.common
+                .tridents
                 .iter()
                 .find(|t| t.id == p.item as u32)
                 .map(|t| t.position)
@@ -343,15 +366,28 @@ impl crate::game::ClientGame<'_> {
         } else {
             super::super::pickups::Collector::Mob(p.player as u32)
         };
-        if let Some(item) = self.common.dropped.iter().find(|d| d.id == p.item as u32).cloned() {
+        if let Some(item) = self
+            .common
+            .dropped
+            .iter()
+            .find(|d| d.id == p.item as u32)
+            .cloned()
+        {
             self.add_pickup(
                 super::super::pickups::Taken::Item(Box::new(item)),
                 collector,
             );
-        } else if let Some(orb) = self.common.orbs.iter().find(|o| o.id == p.item as u32).cloned() {
+        } else if let Some(orb) = self
+            .common
+            .orbs
+            .iter()
+            .find(|o| o.id == p.item as u32)
+            .cloned()
+        {
             self.add_pickup(super::super::pickups::Taken::Orb(Box::new(orb)), collector);
         } else if let Some(shot) = self
-            .common.creatures
+            .common
+            .creatures
             .projectiles
             .iter()
             .find(|s| s.id == p.item as u32)
@@ -362,7 +398,12 @@ impl crate::game::ClientGame<'_> {
                 super::super::pickups::Taken::Arrow(Box::new(shot)),
                 collector,
             );
-        } else if let Some(i) = self.common.tridents.iter().position(|t| t.id == p.item as u32) {
+        } else if let Some(i) = self
+            .common
+            .tridents
+            .iter()
+            .position(|t| t.id == p.item as u32)
+        {
             // So does a trident: a server's client keeps them apart.
             let trident = self.common.tridents.remove(i);
             self.add_pickup(
@@ -460,7 +501,12 @@ impl crate::game::ClientGame<'_> {
                     i.previous_pitch,
                     [0.0; 3],
                 )
-            } else if let Some(a) = self.common.armor_stands.iter().find(|a| a.id == p.id as u32) {
+            } else if let Some(a) = self
+                .common
+                .armor_stands
+                .iter()
+                .find(|a| a.id == p.id as u32)
+            {
                 let cur = PosRot {
                     position: [a.position.x, a.position.y, a.position.z],
                     yaw: a.yaw,

@@ -10,12 +10,17 @@ impl ServerGame<'_> {
     /// under spawn protection or outside the world border may not change the
     /// block (`ServerPlayer.mayInteract`). The fire goes out either way.
     pub(in crate::game) fn may_interact_at(&self, pos: BlockPos) -> bool {
-        self.common.border
+        self.common
+            .border
             .geometry()
             .is_within_bounds(f64::from(pos.x), f64::from(pos.z), 0.0)
-            && !self.server.lan_acting_spawn_protection.is_some_and(|radius| {
-                self.common.spawn_protects(radius, self.common.dim.id(), [pos.x, pos.y, pos.z])
-            })
+            && !self
+                .server
+                .lan_acting_spawn_protection
+                .is_some_and(|radius| {
+                    self.common
+                        .spawn_protects(radius, self.common.dim.id(), [pos.x, pos.y, pos.z])
+                })
     }
     /// `Entity.applyEffectsFromBlocks` along a server player's moves: the
     /// blocks that put the fire out (`PowderSnowBlock.entityInside`'s
@@ -33,7 +38,8 @@ impl ServerGame<'_> {
             out = true;
         }
         let at = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z]);
         if out && let Some(at) = at {

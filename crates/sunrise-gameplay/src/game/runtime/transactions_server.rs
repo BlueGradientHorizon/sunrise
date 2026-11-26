@@ -1,5 +1,8 @@
 //! Server-side transaction commit, rollback, and journal handlers.
 use super::{BlockEntity, lan_menu_data::MountClickWindow};
+use mod_api::TransactionLifecycle;
+use std::collections::{HashMap, HashSet};
+use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::game::transactions::{
     After, AttachmentKey, BlockReplay, ClosingPhase, DeferredEffect, JournaledPlayer, Kept,
     KeptAttachments, KeptClick, KeptEquipment, KeptMenus, KeptMobEffects, KeptMobHealth,
@@ -7,9 +10,6 @@ use sunrise_gameplay_common::game::transactions::{
     PlayerStorageHome, Pos, QuickMoveNotice, SaveChunkScope, StorageSettlement, entities,
     take_replay_row,
 };
-use mod_api::TransactionLifecycle;
-use std::collections::{HashMap, HashSet};
-use sunrise_core::position::BlockPos;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{block_entities::BlockEntityIdentity, fast_hash::FxHashSet};
 use sunrise_mod_runtime::attachments::Holder;
@@ -52,7 +52,12 @@ impl crate::game::ServerGame<'_> {
         &mut self,
         commit: bool,
     ) -> Option<StorageSettlement> {
-        let owner = self.common.transactions.last()?.dimension.unwrap_or(self.common.dim);
+        let owner = self
+            .common
+            .transactions
+            .last()?
+            .dimension
+            .unwrap_or(self.common.dim);
         if let Some(settlement) = self.with_effect_level(owner, |game| {
             game.close_storage_transaction_in_place(commit)
         }) {
@@ -86,7 +91,8 @@ impl crate::game::ServerGame<'_> {
             level.scratch_kept.remove(&id);
             self.common.transactions.scratch.remove(&id)
         });
-        self.common.transactions
+        self.common
+            .transactions
             .attachment_query_scopes
             .leave(level.parent_attachment_query_scope);
         let closing = if self.common.transactions.is_empty() {
@@ -130,7 +136,8 @@ impl crate::game::ServerGame<'_> {
             level.scratch_kept.remove(&id);
             self.common.transactions.scratch.remove(&id)
         });
-        self.common.transactions
+        self.common
+            .transactions
             .attachment_query_scopes
             .leave(level.parent_attachment_query_scope);
         let closing = if self.common.transactions.is_empty() {
@@ -197,18 +204,21 @@ impl crate::game::ServerGame<'_> {
         let child_random_owner = if commit
             && level.level_random.is_some()
             && self
-                .common.transactions
+                .common
+                .transactions
                 .last()
                 .is_some_and(|outer| outer.dimension != level.dimension)
         {
-            self.common.native_lifecycle
+            self.common
+                .native_lifecycle
                 .epoch()
                 .map(|epoch| self.level_ref(epoch, self.common.dim.key()))
         } else {
             None
         };
         let lifetimes = std::mem::take(&mut level.lifetimes);
-        self.common.transactions
+        self.common
+            .transactions
             .close_retained_originals(level.frame, commit);
         let mut independent = None;
         if commit && let Some(outer) = self.common.transactions.last_mut() {
@@ -239,7 +249,9 @@ impl crate::game::ServerGame<'_> {
                     local.save_chunks.insert((dim, chunk, scope));
                     false
                 });
-                if let Some(owner) = entities::open_in(&mut self.common.transactions, self.common.dim) {
+                if let Some(owner) =
+                    entities::open_in(&mut self.common.transactions, self.common.dim)
+                {
                     owner.merge_level_writes(&mut local);
                     owner.save_chunks.extend(local.save_chunks);
                     owner.after.extend(local.after);
@@ -529,7 +541,8 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn journal_guest_inventory(&mut self, conn: u32) {
         let owner = JournaledPlayer::Guest(conn);
         if self
-            .common.transactions
+            .common
+            .transactions
             .last()
             .is_none_or(|level| level.players.contains_key(&owner))
         {
@@ -557,7 +570,8 @@ impl crate::game::ServerGame<'_> {
                 }
             }
         };
-        self.common.transactions
+        self.common
+            .transactions
             .player_write()
             .expect("open transaction")
             .players
@@ -573,7 +587,8 @@ impl crate::game::ServerGame<'_> {
         let parked_in = match owner {
             JournaledPlayer::Local(uuid) => {
                 let local = self
-                    .common.level
+                    .common
+                    .level
                     .player_uuid
                     .map(sunrise_sim::lan::playerdata::ints_uuid);
                 if local != Some(uuid) {
@@ -672,12 +687,17 @@ impl crate::game::ServerGame<'_> {
         let dim = self.common.dim;
         self.journal_mob_health(id);
         let mob = self
-            .common.mobs
+            .common
+            .mobs
             .iter_mut()
             .find(|mob| mob.id == id && !mob.removed)?;
         let invalidation = if !self.common.transactions.is_empty() {
             self.common.transactions.writes = self.common.transactions.writes.wrapping_add(1);
-            let level = self.common.transactions.last_mut().expect("open transaction");
+            let level = self
+                .common
+                .transactions
+                .last_mut()
+                .expect("open transaction");
             level
                 .mob_effects
                 .entry((dim, id))
@@ -694,7 +714,10 @@ impl crate::game::ServerGame<'_> {
             };
             if let Some(modifiers) = modifiers {
                 level.effect_modifiers.push(((dim, id), modifiers));
-                super::living_attributes::modifier_invalidation_undo(&self.common.motion.attributes, mob)
+                super::living_attributes::modifier_invalidation_undo(
+                    &self.common.motion.attributes,
+                    mob,
+                )
             } else {
                 None
             }
@@ -707,14 +730,17 @@ impl crate::game::ServerGame<'_> {
         if let Some(changes) = invalidation
             && mob.extra.live.is_invalidated()
         {
-            self.common.transactions.journal_modifier_changes(dim, id, changes);
+            self.common
+                .transactions
+                .journal_modifier_changes(dim, id, changes);
         }
         Some(result)
     }
 
     /// Keeps `player`'s menu storage as it is, if a transaction is open and hasn't yet.
     pub(in crate::game) fn server_tx_journal_menus(&mut self, player: mod_api::PlayerRef) {
-        self.common.transactions.player_writes = self.common.transactions.player_writes.wrapping_add(1);
+        self.common.transactions.player_writes =
+            self.common.transactions.player_writes.wrapping_add(1);
         self.common.transactions.writes = self.common.transactions.writes.wrapping_add(1);
         let Some(level) = self.common.transactions.last() else {
             return;
@@ -846,7 +872,8 @@ impl crate::game::ServerGame<'_> {
             // Other writes to a dispenser's slots share its identity-bound notice, so they
             // coalesce with the dispense rather than leaving a positional notice behind.
             let dispenser = &*self
-                .common.res
+                .common
+                .res
                 .facts()
                 .get(self.common.world.block(pos.0, pos.1, pos.2))
                 .name
@@ -966,7 +993,8 @@ impl crate::game::ServerGame<'_> {
         for (pos @ (x, y, z), was) in level.connection_groups {
             self.common.world.set_connection_group_stored(x, y, z, was);
             if self
-                .common.world
+                .common
+                .world
                 .connection_group_log
                 .as_ref()
                 .is_some_and(|log| !log.contains(&pos))
@@ -1002,7 +1030,9 @@ impl crate::game::ServerGame<'_> {
         }
         for &pos in &rewound {
             let (x, y, z) = pos;
-            self.common.world.set_stored(x, y, z, level.blocks[&pos].state);
+            self.common
+                .world
+                .set_stored(x, y, z, level.blocks[&pos].state);
             if let Some((row, generation)) = rows.remove(&pos).flatten() {
                 self.restore_removed_block_entity(pos, *row, generation);
             }
@@ -1138,7 +1168,11 @@ impl crate::game::ServerGame<'_> {
         // A crafting grid the transaction changed has its result made again, once for each
         // player however many writes it took (`InventoryMenu.slotsChanged`).
         for (conn, kept) in &level.menus {
-            let mut guests = self.server.lan.iter().flat_map(|host| host.hub.guests.iter());
+            let mut guests = self
+                .server
+                .lan
+                .iter()
+                .flat_map(|host| host.hub.guests.iter());
             let changed =
                 guests.any(|g| g.placed && g.conn == *conn && g.craft_grid != kept.craft_grid);
             if changed {
@@ -1197,7 +1231,8 @@ impl crate::game::ServerGame<'_> {
     }
     pub(in crate::game) fn server_tx_roll_back(&mut self, mut level: Level) {
         self.common.roll_back_in_flight(&mut level);
-        self.common.scratch_roll_back(std::mem::take(&mut level.scratch_kept));
+        self.common
+            .scratch_roll_back(std::mem::take(&mut level.scratch_kept));
         // Discard deferred effects before undoing tentative action storage.
         level.after.clear();
         // Restore slots and undo only their recorded modifier edits. Explicit
@@ -1251,7 +1286,11 @@ impl crate::game::ServerGame<'_> {
         }
 
         for ((x, y, z), tag) in level.saved_pots {
-            sunrise_gameplay_common::game::spill_common::set_saved_entity(&mut self.common.world, [x, y, z], tag);
+            sunrise_gameplay_common::game::spill_common::set_saved_entity(
+                &mut self.common.world,
+                [x, y, z],
+                tag,
+            );
         }
         // Block entities whose published shapes the abort changed back.
         let mut reshaped = Vec::new();
@@ -1280,7 +1319,8 @@ impl crate::game::ServerGame<'_> {
                         reshaped.push(pos);
                     }
                     *now = entity;
-                    self.common.world
+                    self.common
+                        .world
                         .block_entities
                         .restore_generation(pos, kept.generation.unwrap());
                 }
@@ -1292,9 +1332,11 @@ impl crate::game::ServerGame<'_> {
                 }
                 _ => {}
             }
-            self.common.world
-                .block_entities
-                .put_back_attachments(pos, kept.generation, kept.attachments);
+            self.common.world.block_entities.put_back_attachments(
+                pos,
+                kept.generation,
+                kept.attachments,
+            );
             match kept.name {
                 Some(name) => self.common.world.block_names.insert(pos, name),
                 None => self.common.world.block_names.remove(&pos),
@@ -1308,7 +1350,8 @@ impl crate::game::ServerGame<'_> {
             if let Some(observer) = self.common.world.block_entities.identity(pos)
                 && Some(observer.generation) == kept.generation
             {
-                self.common.world
+                self.common
+                    .world
                     .block_entities
                     .contents_watches
                     .restore(observer, kept.contents_watches);
@@ -1326,7 +1369,8 @@ impl crate::game::ServerGame<'_> {
                 continue;
             }
             if let Some(target) = self
-                .common.world
+                .common
+                .world
                 .block_entities
                 .get_mut(&pos)
                 .and_then(|entity| entity.slots_mut().get_mut(slot))
@@ -1355,10 +1399,14 @@ impl crate::game::ServerGame<'_> {
             });
         }
         for (pos, block) in level.blocks {
-            self.common.world.set_stored(pos.0, pos.1, pos.2, block.state);
+            self.common
+                .world
+                .set_stored(pos.0, pos.1, pos.2, block.state);
         }
         for ((x, y, z), group) in level.connection_groups {
-            self.common.world.set_connection_group_stored(x, y, z, group);
+            self.common
+                .world
+                .set_connection_group_stored(x, y, z, group);
         }
         if let Some(random) = level.level_random {
             *self.common.world.random = random;
@@ -1382,7 +1430,8 @@ impl crate::game::ServerGame<'_> {
             });
         }
         for (chunk, randoms) in level.composter_randoms {
-            self.common.transactions
+            self.common
+                .transactions
                 .composter_randoms
                 .entry(chunk)
                 .or_default()
@@ -1520,7 +1569,8 @@ impl crate::game::ServerGame<'_> {
                 }
             }
         }
-        self.common.restore_travelled(std::mem::take(&mut level.travelled));
+        self.common
+            .restore_travelled(std::mem::take(&mut level.travelled));
         // After the maps: putting a chunk's map back marks it again.
         for (chunk, mark) in level.chunk_marks {
             self.common.world.modified.restore(chunk, mark);
@@ -1884,7 +1934,8 @@ impl crate::game::ServerGame<'_> {
             After::Spawn(at, stack) => self.spawn_item(stack, at, [0.0; 3], 10),
             After::Emptied(id) => {
                 let emptied = self
-                    .common.dropped
+                    .common
+                    .dropped
                     .iter()
                     .position(|e| e.id == id && e.stack.count == 0);
                 if let Some(i) = emptied {
@@ -1892,7 +1943,12 @@ impl crate::game::ServerGame<'_> {
                 }
             }
             After::EquipmentSync(id) => {
-                if let Some(mob) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) {
+                if let Some(mob) = self
+                    .common
+                    .mobs
+                    .iter_mut()
+                    .find(|m| m.id == id && !m.removed)
+                {
                     mob.needs_sync = true;
                 }
             }
@@ -1928,7 +1984,8 @@ impl crate::game::ServerGame<'_> {
             .collect();
         let dimension = self.common.dim;
         let steps = entities::Step::of(journal.announcements, journal.removals);
-        if let Some(commit) = entities::committing_in(&mut self.common.transactions.committing, dimension)
+        if let Some(commit) =
+            entities::committing_in(&mut self.common.transactions.committing, dimension)
         {
             commit.removed.extend(removed);
             commit.queue.extend(steps);
@@ -1993,7 +2050,8 @@ impl crate::game::ServerGame<'_> {
     /// write. At commit, tell the already-queued batches first, excluding pending removes.
     pub(in crate::game) fn flush_removal_join(&mut self, watch: u32) -> bool {
         let Some(frame) = self
-            .common.transactions
+            .common
+            .transactions
             .committing
             .iter()
             .rposition(|commit| commit.dimension == self.common.dim)

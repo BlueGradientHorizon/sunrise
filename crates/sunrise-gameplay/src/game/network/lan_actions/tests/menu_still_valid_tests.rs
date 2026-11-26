@@ -113,7 +113,9 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
                 });
             };
             let is_open = |game: &crate::game::ServerGame<'_>| {
-                game.server.lan.as_ref().unwrap().hub.guests[0].menu.is_some()
+                game.server.lan.as_ref().unwrap().hub.guests[0]
+                    .menu
+                    .is_some()
             };
             let click = |game: &mut crate::game::ServerGame<'_>| {
                 let window = game.server.lan.as_ref().unwrap().hub.guests[0]

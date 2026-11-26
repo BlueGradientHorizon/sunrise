@@ -55,7 +55,13 @@ fn an_ambient_block_or_item_particle_needs_a_name_of_the_level() {
             game.emit_model_ambient(&unknown, at);
         }
         assert!(
-            game.client.particles.0.requested.as_ref().unwrap().is_empty(),
+            game.client
+                .particles
+                .0
+                .requested
+                .as_ref()
+                .unwrap()
+                .is_empty(),
             "an unknown block or item draws nothing: {:?}",
             game.client.particles.0.requested.as_ref().unwrap(),
         );

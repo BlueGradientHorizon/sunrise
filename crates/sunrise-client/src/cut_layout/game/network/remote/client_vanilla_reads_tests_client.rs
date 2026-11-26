@@ -1,4 +1,4 @@
-use {sunrise_gameplay_common::game::Screen};
+use sunrise_gameplay_common::game::Screen;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 

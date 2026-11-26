@@ -1,16 +1,14 @@
-
-
 #![cfg(test)]
 use sunrise_client::hud::HudBatch;
 use sunrise_core::nbt::Tag;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use super::*;
-use mod_api::{GuiEntity, GuiEntityError, GuiEntityLook, GuiEntityView};
-use sunrise_core::nbt::Compound;
+    use super::*;
+    use mod_api::{GuiEntity, GuiEntityError, GuiEntityLook, GuiEntityView};
+    use sunrise_core::nbt::Compound;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_screen_draws_a_mob_by_type_once_and_refuses_what_it_cant_draw() {
         crate::game::native_entity_refs::tests::with_client_game(|game| {
@@ -31,7 +29,10 @@ use sunrise_core::nbt::Compound;
                 game.native_draw_entity(&mut batch, &zombie, view).unwrap();
                 game.native_draw_entity(&mut batch, &baby, view).unwrap();
             }
-            assert_eq!(sunrise_client_gameplay::game::client_side::gui_entity::test_cached_entity_count(), 2);
+            assert_eq!(
+                sunrise_client_gameplay::game::client_side::gui_entity::test_cached_entity_count(),
+                2
+            );
             let spin = GuiEntityLook::Turned {
                 yaw: 90.0,
                 pitch: 0.0,

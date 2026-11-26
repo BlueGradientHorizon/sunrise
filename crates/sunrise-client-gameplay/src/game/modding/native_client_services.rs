@@ -26,7 +26,12 @@ impl ClientGame<'_> {
             ((x, y, w, h), top, bottom)
         };
         let abgr = sunrise_client::hud_layout::abgr;
-        batch.fill_gradient(&self.client.gui.atlas, (x, y, w, h), abgr(top), abgr(bottom));
+        batch.fill_gradient(
+            &self.client.gui.atlas,
+            (x, y, w, h),
+            abgr(top),
+            abgr(bottom),
+        );
     }
     /// Vanilla's nine-slice widget rendering. `color` is ARGB, as `fill` uses.
     pub(in crate::game) fn native_gui_nine_slice(

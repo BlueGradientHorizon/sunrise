@@ -8,7 +8,8 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn cmd_save_all(&mut self) -> R<i32> {
         self.dedicated_lists()?;
         self.feedback(Text::translate("commands.save.saving", &[]));
-        sunrise_gameplay_common::game::CommonGame::admit_entity_save().map_err(|_| err("commands.save.failed", &[]))?;
+        sunrise_gameplay_common::game::CommonGame::admit_entity_save()
+            .map_err(|_| err("commands.save.failed", &[]))?;
         if self.server.lan_acting.is_some() {
             // The acting guest's record holds the game's state until their
             // turn ends: saving now would write it to their file.
@@ -83,7 +84,10 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn dedicated_lists(
         &self,
     ) -> R<std::sync::Arc<std::sync::Mutex<super::super::dedicated::Lists>>> {
-        match (&self.server.server_lists.0, self.common.is_dedicated_server()) {
+        match (
+            &self.server.server_lists.0,
+            self.common.is_dedicated_server(),
+        ) {
             (Some(lists), true) => Ok(lists.clone()),
             _ => Err(err("command.unknown.command", &[])),
         }

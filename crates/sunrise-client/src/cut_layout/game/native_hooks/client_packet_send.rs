@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod client_packet_send_tests {

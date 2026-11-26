@@ -1,24 +1,27 @@
-
-
 #![cfg(test)]
-use sunrise_client_gameplay::game::client_side::server_packs::PackNotifier;
 use sunrise_client::hud::HudBatch;
 use sunrise_client::toasts::SystemToast;
+use sunrise_client_gameplay::game::client_side::server_packs::PackNotifier;
 use sunrise_game_data::text::Text;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_client::multiplayer;
-    use sunrise_client::server_packs::{Prompt, action, download};
-    use sunrise_protocol::servers;
-    use sunrise_client_gameplay::game::toast_manager::{SystemToastId, Toast};
-    use sunrise_protocol::packets::configuration::ResourcePackPush;
-    use {sunrise_gameplay_common::game::in_own_process, sunrise_client_gameplay::game::client_side::native_client_session::tests::finish_login, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use crate::server_packs::download::Progress::*;
     use std::{path::Path, time::Duration};
+    use sunrise_client::multiplayer;
+    use sunrise_client::server_packs::{Prompt, action, download};
+    use sunrise_client_gameplay::game::toast_manager::{SystemToastId, Toast};
+    use sunrise_protocol::packets::configuration::ResourcePackPush;
+    use sunrise_protocol::servers;
     use sunrise_protocol::{
         connection::Connection,
         packets::{Empty, play::Serverbound},
+    };
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_client_gameplay::game::client_side::native_client_session::tests::finish_login,
+        sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client,
+        sunrise_gameplay_common::game::in_own_process,
     };
 
     const PACK_IDS: [u128; 2] = [31, 32];
@@ -238,86 +241,99 @@ mod tests {
                 mod_platform::testing::with_mods(
                     vec![ModEntry::new(OWNER, Box::new(HideHud))].into(),
                     || {
-                        crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
-                            game.client.title.0 = None;
-                            game.client.screen = sunrise_gameplay_common::game::Screen::Playing;
-                            game.client.audio.0.backend_live_for_bench();
-                            let spec = StreamSpec::new(SoundSource::Voice, 2, 48_000);
-                            let (dropped, retired) = mpsc::channel();
-                            let _handle = game
-                                .client
-                                .audio
-                                .0
-                                .open_stream(OWNER, &spec, None, Box::new(BrokenSource(dropped)))
-                                .unwrap();
-                            game.client.audio.0.mix_buffer(&mut [0.0; 2], 2, 48_000);
-                            // The worker queues the notice before dropping the failed source.
-                            retired.recv_timeout(Duration::from_secs(1)).unwrap();
+                        crate::game::server_side::native_entity_refs::tests::with_client_game(
+                            |game| {
+                                game.client.title.0 = None;
+                                game.client.screen = sunrise_gameplay_common::game::Screen::Playing;
+                                game.client.audio.0.backend_live_for_bench();
+                                let spec = StreamSpec::new(SoundSource::Voice, 2, 48_000);
+                                let (dropped, retired) = mpsc::channel();
+                                let _handle = game
+                                    .client
+                                    .audio
+                                    .0
+                                    .open_stream(
+                                        OWNER,
+                                        &spec,
+                                        None,
+                                        Box::new(BrokenSource(dropped)),
+                                    )
+                                    .unwrap();
+                                game.client.audio.0.mix_buffer(&mut [0.0; 2], 2, 48_000);
+                                // The worker queues the notice before dropping the failed source.
+                                retired.recv_timeout(Duration::from_secs(1)).unwrap();
 
-                            game.add_system_toast(
-                                Some(SystemToastId::PackLoadFailure),
-                                SystemToast::new(Text::tr("resourcePack.load_fail", &[]), None),
-                            );
-                            let size = [640, 480];
-                            let _ = game.hud(size);
-                            let _ = game.hud(size);
-                            let [regular, error] = game.client.toast_manager.visible.as_mut_slice()
-                            else {
-                                panic!("expected two visible notices")
-                            };
-                            let Toast::System(Some(SystemToastId::PackLoadFailure), regular_toast) =
-                                &mut regular.toast
-                            else {
-                                panic!("expected ordinary toast")
-                            };
-                            let Toast::Diagnostic {
-                                toast: error_toast, ..
-                            } = &mut error.toast
-                            else {
-                                panic!("expected diagnostic toast")
-                            };
-                            assert_eq!(regular.slot, 0);
-                            assert_ne!(error.slot, 0, "the ordinary toast keeps its slot");
-                            let error_y = 32.0 * error.slot as f32;
-                            assert_eq!(
-                                error_toast.message.as_ref().unwrap().component()["with"][0]["text"],
-                                OWNER
-                            );
-                            let past = Instant::now() - Duration::from_millis(700);
-                            regular_toast.slide.origin = Some(past);
-                            error_toast.slide.origin = Some(past);
+                                game.add_system_toast(
+                                    Some(SystemToastId::PackLoadFailure),
+                                    SystemToast::new(Text::tr("resourcePack.load_fail", &[]), None),
+                                );
+                                let size = [640, 480];
+                                let _ = game.hud(size);
+                                let _ = game.hud(size);
+                                let [regular, error] =
+                                    game.client.toast_manager.visible.as_mut_slice()
+                                else {
+                                    panic!("expected two visible notices")
+                                };
+                                let Toast::System(
+                                    Some(SystemToastId::PackLoadFailure),
+                                    regular_toast,
+                                ) = &mut regular.toast
+                                else {
+                                    panic!("expected ordinary toast")
+                                };
+                                let Toast::Diagnostic {
+                                    toast: error_toast, ..
+                                } = &mut error.toast
+                                else {
+                                    panic!("expected diagnostic toast")
+                                };
+                                assert_eq!(regular.slot, 0);
+                                assert_ne!(error.slot, 0, "the ordinary toast keeps its slot");
+                                let error_y = 32.0 * error.slot as f32;
+                                assert_eq!(
+                                    error_toast.message.as_ref().unwrap().component()["with"][0]["text"],
+                                    OWNER
+                                );
+                                let past = Instant::now() - Duration::from_millis(700);
+                                regular_toast.slide.origin = Some(past);
+                                error_toast.slide.origin = Some(past);
 
-                            let rect = *game
-                                .client
-                                .gui
-                                .atlas
-                                .sprites
-                                .entry("toast/system".into())
-                                .or_insert(sunrise_client::hud::Rect {
-                                    u0: 0.25,
-                                    v0: 0.25,
-                                    u1: 0.5,
-                                    v1: 0.5,
-                                    w: 160,
-                                    h: 32,
-                                });
-                            let has_toast = |batch: &HudBatch, y| {
-                                batch.vertices.iter().any(|vertex| {
-                                    vertex.uv == [rect.u0, rect.v0]
-                                        && vertex.pos[1] == y
-                                        && vertex.pos[0] < batch.width
-                                })
-                            };
-                            let canceled = game.hud(size);
-                            assert!(
-                                has_toast(&canceled, 0.0),
-                                "the HUD veto does not hide toasts"
-                            );
-                            assert!(has_toast(&canceled, error_y), "audio error still draws");
-                            game.key_pressed(KeyCode::F1, KeyCode::F1).unwrap();
-                            game.handle_play_keybinds();
-                            assert!(!has_toast(&game.hud(size), error_y), "F1 hides the notice");
-                        });
+                                let rect = *game
+                                    .client
+                                    .gui
+                                    .atlas
+                                    .sprites
+                                    .entry("toast/system".into())
+                                    .or_insert(sunrise_client::hud::Rect {
+                                        u0: 0.25,
+                                        v0: 0.25,
+                                        u1: 0.5,
+                                        v1: 0.5,
+                                        w: 160,
+                                        h: 32,
+                                    });
+                                let has_toast = |batch: &HudBatch, y| {
+                                    batch.vertices.iter().any(|vertex| {
+                                        vertex.uv == [rect.u0, rect.v0]
+                                            && vertex.pos[1] == y
+                                            && vertex.pos[0] < batch.width
+                                    })
+                                };
+                                let canceled = game.hud(size);
+                                assert!(
+                                    has_toast(&canceled, 0.0),
+                                    "the HUD veto does not hide toasts"
+                                );
+                                assert!(has_toast(&canceled, error_y), "audio error still draws");
+                                game.key_pressed(KeyCode::F1, KeyCode::F1).unwrap();
+                                game.handle_play_keybinds();
+                                assert!(
+                                    !has_toast(&game.hud(size), error_y),
+                                    "F1 hides the notice"
+                                );
+                            },
+                        );
                     },
                 );
             },
@@ -331,8 +347,12 @@ mod tests {
         sunrise_gameplay_common::game::in_own_process(
             "game::client_side::server_packs::tests::closing_save_reports_reach_the_title_in_the_owning_window",
             || {
-                use {sunrise_client_gameplay::game::client_side::integrated_client::Integrated, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::server_side::integrated::Serving};
                 use mod_api::{ClientHost, Flow, Hooks, ModEntry, ToastAddEvent, ToastKind};
+                use {
+                    crate::game::server_side::native_entity_refs::tests::with_client_game,
+                    sunrise_client_gameplay::game::client_side::integrated_client::Integrated,
+                    sunrise_gameplay::game::server_side::integrated::Serving,
+                };
 
                 struct Listener;
                 #[mod_api::__subscriptions]
@@ -353,8 +373,10 @@ mod tests {
                 let mods = vec![ModEntry::new("chunk_report_probe", Box::new(Listener))];
                 mod_platform::testing::with_mods(mods.into(), || {
                     with_client_game(|window| {
-                        let serving =
-                            Serving::fixture_with_reports(0, window.client.client_reports.0.clone());
+                        let serving = Serving::fixture_with_reports(
+                            0,
+                            window.client.client_reports.0.clone(),
+                        );
                         window.client.integrated = Some(Integrated::fixture_for(&serving));
                         window.begin_closing_save(false).unwrap();
                         assert!(window.client.pending_save.0.is_some());
@@ -413,11 +435,16 @@ mod tests {
         sunrise_gameplay_common::game::in_own_process(
             "game::client_side::server_packs::tests::scheduled_task_error_toasts_are_admitted_by_the_owning_client",
             || {
-                use {sunrise_client_gameplay::game::client_side::integrated_client::Integrated, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::server_side::integrated::Serving};
                 use mod_api::{
                     ClientHost, Flow, Hooks, ModEntry, ServerHost, ToastAddEvent, ToastKind,
                 };
                 use std::sync::{Arc, Mutex};
+                use {
+                    crate::game::server_side::native_entity_refs::tests::with_client_game,
+                    sunrise_client_gameplay::game::client_side::integrated_client::Integrated,
+                    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+                    sunrise_gameplay::game::server_side::integrated::Serving,
+                };
 
                 const ACCEPTED: &str = "toast_accept";
                 const CANCELLED: &str = "toast_cancel";
@@ -462,8 +489,10 @@ mod tests {
                 ];
                 mod_platform::testing::with_mods(mods.into(), || {
                     with_client_game(|window| {
-                        let serving =
-                            Serving::fixture_with_reports(0, window.client.client_reports.0.clone());
+                        let serving = Serving::fixture_with_reports(
+                            0,
+                            window.client.client_reports.0.clone(),
+                        );
                         window.client.integrated = Some(Integrated::fixture_for(&serving));
                         with_game(|server| {
                             server.server.serving = Some(serving);

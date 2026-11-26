@@ -1,11 +1,15 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod join_order_tests {
 
-use sunrise_core::geometry::Vec3;
-use crate::game::{boats_common::Boat, entity::{EntityHandle, EntityLists, JoinOrderError}, fireworks::Rocket};
-use sunrise_sim::{entities::ArmorStand, join_seq::JoinList, mobs::Mob, thrown_trident::ThrownTrident};
+    use crate::game::{
+        boats_common::Boat,
+        entity::{EntityHandle, EntityLists, JoinOrderError},
+        fireworks::Rocket,
+    };
+    use sunrise_core::geometry::Vec3;
+    use sunrise_sim::{
+        entities::ArmorStand, join_seq::JoinList, mobs::Mob, thrown_trident::ThrownTrident,
+    };
 
     #[derive(Default)]
     pub struct Lists {
@@ -16,7 +20,7 @@ use sunrise_sim::{entities::ArmorStand, join_seq::JoinList, mobs::Mob, thrown_tr
         pub boats: JoinList<Boat, false>,
     }
 
-impl Lists {
+    impl Lists {
         pub fn view(&self) -> EntityLists<'_> {
             EntityLists {
                 mobs: &self.mobs,
@@ -39,7 +43,7 @@ impl Lists {
             Ok(seen)
         }
     }
-/// Joins different kinds of entities interleaved, the way a level gets them.
+    /// Joins different kinds of entities interleaved, the way a level gets them.
     pub fn mixed() -> (Lists, Vec<EntityHandle>) {
         let mut l = Lists::default();
         l.trident(1);
@@ -60,7 +64,7 @@ impl Lists {
         ];
         (l, joined)
     }
-impl Lists {
+    impl Lists {
         pub fn stand(&mut self, id: u32) {
             self.stands.push(ArmorStand::new(id, at(), 0.0));
         }
@@ -76,8 +80,7 @@ impl Lists {
         }
     }
 
-
-pub fn at() -> Vec3 {
+    pub fn at() -> Vec3 {
         Vec3::new(0.5, 100.0, 0.5)
     }
 }

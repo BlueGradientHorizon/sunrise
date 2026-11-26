@@ -20,7 +20,8 @@ impl crate::game::ClientGame<'_> {
         ticks: u32,
         exempt: &[&str],
     ) -> bool {
-        if !self.common.native_window() || exempt.len() > 64 || !exempt.iter().all(|e| sound_id(e)) {
+        if !self.common.native_window() || exempt.len() > 64 || !exempt.iter().all(|e| sound_id(e))
+        {
             return false;
         }
         self.client.audio.0.muffle(amount, lowpass, ticks, exempt)

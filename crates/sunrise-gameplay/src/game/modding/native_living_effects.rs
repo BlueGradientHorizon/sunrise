@@ -8,8 +8,8 @@
 //! keep no effects, as `/effect` skips them. `effect` and `effects` also read
 //! on a client, for the local player, from the effects the server sent it, and
 //! `effect_blend_factor` reads only there, from the fades the client ticks.
-use crate::game::ServerGame;
 use super::commands::Target;
+use crate::game::ServerGame;
 use mod_api::{ActiveEffect, EffectKey, LivingRef};
 use sunrise_items::items::ItemStack;
 use sunrise_level::effects::EffectInstance;
@@ -51,11 +51,7 @@ impl ServerGame<'_> {
     /// ticks. False before effect resolution, for a duration below -1, an armor
     /// stand, the dragon, a stale handle or a client, or when the active
     /// instance did not change, as in vanilla's `addEffect`.
-    pub fn living_add_effect(
-        &mut self,
-        living: LivingRef,
-        effect: &ActiveEffect,
-    ) -> bool {
+    pub fn living_add_effect(&mut self, living: LivingRef, effect: &ActiveEffect) -> bool {
         let Some(def) = mod_api::__private::effect_index(effect.id)
             .and_then(sunrise_game_data::potions::effect_by_index)
         else {
@@ -110,11 +106,7 @@ impl ServerGame<'_> {
     /// leaving the same way its expiry takes them. False (and nothing
     /// changes) when the entity has the effect not, before effect resolution, or for
     /// an armor stand, the dragon, a stale handle or a client.
-    pub fn living_remove_effect(
-        &mut self,
-        living: LivingRef,
-        effect: EffectKey,
-    ) -> bool {
+    pub fn living_remove_effect(&mut self, living: LivingRef, effect: EffectKey) -> bool {
         let Some(def) = mod_api::__private::effect_index(effect)
             .and_then(sunrise_game_data::potions::effect_by_index)
         else {
@@ -126,7 +118,8 @@ impl ServerGame<'_> {
                 .unwrap_or(false),
             Some(Target::Mob(id)) => {
                 let Some(amplifier) = self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter()
                     .find(|m| m.id == id && !m.removed)
                     .and_then(|m| {
@@ -165,7 +158,8 @@ impl ServerGame<'_> {
                 .unwrap_or(false),
             Some(Target::Mob(id)) => {
                 let held: Vec<(usize, i32)> = self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter()
                     .find(|m| m.id == id && !m.removed)
                     .map(|m| {

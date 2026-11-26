@@ -4,7 +4,8 @@ pub trait Hooks {
     /// `BlockBehaviour.useWithoutItem`: the captured state's empty-hand method,
     /// after useItemOn asks for it, on the server and main hand only.
     /// A disabled owner's subscribed interaction passes without running the block template.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::block_use_without_item::ServerGame<'_>::native_use_without_item", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::block_use_without_item::ServerGame<'_>::native_use_without_item",
         dispatch = "flat",
         side = "server",
         contract = "replace",

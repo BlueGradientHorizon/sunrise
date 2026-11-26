@@ -1,21 +1,23 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
-use sunrise_gameplay_common::game::tables::GameItems;
-use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::with_game;
     use mod_api::{EntityRef, GoalSpec, MobFilter, MobRef, WorldEpoch};
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
+    use sunrise_gameplay_common::game::tables::GameItems;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::mobs::Mob;
 
     /// A mob of `kind` in the game's list, its species goals registered by
     /// `Mob::new`, as a handle.
-    fn mob_in_game(game: &mut sunrise_gameplay::game::ServerGame<'_>, kind: &str, id: u32) -> MobRef {
+    fn mob_in_game(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        kind: &str,
+        id: u32,
+    ) -> MobRef {
         let t = game.res.mob_types().get(kind).unwrap().clone();
         let mut m = Mob::new(id, t, Vec3::new(3.5, 65.0, 3.5), 0.0);
         m.ground.on_ground = true;
@@ -62,12 +64,20 @@ use super::super::native_entity_refs::tests::with_game;
             assert!(mismatches.is_empty(), "{}", mismatches.join("; "));
             for species in [Species::Bat, Species::Ghast, Species::Phantom] {
                 assert!(
-                    game.boxed_goal(species, sunrise_sim::mobs::nav::NavKind::Ground, &GoalSpec::EatBlock)
-                        .is_some()
+                    game.boxed_goal(
+                        species,
+                        sunrise_sim::mobs::nav::NavKind::Ground,
+                        &GoalSpec::EatBlock
+                    )
+                    .is_some()
                 );
                 assert!(
-                    game.boxed_goal(species, sunrise_sim::mobs::nav::NavKind::Ground, &GoalSpec::RestrictSun)
-                        .is_none()
+                    game.boxed_goal(
+                        species,
+                        sunrise_sim::mobs::nav::NavKind::Ground,
+                        &GoalSpec::RestrictSun
+                    )
+                    .is_none()
                 );
                 assert!(
                     game.boxed_goal(
@@ -175,7 +185,13 @@ use super::super::native_entity_refs::tests::with_game;
             let mut mobs = game.mobs.lift();
             let snapshot: Vec<_> = mobs
                 .iter()
-                .map(|m| sunrise_gameplay_common::game::creatures::seen(m, game.level.player_uuid, game.items()))
+                .map(|m| {
+                    sunrise_gameplay_common::game::creatures::seen(
+                        m,
+                        game.level.player_uuid,
+                        game.items(),
+                    )
+                })
                 .collect();
             let mut test_level = sunrise_sim::health::TestLevel::new(0);
             let mut level = test_level.level();
@@ -221,7 +237,13 @@ use super::super::native_entity_refs::tests::with_game;
             mobs[0].ai.target = Some(Who::Player);
             let snapshot: Vec<_> = mobs
                 .iter()
-                .map(|m| sunrise_gameplay_common::game::creatures::seen(m, game.level.player_uuid, game.items()))
+                .map(|m| {
+                    sunrise_gameplay_common::game::creatures::seen(
+                        m,
+                        game.level.player_uuid,
+                        game.items(),
+                    )
+                })
                 .collect();
             let mut test_level = sunrise_sim::health::TestLevel::new(0);
             let mut level = test_level.level();

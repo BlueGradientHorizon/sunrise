@@ -733,11 +733,7 @@ impl crate::game::ClientGame<'_> {
     /// (`title`, `world_select`, `world_create`, `multiplayer`…) fire it too,
     /// their `screen.id` from the title state machine and the whole window
     /// their `rect`, and no dialog or prompt over them.
-    pub fn native_screen_render_post(
-        &self,
-        draw: &mut HudBatch,
-        screen: &ScreenView<'_>,
-    ) {
+    pub fn native_screen_render_post(&self, draw: &mut HudBatch, screen: &ScreenView<'_>) {
         self.fire_screen_render_post(draw, screen);
     }
     /// The player changed setting `key` of mod `mod_id` on its page in Options > Mods; the new

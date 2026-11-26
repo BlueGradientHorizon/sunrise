@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use mod_api::EntityRef;
 use mod_api::LivingRef;
@@ -11,8 +9,8 @@ pub(crate) mod tests {
     use super::*;
     use mod_api::WorldEpoch;
     use sunrise_core::geometry::Vec3;
-    use sunrise_sim::{entities::ArmorStand, mobs::Mob};
     use sunrise_sim::mobs;
+    use sunrise_sim::{entities::ArmorStand, mobs::Mob};
 
     pub(crate) fn add_mob(
         game: &mut sunrise_gameplay::game::ServerGame<'_>,
@@ -98,8 +96,6 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn leash_holder_reads_live_state() {
-        use {sunrise_gameplay_common::game::boats_common::Boat, sunrise_gameplay::game::server_side::lan::LanSettings};
-        use sunrise_sim::mobs::leash::{Holder, Pending};
         use mod_api::LeashHolder;
         use std::sync::{
             Arc,
@@ -108,6 +104,11 @@ pub(crate) mod tests {
         use sunrise_protocol::packets::configuration::ClientInformation;
         use sunrise_sim::lan::{
             Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig, playerdata::uuid_ints,
+        };
+        use sunrise_sim::mobs::leash::{Holder, Pending};
+        use {
+            sunrise_gameplay::game::server_side::lan::LanSettings,
+            sunrise_gameplay_common::game::boats_common::Boat,
         };
 
         with_game(|game| {
@@ -201,7 +202,8 @@ pub(crate) mod tests {
             assert_eq!(cow.entity().leash_holder(game), None);
             let stale = EntityRef::new(WorldEpoch::new(999), 12);
             assert_eq!(stale.leash_holder(game), None);
-            game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+                .unwrap();
             assert_eq!(cow.entity().leash_holder(game), None);
         });
     }
@@ -212,16 +214,17 @@ pub(crate) mod tests {
         with_game(|game| {
             let cow = add_mob(game, 12, "minecraft:cow");
             let wither = add_mob(game, 13, "minecraft:wither");
-            let check = |game: &sunrise_gameplay::game::ServerGame<'_>, handle: MobRef, expected| {
-                let mob = game
-                    .mobs
-                    .iter()
-                    .find(|m| m.id == handle.entity().id())
-                    .unwrap();
-                assert_eq!(game.mob_portal_eligible(mob), expected);
-                let host: &dyn mod_api::Host = game;
-                assert_eq!(handle.can_use_portal(host), Some(expected));
-            };
+            let check =
+                |game: &sunrise_gameplay::game::ServerGame<'_>, handle: MobRef, expected| {
+                    let mob = game
+                        .mobs
+                        .iter()
+                        .find(|m| m.id == handle.entity().id())
+                        .unwrap();
+                    assert_eq!(game.mob_portal_eligible(mob), expected);
+                    let host: &dyn mod_api::Host = game;
+                    assert_eq!(handle.can_use_portal(host), Some(expected));
+                };
             check(game, cow, true);
             check(game, wither, false);
             game.mobs[0].extra.mount = Some(99);
@@ -234,7 +237,8 @@ pub(crate) mod tests {
             let stale = MobRef::new(mod_api::EntityRef::new(WorldEpoch::new(999), 12));
             let host: &dyn mod_api::Host = game;
             assert_eq!(stale.can_use_portal(host), None);
-            game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+            game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
+                .unwrap();
             let host: &dyn mod_api::Host = game;
             assert_eq!(cow.can_use_portal(host), None);
             game.enter_command_level(sunrise_gameplay_common::game::Dim::Overworld)
@@ -391,7 +395,8 @@ pub(crate) mod tests {
             game.mobs = taken;
             assert!(mob.set_baby(game, true));
 
-            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon =
+                sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 15;
             game.dragon.replace(dragon);
             let dragon = game.mob(game.entity(15).unwrap()).unwrap();
@@ -682,7 +687,8 @@ pub(crate) mod tests {
                 .push(Mob::new(12, zombie.clone(), Vec3::ZERO, 0.0));
             game.mobs.push(Mob::new(13, zombie, Vec3::ZERO, 0.0));
             game.armor_stands.push(ArmorStand::new(14, Vec3::ZERO, 0.0));
-            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon =
+                sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             // Reserve the dragon's eight consecutive part IDs away from the mobs.
             dragon.id = 40;
             game.dragon.replace(dragon);
@@ -928,7 +934,8 @@ pub(crate) mod tests {
                 .unwrap()
                 .clone();
             game.mobs.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
-            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon =
+                sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 15;
             game.dragon.replace(dragon);
             let entity = game.entity(12).unwrap();

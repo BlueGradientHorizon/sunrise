@@ -11,7 +11,8 @@ use sunrise_sim::control;
 impl ClientGame<'_> {
     /// The endpoint: the one the command line gave, else the default sunrise-ctl looks for.
     fn agent_socket_path(&self) -> PathBuf {
-        self.common.options
+        self.common
+            .options
             .control
             .clone()
             .unwrap_or_else(control::default_path)
@@ -64,7 +65,8 @@ impl ClientGame<'_> {
         let changed = wanted != self.client.agent_control_on;
         self.client.agent_control_on = wanted;
         let open = self
-            .common.control
+            .common
+            .control
             .as_ref()
             .is_some_and(|c| !c.path().as_os_str().is_empty());
         if self.client.settings.extras.no_ai || (changed && !wanted) {
@@ -85,7 +87,8 @@ impl ClientGame<'_> {
     /// The AI Agent page's lines: the state, then where agents connect.
     pub(in crate::game::client_side) fn agent_status_lines(&self) -> Vec<String> {
         let server = self
-            .common.control
+            .common
+            .control
             .as_ref()
             .filter(|c| !c.path().as_os_str().is_empty())
             .map(|s| Socket {

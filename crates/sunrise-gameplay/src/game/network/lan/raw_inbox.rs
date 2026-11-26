@@ -13,13 +13,18 @@ impl crate::game::ServerGame<'_> {
         // now; no callback captures a TickCtx or an as_guest world swap.
         let clock_rate = self.network_clock_rate();
         let mut ctx = TickCtx {
-            sea_level: self.common.end.locator().map_or(63, |terrain| terrain.sea_level()),
+            sea_level: self
+                .common
+                .end
+                .locator()
+                .map_or(63, |terrain| terrain.sea_level()),
             world: &mut self.common.world,
             entities,
             next_entity: &mut self.server.next_entity,
             spawn,
             spawn_angle: self.common.level.world_spawn_angle,
-            spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&self.common.level).id(),
+            spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&self.common.level)
+                .id(),
             difficulty: i32::from(self.common.ui.difficulty),
             difficulty_locked: self.common.level.difficulty_locked,
             clock_rate,

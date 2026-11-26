@@ -32,7 +32,8 @@ impl crate::game::ServerGame<'_> {
         // isSecondaryUseActive with something in either hand keeps blocks
         // from reacting.
         let sneaking = self.server_acting_sneak();
-        let hands_full = self.common.stack_in(self.common.selected).is_some() || self.common.offhand.is_some();
+        let hands_full =
+            self.common.stack_in(self.common.selected).is_some() || self.common.offhand.is_some();
         let mut anchor_passed = false;
         // Native mods, where ServerPlayerGameMode.useItemOn starts
         // (RightClickBlock): a cancel answers for the block and the item, and
@@ -92,8 +93,12 @@ impl crate::game::ServerGame<'_> {
             && let Some(hit) = block_hit
         {
             let state = self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
-            let mut block_answer =
-                self.use_item_on_block(hit, self.common.hand, held.as_ref(), mod_api::UsePhase::Block);
+            let mut block_answer = self.use_item_on_block(
+                hit,
+                self.common.hand,
+                held.as_ref(),
+                mod_api::UsePhase::Block,
+            );
             if block_answer.is_none()
                 && mod_api::__private::has_part_hook(mod_api::HookId::UseItemOn)
                 && api_values::block_state::block_listens(mod_api::HookId::UseItemOn, state)
@@ -187,7 +192,9 @@ impl crate::game::ServerGame<'_> {
                     .or_else(|| self.use_chiseled_bookshelf(hit, state, held.as_ref(), ItemOn));
             }
             // TRY_WITH_EMPTY_HAND: only the main hand's turn uses the block itself (useWithoutItem). The block's item behaviour hears both hands.
-            if !anchor_passed && !chains_sign && (self.common.hand == Hand::Main || block_answer.is_some())
+            if !anchor_passed
+                && !chains_sign
+                && (self.common.hand == Hand::Main || block_answer.is_some())
             {
                 let face = match hit.face {
                     [0, 1, 0] => Direction::Up,
@@ -234,7 +241,8 @@ impl crate::game::ServerGame<'_> {
                     }
                     if empty_answer.is_none()
                         && self
-                            .common.res
+                            .common
+                            .res
                             .behaviours()
                             .data(state)
                             .is(sunrise_world::level::classes::Class::Fence)
@@ -291,9 +299,10 @@ impl crate::game::ServerGame<'_> {
                     self.award_stat("used", &used.item, 1);
                     self.award_custom_stat("pot_flower", 1);
                     self.consume_held();
-                    if let (Some(player), Some(name)) =
-                        (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-                    {
+                    if let (Some(player), Some(name)) = (
+                        self.server.lan_acting_uuid,
+                        self.server.lan_acting_name.clone(),
+                    ) {
                         self.native_player_flower_pot_manipulate(
                             player, &name, hit.pos, &used.item,
                         );
@@ -303,7 +312,8 @@ impl crate::game::ServerGame<'_> {
                 if empty_template_ran && result == sunrise_world::level::InteractionResult::Success
                 {
                     let name = self
-                        .common.res
+                        .common
+                        .res
                         .facts()
                         .get(self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]))
                         .name
@@ -373,7 +383,8 @@ impl crate::game::ServerGame<'_> {
                 .as_ref()
                 .zip(info.as_ref())
                 .is_none_or(|(stack, info)| {
-                    self.common.cooldowns
+                    self.common
+                        .cooldowns
                         .is_on_cooldown(&sunrise_items::cooldowns::group(
                             stack,
                             info.use_cooldown.as_ref(),
@@ -710,7 +721,8 @@ impl crate::game::ServerGame<'_> {
                         let commands::Target::Mob(id) = self.native_living_target(living)? else {
                             return None;
                         };
-                        self.common.mobs
+                        self.common
+                            .mobs
                             .iter_mut()
                             .find(|m| m.id == id)?
                             .random
@@ -780,7 +792,11 @@ impl crate::game::ServerGame<'_> {
                         let commands::Target::Mob(id) = self.native_living_target(living)? else {
                             return None;
                         };
-                        self.common.mobs.iter().find(|m| m.id == id).map(|m| m.position)?
+                        self.common
+                            .mobs
+                            .iter()
+                            .find(|m| m.id == id)
+                            .map(|m| m.position)?
                     }
                     None => self.common.player.as_ref()?.position,
                 };
@@ -846,9 +862,13 @@ impl crate::game::ServerGame<'_> {
         // how many arrows leave and how far apart they fan (Multishot: two more
         // arrows, ten degrees of spread).
         let (count, spread) = self.bow_volley(stack);
-        let (velocity, on_ground) = self.common.player.as_ref().map_or((Vec3::ZERO, true), |pl| {
-            (self.known_player_movement(), pl.ground.on_ground)
-        });
+        let (velocity, on_ground) = self
+            .common
+            .player
+            .as_ref()
+            .map_or((Vec3::ZERO, true), |pl| {
+                (self.known_player_movement(), pl.ground.on_ground)
+            });
         // ProjectileWeaponItem.shoot: an odd count is centred on the view, the
         // arrows alternate either side of it, `direction` flipping per arrow.
         // A count of 0 draws nothing and vanilla skips `shoot` altogether.
@@ -914,7 +934,8 @@ impl crate::game::ServerGame<'_> {
         // BowItem.releaseUsing: `playSound(null, getX(), getY(), getZ(), ...)`, at
         // the feet: an eye-height source a few cm from the listener pans hard.
         let feet = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map_or(eye, |pl| [pl.position.x, pl.position.y, pl.position.z]);
         self.server_play_sound("minecraft:entity.arrow.shoot", feet, 1.0, pitch);

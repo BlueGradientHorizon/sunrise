@@ -235,15 +235,19 @@ impl crate::game::ServerGame<'_> {
                 block_entities: block_entities.into_iter().collect(),
             }
         };
-        std::iter::once(level(self.common.dim, &self.common.world, self.active_perf_view()))
-            .chain(
-                self.server
-                    .levels
-                    .0
-                    .parked_perf_views()
-                    .map(|(dim, world, view)| level(dim, world, view)),
-            )
-            .collect()
+        std::iter::once(level(
+            self.common.dim,
+            &self.common.world,
+            self.active_perf_view(),
+        ))
+        .chain(
+            self.server
+                .levels
+                .0
+                .parked_perf_views()
+                .map(|(dim, world, view)| level(dim, world, view)),
+        )
+        .collect()
     }
 
     /// Each player's connection: wire bytes (in, out), name, brand and view distance.

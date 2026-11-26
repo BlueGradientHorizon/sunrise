@@ -1,6 +1,3 @@
-use sunrise_gameplay_common::game::GameGameExt1;
-use {sunrise_gameplay_common::game::server_side::native_menus::tests::MOD_MENU, sunrise_gameplay::game::server_side::native_menus::tests::mod_menu_guest, sunrise_gameplay_common::game::server_side::native_menus::tests::sent};
-use {sunrise_gameplay_common::game::api_values, sunrise_gameplay_common::game::api_values::TryIntoApi, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{
     Flow, Hand, Hooks, HostTransaction, ItemPlace, ItemResource, MenuClickedEvent, MenuClosedEvent,
     MenuContainer, MenuItemsRefusal, MenuKey, MenuPart, MenuRef, MenuReplace, MenuSlotBackRefusal,
@@ -8,11 +5,23 @@ use mod_api::{
     ModEntry, Mods, Registrar, ServerHost,
 };
 use std::sync::mpsc;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::{
     Clientbound as C, ContainerClick, ContainerClose, Serverbound as S, SetCursorItem,
 };
 use sunrise_sim::lan::Out;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay_common::game::api_values,
+    sunrise_gameplay_common::game::api_values::TryIntoApi,
+};
+use {
+    sunrise_gameplay::game::server_side::native_menus::tests::mod_menu_guest,
+    sunrise_gameplay_common::game::server_side::native_menus::tests::MOD_MENU,
+    sunrise_gameplay_common::game::server_side::native_menus::tests::sent,
+};
 
 thread_local! {
     static SCRIPTED_CLICK: std::cell::Cell<Option<Flow>> = const { std::cell::Cell::new(None) };
@@ -730,7 +739,8 @@ fn abort_after_replacement_restores_only_committed_contents_to_the_old_close() {
 fn the_part_closes_the_menu_when_the_opening_stack_leaves_its_hand() {
     with_owned_menu(false, |game, rx, key| {
         let (window, menu) = open(game, key);
-        let change_hand = |game: &mut sunrise_gameplay::game::ServerGame<'_>, change: fn(&mut ItemStack)| {
+        let change_hand = |game: &mut sunrise_gameplay::game::ServerGame<'_>,
+                           change: fn(&mut ItemStack)| {
             game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                 change(g.offhand.as_mut().unwrap());
             });
@@ -1856,7 +1866,11 @@ fn with_block_processor(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGam
 
 /// A hopper holding `stack` placed on top of `pos` moves once (`HopperBlockEntity.pushItemsTick`):
 /// a write outside any transaction to the block below.
-fn hopper_above(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: (i32, i32, i32), stack: ItemStack) {
+fn hopper_above(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    pos: (i32, i32, i32),
+    stack: ItemStack,
+) {
     let hopper_pos = (pos.0, pos.1 + 1, pos.2);
     let hopper_state = game
         .pack

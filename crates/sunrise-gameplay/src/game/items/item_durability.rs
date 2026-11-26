@@ -26,7 +26,8 @@ impl crate::game::ServerGame<'_> {
             .as_ref()
             .is_some_and(|s| s.count > 0 && &*s.item != "minecraft:air");
         let mut hit = self
-            .common.player
+            .common
+            .player
             .as_mut()
             .ok_or("missing damage target")?
             .start_hurt(
@@ -55,7 +56,8 @@ impl crate::game::ServerGame<'_> {
             self.refresh_armor_protection();
         }
         let armor_damage = self
-            .common.player
+            .common
+            .player
             .as_mut()
             .ok_or("missing damage target")?
             .select_equipment_hurt(
@@ -74,7 +76,8 @@ impl crate::game::ServerGame<'_> {
             self.hurt_armor(&hit_source, damage);
             self.refresh_armor_protection();
         }
-        self.common.player
+        self.common
+            .player
             .as_mut()
             .ok_or("missing damage target")?
             .finish_hurt(
@@ -103,7 +106,8 @@ impl crate::game::ServerGame<'_> {
             }) = event
             {
                 let Some(name) = self
-                    .common.health_resources
+                    .common
+                    .health_resources
                     .damage
                     .definition(*source)
                     .map(|d| d.name.clone())
@@ -121,20 +125,12 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `Player.hurtArmor`: every armor slot wears.
-    pub fn hurt_armor(
-        &mut self,
-        source: &sunrise_sim::health::HurtSource<'_>,
-        damage: f32,
-    ) {
+    pub fn hurt_armor(&mut self, source: &sunrise_sim::health::HurtSource<'_>, damage: f32) {
         self.hurt_equipment(source, damage, &[3, 2, 1, 0]);
     }
 
     /// `Player.hurtHelmet`: the head slot alone wears.
-    pub fn hurt_helmet(
-        &mut self,
-        source: &sunrise_sim::health::HurtSource<'_>,
-        damage: f32,
-    ) {
+    pub fn hurt_helmet(&mut self, source: &sunrise_sim::health::HurtSource<'_>, damage: f32) {
         self.hurt_equipment(source, damage, &[0]);
     }
 
@@ -162,7 +158,9 @@ impl crate::game::ServerGame<'_> {
         let name = source.damage_type;
         // The pieces that may wear (`doHurtEquipment`'s checks).
         let mut eligible: [Option<ItemStack>; 4] = std::array::from_fn(|i| {
-            let stack = self.common.armor[i].clone().filter(|_| slots.contains(&i))?;
+            let stack = self.common.armor[i]
+                .clone()
+                .filter(|_| slots.contains(&i))?;
             let info = world_items!(self).get(&stack.item)?;
             let component = |id| stack.data().and_then(|data| data.other(id));
             // ItemStack.isDamageableItem: component removal and
@@ -233,7 +231,9 @@ impl crate::game::ServerGame<'_> {
             }
             let (updated, broken) =
                 self.damage_stack(&before, amounts[index].min(i32::MAX as u32) as i32, true);
-            if updated.as_ref() != Some(&before) && self.common.armor[index].as_ref() == Some(&before) {
+            if updated.as_ref() != Some(&before)
+                && self.common.armor[index].as_ref() == Some(&before)
+            {
                 self.common.armor[index] = updated;
                 if let Some(stack) = broken {
                     self.player_equipment_broke(armor_slot(index), &stack);

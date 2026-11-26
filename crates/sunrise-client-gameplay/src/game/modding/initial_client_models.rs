@@ -5,8 +5,7 @@ use sunrise_client::gfx::PreparedModels;
 
 pub struct InitialModelGeneration {
     pub(in crate::game) pack: PackResources,
-    pub client_pack:
-        crate::game::client_side::resource_tables_client::ClientPackResources,
+    pub client_pack: crate::game::client_side::resource_tables_client::ClientPackResources,
     pub(in crate::game) gui: UiResources,
 }
 

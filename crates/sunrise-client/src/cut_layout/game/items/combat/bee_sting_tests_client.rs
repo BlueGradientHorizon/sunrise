@@ -1,6 +1,6 @@
+use sunrise_core::geometry::Vec3;
 use sunrise_gameplay::game::server_side::combat::bee_sting_tests::spawn;
 use sunrise_gameplay::game::server_side::combat::bee_sting_tests::sting;
-use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::{Who, bee};
 use sunrise_sim::motion::PlayerMotion;

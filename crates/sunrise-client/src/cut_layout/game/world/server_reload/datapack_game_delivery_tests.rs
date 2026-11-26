@@ -83,7 +83,9 @@ fn datapack_game_reload_delivers_only_successful_generations_and_disconnects_ref
                         .get("power"),
                     Some(&DatapackValue::Int(7))
                 );
-                let rx = sunrise_gameplay::game::server_side::lan::world_spawn_sync_tests::host_for(game);
+                let rx = sunrise_gameplay::game::server_side::lan::world_spawn_sync_tests::host_for(
+                    game,
+                );
                 game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
                     g.brand = "sunrise".into();
                     g.sender.datapack_offer = Some(offer.into());

@@ -33,7 +33,8 @@ pub trait Hooks {
 - The editor offers `len`, `child`, `construct` (a `PendingMobSpec`, returning an `UnattachedMob`), `append`, `replace`, `remove` and, per child, `set_position`, `set_yaw`, `set_baby` and `set_size`. A child is read with the `UnspawnedMobRef` it gives through `UnspawnedMobEdits`-style reads (`mob.kind(host)`, `mob.position(host)`). Every handle is valid for one listener only; a retained one, or one used by the next listener, answers `Expired`, a token already appended answers `Ownership`, a 65th child answers `Capacity`, and an unknown kind, a non-finite position or an invalid size answers `Invalid`. A refused call changes nothing.
 - Cancelling, removing every child, or a contained listener panic spawns none. A refusal rolls back journaled listener writes in the split's level. The construction draws stay spent and the parent still dies. Listeners see the earlier listeners' edits.
 - Not fired for a parent of size 1, nor for a primed sulfur cube (it makes no children). With no listener the split runs exactly as vanilla and allocates nothing for the list."#]
-    #[hook(target = "sunrise_gameplay::game::native_hooks::mob_split::ServerGame<'_>::native_mob_split", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::mob_split::ServerGame<'_>::native_mob_split",
         dispatch = "api_carrier",
         side = "server",
         version = 3,

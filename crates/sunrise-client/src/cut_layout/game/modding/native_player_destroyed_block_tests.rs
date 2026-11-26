@@ -1,10 +1,10 @@
 //! `player_destroyed_block` heard through the game's own break path: a creative and a survival
 //! break are heard once with the removed state; a break `break_block` cancels and a piston's
 //! are not heard.
-use sunrise_gameplay_common::game::GameGameExt1;
 use super::native_entity_refs::tests::{collect_all_entities, with_game};
 use sunrise_command::args::GameMode;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::motion::PlayerMotion;
 
@@ -322,7 +322,8 @@ fn with_order_probe(
 ) -> Vec<Seen> {
     let seen = Arc::new(Mutex::new(Vec::new()));
     with_game(|game| {
-        let (player, ..) = sunrise_gameplay::game::native_server::fake_action_tests::fake(game, Some(item), 0);
+        let (player, ..) =
+            sunrise_gameplay::game::native_server::fake_action_tests::fake(game, Some(item), 0);
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "order",
             Box::new(OrderProbe {
@@ -548,8 +549,8 @@ fn put_chest(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: [i32; 3]) {
 #[test]
 #[ignore = "daily"]
 fn block_drops_lends_the_saved_only_pot_payload() {
-    use sunrise_gameplay_common::game::spill_common as spill;
     use mod_api::{Compound, Tag};
+    use sunrise_gameplay_common::game::spill_common as spill;
     use sunrise_sim::mobs::MobEvent;
 
     enum BreakSite {

@@ -7,7 +7,8 @@ pub trait Hooks {
     /// mods left them), and what the mods leave there is the stand's. Fires
     /// last, as `doBrew` ends: after `brewing_complete`, the brew sound and
     /// the ingredient's remainder dropping. Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::potion_brew_post::ServerGame<'_>::native_potion_brew_post", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::potion_brew_post::ServerGame<'_>::native_potion_brew_post",
         dispatch = "flat",
         side = "server",
         contract = "listen",

@@ -8,7 +8,8 @@ pub trait Hooks {
     /// sculk catalyst that takes the experience does not call this. As in
     /// NeoForge's `dropAllDeathLoot`, it fires after the loot rolls and just
     /// before `living_drops` hears the item list. Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::living_experience_drop::ServerGame<'_>::native_living_experience_drop", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::living_experience_drop::ServerGame<'_>::native_living_experience_drop",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

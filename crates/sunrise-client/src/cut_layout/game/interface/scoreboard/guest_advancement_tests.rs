@@ -1,7 +1,7 @@
 use super::*;
+use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::Dim;
 use sunrise_gameplay_common::game::commands_common::Target;
-use sunrise_core::geometry::Vec3;
 
 #[test]
 #[ignore = "daily"]

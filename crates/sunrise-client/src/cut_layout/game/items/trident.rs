@@ -1,4 +1,3 @@
-
 #![cfg(test)]
 #[cfg(test)]
 #[path = "trident/impact_tests.rs"]
@@ -7,18 +6,22 @@ pub(crate) mod impact_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
-use sunrise_core::geometry::{Aabb, Vec3};
-use sunrise_items::items::ItemStack;
-use sunrise_sim::arrows::Pickup;
+    use sunrise_core::geometry::{Aabb, Vec3};
+    use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
+    use sunrise_items::items::ItemStack;
+    use sunrise_sim::arrows::Pickup;
 
-/// A stack can reach its final durability point after use began. The release
+    /// A stack can reach its final durability point after use began. The release
     /// guard is independent of admission, and short charges still do nothing.
     #[test]
     #[ignore = "daily"]
     fn trident_release_rechecks_stack_durability_after_charge() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::PlayerMotion, sunrise_gameplay_common::game::Progress, crate::game::Settings, crate::game::load_resources};
         use sunrise_core::nbt::Tag;
+        use {
+            crate::game::Settings, crate::game::load_resources,
+            sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::PlayerMotion,
+            sunrise_gameplay_common::game::Progress,
+        };
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -40,7 +43,8 @@ use sunrise_sim::arrows::Pickup;
             std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                 .join("trident-release"),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -50,8 +54,7 @@ use sunrise_sim::arrows::Pickup;
             crate::game::profile_resolver,
         )
         .unwrap();
-        game.player =
-            Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 200.0, 4.5)).unwrap());
+        game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 200.0, 4.5)).unwrap());
         let mut stack = ItemStack::new("minecraft:trident", 1);
         stack.damage = 8;
         stack
@@ -94,13 +97,17 @@ use sunrise_sim::arrows::Pickup;
         assert_eq!(game.tridents[1].pickup, Pickup::CreativeOnly);
         assert!(game.held().is_some());
     }
-/// `TridentItem.releaseUsing` launches a Riptide III player along the float look vector
+    /// `TridentItem.releaseUsing` launches a Riptide III player along the float look vector
     /// scaled to 3.0 by its float length, added to the velocity it had. The expected components
     /// are computed apart from the code, with every step rounded to f32 as the look is.
     #[test]
     #[ignore = "daily"]
     fn riptide_launch_preserves_float_push() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::PlayerMotion, sunrise_gameplay_common::game::Progress, crate::game::Settings, crate::game::load_resources};
+        use {
+            crate::game::Settings, crate::game::load_resources,
+            sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::PlayerMotion,
+            sunrise_gameplay_common::game::Progress,
+        };
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -122,7 +129,8 @@ use sunrise_sim::arrows::Pickup;
             std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                 .join("trident-riptide"),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -161,7 +169,7 @@ use sunrise_sim::arrows::Pickup;
         assert_eq!(velocity.y, f64::from_bits(0xbfea_6d1e_9999_999a));
         assert_eq!(velocity.z, f64::from_bits(0x4005_ee9e_c666_6666));
     }
-/// TridentItem.releaseUsing on the ground: the riptide's `move(SELF, (0, 1.1999999, 0))` is the player's own
+    /// TridentItem.releaseUsing on the ground: the riptide's `move(SELF, (0, 1.1999999, 0))` is the player's own
     /// move, whose end writes the ground state, so the player is in the air for the rest of the tick (and travels
     /// with air friction) as vanilla's is.
     #[test]

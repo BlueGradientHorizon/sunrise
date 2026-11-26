@@ -180,8 +180,6 @@ mod tests {
         bad.vibration = Some((PositionSource::Block([0; 3]), [0.0, f64::NAN, 0.0], 3));
         assert!(!finite_options(&bad));
     }
-
-    
 }
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

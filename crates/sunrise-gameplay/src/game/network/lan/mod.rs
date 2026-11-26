@@ -11,6 +11,9 @@ pub(in crate::game) mod residency;
 pub(in crate::game) mod viewed_areas;
 
 use super::shield::OFFHAND_SLOT;
+use event_timings::{EventTimings, UseDetail, describe_burst, event_kind, note_event};
+use std::{collections::HashMap, sync::Arc, time::Instant};
+use sunrise_game_data::{Result, text::Text};
 pub use sunrise_gameplay_common::game::lan_common::{LanSettings, sync};
 use sunrise_gameplay_common::game::{
     api_values::TryIntoApi,
@@ -18,9 +21,6 @@ use sunrise_gameplay_common::game::{
     lan_mob_metadata::mob_effects,
     native_living_body::{active_effect, mob_effect},
 };
-use event_timings::{EventTimings, UseDetail, describe_burst, event_kind, note_event};
-use std::{collections::HashMap, sync::Arc, time::Instant};
-use sunrise_game_data::{Result, text::Text};
 use sunrise_level::{
     effects::{
         EffectInstance, ModifiedEffectParticles, ShownEffect, effect_particle,
@@ -109,7 +109,8 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         let ids = names.iter().map(|(name, _)| name.clone()).collect();
-        self.common.ui
+        self.common
+            .ui
             .registries
             .by_registry
             .entry("minecraft:dialog".to_owned())
@@ -128,12 +129,7 @@ impl crate::game::ServerGame<'_> {
     /// `PlayerList.remove`: `player.awardStat(Stats.LEAVE_GAME)` before the
     /// player is saved, heard by native mods first. Once per guest, however
     /// often they are saved.
-    pub fn award_leave_game(
-        &mut self,
-        conn: u32,
-        player: u128,
-        name: &str,
-    ) {
+    pub fn award_leave_game(&mut self, conn: u32, player: u128, name: &str) {
         let Some(play) = self
             .server
             .lan
@@ -238,7 +234,8 @@ pub(in crate::game::server_side) fn enforce_guest_game_mode(
 impl crate::game::ServerGame<'_> {
     /// The level's default point, independently of the acting player's bed or spawnpoint.
     pub(in crate::game) fn world_spawn_position(&self) -> [f64; 3] {
-        self.common.level
+        self.common
+            .level
             .world_spawn
             .map_or([0.5, 80.0, 0.5], |[x, y, z]| {
                 [f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5]
@@ -391,7 +388,9 @@ impl crate::game::ServerGame<'_> {
                 .save
                 .0
                 .tables
-                .get_or_init(|| Arc::new(sunrise_sim::save::SaveTables::new(&self.common.pack.assets)))
+                .get_or_init(|| {
+                    Arc::new(sunrise_sim::save::SaveTables::new(&self.common.pack.assets))
+                })
                 .clone(),
         );
         self.lan_update_tag_sources(&mut encoder);
@@ -533,10 +532,7 @@ impl crate::game::ServerGame<'_> {
     /// `take_parent_vehicle`, `PlayerList.save`): an integrated server's owner
     /// into the level (`/data`) and both its files (`playerdata::save_owner`),
     /// anyone else into their own file.
-    pub fn save_guest(
-        &mut self,
-        guest: &mut sunrise_sim::lan::guest::Guest,
-    ) {
+    pub fn save_guest(&mut self, guest: &mut sunrise_sim::lan::guest::Guest) {
         if !guest.participates_in_player_simulation() {
             return;
         }
@@ -824,7 +820,12 @@ impl crate::game::ServerGame<'_> {
     /// The integrated server's owner into the world's player, for `Level::write`.
     /// Returns the owner's uuid and name when they were stored.
     pub fn store_owner(&mut self) -> Option<(u128, String)> {
-        let uuid = self.server.lan.as_ref().and_then(|h| h.owner.as_ref())?.uuid;
+        let uuid = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|h| h.owner.as_ref())?
+            .uuid;
         let (riding, dim, others) = self.server.lan.as_ref().and_then(|h| {
             let g = h.hub.online_players().find(|g| g.uuid == uuid)?;
             let others = self.ridden_by_others(&h.hub.guests, &g.dimension, Some(uuid), true);
@@ -836,11 +837,10 @@ impl crate::game::ServerGame<'_> {
             .map(|(tag, _)| tag);
         let mut host = self.server.lan.take()?;
         let mut stored = None;
-        if let Some(i) = host
-            .hub
-            .guests
-            .iter()
-            .position(|g| g.uuid == uuid && g.placed && !self.server.crash_save.excludes(g.conn))
+        if let Some(i) =
+            host.hub.guests.iter().position(|g| {
+                g.uuid == uuid && g.placed && !self.server.crash_save.excludes(g.conn)
+            })
         {
             // The owner's map is the game's only during their own turn
             // (`guest_turn`); otherwise their record holds it, whoever acts.
@@ -971,7 +971,12 @@ impl crate::game::ServerGame<'_> {
         let idle_at = |p: sunrise_core::geometry::Vec3| {
             !levels.in_entity_ticking_range((p.x.floor() as i32) >> 4, (p.z.floor() as i32) >> 4)
         };
-        for m in self.common.mobs.iter().filter(|m| !m.removed && m.id > after) {
+        for m in self
+            .common
+            .mobs
+            .iter()
+            .filter(|m| !m.removed && m.id > after)
+        {
             let Some(host) = self.server.lan.as_ref() else {
                 return;
             };
@@ -1061,7 +1066,8 @@ impl crate::game::ServerGame<'_> {
             e.horizontal_collision = d.ground.horizontal_collision;
             // Entity.DATA_SHARED_FLAGS_ID: glowing 0x40 (the Glowing tag).
             if self
-                .common.persist_raw(d.id)
+                .common
+                .persist_raw(d.id)
                 .and_then(|t| sunrise_sim::save::number(t.get("Glowing")))
                 .is_some_and(|b| b != 0)
             {
@@ -1548,7 +1554,12 @@ impl crate::game::ServerGame<'_> {
                     if !mod_api::__private::listened(mod_api::HookId::PlayerToggleSneak) {
                         continue;
                     }
-                    if let Some(g) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
+                    if let Some(g) = self
+                        .server
+                        .lan
+                        .as_ref()
+                        .and_then(|host| host.hub.guest(conn))
+                    {
                         let (uuid, name) = (g.uuid, g.name.clone());
                         self.as_guest(conn, |game| {
                             game.native_player_toggle_sneak(uuid, &name, sneaking);
@@ -1584,7 +1595,12 @@ impl crate::game::ServerGame<'_> {
                     if !mod_api::__private::listened(mod_api::HookId::PlayerInput) {
                         continue;
                     }
-                    if let Some(g) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
+                    if let Some(g) = self
+                        .server
+                        .lan
+                        .as_ref()
+                        .and_then(|host| host.hub.guest(conn))
+                    {
                         let (uuid, name) = (g.uuid, g.name.clone());
                         self.as_guest(conn, |game| {
                             game.native_player_input(uuid, &name, flags);
@@ -1592,7 +1608,12 @@ impl crate::game::ServerGame<'_> {
                     }
                 }
                 HostEvent::ClientInformation(conn, old, new) => {
-                    if let Some(g) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
+                    if let Some(g) = self
+                        .server
+                        .lan
+                        .as_ref()
+                        .and_then(|host| host.hub.guest(conn))
+                    {
                         let (uuid, entity_id, name) = (g.uuid, g.entity_id, g.name.clone());
                         // The packet's raw ids become the enums once, here.
                         let old = client_info(&old);
@@ -1601,7 +1622,12 @@ impl crate::game::ServerGame<'_> {
                     }
                 }
                 HostEvent::PlayerLoaded(conn) => {
-                    if let Some(g) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
+                    if let Some(g) = self
+                        .server
+                        .lan
+                        .as_ref()
+                        .and_then(|host| host.hub.guest(conn))
+                    {
                         let (uuid, name) = (g.uuid, g.name.clone());
                         self.native_player_client_loaded_world(uuid, &name);
                     }
@@ -1612,7 +1638,12 @@ impl crate::game::ServerGame<'_> {
                     open,
                     filtering,
                 } => {
-                    if let Some(g) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) {
+                    if let Some(g) = self
+                        .server
+                        .lan
+                        .as_ref()
+                        .and_then(|host| host.hub.guest(conn))
+                    {
                         let (uuid, name) = (g.uuid, g.name.clone());
                         self.notify_vanilla_book_settings(uuid, &name, book, open, filtering);
                     }
@@ -1683,13 +1714,20 @@ impl crate::game::ServerGame<'_> {
         let events = {
             let clock_rate = self.network_clock_rate();
             let mut ctx = TickCtx {
-                sea_level: self.common.end.locator().map_or(63, |terrain| terrain.sea_level()),
+                sea_level: self
+                    .common
+                    .end
+                    .locator()
+                    .map_or(63, |terrain| terrain.sea_level()),
                 world: &mut self.common.world,
                 entities: entities.as_slice(),
                 next_entity: &mut self.server.next_entity,
                 spawn,
                 spawn_angle: self.common.level.world_spawn_angle,
-                spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&self.common.level).id(),
+                spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(
+                    &self.common.level,
+                )
+                .id(),
                 difficulty: i32::from(self.common.ui.difficulty),
                 difficulty_locked: self.common.level.difficulty_locked,
                 clock_rate,
@@ -1701,10 +1739,12 @@ impl crate::game::ServerGame<'_> {
                 streaming: Some(&self.server.streaming),
             };
             host.hub.movement_checks = (
-                self.common.ui
+                self.common
+                    .ui
                     .rules
                     .bool_at(sunrise_game_data::gamerules::vanilla::PLAYER_MOVEMENT_CHECK),
-                self.common.ui
+                self.common
+                    .ui
                     .rules
                     .bool_at(sunrise_game_data::gamerules::vanilla::ELYTRA_MOVEMENT_CHECK),
             );
@@ -1779,10 +1819,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `player_login_profile` for one admitted login: the mods' list when the packet can carry
     /// it, else the login's own, sent back to its connection.
-    pub fn answer_login_profile(
-        &mut self,
-        request: lan::login_profile::LoginProfileRequest,
-    ) {
+    pub fn answer_login_profile(&mut self, request: lan::login_profile::LoginProfileRequest) {
         use sunrise_core::profile::AccountProperty;
         let lan::login_profile::LoginProfileRequest {
             uuid,
@@ -2102,7 +2139,9 @@ impl crate::game::ServerGame<'_> {
                 states.clear();
                 // Nobody can receive past movement. A returning viewer pairs
                 // from the cart's current position/rotation, as AddEntity does.
-                self.common.carts.for_each_mut(|cart| cart.lerp_steps.clear());
+                self.common
+                    .carts
+                    .for_each_mut(|cart| cart.lerp_steps.clear());
             }
             // Persist is swapped per level, so parked dimensions retain their marks.
             self.spend_forced_meta();
@@ -2162,13 +2201,20 @@ impl crate::game::ServerGame<'_> {
                 };
                 host.hub.move_solids = solids;
                 let mut ctx = TickCtx {
-                    sea_level: self.common.end.locator().map_or(63, |terrain| terrain.sea_level()),
+                    sea_level: self
+                        .common
+                        .end
+                        .locator()
+                        .map_or(63, |terrain| terrain.sea_level()),
                     world: &mut self.common.world,
                     entities,
                     next_entity: &mut self.server.next_entity,
                     spawn,
                     spawn_angle: self.common.level.world_spawn_angle,
-                    spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&self.common.level).id(),
+                    spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(
+                        &self.common.level,
+                    )
+                    .id(),
                     difficulty: i32::from(self.common.ui.difficulty),
                     difficulty_locked: self.common.level.difficulty_locked,
                     clock_rate,
@@ -2180,10 +2226,12 @@ impl crate::game::ServerGame<'_> {
                     streaming: Some(&self.server.streaming),
                 };
                 host.hub.movement_checks = (
-                    self.common.ui
+                    self.common
+                        .ui
                         .rules
                         .bool_at(sunrise_game_data::gamerules::vanilla::PLAYER_MOVEMENT_CHECK),
-                    self.common.ui
+                    self.common
+                        .ui
                         .rules
                         .bool_at(sunrise_game_data::gamerules::vanilla::ELYTRA_MOVEMENT_CHECK),
                 );
@@ -2195,12 +2243,14 @@ impl crate::game::ServerGame<'_> {
                         (self.server.settings.entity_distance * 100.0).round() as i32;
                 }
                 host.hub.set_immediate_respawn(
-                    self.common.ui
+                    self.common
+                        .ui
                         .rules
                         .bool_at(sunrise_game_data::gamerules::vanilla::IMMEDIATE_RESPAWN),
                 );
                 host.hub.set_limited_crafting(
-                    self.common.ui
+                    self.common
+                        .ui
                         .rules
                         .bool_at(sunrise_game_data::gamerules::vanilla::LIMITED_CRAFTING),
                 );
@@ -2455,13 +2505,18 @@ impl crate::game::ServerGame<'_> {
         };
         let clock_rate = self.network_clock_rate();
         let mut ctx = TickCtx {
-            sea_level: self.common.end.locator().map_or(63, |terrain| terrain.sea_level()),
+            sea_level: self
+                .common
+                .end
+                .locator()
+                .map_or(63, |terrain| terrain.sea_level()),
             world: &mut self.common.world,
             entities,
             next_entity: &mut self.server.next_entity,
             spawn,
             spawn_angle: self.common.level.world_spawn_angle,
-            spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&self.common.level).id(),
+            spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&self.common.level)
+                .id(),
             difficulty: i32::from(self.common.ui.difficulty),
             difficulty_locked: self.common.level.difficulty_locked,
             clock_rate,
@@ -2485,10 +2540,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Level events the game queued, for the guests (`process_level_events`).
-    pub fn lan_record_events(
-        &mut self,
-        events: &[sunrise_world::level::LevelEvent],
-    ) {
+    pub fn lan_record_events(&mut self, events: &[sunrise_world::level::LevelEvent]) {
         if !self.server.audio_capture_active {
             return;
         }
@@ -2768,7 +2820,8 @@ impl crate::game::ServerGame<'_> {
         // lit neighbours. The viewed areas (#3716) are squares of their own.
         let radius = host.hub.config.view_distance + 1;
         let rule = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
         // The held players are sent the level, so their chunks are kept as the placed ones'.
@@ -3014,10 +3067,12 @@ impl LanHost {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use sunrise_gameplay_common::game::{native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _, tables::{GameItems as _, WorldTablesExt as _}};
     use super::{EventTimings, Hub, LanHost, LanSettings, OFFHAND_SLOT, living_flags};
     use sunrise_gameplay_common::game::lan_mob_metadata::{mob_freeze_meta, mob_meta};
-
+    use sunrise_gameplay_common::game::{
+        native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
+        tables::{GameItems as _, WorldTablesExt as _},
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -3527,8 +3582,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     #[cfg(any())]
     fn guest_climbable_glide() {
-        use sunrise_gameplay_common::game::{Options, Progress, Settings, load_resources};
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
+        use sunrise_gameplay_common::game::{Options, Progress, Settings, load_resources};
         use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest};
         use sunrise_sim::motion::MotionWorld;
 
@@ -3549,7 +3604,8 @@ pub(in crate::game) mod tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let res = loaded.resources;
         let mut game = crate::game::ServerGame::new(
             &res,
@@ -4556,9 +4612,12 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_guest_who_left_has_no_menu_owners() {
-        use {crate::game::server_side::decision_engine_server::ServerDecisionTarget, sunrise_gameplay_common::game::transactions::decision::Admission};
         use sunrise_sim::lan::hub::HostEvent;
         use sunrise_sim::menu::{Kind, Menu};
+        use {
+            crate::game::server_side::decision_engine_server::ServerDecisionTarget,
+            sunrise_gameplay_common::game::transactions::decision::Admission,
+        };
         super::super::native_guest_turn_tests::with_guests(|game| {
             let host = game.server.lan.as_mut().unwrap();
             for conn in [12, 13] {
@@ -4594,7 +4653,6 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_mod_changes_the_effect_particles_players_are_sent() {
-        use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
         use super::super::lan::LanSettings;
         use mod_api::{EffectParticleModificationEvent, Hooks, Host, ModEntry, Mods};
         use std::sync::{
@@ -4602,6 +4660,7 @@ pub(in crate::game) mod tests {
             atomic::{AtomicI32, AtomicUsize},
         };
         use sunrise_core::geometry::Vec3;
+        use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
         use sunrise_level::effects::EffectInstance;
         use sunrise_protocol::entity_data::{Particle, ParticleData};
         use sunrise_protocol::packets::configuration::ClientInformation;
@@ -5025,20 +5084,6 @@ pub mod world_spawn_sync_tests {
         game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         rx
     }
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
 }
 
 pub(in crate::game) mod advancement_records;
@@ -5051,8 +5096,10 @@ pub(in crate::game) mod merchant_packet_tests {
     //! Vanilla notifyTrade changes the live offer while its frozen owner retains
     //! the last outbound offer packet. No sockets, server loop or world generation.
 
-    use sunrise_gameplay_common::game::{chat_common::ChatCommonGameExt1 as _, tables::GameItems as _};
     use mod_api::HostTransaction;
+    use sunrise_gameplay_common::game::{
+        chat_common::ChatCommonGameExt1 as _, tables::GameItems as _,
+    };
 
     pub(in crate::game) struct ReplaceOnTradeVoice {
         pub(in crate::game) abort: bool,
@@ -5771,7 +5818,6 @@ pub(in crate::game) mod merchant_packet_tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 

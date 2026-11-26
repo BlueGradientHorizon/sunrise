@@ -1,7 +1,8 @@
 use super::{
-    entity_initialization::TransferredEntityState, entity_server::ServerEntity,
-    persist::ChunkKey,
+    entity_initialization::TransferredEntityState, entity_server::ServerEntity, persist::ChunkKey,
 };
+use std::collections::HashSet;
+use sunrise_core::{geometry::Vec3, nbt::Tag};
 use sunrise_gameplay_common::game::{
     commands_common::Target,
     general::{
@@ -10,8 +11,6 @@ use sunrise_gameplay_common::game::{
         quarantined_kind, read_general_record,
     },
 };
-use std::collections::HashSet;
-use sunrise_core::{geometry::Vec3, nbt::Tag};
 use sunrise_sim::join_seq::JoinSeq;
 
 impl crate::game::ServerGame<'_> {
@@ -39,11 +38,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// A general row's own record. Passengers are written by the shared tree walker.
-    pub fn general_row_record(
-        &self,
-        id: u32,
-        transferring: bool,
-    ) -> Option<GeneralEntityRecord> {
+    pub fn general_row_record(&self, id: u32, transferring: bool) -> Option<GeneralEntityRecord> {
         let row = self.common.general_row(id)?;
         if !transferring
             && general_type_catalog().save_policy(row.type_slot)
@@ -104,12 +99,7 @@ impl crate::game::ServerGame<'_> {
     /// unknown-kind path holds the compound untouched (`persist.raw`),
     /// never ticks it (an `OtherEntity` has no tick) and writes it back
     /// from that store.
-    pub fn general_quarantine_admits(
-        &self,
-        tag: &Tag,
-        kind: &str,
-        at: Vec3,
-    ) -> bool {
+    pub fn general_quarantine_admits(&self, tag: &Tag, kind: &str, at: Vec3) -> bool {
         let Some((namespace, _)) = kind.split_once(':') else {
             return true;
         };
@@ -176,7 +166,8 @@ impl crate::game::ServerGame<'_> {
                 .into_iter()
                 .filter_map(|id| self.common.general_row(id))
                 .any(|row| {
-                    self.common.resident_entities
+                    self.common
+                        .resident_entities
                         .table
                         .borrow_mut()
                         .level_uuid_candidate(destination.key(), row.uuid, None)
@@ -261,7 +252,11 @@ impl crate::game::ServerGame<'_> {
                 if transient {
                     self.common.persist.transient.insert(row.id);
                 }
-                self.common.resident_entities.general.rows.insert(index, row);
+                self.common
+                    .resident_entities
+                    .general
+                    .rows
+                    .insert(index, row);
             }
             return Err(format!("{error}"));
         }
@@ -488,10 +483,7 @@ fn general_tree_uuid_admission_refused(
     game: &crate::game::ServerGame<'_>,
     record: &GeneralEntityRecord,
 ) -> bool {
-    fn refused(
-        game: &crate::game::ServerGame<'_>,
-        record: &GeneralEntityRecord,
-    ) -> bool {
+    fn refused(game: &crate::game::ServerGame<'_>, record: &GeneralEntityRecord) -> bool {
         game.uuid_admission_refused(Some(record.uuid))
             || record.passengers.iter().any(|rider| refused(game, rider))
     }

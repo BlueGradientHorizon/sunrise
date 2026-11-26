@@ -11,10 +11,7 @@ use sunrise_world::registry::BlockStateId as EngineState;
 /// `Some(None)` for none, or None to leave it to the tree's own provider. Nothing is read or
 /// converted while no part answers the hook.
 #[allow(clippy::option_option)]
-pub fn on_tree_grow(
-    access: &mut dyn TreeGrowAccess,
-    pos: [i32; 3],
-) -> Option<Option<EngineState>> {
+pub fn on_tree_grow(access: &mut dyn TreeGrowAccess, pos: [i32; 3]) -> Option<Option<EngineState>> {
     if !mod_api::__private::has_part_hook(HookId::OnTreeGrow) {
         return None;
     }
@@ -304,4 +301,3 @@ mod tests {
         assert_eq!(placed(&index, grass, Some(coarse)), Some(Some(COARSE_DIRT)));
     }
 }
-

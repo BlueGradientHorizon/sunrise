@@ -237,8 +237,11 @@ fn a_client_command_refuses_an_argument_type_that_declares_a_provider_by_name() 
     );
 
     // The server's tree keeps the same usage.
-    let (tree, _, problems) =
-        crate::game::native_server::command_tree(&commands, &sunrise_command::Dispatcher::new(), &arguments);
+    let (tree, _, problems) = crate::game::native_server::command_tree(
+        &commands,
+        &sunrise_command::Dispatcher::new(),
+        &arguments,
+    );
     assert!(problems.is_empty(), "{problems:?}");
     assert_eq!(
         tree["children"]["warp"]["children"]["go"]["children"]["world"]["children"]["name"]["custom_argument"],

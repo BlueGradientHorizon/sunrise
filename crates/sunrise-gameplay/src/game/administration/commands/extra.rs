@@ -241,7 +241,8 @@ impl crate::game::ServerGame<'_> {
                 // waypoint colour replaces the team colour of the name.
                 let name = match (
                     *t,
-                    self.common.score
+                    self.common
+                        .score
                         .board
                         .players_team(sunrise_gameplay_common::game::chat_common::PLAYER_NAME),
                 ) {
@@ -735,7 +736,8 @@ impl crate::game::ServerGame<'_> {
             format!("minecraft:{text}")
         };
         let index = self
-            .common.ui
+            .common
+            .ui
             .registries
             .ids("minecraft:dialog")
             .iter()

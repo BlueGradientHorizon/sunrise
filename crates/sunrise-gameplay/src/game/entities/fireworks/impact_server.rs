@@ -21,7 +21,8 @@ impl crate::game::ServerGame<'_> {
             self.native_separate_projectile_impact(id, "minecraft:firework_rocket", owner, hit);
         let at = self.common.rockets.locate(join)?;
         if self
-            .common.persist
+            .common
+            .persist
             .removals
             .contains(&super::super::commands::Target::Rocket(id))
         {

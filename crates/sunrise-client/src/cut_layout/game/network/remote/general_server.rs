@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
 #[cfg(test)]
@@ -11,13 +9,22 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_shown_pickable_general_row_receives_the_named_use_and_attack() {
-        use {sunrise_gameplay_common::game::general::GeneralEntityRecord, sunrise_gameplay_common::game::general::GeneralTypeEnvelope};
-        use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
-        use {crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::sent};
-        use sunrise_gameplay::game::native_player_death::tests::add_guest;
         use mod_api::{Flow, HostSide, InteractionResult};
         use std::sync::{Arc, Mutex};
+        use sunrise_gameplay::game::native_player_death::tests::add_guest;
         use sunrise_protocol::packets::play::Serverbound as S;
+        use {
+            crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in,
+            crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::sent,
+        };
+        use {
+            crate::game::server_side::native_entity_refs::tests::with_client_game,
+            sunrise_gameplay::game::native_entity_refs::tests::with_game,
+        };
+        use {
+            sunrise_gameplay_common::game::general::GeneralEntityRecord,
+            sunrise_gameplay_common::game::general::GeneralTypeEnvelope,
+        };
         use {
             sunrise_level::chunk::Chunk, sunrise_sim::first_person_sim::Hand,
             sunrise_sim::motion::PlayerMotion,
@@ -179,9 +186,9 @@ pub(crate) mod tests {
                         (Event::Attack, id, PACKAGE.into())
                     ]
                 );
-                game.persist
-                    .removals
-                    .push(sunrise_gameplay_common::game::commands_common::Target::General(id as u32));
+                game.persist.removals.push(
+                    sunrise_gameplay_common::game::commands_common::Target::General(id as u32),
+                );
                 assert_eq!(
                     game.guest_attack(1, 0, id),
                     Err(mod_api::ActionRefused::InvalidTarget),

@@ -1,7 +1,7 @@
 //! `/data modify ... compute` (DataCommands.decorateModification's compute
 //! source, over LootContextSources).
-use sunrise_core::nbt::Tag;
 use super::*;
+use sunrise_core::nbt::Tag;
 use sunrise_gameplay::game::game_tests::tests::server_game;
 
 /// A compute source stores the provider's value, in the loot context the

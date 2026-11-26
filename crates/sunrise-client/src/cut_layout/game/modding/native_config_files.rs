@@ -1,17 +1,15 @@
-
-
 #![cfg(test)]
 use std::fs;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1;
-use sunrise_gameplay_common::game::server_side::native_config_files::tests::path;
+    use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1;
+    use sunrise_gameplay_common::game::server_side::native_config_files::tests::path;
 
-use super::*;
-use mod_api::ConfigFileError;
+    use super::*;
+    use mod_api::ConfigFileError;
 
-/// The service through a real game and the hooks' own dispatch: a mod
+    /// The service through a real game and the hooks' own dispatch: a mod
     /// saves its registered config from `config_loading` and keeps a file in
     /// its folder, the client frame poll hands the saved text back on the client
     /// host, and a call for another mod's file is refused. A fresh process
@@ -93,7 +91,8 @@ use mod_api::ConfigFileError;
         assert!(!config.join("other").exists());
         // Outside the mod's hooks the service is no one's.
         assert_eq!(
-            sunrise_client_gameplay::game::ClientGame::config_files().read(&path("proof-common.toml")),
+            sunrise_client_gameplay::game::ClientGame::config_files()
+                .read(&path("proof-common.toml")),
             Err(ConfigFileError::NoCallingMod)
         );
     }

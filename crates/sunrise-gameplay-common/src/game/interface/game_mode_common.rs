@@ -23,10 +23,7 @@ pub fn inventory_after_infinite_materials(
 }
 
 /// `BlockPos.relative` with Java's wrapping integer arithmetic.
-pub fn relative(
-    pos: [i32; 3],
-    face: sunrise_core::geometry::Direction,
-) -> [i32; 3] {
+pub fn relative(pos: [i32; 3], face: sunrise_core::geometry::Direction) -> [i32; 3] {
     let [dx, dy, dz] = face.normal();
     [
         pos[0].wrapping_add(dx),
@@ -65,52 +62,43 @@ impl crate::game::CommonGame<'_> {
 
 pub trait GameModeCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `AbstractClientPlayer.gameMode()` on a client (`PlayerInfo.getGameMode()`), or `self.mode` on a server.
-     fn player_info_game_mode(&self) -> Option<GameMode> {
+    fn player_info_game_mode(&self) -> Option<GameMode> {
         self.side_player_info_game_mode()
     }
     /// `Player.isSpectator()`: reads `PlayerInfo` on a client and `self.mode` on a server.
-     fn own_player_is_spectator(&self) -> bool {
+    fn own_player_is_spectator(&self) -> bool {
         self.player_info_game_mode() == Some(GameMode::Spectator)
     }
     /// `Player.isCreative()`: reads `PlayerInfo` on a client and `self.mode` on a server.
-     fn own_player_is_creative(&self) -> bool {
+    fn own_player_is_creative(&self) -> bool {
         self.player_info_game_mode() == Some(GameMode::Creative)
     }
     /// `Abilities.mayBuild`.
-     fn may_build(&self) -> bool {
+    fn may_build(&self) -> bool {
         self.side_may_build()
     }
     /// `Abilities.instabuild`. A client reads its live `Remote::abilities`.
-     fn instabuild(&self) -> bool {
+    fn instabuild(&self) -> bool {
         self.side_instabuild()
     }
     /// `Player.getAbilities`; Paper `Player#getAllowFlight/isFlying/getFlySpeed/getWalkSpeed`.
-     fn player_abilities(&self, player: PlayerRef) -> Option<PlayerAbilities> {
+    fn player_abilities(&self, player: PlayerRef) -> Option<PlayerAbilities> {
         self.side_player_abilities(player)
     }
     /// `ItemStack.canBreakBlockInAdventureMode` / `canPlaceOnBlockInAdventureMode` for the main hand.
-     fn adventure_predicate(&self, component: &str, pos: [i32; 3]) -> bool {
+    fn adventure_predicate(&self, component: &str, pos: [i32; 3]) -> bool {
         self.held()
             .is_some_and(|stack| self.stack_adventure_predicate(stack, component, pos))
     }
     /// `adventure_predicate` for any `stack`, not only the main hand's.
-     fn stack_adventure_predicate(
-        &self,
-        stack: &ItemStack,
-        component: &str,
-        pos: [i32; 3],
-    ) -> bool {
+    fn stack_adventure_predicate(&self, stack: &ItemStack, component: &str, pos: [i32; 3]) -> bool {
         let Some(tag) = stack.data().and_then(|d| d.other(component)) else {
             return false;
         };
         self.adventure_predicate_at(tag, pos)
     }
     /// Supported block/state/NBT portion of `AdventureModePredicate.test`.
-     fn adventure_predicate_at(
-        &self,
-        tag: &sunrise_core::nbt::Tag,
-        pos: [i32; 3],
-    ) -> bool {
+    fn adventure_predicate_at(&self, tag: &sunrise_core::nbt::Tag, pos: [i32; 3]) -> bool {
         use sunrise_core::nbt::Tag;
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let name = &self.res.facts().get(state).name;
@@ -183,22 +171,22 @@ pub trait GameModeCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         }
     }
     /// `Player.blockActionRestricted` for the block at `pos`.
-     fn block_action_restricted(&self, pos: [i32; 3]) -> bool {
+    fn block_action_restricted(&self, pos: [i32; 3]) -> bool {
         if self.spectator() {
             return true;
         }
         !self.may_build() && !self.can_break_in_adventure(pos)
     }
     /// `ItemStack.canBreakBlockInAdventureMode`.
-     fn can_break_in_adventure(&self, pos: [i32; 3]) -> bool {
+    fn can_break_in_adventure(&self, pos: [i32; 3]) -> bool {
         self.adventure_predicate("minecraft:can_break", pos)
     }
     /// `ItemStack.useOn` in adventure mode (`Player.mayUseItemAt`).
-     fn can_place_on_in_adventure(&self, clicked: [i32; 3]) -> bool {
+    fn can_place_on_in_adventure(&self, clicked: [i32; 3]) -> bool {
         self.adventure_predicate("minecraft:can_place_on", clicked)
     }
     /// `Player.mayUseItemAt(pos, face, stack)`.
-     fn may_use_item_at(
+    fn may_use_item_at(
         &self,
         may_build: bool,
         pos: [i32; 3],
@@ -213,16 +201,15 @@ pub trait GameModeCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             )
     }
     /// `Entity.doWaterSplashEffect` for a dropped item: server plays sound, client adds particles.
-     fn apply_item_splash(&mut self, splash: sunrise_sim::entities::ItemSplash) {
+    fn apply_item_splash(&mut self, splash: sunrise_sim::entities::ItemSplash) {
         self.side_apply_item_splash(splash);
     }
     /// `Level.getMinY`: the current dimension type's minimum y.
-     fn level_min_y(&self) -> i32 {
+    fn level_min_y(&self) -> i32 {
         self.side_level_min_y()
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> GameModeCommonGameExt1<'__sg> for G {}
-
 
 use crate::game::side_ops::player::PlayerSideGameExt as _;
 

@@ -32,17 +32,25 @@ impl ClientGame<'_> {
             !self.is_logical_server(),
             "remote_drown called on Server role"
         );
-        let own = self.client.remote.as_ref().is_some_and(|r| r.entity_id == id);
+        let own = self
+            .client
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.entity_id == id);
         let body = if own {
             self.common.player.as_ref().map(|p| {
                 let (at, v) = (p.position, p.velocity);
                 ([at.x, at.y, at.z], [v.x, v.y, v.z])
             })
         } else {
-            self.common.mobs.iter().find(|m| m.id == id as u32).map(|m| {
-                let (at, v) = (m.position, m.velocity);
-                ([at.x, at.y, at.z], [v.x, v.y, v.z])
-            })
+            self.common
+                .mobs
+                .iter()
+                .find(|m| m.id == id as u32)
+                .map(|m| {
+                    let (at, v) = (m.position, m.velocity);
+                    ([at.x, at.y, at.z], [v.x, v.y, v.z])
+                })
         };
         if let Some((at, v)) = body {
             self.drown_particles(at, v, 8);

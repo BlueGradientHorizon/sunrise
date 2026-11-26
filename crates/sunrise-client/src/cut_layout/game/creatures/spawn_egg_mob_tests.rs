@@ -2,9 +2,9 @@
 //! answers `SUCCESS_SERVER` for it, so `Mob.interact` posts `ENTITY_INTERACT` with the
 //! player as its source, at the mob. The offspring is `getBreedOffspring(level, this)`,
 //! so a mooshroom's 1-in-1024 colour flip is rolled with the parent as its own mate.
-use sunrise_gameplay_common::game::InteractTarget;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::{LegacyRandom, RandomSource};
+use sunrise_gameplay_common::game::InteractTarget;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::{Mob, Species, Who};
 
@@ -31,7 +31,8 @@ pub(crate) fn target(id: u32) -> Option<InteractTarget> {
 }
 
 pub(crate) fn watch() {
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
 
 pub(crate) fn posted() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
@@ -69,7 +70,8 @@ fn an_egg_used_on_a_mob_posts_entity_interact() {
     game.inventory[0] = Some(ItemStack::new("minecraft:stick", 1));
     assert!(!game.interact_mob(target(8)).unwrap());
     assert!(posted().is_empty());
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = None);
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|events| *events.borrow_mut() = None);
 }
 
 #[test]

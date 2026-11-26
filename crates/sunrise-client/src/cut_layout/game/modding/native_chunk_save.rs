@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use std::sync::Arc;
 use std::time::Instant;
@@ -7,10 +5,10 @@ use sunrise_level::chunk::Chunk;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_gameplay_common::world_biomes;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use std::time::Duration;
     use sunrise_core::nbt::{DISK_WRITE_NESTING_GUARD, Tag};
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::world_biomes;
     use sunrise_sim::save::{LevelShape, SaveDir};
 
     #[test]

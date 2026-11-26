@@ -1,11 +1,11 @@
 //! `/random`'s roll line: who hears it and who it names, and the names
 //! `/random reset` completes (RandomCommand).
-use sunrise_game_data::text::Text;
 use super::*;
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay::game::game_tests::tests::server_game};
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
+use sunrise_game_data::text::Text;
 use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
 use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
+use {sunrise_gameplay::game::game_tests::tests::server_game, sunrise_gameplay_common::game::Dim};
 
 /// The packets a guest's connection was sent, encoded.
 pub(crate) fn packets(receiver: &mpsc::Receiver<Out>) -> Vec<Vec<u8>> {
@@ -61,7 +61,10 @@ pub(crate) fn suggestions(receiver: &mpsc::Receiver<Out>) -> Vec<String> {
 /// A server with two guests on it (`conn` 2 and 7).
 pub(crate) fn server_with_guests<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
-) -> (sunrise_gameplay::game::ServerGame<'a>, Vec<mpsc::Receiver<Out>>) {
+) -> (
+    sunrise_gameplay::game::ServerGame<'a>,
+    Vec<mpsc::Receiver<Out>>,
+) {
     let mut game = server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);

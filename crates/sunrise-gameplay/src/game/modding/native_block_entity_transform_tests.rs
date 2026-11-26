@@ -1,7 +1,7 @@
 //! Placement exercises the real processor and the game-side registration bridge.
-use sunrise_gameplay_common::game::native_block_entity_transform::prepare;
 use std::sync::{Arc, Mutex};
 use sunrise_core::nbt::{Compound, Limits, Tag, write_network};
+use sunrise_gameplay_common::game::native_block_entity_transform::prepare;
 use sunrise_world::{
     registry::{BlockRegistry, BlockStateId},
     worldgen::{

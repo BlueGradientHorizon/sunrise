@@ -3,14 +3,8 @@ use super::*;
 use sunrise_level::fast_hash::FxHashMap;
 
 impl crate::game::CommonGame<'_> {
-
     /// Store one cell's dynamic-light emission in its chunk when the answer changed.
-    pub fn store_light_emission(
-        &mut self,
-        key: (i32, i32),
-        cell: u32,
-        emission: Option<u8>,
-    ) {
+    pub fn store_light_emission(&mut self, key: (i32, i32), cell: u32, emission: Option<u8>) {
         let Some(chunk) = self.world.chunks.get_mut(&key) else {
             return;
         };
@@ -27,7 +21,7 @@ impl crate::game::CommonGame<'_> {
 
 pub trait LightEmissionGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Query dynamic light emission for chunks newly loaded into this level.
-     fn ask_loaded_light_emission(&mut self) {
+    fn ask_loaded_light_emission(&mut self) {
         if !self.pack.chunk_context.light.any_dynamic() {
             return;
         }
@@ -38,7 +32,7 @@ pub trait LightEmissionGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// Query every dynamic-light cell of resident chunk `key` and apply the answers.
-     fn ask_chunk_light_emission(&mut self, key: (i32, i32)) {
+    fn ask_chunk_light_emission(&mut self, key: (i32, i32)) {
         let dimension = self.current_light_emission_dimension();
         let Some(chunk) = self.world.chunks.get(&key) else {
             return;
@@ -58,7 +52,7 @@ pub trait LightEmissionGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// Query dynamic-light cells affected by this update's light edits before relighting.
-     fn ask_edited_light_emission(&mut self) {
+    fn ask_edited_light_emission(&mut self) {
         self.world.light_checks.clear();
         if self.world.light_edits.is_empty() || !self.pack.chunk_context.light.any_dynamic() {
             return;
@@ -84,13 +78,13 @@ pub trait LightEmissionGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// Dimension of the level in play, including a client's custom dimension.
-     fn current_light_emission_dimension(&self) -> LevelDimension {
+    fn current_light_emission_dimension(&self) -> LevelDimension {
         self.native_current_level()
             .map_or_else(|| self.dim.level(), light_emission_dimension)
     }
 
     /// Query one cell's dynamic light emission, clamped to 15.
-     fn ask_light_emission(
+    fn ask_light_emission(
         &self,
         dimension: LevelDimension,
         x: i32,
@@ -104,7 +98,6 @@ pub trait LightEmissionGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> LightEmissionGameExt1<'__sg> for G {}
-
 
 /// Store dynamic-light answers on a chunk and mark it for relight when they changed.
 pub fn apply_chunk_light_emission(

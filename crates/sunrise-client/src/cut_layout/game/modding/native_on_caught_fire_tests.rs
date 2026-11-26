@@ -1,12 +1,12 @@
 //! `on_caught_fire` heard by a block Part (#3185): the listener gets the burned block's old state
 //! and the face toward the fire, and what it writes through its level is in the world.
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{
     self, BlockPart, BlockUpdateFlags, FireOddsEvent, Hooks, LevelWriteHost, OnCaughtFireEvent,
     Registrar,
 };
 use sunrise_core::{geometry::Direction, position::BlockPos};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_world::level::LevelAccess;
 
 /// Wool that, burned from its west face, leaves its old state on the cell above.
@@ -96,7 +96,8 @@ fn a_block_part_hears_it_burned_and_writes_the_level() {
             assert_eq!(calls.load(Ordering::SeqCst), 1);
             game.world.set(1, 64, 0, wool).unwrap();
             game.world.set(1, 65, 0, air).unwrap();
-            game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+            game.options.execution_role =
+                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
             game.options.dedicated = None;
             assert_eq!(
                 burn(game, Direction::West),

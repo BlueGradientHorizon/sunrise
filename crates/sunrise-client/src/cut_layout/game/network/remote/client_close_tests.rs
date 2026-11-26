@@ -1,4 +1,7 @@
-use {sunrise_gameplay_common::game::remote::C, sunrise_gameplay_common::game::remote::Tag, sunrise_gameplay_common::game::remote::play};
+use {
+    sunrise_gameplay_common::game::remote::C, sunrise_gameplay_common::game::remote::Tag,
+    sunrise_gameplay_common::game::remote::play,
+};
 
 pub(in crate::game) fn isolated(name: &str, body: impl FnOnce()) {
     let test = if name.contains("::") {
@@ -12,7 +15,10 @@ pub(in crate::game) fn isolated(name: &str, body: impl FnOnce()) {
     sunrise_gameplay_common::game::in_own_process(&test, body);
 }
 
-pub(in crate::game) fn deliver(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, packet: C) {
+pub(in crate::game) fn deliver(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    packet: C,
+) {
     let bytes = packet.encode();
     let mut reader = sunrise_protocol::buf::Reader::new(&bytes);
     game.handle_packet(C::decode(reader.varint().unwrap(), reader.rest()).unwrap())

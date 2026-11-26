@@ -64,7 +64,10 @@ impl crate::game::ClientGame<'_> {
                 0.0,
                 dz * flip * 3.0 * random.next_double(),
             ];
-            self.client.particles.0.add(&options, [x, hit.point[1], z], v);
+            self.client
+                .particles
+                .0
+                .add(&options, [x, hit.point[1], z], v);
         }
     }
     /// `BrushableBlockRenderer`: reveal the item from the first brushed face.
@@ -74,11 +77,7 @@ impl crate::game::ClientGame<'_> {
         });
     }
     /// The items [`Self::brushable_geometry`] draws.
-    pub fn brushable_items(
-        &self,
-        camera: glam::DVec3,
-        mut draw: impl FnMut(BlockItemDraw),
-    ) {
+    pub fn brushable_items(&self, camera: glam::DVec3, mut draw: impl FnMut(BlockItemDraw)) {
         use sunrise_assets::item_model::DisplayContext;
         let _items = sunrise_level::spans::raw_flight_guard("block_entity_items");
         let reach = Reach::Default;
@@ -97,7 +96,8 @@ impl crate::game::ClientGame<'_> {
             }
             let state = self.common.world.block(key.0, key.1, key.2);
             let progress = self
-                .common.pack
+                .common
+                .pack
                 .assets
                 .registry
                 .state(state)

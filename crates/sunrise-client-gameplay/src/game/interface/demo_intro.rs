@@ -105,7 +105,9 @@ impl crate::game::ClientGame<'_> {
                 self.client.demo_intro = Some(intro);
                 self.commit_screen_transition();
             } else {
-                self.set_screen_with(Screen::DemoIntro, |game| game.client.demo_intro = Some(intro));
+                self.set_screen_with(Screen::DemoIntro, |game| {
+                    game.client.demo_intro = Some(intro)
+                });
             }
             if self.client.screen == Screen::DemoIntro {
                 self.capture(false);

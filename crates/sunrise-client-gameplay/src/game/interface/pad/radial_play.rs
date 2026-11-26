@@ -91,8 +91,8 @@ impl crate::game::ClientGame<'_> {
             if radial::stick_length(sticks[i]) < tilts[i].rest {
                 self.client.pad.0.radial_rested[i] = true;
             }
-            let reach =
-                radial::stick_length(sticks[i]).max(radial::stick_length(self.client.pad.0.peaks[i]));
+            let reach = radial::stick_length(sticks[i])
+                .max(radial::stick_length(self.client.pad.0.peaks[i]));
             let over = reach >= tilts[i].select;
             let may = !open || self.client.pad.0.radial_rested[i];
             if over && !self.client.pad.0.radial_over[i] && may {

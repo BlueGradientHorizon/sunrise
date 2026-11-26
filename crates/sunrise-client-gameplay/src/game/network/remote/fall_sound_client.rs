@@ -1,4 +1,3 @@
-
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     pub(in crate::game::client_side) fn block_fall(

@@ -1,10 +1,8 @@
-use sunrise_gameplay_common::game::{
-    native_passages::{
-        Dirty, MAX_PER_CHUNK, MAX_PER_LEVEL, check, form, passage_carried, passage_chunk_of,
-        passage_turned, passage_within_reach, passage_yaw_turn,
-    },
-};
 use mod_api::{LevelRef, Passage, PassageId, PassageRegistrationError as Refused, Vec3};
+use sunrise_gameplay_common::game::native_passages::{
+    Dirty, MAX_PER_CHUNK, MAX_PER_LEVEL, check, form, passage_carried, passage_chunk_of,
+    passage_turned, passage_within_reach, passage_yaw_turn,
+};
 use sunrise_protocol::passage_sync::Message;
 
 impl crate::game::ServerGame<'_> {
@@ -132,7 +130,8 @@ impl crate::game::ServerGame<'_> {
         chunk: [i32; 2],
     ) {
         let Some(list) = self
-            .common.passages
+            .common
+            .passages
             .levels
             .get(&level.dimension())
             .and_then(|l| l.chunks.get(&chunk))
@@ -208,7 +207,8 @@ impl crate::game::ServerGame<'_> {
         let host = self.server.lan.as_ref().expect("checked");
         let g = &host.hub.guests[gi];
         let epoch = self
-            .common.native_lifecycle
+            .common
+            .native_lifecycle
             .epoch()
             .ok_or(Refusal::UnknownPassage)?;
         let player = mod_api::__private::game::player_ref(
@@ -247,7 +247,8 @@ impl crate::game::ServerGame<'_> {
         }
         let level = self.level(&g.dimension).ok_or(Refusal::UnknownPassage)?;
         let p = self
-            .common.passages
+            .common
+            .passages
             .find(level.dimension(), id)
             .ok_or(Refusal::UnknownPassage)?;
         if p.destination_level.is_some() {

@@ -62,7 +62,12 @@ impl crate::game::ServerGame<'_> {
             pos[1].floor() as i32,
             pos[2].floor() as i32,
         );
-        if !self.common.world.chunks.contains_key(&(cell.x >> 4, cell.z >> 4)) {
+        if !self
+            .common
+            .world
+            .chunks
+            .contains_key(&(cell.x >> 4, cell.z >> 4))
+        {
             return false;
         }
         let mut damage =

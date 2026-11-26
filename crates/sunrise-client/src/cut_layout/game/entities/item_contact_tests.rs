@@ -1,17 +1,17 @@
-use std::sync::Arc;
-use sunrise_level::world::World;
-use sunrise_core::geometry::Vec3;
-use sunrise_core::position::BlockPos;
-use sunrise_items::items::ItemStack;
-use sunrise_sim::entities::ItemEntity;
 use super::*;
-use sunrise_gameplay_common::{game_side, world_items};
 use mod_api::{
     self, BlockPart, Flow, Hooks, HostSide, ItemAfterVerticalCollisionEvent, Registrar,
     RegistrationContext,
 };
+use std::sync::Arc;
 use std::sync::Mutex;
+use sunrise_core::geometry::Vec3;
+use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::{game_side, world_items};
+use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
+use sunrise_level::world::World;
+use sunrise_sim::entities::ItemEntity;
 use sunrise_sim::join_seq::Joined as _;
 
 type Contact = (bool, u32, [i32; 3], [f64; 3], u32);
@@ -238,7 +238,10 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
     sunrise_gameplay_common::game::in_own_process(
         "game::server_side::item_contact_tests::item_restitution_uses_the_legacy_contact_on_both_simulating_sides",
         || {
-            use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+            use {
+                crate::game::server_side::native_entity_refs::tests::with_client_game,
+                sunrise_gameplay::game::native_entity_refs::tests::with_game,
+            };
             let part = BounceProbe::default();
             let mods: mod_api::Mods =
                 vec![mod_api::ModEntry::new("bounce", Box::new(part.clone()))].into();
@@ -249,11 +252,7 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
                     game: &mut G,
                     client: bool,
                     part: &BounceProbe,
-                    mut make_item: impl FnMut(
-                        &mut G,
-                        [f64; 3],
-                        [f64; 3],
-                    ) -> ItemEntity,
+                    mut make_item: impl FnMut(&mut G, [f64; 3], [f64; 3]) -> ItemEntity,
                 ) {
                     let registry = game.pack.assets.registry;
                     let block = |name| registry.default_state(name).unwrap();
@@ -412,7 +411,10 @@ fn item_restitution_uses_the_legacy_contact_on_both_simulating_sides() {
 #[test]
 #[ignore = "daily"]
 fn tnt_cart_fall_dispatches_restitution_only_if_the_cart_survives() {
-    use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
+    use {
+        sunrise_gameplay_common::game::minecarts::CartKind,
+        sunrise_gameplay_common::game::minecarts::Minecart,
+    };
     sunrise_gameplay_common::game::in_own_process(
         "game::server_side::item_contact_tests::tnt_cart_fall_dispatches_restitution_only_if_the_cart_survives",
         || {
@@ -429,9 +431,9 @@ fn tnt_cart_fall_dispatches_restitution_only_if_the_cart_survives() {
                         .registry
                         .default_state("minecraft:glass")
                         .unwrap();
-                    use sunrise_gameplay_common::game::piston_push::Lid;
                     use mod_api::MoveCause;
                     use sunrise_core::geometry::Aabb;
+                    use sunrise_gameplay_common::game::piston_push::Lid;
 
                     for mover in [
                         None,
@@ -548,7 +550,8 @@ fn item_support_survives_idle_then_clears_on_an_airborne_move() {
                     20,
                 );
                 let mut item = game.dropped[0].clone();
-                let tick = |game: &mut sunrise_gameplay::game::ServerGame<'_>, item: &mut ItemEntity| {
+                let tick = |game: &mut sunrise_gameplay::game::ServerGame<'_>,
+                            item: &mut ItemEntity| {
                     game.tick_item_with_block_contacts(item, None, &[], false, &mut |_| {})
                 };
                 assert_eq!(tick(game, &mut item), (true, false));
@@ -652,8 +655,11 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
     sunrise_gameplay_common::game::in_own_process(
         "game::server_side::item_contact_tests::step_on_edits_grounded_bodies_before_inside_effects_and_settle",
         || {
-            use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
             use sunrise_sim::motion::{MotionWorld, PlayerMotion};
+            use {
+                crate::game::server_side::native_entity_refs::tests::with_client_game,
+                sunrise_gameplay::game::native_entity_refs::tests::with_game,
+            };
 
             let part = StepProbe::default();
             let mods: mod_api::Mods =
@@ -680,22 +686,21 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                     if !client {
                         game.world.set(4, 64, 4, web).unwrap();
                     }
-                    let tick =
-                        |game: &mut G, item: &mut ItemEntity, escape| {
-                            sunrise_sim::block_contact::in_level(
-                                sunrise_sim::parallel::TickThread::mint(),
-                                Some("minecraft:overworld"),
-                                || {
-                                    game.tick_item_with_block_contacts(
-                                        item,
-                                        escape,
-                                        &[],
-                                        client,
-                                        &mut |_| {},
-                                    )
-                                },
-                            )
-                        };
+                    let tick = |game: &mut G, item: &mut ItemEntity, escape| {
+                        sunrise_sim::block_contact::in_level(
+                            sunrise_sim::parallel::TickThread::mint(),
+                            Some("minecraft:overworld"),
+                            || {
+                                game.tick_item_with_block_contacts(
+                                    item,
+                                    escape,
+                                    &[],
+                                    client,
+                                    &mut |_| {},
+                                )
+                            },
+                        )
+                    };
                     let clear_calls = || std::mem::take(&mut *part.calls.lock().unwrap());
                     let mut item = spawn(game, 2, 64.25);
                     assert_eq!(tick(game, &mut item, None), (true, false));
@@ -733,12 +738,15 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                     player.entity_id = 77;
                     player.ground.on_ground = true;
                     player.shift_key_down = true;
-                    let (common, state) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
+                    let (common, state) =
+                        sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
                     let level = common.native_lifecycle.epoch().and_then(|epoch| {
                         let key = common.dim.key();
                         let id = mod_api::__private::dimension_id(key)?;
                         Some(mod_api::LevelRef::with_generation(
-                            epoch, key, sunrise_gameplay_common::game::Side::levels_generation(state, id),
+                            epoch,
+                            key,
+                            sunrise_gameplay_common::game::Side::levels_generation(state, id),
                         ))
                     });
                     let side = sunrise_gameplay_common::game_side!(
@@ -806,7 +814,10 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                     assert_eq!(game.armor_stands[0].velocity.x, 0.5);
                     assert_eq!(clear_calls(), [(false, 78, floor, false)]);
 
-                    use {sunrise_gameplay::game::native_entity_refs::tests::bind_acting_guest, sunrise_gameplay::game::native_entity_refs::tests::bind_local_player};
+                    use {
+                        sunrise_gameplay::game::native_entity_refs::tests::bind_acting_guest,
+                        sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+                    };
                     let seat = Vec3::new(8.5, 64.0, 4.5);
                     game.world.set(8, 63, 4, stone).unwrap();
                     game.player = Some(PlayerMotion::new(game.motion, seat).unwrap());
@@ -824,8 +835,12 @@ fn step_on_edits_grounded_bodies_before_inside_effects_and_settle() {
                         .update(0, |guest| {
                             guest.vehicle = Some(79);
                         });
-                    let mut boat =
-                        sunrise_gameplay_common::game::boats_common::Boat::new(79, "oak".into(), seat, 0.0);
+                    let mut boat = sunrise_gameplay_common::game::boats_common::Boat::new(
+                        79,
+                        "oak".into(),
+                        seat,
+                        0.0,
+                    );
                     boat.ground.on_ground = true;
                     game.boats.push(boat);
                     game.tick_boats();
@@ -894,7 +909,10 @@ fn step_on_hurts_the_stepping_body_and_guards_its_block_writes() {
     sunrise_gameplay_common::game::in_own_process(
         "game::server_side::item_contact_tests::step_on_hurts_the_stepping_body_and_guards_its_block_writes",
         || {
-            use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+            use {
+                crate::game::server_side::native_entity_refs::tests::with_client_game,
+                sunrise_gameplay::game::native_entity_refs::tests::with_game,
+            };
             let part = StepWrites::default();
             let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
                 "step_writes",
@@ -904,7 +922,9 @@ fn step_on_hurts_the_stepping_body_and_guards_its_block_writes() {
             mod_platform::testing::with_mods(mods.clone(), || {
                 sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
                 sunrise_gameplay_common::game::native_hooks::install_block_contact_hooks();
-                let run = |game: &mut sunrise_gameplay::game::ServerGame<'_>, client, change_first| {
+                let run = |game: &mut sunrise_gameplay::game::ServerGame<'_>,
+                           client,
+                           change_first| {
                     let registry = game.pack.assets.registry;
                     let stone = registry.default_state("minecraft:stone").unwrap();
                     let glass = registry.default_state("minecraft:glass").unwrap();
@@ -1464,8 +1484,12 @@ fn contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag() {
                         "direct hit, boots: {wears_boots}, bypass tag: {bypass}"
                     );
                     game.player = Some(new_player());
-                    let (common, state) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
-                    let items = match (&common.server_items, sunrise_gameplay_common::game::Side::world_tables(state)) {
+                    let (common, state) =
+                        sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
+                    let items = match (
+                        &common.server_items,
+                        sunrise_gameplay_common::game::Side::world_tables(state),
+                    ) {
                         (Some(items), _) => &**items,
                         (None, Some(tables)) => &tables.items,
                         (None, None) => common.res.items(),
@@ -1474,7 +1498,9 @@ fn contact_hurt_uses_the_player_creative_and_frost_walker_bypass_tag() {
                         let key = common.dim.key();
                         let id = mod_api::__private::dimension_id(key)?;
                         Some(mod_api::LevelRef::with_generation(
-                            epoch, key, sunrise_gameplay_common::game::Side::levels_generation(state, id),
+                            epoch,
+                            key,
+                            sunrise_gameplay_common::game::Side::levels_generation(state, id),
                         ))
                     });
                     let side = sunrise_gameplay_common::game_side!(

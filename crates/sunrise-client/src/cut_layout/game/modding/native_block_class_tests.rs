@@ -1,6 +1,6 @@
 //! `BlockStates::block_class`: vanilla's class of a block, subclasses included, not a tag.
-use sunrise_gameplay_common::game::native_block_tables::BlockTables;
 use mod_api::BlockClass::{self, Entity, IronBars, StainedGlassPane, Stair, TrapDoor};
+use sunrise_gameplay_common::game::native_block_tables::BlockTables;
 
 const ALL: [BlockClass; 5] = [Stair, Entity, IronBars, StainedGlassPane, TrapDoor];
 

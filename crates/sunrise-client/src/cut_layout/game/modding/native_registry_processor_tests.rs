@@ -1,8 +1,8 @@
 //! Processor and pool admission uses the gameplay block-property bindings.
 #![cfg(test)]
 
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use std::{path::Path, sync::Arc};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 
 fn write(path: &Path, bytes: impl AsRef<[u8]>) {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();

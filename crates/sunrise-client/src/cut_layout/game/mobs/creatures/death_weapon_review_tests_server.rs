@@ -1,8 +1,8 @@
-use sunrise_gameplay_common::game::TryIntoApi;
-use sunrise_items::items::ItemStack;
 use super::tests::WeaponProbe;
 use super::*;
 use std::sync::{Arc, Mutex};
+use sunrise_gameplay_common::game::TryIntoApi;
+use sunrise_items::items::ItemStack;
 
 pub(crate) fn fixture_with_source(
     expected: Option<ItemStack>,

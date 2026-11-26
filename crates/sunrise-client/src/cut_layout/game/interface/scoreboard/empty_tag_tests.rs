@@ -1,12 +1,15 @@
-use std::collections::HashSet;
 use super::*;
+use std::collections::HashSet;
 use sunrise_core::geometry::Vec3;
 
 #[test]
 #[ignore = "daily"]
 fn empty_tag_selectors_follow_actual_tag_edits() {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_sim::motion::PlayerMotion;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -24,7 +27,8 @@ fn empty_tag_selectors_follow_actual_tag_edits() {
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,

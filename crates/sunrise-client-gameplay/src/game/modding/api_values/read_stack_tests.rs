@@ -1,5 +1,10 @@
-use {crate::game::api_values::*, sunrise_gameplay_common::game::api_values::{ApiStack, JavaString, Tag, stack_limit_tests, stack_value}};
 use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
+use {
+    crate::game::api_values::*,
+    sunrise_gameplay_common::game::api_values::{
+        ApiStack, JavaString, Tag, stack_limit_tests, stack_value,
+    },
+};
 
 #[test]
 fn read_encoding_keeps_nonresident_stack_limits() {

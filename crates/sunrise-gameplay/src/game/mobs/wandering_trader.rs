@@ -5,7 +5,6 @@ use super::Dim;
 use sunrise_gameplay::wandering_trader::{TraderLevel, roll};
 use sunrise_sim::save::{read_dat, write_dat};
 
-
 impl crate::game::ServerGame<'_> {
     fn trader_path(&self) -> std::path::PathBuf {
         self.server
@@ -35,7 +34,8 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn tick_wandering_trader(&mut self) {
         if self.common.dim != Dim::Overworld
             || !self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_WANDERING_TRADERS)
         {
@@ -55,11 +55,13 @@ impl TraderLevel for crate::game::ServerGame<'_> {
         sunrise_gameplay_common::game::CommonGame::motion_top(self, x, z)
     }
     fn chunk_biome_has(&self, tag: &str, pos: [i32; 3]) -> bool {
-        self.common.world
+        self.common
+            .world
             .chunks
             .get(&(pos[0] >> 4, pos[2] >> 4))
             .map(|c| {
-                self.common.res
+                self.common
+                    .res
                     .biomes()
                     .get(c.biome(pos[0], pos[1], pos[2]))
                     .name

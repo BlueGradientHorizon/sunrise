@@ -1,13 +1,11 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod item_resource_property_tests {
-    use sunrise_gameplay_common::game::tables::GameItems;
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
-use crate::game::native_components::item_resource_property_tests::engine;
+    use crate::game::native_components::item_resource_property_tests::engine;
     use crate::game::native_components::item_resource_property_tests::*;
     use serde_json::Value;
+    use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
+    use sunrise_gameplay_common::game::tables::GameItems;
 
     pub(crate) fn run_effective_resource_properties_match_vanilla() {
         let inputs = std::env::var("SUNRISE_ITEM_PROPERTIES_CASES")

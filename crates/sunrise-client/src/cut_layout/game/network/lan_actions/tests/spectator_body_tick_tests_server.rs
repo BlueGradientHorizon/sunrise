@@ -1,15 +1,15 @@
-use sunrise_core::geometry::Vec3;
-use sunrise_sim::lan::guest::SPECTATOR;
-use sunrise_sim::motion::PlayerMotion;
 use super::*;
 use crate::game::lan_actions::tick::spectator_body_tick_tests::luck_left;
 use crate::game::lan_actions::tick::spectator_body_tick_tests::pearl_left;
 use crate::game::lan_actions::tick::spectator_body_tick_tests::placed;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-use sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan;
 use mod_api::HostSide;
 use std::sync::Arc;
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan;
 use sunrise_level::chunk::Chunk;
+use sunrise_sim::lan::guest::SPECTATOR;
+use sunrise_sim::motion::PlayerMotion;
 
 #[test]
 #[ignore = "daily"]

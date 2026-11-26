@@ -1,5 +1,3 @@
-
-
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
     /// A server entity is about to be teleported by `/tp` or `/teleport`

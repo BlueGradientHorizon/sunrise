@@ -1,7 +1,7 @@
 //! Client-side sculk visuals and darkness effect fade blending.
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 use sunrise_core::{geometry::Direction, position::BlockPos, random::RandomSource};
+use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_level::{
     effects::{EffectInstance, PlayerEffects},
@@ -63,7 +63,8 @@ impl ClientGame<'_> {
     }
     /// The fog's view of the darkness effect, while it is on.
     pub(in crate::game::client_side) fn darkness_fog(&self) -> Option<f32> {
-        self.common.potions
+        self.common
+            .potions
             .effects
             .get("darkness")
             .map(|_| self.darkness_blend(self.common.clock.fraction() as f32))
@@ -171,7 +172,8 @@ impl ClientGame<'_> {
                 .0
                 .play("minecraft:block.sculk.charge", Some(c), 1.0, 1.0);
             let solid = self
-                .common.res
+                .common
+                .res
                 .facts()
                 .get(self.common.world.block(pos.x, pos.y, pos.z))
                 .full_collision;
@@ -243,7 +245,8 @@ impl ClientGame<'_> {
         }
         let state = self.common.world.block(pos.x, pos.y, pos.z);
         let waterlogged = self
-            .common.pack
+            .common
+            .pack
             .assets
             .registry
             .state(state)

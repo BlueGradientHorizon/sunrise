@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_gameplay_common::game::held_items::OFFHAND_SLOT;
 use sunrise_items::items::ItemStack;
@@ -50,7 +48,10 @@ mod durability_tests {
     #[test]
     #[ignore = "daily"]
     fn a_damage_item_part_changes_the_wear_of_a_blocking_shield() {
-        use {crate::game::server_side::damage_item_tests::Rule, crate::game::server_side::damage_item_tests::with_wear_part};
+        use {
+            crate::game::server_side::damage_item_tests::Rule,
+            crate::game::server_side::damage_item_tests::with_wear_part,
+        };
         with_wear_part("minecraft:shield", Rule::Halve, |game, wear| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             let block = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {

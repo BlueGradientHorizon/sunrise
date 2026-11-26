@@ -1,9 +1,7 @@
 //! Chat, the command registries and the per-world state behind commands
 //! (game rules, the world clock, difficulty), bound to the game.
 
-
 use super::Screen;
-use sunrise_gameplay_common::game::chat_common::{block_properties, command_export, resource_ids};
 use sunrise_client::{
     chat::{
         Chat, ChatAction, ChatScreen, ChatSource, Commands, QUEUE_EXPAND_ID, SYSTEM_INDICATOR,
@@ -14,6 +12,7 @@ use sunrise_client::{
 };
 use sunrise_command::{ArgType, Dispatcher, MOD_COMMAND};
 use sunrise_game_data::text::{ClickEvent, Style, Text};
+use sunrise_gameplay_common::game::chat_common::{block_properties, command_export, resource_ids};
 
 /// The tree the chat parses and completes with: `Remote::chat_tree`, which is
 /// a server's, once it has sent one (ClientPacketListener.commands), else the
@@ -364,9 +363,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn chat_ui_and_font_for_test(
-        &mut self,
-    ) -> (&mut ChatUiState, &sunrise_client::font::Font) {
+    pub fn chat_ui_and_font_for_test(&mut self) -> (&mut ChatUiState, &sunrise_client::font::Font) {
         (&mut self.client.chat_ui, &self.client.gui.atlas.font)
     }
     pub(in crate::game) fn client_sound_event_names(&self) -> Vec<String> {
@@ -383,7 +380,10 @@ impl crate::game::ClientGame<'_> {
         if self.common.options.dedicated.is_some() {
             return;
         }
-        let dirs = [self.common.options.resources.clone(), self.common.ui.vanilla_root.clone()];
+        let dirs = [
+            self.common.options.resources.clone(),
+            self.common.ui.vanilla_root.clone(),
+        ];
         let registry = self.common.pack.assets.registry;
         let spawned = std::thread::Builder::new()
             .name("Registries preload".into())
@@ -416,7 +416,8 @@ impl crate::game::ClientGame<'_> {
         self.common.ui.registries.target_block = hit.as_ref().map(|h| h.pos);
         self.common.ui.registries.target_point =
             hit.map(|h| h.point.map(sunrise_core::java_number::format_fixed2));
-        self.common.ui.registries.selected_entities = self.crosshair_entity_uuid().into_iter().collect();
+        self.common.ui.registries.selected_entities =
+            self.crosshair_entity_uuid().into_iter().collect();
         // ClientPacketListener.getOnlinePlayerNames on a server.
         if let Some(names) = self.remote_online_names() {
             self.common.ui.registries.players = names;
@@ -465,11 +466,7 @@ impl crate::game::ClientGame<'_> {
     /// Open the chat box on `initial`; `is_draft` when that text is the saved
     /// draft (`ChatComponent.createScreen`), which draws grey italic until it
     /// is edited.
-    pub fn begin_chat_screen(
-        &mut self,
-        initial: &str,
-        is_draft: bool,
-    ) {
+    pub fn begin_chat_screen(&mut self, initial: &str, is_draft: bool) {
         if self.common.player.is_none() {
             return;
         }
@@ -703,11 +700,7 @@ impl crate::game::ClientGame<'_> {
         self.chat_key_code(key, None)
     }
     /// A key (and the text it typed) while the chat screen is open.
-    pub fn chat_key_code(
-        &mut self,
-        key: KeyCode,
-        typed_text: Option<&str>,
-    ) -> bool {
+    pub fn chat_key_code(&mut self, key: KeyCode, typed_text: Option<&str>) -> bool {
         // The live modifiers, not `self.keys`: every ModifiersChanged runs
         // sync_toggle, which drops ShiftLeft and ControlLeft from `self.keys`
         // while a screen is open.
@@ -1321,7 +1314,10 @@ impl crate::game::ClientGame<'_> {
         // The hovered message part's tooltip (`renderComponentHoverEffect`),
         // or the text of the message tag under the cursor.
         let height = batch.height as i32;
-        let (cx, cy) = (f64::from(self.client.cursor.0), f64::from(self.client.cursor.1));
+        let (cx, cy) = (
+            f64::from(self.client.cursor.0),
+            f64::from(self.client.cursor.1),
+        );
         // handleTagIcon: the chat-modified icons over the cursor or its message.
         let (tag_tooltip, tag_icons) =
             self.client
@@ -1532,15 +1528,14 @@ impl crate::game::ClientGame<'_> {
             return None;
         }
         let root = sunrise_level::logging::player_dir().join("screenshots");
-        self.client
-            .chat_ui
-            .screenshot_writes
-            .push(super::screenshot_writer::ScreenshotWrite::start(
+        self.client.chat_ui.screenshot_writes.push(
+            super::screenshot_writer::ScreenshotWrite::start(
                 pending,
                 Some((root, file_name)),
                 message,
                 true,
-            ));
+            ),
+        );
         None
     }
     /// After a frame: report a finished F2 screenshot in chat.
@@ -1624,10 +1619,10 @@ pub(in crate::game) const LINK_COPY: usize = 1;
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-    use sunrise_gameplay_common::game::chat_common::{overworld_timelines, summonable_entities};
     use std::sync::Arc;
     use sunrise_client::chat::{ChatAbilities, ChatVisibility};
     use sunrise_command::Registries;
+    use sunrise_gameplay_common::game::chat_common::{overworld_timelines, summonable_entities};
 
     #[test]
     fn a_typed_profiler_is_the_clients_unless_the_server_owns_the_name() {
@@ -1666,7 +1661,6 @@ pub(in crate::game) mod tests {
             )
         );
     }
-
 
     /// `ChatScreen.shouldDiscardDraft`.
     #[test]
@@ -2167,6 +2161,5 @@ pub(in crate::game) mod enchantment_snapshot_tests {}
 pub(in crate::game) mod damage_type_registry_tests {}
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
-
 
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

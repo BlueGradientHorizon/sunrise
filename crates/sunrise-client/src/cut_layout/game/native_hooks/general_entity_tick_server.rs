@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use mod_api::EntityRef;
 use sunrise_core::geometry::Vec3;
@@ -10,7 +8,10 @@ pub(crate) mod tests {
     use mod_api::EntityServerScope;
     use sunrise_gameplay::game::native_hooks::general_entity_tick::GeneralTickAccess;
     use sunrise_gameplay_common::game::general::GeneralRow;
-    use {sunrise_gameplay_common::game::api_values::test_snapshot, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+    use {
+        sunrise_gameplay::game::native_entity_refs::tests::with_game,
+        sunrise_gameplay_common::game::api_values::test_snapshot,
+    };
 
     #[test]
     #[ignore = "daily"]

@@ -1,23 +1,21 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-use super::*;
+    use super::*;
 
-use mod_api::BlockEdit;
-use mod_api::BlockRun;
+    use mod_api::BlockEdit;
+    use mod_api::BlockRun;
 
-use sunrise_level::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn typed_bulk_late_refusals_preserve_the_world_and_emit_no_changes() {
-        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         use mod_api::{
             StateConstraint, StatePredicate, StatePredicateRecord, StatePredicateTarget,
         };
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             // The shared fixture is unticked; expose the dedicated-server bulk surface.
             game.options.dedicated = Some(Vec::new());

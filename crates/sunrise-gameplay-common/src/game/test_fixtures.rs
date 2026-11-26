@@ -49,9 +49,7 @@ pub fn acquire_fresh_child_permit() -> HeavyLoadPermit {
 
 /// The longest a fresh child may run: a hang in its startup or shutdown fails the parent
 /// with the child killed, instead of waiting for the whole test run's own limit.
-pub const FRESH_CASE_LIMIT: std::time::Duration =
-    std::time::Duration::from_secs(900);
-
+pub const FRESH_CASE_LIMIT: std::time::Duration = std::time::Duration::from_secs(900);
 
 /// Run `test` on a game-sized stack, preserving libtest's thread name and panic payload.
 pub fn run_with_game_stack(test: impl FnOnce() + Send + 'static) {
@@ -72,10 +70,7 @@ pub fn fixture_root() -> std::path::PathBuf {
 /// Keep a key that a test mod's `register` declared. The game fixture registers the
 /// installed mods again (`register_game_keys`), and a key's slot is stable for the process,
 /// so the repeat must declare the same key.
-pub fn record_key<K: Copy + PartialEq + std::fmt::Debug>(
-    slot: &std::sync::OnceLock<K>,
-    key: K,
-) {
+pub fn record_key<K: Copy + PartialEq + std::fmt::Debug>(slot: &std::sync::OnceLock<K>, key: K) {
     assert_eq!(
         *slot.get_or_init(|| key),
         key,
@@ -90,12 +85,7 @@ pub fn run_fresh_cases(name: &str, flag: &str, cases: &[&str]) -> bool {
 
 /// [`run_fresh_cases`] with up to `at_once` children running together, for a test that runs
 /// alone in its job: each child still has its own process and folders.
-pub fn run_fresh_cases_at_once(
-    name: &str,
-    flag: &str,
-    cases: &[&str],
-    at_once: usize,
-) -> bool {
+pub fn run_fresh_cases_at_once(name: &str, flag: &str, cases: &[&str], at_once: usize) -> bool {
     if std::env::var_os(flag).is_some() {
         return false;
     }

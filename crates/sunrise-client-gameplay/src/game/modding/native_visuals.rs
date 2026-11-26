@@ -52,11 +52,7 @@ pub fn rim_target_valid(
 
 impl ClientGame<'_> {
     /// Frame-local requests never persist after a mod is removed or a world changes.
-    pub fn native_frame_visuals(
-        &self,
-        alpha: f64,
-        lines: &mut Vec<gizmos::Line>,
-    ) -> FrameVisuals {
+    pub fn native_frame_visuals(&self, alpha: f64, lines: &mut Vec<gizmos::Line>) -> FrameVisuals {
         let mut visuals = FrameVisuals::default();
         // Held and dropped items whose block the pack's `[[lights]]` colour shine in that colour,
         // as far as their dynamic light reaches.
@@ -106,7 +102,8 @@ impl ClientGame<'_> {
                 || !(0.5..=4.0).contains(&rim.width)
                 || !close(pos.map(|v| f64::from(v) + 0.5))
                 || !rim_target_valid(
-                    self.common.world
+                    self.common
+                        .world
                         .chunks
                         .contains_key(&(pos[0].div_euclid(16), pos[2].div_euclid(16))),
                     state,

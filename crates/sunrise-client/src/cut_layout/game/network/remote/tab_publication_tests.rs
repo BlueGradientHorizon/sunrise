@@ -1,9 +1,13 @@
-use {sunrise_client_gameplay::game::client_side::remote_client::session_state::PlayerTextures, sunrise_client_gameplay::game::client_side::remote_client::session_state::ServicesKeys, sunrise_client_gameplay::game::client_side::remote_client::session_state::skin_entries};
-use sunrise_gameplay_common::game::remote::object_skin_changed;
 use std::{collections::HashMap, sync::Arc};
 use sunrise_client::skins;
 use sunrise_core::profile::AccountProperty;
+use sunrise_gameplay_common::game::remote::object_skin_changed;
 use sunrise_server_files::profiles::profile_key_keys;
+use {
+    sunrise_client_gameplay::game::client_side::remote_client::session_state::PlayerTextures,
+    sunrise_client_gameplay::game::client_side::remote_client::session_state::ServicesKeys,
+    sunrise_client_gameplay::game::client_side::remote_client::session_state::skin_entries,
+};
 
 // Offline test data: two independently generated RSA keys and SHA1withRSA
 // signatures, on the base64 property string (not its decoded JSON).

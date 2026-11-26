@@ -135,8 +135,11 @@ fn sun_protection_uses_mob_draw_and_broadcasts_break() {
         );
     });
 }
-use {sunrise_gameplay_common::game::answered_wear, sunrise_gameplay_common::game::durability_damage, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::EquipmentSlot;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay_common::game::answered_wear, sunrise_gameplay_common::game::durability_damage,
+};
 
 fn entry(slot: EquipmentSlot, new_damage: f32) -> mod_api::ArmorHurt {
     mod_api::ArmorHurt {

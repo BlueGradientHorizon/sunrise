@@ -2,8 +2,13 @@
 use super::*;
 use sunrise_sim::recipe_book::{DisplayResources, ModBookIndex};
 
-pub struct Resources<'a, 'w, S: crate::game::SideGame<'w>>(pub &'a S, pub std::marker::PhantomData<fn(&'w ()) -> &'w ()>);
-impl<'__carrier, S: crate::game::SideGame<'__carrier>> DisplayResources for Resources<'_, '__carrier, S> {
+pub struct Resources<'a, 'w, S: crate::game::SideGame<'w>>(
+    pub &'a S,
+    pub std::marker::PhantomData<fn(&'w ()) -> &'w ()>,
+);
+impl<'__carrier, S: crate::game::SideGame<'__carrier>> DisplayResources
+    for Resources<'_, '__carrier, S>
+{
     fn book(&self, key: &mod_api::item::recipe_book::RecipeBookTypeKey) -> bool {
         key.is_registered()
     }
@@ -65,7 +70,7 @@ impl<'__carrier, S: crate::game::SideGame<'__carrier>> DisplayResources for Reso
 pub trait NativeBookDisplaysGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The owning declaration generation, including its typed load refusal.
     /// Cache failures too: malformed input never invokes callbacks every frame.
-     fn ensure_mod_book_displays(&mut self) {
+    fn ensure_mod_book_displays(&mut self) {
         if self.recipe_tables.books.is_some() {
             return;
         }
@@ -79,7 +84,6 @@ pub trait NativeBookDisplaysGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeBookDisplaysGameExt1<'__sg> for G {}
-
 
 use crate::game::tables::GameItems as _;
 

@@ -35,7 +35,9 @@ pub(crate) fn spawn(dimension: &str) -> SpawnInfo {
 }
 
 /// A spectator client in the overworld, holding a zombie at (10, 64, 12) and an oak boat.
-pub(crate) fn with_spectator(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
+pub(crate) fn with_spectator(
+    test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
+) {
     with_client_game(|game| {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "CameraViewTest").unwrap();
@@ -104,7 +106,11 @@ pub(crate) fn update(
     .unwrap();
 }
 
-pub(crate) fn remove(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: i32, effect: &str) {
+pub(crate) fn remove(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    id: i32,
+    effect: &str,
+) {
     let effect = registry_id(game, "minecraft:mob_effect", effect);
     game.handle_packet(C::RemoveMobEffect(play::RemoveMobEffect { id, effect }))
         .unwrap();
@@ -322,7 +328,10 @@ fn the_camera_entitys_effect_lifecycle_is_vanillas() {
         assert_eq!(view(game).darkness, 0.0);
 
         // nightVision: 1 above 200 ticks left and for the infinite -1 only; else the flicker.
-        fn night_vision(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, duration: i32) -> f32 {
+        fn night_vision(
+            game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+            duration: i32,
+        ) -> f32 {
             update(game, ZOMBIE, "minecraft:night_vision", duration, 0);
             view(game).night_vision
         }
@@ -434,7 +443,9 @@ fn effects_count_down_on_the_ticks_their_entity_ticks() {
         for id in ids {
             update(game, id, "minecraft:speed", 100, 0);
         }
-        let left = |game: &sunrise_client_gameplay::game::ClientGame<'_>| ids.map(|id| kept(game, id).unwrap()[0].1);
+        let left = |game: &sunrise_client_gameplay::game::ClientGame<'_>| {
+            ids.map(|id| kept(game, id).unwrap()[0].1)
+        };
         game.tick_remote_entities(true);
         assert_eq!(left(game), [99; 5], "a running level ticks every entity");
         game.tick_remote_entities(false);

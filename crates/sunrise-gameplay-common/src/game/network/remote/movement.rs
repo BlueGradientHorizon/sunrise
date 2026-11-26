@@ -48,12 +48,7 @@ impl MovePacket {
     /// A position sync measures it from where the entity is, a teleport from
     /// where it is headed (`PositionMoveRotation.of`'s
     /// `getClientPositionAndRotation`).
-    pub fn snaps(
-        self,
-        handler: &SteppedInterpolation,
-        entity: PosRot,
-        to: [f64; 3],
-    ) -> bool {
+    pub fn snaps(self, handler: &SteppedInterpolation, entity: PosRot, to: [f64; 3]) -> bool {
         let from = match self {
             MovePacket::Move => return false,
             MovePacket::PositionSyncSnap => return true,

@@ -1,10 +1,10 @@
 use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-use sunrise_gameplay_common::game::test_fixtures::{
-    acquire_in_process_load_permit, fixture_facts_mut, offline_profiles, tempfile,
-};
 pub use sunrise_gameplay_common::game::test_fixtures::{
     FRESH_CASE_LIMIT, fixture_block_names, fixture_root, output_within, ran_one_test, record_key,
     resolve_parts, run_fresh_cases, run_fresh_cases_at_once, run_with_game_stack,
+};
+use sunrise_gameplay_common::game::test_fixtures::{
+    acquire_in_process_load_permit, fixture_facts_mut, offline_profiles, tempfile,
 };
 
 /// Create a hidden desktop window during winit's initial `Resumed` callback.
@@ -65,16 +65,10 @@ pub fn test_window(
 }
 
 pub fn with_client_game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
-    with_game_role_client(
-        fixture_root(),
-        ExecutionRole::Client,
-        test,
-    );
+    with_game_role_client(fixture_root(), ExecutionRole::Client, test);
 }
 
-pub fn with_uncached_client_game(
-    test: impl FnOnce(&mut crate::game::ClientGame<'_>),
-) {
+pub fn with_uncached_client_game(test: impl FnOnce(&mut crate::game::ClientGame<'_>)) {
     with_client_game(test);
 }
 
@@ -95,8 +89,8 @@ pub fn with_game_role_and_facts_client(
     test: impl FnOnce(&mut crate::game::ClientGame<'_>),
 ) {
     use crate::game::{Audio, Settings};
-    use sunrise_gameplay_common::game::{Options, resource_load::Progress};
     use mod_api::Authority;
+    use sunrise_gameplay_common::game::{Options, resource_load::Progress};
 
     sunrise_gameplay_common::game::mods::resolve_particle_providers(
         &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),
@@ -105,12 +99,18 @@ pub fn with_game_role_and_facts_client(
     let saves = tempfile::tempdir().unwrap();
     let mut settings = Settings::default();
     let mut loaded = {
-        use crate::game::client_side::resource_load_client::{StartupLoadContext, load_resources_sync};
+        use crate::game::client_side::resource_load_client::{
+            StartupLoadContext, load_resources_sync,
+        };
         let _permit = acquire_in_process_load_permit();
         load_resources_sync(
             sunrise_assets::resource_source::ResourceRoot::directory(root.clone()).into(),
             Vec::new(),
-            StartupLoadContext { vanilla_root: &root, launch_world: None, started: std::time::Instant::now() },
+            StartupLoadContext {
+                vanilla_root: &root,
+                launch_world: None,
+                started: std::time::Instant::now(),
+            },
             &mut settings,
             ExecutionRole::Client,
             &Progress::new(),

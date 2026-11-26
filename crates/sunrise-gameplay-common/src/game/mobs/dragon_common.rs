@@ -182,9 +182,8 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait DragonCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-
     /// Resolves a crosshair target id (including synthetic dragon-part ids) to its wire entity id.
-     fn wire_entity_id(&self, id: u32) -> Option<i32> {
+    fn wire_entity_id(&self, id: u32) -> Option<i32> {
         if (SPECIAL..SPECIAL + 8).contains(&id) {
             let dragon = self
                 .dragon
@@ -198,14 +197,17 @@ pub trait DragonCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The dragon the level holds and the index (`getSubEntities` order) of
     /// its part with that entity id, while the dragon is there, dying or
     /// not: a part is an entity for as long as its parent is.
-     fn resident_dragon_part<'__loan>(&'__loan self, id: u32) -> Option<(&Dragon, usize)> where '__sg: '__loan {
+    fn resident_dragon_part<'__loan>(&'__loan self, id: u32) -> Option<(&Dragon, usize)>
+    where
+        '__sg: '__loan,
+    {
         let part = self.side_resident_dragon_part_index(id)?;
         Some((self.dragon.as_ref()?, part))
     }
 
     /// The box of the dragon part or end crystal guests know as entity `id`
     /// (`EnderDragonPart`s follow the dragon's id for its tracking lifetime).
-     fn tracked_special_box(&self, id: i32) -> Option<Aabb> {
+    fn tracked_special_box(&self, id: i32) -> Option<Aabb> {
         let uid = id as u32;
         if let Some(d) = self
             .dragon
@@ -224,7 +226,7 @@ pub trait DragonCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `EndCrystalItem.useOn`'s checks: obsidian or bedrock at `pos`, air
     /// above it and no entity in the two blocks above (else FAIL).
-     fn end_crystal_fits(&self, pos: [i32; 3]) -> bool {
+    fn end_crystal_fits(&self, pos: [i32; 3]) -> bool {
         let name = &self
             .res
             .facts()
@@ -253,7 +255,6 @@ pub trait DragonCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> DragonCommonGameExt1<'__sg> for G {}
-
 
 /// `EnderDragon.recreateFromPacket`: part `part` (`0..8`) gets wire id `dragon_id + 1 + part`
 /// using Java's wrapping 32-bit integer arithmetic.
@@ -750,13 +751,7 @@ impl Dragon {
         )
     }
     /// Whether the phase, part scaling and source guards reach LivingEntity.
-    pub fn reaches_base_check(
-        &self,
-        part: usize,
-        damage: f32,
-        counts: bool,
-        arrow: bool,
-    ) -> bool {
+    pub fn reaches_base_check(&self, part: usize, damage: f32, counts: bool, arrow: bool) -> bool {
         let damage = if part != 0 && part != 1 {
             damage / 4.0 + damage.min(1.0)
         } else {
@@ -1020,7 +1015,6 @@ impl Breath {
 use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
 
 use crate::game::side_ops::modapi_hooks::ModapiHooksSideGameExt as _;
-
 
 #[cfg(any(test, feature = "test-support"))]
 impl Dragon {

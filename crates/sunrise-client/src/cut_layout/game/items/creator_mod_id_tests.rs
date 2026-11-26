@@ -1,6 +1,6 @@
 //! `ItemPart::creator_mod_id` behind `ItemResource::creator_mod_id`'s read.
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{CreatorModIdEvent, Hooks, ItemPart, Registrar, RegistrationContext};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_items::items::ItemStack;
 
 /// A bucket's Part: a stack of more than one stands for another mod's content.

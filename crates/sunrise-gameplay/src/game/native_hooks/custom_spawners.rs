@@ -1,5 +1,3 @@
-
-
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
     /// `ModifyCustomSpawnersEvent`: the level `dimension` builds its custom spawners. `spawners`

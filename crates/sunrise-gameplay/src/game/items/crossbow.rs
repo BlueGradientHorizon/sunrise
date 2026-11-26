@@ -5,11 +5,11 @@
 //! fanned Multishot angles and their shot pitches. `Player.getProjectile`
 //! finds the ammo for bows and crossbows.
 use super::view_vector;
+use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_gameplay_common::game::crossbow_common::{ARROW, CROSSBOW, FIREWORK_ROCKET};
 #[allow(unused_imports)]
 #[cfg(test)]
 use sunrise_gameplay_common::game::held_items::OFFHAND_SLOT;
-use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_items::{
     enchant::EffectContext,
     items::{ItemStack, Items},
@@ -196,7 +196,8 @@ impl crate::game::ServerGame<'_> {
         let now = (held + 1) as f32 / charge;
         let sounds = Self::charging_sounds(stack);
         let at = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z]);
         let (played, start, middle) = charge_sounds(now, self.server.crossbow_sounds, sounds);
@@ -226,7 +227,8 @@ impl crate::game::ServerGame<'_> {
             }
             let creative = self.common.creative;
             let Some(bow) = self
-                .common.stack_in_mut(slot)
+                .common
+                .stack_in_mut(slot)
                 .as_mut()
                 .filter(|bow| &**bow == stack)
             else {
@@ -266,7 +268,8 @@ impl crate::game::ServerGame<'_> {
         let weapon = bow.clone();
         // AbstractArrow's constructor: `getPiercingCount` of the weapon.
         let pierce = self
-            .common.res
+            .common
+            .res
             .stations()
             .enchantments
             .modify_value(
@@ -351,11 +354,13 @@ impl crate::game::ServerGame<'_> {
                 1.0
             } else {
                 let high = index & 1 == 1;
-                1.0 / (self.common.world.random.next_float() * 0.5 + 1.8) + if high { 0.63 } else { 0.43 }
+                1.0 / (self.common.world.random.next_float() * 0.5 + 1.8)
+                    + if high { 0.63 } else { 0.43 }
             };
             // CrossbowItem.performShooting: at the shooter's getX/Y/Z (feet).
             let feet = self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .map_or(eye, |pl| [pl.position.x, pl.position.y, pl.position.z]);
             self.server_play_sound("minecraft:item.crossbow.shoot", feet, 1.0, pitch);
@@ -373,9 +378,6 @@ impl crate::game::ServerGame<'_> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-
-
-    
 
     /// A charge that crosses a point between two ticks plays that point's
     /// sound, and one a mod's tick jumps over (`native_living_entity_use_item_tick`

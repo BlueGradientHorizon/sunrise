@@ -1,10 +1,14 @@
 use crate::game::remote::native_entity_tests::spawn;
-use {sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, crate::game::load_resources};
 use mod_api::EquipmentSlot;
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::entity_data::Value;
 use sunrise_protocol::item::{Component, Stack, component};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
+use {
+    crate::game::load_resources, crate::settings::Settings, sunrise_client_lib::audio::Audio,
+    sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    sunrise_gameplay_common::game::execution_role::ExecutionRole,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -383,7 +387,9 @@ fn a_villager_raid_sweat_event_draws_particles() {
     .unwrap();
     // `len` counts only particles already ticked in; `made` counts every
     // particle created, which is what the event handler does at once.
-    let made = |g: &sunrise_client_gameplay::game::ClientGame<'_>| g.client.particles.0.made().values().sum::<u64>();
+    let made = |g: &sunrise_client_gameplay::game::ClientGame<'_>| {
+        g.client.particles.0.made().values().sum::<u64>()
+    };
     let before = made(&game);
     game.handle_packet(C::EntityEvent(play::EntityEvent { id: 21, event: 2 }))
         .unwrap();

@@ -4,14 +4,18 @@
 //! `facing.getOpposite().toYRot()`. A compass on a shelf therefore points from the
 //! shelf's own block: two shelves at different places and facings draw different
 //! needles, where with no owner both drew the same one.
-use sunrise_client::mesher::Vertex;
 use super::*;
-use {crate::audio::Audio, crate::settings::Settings, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role::ExecutionRole, crate::game::load_resources};
+use sunrise_client::mesher::Vertex;
 use sunrise_core::nbt::{Compound, Tag};
 use sunrise_items::items::ItemStack;
 use sunrise_level::{
     chunk::Chunk,
     containers::{BlockEntity, Shelf},
+};
+use {
+    crate::audio::Audio, crate::game::load_resources, crate::settings::Settings,
+    sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    sunrise_gameplay_common::game::execution_role::ExecutionRole,
 };
 
 /// The lodestone every compass here tracks, in this dimension.
@@ -116,7 +120,10 @@ fn place_shelf(
 }
 
 /// What the shelf at `pos` draws this frame.
-fn drawn_vertices(game: &sunrise_client_gameplay::game::ClientGame<'_>, pos: [i32; 3]) -> Vec<Vertex> {
+fn drawn_vertices(
+    game: &sunrise_client_gameplay::game::ClientGame<'_>,
+    pos: [i32; 3],
+) -> Vec<Vertex> {
     let camera = glam::DVec3::new(
         f64::from(pos[0]) + 0.5,
         f64::from(pos[1]) + 0.5,
@@ -130,7 +137,10 @@ fn drawn_vertices(game: &sunrise_client_gameplay::game::ClientGame<'_>, pos: [i3
 /// The sprite every one of `vertices` samples, so the model the compass'
 /// `range_dispatch` chose: `item/compass_16`..`item/compass_31`, one per needle
 /// angle. `None` when nothing was drawn.
-fn drawn_sprite(game: &sunrise_client_gameplay::game::ClientGame<'_>, vertices: &[Vertex]) -> Option<String> {
+fn drawn_sprite(
+    game: &sunrise_client_gameplay::game::ClientGame<'_>,
+    vertices: &[Vertex],
+) -> Option<String> {
     if vertices.is_empty() {
         return None;
     }

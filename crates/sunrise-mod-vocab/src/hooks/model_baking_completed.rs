@@ -22,7 +22,8 @@ models included. Resolve the models a mod draws there, once, and keep the `Model
 the next `model_baking_completed`, when the old ones answer `ModelError::StaleModel`; a reload that fails fires nothing
 and leaves them valid. Use `host.render_assets().baked_model(key)` during the callback to borrow the published geometry
 without editing it. A dedicated server never fires it."#]
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::model_baking_completed::ClientGame<'_>::native_model_baking_completed", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::model_baking_completed::ClientGame<'_>::native_model_baking_completed",
         dispatch = "direct",
         staged_surface = "host",
         side = "client",

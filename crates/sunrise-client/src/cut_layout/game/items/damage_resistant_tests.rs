@@ -1,13 +1,16 @@
 //! The effective damage-resistant component at its actual item-damage callers.
-use sunrise_gameplay_common::game::GameGameExt1;
-use std::sync::Arc;
-use sunrise_items::items::ItemStack;
-use sunrise_level::world::World;
 use super::*;
-use {sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
+use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
+use sunrise_level::world::World;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+};
 
 fn stack(input: &str) -> ItemStack {
     let (item, patch) = input
@@ -45,7 +48,11 @@ fn prepare(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     assert!(game.entity_ticking_area()(4, 4));
 }
 
-fn drop_stack(game: &mut sunrise_gameplay::game::ServerGame<'_>, input: &str, position: [f64; 3]) -> u32 {
+fn drop_stack(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    input: &str,
+    position: [f64; 3],
+) -> u32 {
     game.spawn_item(stack(input), position, [0.0; 3], 100);
     let item = game.dropped.last_mut().unwrap();
     item.no_gravity = true;

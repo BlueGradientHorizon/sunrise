@@ -1,14 +1,12 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1;
-use sunrise_gameplay::game::server_side::ahead::{AHEAD, TAKEN};
-    use sunrise_gameplay::game::game_tests::tests::server_game;
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, random::RandomSource};
+    use sunrise_gameplay::game::game_tests::tests::server_game;
+    use sunrise_gameplay::game::server_side::ahead::{AHEAD, TAKEN};
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1;
     use sunrise_items::items::ItemStack;
     use sunrise_level::chunk::Chunk;
 
@@ -96,7 +94,8 @@ use sunrise_gameplay::game::server_side::ahead::{AHEAD, TAKEN};
         );
         let border = game.dropped.last().unwrap().id;
         escaping.push(border);
-        let boxes = game.entity_collisions(sunrise_gameplay_common::game::collision_source::Mover::Passive);
+        let boxes =
+            game.entity_collisions(sunrise_gameplay_common::game::collision_source::Mover::Passive);
         for id in [caught, border] {
             let item = game.dropped.iter().find(|i| i.id == id).unwrap();
             assert!(item.inside_block(

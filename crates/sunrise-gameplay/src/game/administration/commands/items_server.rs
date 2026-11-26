@@ -87,7 +87,8 @@ impl crate::game::ServerGame<'_> {
                             0
                         };
                         let max = self
-                            .common.res
+                            .common
+                            .res
                             .items()
                             .get(&stack.item)
                             .map_or(64, |i| i.max_stack);
@@ -105,7 +106,8 @@ impl crate::game::ServerGame<'_> {
                     }
                     "minecraft:set_damage" => {
                         let max = self
-                            .common.res
+                            .common
+                            .res
                             .items()
                             .get(&stack.item)
                             .map_or(0, |i| i.max_damage);
@@ -489,7 +491,10 @@ impl crate::game::ServerGame<'_> {
             // EntityItemAccessor: a player whose slots changed gets
             // `containerMenu.broadcastChanges` at once, so InventoryChangeTrigger
             // (and its announcement) comes before the command's message.
-            if changed > 0 && matches!(o, Owner::Entity(Target::Player)) && self.common.player.is_some() {
+            if changed > 0
+                && matches!(o, Owner::Entity(Target::Player))
+                && self.common.player.is_some()
+            {
                 self.check_inventory_trigger();
                 self.server.cmds.0.broadcast_announced = self.common.adv.announced.len();
             }
@@ -740,7 +745,12 @@ impl crate::game::ServerGame<'_> {
                 .for_player(Target::Guest(*conn), |g| g.slot_get(slot))
                 .flatten(),
             Slot::Inv(i) => self.common.inventory.get(*i).cloned().flatten(),
-            Slot::MainHand => self.common.inventory.get(self.common.selected).cloned().flatten(),
+            Slot::MainHand => self
+                .common
+                .inventory
+                .get(self.common.selected)
+                .cloned()
+                .flatten(),
             Slot::Armor(i) => self.common.armor.get(*i).cloned().flatten(),
             Slot::Offhand => self.common.offhand.clone(),
             Slot::Equipment(i) => self.common.equipment.get(*i).cloned(),
@@ -750,26 +760,35 @@ impl crate::game::ServerGame<'_> {
                 m.equipment_stacks()[mob_slot(key)?].clone()
             }
             Slot::Stand(id, i) => self
-                .common.armor_stands
+                .common
+                .armor_stands
                 .iter()
                 .find(|a| a.id == *id)?
                 .equipment
                 .get(*i)
                 .cloned(),
             Slot::Item(id) => self
-                .common.dropped
+                .common
+                .dropped
                 .iter()
                 .find(|e| e.id == *id)
                 .map(|e| e.stack.clone())
                 .filter(|s| &*s.item != "minecraft:air" && s.count > 0),
             Slot::Dragon(id, i) => self
-                .common.dragon
+                .common
+                .dragon
                 .as_ref()
                 .filter(|d| d.id == *id)?
                 .equipment
                 .get(*i)
                 .cloned(),
-            Slot::Frame(id) => self.common.item_frames.iter().find(|f| f.id == *id)?.item.clone(),
+            Slot::Frame(id) => self
+                .common
+                .item_frames
+                .iter()
+                .find(|f| f.id == *id)?
+                .item
+                .clone(),
             Slot::Cart(id, i) => self
                 .edit_cart_slots(*id, |slots| slots.get(*i).cloned().flatten())
                 .flatten(),
@@ -816,7 +835,10 @@ impl crate::game::ServerGame<'_> {
             // LivingEntity's equipment SlotAccess: setItemSlot, so onEquipItem.
             Slot::MainHand if self.common.selected < self.common.inventory.len() => {
                 self.stop_use_replaced(self.common.selected, stack.as_ref());
-                let old = std::mem::replace(&mut self.common.inventory[self.common.selected], stack.clone());
+                let old = std::mem::replace(
+                    &mut self.common.inventory[self.common.selected],
+                    stack.clone(),
+                );
                 self.player_on_equip("mainhand", old.as_ref(), stack.as_ref());
                 true
             }
@@ -941,7 +963,8 @@ impl crate::game::ServerGame<'_> {
                 true
             }
             Slot::Dragon(id, i) => self
-                .common.dragon
+                .common
+                .dragon
                 .as_mut()
                 .filter(|d| d.id == *id)
                 .is_some_and(|d| d.equipment.set(*i, stack)),

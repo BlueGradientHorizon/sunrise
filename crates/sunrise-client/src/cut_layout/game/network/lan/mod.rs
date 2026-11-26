@@ -1,8 +1,6 @@
-
-
 #![cfg(test)]
-use sunrise_protocol::packets::play;
 use sunrise_gameplay_common::game::lan_common::LanSettings;
+use sunrise_protocol::packets::play;
 use sunrise_protocol::packets::play::Clientbound as C;
 use sunrise_sim::lan::NetConfig;
 use sunrise_sim::lan::hub::HubConfig;
@@ -12,21 +10,20 @@ pub(crate) mod player_packet_tests;
 #[cfg(test)]
 pub(crate) mod world_spawn_sync_tests {
 
-use sunrise_gameplay_common::game::server_side::lan::world_spawn_sync_tests::spawns;
+    use sunrise_gameplay_common::game::server_side::lan::world_spawn_sync_tests::spawns;
 
-use sunrise_gameplay::game::server_side::lan::world_spawn_sync_tests::host;
+    use sunrise_gameplay::game::server_side::lan::world_spawn_sync_tests::host;
 
-use super::*;
+    use super::*;
 
-use std::sync::{Arc, atomic::AtomicI32, mpsc};
+    use std::sync::{Arc, atomic::AtomicI32, mpsc};
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn join_and_respawn_contexts_use_world_spawn_not_a_personal_spawn() {
         run_join_and_respawn_contexts_use_world_spawn_not_a_personal_spawn();
     }
-pub(crate) fn run_join_and_respawn_contexts_use_world_spawn_not_a_personal_spawn()
-     {
+    pub(crate) fn run_join_and_respawn_contexts_use_world_spawn_not_a_personal_spawn() {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             game.level.world_spawn = Some([100, 140, -20]);
             game.spawn = Some(sunrise_core::geometry::Vec3::new(96.5, 145.0, -31.5));
@@ -41,13 +38,12 @@ pub(crate) fn run_join_and_respawn_contexts_use_world_spawn_not_a_personal_spawn
             assert_eq!(game.server_ctx().spawn_angle, [45.0, -10.0]);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn setworldspawn_reaches_guests_with_the_dimension_it_ran_in() {
         run_setworldspawn_reaches_guests_with_the_dimension_it_ran_in();
     }
-pub(crate) fn run_setworldspawn_reaches_guests_with_the_dimension_it_ran_in()
-     {
+    pub(crate) fn run_setworldspawn_reaches_guests_with_the_dimension_it_ran_in() {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             game.build_registries();
             game.level.world_spawn = None;
@@ -165,12 +161,12 @@ pub(crate) fn run_setworldspawn_reaches_guests_with_the_dimension_it_ran_in()
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn guest_respawn_without_a_known_world_spawn_never_advertises_the_hosts_personal_point() {
         run_guest_respawn_without_a_known_world_spawn_never_advertises_the_hosts_personal_point();
     }
-pub(crate) fn run_guest_respawn_without_a_known_world_spawn_never_advertises_the_hosts_personal_point()
+    pub(crate) fn run_guest_respawn_without_a_known_world_spawn_never_advertises_the_hosts_personal_point()
      {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             game.level.world_spawn = None;
@@ -220,7 +216,6 @@ pub(crate) fn run_guest_respawn_without_a_known_world_spawn_never_advertises_the
     }
 }
 
-
 #[cfg(test)]
 pub(crate) mod world_spawn_join_tests {
     /// `PrepareSpawnTask.start`: a returning player whose saved level the world no longer has
@@ -263,7 +258,10 @@ pub(crate) mod mob_pickup_sync_tests {
     use sunrise_sim::lan::{Joined, Out, PlayerSender, guest::Guest};
 
     /// A server with one placed guest beside the mob.
-    fn guest_at(game: &mut sunrise_gameplay::game::ServerGame<'_>, at: [f64; 3]) -> mpsc::Receiver<Out> {
+    fn guest_at(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        at: [f64; 3],
+    ) -> mpsc::Receiver<Out> {
         game.lan_host(
             LanSettings {
                 port: 0,
@@ -369,7 +367,10 @@ pub(crate) mod mob_swing_sync_tests {
     };
 
     /// A server with one placed guest beside the mobs.
-    fn guest_at(game: &mut sunrise_gameplay::game::ServerGame<'_>, at: [f64; 3]) -> mpsc::Receiver<Out> {
+    fn guest_at(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        at: [f64; 3],
+    ) -> mpsc::Receiver<Out> {
         game.lan_host(
             LanSettings {
                 port: 0,

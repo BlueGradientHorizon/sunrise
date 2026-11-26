@@ -26,14 +26,20 @@ impl ClientGame<'_> {
         camera: glam::DVec3,
     ) -> ParticleOcclusionContext<'_> {
         let at = camera.to_array().map(|value| value.floor() as i32);
-        let camera_inside_opaque =
-            state_is_opaque(self.common.res.facts().get(self.common.world.block(at[0], at[1], at[2])));
-        let mode =
-            if self.model_packs_are_vanilla() && self.common.player.is_some() && !camera_inside_opaque {
-                self.client.settings.sunrise.particle_culling
-            } else {
-                ParticleCullingMode::Off
-            };
+        let camera_inside_opaque = state_is_opaque(
+            self.common
+                .res
+                .facts()
+                .get(self.common.world.block(at[0], at[1], at[2])),
+        );
+        let mode = if self.model_packs_are_vanilla()
+            && self.common.player.is_some()
+            && !camera_inside_opaque
+        {
+            self.client.settings.sunrise.particle_culling
+        } else {
+            ParticleCullingMode::Off
+        };
         ParticleOcclusionContext::new(
             section_scene!(self),
             &self.client.async_particle_culler.0,

@@ -8,7 +8,7 @@ pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// lend `inputs` and let listeners stage only the result and cost
     /// `edits`. Both sides: the server's menu and a server's client menu
     /// with the local player.
-     fn native_anvil_update(
+    fn native_anvil_update(
         &mut self,
         player: u128,
         player_entity_id: i32,
@@ -17,7 +17,15 @@ pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
         edits: &mut mod_api::item::menu::AnvilUpdateEdits,
         cancel: &mut bool,
     ) {
-        crate::game::native_hooks::fire::FireHooks::fire_anvil_update(self, player, player_entity_id, pos, inputs, edits, cancel);
+        crate::game::native_hooks::fire::FireHooks::fire_anvil_update(
+            self,
+            player,
+            player_entity_id,
+            pos,
+            inputs,
+            edits,
+            cancel,
+        );
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> GameHooks<'__sg> for G {}

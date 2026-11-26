@@ -1,4 +1,3 @@
-use sunrise_gameplay_common::game::Screen;
 use super::*;
 use crate::game::native_hooks::base::screen_widgets_tests::input_routing::Cancel;
 use crate::game::native_hooks::base::screen_widgets_tests::input_routing::Seen;
@@ -7,6 +6,7 @@ use crate::game::native_hooks::base::screen_widgets_tests::input_routing::send;
 use crate::game::native_hooks::base::screen_widgets_tests::input_routing::take;
 use crate::game::native_hooks::base::screen_widgets_tests::input_routing::with_input_game;
 use sunrise_client::{keybinds::VanillaMappingSlot, preedit, widgets};
+use sunrise_gameplay_common::game::Screen;
 use sunrise_items::items::ItemStack;
 use winit::{dpi::PhysicalPosition, event::Ime};
 
@@ -24,7 +24,10 @@ fn inventory_release_post_distinguishes_quick_craft_from_swallowed_release() {
         use sunrise_level::{chunk::Chunk, containers::BlockEntity};
         let pos = (0, 0, 0);
         let saved_player = game.player.take();
-        let _pipe = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(game);
+        let _pipe =
+            sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(
+                game,
+            );
         game.player = saved_player;
         game.world
             .chunks
@@ -120,7 +123,10 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
                 Seen::PressPost("mod".into(), true)
             ]
         );
-        assert_eq!(game.client.screen_state.0.widgets.focused_id(), Some(focused));
+        assert_eq!(
+            game.client.screen_state.0.widgets.focused_id(),
+            Some(focused)
+        );
         send_mouse_button(game, id, MouseButton::Left, false);
         take(state);
         move_mouse(game, id, 300.0, 100.0);
@@ -129,7 +135,10 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
             take(state),
             [Seen::PressPre, Seen::PressPost("mod".into(), false)]
         );
-        assert_eq!(game.client.screen_state.0.widgets.focused_id(), Some(focused));
+        assert_eq!(
+            game.client.screen_state.0.widgets.focused_id(),
+            Some(focused)
+        );
         send_mouse_button(game, id, MouseButton::Left, false);
         game.mod_screen_close("input_route");
         assert_eq!(game.client.screen, Screen::Playing);
@@ -141,8 +150,9 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
         game.show_dialog(&dialog);
         assert!(game.dialog_open());
         publish_frame(game, 2);
-        let tab =
-            |game: &mut sunrise_client_gameplay::game::ClientGame<'_>| key(game, KeyCode::Tab, ElementState::Pressed);
+        let tab = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>| {
+            key(game, KeyCode::Tab, ElementState::Pressed)
+        };
         tab(game); // Warning, tab group -10.
         tab(game); // Native field.
         assert!(game.dialog_typing());
@@ -184,10 +194,7 @@ fn native_and_mounted_press_tab_and_preedit_use_the_receiving_screen() {
     });
 }
 
-pub(crate) fn publish_frame(
-    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
-    frame: u64,
-) {
+pub(crate) fn publish_frame(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, frame: u64) {
     let renderer = game.client.renderer.0.as_ref().unwrap();
     let size = [renderer.config.width, renderer.config.height];
     game.hud(size);
@@ -214,7 +221,8 @@ fn release_drag_and_wheel_cancellation_preserve_input_bookkeeping() {
         game.insert_device_key(KeyCode::KeyW);
         game.insert_device_key(KeyCode::Space);
         assert!(
-            game.client.vanilla_mappings.is_down(forward) && game.client.vanilla_mappings.is_down(jump)
+            game.client.vanilla_mappings.is_down(forward)
+                && game.client.vanilla_mappings.is_down(jump)
         );
         cancel(Cancel::ReleasePre);
         key(game, KeyCode::KeyW, ElementState::Released);

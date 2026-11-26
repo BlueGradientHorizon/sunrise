@@ -78,7 +78,8 @@ impl ServerGame<'_> {
         }
 
         let selected = self
-            .common.held()
+            .common
+            .held()
             .and_then(ItemStack::data)
             .and_then(|data| data.debug_stick_property(&state.name));
         // `Player.isSecondaryUseActive` / `isShiftKeyDown`: the acting

@@ -29,7 +29,8 @@ back the whole special layer. Ordinary refusals are reported on every failed inv
 disabling the callback. A panic logs and shows an error toast naming the mod, and disables only
 that registration's affected callback for the session, including after resource reloads.
 Only the outermost refused layer draws the missing model."#]
-    #[hook(target = "sunrise_gameplay_common::game::native_hooks::register_special_model_renderer::native_register_special_model_renderer", 
+    #[hook(
+        target = "sunrise_gameplay_common::game::native_hooks::register_special_model_renderer::native_register_special_model_renderer",
         receiver = "associated",
         dispatch = "flat",
         side = "client",

@@ -5,7 +5,8 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn target_eye_height(&self, t: Target) -> f64 {
         match t {
             Target::Player => self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .map_or(1.62, |p| f64::from(p.dimensions.eye_height)),
             Target::Guest(_) => {
@@ -13,7 +14,8 @@ impl crate::game::ClientGame<'_> {
                 1.62
             }
             Target::Mob(id) => self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == id)
                 .map_or(0.0, |m| m.eye_y() - m.position.y),
@@ -40,7 +42,8 @@ impl crate::game::ClientGame<'_> {
             }
             Target::Projectile(id) => {
                 let ty = self
-                    .common.creatures
+                    .common
+                    .creatures
                     .projectiles
                     .iter()
                     .find(|p| p.id == id)
@@ -57,7 +60,8 @@ impl crate::game::ClientGame<'_> {
             }
             Target::Boat(id) => {
                 let ty = self
-                    .common.boats
+                    .common
+                    .boats
                     .iter()
                     .find(|b| b.id == id)
                     .map_or_else(|| "minecraft:oak_boat".into(), |b| b.entity_type());
@@ -65,7 +69,8 @@ impl crate::game::ClientGame<'_> {
             }
             Target::Cart(id) => {
                 let ty = self
-                    .common.carts
+                    .common
+                    .carts
                     .iter()
                     .find(|c| c.id == id)
                     .map_or("minecraft:minecart", |c| c.kind.id());
@@ -84,7 +89,9 @@ impl crate::game::ClientGame<'_> {
             Target::Rocket(_) => self.common.type_eye_height("minecraft:firework_rocket"),
             Target::Trident(_) => self.common.type_eye_height("minecraft:trident"),
             Target::Fangs(_) => self.common.type_eye_height("minecraft:evoker_fangs"),
-            Target::Spawner(_) => self.common.type_eye_height("minecraft:ominous_item_spawner"),
+            Target::Spawner(_) => self
+                .common
+                .type_eye_height("minecraft:ominous_item_spawner"),
             Target::Cloud(_) => self.common.type_eye_height("minecraft:area_effect_cloud"),
             Target::Bolt(_) => self.common.type_eye_height("minecraft:lightning_bolt"),
             Target::Hook(_) => self.common.type_eye_height("minecraft:fishing_bobber"),

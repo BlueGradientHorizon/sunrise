@@ -1,6 +1,6 @@
 use super::entity_culling::default_range;
-use sunrise_gameplay_common::game::cushions_common::{aabb, snap_yaw};
 use sunrise_core::geometry::Aabb;
+use sunrise_gameplay_common::game::cushions_common::{aabb, snap_yaw};
 use sunrise_sim::mobs::anim::Poses;
 
 impl crate::game::ClientGame<'_> {
@@ -78,7 +78,8 @@ impl crate::game::ClientGame<'_> {
         let name = self.common.res.facts().get(state).name.as_ref();
         if name == "minecraft:snow" {
             return self
-                .common.pack
+                .common
+                .pack
                 .assets
                 .registry
                 .state(state)

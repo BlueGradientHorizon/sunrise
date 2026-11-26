@@ -1,11 +1,17 @@
 //! `RamTarget.tick`: the push a ram gives, and the shield that softens it
 //! (`applyItemBlocking`'s `blockingFactor`).
-use {crate::game::*, sunrise_gameplay_common::game::{Instant, ItemStack, Options, PathBuf, PlayerMotion, Progress, Resources, Vec3, execution_role, hit}};
-use std::sync::Arc;
-use crate::settings::Settings;
 use crate::game::load_resources;
+use crate::settings::Settings;
+use std::sync::Arc;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::{Damage, MobEvent, Who};
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{
+        Instant, ItemStack, Options, PathBuf, PlayerMotion, Progress, Resources, Vec3,
+        execution_role, hit,
+    },
+};
 
 fn game<'a>(resources: &'a mut Option<Arc<Resources>>) -> sunrise_gameplay::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(

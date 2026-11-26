@@ -431,9 +431,8 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait ChatCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-
     /// Registry contents for argument parsing (built when a world opens).
-     fn build_registries(&mut self) {
+    fn build_registries(&mut self) {
         let permission = owner_permission(self.allow_commands());
         let reg = &mut self.ui.registries;
         reg.permission = permission;
@@ -613,7 +612,6 @@ pub trait ChatCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> ChatCommonGameExt1<'__sg> for G {}
-
 
 use crate::game::side_ops::presentation::PresentationSideGameExt as _;
 

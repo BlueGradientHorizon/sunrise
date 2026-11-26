@@ -4,7 +4,8 @@ pub trait Hooks {
     /// NeoForge's `ClientPlayerChangeGameTypeEvent`: observe any `PlayerInfo` game type change
     /// before the new mode is stored and after `LocalPlayer.onGameModeChanged` runs.
     /// `player_id` is `Some` when the profile has a player entity in the client level.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::client_player_change_game_type::ClientGame<'_>::native_client_player_change_game_type", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::client_player_change_game_type::ClientGame<'_>::native_client_player_change_game_type",
         dispatch = "flat",
         side = "client",
         contract = "listen",

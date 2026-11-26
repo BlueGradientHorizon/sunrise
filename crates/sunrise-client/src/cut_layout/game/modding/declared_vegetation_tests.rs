@@ -1,5 +1,4 @@
 //! Explicit vegetation behaves the same on different templates and is not inferred from Parts.
-use sunrise_gameplay_common::game::GameGameExt1;
 use mod_api::{BlockPart, Hooks, LevelSide, MayPlaceOnEvent, Registrar};
 use std::sync::{
     Arc,
@@ -9,6 +8,7 @@ use sunrise_core::{
     geometry::{Direction, Vec3},
     position::{BlockPos, ChunkPos},
 };
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_world::level::{PlaceContext, PlaceOutcome};
 
 struct Plant(Arc<AtomicUsize>);
@@ -95,88 +95,96 @@ fn declared_vegetation_places_and_breaks_independently_of_its_template() {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_api::__private::mark_game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
-        sunrise_gameplay::game::native_entity_refs::tests::with_game_at(root.prepared().to_path_buf(), |game| {
-            game.options.dedicated = Some(Vec::new());
-            game.world
-                .chunks
-                .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
-            game.block_ticks
-                .add_empty_chunk(ChunkPos::new(0, 0))
-                .unwrap();
-            let registry = game.pack.assets.registry;
-            let air = registry.default_state("minecraft:air").unwrap();
-            let stone = registry.default_state("minecraft:stone").unwrap();
-            let pos = BlockPos::new(5, 65, 5);
-            for (plant, _) in PLANTS {
-                for (soil, allowed, asks_plant) in [
-                    ("minecraft:stone", false, true),
-                    ("minecraft:dirt", true, true),
-                    ("minecraft:gold_block", true, false),
-                    ("minecraft:grass_block", false, false),
-                ] {
-                    game.world.set(5, 65, 5, air).unwrap();
-                    game.world
-                        .set(5, 64, 5, registry.default_state(soil).unwrap())
-                        .unwrap();
-                    let context = PlaceContext {
-                        clicked_pos: BlockPos::new(5, 64, 5),
-                        face: Direction::Up,
-                        hit: Vec3::new(5.5, 65.0, 5.5),
-                        inside: false,
-                        source: sunrise_world::level::PlacementSource::Player {
-                            yaw: 0.0,
-                            pitch: 0.0,
-                            sneaking: false,
-                        },
-                        item: plant.into(),
-                        can_use_game_master_blocks: false,
-                    };
-                    let before = heard.load(Ordering::Relaxed);
-                    let placed =
-                        game.with_level(|b, level, ticks| b.place_block(level, ticks, &context));
-                    assert_eq!(
-                        matches!(placed, PlaceOutcome::Placed { .. }),
-                        allowed,
-                        "{plant} on {soil}"
-                    );
-                    assert_eq!(
-                        heard.load(Ordering::Relaxed) > before,
-                        asks_plant,
-                        "soil decides before the plant"
-                    );
-                    let placed = game.world.block(pos.x, pos.y, pos.z);
-                    if allowed {
-                        assert_eq!(registry.state(placed).unwrap().name, plant);
-                        game.with_level(|b, level, ticks| {
-                            b.set_block(level, ticks, BlockPos::new(5, 64, 5), stone, 3);
-                        });
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+        sunrise_gameplay::game::native_entity_refs::tests::with_game_at(
+            root.prepared().to_path_buf(),
+            |game| {
+                game.options.dedicated = Some(Vec::new());
+                game.world
+                    .chunks
+                    .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
+                game.block_ticks
+                    .add_empty_chunk(ChunkPos::new(0, 0))
+                    .unwrap();
+                let registry = game.pack.assets.registry;
+                let air = registry.default_state("minecraft:air").unwrap();
+                let stone = registry.default_state("minecraft:stone").unwrap();
+                let pos = BlockPos::new(5, 65, 5);
+                for (plant, _) in PLANTS {
+                    for (soil, allowed, asks_plant) in [
+                        ("minecraft:stone", false, true),
+                        ("minecraft:dirt", true, true),
+                        ("minecraft:gold_block", true, false),
+                        ("minecraft:grass_block", false, false),
+                    ] {
+                        game.world.set(5, 65, 5, air).unwrap();
+                        game.world
+                            .set(5, 64, 5, registry.default_state(soil).unwrap())
+                            .unwrap();
+                        let context = PlaceContext {
+                            clicked_pos: BlockPos::new(5, 64, 5),
+                            face: Direction::Up,
+                            hit: Vec3::new(5.5, 65.0, 5.5),
+                            inside: false,
+                            source: sunrise_world::level::PlacementSource::Player {
+                                yaw: 0.0,
+                                pitch: 0.0,
+                                sneaking: false,
+                            },
+                            item: plant.into(),
+                            can_use_game_master_blocks: false,
+                        };
+                        let before = heard.load(Ordering::Relaxed);
+                        let placed = game
+                            .with_level(|b, level, ticks| b.place_block(level, ticks, &context));
                         assert_eq!(
-                            game.world.block(pos.x, pos.y, pos.z),
-                            air,
-                            "{plant} pops off after its soil changes"
+                            matches!(placed, PlaceOutcome::Placed { .. }),
+                            allowed,
+                            "{plant} on {soil}"
                         );
-                    } else {
-                        assert_eq!(placed, air, "{plant} on {soil} must not write a fallback");
+                        assert_eq!(
+                            heard.load(Ordering::Relaxed) > before,
+                            asks_plant,
+                            "soil decides before the plant"
+                        );
+                        let placed = game.world.block(pos.x, pos.y, pos.z);
+                        if allowed {
+                            assert_eq!(registry.state(placed).unwrap().name, plant);
+                            game.with_level(|b, level, ticks| {
+                                b.set_block(level, ticks, BlockPos::new(5, 64, 5), stone, 3);
+                            });
+                            assert_eq!(
+                                game.world.block(pos.x, pos.y, pos.z),
+                                air,
+                                "{plant} pops off after its soil changes"
+                            );
+                        } else {
+                            assert_eq!(placed, air, "{plant} on {soil} must not write a fallback");
+                        }
                     }
                 }
-            }
-            // A registered Part does not opt this block into vegetation.
-            let ordinary = registry.default_state("garden:ordinary_glass").unwrap();
-            game.world.set(5, 64, 5, stone).unwrap();
-            assert!(game.with_level(|b, level, ticks| b.can_survive(level, ticks, pos, ordinary)));
-            // Nor does the same Part reached by a vanilla block tag.
-            let leaf = registry.default_state("minecraft:cherry_leaves").unwrap();
-            assert!(sunrise_gameplay_common::game::api_values::block_state::block_listens(
-                mod_api::HookId::MayPlaceOn,
-                leaf
-            ));
-            game.world.set(5, 65, 5, leaf).unwrap();
-            game.with_level(|b, level, ticks| {
-                b.set_block(level, ticks, BlockPos::new(5, 64, 5), air, 3);
-            });
-            assert_ne!(game.world.block(5, 65, 5), air);
-        });
+                // A registered Part does not opt this block into vegetation.
+                let ordinary = registry.default_state("garden:ordinary_glass").unwrap();
+                game.world.set(5, 64, 5, stone).unwrap();
+                assert!(
+                    game.with_level(|b, level, ticks| b.can_survive(level, ticks, pos, ordinary))
+                );
+                // Nor does the same Part reached by a vanilla block tag.
+                let leaf = registry.default_state("minecraft:cherry_leaves").unwrap();
+                assert!(
+                    sunrise_gameplay_common::game::api_values::block_state::block_listens(
+                        mod_api::HookId::MayPlaceOn,
+                        leaf
+                    )
+                );
+                game.world.set(5, 65, 5, leaf).unwrap();
+                game.with_level(|b, level, ticks| {
+                    b.set_block(level, ticks, BlockPos::new(5, 64, 5), air, 3);
+                });
+                assert_ne!(game.world.block(5, 65, 5), air);
+            },
+        );
         crate::game::server_side::native_entity_refs::tests::with_game_role_client(
             root.prepared().to_path_buf(),
             sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,

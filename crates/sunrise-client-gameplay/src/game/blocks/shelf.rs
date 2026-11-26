@@ -15,11 +15,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// The items [`Self::shelf_geometry`] draws, slot by slot.
-    pub fn shelf_items(
-        &self,
-        camera: glam::DVec3,
-        mut draw: impl FnMut(BlockItemDraw),
-    ) {
+    pub fn shelf_items(&self, camera: glam::DVec3, mut draw: impl FnMut(BlockItemDraw)) {
         let _items = sunrise_level::spans::raw_flight_guard("block_entity_items");
         let reach = Reach::Default;
         sunrise_level::spans::note_block_entity_item_visits(|| {
@@ -34,7 +30,8 @@ impl crate::game::ClientGame<'_> {
             }
             let block = self.common.world.block(key.0, key.1, key.2);
             let facing = self
-                .common.pack
+                .common
+                .pack
                 .assets
                 .registry
                 .state(block)

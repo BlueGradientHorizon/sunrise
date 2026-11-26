@@ -237,7 +237,8 @@ impl crate::game::ClientGame<'_> {
                     .activate(position, yaw, pitch, self.client.settings.fov);
             }
             TopBarAction::ToggleLockToPath => {
-                self.client.studio.freecam.locked_to_path = !self.client.studio.freecam.locked_to_path;
+                self.client.studio.freecam.locked_to_path =
+                    !self.client.studio.freecam.locked_to_path;
             }
             TopBarAction::ToggleFreecam => {
                 if self.client.studio.freecam.active {
@@ -247,10 +248,12 @@ impl crate::game::ClientGame<'_> {
                     let (position, yaw, pitch) =
                         self.camera_view(0.0)
                             .unwrap_or((glam::DVec3::ZERO, 0.0, 0.0));
-                    self.client
-                        .studio
-                        .freecam
-                        .activate(position, yaw, pitch, self.client.settings.fov);
+                    self.client.studio.freecam.activate(
+                        position,
+                        yaw,
+                        pitch,
+                        self.client.settings.fov,
+                    );
                     self.capture(true);
                 }
             }
@@ -354,10 +357,12 @@ impl crate::game::ClientGame<'_> {
                     let (position, yaw, pitch) =
                         self.camera_view(0.0)
                             .unwrap_or((glam::DVec3::ZERO, 0.0, 0.0));
-                    self.client
-                        .studio
-                        .freecam
-                        .activate(position, yaw, pitch, self.client.settings.fov);
+                    self.client.studio.freecam.activate(
+                        position,
+                        yaw,
+                        pitch,
+                        self.client.settings.fov,
+                    );
                 }
             }
             TimelineAction::AddCameraKeyframe => {
@@ -648,7 +653,10 @@ impl crate::game::ClientGame<'_> {
 
     /// The free camera flies by the movement keys, once per frame.
     pub(in crate::game::client_side) fn studio_fly(&mut self, elapsed: Duration) {
-        if !self.client.studio.flying() || self.client.screen != Screen::Playing || self.dialog_open() {
+        if !self.client.studio.flying()
+            || self.client.screen != Screen::Playing
+            || self.dialog_open()
+        {
             return;
         }
         use winit::keyboard::KeyCode;
@@ -684,13 +692,16 @@ impl crate::game::ClientGame<'_> {
             // The rest are the editor's.
             _ if !EDITOR => {}
             KeyCode::KeyF => self.handle_studio_timeline_action(TimelineAction::ToggleFreecam),
-            KeyCode::KeyT => self.client.studio.timeline.visible = !self.client.studio.timeline.visible,
+            KeyCode::KeyT => {
+                self.client.studio.timeline.visible = !self.client.studio.timeline.visible
+            }
             KeyCode::KeyM => self.add_studio_marker(),
             KeyCode::Home => self.handle_studio_topbar_action(
                 sunrise_client::studio::TopBarAction::ResetCameraToPlayer,
             ),
             KeyCode::KeyL => {
-                self.client.studio.freecam.locked_to_path = !self.client.studio.freecam.locked_to_path;
+                self.client.studio.freecam.locked_to_path =
+                    !self.client.studio.freecam.locked_to_path;
             }
             KeyCode::KeyK => self.handle_studio_timeline_action(TimelineAction::AddCameraKeyframe),
             KeyCode::Delete => {

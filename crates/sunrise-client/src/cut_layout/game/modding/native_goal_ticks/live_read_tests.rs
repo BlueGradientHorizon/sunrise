@@ -1,12 +1,12 @@
+use super::*;
 use mod_api::EntityRef;
 use mod_api::LivingRef;
 use mod_api::MobRef;
-use sunrise_sim::mobs;
-use sunrise_sim::mobs::Mob;
-use super::*;
+use sunrise_core::geometry::Vec3;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_gameplay::game::native_goal_ticks::GoalCx;
-use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs;
+use sunrise_sim::mobs::Mob;
 
 struct OneMob<'a>(&'a Mob);
 impl mobs::LiveMobs for OneMob<'_> {
@@ -77,8 +77,16 @@ fn scoped_host_reads_live_other_mob_before_stale_snapshot() {
         let mut other = Mob::new(9002, kind.clone(), Vec3::ZERO, 0.0);
         let stale = Mob::new(9003, kind, Vec3::ZERO, 0.0);
         let snapshot = [
-            sunrise_gameplay_common::game::creatures::seen(&other, game.level.player_uuid, game.items()),
-            sunrise_gameplay_common::game::creatures::seen(&stale, game.level.player_uuid, game.items()),
+            sunrise_gameplay_common::game::creatures::seen(
+                &other,
+                game.level.player_uuid,
+                game.items(),
+            ),
+            sunrise_gameplay_common::game::creatures::seen(
+                &stale,
+                game.level.player_uuid,
+                game.items(),
+            ),
         ];
         other.yaw = 37.0;
         other.head_pitch = -12.0;
@@ -200,24 +208,27 @@ fn body_yaw_is_the_raw_mob_yaw_and_none_for_others() {
         for player in &players {
             assert_eq!(player.body_yaw(game), None);
         }
-        game.server.others.0.push(sunrise_gameplay_common::game::commands_common::OtherEntity {
-            size_answer: None,
-            attachment_lifetime: Default::default(),
-            knot_check: None,
-            eye: None,
-            join: Default::default(),
-            item_transformation: None,
-            interaction: None,
-            id: 41,
-            kind: "minecraft:marker".into(),
-            position: Vec3::ZERO,
-            yaw: 30.0,
-            pitch: 0.0,
-        });
+        game.server.others.0.push(
+            sunrise_gameplay_common::game::commands_common::OtherEntity {
+                size_answer: None,
+                attachment_lifetime: Default::default(),
+                knot_check: None,
+                eye: None,
+                join: Default::default(),
+                item_transformation: None,
+                interaction: None,
+                id: 41,
+                kind: "minecraft:marker".into(),
+                position: Vec3::ZERO,
+                yaw: 30.0,
+                pitch: 0.0,
+            },
+        );
         let marker = game.entity(41).expect("the marker's handle");
         assert_eq!(marker.body_yaw(game), None);
 
-        let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 540.75, 0);
+        let mut dragon =
+            sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 540.75, 0);
         dragon.id = 42;
         game.dragon.replace(dragon);
         let dragon = game.entity(42).expect("the dragon's handle");
@@ -264,7 +275,8 @@ fn body_yaw_is_the_raw_mob_yaw_and_none_for_others() {
         assert_eq!(own.body_yaw(&context), None);
 
         let role = game.options.execution_role;
-        game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+        game.options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
         assert_eq!(entity.body_yaw(game), None);
         assert_eq!(dragon.body_yaw(game), None);
         game.options.execution_role = role;
@@ -285,9 +297,12 @@ fn body_yaw_is_the_raw_mob_yaw_and_none_for_others() {
 #[test]
 #[ignore = "daily"]
 fn a_players_last_hurt_mob_resolves_the_mob_lent_to_its_tick() {
-    use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases};
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
+    use {
+        sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+        sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    };
 
     // Loading resources replaces process-wide tables: the case runs in its own process.
     if run_fresh_cases(
@@ -298,7 +313,8 @@ fn a_players_last_hurt_mob_resolves_the_mob_lent_to_its_tick() {
         return;
     }
     with_game(|game| {
-        game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
+            .unwrap();
         game.options.dedicated = Some(Vec::new());
         game.world
             .chunks

@@ -15,10 +15,10 @@
 //! moves on the server with the rider's input, and the rider sits in it.
 use super::Keys;
 use crate::game::client_side::remote_client::Remote;
-use sunrise_gameplay_common::game::remote::passengers::{PassengerSeat, passenger_chain};
 use sunrise_client::keybinds;
 use sunrise_core::geometry::Vec3;
 use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::remote::passengers::{PassengerSeat, passenger_chain};
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 use sunrise_sim::mobs::{Mob, equine, happy_ghast};
 use sunrise_world::stepped_interpolation::PosRot;
@@ -94,7 +94,13 @@ impl crate::game::ClientGame<'_> {
             let p = sunrise_sim::mobs::leash::knot_state(block).position;
             return Some([p.x, p.y, p.z]);
         }
-        if let Some(k) = self.common.resident_entities.knots.iter().find(|k| k.id == id) {
+        if let Some(k) = self
+            .common
+            .resident_entities
+            .knots
+            .iter()
+            .find(|k| k.id == id)
+        {
             let p = sunrise_sim::mobs::leash::knot_state(k.fence).position;
             return Some([p.x, p.y, p.z]);
         }
@@ -103,10 +109,12 @@ impl crate::game::ClientGame<'_> {
             return Some([p.x, p.y, p.z]);
         }
         if let Some(d) = self
-            .common.dragon
+            .common
+            .dragon
             .as_ref()
             .filter(|d| d.id != 0 || self.client.remote.is_some())
-            && let Some(part) = sunrise_gameplay_common::game::dragon_common::dragon_part_index(d.id, id)
+            && let Some(part) =
+                sunrise_gameplay_common::game::dragon_common::dragon_part_index(d.id, id)
         {
             let p = d.parts[part].0;
             return Some([p.x, p.y, p.z]);
@@ -120,7 +128,8 @@ impl crate::game::ClientGame<'_> {
             let (entity, distance, point) = hit?;
             if self.common.mobs.iter().any(|m| m.id == entity.id())
                 || self
-                    .common.creatures
+                    .common
+                    .creatures
                     .projectiles
                     .iter()
                     .any(|p| p.id == entity.id())
@@ -138,7 +147,12 @@ impl crate::game::ClientGame<'_> {
         }
         let hit = self.pick_entity_hit_unified()?;
         if self.common.mobs.iter().any(|m| m.id == hit.id)
-            || self.common.creatures.projectiles.iter().any(|p| p.id == hit.id)
+            || self
+                .common
+                .creatures
+                .projectiles
+                .iter()
+                .any(|p| p.id == hit.id)
         {
             return None;
         }
@@ -153,11 +167,7 @@ impl crate::game::ClientGame<'_> {
     /// `ClientPacketListener.handleSetEntityPassengersPacket`: who rides
     /// `vehicle` now. The local player gets in or out; mobs and other
     /// players sit where the server keeps them.
-    pub fn remote_set_passengers(
-        &mut self,
-        vehicle: i32,
-        mut passengers: Vec<i32>,
-    ) {
+    pub fn remote_set_passengers(&mut self, vehicle: i32, mut passengers: Vec<i32>) {
         let Some(remote) = self.client.remote.as_mut() else {
             return;
         };
@@ -169,10 +179,9 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         // Forced client startRiding still respects Entity.couldAcceptPassenger.
-        if remote
-            .tracked(vehicle)
-            .is_some_and(|(kind, _)| !sunrise_gameplay_common::game::seats_common::could_accept_passenger(kind))
-        {
+        if remote.tracked(vehicle).is_some_and(|(kind, _)| {
+            !sunrise_gameplay_common::game::seats_common::could_accept_passenger(kind)
+        }) {
             return;
         }
         let vehicle_id = vehicle as u32;
@@ -215,7 +224,11 @@ impl crate::game::ClientGame<'_> {
         // The old body is gone, not dismounting. Clear local control before
         // updating the vehicle's remaining list so it won't play a dismount.
         if let Some(vehicle) = self.common.riding.take() {
-            if let Some(mob) = self.common.mob_index.get_mut(&mut self.common.mobs, vehicle) {
+            if let Some(mob) = self
+                .common
+                .mob_index
+                .get_mut(&mut self.common.mobs, vehicle)
+            {
                 mob.rider = None;
             }
             if let Some(i) = self.common.boats.iter().position(|b| b.id == vehicle) {
@@ -346,7 +359,11 @@ impl crate::game::ClientGame<'_> {
             if let Some(i) = self.common.boats.iter().position(|b| b.id == vehicle_id) {
                 self.common.boats.update(i, |b| b.lerp = None);
             }
-            if let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, vehicle_id) {
+            if let Some(m) = self
+                .common
+                .mob_index
+                .get_mut(&mut self.common.mobs, vehicle_id)
+            {
                 m.rider = None;
             }
             // HappyGhast.removePassenger: a still timeout of 10 (the server's
@@ -388,7 +405,11 @@ impl crate::game::ClientGame<'_> {
         let seat_offset = if subject.is_local_player {
             let scale = f64::from(subject.camera.living.map_or(1.0, |l| l.scale));
             sunrise_gameplay_common::minecart_seat::PASSENGER_Y - 0.6 * scale
-        } else if let Some(m) = self.common.mob_index.get_ref(&self.common.mobs, subject.entity_id) {
+        } else if let Some(m) = self
+            .common
+            .mob_index
+            .get_ref(&self.common.mobs, subject.entity_id)
+        {
             sunrise_gameplay_common::minecart_seat::cart_seat_offset(
                 m.species(),
                 sunrise_sim::mobs::riders::vehicle_attachment(m, 0.98),
@@ -403,7 +424,12 @@ impl crate::game::ClientGame<'_> {
     /// AbstractBoat.getControllingPassenger: only the first player steers a boat.
     /// A non-remote world retains its existing local movement ownership.
     pub(in crate::game) fn controls_boat(&self, id: u32) -> bool {
-        self.common.riding == Some(id) && self.client.remote.as_ref().is_none_or(|r| r.first_passenger)
+        self.common.riding == Some(id)
+            && self
+                .client
+                .remote
+                .as_ref()
+                .is_none_or(|r| r.first_passenger)
     }
 
     /// Tick the local player's vehicle before the player tick:
@@ -441,10 +467,14 @@ impl crate::game::ClientGame<'_> {
                     .get(&(id as i32))
                     .map(|d| d.seat().1)
                     .or_else(|| {
-                        self.common.armor_stands.iter().find(|a| a.id == id).map(|a| {
-                            let delta = a.previous.subtract(a.position);
-                            at + glam::DVec3::new(delta.x, delta.y, delta.z)
-                        })
+                        self.common
+                            .armor_stands
+                            .iter()
+                            .find(|a| a.id == id)
+                            .map(|a| {
+                                let delta = a.previous.subtract(a.position);
+                                at + glam::DVec3::new(delta.x, delta.y, delta.z)
+                            })
                     });
                 if let Some(p) = self.common.player.as_mut() {
                     let scale = p.dimensions.width
@@ -455,7 +485,8 @@ impl crate::game::ClientGame<'_> {
                     } else {
                         p.position
                     };
-                    self.common.previous_position = if self.common.posed_rider != self.common.riding {
+                    self.common.previous_position = if self.common.posed_rider != self.common.riding
+                    {
                         seat
                     } else {
                         previous
@@ -494,7 +525,8 @@ impl crate::game::ClientGame<'_> {
             }
             // positionRider turns and clamps the rider's yaw without changing yRotO.
             self.common.yaw += b.delta_rotation;
-            self.common.yaw = sunrise_level::camera_math::clamp_boat_rotation(self.common.yaw, b.yaw).0;
+            self.common.yaw =
+                sunrise_level::camera_math::clamp_boat_rotation(self.common.yaw, b.yaw).0;
             self.common.store_boat_back(i, b);
             // In front of a mob that shares the boat.
             Some(self.player_boat_seat(i))
@@ -502,8 +534,8 @@ impl crate::game::ClientGame<'_> {
             // Minecart.positionRider runs on the client after the cart tick.
             // The offset belongs to the cart, so switching vehicles cannot
             // transfer the previous vehicle's pending turn.
-            let rotate =
-                self.minecart_improvements() && self.client.settings.file.bool("rotateWithMinecart");
+            let rotate = self.minecart_improvements()
+                && self.client.settings.file.bool("rotateWithMinecart");
             if let Some(i) = self.common.carts.iter().position(|c| c.id == id) {
                 self.common.carts.update(i, |c| {
                     c.passenger_yaw_delta = 0.0;
@@ -560,7 +592,8 @@ impl crate::game::ClientGame<'_> {
             return vec![mount_move(m, self.driven_mount_heading(m))];
         }
         let Some(b) = self
-            .common.riding
+            .common
+            .riding
             .filter(|&id| self.controls_boat(id))
             .and_then(|id| self.common.boats.iter().find(|b| b.id == id))
         else {
@@ -591,20 +624,27 @@ impl crate::game::ClientGame<'_> {
         &self,
         id: u32,
     ) -> Option<(Vec3, f32, f32, Vec3)> {
-        let known = self.common.player.as_ref().map_or(Vec3::ZERO, |p| p.velocity);
+        let known = self
+            .common
+            .player
+            .as_ref()
+            .map_or(Vec3::ZERO, |p| p.velocity);
         if let Some(m) = self.driven_mount().filter(|m| m.id == id) {
             let at = self.driven_mount_heading(m);
             let [x, y, z] = at.position;
             return Some((Vec3::new(x, y, z), at.yaw, at.pitch, known));
         }
-        let b = self.driven_boat().filter(|&i| self.common.boats[i].id == id)?;
+        let b = self
+            .driven_boat()
+            .filter(|&i| self.common.boats[i].id == id)?;
         let (at, yaw, pitch) = self.common.boats[b].client_position();
         Some((at, yaw, pitch, known))
     }
 
     /// The boat this client steers, as an index into `boats`.
     fn driven_boat(&self) -> Option<usize> {
-        self.common.riding
+        self.common
+            .riding
             .filter(|&id| self.controls_boat(id))
             .and_then(|id| self.common.boats.iter().position(|b| b.id == id))
     }
@@ -662,7 +702,11 @@ impl crate::game::ClientGame<'_> {
             return;
         };
         // tooBigToInterpolate measures from where the boat is going while it eases.
-        let far = self.common.boats[i].client_position().0.distance_squared(at) > 4096.0;
+        let far = self.common.boats[i]
+            .client_position()
+            .0
+            .distance_squared(at)
+            > 4096.0;
         let id = self.common.boats[i].id;
         self.common.boats.update(i, |b| {
             if far {
@@ -768,10 +812,13 @@ impl crate::game::ClientGame<'_> {
                     }
                 }
             }
-            self.common.boats
-                .update(i, sunrise_gameplay_common::game::boats_common::Boat::tick_bubble_wobble);
+            self.common.boats.update(
+                i,
+                sunrise_gameplay_common::game::boats_common::Boat::tick_bubble_wobble,
+            );
             if !driven {
-                self.common.boats
+                self.common
+                    .boats
                     .update(i, |b| Self::tick_boat_paddles(b, &mut self.client.audio.0));
             }
         }
@@ -784,7 +831,10 @@ impl crate::game::ClientGame<'_> {
         self.common.riding == Some(m.id)
             && client_moves(
                 m,
-                self.client.remote.as_ref().is_some_and(|r| r.first_passenger),
+                self.client
+                    .remote
+                    .as_ref()
+                    .is_some_and(|r| r.first_passenger),
                 self.steers_mount(m),
             )
     }
@@ -800,7 +850,10 @@ impl crate::game::ClientGame<'_> {
     /// The mount this client moves, if the player rides one.
     pub fn driven_mount(&self) -> Option<&Mob> {
         let id = self.common.riding?;
-        self.common.mobs.iter().find(|m| m.id == id && self.drives(m))
+        self.common
+            .mobs
+            .iter()
+            .find(|m| m.id == id && self.drives(m))
     }
 
     /// `LocalPlayer.aiStep` decides sprint after the rider's base tick sampled fluids.
@@ -828,7 +881,11 @@ impl crate::game::ClientGame<'_> {
         let steer = self.steers_mount(&self.common.mobs[i]);
         let (yaw, pitch) = (self.common.yaw, self.common.pitch);
         // The first ridden tick reads what the player's last walking tick applied.
-        let walked = self.common.player.as_ref().map_or([0.0; 2], |p| p.applied_input);
+        let walked = self
+            .common
+            .player
+            .as_ref()
+            .map_or([0.0; 2], |p| p.applied_input);
         // Camel.getRiddenSpeed reads the live controller flag before the rider ticks.
         let sprint = self.common.player.as_ref().is_some_and(|p| p.sprinting);
         let m = &mut self.common.mobs[i];
@@ -968,11 +1025,7 @@ pub fn mount_move(m: &Mob, at: PosRot) -> S {
 }
 
 /// Avatar's VEHICLE attachment scales independently of the vehicle's seat.
-pub fn generic_player_seat(
-    at: glam::DVec3,
-    before: glam::DVec3,
-    scale: f32,
-) -> (Vec3, Vec3) {
+pub fn generic_player_seat(at: glam::DVec3, before: glam::DVec3, scale: f32) -> (Vec3, Vec3) {
     let offset = 0.6 * f64::from(scale);
     (
         Vec3::new(at.x, at.y - offset, at.z),

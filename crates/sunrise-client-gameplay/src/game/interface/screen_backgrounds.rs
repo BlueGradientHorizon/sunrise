@@ -1,4 +1,3 @@
-
 /// `view` with no regions: a cancelled render drew nothing beside the panel.
 pub(in crate::game) fn without_regions<'a>(
     view: &mod_api::ScreenView<'a>,

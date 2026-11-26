@@ -1,19 +1,20 @@
-
-
 #![cfg(test)]
 use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::game::entity::EntityHandle;
 #[cfg(test)]
 pub(crate) mod order_tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay_common::game::piston_push::PistonPushGameExt1;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_client_render::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
     use sunrise_core::{geometry::Direction, position::BlockPos};
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::piston_push::PistonPushGameExt1;
     use sunrise_level::chunk::Chunk;
     use sunrise_world::level::pistons::MovingPiston;
+    use {
+        crate::game::load_resources, sunrise_client_render::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -78,7 +79,8 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
         options.game_dir = Some(
             std::env::temp_dir().join(format!("sunrise-piston-order-unit-{}", std::process::id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -188,7 +190,8 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
         options.game_dir = Some(
             std::env::temp_dir().join(format!("sunrise-piston-budget-unit-{}", std::process::id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -283,7 +286,8 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
             "sunrise-piston-velocity-unit-{}",
             std::process::id()
         )));
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -367,7 +371,8 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
         options.game_dir = Some(
             std::env::temp_dir().join(format!("sunrise-piston-slime-unit-{}", std::process::id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -437,15 +442,18 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
 
 #[cfg(test)]
 pub(crate) mod h255_mob_piston_ground_tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
-use super::*;
-    use sunrise_core::geometry::Direction;
-    use sunrise_gameplay_common::game::move_gate::MoveWho;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_client_render::settings::Settings, crate::game::load_resources};
+    use super::*;
     use std::sync::Arc;
+    use sunrise_core::geometry::Direction;
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::move_gate::MoveWho;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
+    use {
+        crate::game::load_resources, sunrise_client_render::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         with_role_game(
@@ -891,9 +899,12 @@ use super::*;
 
 #[cfg(test)]
 pub(crate) mod lid_push_tests {
+    use super::h255_mob_piston_ground_tests::with_game;
     use sunrise_gameplay_common::game::creatures::ModGameExt1;
-use super::h255_mob_piston_ground_tests::with_game;
-    use {sunrise_gameplay_common::game::entity::EntityHandle, sunrise_gameplay_common::game::piston_push::Lid};
+    use {
+        sunrise_gameplay_common::game::entity::EntityHandle,
+        sunrise_gameplay_common::game::piston_push::Lid,
+    };
 
     use sunrise_core::geometry::{Aabb, Vec3};
     use sunrise_sim::mobs::{MobEvent, Species};
@@ -1131,8 +1142,9 @@ use super::h255_mob_piston_ground_tests::with_game;
                 game.boats[0].position.y, 200.0,
                 "the shulker's vehicle stays"
             );
-            let player_y =
-                |game: &sunrise_gameplay::game::ServerGame<'_>| game.player.as_ref().unwrap().position.y;
+            let player_y = |game: &sunrise_gameplay::game::ServerGame<'_>| {
+                game.player.as_ref().unwrap().position.y
+            };
             assert_eq!(player_y(game), 200.0, "its fellow passenger stays");
         });
     }

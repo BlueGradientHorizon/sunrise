@@ -40,13 +40,19 @@ fn remote_clicks_find_slots_past_the_old_large_chest_cutoff() {
         sunrise_client_gameplay::game::ClientGame::menu_slot_index("minecraft:generic_9x6", 504),
         None
     );
-    assert_eq!(sunrise_client_gameplay::game::ClientGame::menu_slot_index("unknown", 0), None);
+    assert_eq!(
+        sunrise_client_gameplay::game::ClientGame::menu_slot_index("unknown", 0),
+        None
+    );
 }
 
 #[test]
 fn large_mod_menu_backing_slots_never_alias_armor_station_or_mount_slots() {
-    use {sunrise_gameplay_common::game::inventory_slots::MOD_MENU_SLOT_BASE, sunrise_gameplay_common::game::inventory_slots::container_slot_index};
     use sunrise_level::containers::ModMenuType;
+    use {
+        sunrise_gameplay_common::game::inventory_slots::MOD_MENU_SLOT_BASE,
+        sunrise_gameplay_common::game::inventory_slots::container_slot_index,
+    };
 
     let with_inv = ModMenuType {
         id: "test:large_with_inv",
@@ -61,9 +67,12 @@ fn large_mod_menu_backing_slots_never_alias_armor_station_or_mount_slots() {
         owned_slots: None,
     };
     for s in [0usize, 199, 200, 204, 300, 400, 32_731] {
-        let internal =
-            sunrise_gameplay_common::game::inventory_screen_slot_with_type(with_inv.id, s as i32, || Some(&with_inv))
-                .expect("backing slot");
+        let internal = sunrise_gameplay_common::game::inventory_screen_slot_with_type(
+            with_inv.id,
+            s as i32,
+            || Some(&with_inv),
+        )
+        .expect("backing slot");
         assert_eq!(internal, MOD_MENU_SLOT_BASE + s);
         assert_eq!(container_slot_index(internal), Some(s));
         assert!(internal >= MOD_MENU_SLOT_BASE);

@@ -1,8 +1,8 @@
 use super::entity::{Entity as _, EntityHandle, with_entity};
-use sunrise_gameplay_common::game::native_entity_motion_values::corners;
-use sunrise_gameplay_common::game::commands_common::Target;
 use mod_api::EntityRef;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::commands_common::Target;
+use sunrise_gameplay_common::game::native_entity_motion_values::corners;
 
 impl crate::game::ClientGame<'_> {
     fn client_walk_entity(&self, id: u32) -> Option<EntityHandle> {
@@ -30,7 +30,13 @@ impl crate::game::ClientGame<'_> {
         if let Some(i) = self.common.orbs.iter().position(|e| e.id == id) {
             return Some(EntityHandle::Orb(i));
         }
-        if let Some(i) = self.common.creatures.projectiles.iter().position(|e| e.id == id) {
+        if let Some(i) = self
+            .common
+            .creatures
+            .projectiles
+            .iter()
+            .position(|e| e.id == id)
+        {
             return Some(EntityHandle::Projectile(i));
         }
         if let Some(i) = self.common.rockets.iter().position(|e| e.id == id) {
@@ -39,7 +45,8 @@ impl crate::game::ClientGame<'_> {
         if let Some(i) = self.common.tridents.iter().position(|e| e.id == id) {
             return Some(EntityHandle::Trident(i));
         }
-        self.common.resident_entities
+        self.common
+            .resident_entities
             .general
             .rows
             .iter()
@@ -87,7 +94,8 @@ impl crate::game::ClientGame<'_> {
             }
             Target::DragonPart(id) => {
                 let dragon = self.common.dragon.as_ref()?;
-                let part = sunrise_gameplay_common::game::dragon_common::dragon_part_index(dragon.id, id)?;
+                let part =
+                    sunrise_gameplay_common::game::dragon_common::dragon_part_index(dragon.id, id)?;
                 return Some(corners(dragon.part_geometry(part).1));
             }
             Target::Crystal(id) => {
@@ -95,7 +103,12 @@ impl crate::game::ClientGame<'_> {
                 return Some(corners(self.client_copy_box(id, c.position, c.bounds())));
             }
             Target::Cushion(id) => self.common.cushions.iter().find(|c| c.id == id)?.bounds(),
-            Target::Frame(id) => self.common.item_frames.iter().find(|f| f.id == id)?.bounds(),
+            Target::Frame(id) => self
+                .common
+                .item_frames
+                .iter()
+                .find(|f| f.id == id)?
+                .bounds(),
             Target::Painting(id) => self.common.paintings.iter().find(|p| p.id == id)?.bounds(),
             _ => return None,
         };

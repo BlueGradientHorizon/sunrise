@@ -1,13 +1,13 @@
 use crate::game::ClientGame;
 use crate::game::client_side::api_values_client::mod_bar_value;
-use sunrise_gameplay_common::game::dragon_common::{
-    Dragon, PART_SIZES, Phase, dragon_part_id, dragon_part_index, wrap,
-};
 use sunrise_client::{hud::HudBatch, hud_layout, hud_overlays, mesher::Vertex};
 use sunrise_client_gameplay::dragon_render::{dissolve_color, dissolve_mask, dragon_rays};
 use sunrise_core::{
     geometry::{Aabb, Vec3, trig},
     random::{LegacyRandom, RandomSource},
+};
+use sunrise_gameplay_common::game::dragon_common::{
+    Dragon, PART_SIZES, Phase, dragon_part_id, dragon_part_index, wrap,
 };
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_protocol::entity_data::Value;
@@ -573,10 +573,12 @@ impl ClientGame<'_> {
                 }
             }
             if let Some((at, pitch)) = growl {
-                self.client
-                    .audio
-                    .0
-                    .play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
+                self.client.audio.0.play(
+                    "minecraft:entity.ender_dragon.growl",
+                    Some(at),
+                    2.5,
+                    pitch,
+                );
             }
             let Some(d) = self.common.dragon.as_mut() else {
                 return;
@@ -617,10 +619,12 @@ impl ClientGame<'_> {
             if d.growl < 0 {
                 d.growl = 200 + d.random.next_int_bound(200).unwrap_or(0);
                 let pitch = 0.8 + self.common.world.random.next_float() * 0.3;
-                self.client
-                    .audio
-                    .0
-                    .play("minecraft:entity.ender_dragon.growl", Some(at), 2.5, pitch);
+                self.client.audio.0.play(
+                    "minecraft:entity.ender_dragon.growl",
+                    Some(at),
+                    2.5,
+                    pitch,
+                );
             }
         }
         // checkCrystals' search runs on a client too (the healing beam).
@@ -667,7 +671,8 @@ impl ClientGame<'_> {
         };
         let player = !self.common.spectator()
             && self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .is_some_and(|p| touches(p.bounds().min_position(), p.bounds().max_position()));
         player
@@ -690,7 +695,8 @@ impl ClientGame<'_> {
     /// Client-side dragon retirement: forgets parent and all 8 parts' client sidecars before discard.
     pub(in crate::game::client_side) fn client_discard_dragon(&mut self) {
         if let Some(id) = self
-            .common.dragon
+            .common
+            .dragon
             .as_ref()
             .filter(|dragon| dragon.id != 0 || self.client.remote.is_some())
             .map(|dragon| dragon.id)
@@ -770,7 +776,12 @@ impl ClientGame<'_> {
     /// `handleRemoveEntities`, or a crystal removed: the healing beam
     /// keeps pointing at the same crystal.
     pub fn remove_remote_dragon(&mut self, id: i32) {
-        if self.common.dragon.as_ref().is_some_and(|d| d.id as i32 == id) {
+        if self
+            .common
+            .dragon
+            .as_ref()
+            .is_some_and(|d| d.id as i32 == id)
+        {
             self.client_discard_dragon();
             return;
         }

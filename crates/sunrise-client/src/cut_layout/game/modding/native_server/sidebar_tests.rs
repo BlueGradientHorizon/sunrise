@@ -1,4 +1,3 @@
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
 use mod_api::{EntityRef, HostTransaction, Sidebar, SidebarLine, Text, TextFormError, WorldEpoch};
 use std::sync::{Arc, mpsc};
 use sunrise_core::nbt::Tag;
@@ -8,6 +7,10 @@ use sunrise_protocol::{
     packets::play::Clientbound as C,
 };
 use sunrise_sim::lan::{Out, PlayerSender};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_guest_turn_tests::with_guests,
+};
 
 fn received_sidebar_packets(rx: &mpsc::Receiver<Out>) -> Vec<C> {
     rx.try_iter()

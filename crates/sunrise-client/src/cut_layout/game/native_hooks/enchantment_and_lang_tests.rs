@@ -33,34 +33,37 @@ fn a_servers_synced_enchantment_reaches_the_registry_reads() {
     sunrise_gameplay_common::game::in_own_process(
         "game::native_hooks::enchantment_and_lang_tests::a_servers_synced_enchantment_reaches_the_registry_reads",
         || {
-            sunrise_client_gameplay::game::client_side::native_entity_refs::tests::with_client_game(|game| {
-                let (client, _server) = sunrise_protocol::connection::Pipe::pair();
-                game.connect_local(client, "SyncedEnchantment").unwrap();
-                let definition = serde_json::json!({
-                    "description": "Drill", "supported_items": "minecraft:diamond_pickaxe",
-                    "weight": 7, "max_level": 3, "min_cost": {"base": 4, "per_level_above_first": 0},
-                    "max_cost": {"base": 9, "per_level_above_first": 0}, "anvil_cost": 6,
-                    "slots": ["mainhand"], "effects": {}
-                });
-                let synced = game
-                    .stations()
-                    .enchantments
-                    .with_entries([("fixture:drill", &definition)])
-                    .unwrap()
-                    .unwrap();
-                game.client.remote.as_mut().unwrap().enchantments = Some(std::sync::Arc::new(synced));
+            sunrise_client_gameplay::game::client_side::native_entity_refs::tests::with_client_game(
+                |game| {
+                    let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+                    game.connect_local(client, "SyncedEnchantment").unwrap();
+                    let definition = serde_json::json!({
+                        "description": "Drill", "supported_items": "minecraft:diamond_pickaxe",
+                        "weight": 7, "max_level": 3, "min_cost": {"base": 4, "per_level_above_first": 0},
+                        "max_cost": {"base": 9, "per_level_above_first": 0}, "anvil_cost": 6,
+                        "slots": ["mainhand"], "effects": {}
+                    });
+                    let synced = game
+                        .stations()
+                        .enchantments
+                        .with_entries([("fixture:drill", &definition)])
+                        .unwrap()
+                        .unwrap();
+                    game.client.remote.as_mut().unwrap().enchantments =
+                        Some(std::sync::Arc::new(synced));
 
-                let drill = game
-                    .enchantments()
-                    .into_iter()
-                    .find(|e| e.id == "fixture:drill")
-                    .expect("the synced enchantment is listed");
-                assert_eq!(
-                    (drill.max_level, drill.weight, drill.anvil_cost, drill.curse),
-                    (3, 7, 6, false)
-                );
-                assert_eq!(game.enchantment_min_cost("fixture:drill", 1), Some(4));
-            });
+                    let drill = game
+                        .enchantments()
+                        .into_iter()
+                        .find(|e| e.id == "fixture:drill")
+                        .expect("the synced enchantment is listed");
+                    assert_eq!(
+                        (drill.max_level, drill.weight, drill.anvil_cost, drill.curse),
+                        (3, 7, 6, false)
+                    );
+                    assert_eq!(game.enchantment_min_cost("fixture:drill", 1), Some(4));
+                },
+            );
         },
     );
 }
@@ -89,9 +92,9 @@ fn translate_gives_the_text_of_a_defined_key_and_none_otherwise() {
 #[test]
 #[ignore = "daily"]
 fn a_trait_mod_measures_text_through_its_draw_context() {
-    use sunrise_client_gameplay::game::host::draw::GameDrawContext;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::DrawContext;
+    use sunrise_client_gameplay::game::host::draw::GameDrawContext;
 
     with_client_game(|game| {
         let mut batch = sunrise_client::hud::HudBatch::scratch([320, 240]);

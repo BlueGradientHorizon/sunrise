@@ -7,7 +7,10 @@ impl crate::game::ServerGame<'_> {
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
         map_banner(
             pos,
-            self.common.world.block_entities.get(&(pos[0], pos[1], pos[2])),
+            self.common
+                .world
+                .block_entities
+                .get(&(pos[0], pos[1], pos[2])),
             &self.common.res.facts().get(state).name,
         )
     }

@@ -2,13 +2,13 @@
 //! only where `Player.mayBuild` holds or the stack's `can_place_on` matches
 //! the clicked block. Tools (an axe), honeycomb, bone meal, shears, a water
 //! bottle and a spawn egg used on a block pass in adventure mode otherwise.
-use sunrise_gameplay::game::game_tests::tests::server_game;
-use {sunrise_gameplay_common::game::GuestUse, sunrise_gameplay_common::game::Hit};
 use sunrise_command::args::GameMode;
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::first_person_sim::Hand;
 use sunrise_world::registry::BlockStateId;
+use {sunrise_gameplay_common::game::GuestUse, sunrise_gameplay_common::game::Hit};
 
 /// A server's game with the prepared resources, or `None` where CI has none.
 fn game<'a>(
@@ -79,7 +79,11 @@ fn click(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: [i32; 3], stack
 
 /// The same click as a LAN guest's `UseItemOn` packet: the server acts for one
 /// hand on the block the guest's client named, and stops at `ItemStack.useOn`.
-fn click_as_guest(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: [i32; 3], stack: ItemStack) {
+fn click_as_guest(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    pos: [i32; 3],
+    stack: ItemStack,
+) {
     game.using = None;
     game.cooldowns = Default::default();
     *game.held_mut() = Some(stack);
@@ -333,7 +337,10 @@ fn an_adventure_use_on_is_not_predicted_on_the_client() {
         return;
     }
     sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
-        let _pipe = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(game);
+        let _pipe =
+            sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(
+                game,
+            );
         game.player = Some(
             sunrise_sim::motion::PlayerMotion::new(
                 game.motion,
@@ -370,7 +377,11 @@ fn an_adventure_use_on_is_not_predicted_on_the_client() {
 
 /// The client's `Item.useOn` prediction behind `ItemStack.useOn`'s adventure gate, which the
 /// fork's use phase applies before it selects the prediction.
-fn predicts(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, stack: &ItemStack, hit: &Hit) -> bool {
+fn predicts(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    stack: &ItemStack,
+    hit: &Hit,
+) -> bool {
     game.with_hand(Hand::Main, |g| {
         (g.may_build() || g.can_place_on_in_adventure(hit.pos))
             && g.predict_item_on_block(stack, hit)

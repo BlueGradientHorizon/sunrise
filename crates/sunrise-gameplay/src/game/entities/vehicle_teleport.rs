@@ -4,9 +4,9 @@
 //! `teleportSameDimension` -> `calculatePassengerTransition`), and `/rotate`
 //! turns an entity without teleporting it (`RotateCommand` ->
 //! `Entity.forceSetRotation`).
-use crate::game::ServerGame;
 use super::commands::Target;
 use super::entity::{Entity as _, with_entity, with_entity_mut};
+use crate::game::ServerGame;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 pub use sunrise_gameplay::teleport_transition::TeleportMotion;
@@ -148,7 +148,10 @@ impl ServerGame<'_> {
         vehicle: u32,
         rider: u32,
     ) -> Option<Vec3> {
-        self.horse_dismount_mobs(self.common.mob_object(vehicle)?, self.common.mob_object(rider)?)
+        self.horse_dismount_mobs(
+            self.common.mob_object(vehicle)?,
+            self.common.mob_object(rider)?,
+        )
     }
 
     /// The horse search for a mount and rider currently lent out of the mob list.
@@ -309,7 +312,10 @@ impl ServerGame<'_> {
         if let Target::General(id) = target {
             // Entity.teleport's stopRiding(): a targeted rider leaves its vehicle first.
             if self.common.dim != destination
-                && self.common.general_row(id).is_some_and(|row| row.mount.is_some())
+                && self
+                    .common
+                    .general_row(id)
+                    .is_some_and(|row| row.mount.is_some())
                 && let Some(entity) = self.entity(id)
             {
                 self.entity_stop_riding(entity);
@@ -731,7 +737,8 @@ impl ServerGame<'_> {
             });
         }
         let row = self
-            .common.resident_entities
+            .common
+            .resident_entities
             .general
             .rows
             .iter()
@@ -759,7 +766,8 @@ impl ServerGame<'_> {
                 m.previous_head_pitch = pitch;
             }
         } else if let Some(row) = self
-            .common.resident_entities
+            .common
+            .resident_entities
             .general
             .rows
             .iter_mut()
@@ -787,7 +795,10 @@ impl ServerGame<'_> {
         transition: Transition,
         riding: &mut Vec<u32>,
     ) {
-        let acting = self.server.lan_acting.filter(|_| self.common.player.is_some());
+        let acting = self
+            .server
+            .lan_acting
+            .filter(|_| self.common.player.is_some());
         let seated = self.common.riding;
         if seated == Some(vehicle)
             && let Some(p) = self.common.player.as_mut()
@@ -809,7 +820,9 @@ impl ServerGame<'_> {
             if let Ok(own) = u32::try_from(own) {
                 self.entity_section_step(own, [before.x, before.y, before.z], [to.x, to.y, to.z]);
             }
-            if let Some([yaw, pitch]) = transition.rotation_for([self.common.yaw, self.common.pitch]) {
+            if let Some([yaw, pitch]) =
+                transition.rotation_for([self.common.yaw, self.common.pitch])
+            {
                 self.common.yaw = yaw;
                 self.common.pitch = pitch;
             }

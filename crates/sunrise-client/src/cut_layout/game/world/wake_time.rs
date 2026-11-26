@@ -1,18 +1,16 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::server_side::wake_time::tests::NOW;
+    use sunrise_gameplay_common::game::server_side::wake_time::tests::NOW;
 
-use sunrise_gameplay_common::game::server_side::wake_time::tests::marker;
+    use sunrise_gameplay_common::game::server_side::wake_time::tests::marker;
 
-use mod_api::{ClockAdjustment, Identifier};
+    use mod_api::{ClockAdjustment, Identifier};
 
-use sunrise_gameplay::world_clock::TimeMarker;
+    use sunrise_gameplay::world_clock::TimeMarker;
 
-/// What a second listener reads: the first moves the clock 1000 ticks on, the second sees
+    /// What a second listener reads: the first moves the clock 1000 ticks on, the second sees
     /// that and sends it to noon instead, and the game resolves the last word once.
     #[test]
     #[ignore = "daily"]

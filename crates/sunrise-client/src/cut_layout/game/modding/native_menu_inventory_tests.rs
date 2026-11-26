@@ -1,8 +1,8 @@
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use super::native_guest_turn_tests::with_guests;
 use mod_api::__private::game::Fields;
 use mod_api::{HostTransaction, ItemPlace, ServerHost, TransactionError};
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::lan::playerdata;
 
@@ -381,8 +381,8 @@ mod owner {
     #[test]
     #[ignore = "daily"]
     fn a_non_owner_guest_in_another_level_keeps_their_stack_through_an_abort() {
-        use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
         use mod_api::prelude::*;
+        use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
 
         if run_fresh_cases(
             "game::server_side::native_menu_inventory_tests::owner::a_non_owner_guest_in_another_level_keeps_their_stack_through_an_abort",
@@ -395,8 +395,10 @@ mod owner {
             game.level.player_uuid = Some(playerdata::uuid_ints(12));
             assert_ne!(game.dim.id(), "minecraft:the_nether");
             // A level is open while a player is in it.
-            game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
-            game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+                .unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
+                .unwrap();
             let stack = |game: &sunrise_gameplay::game::ServerGame<'_>, snbt: &str| {
                 let host: &dyn mod_api::Host = game;
                 host.item_from_snbt(snbt).unwrap()
@@ -446,7 +448,8 @@ mod owner {
                 .transaction(|host, _| Ok::<_, ()>(player.give_stack(host, diamond)));
             assert_eq!(given, Ok(Ok(None)));
             assert_eq!(game.dropped.len(), dropped);
-            game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+                .unwrap();
             let [overflow] = game.dropped.as_ref() else {
                 panic!("the full guest's level should have one overflow drop");
             };

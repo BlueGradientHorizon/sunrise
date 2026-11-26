@@ -6,7 +6,7 @@ use super::*;
 pub trait MenuClicksGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `CrafterBlockEntity.setSlotState`: the menu's slot states land on the
     /// block entity, whose `setChanged` marks the chunk for saving.
-     fn apply_crafter_slot_states(&mut self, menu: &sunrise_sim::menu::Menu) {
+    fn apply_crafter_slot_states(&mut self, menu: &sunrise_sim::menu::Menu) {
         let Some(key) = self.container else {
             return;
         };
@@ -25,6 +25,5 @@ pub trait MenuClicksGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> MenuClicksGameExt1<'__sg> for G {}
-
 
 use crate::game::side_ops::events::EventsSideGameExt as _;

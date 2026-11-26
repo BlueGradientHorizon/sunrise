@@ -1,5 +1,4 @@
 use super::{connect_play_test, finish_play_test, offer_test_payloads, spawn_menu_test};
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game, crate::game::client_side::viewed_worlds::tests::column};
 use mod_api::{
     HandlerThread, Hooks, IPayloadContext, IPayloadHandler, ModEntry, PayloadBytes,
     PayloadContextError, PayloadHandleError, PayloadId, PayloadSendError, PayloadWork,
@@ -23,6 +22,11 @@ use sunrise_protocol::{
     },
 };
 use sunrise_sim::raw_payloads;
+use {
+    crate::game::client_side::viewed_worlds::tests::column,
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+};
 
 pub(in crate::game) const MAIN: &str = "bundle_probe:main";
 pub(in crate::game) const NETWORK: &str = "bundle_probe:network";

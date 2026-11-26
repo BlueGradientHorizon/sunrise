@@ -12,8 +12,17 @@ impl crate::game::ServerGame<'_> {
             .ok_or_else(|| err("argument.pos.missing.int", &[]))?;
         // BlockPos.containing(getPosition)
         let p = self.resolve_coords(&c).map(|v| v.floor() as i32);
-        let dimension = self.server.command_source.map_or(self.common.dim, |s| s.dimension);
-        if dimension != self.common.dim || !self.common.world.chunks.contains_key(&(p[0] >> 4, p[2] >> 4)) {
+        let dimension = self
+            .server
+            .command_source
+            .map_or(self.common.dim, |s| s.dimension);
+        if dimension != self.common.dim
+            || !self
+                .common
+                .world
+                .chunks
+                .contains_key(&(p[0] >> 4, p[2] >> 4))
+        {
             return Err(err("argument.pos.unloaded", &[]));
         }
         if p[1] < self.common.world.bottom_y() || p[1] >= self.common.world.top_y() {

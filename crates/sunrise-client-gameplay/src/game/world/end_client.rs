@@ -124,7 +124,11 @@ impl crate::game::ClientGame<'_> {
         {
             return (Vec::new(), Vec::new());
         }
-        let intensity = self.common.end.flash.intensity(self.common.clock.fraction() as f32);
+        let intensity = self
+            .common
+            .end
+            .flash
+            .intensity(self.common.clock.fraction() as f32);
         let sprite = self
             .client
             .gui
@@ -312,7 +316,8 @@ impl crate::game::ClientGame<'_> {
             let origin = (e.position - (e.position - e.previous) * 0.25).to_array();
             let block = origin.map(|v| v.floor() as i32);
             let water = self
-                .common.res
+                .common
+                .res
                 .facts()
                 .get(self.common.world.block(block[0], block[1], block[2]))
                 .fluid

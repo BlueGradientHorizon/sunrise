@@ -64,14 +64,19 @@ fn api_comp(comp: &Comp) -> Result<mod_api::Text, TextFormError> {
 impl crate::game::ServerGame<'_> {
     /// The team a handle names: None for a stale handle, one of an earlier open, or on a client.
     fn team_state(&self, team: TeamRef) -> Option<&sb::Team> {
-        if !self.common.is_logical_server() || self.common.native_lifecycle.epoch() != Some(team.fields().epoch) {
+        if !self.common.is_logical_server()
+            || self.common.native_lifecycle.epoch() != Some(team.fields().epoch)
+        {
             return None;
         }
         self.common.score.board.team_by_identity(team.fields().id)
     }
 
     fn team_handle(&self, team: &sb::Team) -> Option<TeamRef> {
-        Some(team_ref(self.common.native_lifecycle.epoch()?, team.identity.0))
+        Some(team_ref(
+            self.common.native_lifecycle.epoch()?,
+            team.identity.0,
+        ))
     }
 
     /// The name of the team `team` names, for a write: the board is loaded, and the savepoint of
@@ -107,7 +112,8 @@ impl crate::game::ServerGame<'_> {
         if !self.common.is_logical_server() {
             return Vec::new();
         }
-        self.common.score
+        self.common
+            .score
             .board
             .teams
             .iter()
@@ -127,7 +133,8 @@ impl crate::game::ServerGame<'_> {
         }
         self.common.score.board.add_team(name);
         self.sync_score_registries();
-        self.common.score
+        self.common
+            .score
             .board
             .team(name)
             .and_then(|t| self.team_handle(t))
@@ -359,9 +366,12 @@ impl crate::game::ServerGame<'_> {
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
-    use {sunrise_gameplay_common::game::server_side::native_scoreboard::tests::guest, crate::game::server_side::native_scoreboard::tests::open_lan};
     use super::*;
     use mod_api::prelude::ScoreboardServerHost;
+    use {
+        crate::game::server_side::native_scoreboard::tests::open_lan,
+        sunrise_gameplay_common::game::server_side::native_scoreboard::tests::guest,
+    };
 
     /// The API's visibility and rule names are the board's.
     #[test]
@@ -619,6 +629,3 @@ mod tests {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
-
-

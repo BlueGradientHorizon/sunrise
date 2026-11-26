@@ -57,12 +57,14 @@ impl ServerGame<'_> {
                 && matches!(self.world.block_entities.get(&pos), Some(BlockEntity::Furnace(f))
                     if f.lit_remaining <= 1 && f.items[1].as_ref().is_some_and(|s|
                         mod_api::__private::item_listens(mod_api::HookId::CraftingRemainder, &s.item)));
-            let Some(BlockEntity::Furnace(furnace)) = self.common.world.block_entities.get_mut(&pos)
+            let Some(BlockEntity::Furnace(furnace)) =
+                self.common.world.block_entities.get_mut(&pos)
             else {
                 return Ok(());
             };
             let was_lit = furnace.count_down_burn();
-            let Some(BlockEntity::Furnace(furnace)) = self.common.world.block_entities.get(&pos) else {
+            let Some(BlockEntity::Furnace(furnace)) = self.common.world.block_entities.get(&pos)
+            else {
                 return Ok(());
             };
             let items = world_items!(self);
@@ -87,12 +89,14 @@ impl ServerGame<'_> {
             let step = if needs_part {
                 let mut furnace = furnace.clone();
                 let step = plan.apply(&mut furnace, &mut drops, |s| self.crafting_remainder(s));
-                self.common.world
+                self.common
+                    .world
                     .block_entities
                     .insert(pos, BlockEntity::Furnace(furnace));
                 step
             } else {
-                let Some(BlockEntity::Furnace(furnace)) = self.common.world.block_entities.get_mut(&pos)
+                let Some(BlockEntity::Furnace(furnace)) =
+                    self.common.world.block_entities.get_mut(&pos)
                 else {
                     return Ok(());
                 };

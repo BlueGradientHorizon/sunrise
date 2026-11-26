@@ -18,7 +18,8 @@ fn compass_criterion_sees_two_compasses_before_the_block_takes_one() {
             let stone = registry.default_state("minecraft:lodestone").unwrap();
             game.world.set(0, 64, 0, stone).unwrap();
             game.set_test_forced_hit(Some(hit()));
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:compass", 2));
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:compass", 2));
             // The block's turn takes a stick from the hand and passes; the
             // item's turn then consumes the click.
             *observer.0.lock().unwrap() = Controls {
@@ -53,7 +54,8 @@ fn the_item_phase_criterion_sees_the_stack_from_before_the_block_phase() {
             let stone = registry.default_state("minecraft:stone").unwrap();
             game.world.set(0, 64, 0, stone).unwrap();
             game.set_test_forced_hit(Some(hit()));
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:stick", 2));
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:stick", 2));
             // The block's turn takes a stick from the hand and passes; the
             // item's turn then consumes the click.
             *observer.0.lock().unwrap() = Controls {
@@ -100,7 +102,8 @@ fn tnt_reads_the_hand_the_block_phase_listener_left() {
                 .unwrap();
             game.world.set(0, 64, 0, tnt).unwrap();
             game.set_test_forced_hit(Some(hit()));
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:fire_charge", 1));
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:fire_charge", 1));
             *observer.0.lock().unwrap() = Controls {
                 take_in_block: true,
                 ..Controls::default()

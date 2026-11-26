@@ -1,7 +1,6 @@
 //! Per-tick client visuals: the particle engine, `ClientLevel.animateTick`,
 //! campfire smoke and rain splashes (`ClientLevel.tickWeatherEffects`).
 use super::{Dim, weather::precipitation_at};
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
 #[cfg(feature = "client")]
 use crate::game::host::draw::GameCameraDrawContext;
 use mod_api::{
@@ -24,6 +23,7 @@ use sunrise_core::{
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_gameplay_common::game::weather_height::motion_blocking_height;
 use sunrise_items::blocks::{BlockFacts, Fluid};
 use sunrise_level::assets::Properties;
@@ -1463,6 +1463,5 @@ use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
 use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
-
 
 use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;

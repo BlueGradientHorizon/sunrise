@@ -1,7 +1,10 @@
 use super::*;
-use sunrise_client_gameplay::tutorial::Hint;
 use sunrise_client_gameplay::game::toast_manager::Toast;
-use {sunrise_gameplay_common::game::Screen, sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game};
+use sunrise_client_gameplay::tutorial::Hint;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay_common::game::Screen, sunrise_gameplay_common::game::in_own_process,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -72,7 +75,12 @@ fn social_toast_is_dismissed_only_by_the_multiplayer_key() {
                 assert!(game.client.screen == Screen::Playing);
                 assert!(wanted(game), "the unavailable key did not open the screen");
                 assert_eq!(
-                    game.client.titles.overlay.as_ref().unwrap().translation_key(),
+                    game.client
+                        .titles
+                        .overlay
+                        .as_ref()
+                        .unwrap()
+                        .translation_key(),
                     Some("multiplayer.socialInteractions.not_available")
                 );
 

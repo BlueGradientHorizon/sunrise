@@ -1,20 +1,18 @@
-
-
 #![cfg(test)]
-use sunrise_gameplay_common::game::commands_common::Target;
 use std::sync::Arc;
 use sunrise_core::nbt::Tag;
 use sunrise_gameplay::game::commands::execute::ExecState;
+use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_level::datapack::Function;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::tables::GameItems;
-use sunrise_gameplay_common::game::in_own_process;
+    use sunrise_gameplay_common::game::in_own_process;
+    use sunrise_gameplay_common::game::tables::GameItems;
 
-use super::*;
+    use super::*;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn mob_entity_membership_follows_world_pack_reload() {
         sunrise_gameplay_common::game::in_own_process(
@@ -56,7 +54,7 @@ use super::*;
             },
         );
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn first_world_open_admits_block_function() {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
@@ -125,7 +123,7 @@ use super::*;
             );
         });
     }
-/// #4449: the mods' commands are in the tree before functions load, from the first world open
+    /// #4449: the mods' commands are in the tree before functions load, from the first world open
     /// on, so a plain line and a macro line naming one both load and run; an unknown command is
     /// refused as before, and a command the mods stop registering is refused after a reload.
     #[test]
@@ -242,7 +240,15 @@ use super::*;
                         offered.store(false, Ordering::Relaxed);
                         let features = game.level.enabled_features.clone();
                         game.reload_datapacks(false, &features).unwrap();
-                        assert!(!game.server.fns.0.store.functions.contains_key("fnmod:plain"));
+                        assert!(
+                            !game
+                                .server
+                                .fns
+                                .0
+                                .store
+                                .functions
+                                .contains_key("fnmod:plain")
+                        );
                         assert!(
                             refusal(game, "fnmod:plain")
                                 .unwrap()
@@ -253,7 +259,7 @@ use super::*;
             },
         );
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn refused_item_key_reload_keeps_previous_world_generation() {
         use mod_api::{Hooks, ModEntry, Registrar, RegistrationContext};
@@ -358,10 +364,13 @@ use super::*;
             let (registry, _) =
                 sunrise_world::level::data::load_registry_with_flags(&game.options.resources)
                     .unwrap();
-            sunrise_gameplay_common::game::api_values::resolve_block_definitions(&registry).unwrap();
+            sunrise_gameplay_common::game::api_values::resolve_block_definitions(&registry)
+                .unwrap();
             let stone = mod_platform::__private::part_tests::block_key("minecraft:stone");
-            let old_tag =
-                sunrise_gameplay_common::game::native_world_read_common::block_in_tag(stone, "reload_test:candidate");
+            let old_tag = sunrise_gameplay_common::game::native_world_read_common::block_in_tag(
+                stone,
+                "reload_test:candidate",
+            );
             let old_context = game.loop_context.clone();
             let old_root = game.options.resources.clone();
             let old_data = game.pack.data_source.clone();
@@ -399,7 +408,10 @@ use super::*;
             assert_eq!(game.damage_tag_generation, old_generation);
             assert_eq!(game.server.fns.0.enabled, old_enabled);
             assert_eq!(
-                sunrise_gameplay_common::game::native_world_read_common::block_in_tag(stone, "reload_test:candidate"),
+                sunrise_gameplay_common::game::native_world_read_common::block_in_tag(
+                    stone,
+                    "reload_test:candidate"
+                ),
                 old_tag
             );
             game.save_datapack_settings();
@@ -419,7 +431,7 @@ use super::*;
             let _ = std::fs::remove_dir_all(root);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn pack_changes_publish_the_new_zip_generation_for_template_reads() {
         use std::{io::Write, path::PathBuf};
@@ -492,11 +504,14 @@ use super::*;
         });
         assert!(ran, "the prepared-resource fixture must run this case");
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn function_pack_rejects_invalid_ordinary_lines_before_execution() {
-        use {sunrise_gameplay_common::game::Options, crate::settings::Settings, crate::game::load_resources};
         use std::time::Instant;
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_gameplay_common::game::Options,
+        };
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -514,7 +529,8 @@ use super::*;
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -668,15 +684,18 @@ use super::*;
         assert_eq!(game.world.game_time, clock);
         std::fs::remove_dir_all(dir).unwrap();
     }
-/// `StringTemplate.fromString` fails a `$` line with no variable, so the
+    /// `StringTemplate.fromString` fails a `$` line with no variable, so the
     /// file is not registered, and `MacroFunction.MacroEntry.instantiate`
     /// parses a substituted line, throwing `commands.function.error.parse`
     /// before any of the call's lines run.
     #[test]
     #[ignore = "daily"]
     fn macro_lines_need_a_variable_and_parse_after_substitution() {
-        use {sunrise_gameplay_common::game::Options, crate::settings::Settings, crate::game::load_resources};
         use std::time::Instant;
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_gameplay_common::game::Options,
+        };
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -694,7 +713,8 @@ use super::*;
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -776,12 +796,15 @@ use super::*;
         assert_eq!(game.score.board.score("#seen", "h166").unwrap().value, 7);
         std::fs::remove_dir_all(dir).unwrap();
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn unless_function_keeps_a_fallthrough_after_running_it_once() {
-        use {sunrise_gameplay_common::game::Options, crate::settings::Settings, crate::game::load_resources};
         use std::time::Instant;
         use sunrise_level::datapack::FunctionLine;
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_gameplay_common::game::Options,
+        };
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -799,7 +822,8 @@ use super::*;
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -866,12 +890,15 @@ use super::*;
     }
 }
 
-
 #[cfg(test)]
 mod entity_score_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
     use sunrise_core::nbt::Tag;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        sunrise_gameplay_common::game::commands_common::Target,
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -893,7 +920,8 @@ mod entity_score_tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -974,8 +1002,11 @@ mod entity_score_tests {
     #[test]
     #[ignore = "daily"]
     fn folder_metadata_rejection_reaches_actual_function_commands() {
-        use {sunrise_gameplay_common::game::Options, crate::settings::Settings, crate::game::load_resources};
         use std::time::Instant;
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_gameplay_common::game::Options,
+        };
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -993,7 +1024,8 @@ mod entity_score_tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -1108,8 +1140,11 @@ mod required_tag_tests {
     #[test]
     #[ignore = "daily"]
     fn real_pack_required_tag_failures_execute_no_partial_functions() {
-        use {sunrise_gameplay_common::game::Options, crate::settings::Settings, crate::game::load_resources};
         use std::time::{Instant, SystemTime, UNIX_EPOCH};
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_gameplay_common::game::Options,
+        };
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -1127,7 +1162,8 @@ mod required_tag_tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -1302,7 +1338,12 @@ mod required_tag_tests {
             if actual != expected {
                 failures.push(format!("{name}: {actual:?} expected {expected:?}"));
             }
-            let ids = game.server.fns.0.store.tag_functions(&format!("h145:{name}"));
+            let ids = game
+                .server
+                .fns
+                .0
+                .store
+                .tag_functions(&format!("h145:{name}"));
             let expected_ids: Vec<String> = if name == "optional_invalid_child" {
                 vec!["h145:a".into(), "h145:b".into()]
             } else {

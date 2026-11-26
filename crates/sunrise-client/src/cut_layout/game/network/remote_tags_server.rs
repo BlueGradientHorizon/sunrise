@@ -2,18 +2,17 @@
 #[cfg(test)]
 #[cfg(any())]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::tables::GameItems;
-use sunrise_gameplay_common::game::tables::WorldTablesExt;
-use sunrise_gameplay_common::game::client_side::remote_tags::tests::login;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::{Hooks, Identifier, ModEntry, TagMembers};
     use std::sync::Arc;
+    use sunrise_gameplay_common::game::client_side::remote_tags::tests::login;
+    use sunrise_gameplay_common::game::tables::GameItems;
+    use sunrise_gameplay_common::game::tables::WorldTablesExt;
     use sunrise_protocol::packets::play::Clientbound as C;
 
     #[test]
     #[ignore = "daily"]
     fn reload_publishes_retained_and_bound_empty_tags_to_loot_and_clients() {
-        use {sunrise_gameplay::game::lan::sync, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
         use std::path::Path;
         use sunrise_protocol::{
             buf::{Codec, Reader},
@@ -21,6 +20,11 @@ use sunrise_gameplay_common::game::client_side::remote_tags::tests::login;
             packets::recipes::{HolderSet, SlotDisplay, UpdateRecipes},
         };
         use sunrise_world::{level::classes::is_generated_tag, loot::LootTags};
+        use {
+            sunrise_gameplay::game::lan::sync,
+            sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+            sunrise_gameplay::game::native_entity_refs::tests::with_game,
+        };
 
         const FIXTURE: &str = "SUNRISE_TAG_RELOAD_FIXTURE";
         if run_fresh_cases(

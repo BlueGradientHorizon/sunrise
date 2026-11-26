@@ -60,7 +60,11 @@ impl crate::game::ClientGame<'_> {
         let kind_name = kind.name();
         // An agent waiting on a task or a wait, or a client still connected, is
         // watching even when its last line was minutes ago.
-        let agent_active = self.common.control.as_ref().is_some_and(|c| c.clients() > 0)
+        let agent_active = self
+            .common
+            .control
+            .as_ref()
+            .is_some_and(|c| c.clients() > 0)
             || self.agent_busy()
             || super::events::has_waits(&self.common.events);
         if self

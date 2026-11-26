@@ -1,7 +1,5 @@
 #![cfg(test)]
 
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-use sunrise_gameplay_common::game::api_values::{StackReadError, TryIntoApi};
 use crate::game::native_live_holder_tests::{mod_holder, with_mod_parts};
 use mod_api::{
     BlockEntityItemError as Error, Host, HostTransaction, ITEMS, ItemResource, ServerHost,
@@ -9,6 +7,8 @@ use mod_api::{
 };
 use std::{ops::ControlFlow, sync::Arc};
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::game::api_values::{StackReadError, TryIntoApi};
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::{BlockEntity, ModBlockEntity, ModContainer};
 
@@ -652,21 +652,22 @@ fn a_kept_slot_goes_back_only_into_the_block_entity_it_came_from() {
                 .map(|name| mod_api::prelude::BlockStatesHost::block_state_id(game, name).unwrap());
             let stone =
                 ItemResource::of(&ItemStack::new("minecraft:stone", 1).try_into_api().unwrap());
-            let replace = |game: &mut sunrise_gameplay::game::ServerGame<'_>, state, commit: bool| {
-                let items = level.capability(game, &ITEMS, at, None).unwrap();
-                let result: Result<(), TransactionError<()>> = (game as &mut dyn ServerHost)
-                    .transaction(|host, tx| {
-                        assert_eq!(items.extract_at(host, tx, 0, &stone, 10), Ok(10));
-                        assert!(
-                            level
-                                .set_block(host, at, state, mod_api::BlockUpdateFlags::NONE)
-                                .unwrap()
-                        );
-                        assert_eq!(level.block_state(host, at), Some(state));
-                        if commit { Ok(()) } else { Err(()) }
-                    });
-                assert_eq!(result.is_ok(), commit);
-            };
+            let replace =
+                |game: &mut sunrise_gameplay::game::ServerGame<'_>, state, commit: bool| {
+                    let items = level.capability(game, &ITEMS, at, None).unwrap();
+                    let result: Result<(), TransactionError<()>> = (game as &mut dyn ServerHost)
+                        .transaction(|host, tx| {
+                            assert_eq!(items.extract_at(host, tx, 0, &stone, 10), Ok(10));
+                            assert!(
+                                level
+                                    .set_block(host, at, state, mod_api::BlockUpdateFlags::NONE)
+                                    .unwrap()
+                            );
+                            assert_eq!(level.block_state(host, at), Some(state));
+                            if commit { Ok(()) } else { Err(()) }
+                        });
+                    assert_eq!(result.is_ok(), commit);
+                };
 
             let before = container_at(game, pos, "minecraft:chest");
             for state in [air, barrel] {

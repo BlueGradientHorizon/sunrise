@@ -1,5 +1,3 @@
-use sunrise_gameplay_common::game::fishing_common::State;
-use sunrise_gameplay_common::game::commands_common::Target;
 use crate::game::server_side::fishing::fishing_targets_tests::FishingCase;
 use crate::game::server_side::fishing::fishing_targets_tests::FishingExtraCase;
 use crate::game::server_side::fishing::fishing_targets_tests::TrackedTarget;
@@ -12,12 +10,11 @@ use crate::game::server_side::fishing::fishing_targets_tests::target_kinematics;
 use crate::game::server_side::fishing::fishing_targets_tests::vec_bits;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::commands_common::Target;
+use sunrise_gameplay_common::game::fishing_common::State;
 use sunrise_items::items::ItemStack;
 
-pub(crate) fn reset_arena(
-    game: &mut sunrise_gameplay::game::ServerGame<'_>,
-    target: &str,
-) {
+pub(crate) fn reset_arena(game: &mut sunrise_gameplay::game::ServerGame<'_>, target: &str) {
     clear_entities(game);
     let _ = game.run_command("fill 0 63 0 11 63 9 minecraft:stone");
     let _ = game.run_command("fill 0 64 0 11 70 9 minecraft:air");

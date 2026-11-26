@@ -8,7 +8,7 @@ use sunrise_world::registry::BlockStateId;
 
 pub trait BookshelvesCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The enchanting power around the table at `pos`, truncated as NeoForge's `(int) power`.
-     fn count_bookshelves(&self, pos: [i32; 3]) -> i32 {
+    fn count_bookshelves(&self, pos: [i32; 3]) -> i32 {
         let table = BlockPos::new(pos[0], pos[1], pos[2]);
         let level = self.native_current_level();
         let power: f32 = bookshelf_offsets()
@@ -29,7 +29,7 @@ pub trait BookshelvesCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         (power as i32).max(0)
     }
 
-     fn enchant_transmits(&self, state: BlockStateId) -> bool {
+    fn enchant_transmits(&self, state: BlockStateId) -> bool {
         self.items()
             .block_tags
             .get("minecraft:enchantment_power_transmitter")
@@ -37,7 +37,7 @@ pub trait BookshelvesCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// Raw provider answer. The explicit read returns it as given.
-     fn enchant_power(
+    fn enchant_power(
         &self,
         level: Option<LevelRef>,
         state: BlockStateId,
@@ -55,13 +55,13 @@ pub trait BookshelvesCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         })
     }
 
-     fn default_enchant_power(&self, state: BlockStateId) -> f32 {
+    fn default_enchant_power(&self, state: BlockStateId) -> f32 {
         self.items()
             .default_enchant_power(&self.res.facts().get(state).name)
     }
 
     /// Offers and particles ignore non-finite overrides and keep the tag default.
-     fn enchant_power_for_table(
+    fn enchant_power_for_table(
         &self,
         level: Option<LevelRef>,
         state: BlockStateId,
@@ -78,7 +78,6 @@ pub trait BookshelvesCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> BookshelvesCommonGameExt1<'__sg> for G {}
-
 
 use crate::game::tables::GameItems as _;
 

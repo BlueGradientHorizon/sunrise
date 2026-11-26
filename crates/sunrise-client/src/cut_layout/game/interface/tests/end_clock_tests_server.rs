@@ -1,12 +1,9 @@
-use sunrise_gameplay_common::game::GameGameExt1;
 use crate::game::chat_common::end_clock_tests::game;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_sim::save::Level;
 
 /// `/time <line>`; the feedback it printed.
-pub(crate) fn run(
-    game: &mut sunrise_gameplay::game::ServerGame<'_>,
-    line: &str,
-) -> String {
+pub(crate) fn run(game: &mut sunrise_gameplay::game::ServerGame<'_>, line: &str) -> String {
     game.server.chat_capture = Some(Vec::new());
     assert!(game.run_command(&format!("time {line}")), "/time {line}");
     let lines = game.server.chat_capture.take().unwrap();

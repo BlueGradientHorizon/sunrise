@@ -1,8 +1,12 @@
+use super::*;
+use std::sync::atomic::Ordering;
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::thrown_trident::ThrownTrident;
-use super::*;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_projectiles::impact_probe::Action, crate::game::server_side::native_projectiles::impact_probe::with_probe};
-use std::sync::atomic::Ordering;
+use {
+    crate::game::server_side::native_projectiles::impact_probe::Action,
+    crate::game::server_side::native_projectiles::impact_probe::with_probe,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+};
 
 pub(crate) fn aim_trident_at_wall(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,

@@ -1,12 +1,12 @@
-use std::sync::Arc;
-use sunrise_gameplay_common::game::mods::content_overlay;
-use sunrise_gameplay_common::game::mods::ModsState;
 use super::*;
-use sunrise_gameplay::game::mods::tests::inventory::EmptyCode;
-use sunrise_gameplay::game::mods::tests::inventory::Guard;
 use mod_api::ModEntry;
 use mod_platform::testing::with_mods;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use sunrise_gameplay::game::mods::tests::inventory::EmptyCode;
+use sunrise_gameplay::game::mods::tests::inventory::Guard;
+use sunrise_gameplay_common::game::mods::ModsState;
+use sunrise_gameplay_common::game::mods::content_overlay;
 use sunrise_mod_package::enabled::EnabledMods;
 
 #[test]
@@ -84,8 +84,9 @@ fn code_only_reload_publishes_one_new_inventory_after_prepare_and_preserves_old_
                     .unwrap();
                 }
                 // This fixture skips world open, which normally loads the built-in sound holders.
-                let registries = sunrise_gameplay_common::game::chat_common::command_export(&original, false)
-                    .expect("prepared command registries");
+                let registries =
+                    sunrise_gameplay_common::game::chat_common::command_export(&original, false)
+                        .expect("prepared command registries");
                 game.ui.registries.fill_from_exported(&registries);
                 game.reload_datapacks(true, &[]).unwrap();
                 let loaded = |game: &sunrise_gameplay::game::ServerGame<'_>, id: &str| {
@@ -108,9 +109,8 @@ fn code_only_reload_publishes_one_new_inventory_after_prepare_and_preserves_old_
                     (false, false, false, false, false, false)
                 );
                 let old_songs = game.items().songs.clone();
-                let read_tags = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-                    game.items().item_tags.clone()
-                };
+                let read_tags =
+                    |game: &sunrise_gameplay::game::ServerGame<'_>| game.items().item_tags.clone();
                 let read = |game: &sunrise_gameplay::game::ServerGame<'_>| {
                     sunrise_gameplay::game::server_side::lan::sync::server_sources(
                         &game.options.resources,

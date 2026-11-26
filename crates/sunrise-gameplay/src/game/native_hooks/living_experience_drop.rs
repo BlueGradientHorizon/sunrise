@@ -1,5 +1,3 @@
-
-
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
     /// A dying mob or player `entity` of `kind` is about to drop `original`

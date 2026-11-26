@@ -12,7 +12,8 @@ impl crate::game::ClientGame<'_> {
     /// command (`MinecartCommandBlockEditScreen`).
     pub(in crate::game::client_side) fn open_cart_command_block(&mut self, id: u32) {
         let Some(block) = self
-            .common.carts
+            .common
+            .carts
             .iter()
             .find(|c| c.id == id && c.kind == CartKind::CommandBlock)
             .map(|c| c.command.clone())
@@ -38,14 +39,16 @@ impl crate::game::ClientGame<'_> {
         let command = s.command.value().to_owned();
         let track_output = s.track_output;
         // The output button set the cart's own flag as it was pressed.
-        self.common.edit_command_cart(id, |c| c.command.track_output = track_output);
+        self.common
+            .edit_command_cart(id, |c| c.command.track_output = track_output);
         self.send(S::SetCommandMinecart(play::SetCommandMinecart {
             entity: id as i32,
             command,
             track_output,
         }));
         if !track_output {
-            self.common.edit_command_cart(id, |c| c.command.last_output = None);
+            self.common
+                .edit_command_cart(id, |c| c.command.last_output = None);
         }
     }
 }

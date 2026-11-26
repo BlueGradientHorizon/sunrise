@@ -1,12 +1,9 @@
-
-
 #![cfg(test)]
 use sunrise_sim::lan::playerdata::uuid_ints;
 #[cfg(test)]
 mod tests {
-    use mod_api::__private::game::Fields;
-use {sunrise_gameplay::game::server_side::lan::LanSettings, crate::game::server_side::native_entity_refs::tests::with_game};
     use super::*;
+    use mod_api::__private::game::Fields;
     use mod_api::{BossBarColor, BossBarOverlay, BossBarRef};
     use std::sync::{
         Arc,
@@ -14,6 +11,10 @@ use {sunrise_gameplay::game::server_side::lan::LanSettings, crate::game::server_
     };
     use sunrise_protocol::packets::configuration::ClientInformation;
     use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_game,
+        sunrise_gameplay::game::server_side::lan::LanSettings,
+    };
 
     fn guest(uuid: u128, conn: u32) -> Guest {
         let (tx, _) = std::sync::mpsc::channel();

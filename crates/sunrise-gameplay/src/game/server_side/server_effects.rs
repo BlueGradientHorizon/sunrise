@@ -31,13 +31,7 @@ impl ServerGame<'_> {
         self.server.pending_sounds.len()
     }
 
-    pub fn server_play_sound(
-        &mut self,
-        event: &str,
-        at: [f64; 3],
-        volume: f32,
-        pitch: f32,
-    ) {
+    pub fn server_play_sound(&mut self, event: &str, at: [f64; 3], volume: f32, pitch: f32) {
         assert!(
             self.is_logical_server(),
             "server_play_sound called on Client role"

@@ -1,9 +1,12 @@
 //! Behavioral coverage of source-keyed contents watches through real Parts and handles.
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
 use mod_api::*;
 use std::sync::{Arc, Mutex};
 use sunrise_core::position::BlockPos;
 use sunrise_level::chunk::Chunk;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+};
 
 const SOURCE: [i32; 3] = [0, 64, 0];
 const SECOND: [i32; 3] = [2, 64, 0];

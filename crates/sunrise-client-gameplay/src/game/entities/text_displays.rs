@@ -395,10 +395,7 @@ impl RemoteTextDisplay {
         }
     }
     /// `Display.getInterpolatedBoundingBox(float)`.
-    pub fn interpolated_bounding_box(
-        &self,
-        partial: f32,
-    ) -> (glam::DVec3, glam::DVec3) {
+    pub fn interpolated_bounding_box(&self, partial: f32) -> (glam::DVec3, glam::DVec3) {
         if self.previous == self.position {
             self.culling_box
         } else {
@@ -436,11 +433,7 @@ impl RemoteTextDisplay {
         self.position
     }
     /// `Display.shouldRenderAtSqrDistance`: strict `<`, uninterpolated position, live `view_range`.
-    pub fn in_range(
-        &self,
-        camera: glam::DVec3,
-        view_scale: f64,
-    ) -> bool {
+    pub fn in_range(&self, camera: glam::DVec3, view_scale: f64) -> bool {
         let range = f64::from(self.data.view_range) * 64.0 * view_scale;
         (self.position - camera).length_squared() < range * range
     }
@@ -506,10 +499,7 @@ impl RemoteTextDisplay {
         }
     }
     /// `Display.calculateInterpolationProgress`: only updates `last_progress` when `duration > 0`.
-    pub fn calculate_interpolation_progress(
-        &mut self,
-        partial: f32,
-    ) -> f32 {
+    pub fn calculate_interpolation_progress(&mut self, partial: f32) -> f32 {
         if self.duration <= 0 {
             return 1.0;
         }
@@ -520,10 +510,7 @@ impl RemoteTextDisplay {
     /// The casters this display adds to the shadow pass: its interpolated
     /// shadow radius and strength (`DisplayRenderer.getShadowRadius` and
     /// `DisplayRenderer.getShadowStrength`), suppressed before first tick or when invisible.
-    pub fn shadow(
-        &self,
-        partial: f64,
-    ) -> Option<(glam::DVec3, f32, f32)> {
+    pub fn shadow(&self, partial: f64) -> Option<(glam::DVec3, f32, f32)> {
         if !self.render_state_ready || self.shared_flags & 0x20 != 0 {
             return None;
         }
@@ -536,11 +523,7 @@ impl RemoteTextDisplay {
     }
     /// The entries after `Display`'s: a block state, or an item with its
     /// display context (the stack comes converted by the caller). Changes defer to `tick()`.
-    pub fn show(
-        &mut self,
-        values: &[(u8, i32, Value)],
-        item: Option<Option<ItemStack>>,
-    ) {
+    pub fn show(&mut self, values: &[(u8, i32, Value)], item: Option<Option<ItemStack>>) {
         for (id, _, value) in values {
             match (self.shows, id, value) {
                 (Shows::Block, 23, Value::Id(state)) => {
@@ -645,11 +628,7 @@ impl RemoteTextDisplay {
     /// `AbstractInterpolationHandler.interpolateTo` / `LinearInterpolationHandler.startInterpolating`:
     /// resolves omitted components against the active target (or current pose) before checking
     /// `interp_length == 0`, and leaves an active matching target untouched even when `interp_length < 0`.
-    pub fn move_to_opt(
-        &mut self,
-        position: Option<[f64; 3]>,
-        rotation: Option<(f32, f32)>,
-    ) {
+    pub fn move_to_opt(&mut self, position: Option<[f64; 3]>, rotation: Option<(f32, f32)>) {
         let (cur_pos, cur_rot) = self.client_pos_rot();
         let next_pos = position.map(glam::DVec3::from).unwrap_or(cur_pos);
         let (next_y, next_x) = rotation.unwrap_or((cur_rot[0], cur_rot[1]));
@@ -902,7 +881,8 @@ impl ClientGame<'_> {
             .is_some_and(|r| r.entity_id as u32 == id)
         {
             return self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .map(|p| glam::DVec3::new(p.position.x, p.position.y, p.position.z));
         }
@@ -1087,7 +1067,10 @@ impl ClientGame<'_> {
     /// same camera source of truth as `particle_rotation` (`ThirdPersonFront` already baked in).
     pub fn display_camera_angles(&self) -> [f32; 2] {
         if self.client.studio.flying() {
-            return [self.client.studio.freecam.yaw, self.client.studio.freecam.pitch];
+            return [
+                self.client.studio.freecam.yaw,
+                self.client.studio.freecam.pitch,
+            ];
         }
         let (yaw, pitch) = self
             .client
@@ -1287,7 +1270,8 @@ impl ClientGame<'_> {
                     );
                     // CompositeBlockModel.update: special model receives the same resolved light.
                     if self
-                        .common.res
+                        .common
+                        .res
                         .facts()
                         .get(state)
                         .name

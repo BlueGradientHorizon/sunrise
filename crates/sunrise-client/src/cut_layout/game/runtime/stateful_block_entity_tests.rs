@@ -2,10 +2,14 @@ use sunrise_gameplay_common::game::GameGameExt1;
 #[test]
 #[ignore = "daily"]
 fn stateful_creation_uses_actual_state_and_preserves_existing_entity() {
-    use {sunrise_gameplay::game::native_entity_refs::tests::record_key, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
     use mod_api::{self, *};
     use std::sync::{Arc, Mutex, OnceLock};
     use sunrise_level::{chunk::Chunk, containers::BlockEntity};
+    use {
+        sunrise_gameplay::game::native_entity_refs::tests::record_key,
+        sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+    };
 
     if run_fresh_cases(
         "game::stateful_block_entity_tests::stateful_creation_uses_actual_state_and_preserves_existing_entity",
@@ -73,7 +77,8 @@ fn stateful_creation_uses_actual_state_and_preserves_existing_entity() {
     mod_platform::__private::install(mods.clone());
     sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
     let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-    let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+    let root =
+        sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
     with_game_at(root.prepared().to_path_buf(), |game| {
         game.options.dedicated = Some(Vec::new());
         game.world
@@ -81,10 +86,14 @@ fn stateful_creation_uses_actual_state_and_preserves_existing_entity() {
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         let registry = game.pack.assets.registry;
         let default = registry.default_state(BLOCK).unwrap();
-        let populated =
-            sunrise_gameplay_common::game::native_hooks::with_property(registry, default, "rotation", "1").unwrap();
-        let empty =
-            sunrise_gameplay_common::game::native_hooks::with_property(registry, default, "rotation", "2").unwrap();
+        let populated = sunrise_gameplay_common::game::native_hooks::with_property(
+            registry, default, "rotation", "1",
+        )
+        .unwrap();
+        let empty = sunrise_gameplay_common::game::native_hooks::with_property(
+            registry, default, "rotation", "2",
+        )
+        .unwrap();
         assert_ne!(
             populated, default,
             "the factory must see a non-default state"

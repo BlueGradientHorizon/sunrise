@@ -1,23 +1,21 @@
-
-
 #![cfg(test)]
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
-use sunrise_gameplay_common::game::in_own_process;
+    use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
+    use sunrise_gameplay_common::game::in_own_process;
 
-use sunrise_core::use_animation::UseAnimation;
+    use sunrise_core::use_animation::UseAnimation;
 
-/// `ItemStack::use_animation` (#4677): `ItemStack.getUseAnimation` with a mod's
+    /// `ItemStack::use_animation` (#4677): `ItemStack.getUseAnimation` with a mod's
     /// `ItemPart::use_animation` answer applied, the value the renderer reads, through a client
     /// host and a server host alike; the Part is asked on both sides with a read-only `Host`.
     #[test]
     #[ignore = "daily"]
     fn a_stacks_use_animation_carries_the_mods_answer_on_both_sides() {
-        use sunrise_gameplay::game::native_entity_refs::tests::with_game;
         use mod_api::{Hooks, Host, ItemPart, ModEntry, Mods, Registrar, UseAnimationEvent};
+        use sunrise_gameplay::game::native_entity_refs::tests::with_game;
         sunrise_gameplay_common::game::in_own_process(
             "game::server_side::item_use::tests::a_stacks_use_animation_carries_the_mods_answer_on_both_sides",
             || {
@@ -69,9 +67,11 @@ use sunrise_core::use_animation::UseAnimation;
                 sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
                 mod_platform::testing::with_mods(mods, || {
                     #[cfg(feature = "client")]
-                    sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
-                        check(game, game, "client");
-                    });
+                    sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(
+                        |game| {
+                            check(game, game, "client");
+                        },
+                    );
                     with_game(|game| {
                         check(game, game, "server");
                     });
@@ -79,7 +79,7 @@ use sunrise_core::use_animation::UseAnimation;
             },
         );
     }
-/// A Part that reads `ItemStack::use_animation` of its own stack from inside its callback
+    /// A Part that reads `ItemStack::use_animation` of its own stack from inside its callback
     /// gets the item's own answer: the read does not ask the Part again (which never ended).
     #[test]
     #[ignore = "daily"]
@@ -138,7 +138,7 @@ use sunrise_core::use_animation::UseAnimation;
             },
         );
     }
-/// Inside a Part, reading another stack's effective animation still asks that stack's Part:
+    /// Inside a Part, reading another stack's effective animation still asks that stack's Part:
     /// only a read of the stack being asked is answered without its Part.
     #[test]
     #[ignore = "daily"]
@@ -203,7 +203,7 @@ use sunrise_core::use_animation::UseAnimation;
             },
         );
     }
-/// A Part that reads the animation of a transformed copy of its own stack (one more in the
+    /// A Part that reads the animation of a transformed copy of its own stack (one more in the
     /// count, each time) is not asked again: the copy gets the item's own answer, and the Part
     /// runs once per read instead of re-entering itself with each new count.
     #[test]
@@ -255,7 +255,7 @@ use sunrise_core::use_animation::UseAnimation;
             },
         );
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn patched_bow_keeps_vanilla_animation_without_listener() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
@@ -293,14 +293,15 @@ use sunrise_core::use_animation::UseAnimation;
     }
 }
 
-
 #[cfg(test)]
 pub(crate) mod interact_vibration_tests {
+    use super::*;
     use sunrise_gameplay_common::game::GameGameExt1;
-use super::*;
 
-    use sunrise_gameplay::game::server_side::sculk_server::item_use_event_fixture::{EVENTS, RECORDING};
     use sunrise_gameplay::game::server_side::item_use::interact_vibrations;
+    use sunrise_gameplay::game::server_side::sculk_server::item_use_event_fixture::{
+        EVENTS, RECORDING,
+    };
 
     /// Runs `f` on a windowless game built from the prepared resources with
     /// `held` in the main hand and returns the game events it posted;
@@ -309,7 +310,10 @@ use super::*;
         held: &str,
         f: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
     ) -> Option<Vec<String>> {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        };
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES")?);
         let settings = Settings::default();
         let loaded = load_resources(
@@ -327,7 +331,8 @@ use super::*;
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,

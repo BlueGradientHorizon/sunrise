@@ -1,14 +1,15 @@
-
-
 #![cfg(test)]
 use mod_api::LevelRef;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use {sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use mod_api::DimensionKey;
     use sunrise_core::position::ChunkPos;
     use sunrise_sim::ticket_levels::Sources;
+    use {
+        sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    };
 
     fn assert_reads(
         game: &sunrise_gameplay::game::ServerGame<'_>,
@@ -73,7 +74,8 @@ mod tests {
             assert_reads(game, stale, [0, 64, 0], None);
             let unopened = LevelRef::new(level.epoch(), DimensionKey::NETHER);
             assert_reads(game, unopened, [0, 64, 0], None);
-            game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+                .unwrap();
             assert_reads(game, level, [0, 64, 0], None);
         });
         with_game(|game| {
@@ -81,7 +83,8 @@ mod tests {
             prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));
             game.server.tickets.0.update(None);
             assert_reads(game, level, [0, 64, 0], Some(true));
-            game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+            game.options.execution_role =
+                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
             assert_reads(game, level, [0, 64, 0], None);
         });
     }

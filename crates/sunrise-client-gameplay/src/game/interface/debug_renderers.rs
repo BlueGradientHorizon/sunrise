@@ -185,13 +185,15 @@ impl ClientGame<'_> {
         use sunrise_items::blocks::Fluid;
         for pos in cube(feet, 10) {
             let f = self
-                .common.res
+                .common
+                .res
                 .facts()
                 .get(self.common.world.block(pos[0], pos[1], pos[2]));
             if f.fluid != Fluid::Water {
                 continue;
             }
-            let Some((height, _)) = self.common.fluid_height_of(pos[0], pos[1], pos[2], None) else {
+            let Some((height, _)) = self.common.fluid_height_of(pos[0], pos[1], pos[2], None)
+            else {
                 continue;
             };
             let [x, y, z] = pos.map(f64::from);

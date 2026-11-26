@@ -1,14 +1,14 @@
 //! End-to-end registration and root publication, with unique resource and save roots.
-use std::sync::Arc;
 use super::*;
-use sunrise_gameplay_common::world_biomes;
 use mod_api::{
     DataPackFilesEvent, Hooks, Identifier, ModEntry, PoiKey, ProfessionDefinition, ProfessionKey,
     ProfessionWorkstation, RegisterVillagerProfessionsEvent, RegistrationContext, ServerHost,
     TradeSetKey,
 };
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::world_biomes;
 use sunrise_sim::mobs;
 
 fn definition() -> ProfessionDefinition {
@@ -329,12 +329,14 @@ fn assert_engineer_acquisition(game: &mut sunrise_gameplay::game::ServerGame<'_>
         .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     for x in 0..4 {
         for z in 0..4 {
-            game.common.world
+            game.common
+                .world
                 .set(x, 63, z, registry.default_state("minecraft:stone").unwrap())
                 .unwrap();
         }
     }
-    game.common.world
+    game.common
+        .world
         .set(1, 64, 0, registry.default_state("test:assembler").unwrap())
         .unwrap();
     let save_tables = sunrise_sim::save::SaveTables::new(&game.pack.assets);
@@ -560,12 +562,14 @@ fn villager_load_world_save_dir_preserves_custom_workstation() {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
-            game.common.world
+            game.common
+                .world
                 .set(
                     1,
                     64,
                     0,
-                    game.common.pack
+                    game.common
+                        .pack
                         .assets
                         .registry
                         .default_state("test:assembler")

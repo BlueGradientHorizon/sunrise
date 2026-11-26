@@ -1,4 +1,3 @@
-use {sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::entity_residency::SlotAccess};
 use mod_api::DimensionKey;
 use std::{
     num::NonZeroU32,
@@ -9,6 +8,10 @@ use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
 };
 use sunrise_sim::join_seq::RestoreOrder;
+use {
+    sunrise_gameplay::game::entity_residency::SlotAccess,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 static VALUE: AttachmentType<i32> = AttachmentType {
     namespace: "test",
@@ -77,12 +80,14 @@ fn resident_new_family_lifetimes_bind_move_and_retire() {
 
         game.server.next_entity += 1;
         let id = game.server.next_entity;
-        game.resident_entities.knots.push(sunrise_gameplay_common::leash_knot::Knot {
-            attachment_lifetime: Default::default(),
-            id,
-            join: Default::default(),
-            fence: [0, 70, 0],
-        });
+        game.resident_entities
+            .knots
+            .push(sunrise_gameplay_common::leash_knot::Knot {
+                attachment_lifetime: Default::default(),
+                id,
+                join: Default::default(),
+                fence: [0, 70, 0],
+            });
         check_list!(game, resident_entities.knots);
 
         game.summon_with_nbt(

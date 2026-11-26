@@ -1,7 +1,10 @@
-use {sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use sunrise_core::nbt::Tag;
 use sunrise_game_data::scoreboard::comp_text;
 use sunrise_protocol::packets::play::{Clientbound, SetPlayerTeam, TeamParameters};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay_common::game::in_own_process,
+};
 
 fn send_team(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,

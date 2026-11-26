@@ -4,11 +4,14 @@
 //! then (`game::piglin_conversion_tests`); one vanilla makes after it (`Zombie.tick`'s
 //! `ConversionTracker.tick`, after `super.tick()`; `Tadpole.aiStep`'s ageing, after
 //! `super.aiStep()`) takes the place travel moved the mob to.
-use {sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
 use sunrise_sim::mobs::Species;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 /// A frozen serving level with a stone floor at y 99 and water from y 100 to 102 around the
 /// origin; the mob `summon` adds there, walking, set up by `setup`. One tick later: where the

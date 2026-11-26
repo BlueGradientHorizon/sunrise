@@ -104,7 +104,8 @@ impl crate::game::ClientGame<'_> {
             };
             let grey = rgba(64, 64, 64, 255);
             match self
-                .common.container
+                .common
+                .container
                 .and_then(|k| self.common.world.block_entities.get(&k))
             {
                 Some(_) if self.draw_native_screen(batch, ox, oy) => {}
@@ -227,7 +228,11 @@ impl crate::game::ClientGame<'_> {
                     );
                     let title = self.translate_with_fallback("container.crafting", "Crafting");
                     screen_info::name_container(|| title.clone());
-                    let tx = if self.common.craft_size == 3 { 29.0 } else { 97.0 };
+                    let tx = if self.common.craft_size == 3 {
+                        29.0
+                    } else {
+                        97.0
+                    };
                     batch.text(atlas, &title, ox + tx, oy + 6.0, grey, false);
                     if self.common.craft_size == 3 {
                         let inventory =
@@ -245,7 +250,9 @@ impl crate::game::ClientGame<'_> {
         self.draw_hovered_slot_highlight(batch, true, ox, oy);
         self.draw_sort_buttons(batch, ox, oy);
         let book_tip = self.draw_recipe_book(batch);
-        let effect_tip = if self.common.container.is_none() && self.common.craft_size == 2 && !self.mount_active()
+        let effect_tip = if self.common.container.is_none()
+            && self.common.craft_size == 2
+            && !self.mount_active()
         {
             self.draw_inventory_effects(batch, (ox, oy), 176)
         } else {
@@ -407,7 +414,8 @@ impl crate::game::ClientGame<'_> {
                     rgba(255, 255, 255, 128),
                 );
                 carried = self
-                    .common.carried
+                    .common
+                    .carried
                     .clone()
                     .map(|c| ItemStack { count: *count, ..c });
                 (carried.as_ref(), *capped)
@@ -582,7 +590,9 @@ impl crate::game::ClientGame<'_> {
                 | BlockEntity::TestInstanceBlock(_),
             ) => 0,
             None => {
-                self.common.craft_size * self.common.craft_size + 1 + if self.common.craft_size == 2 { 5 } else { 0 }
+                self.common.craft_size * self.common.craft_size
+                    + 1
+                    + if self.common.craft_size == 2 { 5 } else { 0 }
             }
         };
         inventory + container
@@ -629,7 +639,10 @@ impl crate::game::ClientGame<'_> {
         if let Some(p) = self
             .station_slot_position(i)
             .or_else(|| {
-                sunrise_gameplay_common::game::CommonGame::stock_machine_slot(self.machine_slot_position(i), self.native_screen_shown())
+                sunrise_gameplay_common::game::CommonGame::stock_machine_slot(
+                    self.machine_slot_position(i),
+                    self.native_screen_shown(),
+                )
             })
             .or_else(|| self.crafter_slot_position(i))
             .or_else(|| self.mount_slot_position(i))

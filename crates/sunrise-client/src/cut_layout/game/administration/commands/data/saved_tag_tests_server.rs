@@ -1,8 +1,11 @@
-use sunrise_game_data::text::Text;
 use super::*;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
 use sunrise_core::geometry::Vec3;
+use sunrise_game_data::text::Text;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    crate::game::load_resources, crate::settings::Settings, sunrise_gameplay_common::game::Options,
+    sunrise_gameplay_common::game::Progress,
+};
 
 /// What `command` told the player.
 pub(crate) fn say(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> Vec<Text> {
@@ -56,7 +59,8 @@ pub(crate) fn with_command_game(
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,

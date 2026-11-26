@@ -1,5 +1,3 @@
-
-
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// After the stock hotbar's items, before its attack indicator checks for full charge.

@@ -1,10 +1,7 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
-use super::super::{
+    use super::super::{
         native_entity_refs::tests::{fixture_root, run_fresh_cases, with_game},
         native_guest_turn_tests::with_guests,
     };
@@ -13,6 +10,7 @@ use super::super::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     };
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
 
     struct ObserveAwards(Arc<AtomicUsize>);
 
@@ -181,7 +179,11 @@ use super::super::{
                     ]]
                 );
                 game.save_connected_guest_statistics(host);
-                let path = sunrise_gameplay::game::server_side::stats::player_json(world.path(), "stats", uuid_ints(12));
+                let path = sunrise_gameplay::game::server_side::stats::player_json(
+                    world.path(),
+                    "stats",
+                    uuid_ints(12),
+                );
                 let saved: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
                 assert_eq!(saved, restored);
 
@@ -272,7 +274,8 @@ use super::super::{
             guest.recipe_book.recipes.insert("minecraft:stick".into());
             let host = game.server.lan.as_mut().unwrap();
             host.hub.guests.push(guest);
-            let mut play = sunrise_gameplay::game::server_side::lan_actions_server::GuestPlay::default();
+            let mut play =
+                sunrise_gameplay::game::server_side::lan_actions_server::GuestPlay::default();
             play.stats.add("custom", "minecraft:jump", 7);
             host.play.insert(1, play);
             game.stats.add("custom", "minecraft:jump", 3);

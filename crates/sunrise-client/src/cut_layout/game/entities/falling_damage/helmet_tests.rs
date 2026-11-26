@@ -1,7 +1,11 @@
-use {sunrise_gameplay_common::game::FallingBlock, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
 use sunrise_core::{geometry::Vec3, position::BlockPos, random::RandomSource};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{falling_block::bounds, motion::PlayerMotion};
+use {
+    crate::game::load_resources, crate::settings::Settings,
+    sunrise_gameplay_common::game::FallingBlock, sunrise_gameplay_common::game::Options,
+    sunrise_gameplay_common::game::Progress,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -9,8 +13,7 @@ fn falling_impacts_wear_the_helmet_before_normal_armor_and_reduction() {
     run_falling_impacts_wear_the_helmet_before_normal_armor_and_reduction();
 }
 
-pub(crate) fn run_falling_impacts_wear_the_helmet_before_normal_armor_and_reduction()
- {
+pub(crate) fn run_falling_impacts_wear_the_helmet_before_normal_armor_and_reduction() {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -28,7 +31,8 @@ pub(crate) fn run_falling_impacts_wear_the_helmet_before_normal_armor_and_reduct
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,

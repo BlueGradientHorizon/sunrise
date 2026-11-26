@@ -1,16 +1,19 @@
-
-
 #![cfg(test)]
-use sunrise_client_gameplay::game::host::draw::GameDrawContext;
 use mod_api::Tag;
 use mod_api::Text;
+use sunrise_client_gameplay::game::host::draw::GameDrawContext;
 #[cfg(test)]
 pub(crate) mod tests {
     use mod_api::{DrawContext, TooltipFont};
-use sunrise_client_gameplay::game::native_hooks::TryIntoEngine;
-use {crate::game::host::draw::*, sunrise_client_gameplay::game::host::draw::{EngineTooltipFont, label_layout, label_layout_with}};
-    use std::collections::BTreeMap;
     use mod_api::{Identifier, TextAlign, TextFormError, TextLines, TextLinesRefusal};
+    use std::collections::BTreeMap;
+    use sunrise_client_gameplay::game::native_hooks::TryIntoEngine;
+    use {
+        crate::game::host::draw::*,
+        sunrise_client_gameplay::game::host::draw::{
+            EngineTooltipFont, label_layout, label_layout_with,
+        },
+    };
 
     /// A font whose printable characters are all `advance` GUI pixels wide: the vanilla provider
     /// list with a `space` provider, so a layout test measures exact advances.

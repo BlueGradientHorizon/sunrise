@@ -1,7 +1,13 @@
 #![cfg(test)]
 //! Prepared-resource proof of the API request, server queue and client model resolution.
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, ItemStack, PathBuf, api_values}};
-use {sunrise_gameplay_common::game::api_values::TryIntoApi, sunrise_gameplay_common::game::api_values::TryIntoEngine};
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{Arc, ItemStack, PathBuf, api_values},
+};
+use {
+    sunrise_gameplay_common::game::api_values::TryIntoApi,
+    sunrise_gameplay_common::game::api_values::TryIntoEngine,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -81,6 +87,5 @@ fn stack_particle_crosses_server_packet_and_resolves_apple() {
         );
     });
 }
-
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

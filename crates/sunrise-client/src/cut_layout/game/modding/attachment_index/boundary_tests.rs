@@ -1,11 +1,11 @@
-use mod_api::AttachmentHolder;
-use sunrise_mod_runtime::attachments::Holder;
-use std::sync::Arc;
-use sunrise_gameplay_common::game::Dim;
 use super::*;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use mod_api::AttachmentHolder;
 use mod_api::{AttachmentRowError, AttachmentType, AttachmentWriteToken};
+use std::sync::Arc;
 use std::sync::Mutex;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::Dim;
+use sunrise_mod_runtime::attachments::Holder;
 use sunrise_mod_runtime::attachments::{Attachments, index::AttachmentIndex};
 
 static VALUE: AttachmentType<u32> = AttachmentType {

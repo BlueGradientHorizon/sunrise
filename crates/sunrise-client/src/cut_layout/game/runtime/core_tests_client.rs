@@ -1,11 +1,11 @@
+use super::*;
 use std::sync::Arc;
 use sunrise_client::hud::HudBatch;
+use sunrise_client_gameplay::game::EventLoopCtl;
+use sunrise_gameplay_common::game::Screen;
 use winit::event::ElementState;
 use winit::event::MouseButton;
 use winit::event::WindowEvent;
-use sunrise_client_gameplay::game::EventLoopCtl;
-use sunrise_gameplay_common::game::Screen;
-use super::*;
 
 #[path = "incoming_tests/pet_order_client.rs"]
 pub(crate) mod pet_order_tests;
@@ -69,7 +69,10 @@ pub(crate) fn exercise_blank_inventory_presses() {
         .into(),
         || {
             super::native_entity_refs::tests::with_client_game(|game| {
-                let _window = sunrise_client_gameplay::game::native_hooks::particle_count_tests::frame_scene(game);
+                let _window =
+                    sunrise_client_gameplay::game::native_hooks::particle_count_tests::frame_scene(
+                        game,
+                    );
                 let mut millis = 0;
                 for (screen, id) in [
                     (Screen::Inventory, "inventory"),

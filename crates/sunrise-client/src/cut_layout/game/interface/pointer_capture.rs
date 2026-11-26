@@ -1,18 +1,16 @@
-
-
 #![cfg(test)]
+use crate::audio::Audio;
+use crate::game::load_resources;
+use crate::settings::Settings;
 use std::path::PathBuf;
 use std::time::Instant;
-use winit::keyboard::KeyCode;
-use sunrise_gameplay_common::game::{Options, Progress, Screen};
-use crate::game::load_resources;
 use sunrise_gameplay_common::game::execution_role;
-use crate::audio::Audio;
-use crate::settings::Settings;
+use sunrise_gameplay_common::game::{Options, Progress, Screen};
+use winit::keyboard::KeyCode;
 #[cfg(test)]
 pub(crate) mod tests {
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn movement_key_held_behind_a_screen_counts_after_pointer_grab() {
         use super::*;

@@ -1,13 +1,16 @@
 //! A mod's world fluid in a real game: its bucket places it, it flows by its own rules and its
 //! part's, a bucket collects it and a save keeps it, while water beside it stays vanilla's.
-use sunrise_gameplay_common::game::GameGameExt1;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
 use mod_api::WorldFluid;
 use mod_api::{FluidPart, FluidRulesEvent, Hooks, LevelHost, ModEntry, Registrar};
 use std::sync::Arc;
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_level::chunk::Chunk;
 use sunrise_world::{chunk::BlockState, fluid::FluidKind, registry::BlockStateId};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+};
 
 const THICK_ROW: i32 = 8;
 

@@ -69,9 +69,7 @@ pub fn compile_filter(predicate: &mod_api::StatePredicate) -> Result<BlockInput,
 }
 
 /// Convert only the distinct numeric palette entries, preserving complete property states.
-pub fn column_palette(
-    palette: Vec<BlockStateId>,
-) -> Result<Vec<mod_api::BlockState>, String> {
+pub fn column_palette(palette: Vec<BlockStateId>) -> Result<Vec<mod_api::BlockState>, String> {
     palette
         .try_into_api()
         .map_err(|error| format!("column palette: {error:?}"))

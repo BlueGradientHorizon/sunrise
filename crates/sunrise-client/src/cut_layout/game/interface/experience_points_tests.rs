@@ -1,7 +1,7 @@
 //! `Player.giveExperiencePoints` with a negative amount, through the game's own walk:
 //! the loss goes down a level at a time through `Player.giveExperienceLevels(-1)`.
-use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay::game::game_tests::tests::server_game;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_sim::entities::Experience;
 
 /// A point lost at level 0 leaves nothing of the 100: `giveExperienceLevels(-1)` zeroes the

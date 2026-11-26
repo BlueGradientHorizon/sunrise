@@ -27,7 +27,11 @@ impl crate::game::ServerGame<'_> {
         };
         let lines = run(
             action,
-            self.common.options.game_dir.as_deref().unwrap_or(Path::new(".")),
+            self.common
+                .options
+                .game_dir
+                .as_deref()
+                .unwrap_or(Path::new(".")),
         )?;
         for line in lines {
             self.feedback_unbroadcast(line);

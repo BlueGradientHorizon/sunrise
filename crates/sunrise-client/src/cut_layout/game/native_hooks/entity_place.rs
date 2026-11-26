@@ -1,11 +1,9 @@
-
-
 #![cfg(test)]
 use mod_api::Placement;
 use sunrise_core::position::BlockPos;
 #[cfg(test)]
 mod entity_place_tests {
-    use {crate::game::native_hooks::entity_place::*};
+    use crate::game::native_hooks::entity_place::*;
     use mod_api::{EntityPlaceEvent, Flow, Hooks, ModEntry, ServerHost};
     use mod_platform::testing::with_mods;
     use std::sync::{Arc, Mutex};

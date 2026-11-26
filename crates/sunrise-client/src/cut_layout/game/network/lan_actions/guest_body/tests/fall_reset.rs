@@ -15,25 +15,31 @@ pub(crate) fn drain_moves(
     g: &mut sunrise_gameplay::game::ServerGame<'_>,
     reports: impl IntoIterator<Item = (f64, u8)>,
 ) {
-    g.server.lan.as_mut().unwrap().hub.guests.update(0, |guest| {
-        guest
-            .inbox
-            .push_back(InboxItem::Packet(S::ClientTickEnd(Empty), None));
-        for (y, flags) in reports {
-            let to = play::MovePlayerPos {
-                x: 12.5,
-                y,
-                z: 12.5,
-                flags,
-            };
-            guest
-                .inbox
-                .push_back(InboxItem::Packet(S::MovePlayerPos(to), None));
+    g.server
+        .lan
+        .as_mut()
+        .unwrap()
+        .hub
+        .guests
+        .update(0, |guest| {
             guest
                 .inbox
                 .push_back(InboxItem::Packet(S::ClientTickEnd(Empty), None));
-        }
-    });
+            for (y, flags) in reports {
+                let to = play::MovePlayerPos {
+                    x: 12.5,
+                    y,
+                    z: 12.5,
+                    flags,
+                };
+                guest
+                    .inbox
+                    .push_back(InboxItem::Packet(S::MovePlayerPos(to), None));
+                guest
+                    .inbox
+                    .push_back(InboxItem::Packet(S::ClientTickEnd(Empty), None));
+            }
+        });
     g.tick_lan_packets();
 }
 
@@ -52,7 +58,9 @@ pub(crate) fn tick_with_moves(
 }
 
 /// The guest's fall distance, where its tracked fall began, and which criteria it has.
-pub(crate) fn fall(g: &sunrise_gameplay::game::ServerGame<'_>) -> (f64, Option<[f64; 3]>, [bool; 3]) {
+pub(crate) fn fall(
+    g: &sunrise_gameplay::game::ServerGame<'_>,
+) -> (f64, Option<[f64; 3]>, [bool; 3]) {
     let host = g.server.lan.as_ref().unwrap();
     let guest = &host.hub.guests[0];
     let done = CRITERIA.map(|name| {

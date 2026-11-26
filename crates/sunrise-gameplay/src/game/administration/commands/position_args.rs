@@ -13,7 +13,10 @@ impl crate::game::ServerGame<'_> {
     ) -> R<()> {
         for (dim, a, b) in boxes {
             self.clone_enter(dim)?;
-            let (min_y, max_y) = (self.common.world.shape.min_y, self.common.world.shape.max_y());
+            let (min_y, max_y) = (
+                self.common.world.shape.min_y,
+                self.common.world.shape.max_y(),
+            );
             if !(b[1] >= min_y
                 && a[1] < max_y
                 && (a[0] >> 4..=b[0] >> 4).all(|x| {
@@ -31,7 +34,11 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn clone_writable(&self, pos: [i32; 3]) -> bool {
         pos[1] >= self.common.world.shape.min_y
             && pos[1] < self.common.world.shape.max_y()
-            && self.common.world.chunks.contains_key(&(pos[0] >> 4, pos[2] >> 4))
+            && self
+                .common
+                .world
+                .chunks
+                .contains_key(&(pos[0] >> 4, pos[2] >> 4))
     }
     /// BlockPosArgument.getSpawnablePos: no loaded-chunk or build-height check,
     /// only `Level.isInSpawnableBounds` (upper bounds exclusive).

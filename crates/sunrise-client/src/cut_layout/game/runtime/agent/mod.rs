@@ -1,4 +1,3 @@
-
 #![cfg(test)]
 #[cfg(feature = "client")]
 #[cfg(test)]
@@ -9,10 +8,10 @@ pub(crate) mod face_pick_tests;
 #[cfg(feature = "client")]
 pub(crate) mod tests {
 
-use super::*;
-use serde_json::json;
+    use super::*;
+    use serde_json::json;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn region_adoption_agent_state_reports_the_actual_title_mode() {
         crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {

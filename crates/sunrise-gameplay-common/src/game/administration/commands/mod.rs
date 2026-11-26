@@ -1,5 +1,3 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod peaceful_tests {
     use std::sync::{Arc, OnceLock};
@@ -20,12 +18,6 @@ pub mod peaceful_tests {
         );
         stack
     }
-
-    
-
-    
-
-    
 }
 
 pub mod terrain_cmds;

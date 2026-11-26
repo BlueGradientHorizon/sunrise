@@ -4,8 +4,8 @@
 //! is replaced by keep and skipped by masked. `/fill ... destroy` reads the same fact, because
 //! `Level.destroyBlock` returns false for air and `LevelChunk.setBlockState` does nothing when
 //! the state is already there.
-use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_core::position::ChunkPos;
+use sunrise_gameplay::game::game_tests::tests::server_game;
 
 #[test]
 #[ignore = "daily"]

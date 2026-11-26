@@ -6,7 +6,6 @@ use super::{
     worlds::{Binding, ViewedWorld, stored_state},
 };
 use crate::game::remote_chunks::section_blocks;
-use {crate::game::client_side::remote_client::Remote, crate::game::native_connection_groups::block_groups, crate::game::native_connection_groups::check_group_updates};
 use sunrise_items::blocks::BlockFacts;
 use sunrise_level::world::World;
 use sunrise_protocol::{
@@ -23,6 +22,11 @@ use sunrise_sim::viewed_levels_net::MAX_LEVELS;
 use sunrise_world::{
     dimension_type::{CardinalLight, DimensionFacts},
     registry::BlockStateId,
+};
+use {
+    crate::game::client_side::remote_client::Remote,
+    crate::game::native_connection_groups::block_groups,
+    crate::game::native_connection_groups::check_group_updates,
 };
 
 /// Why a `sunrise:levels` play payload closes the connection.
@@ -254,10 +258,7 @@ impl crate::game::ClientGame<'_> {
         Ok(())
     }
 
-    pub fn route_viewed_levels(
-        &mut self,
-        data: &[u8],
-    ) -> Result<(), RouteError> {
+    pub fn route_viewed_levels(&mut self, data: &[u8]) -> Result<(), RouteError> {
         // A run's sounds are kept only for a listener: without one they are skipped unread.
         self.route_viewed_message(Message::decode_with(
             data,

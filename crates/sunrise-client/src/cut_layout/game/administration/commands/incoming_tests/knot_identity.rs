@@ -3,11 +3,16 @@
 //! hosted server's tracker both name. Two leads on one fence share it, a
 //! knot made again after its last lead went is a new entity, and the same
 //! fence position in another level is another knot.
-use {crate::game::*, sunrise_gameplay_common::game::{Dim, Instant, Mob, Options, PathBuf, Progress, Resources, Vec3, entity, execution_role}};
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::{mobs::leash::Holder, motion::PlayerMotion};
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{
+        Dim, Instant, Mob, Options, PathBuf, Progress, Resources, Vec3, entity, execution_role,
+    },
+};
 
 pub(crate) const PIG: &str = "0000609a-0000-0000-0000-000000000001";
 pub(crate) const OTHER_PIG: &str = "0000609a-0000-0000-0000-000000000003";
@@ -37,7 +42,8 @@ pub(crate) fn game<'a>(
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         res,

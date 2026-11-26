@@ -1,26 +1,24 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use super::*;
+    use super::*;
 
-#[cfg(test)]
-/// A mod registering an atlas on the first load only: its id and vanilla's
+    #[cfg(test)]
+    /// A mod registering an atlas on the first load only: its id and vanilla's
     /// `map_decorations` definition, already in the resources.
     pub struct Maps(std::sync::Arc<std::sync::Mutex<(u32, Vec<Option<mod_api::AtlasRegion>>)>>);
-pub fn maps() -> TextureAtlasRegistration {
+    pub fn maps() -> TextureAtlasRegistration {
         registration("maps_mod:maps", "minecraft:map_decorations")
     }
-/// An atlas whose name holds `presets`, which the menu's own picture folder also has.
+    /// An atlas whose name holds `presets`, which the menu's own picture folder also has.
     pub fn presets() -> TextureAtlasRegistration {
         registration("maps_mod:presets", "minecraft:map_decorations")
     }
-pub fn player(atlas: &TextureAtlasRegistration) -> Identifier {
+    pub fn player(atlas: &TextureAtlasRegistration) -> Identifier {
         atlas.sprite_name(&Identifier::parse("minecraft:player").unwrap())
     }
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for Maps {
         fn register_texture_atlases(
             &self,

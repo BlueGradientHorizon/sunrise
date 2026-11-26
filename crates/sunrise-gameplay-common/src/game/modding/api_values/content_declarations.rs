@@ -19,9 +19,7 @@ pub fn push_reaction(
     }
 }
 
-pub fn api_push_reaction(
-    reaction: sunrise_world::level::PushReaction,
-) -> mod_api::PushReaction {
+pub fn api_push_reaction(reaction: sunrise_world::level::PushReaction) -> mod_api::PushReaction {
     use mod_api::PushReaction as Api;
     use sunrise_world::level::PushReaction as World;
     match reaction {
@@ -740,9 +738,11 @@ pub(in crate::game) fn validate_decoded_components<'a>(
 
 #[cfg(test)]
 mod effect_write_tests {
-    use {crate::game::api_values::TryIntoEngine, crate::game::api_values::stack_limit_tests::catalog};
     use mod_api::{ItemStack, StackWriteError, Tag};
     use sunrise_core::nbt::JavaString;
+    use {
+        crate::game::api_values::TryIntoEngine, crate::game::api_values::stack_limit_tests::catalog,
+    };
 
     #[test]
     fn malformed_villager_food_refusal_names_the_component() {

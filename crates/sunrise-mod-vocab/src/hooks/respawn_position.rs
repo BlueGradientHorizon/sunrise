@@ -18,7 +18,8 @@ pub trait Hooks {
     /// With no part attached to the state, the game checks the hook subscription and the block
     /// key before any event conversion, so the cost is one table lookup per respawn. Diverges
     /// from upstream: new hook.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::respawn_position::ServerGame<'_>::native_respawn_position", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::respawn_position::ServerGame<'_>::native_respawn_position",
         receiver = "read",
         dispatch = "flat",
         side = "server",

@@ -3,8 +3,11 @@ use sunrise_core::geometry::Vec3;
 #[test]
 #[ignore = "daily"]
 fn warning_dispatch_uses_neutral_at_tick_four() {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_sim::motion::PlayerMotion;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -22,7 +25,8 @@ fn warning_dispatch_uses_neutral_at_tick_four() {
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
@@ -176,12 +180,10 @@ fn taken_spawner_tick_keeps_survivors_before_both_spawns() {
 #[test]
 #[ignore = "daily"]
 fn lifecycle_spawner_commands_unload_park_and_remote_metadata() {
-    use sunrise_gameplay_common::game::commands_common::Target;
-    use crate::game::{
-        server_side::entity_server::taken_pass_tests::{
-            LifecycleFixture, RemoteLifecycle, run_remote_lifecycle,
-        },
+    use crate::game::server_side::entity_server::taken_pass_tests::{
+        LifecycleFixture, RemoteLifecycle, run_remote_lifecycle,
     };
+    use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_protocol::{
         connection::Pipe,
         entity_data::{Value, serializer},

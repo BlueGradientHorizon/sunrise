@@ -1,14 +1,12 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1;
-use crate::game::server_side::native_entity_refs::tests::collect_entities_in;
+    use crate::game::server_side::native_entity_refs::tests::collect_entities_in;
     use crate::game::server_side::native_entity_refs::tests::run_fresh_cases;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use core::ops::ControlFlow;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1;
 
     #[test]
     #[ignore = "daily"]
@@ -110,11 +108,16 @@ use crate::game::server_side::native_entity_refs::tests::collect_entities_in;
                 assert_eq!(seen, [92, 55, 11, 31]);
 
                 let block = game.entity(92).unwrap();
-                game.client.text_displays.0.get_mut(&92).unwrap().metadata(&[
-                    (10, 1, Value::Int(3)),
-                    (20, 2, Value::Float(4.0)),
-                    (21, 2, Value::Float(4.0)),
-                ]);
+                game.client
+                    .text_displays
+                    .0
+                    .get_mut(&92)
+                    .unwrap()
+                    .metadata(&[
+                        (10, 1, Value::Int(3)),
+                        (20, 2, Value::Float(4.0)),
+                        (21, 2, Value::Float(4.0)),
+                    ]);
                 game.handle_packet(C::EntityPositionSync(play::EntityPositionSync {
                     id: 92,
                     path: play::PositionPath::Linear([18.5, 65.5, 3.0]),
@@ -146,13 +149,19 @@ use crate::game::server_side::native_entity_refs::tests::collect_entities_in;
                 let culling_only_hi = [16.75, 68.0, 3.5];
                 assert!(ids(game, level, culling_only_lo, culling_only_hi).is_empty());
                 let (lo, hi) = game.client.text_displays.0[&92].interpolated_bounding_box(1.0);
-                let culling = sunrise_gameplay_common::game::pick_entity_common::aabb_extents((lo.to_array(), hi.to_array()));
-                let culling_only = sunrise_gameplay_common::game::pick_entity_common::aabb_extents((culling_only_lo, culling_only_hi));
+                let culling = sunrise_gameplay_common::game::pick_entity_common::aabb_extents((
+                    lo.to_array(),
+                    hi.to_array(),
+                ));
+                let culling_only = sunrise_gameplay_common::game::pick_entity_common::aabb_extents(
+                    (culling_only_lo, culling_only_hi),
+                );
                 assert!(culling.intersects(culling_only));
                 let mut picked = Vec::new();
-                game.for_each_pickable_in_bounds(sunrise_gameplay_common::game::pick_entity_common::aabb_extents((LO, HI)), |id, _, _| {
-                    picked.push(id)
-                });
+                game.for_each_pickable_in_bounds(
+                    sunrise_gameplay_common::game::pick_entity_common::aabb_extents((LO, HI)),
+                    |id, _, _| picked.push(id),
+                );
                 assert_eq!(picked, [55]);
 
                 game.handle_packet(C::RemoveEntities(play::RemoveEntities { ids: vec![92] }))
@@ -247,41 +256,44 @@ use crate::game::server_side::native_entity_refs::tests::collect_entities_in;
                     .insert((x, 0), Arc::new(Chunk::empty(x, 0)));
             }
         };
-        let add =
-            |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: i32, name: &str, position: [f64; 3]| {
-                let kind = game
-                    .client
-                    .remote
-                    .as_ref()
-                    .unwrap()
-                    .builtin
-                    .get("minecraft:entity_type")
-                    .unwrap()
-                    .id(name)
-                    .unwrap();
-                game.handle_packet(C::AddEntity(play::AddEntity {
-                    id,
-                    uuid: id as u128,
-                    kind,
-                    position,
-                    velocity: [0.0; 3],
-                    yaw: 0,
-                    pitch: 0,
-                    head_yaw: 0,
-                    data: 0,
-                }))
+        let add = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                   id: i32,
+                   name: &str,
+                   position: [f64; 3]| {
+            let kind = game
+                .client
+                .remote
+                .as_ref()
+                .unwrap()
+                .builtin
+                .get("minecraft:entity_type")
+                .unwrap()
+                .id(name)
                 .unwrap();
-            };
-        let sync = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: i32, to: [f64; 3]| {
-            game.handle_packet(C::EntityPositionSync(play::EntityPositionSync {
+            game.handle_packet(C::AddEntity(play::AddEntity {
                 id,
-                path: play::PositionPath::Linear(to),
-                yaw: 0.0,
-                pitch: 0.0,
-                on_ground: false,
+                uuid: id as u128,
+                kind,
+                position,
+                velocity: [0.0; 3],
+                yaw: 0,
+                pitch: 0,
+                head_yaw: 0,
+                data: 0,
             }))
             .unwrap();
         };
+        let sync =
+            |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: i32, to: [f64; 3]| {
+                game.handle_packet(C::EntityPositionSync(play::EntityPositionSync {
+                    id,
+                    path: play::PositionPath::Linear(to),
+                    yaw: 0.0,
+                    pitch: 0.0,
+                    on_ground: false,
+                }))
+                .unwrap();
+            };
         let heard = Arc::new(Mutex::new(Vec::new()));
         let case = std::env::var(CASE).unwrap();
         let mods = if case == "order" {
@@ -298,11 +310,12 @@ use crate::game::server_side::native_entity_refs::tests::collect_entities_in;
                         // on this tick, the pig ahead of the display the display loop moved.
                         add(game, 70, "minecraft:pig", [14.5, 65.5, 3.0]);
                         add(game, 71, "minecraft:block_display", [13.5, 65.5, 3.0]);
-                        game.client.text_displays.0.get_mut(&71).unwrap().metadata(&[(
-                            10,
-                            1,
-                            Value::Int(3),
-                        )]);
+                        game.client
+                            .text_displays
+                            .0
+                            .get_mut(&71)
+                            .unwrap()
+                            .metadata(&[(10, 1, Value::Int(3))]);
                         sync(game, 70, [20.5, 65.5, 3.0]);
                         sync(game, 71, [22.5, 65.5, 3.0]);
                         game.tick_remote_entities(true);

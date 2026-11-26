@@ -31,7 +31,10 @@ fn loaded_data_maps(
 
 pub trait GameItems<'__sg>: crate::game::SideGame<'__sg> {
     /// Server reads active station enchantments; client reads synced remote enchantments or active items.
-     fn item_enchantments<'s>(&'s self) -> &'s Arc<sunrise_items::enchant::Enchantments> where '__sg: 's {
+    fn item_enchantments<'s>(&'s self) -> &'s Arc<sunrise_items::enchant::Enchantments>
+    where
+        '__sg: 's,
+    {
         if self.is_logical_server() {
             &self.stations().enchantments
         } else if let Some(ench) = self.side_state().side_remote_enchantments() {
@@ -43,7 +46,10 @@ pub trait GameItems<'__sg>: crate::game::SideGame<'__sg> {
 
     /// The content tables the world plays with: its data packs' over the
     /// game's own when it has packs, `Resources.rest`'s own otherwise.
-     fn items<'s>(&'s self) -> &'s Items where '__sg: 's {
+    fn items<'s>(&'s self) -> &'s Items
+    where
+        '__sg: 's,
+    {
         self.server_items
             .as_deref()
             .or_else(|| self.side_world_tables().map(|t| t.items.as_ref()))
@@ -51,29 +57,40 @@ pub trait GameItems<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// The level's suffocation rules, for its mobs and its players.
-     fn level_suffocation<'s>(
+    fn level_suffocation<'s>(
         &'s self,
-    ) -> &'s sunrise_world::suffocation::SuffocationRegistry<'static> where '__sg: 's {
+    ) -> &'s sunrise_world::suffocation::SuffocationRegistry<'static>
+    where
+        '__sg: 's,
+    {
         self.side_world_tables()
             .map_or_else(|| self.res.suffocation(), |t| &t.suffocation)
     }
 
-     fn recipes<'s>(&'s self) -> &'s Recipes where '__sg: 's {
+    fn recipes<'s>(&'s self) -> &'s Recipes
+    where
+        '__sg: 's,
+    {
         self.side_recipes()
     }
 
-     fn active_providers<'s>(&'s self) -> &'s Providers where '__sg: 's {
+    fn active_providers<'s>(&'s self) -> &'s Providers
+    where
+        '__sg: 's,
+    {
         self.side_world_tables()
             .map_or_else(|| self.res.providers(), |t| &t.providers)
     }
 
-     fn stations<'s>(&'s self) -> &'s sunrise_sim::stations::StationData where '__sg: 's {
+    fn stations<'s>(&'s self) -> &'s sunrise_sim::stations::StationData
+    where
+        '__sg: 's,
+    {
         self.side_world_tables()
             .map_or_else(|| self.res.stations(), |t| &t.stations)
     }
 }
 impl<'__sg, T: crate::game::SideGame<'__sg>> GameItems<'__sg> for T {}
-
 
 pub(in crate::game) static DEFAULT_CLIENT_FEATURES: LazyLock<Arc<[String]>> =
     LazyLock::new(|| Arc::from([String::from("minecraft:vanilla")]));
@@ -111,7 +128,10 @@ impl Drop for PopBlockQuery {
 }
 
 pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
-     fn pack_files<'s>(&'s self) -> sunrise_world::loot::PackOverlay<'s> where '__sg: 's {
+    fn pack_files<'s>(&'s self) -> sunrise_world::loot::PackOverlay<'s>
+    where
+        '__sg: 's,
+    {
         match self.side_world_tables() {
             Some(t) => sunrise_world::loot::PackOverlay {
                 conditions: &t.conditions,
@@ -122,13 +142,14 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         }
     }
 
-     fn active_enchantment_definitions<'s>(
-        &'s self,
-    ) -> &'s sunrise_items::enchant::Enchantments where '__sg: 's {
+    fn active_enchantment_definitions<'s>(&'s self) -> &'s sunrise_items::enchant::Enchantments
+    where
+        '__sg: 's,
+    {
         self.item_enchantments()
     }
 
-     fn shared_items(&self) -> Arc<Items> {
+    fn shared_items(&self) -> Arc<Items> {
         if let Some(items) = &self.server_items {
             Arc::clone(items)
         } else if let Some(tables) = self.side_world_tables() {
@@ -138,7 +159,10 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         }
     }
 
-     fn station_recipes<'s>(&'s self) -> &'s sunrise_sim::stations::StationRecipes where '__sg: 's {
+    fn station_recipes<'s>(&'s self) -> &'s sunrise_sim::stations::StationRecipes
+    where
+        '__sg: 's,
+    {
         if self.is_logical_server() {
             &self.stations().recipes
         } else {
@@ -149,11 +173,17 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         }
     }
 
-     fn mob_maps<'s>(&'s self) -> &'s NeoForgeMobMaps where '__sg: 's {
+    fn mob_maps<'s>(&'s self) -> &'s NeoForgeMobMaps
+    where
+        '__sg: 's,
+    {
         self.mob_map_snapshot().as_ref()
     }
 
-     fn mob_map_snapshot<'s>(&'s self) -> &'s Arc<NeoForgeMobMaps> where '__sg: 's {
+    fn mob_map_snapshot<'s>(&'s self) -> &'s Arc<NeoForgeMobMaps>
+    where
+        '__sg: 's,
+    {
         if let Some(tables) = self.side_world_tables() {
             &tables.data_maps.mob_maps
         } else {
@@ -161,12 +191,15 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         }
     }
 
-     fn enabled_feature_ids<'s>(&'s self) -> &'s Arc<[String]> where '__sg: 's {
+    fn enabled_feature_ids<'s>(&'s self) -> &'s Arc<[String]>
+    where
+        '__sg: 's,
+    {
         self.side_state()
             .side_level_features(self.level.enabled_features.as_arc())
     }
 
-     fn limited_crafting(&self) -> bool {
+    fn limited_crafting(&self) -> bool {
         if self.is_logical_server() {
             self.ui
                 .rules
@@ -176,7 +209,10 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         }
     }
 
-     fn menu_env<'s>(&'s self) -> Env<'s> where '__sg: 's {
+    fn menu_env<'s>(&'s self) -> Env<'s>
+    where
+        '__sg: 's,
+    {
         Env {
             crafting_remainder: Some(self),
             player: self.side_acting_player_uuid(),
@@ -199,12 +235,15 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         }
     }
 
-     fn data_map_value<'s>(
+    fn data_map_value<'s>(
         &'s self,
         registry: &str,
         entry: &str,
         map: &str,
-    ) -> std::result::Result<Option<&'s Tag>, mod_api::DataMapError> where '__sg: 's {
+    ) -> std::result::Result<Option<&'s Tag>, mod_api::DataMapError>
+    where
+        '__sg: 's,
+    {
         loaded_data_maps(self.side_world_tables())?.value(
             registry,
             map,
@@ -212,40 +251,42 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         )
     }
 
-     fn data_map_entries<'s>(
+    fn data_map_entries<'s>(
         &'s self,
         registry: &str,
         map: &str,
-    ) -> std::result::Result<&'s [(String, Tag)], mod_api::DataMapError> where '__sg: 's {
+    ) -> std::result::Result<&'s [(String, Tag)], mod_api::DataMapError>
+    where
+        '__sg: 's,
+    {
         loaded_data_maps(self.side_world_tables())?.entries(registry, map)
     }
 
-     fn biome_key(&self, id: &str) -> Option<mod_api::BiomeKey> {
+    fn biome_key(&self, id: &str) -> Option<mod_api::BiomeKey> {
         loaded_data_maps(self.side_world_tables())
             .ok()?
             .biome_keys
             .key(id)
     }
 
-     fn biome_key_id<'s>(
+    fn biome_key_id<'s>(
         &'s self,
         key: mod_api::BiomeKey,
-    ) -> std::result::Result<&'s str, mod_api::BiomeKeyError> where '__sg: 's {
+    ) -> std::result::Result<&'s str, mod_api::BiomeKeyError>
+    where
+        '__sg: 's,
+    {
         let maps = loaded_data_maps(self.side_world_tables())
             .map_err(|_| mod_api::BiomeKeyError::Unavailable)?;
         maps.biome_keys.id(key)
     }
 
-     fn mod_recipe_property_contains(
-        &self,
-        set: &str,
-        item: mod_api::ItemKey,
-    ) -> bool {
+    fn mod_recipe_property_contains(&self, set: &str, item: mod_api::ItemKey) -> bool {
         mod_api::__private::item_key_id(item)
             .is_some_and(|name| self.loop_context.mod_recipe_property_contains(set, name))
     }
 
-     fn refresh_recipe_property_context(&mut self) {
+    fn refresh_recipe_property_context(&mut self) {
         let mut sets = HashMap::<String, HashSet<String>>::new();
         if !self.is_logical_server() {
             if let Some(server) = &self.recipe_tables.server_properties.sets
@@ -294,21 +335,21 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         }
     }
 
-     fn native_tag_items<'s>(&'s self) -> Option<&'s Items> where '__sg: 's {
+    fn native_tag_items<'s>(&'s self) -> Option<&'s Items>
+    where
+        '__sg: 's,
+    {
         if !self.is_logical_server() {
             return self.side_state().side_game_tag_items(&self.res);
         }
         self.side_tags_ready().then(|| self.items())
     }
 
-     fn block_tag_sets(
-        &self,
-        items: &Items,
-    ) -> HashMap<String, HashSet<mod_api::BlockKey>> {
+    fn block_tag_sets(&self, items: &Items) -> HashMap<String, HashSet<mod_api::BlockKey>> {
         native_world_read_common::prepare_block_tags(&items.block_tags)
     }
 
-     fn resolve_level_infiniburn(
+    fn resolve_level_infiniburn(
         &self,
         facts: &sunrise_world::dimension_type::DimensionFacts,
     ) -> Arc<BlockSet> {
@@ -327,7 +368,7 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         Arc::new(set)
     }
 
-     fn prepare_cauldron_interactions(
+    fn prepare_cauldron_interactions(
         &self,
         items: &Items,
     ) -> Result<Arc<cauldron_interactions::Table>> {
@@ -340,7 +381,7 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         registrar.finish()
     }
 
-     fn prepare_parts(&self, items: &Items) -> Result<PreparedParts> {
+    fn prepare_parts(&self, items: &Items) -> Result<PreparedParts> {
         #[cfg(not(test))]
         if !mod_api::__private::content_owners_published() {
             return Err("Mod parts refused: content ownership has not been published".into());
@@ -380,7 +421,7 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         })
     }
 
-     fn resolve_parts(&self) -> Result<()> {
+    fn resolve_parts(&self) -> Result<()> {
         let prepared = self.prepare_parts(self.items())?;
         if !self.is_logical_server() && self.side_state().side_remote_tags_present() {
             self.bind_parts(prepared);
@@ -391,12 +432,12 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         Ok(())
     }
 
-     fn install_parts(&self, prepared: PreparedParts) {
+    fn install_parts(&self, prepared: PreparedParts) {
         self.bind_parts(prepared);
         self.resolve_primary_items();
     }
 
-     fn bind_parts(&self, prepared: PreparedParts) {
+    fn bind_parts(&self, prepared: PreparedParts) {
         if self.is_logical_server() {
             self.side_state()
                 .side_publish_cauldron_registrations(&prepared.cauldrons);
@@ -417,7 +458,7 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         self.resolve_piston_reactions();
     }
 
-     fn resolve_primary_items(&self) {
+    fn resolve_primary_items(&self) {
         let mut support = sunrise_world::enchantment_answers::Answers::new();
         let enchantments = self.item_enchantments();
         let items = self.items();
@@ -445,7 +486,7 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         self.side_resolve_primary_items_server(support);
     }
 
-     fn clear_world_parts(&self) {
+    fn clear_world_parts(&self) {
         for table in self.enchantment_snapshots() {
             table.support_answers().clear();
             if self.is_logical_server() {
@@ -456,9 +497,12 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         mod_api::__private::clear_game_parts();
     }
 
-     fn enchantment_snapshots<'s>(
+    fn enchantment_snapshots<'s>(
         &'s self,
-    ) -> impl Iterator<Item = &'s sunrise_items::enchant::Enchantments> where '__sg: 's {
+    ) -> impl Iterator<Item = &'s sunrise_items::enchant::Enchantments>
+    where
+        '__sg: 's,
+    {
         let stations = &self.stations().enchantments;
         let items = &self.items().enchantments;
         let active = self.item_enchantments();
@@ -471,7 +515,7 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
             .map(|table| table.as_ref())
     }
 
-     fn with_block_provider_query<R>(
+    fn with_block_provider_query<R>(
         &self,
         state: BlockStateId,
         query: BlockProviderQuery,
@@ -494,7 +538,7 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
         })
     }
 
-     fn block_name(&self, p: [i32; 3]) -> Arc<str> {
+    fn block_name(&self, p: [i32; 3]) -> Arc<str> {
         self.res
             .facts()
             .get(self.world.block(p[0], p[1], p[2]))
@@ -502,7 +546,7 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
             .clone()
     }
 
-     fn dispenser_block_name(&self, p: (i32, i32, i32)) -> Arc<str> {
+    fn dispenser_block_name(&self, p: (i32, i32, i32)) -> Arc<str> {
         self.res
             .facts()
             .get(self.world.block(p.0, p.1, p.2))
@@ -510,47 +554,42 @@ pub trait WorldTablesExt<'__sg>: crate::game::SideGame<'__sg> {
             .clone()
     }
 
-     fn in_block_tag(&self, tag: &str, block: &str) -> bool {
+    fn in_block_tag(&self, tag: &str, block: &str) -> bool {
         self.items()
             .block_tags
             .get(tag)
             .is_some_and(|s| s.contains(block))
     }
 
-     fn named_block_in_tag(&self, tag: &str, block: &str) -> bool {
+    fn named_block_in_tag(&self, tag: &str, block: &str) -> bool {
         self.items()
             .block_tags
             .get(tag)
             .is_some_and(|s| s.contains(block))
     }
 
-     fn item_in_tag(&self, tag: &str, item: &str) -> bool {
+    fn item_in_tag(&self, tag: &str, item: &str) -> bool {
         self.items()
             .item_tags
             .get(tag)
             .is_some_and(|t| t.contains(item))
     }
 
-     fn biome_name_at(&self, p: sunrise_core::geometry::Vec3) -> Option<String> {
+    fn biome_name_at(&self, p: sunrise_core::geometry::Vec3) -> Option<String> {
         let (x, y, z) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
         let c = self.world.chunks.get(&(x >> 4, z >> 4))?;
         Some(world_biomes!(self).name(c.biome(x, y, z)).to_owned())
     }
 
-     fn enchantments_compatible(&self, a: &str, b: &str) -> bool {
+    fn enchantments_compatible(&self, a: &str, b: &str) -> bool {
         self.item_enchantments().compatible(a, b)
     }
 
-     fn item_has_enchantment_effect(
-        &self,
-        stack: &ItemStack,
-        effect: &str,
-    ) -> bool {
+    fn item_has_enchantment_effect(&self, stack: &ItemStack, effect: &str) -> bool {
         self.item_enchantments().has_component(stack, effect)
     }
 }
 impl<'__sg, T: crate::game::SideGame<'__sg>> WorldTablesExt<'__sg> for T {}
-
 
 use crate::game::side_ops::tables::TablesSideGameExt as _;
 

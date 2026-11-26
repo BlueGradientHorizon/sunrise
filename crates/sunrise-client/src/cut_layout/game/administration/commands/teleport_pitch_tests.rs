@@ -23,7 +23,8 @@ fn teleport_and_rotate_resolve_pitch_at_their_own_boundary() {
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
@@ -120,8 +121,8 @@ fn teleport_and_rotate_resolve_pitch_at_their_own_boundary() {
 #[test]
 #[ignore = "daily"]
 fn teleport_to_the_current_position_marks_the_player_for_sync() {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_sim::motion::PlayerMotion;
 
     with_game(|game| {
@@ -136,16 +137,54 @@ fn teleport_to_the_current_position_marks_the_player_for_sync() {
 
 #[test]
 fn pitch_wraps_before_clamping() {
-    assert_eq!(sunrise_gameplay_common::game::commands_common::entity_pitch(360.0), 0.0);
-    assert_eq!(sunrise_gameplay_common::game::commands_common::entity_pitch(450.0), 90.0);
-    assert_eq!(sunrise_gameplay_common::game::commands_common::entity_pitch(-360.0), 0.0);
-    assert_eq!(sunrise_gameplay_common::game::commands_common::entity_pitch(-450.0), -90.0);
-    assert_eq!(sunrise_gameplay_common::game::commands_common::entity_pitch(sunrise_gameplay_common::game::commands_common::wrap_degrees(270.0)), -90.0);
-    assert_eq!(sunrise_gameplay_common::game::commands_common::entity_pitch(sunrise_gameplay_common::game::commands_common::wrap_degrees(-270.0)), 90.0);
-    assert_eq!(sunrise_gameplay_common::game::commands_common::entity_pitch(sunrise_gameplay_common::game::commands_common::wrap_degrees(360.0)), 0.0);
-    assert_eq!(sunrise_gameplay_common::game::commands_common::entity_pitch(sunrise_gameplay_common::game::commands_common::wrap_degrees(450.0)), 90.0);
-    assert_eq!(sunrise_gameplay_common::game::commands_common::wrap_degrees(190.0), -170.0);
-    assert_eq!(sunrise_gameplay_common::game::commands_common::wrap_degrees(540.0), -180.0);
+    assert_eq!(
+        sunrise_gameplay_common::game::commands_common::entity_pitch(360.0),
+        0.0
+    );
+    assert_eq!(
+        sunrise_gameplay_common::game::commands_common::entity_pitch(450.0),
+        90.0
+    );
+    assert_eq!(
+        sunrise_gameplay_common::game::commands_common::entity_pitch(-360.0),
+        0.0
+    );
+    assert_eq!(
+        sunrise_gameplay_common::game::commands_common::entity_pitch(-450.0),
+        -90.0
+    );
+    assert_eq!(
+        sunrise_gameplay_common::game::commands_common::entity_pitch(
+            sunrise_gameplay_common::game::commands_common::wrap_degrees(270.0)
+        ),
+        -90.0
+    );
+    assert_eq!(
+        sunrise_gameplay_common::game::commands_common::entity_pitch(
+            sunrise_gameplay_common::game::commands_common::wrap_degrees(-270.0)
+        ),
+        90.0
+    );
+    assert_eq!(
+        sunrise_gameplay_common::game::commands_common::entity_pitch(
+            sunrise_gameplay_common::game::commands_common::wrap_degrees(360.0)
+        ),
+        0.0
+    );
+    assert_eq!(
+        sunrise_gameplay_common::game::commands_common::entity_pitch(
+            sunrise_gameplay_common::game::commands_common::wrap_degrees(450.0)
+        ),
+        90.0
+    );
+    assert_eq!(
+        sunrise_gameplay_common::game::commands_common::wrap_degrees(190.0),
+        -170.0
+    );
+    assert_eq!(
+        sunrise_gameplay_common::game::commands_common::wrap_degrees(540.0),
+        -180.0
+    );
 }
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

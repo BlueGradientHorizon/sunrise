@@ -2,12 +2,15 @@
 //! (`Entity.getPassengerRidingPosition`, the vehicle type's own
 //! `passengerAttachments`), a mob as a minecart's passenger, and the entity
 //! vanilla lets nobody ride.
-use sunrise_core::geometry::Vec3;
-use crate::game::server_side::mounts::tests::server_game;
 use super::*;
+use crate::game::server_side::mounts::tests::server_game;
+use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::commands_common::{OtherEntity, Target};
-use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
 use sunrise_sim::motion::PlayerMotion;
+use {
+    sunrise_gameplay_common::game::minecarts::CartKind,
+    sunrise_gameplay_common::game::minecarts::Minecart,
+};
 
 /// `EntityTypes`' `passengerAttachments` of 26.3: the rider's attachment point
 /// above the vehicle's feet, and how far forward it sits. A type that lists

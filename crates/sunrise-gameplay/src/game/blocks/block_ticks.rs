@@ -35,7 +35,8 @@ impl crate::game::ServerGame<'_> {
         scratch.inside.clear();
         let guests = self.lan_block_trigger_boxes();
         let boxes = self
-            .common.player
+            .common
+            .player
             .iter()
             .filter(|_| !self.common.spectator())
             .map(|p| {
@@ -67,7 +68,8 @@ impl crate::game::ServerGame<'_> {
         // through this tick (a wooden button is pressed by one inside it), and
         // the ones a thrown trident is in.
         for p in self
-            .common.creatures
+            .common
+            .creatures
             .projectiles
             .iter()
             .filter(|p| p.arrow.is_some())
@@ -86,7 +88,8 @@ impl crate::game::ServerGame<'_> {
         // layer is inside (the host and the LAN guests).
         scratch.standing.clear();
         let feet = self
-            .common.player
+            .common
+            .player
             .iter()
             .filter(|_| !self.common.spectator())
             .map(|p| {
@@ -319,7 +322,11 @@ impl crate::game::ServerGame<'_> {
     }
     /// Track which chunks are ticking (Ticks needs chunk load/unload).
     pub fn sync_tick_chunks(&mut self) {
-        if !self.server.tick_chunks.synchronize(&self.common.world.chunks) {
+        if !self
+            .server
+            .tick_chunks
+            .synchronize(&self.common.world.chunks)
+        {
             return;
         }
         // Move only the added keys out so registration can borrow all of Game.
@@ -330,14 +337,19 @@ impl crate::game::ServerGame<'_> {
         for &key in self.server.tick_chunks.removed() {
             self.server.random_tick_sections.0.remove(&key);
             self.common.portal_sections.remove(&key);
-            self.common.block_ticks
+            self.common
+                .block_ticks
                 .remove_chunk(sunrise_core::position::ChunkPos::new(key.0, key.1));
-            self.common.block_ticks
+            self.common
+                .block_ticks
                 .comparator_outputs
                 .retain(|p, _| (p.x >> 4, p.z >> 4) != key);
-            self.server.hoppers.retain(|p, _| (p.0 >> 4, p.2 >> 4) != key);
+            self.server
+                .hoppers
+                .retain(|p, _| (p.0 >> 4, p.2 >> 4) != key);
             // Its moving pistons were saved with it and load back with it.
-            self.common.block_ticks
+            self.common
+                .block_ticks
                 .moving_pistons
                 .retain(|(p, _)| (p.x >> 4, p.z >> 4) != key);
         }

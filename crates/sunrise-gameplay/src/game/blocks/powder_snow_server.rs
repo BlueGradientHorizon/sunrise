@@ -1,7 +1,7 @@
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::powder_snow::extinguish_pitch;
 use sunrise_core::position::BlockPos;
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::powder_snow::extinguish_pitch;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::Who;
 
@@ -33,10 +33,14 @@ impl ServerGame<'_> {
         let Some(filled) = picked else {
             return Ok(());
         };
-        self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+        self.common
+            .world
+            .modified
+            .insert((pos[0] >> 4, pos[2] >> 4));
         self.award_stat("used", "minecraft:bucket", 1);
         if let Some(eye) = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z])
         {

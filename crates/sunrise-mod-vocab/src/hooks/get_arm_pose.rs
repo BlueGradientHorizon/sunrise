@@ -15,7 +15,8 @@ pub trait Hooks {
     /// return `ArmPose::Custom` here, and write its angles in `arm_pose_transform`.
     /// Unknown registration slots are ignored. Mob-specific animations still run after
     /// the humanoid base pose, as in vanilla. Client-side, with a `ClientHost`.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::get_arm_pose::ClientGame<'_>::native_get_arm_pose", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::get_arm_pose::ClientGame<'_>::native_get_arm_pose",
         receiver = "read",
         dispatch = "flat",
         side = "client",

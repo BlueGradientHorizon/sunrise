@@ -147,7 +147,8 @@ impl crate::game::ClientGame<'_> {
             },
             Some(_) => Hover::Slot,
         };
-        search_key_swaps(numeric, true, hover, self.common.carried.is_some()) && self.inventory_hotkey(key)
+        search_key_swaps(numeric, true, hover, self.common.carried.is_some())
+            && self.inventory_hotkey(key)
     }
     /// Number keys, F and Q over a slot of the open menu: SWAP with a hotbar
     /// slot or the off hand, THROW one or the whole stack.
@@ -189,7 +190,8 @@ impl crate::game::ClientGame<'_> {
     /// search tab's box takes the key instead.
     pub(in crate::game::client_side) fn inventory_pick_key(&mut self) {
         let menu = (self.client.screen == Screen::Inventory
-            || (self.client.screen == Screen::Creative && !self.client.creative_screen.0.tab().search))
+            || (self.client.screen == Screen::Creative
+                && !self.client.creative_screen.0.tab().search))
             && !self.dialog_open();
         let Some(size) = self
             .client
@@ -403,10 +405,7 @@ impl crate::game::ClientGame<'_> {
         self.target_at(&batch)
     }
     /// `inventory_target` for the frame `batch` describes.
-    pub fn target_at(
-        &self,
-        batch: &HudBatch,
-    ) -> (Option<usize>, bool) {
+    pub fn target_at(&self, batch: &HudBatch) -> (Option<usize>, bool) {
         let slot = self.slot_at(batch, self.client.cursor.0, self.client.cursor.1);
         // A mod screen may place a slot beyond its image: a click on one is
         // not a click outside the window.
@@ -465,10 +464,7 @@ impl crate::game::ClientGame<'_> {
         )
     }
     /// The open container screen's window: its place and size.
-    pub fn container_image(
-        &self,
-        batch: &HudBatch,
-    ) -> sunrise_client::container_screen::Image {
+    pub fn container_image(&self, batch: &HudBatch) -> sunrise_client::container_screen::Image {
         match self.built_container(batch) {
             Some(layout) => Self::image_of(layout.image),
             None => Self::image_of(self.container_image_parts(batch)),
@@ -504,11 +500,7 @@ impl crate::game::ClientGame<'_> {
     /// A click outside the window (slot id -999): `THROW` does nothing; a
     /// `PICKUP` drops the carried stack (left) or one of it (right), thrown
     /// from the hand (`AbstractContainerMenu.doClick`, `LivingEntity.drop`).
-    pub fn throw_click(
-        &mut self,
-        right: bool,
-        input: sunrise_sim::menu::Input,
-    ) {
+    pub fn throw_click(&mut self, right: bool, input: sunrise_sim::menu::Input) {
         let button = i32::from(right);
         if self.client.remote.is_some() {
             if self.client.screen == Screen::Creative {

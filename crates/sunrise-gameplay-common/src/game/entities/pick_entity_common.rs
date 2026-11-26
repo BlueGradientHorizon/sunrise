@@ -88,7 +88,7 @@ pub fn has_pick_result(target: Option<crate::game::commands_common::Target>) -> 
 
 pub trait PickEntityCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `Entity.getPickResult` of the entity `id`.
-     fn entity_pick_result(&self, id: i32) -> Option<ItemStack> {
+    fn entity_pick_result(&self, id: i32) -> Option<ItemStack> {
         let id = id as u32;
         // EnderDragonPart.getPickResult delegates to its owner's Mob.getPickResult.
         let id = self
@@ -138,7 +138,7 @@ pub trait PickEntityCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `Player.isWithinEntityInteractionRange(entity, 3.0)`.
-     fn within_entity_range(&self, id: i32) -> bool {
+    fn within_entity_range(&self, id: i32) -> bool {
         let Some(eye) = self.eye_position() else {
             return false;
         };
@@ -168,7 +168,6 @@ pub trait PickEntityCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> PickEntityCommonGameExt1<'__sg> for G {}
-
 
 use crate::game::side_ops::lan::LanSideGameExt as _;
 

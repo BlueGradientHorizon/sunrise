@@ -57,7 +57,9 @@ impl crate::game::ServerGame<'_> {
         let (id, at) = (self.common.mobs[index].id, self.common.mobs[index].position);
         let parts = mod_api::__private::entity_parts();
         let (Some(attached), Some(entity), Ok(shears)) = (
-            parts.entity_parts(&self.common.mobs[index].kind.id).get(part),
+            parts
+                .entity_parts(&self.common.mobs[index].kind.id)
+                .get(part),
             self.entity(id),
             shears.try_into_api(),
         ) else {

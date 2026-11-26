@@ -3,13 +3,13 @@
 //! (`tools/test_block_entity_client_tick_parity.py`), the fixture compares particles, sounds,
 //! spins, beacon beams, animation state and the level random after each tick. Separate cases
 //! exercise ticker enabling, animation lifetimes and when particles join the engine.
-use sunrise_core::geometry::Vec3;
-use sunrise_level::containers::BlockEntity;
 use super::*;
 use std::sync::Arc;
 use sunrise_client::block_entity_anim::Ticker;
+use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_level::chunk::block_entity::{Next, SpawnData, Spawner, TrialSpawner, Vault};
+use sunrise_level::containers::BlockEntity;
 
 type Pos = (i32, i32, i32);
 use sunrise_protocol::chunk::{BlockEntityInfo, ChunkData, LightData};
@@ -17,7 +17,8 @@ use sunrise_world::registry::BlockStateId;
 
 /// The committed cases and the SHA-256 of the log vanilla made of each (`--write` of the harness
 /// makes them).
-const COMMITTED: &str = include_str!("../../../../../../docs/parity/block-entity-client-ticks.jsonl");
+const COMMITTED: &str =
+    include_str!("../../../../../../docs/parity/block-entity-client-ticks.jsonl");
 /// The packets' block entity type ids: their index here.
 const TYPES: [&str; 12] = [
     "minecraft:mob_spawner",
@@ -366,7 +367,13 @@ fn event_stream(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     particles_at_start: u64,
 ) -> Vec<serde_json::Value> {
-    let particles = game.client.particles.0.requested.replace(Vec::new()).unwrap();
+    let particles = game
+        .client
+        .particles
+        .0
+        .requested
+        .replace(Vec::new())
+        .unwrap();
     let sounds = game.client.audio.0.capture.replace(Vec::new()).unwrap();
     let mut out = Vec::new();
     let mut particles = particles.into_iter();
@@ -459,7 +466,9 @@ fn start_case(
 
 /// What the ticks left of each beacon and animated block entity, in the oracle's rows: ints as
 /// numbers, floats as raw bits, sorted as `Vec3i.compareTo` does.
-fn animation_states(game: &sunrise_client_gameplay::game::ClientGame<'_>) -> Vec<serde_json::Value> {
+fn animation_states(
+    game: &sunrise_client_gameplay::game::ClientGame<'_>,
+) -> Vec<serde_json::Value> {
     use serde_json::json;
     let mut rows: Vec<_> = (&game.world.block_entities)
         .into_iter()

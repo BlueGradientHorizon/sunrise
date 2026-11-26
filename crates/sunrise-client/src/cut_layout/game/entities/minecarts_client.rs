@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 #[path = "minecarts/minecart_tnt_tests_client.rs"]

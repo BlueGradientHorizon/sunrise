@@ -1,5 +1,3 @@
-
-
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn native_play_hit_sound(

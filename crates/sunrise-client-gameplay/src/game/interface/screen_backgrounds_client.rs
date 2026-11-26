@@ -1,5 +1,5 @@
-use crate::game::client_side::screens::ScreenClientExt as _;
 use super::*;
+use crate::game::client_side::screens::ScreenClientExt as _;
 use crate::game::host::draw::GameDrawContext;
 
 impl crate::game::ClientGame<'_> {
@@ -30,11 +30,12 @@ impl crate::game::ClientGame<'_> {
             self.terrain_distance(),
             self.client.settings.cloud_range,
         );
-        if !self
-            .client
-            .border_renderer
-            .prepare(&self.client.border_state, camera, distance, depth_far)
-        {
+        if !self.client.border_renderer.prepare(
+            &self.client.border_state,
+            camera,
+            distance,
+            depth_far,
+        ) {
             return None;
         }
         let millis = self.visual_millis();
@@ -319,10 +320,7 @@ impl crate::game::ClientGame<'_> {
     /// when a screen of the game's own is over the title (Options draws and
     /// fires its own), nor while a dialog, a prompt or a connect or load
     /// hides it, and None with no mod listening to a render hook.
-    pub fn title_screen_render_view(
-        &self,
-        batch: &HudBatch,
-    ) -> Option<mod_api::ScreenView<'_>> {
+    pub fn title_screen_render_view(&self, batch: &HudBatch) -> Option<mod_api::ScreenView<'_>> {
         if self.client.screen != Screen::Playing
             || self.screen_over_playing()
             || self.remote_loading()

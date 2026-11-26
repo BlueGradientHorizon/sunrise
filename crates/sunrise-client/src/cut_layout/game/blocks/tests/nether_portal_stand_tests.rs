@@ -4,21 +4,17 @@
 //! stand's `noPhysics` enter nothing), and `LocalPlayer.handlePortalTransitionEffect`
 //! closes only the screens whose `Screen.isAllowedInPortal` is false.
 
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_core::geometry::Vec3;
-use sunrise_sim::nether_portal::ENTITY_DELAY;
 use super::*;
+use sunrise_core::geometry::Vec3;
 use sunrise_gameplay::game::game_tests::tests::server_game;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_sim::entities::ArmorStand;
 use sunrise_sim::motion::PlayerMotion;
+use sunrise_sim::nether_portal::ENTITY_DELAY;
 
 /// `ArmorStand`'s portal: stone at `y`, nether portal blocks at `y + 1` and
 /// `y + 2` in the column of `(x, z)`.
-pub(crate) fn put_portal(
-    game: &mut sunrise_gameplay::game::ServerGame<'_>,
-    x: i32,
-    z: i32,
-) {
+pub(crate) fn put_portal(game: &mut sunrise_gameplay::game::ServerGame<'_>, x: i32, z: i32) {
     let registry = game.pack.assets.registry;
     let stone = registry.default_state("minecraft:stone").unwrap();
     let portal = registry.default_state("minecraft:nether_portal").unwrap();

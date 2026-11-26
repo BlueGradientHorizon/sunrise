@@ -1,4 +1,3 @@
-
 #[allow(unused_variables)]
 impl SideOps for crate::game::server_side::ServerState {
     type Game<'g> = crate::game::ServerGame<'g>;
@@ -74,10 +73,7 @@ impl SideOps for crate::game::server_side::ServerState {
     fn side_player_info_game_mode(game: &Self::Game<'_>) -> Option<GameMode> {
         game.server_player_info_game_mode()
     }
-    fn side_player_abilities(
-        game: &Self::Game<'_>,
-        player: PlayerRef,
-    ) -> Option<PlayerAbilities> {
+    fn side_player_abilities(game: &Self::Game<'_>, player: PlayerRef) -> Option<PlayerAbilities> {
         game.server_player_abilities(player)
     }
     fn side_own_entity_id(game: &Self::Game<'_>) -> i32 {
@@ -153,30 +149,16 @@ impl SideOps for crate::game::server_side::ServerState {
     fn side_tick_client_item_use(game: &mut Self::Game<'_>) {
         game.server_tick_client_item_use()
     }
-    fn side_client_display_position(
-        game: &Self::Game<'_>,
-        entity: EntityRef,
-    ) -> Option<[f64; 3]> {
+    fn side_client_display_position(game: &Self::Game<'_>, entity: EntityRef) -> Option<[f64; 3]> {
         game.server_client_display_position(entity)
     }
-    fn side_entity_position(
-        game: &Self::Game<'_>,
-        entity: EntityRef,
-    ) -> Option<[f64; 3]> {
+    fn side_entity_position(game: &Self::Game<'_>, entity: EntityRef) -> Option<[f64; 3]> {
         game.server_entity_position(entity)
     }
-    fn side_client_copy_box(
-        game: &Self::Game<'_>,
-        id: u32,
-        position: Vec3,
-        vanilla: Aabb,
-    ) -> Aabb {
+    fn side_client_copy_box(game: &Self::Game<'_>, id: u32, position: Vec3, vanilla: Aabb) -> Aabb {
         game.server_client_copy_box(id, position, vanilla)
     }
-    fn side_native_entity_read_target(
-        game: &Self::Game<'_>,
-        entity: EntityRef,
-    ) -> Option<Target> {
+    fn side_native_entity_read_target(game: &Self::Game<'_>, entity: EntityRef) -> Option<Target> {
         game.server_native_entity_read_target(entity)
     }
     fn side_level(game: &Self::Game<'_>, dimension: &str) -> Option<LevelRef> {
@@ -208,10 +190,6 @@ impl SideOps for crate::game::server_side::ServerState {
         game.server_has_remote_text_display(id)
     }
 }
-use sunrise_gameplay_common::game::side_ops::player::SideOps;
-use sunrise_gameplay_common::game::Hit;
-use sunrise_gameplay_common::game::commands_common::Target;
-use sunrise_gameplay_common::game::remote::movement::MovePacket;
 use mod_api::EntityRef;
 use mod_api::LevelRef;
 use mod_api::PlayerAbilities;
@@ -219,6 +197,10 @@ use mod_api::PlayerRef;
 use sunrise_command::args::GameMode;
 use sunrise_core::geometry::Aabb;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::Hit;
+use sunrise_gameplay_common::game::commands_common::Target;
+use sunrise_gameplay_common::game::remote::movement::MovePacket;
+use sunrise_gameplay_common::game::side_ops::player::SideOps;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::lan::guest::Guest;
 use sunrise_sim::motion::PlayerMotion;

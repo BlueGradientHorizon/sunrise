@@ -1,9 +1,6 @@
 //! `player_changed_dimension` is heard on every logical server: the integrated server that runs
 //! single player and the LAN world opened from it, and a dedicated server (#3250).
 //! These prepared tests also exercise menu retirement during travel.
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::game::Dim;
-use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::lan::LanSettings, sunrise_gameplay_common::game::lan_actions::GuestCommand, sunrise_gameplay::game::native_entity_refs::tests::with_game_role};
 use mod_api::{
     Hooks, LevelDimension, ModEntry, PlayerChangedDimensionEvent, PlayerRespawnPositionEvent,
     ServerHost,
@@ -13,9 +10,17 @@ use std::sync::{
     atomic::{AtomicI32, AtomicUsize},
 };
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::Dim;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
+use {
+    sunrise_gameplay::game::lan::LanSettings,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_role,
+    sunrise_gameplay_common::game::execution_role::ExecutionRole,
+    sunrise_gameplay_common::game::lan_actions::GuestCommand,
+};
 
 const CONN: u32 = 12;
 const UUID: u128 = 120;
@@ -73,7 +78,10 @@ impl Hooks for CrossLevelRespawn {
 
 /// A server of `role` with one survival player at (3.5, 64, 5.5) in the Overworld, its options as
 /// `integrated.rs`'s server Game and a dedicated server set them.
-fn with_server(role: ExecutionRole, test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+fn with_server(
+    role: ExecutionRole,
+    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
+) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     with_game_role(root, role, |game| {
         game.options.dedicated = Some(Vec::new());
@@ -155,7 +163,12 @@ fn light(game: &mut sunrise_gameplay::game::ServerGame<'_>, cx: i32, cz: i32) {
 fn finish_trip(game: &mut sunrise_gameplay::game::ServerGame<'_>, dim: Dim) {
     let home = game.dim;
     for _ in 0..20 {
-        let Some(trip) = game.server.server_trips.iter().find(|trip| trip.conn == CONN) else {
+        let Some(trip) = game
+            .server
+            .server_trips
+            .iter()
+            .find(|trip| trip.conn == CONN)
+        else {
             break;
         };
         let (target_dim, target) = (trip.dim, trip.target);
@@ -204,7 +217,11 @@ fn place_anchor(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: [i32; 3]
     game.world.set(pos[0], pos[1], pos[2], charged).unwrap();
 }
 
-fn run_as_player(game: &mut sunrise_gameplay::game::ServerGame<'_>, role: ExecutionRole, command: &str) {
+fn run_as_player(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    role: ExecutionRole,
+    command: &str,
+) {
     assert!(game.run_guest_command(GuestCommand {
         conn: CONN,
         command: command.into(),
@@ -237,7 +254,10 @@ fn prepare_end_exit(game: &mut sunrise_gameplay::game::ServerGame<'_>, credits: 
         });
 }
 
-fn heard_on(role: ExecutionRole, test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Heard)) {
+fn heard_on(
+    role: ExecutionRole,
+    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Heard),
+) {
     let heard = Heard::default();
     let mods: mod_api::Mods = vec![ModEntry::new(
         "dimension-recorder",
@@ -278,13 +298,15 @@ fn a_cross_level_teleport_returns_both_cursors_before_arrival() {
         .unwrap();
         hub.guests
             .update(0, |g| g.carried = Some(open_cursor.clone()));
-        game.server.level_teleports.push(sunrise_gameplay::game::server_side::server_travel::LevelTeleport {
-            conn: CONN,
-            dim: Dim::Nether,
-            at: [8.5, 70.0, 8.5],
-            rotation: None,
-            vehicle: None,
-        });
+        game.server.level_teleports.push(
+            sunrise_gameplay::game::server_side::server_travel::LevelTeleport {
+                conn: CONN,
+                dim: Dim::Nether,
+                at: [8.5, 70.0, 8.5],
+                rotation: None,
+                vehicle: None,
+            },
+        );
         game.run_level_teleports();
 
         let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
@@ -427,16 +449,26 @@ fn a_failed_cross_level_trip_closes_the_retired_client_window() {
                 Ok(true)
             );
             let (tx, rx) = std::sync::mpsc::channel();
-            game.server.lan.as_mut().unwrap().hub.update_guest(CONN, |g| {
-                g.sender = PlayerSender::new(tx, Arc::default());
-                g.inventory
-                    .fill(Some(ItemStack::new("minecraft:stone", 64)));
-            });
-            for via_portal in [false, true] {
-                game.server.lan.as_mut().unwrap().hub.update_guest(CONN, |g| {
-                    assert!(g.menu.is_none());
-                    g.carried = Some(ItemStack::new("minecraft:gold_ingot", 5));
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .update_guest(CONN, |g| {
+                    g.sender = PlayerSender::new(tx, Arc::default());
+                    g.inventory
+                        .fill(Some(ItemStack::new("minecraft:stone", 64)));
                 });
+            for via_portal in [false, true] {
+                game.server
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .update_guest(CONN, |g| {
+                        assert!(g.menu.is_none());
+                        g.carried = Some(ItemStack::new("minecraft:gold_ingot", 5));
+                    });
                 if via_portal {
                     game.start_server_trip(CONN, Dim::Nether, None);
                 } else {

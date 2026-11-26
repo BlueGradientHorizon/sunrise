@@ -25,15 +25,17 @@ impl crate::game::ClientGame<'_> {
         if !live || self.common.player.is_none() {
             return None;
         }
-        Some(if self.client.integrated.is_some() && !self.is_published() {
-            "title.singleplayer"
-        } else if self.client.realm_session {
-            "title.multiplayer.realms"
-        } else if self.client.integrated.is_none() && !self.client.lan_session {
-            "title.multiplayer.other"
-        } else {
-            "title.multiplayer.lan"
-        })
+        Some(
+            if self.client.integrated.is_some() && !self.is_published() {
+                "title.singleplayer"
+            } else if self.client.realm_session {
+                "title.multiplayer.realms"
+            } else if self.client.integrated.is_none() && !self.client.lan_session {
+                "title.multiplayer.other"
+            } else {
+                "title.multiplayer.lan"
+            },
+        )
     }
 
     /// `updateTitle`: on a session change (level, publishing), and a new language once back to play.

@@ -1,4 +1,3 @@
-
 #[path = "world/world_loading.rs"]
 pub mod world_loading;
 
@@ -11,11 +10,8 @@ pub mod view_pass;
 #[path = "world/server_travel.rs"]
 pub mod server_travel;
 
-
 #[path = "world/levels.rs"]
 pub mod levels;
-
-
 
 #[path = "world/carrier_transfers.rs"]
 pub mod carrier_transfers;
@@ -43,7 +39,6 @@ pub mod native_merchant_refs;
 
 #[path = "modding/native_menus.rs"]
 pub mod native_menus;
-
 
 #[path = "modding/native_living_refs.rs"]
 pub mod native_living_refs;

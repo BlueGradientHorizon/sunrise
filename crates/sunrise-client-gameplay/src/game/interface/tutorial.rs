@@ -1,7 +1,5 @@
 //! Client tutorial progression (`net.minecraft.client.tutorial`).
 
-
-
 use super::toast_manager::Toast;
 use sunrise_client::hud::{HudAtlas, HudBatch};
 use sunrise_client_gameplay::tutorial::social_hint_progress;
@@ -14,7 +12,9 @@ impl crate::game::ClientGame<'_> {
             "tutorialStep",
             sunrise_client::options_file::V::Int(self.client.tutorial.step as i32),
         );
-        self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+        self.client
+            .settings
+            .save(&sunrise_gameplay_common::game::options_path());
     }
 }
 
@@ -49,7 +49,9 @@ impl crate::game::ClientGame<'_> {
     ) {
         // The server thread's settings are a stale copy of the window's: a
         // guest's tutorial is their own client's to record.
-        if self.common.options.dedicated.is_some() || self.client.title.0.is_some() || self.common.player.is_none()
+        if self.common.options.dedicated.is_some()
+            || self.client.title.0.is_some()
+            || self.common.player.is_none()
         {
             return;
         }
@@ -70,7 +72,9 @@ impl crate::game::ClientGame<'_> {
     ) {
         // The server thread's settings are a stale copy of the window's: a
         // guest's tutorial is their own client's to record.
-        if self.common.options.dedicated.is_some() || self.client.title.0.is_some() || self.common.player.is_none()
+        if self.common.options.dedicated.is_some()
+            || self.client.title.0.is_some()
+            || self.common.player.is_none()
         {
             return;
         }
@@ -106,7 +110,9 @@ impl crate::game::ClientGame<'_> {
                 "joinedFirstServer",
                 sunrise_client::options_file::V::Bool(true),
             );
-            self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+            self.client
+                .settings
+                .save(&sunrise_gameplay_common::game::options_path());
         }
         if self.client.screen == super::Screen::Playing
             && ([
@@ -132,7 +138,8 @@ impl crate::game::ClientGame<'_> {
             && !matches!(self.client.tutorial.step, Step::Movement | Step::None)
         {
             for stack in self
-                .common.inventory
+                .common
+                .inventory
                 .iter()
                 .chain(self.common.armor.iter())
                 .flatten()
@@ -168,7 +175,8 @@ impl crate::game::ClientGame<'_> {
             && let Some(hit) = self.pick()
         {
             let name = &self
-                .common.res
+                .common
+                .res
                 .facts()
                 .get(self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]))
                 .name;

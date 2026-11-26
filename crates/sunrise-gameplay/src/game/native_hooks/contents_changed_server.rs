@@ -40,7 +40,8 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let observers = self
-            .common.world
+            .common
+            .world
             .block_entities
             .contents_watches
             .observers((pos.x, pos.y, pos.z));

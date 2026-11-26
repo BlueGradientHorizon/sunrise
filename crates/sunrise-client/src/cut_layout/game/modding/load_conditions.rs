@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 #[path = "load_conditions/tests.rs"]

@@ -75,7 +75,8 @@ editor callbacks for the session and surfaces an error toast. Dimension ids, ste
 and flat-layer height bounds are checked before accepting an edit; registry resolution and
 generator-specific decoding still run when opening the world.
 "#]
-    #[hook(target = "sunrise_gameplay_common::game::native_hooks::register_preset_editors::native_register_preset_editors", 
+    #[hook(
+        target = "sunrise_gameplay_common::game::native_hooks::register_preset_editors::native_register_preset_editors",
         receiver = "associated",
         dispatch = "flat",
         side = "client",

@@ -33,7 +33,10 @@ impl crate::game::ClientGame<'_> {
             }
             if let Some(resolved) = super::native_entity_renderers::painting_renderer() {
                 let entity_start = out.len();
-                self.mark_motion(entity_start, sunrise_gameplay_common::game::MOTION_OBJECT | u64::from(p.id));
+                self.mark_motion(
+                    entity_start,
+                    sunrise_gameplay_common::game::MOTION_OBJECT | u64::from(p.id),
+                );
                 let (lo, hi) = p.bounds();
                 let at = glam::DVec3::new(
                     (lo[0] + hi[0]) / 2.0,
@@ -112,7 +115,10 @@ impl crate::game::ClientGame<'_> {
                 1.0 / 32.0,
             );
             let entity_start = out.len();
-            self.mark_motion(entity_start, sunrise_gameplay_common::game::MOTION_OBJECT | u64::from(p.id));
+            self.mark_motion(
+                entity_start,
+                sunrise_gameplay_common::game::MOTION_OBJECT | u64::from(p.id),
+            );
             let light = self.common.world.light(p.pos[0], p.pos[1], p.pos[2]);
             let packed = (u32::from(light >> 4) * 16) | ((u32::from(light & 15) * 16) << 8);
             let mut quad =

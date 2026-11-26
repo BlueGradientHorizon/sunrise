@@ -8,7 +8,8 @@ pub trait Hooks {
     /// `gui_layer_pre`. A canceled or replaced layer does not fire this hook, and a wrapper
     /// fires it only by drawing the vanilla body. Only the heart sprites change, not the
     /// layout or the separate armour, food, vehicle-health or air layers. Client-side.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::player_heart_type::ClientGame<'_>::native_player_heart_type", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::player_heart_type::ClientGame<'_>::native_player_heart_type",
         dispatch = "flat",
         side = "client",
         version = 2,

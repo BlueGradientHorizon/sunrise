@@ -1,12 +1,10 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_level::containers::BlockEntity;
 #[cfg(test)]
 pub(crate) mod tests {
+    use super::*;
     use sunrise_core::random::RandomSource;
-use super::*;
     use sunrise_sim::mobs::spawner::Spawner;
 
     /// `BaseSpawner.serverTick` with a player in range: a running delay only
@@ -34,11 +32,14 @@ use super::*;
             game.world
                 .block_entities
                 .insert(key, BlockEntity::Spawner(Box::new(spawner)));
-            let delay =
-                |game: &sunrise_gameplay::game::ServerGame<'_>| match game.world.block_entities.get(&key) {
-                    Some(BlockEntity::Spawner(s)) => s.spawn_delay,
-                    _ => panic!("the spawner is gone"),
-                };
+            let delay = |game: &sunrise_gameplay::game::ServerGame<'_>| match game
+                .world
+                .block_entities
+                .get(&key)
+            {
+                Some(BlockEntity::Spawner(s)) => s.spawn_delay,
+                _ => panic!("the spawner is gone"),
+            };
             for expected in [2, 1, 0] {
                 let mut before = game.world.random.clone();
                 game.tick_spawner(key).unwrap();

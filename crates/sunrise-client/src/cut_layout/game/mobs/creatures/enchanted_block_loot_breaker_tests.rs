@@ -1,9 +1,13 @@
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-use {sunrise_gameplay_common::game::creatures::MobEvent, sunrise_gameplay_common::game::creatures::Projectile, sunrise_gameplay_common::game::creatures::ProjectileKind};
 use mod_api::{EnchantedBlockLootEvent, Hooks, LevelHost, ModEntry};
 use mod_platform::testing::with_mods;
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use {
+    sunrise_gameplay_common::game::creatures::MobEvent,
+    sunrise_gameplay_common::game::creatures::Projectile,
+    sunrise_gameplay_common::game::creatures::ProjectileKind,
+};
 
 const POS: [i32; 3] = [1, 64, 1];
 

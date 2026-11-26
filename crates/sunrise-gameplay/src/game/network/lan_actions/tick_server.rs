@@ -92,8 +92,10 @@ impl crate::game::ServerGame<'_> {
         if !mod_api::__private::listened(hook) {
             return;
         }
-        let (Some(epoch), Some(host)) = (self.common.native_lifecycle.epoch(), self.server.lan.as_ref())
-        else {
+        let (Some(epoch), Some(host)) = (
+            self.common.native_lifecycle.epoch(),
+            self.server.lan.as_ref(),
+        ) else {
             return;
         };
         let guest = &host.hub.guests[gi];
@@ -121,7 +123,10 @@ impl crate::game::ServerGame<'_> {
         let Some(index) = first_spin_target(
             swept,
             riding,
-            self.common.mobs.iter().map(|m| (m.id, m.removed, m.bounds())),
+            self.common
+                .mobs
+                .iter()
+                .map(|m| (m.id, m.removed, m.bounds())),
         ) else {
             return;
         };
@@ -307,7 +312,10 @@ impl crate::game::ServerGame<'_> {
             // Player.tick: a different main-hand item resets the attack
             // strength (its modifiers come with detectEquipmentUpdates below).
             let g = &host.hub.guests[gi];
-            let held = sunrise_gameplay_common::game::held_items::held_attack_item(&g.inventory, g.selected);
+            let held = sunrise_gameplay_common::game::held_items::held_attack_item(
+                &g.inventory,
+                g.selected,
+            );
             let play = host.play.entry(conn).or_default();
             if play.attack_item.as_ref() != held {
                 play.attack_ticks = 0;
@@ -377,10 +385,7 @@ impl crate::game::ServerGame<'_> {
     /// Tick each connection once, in hub order. Resolve its level at dispatch
     /// time: a preceding player tick can move a later player to another level.
     /// `across_levels` is false for standalone ticks of the level in place.
-    pub fn tick_guest_connections(
-        &mut self,
-        across_levels: bool,
-    ) -> sunrise_game_data::Result<()> {
+    pub fn tick_guest_connections(&mut self, across_levels: bool) -> sunrise_game_data::Result<()> {
         building_cache(self.server.lan.as_ref());
         let result = self.tick_guest_connections_inner(across_levels);
         building_cache(None);
@@ -432,7 +437,10 @@ impl crate::game::ServerGame<'_> {
                     if self.common.dim != dim {
                         self.enter_level(dim)?;
                     }
-                    collision = Some((self.placed_moving_colliders(), self.common.collision_parts()));
+                    collision = Some((
+                        self.placed_moving_colliders(),
+                        self.common.collision_parts(),
+                    ));
                 }
                 active_level = Some(dim);
                 // Most players aren't in any of the columns items reach.
@@ -550,7 +558,8 @@ impl crate::game::ServerGame<'_> {
             let host = self.server.lan.as_mut().unwrap();
             if let Some((pos, _)) = host.play.get(&conn).and_then(|play| play.digging)
                 && self
-                    .common.res
+                    .common
+                    .res
                     .facts()
                     .is_air(self.common.world.block(pos[0], pos[1], pos[2]))
                 && let Some(play) = host.play.get_mut(&conn)

@@ -1,10 +1,4 @@
 use super::WorldIcon;
-use sunrise_gameplay_common::game::Dim;
-use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-use sunrise_gameplay_common::game::integrated_link::{
-    CALL_TIMEOUT, Finished, Flags, Launch, Ready, server_thread_stack,
-};
-use sunrise_gameplay_common::game::owner_link::{OwnerRequest, Reply};
 use std::{
     sync::{
         Arc,
@@ -15,6 +9,12 @@ use std::{
     time::{Duration, Instant},
 };
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::Dim;
+use sunrise_gameplay_common::game::execution_role::ExecutionRole;
+use sunrise_gameplay_common::game::integrated_link::{
+    CALL_TIMEOUT, Finished, Flags, Launch, Ready, server_thread_stack,
+};
+use sunrise_gameplay_common::game::owner_link::{OwnerRequest, Reply};
 use sunrise_level::level_loading::ServerLoadView;
 use sunrise_protocol::crypto::offline_uuid;
 use sunrise_sim::lan::OwnerProfile;
@@ -72,7 +72,9 @@ impl Integrated {
         }
     }
     /// The debug entries' server lines of the last tick.
-    pub(in crate::game) fn debug(&self) -> (u64, sunrise_gameplay_common::game::debug_lines::ServerDebug) {
+    pub(in crate::game) fn debug(
+        &self,
+    ) -> (u64, sunrise_gameplay_common::game::debug_lines::ServerDebug) {
         self.flags
             .debug
             .lock()
@@ -220,7 +222,9 @@ impl crate::game::ClientGame<'_> {
     #[inline(always)]
     #[allow(dead_code)]
     pub(in crate::game) fn integrated_tick_loop_client(&mut self, started: Instant) -> f32 {
-        self.client.debug_charts.log_tick(started, started.elapsed());
+        self.client
+            .debug_charts
+            .log_tick(started, started.elapsed());
         self.client.debug_charts.smoothed_tick_ms
     }
     /// `Minecraft.doWorldLoad`: start the server thread on the world; the

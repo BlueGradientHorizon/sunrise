@@ -1,11 +1,14 @@
 //! `VehicleEntity.hurtServer` on a minecart: the `ENTITY_DAMAGE` game event it
 //! posts, the `CustomName` `destroy` puts on the drop, and
 //! `chestVehicleDestroyed`'s angry piglins. Prepared resources only.
-use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
+use sunrise_core::geometry::Vec3;
 use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_gameplay::game::server_side::minecarts_server::CartHit;
-use sunrise_core::geometry::Vec3;
 use sunrise_sim::mobs::{Species, Who};
+use {
+    sunrise_gameplay_common::game::minecarts::CartKind,
+    sunrise_gameplay_common::game::minecarts::Minecart,
+};
 
 /// A server game with a player at `(8.5, 64, 8.5)`, as a window's player is
 /// there for the piglins that look at it.
@@ -22,7 +25,8 @@ fn game_with_player(
 }
 
 fn start_events() {
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|e| *e.borrow_mut() = Some(Vec::new()));
 }
 
 fn take_events() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
@@ -31,7 +35,8 @@ fn take_events() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
 }
 
 fn stop_events() {
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = None);
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|e| *e.borrow_mut() = None);
 }
 
 /// `VehicleEntity.hurtServer`: the hit shakes the cart, adds `damage * 10`,

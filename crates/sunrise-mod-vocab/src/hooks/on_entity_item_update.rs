@@ -18,7 +18,8 @@ pub trait Hooks {
     /// Read the live stack via `event.subject.with_view` and `view.with_stack`;
     /// component conversion is deferred until that stack view is projected.
     /// Server-side, for every dropped item that ticks.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::on_entity_item_update::native_on_entity_item_update", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::on_entity_item_update::native_on_entity_item_update",
         receiver = "associated",
         dispatch = "api_carrier",
         side = "server",

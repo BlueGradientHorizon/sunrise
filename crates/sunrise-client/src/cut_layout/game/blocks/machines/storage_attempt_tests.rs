@@ -1,18 +1,21 @@
 //! #3720: real Game ticks, Parts storage and transaction close/restore traces.
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::hoppers::Pos;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
-use sunrise_gameplay_common::game::spill_common as spill;
 use mod_api::*;
 use std::sync::{Arc, Mutex};
 use sunrise_core::{
     geometry::Vec3,
     position::{BlockPos, ChunkPos},
 };
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::spill_common as spill;
+use sunrise_gameplay_common::hoppers::Pos;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{
     chunk::Chunk,
     containers::{BlockEntity, ModBlockEntity, ModContainer, ModContainerInsertRule},
+};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
 };
 
 const HOPPER: Pos = (8, 64, 8);
@@ -340,7 +343,10 @@ impl Hooks for Probe {
     }
 }
 
-fn fixture(name: &str, test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, LevelRef, Probe)) {
+fn fixture(
+    name: &str,
+    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, LevelRef, Probe),
+) {
     if run_fresh_cases(name, "SUNRISE_STORAGE_ATTEMPTS_CHILD", &["game"]) {
         return;
     }
@@ -415,8 +421,13 @@ fn place<'g>(game: &mut impl sunrise_gameplay_common::game::SideGame<'g>, pos: P
 #[test]
 #[ignore = "daily"]
 fn item_capability_presence_does_not_open_loot_or_load_chunks() {
-    use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::with_game_role, crate::game::server_side::native_entity_refs::tests::with_game_role_client};
     use sunrise_core::nbt::Tag;
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_game_role_client,
+        sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game_role,
+        sunrise_gameplay_common::game::execution_role::ExecutionRole,
+    };
 
     if run_fresh_cases(
         "game::server_side::machines::native_items::storage_attempt_tests::item_capability_presence_does_not_open_loot_or_load_chunks",
@@ -567,8 +578,13 @@ fn item_capability_presence_does_not_open_loot_or_load_chunks() {
 #[test]
 #[ignore = "daily"]
 fn a_committed_pot_write_in_another_level_survives_the_parent_abort() {
-    use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::with_game_role};
     use sunrise_core::nbt::Tag;
+    use {
+        sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game_role,
+        sunrise_gameplay_common::game::Dim,
+        sunrise_gameplay_common::game::execution_role::ExecutionRole,
+    };
 
     if run_fresh_cases(
         "game::server_side::machines::native_items::storage_attempt_tests::a_committed_pot_write_in_another_level_survives_the_parent_abort",
@@ -636,9 +652,13 @@ fn a_committed_pot_write_in_another_level_survives_the_parent_abort() {
 #[test]
 #[ignore = "daily"]
 fn block_capabilities_contain_panics_under_the_provider_owner() {
-    use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::with_game_role};
     use mod_api::content::crash::current_native_mod;
     use sunrise_level::crash;
+    use {
+        sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game_role,
+        sunrise_gameplay_common::game::execution_role::ExecutionRole,
+    };
 
     const FLAG: &str = "SUNRISE_CAPABILITY_PROVIDER_OWNER_CHILD";
     const DISCOVERY: [i32; 3] = [1, 64, 0];
@@ -869,7 +889,8 @@ fn aborting_a_pot_insert_restores_its_named_loot_sequence() {
             use sunrise_gameplay_common::game::api_values::TryIntoApi;
             let stick =
                 ItemResource::of(&ItemStack::new("minecraft:stick", 1).try_into_api().unwrap());
-            let insert = |game: &mut sunrise_gameplay::game::ServerGame<'_>, tx: &TransactionContext| {
+            let insert = |game: &mut sunrise_gameplay::game::ServerGame<'_>,
+                          tx: &TransactionContext| {
                 assert_eq!(items.insert_at(game, tx, 0, &stick, 1), Ok(1));
                 let amount = items.amount(game, 0);
                 assert!(
@@ -992,7 +1013,11 @@ fn hopper_respects_a_mod_container_only_when_empty_rule() {
     );
 }
 
-fn storage(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: Pos, items: Vec<Option<ItemStack>>) {
+fn storage(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    pos: Pos,
+    items: Vec<Option<ItemStack>>,
+) {
     place(game, pos, "minecraft:barrel");
     let mut entity = ModBlockEntity::new("storage_attempts:machine".into(), Default::default());
     entity.items = items;
@@ -1395,7 +1420,10 @@ fn vanilla_container_provider_and_entity_never_ask_their_storage() {
     fixture(
         "game::server_side::machines::native_items::storage_attempt_tests::vanilla_container_provider_and_entity_never_ask_their_storage",
         |game, _, probe| {
-            use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
+            use {
+                sunrise_gameplay_common::game::minecarts::CartKind,
+                sunrise_gameplay_common::game::minecarts::Minecart,
+            };
             for target in ["minecraft:chest", "minecraft:composter", "minecraft:air"] {
                 hopper(game, vec![None; 5]);
                 game.server.hoppers.clear();
@@ -1444,7 +1472,10 @@ fn failed_block_pull_stops_but_minecart_falls_back_to_item_entities() {
     fixture(
         "game::server_side::machines::native_items::storage_attempt_tests::failed_block_pull_stops_but_minecart_falls_back_to_item_entities",
         |game, _, probe| {
-            use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
+            use {
+                sunrise_gameplay_common::game::minecarts::CartKind,
+                sunrise_gameplay_common::game::minecarts::Minecart,
+            };
             storage(
                 game,
                 ABOVE,

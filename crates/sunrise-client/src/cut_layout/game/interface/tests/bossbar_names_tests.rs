@@ -2,24 +2,27 @@
 //! (`BossBarCommands.getPlayers` → `ComponentUtils.formatList(players,
 //! Player::getDisplayName)`): the team's formatting, the `/tell` click, the
 //! entity hover and the name a shift-click inserts.
+use super::*;
+use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_game_data::text::Text;
 use sunrise_gameplay_common::game::Dim;
-use super::*;
-use {sunrise_gameplay::game::lan::LanSettings, sunrise_gameplay_common::game::lan_actions::GuestCommand};
-use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_sim::{
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
     motion::PlayerMotion,
+};
+use {
+    sunrise_gameplay::game::lan::LanSettings,
+    sunrise_gameplay_common::game::lan_actions::GuestCommand,
 };
 
 /// A host game with a window player and two other online players.
 fn game_with_two_guests<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
 ) -> sunrise_gameplay::game::ServerGame<'a> {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
-    use crate::settings::Settings;
     use crate::game::load_resources;
+    use crate::settings::Settings;
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES").expect("set SUNRISE_TEST_RESOURCES"),
     );
@@ -39,7 +42,8 @@ fn game_with_two_guests<'a>(
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         res,

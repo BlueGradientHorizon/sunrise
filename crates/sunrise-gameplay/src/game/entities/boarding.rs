@@ -64,7 +64,8 @@ impl ServerGame<'_> {
         lent_mobs: &[Mob],
         mut matches: impl FnMut((i64, u32, bool)) -> bool,
     ) -> bool {
-        let acting = sunrise_gameplay_common::game::Side::lan_acting(&self.server).filter(|_| self.common.player.is_some());
+        let acting = sunrise_gameplay_common::game::Side::lan_acting(&self.server)
+            .filter(|_| self.common.player.is_some());
         let mut acting_listed = false;
         for g in self
             .server
@@ -94,7 +95,13 @@ impl ServerGame<'_> {
         }
         let other_mobs = lent_mobs
             .iter()
-            .chain(self.common.persist.off_level.values().filter_map(OffLevel::as_mob))
+            .chain(
+                self.common
+                    .persist
+                    .off_level
+                    .values()
+                    .filter_map(OffLevel::as_mob),
+            )
             .filter(|m| m.extra.mount == Some(vehicle));
         self.resident_mob_riders(vehicle)
             .map(|(_, m)| m)
@@ -102,10 +109,12 @@ impl ServerGame<'_> {
             .filter(|m| !m.removed)
             .any(|m| matches((m.extra.vehicle_order, m.id, false)))
             || self
-                .common.general_passengers(vehicle)
+                .common
+                .general_passengers(vehicle)
                 .any(|row| matches((row.vehicle_order, row.id, false)))
             || self
-                .common.bolts
+                .common
+                .bolts
                 .iter()
                 .filter(|b| b.mount == Some(vehicle))
                 .any(|b| matches((b.vehicle_order, b.id, false)))
@@ -208,11 +217,6 @@ impl ServerGame<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
-
-    
-
-    
 
     #[test]
     fn started_riding_reaches_every_rider_of_the_vehicle() {
@@ -228,7 +232,5 @@ mod tests {
         assert!(!aboard.contains(&6), "a mob riding nothing");
     }
 }
-
-
 
 use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt2 as _;

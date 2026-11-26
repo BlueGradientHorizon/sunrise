@@ -19,10 +19,7 @@ impl crate::game::ClientGame<'_> {
             && self.client.sign_edit.is_none()
             && self.client.book.is_none()
     }
-    pub fn vanilla_key_mapping(
-        &self,
-        name: &str,
-    ) -> Result<VanillaKeyMappingRef, MappingError> {
+    pub fn vanilla_key_mapping(&self, name: &str) -> Result<VanillaKeyMappingRef, MappingError> {
         if !self.common.options.execution_role.is_client() {
             return Err(MappingError::Unavailable);
         }

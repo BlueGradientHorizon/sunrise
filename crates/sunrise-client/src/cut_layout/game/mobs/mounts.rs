@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::EntityTypeTags;
@@ -9,20 +7,20 @@ use sunrise_sim::mobs::Who;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_core::random::RandomSource;
-use sunrise_gameplay_common::game::server_side::mounts::tests::sparkle_draws;
+    use sunrise_core::random::RandomSource;
+    use sunrise_gameplay_common::game::server_side::mounts::tests::sparkle_draws;
 
-use sunrise_gameplay::game::server_side::mounts::tests::equip;
+    use sunrise_gameplay::game::server_side::mounts::tests::equip;
 
-use sunrise_gameplay::game::server_side::mounts::tests::feed;
+    use sunrise_gameplay::game::server_side::mounts::tests::feed;
 
-use sunrise_gameplay::game::server_side::mounts::tests::mount;
+    use sunrise_gameplay::game::server_side::mounts::tests::mount;
 
-use sunrise_gameplay::game::server_side::mounts::dismounts_underwater;
+    use sunrise_gameplay::game::server_side::mounts::dismounts_underwater;
 
-use super::*;
+    use super::*;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn steering_stick_break_converts_to_fishing_rod() {
         use sunrise_core::geometry::Vec3;
@@ -63,12 +61,15 @@ use super::*;
             assert_eq!(rod.custom_name().as_deref(), Some("Old Nag"));
         });
     }
-/// A server-side game with nothing in it but an empty chunk, or None when
+    /// A server-side game with nothing in it but an empty chunk, or None when
     /// the prepared resources are missing (CI has no vanilla data).
     pub(crate) fn server_game(
         resources: &mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
     ) -> Option<Box<sunrise_gameplay::game::ServerGame<'_>>> {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        };
         let root = std::env::var_os("SUNRISE_TEST_RESOURCES")
             .map(std::path::PathBuf::from)
             .unwrap_or_else(|| {
@@ -95,7 +96,8 @@ use super::*;
         .ok()?;
         let mut options = Options::parse(std::iter::empty()).ok()??;
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let res = resources.insert(loaded.resources);
         let mut game = sunrise_gameplay::game::ServerGame::new(
             res,
@@ -118,7 +120,7 @@ use super::*;
         game.server.streaming.forced.insert((0, 0));
         Some(Box::new(game))
     }
-/// `AbstractChestedHorse.equipChest`: a tamed donkey or mule given a chest
+    /// `AbstractChestedHorse.equipChest`: a tamed donkey or mule given a chest
     /// plays its chest sound at volume 1.0 (`AbstractChestedHorse`
     /// `playChestEquipsSound` uses `DONKEY_CHEST`, `Mule` overrides it with
     /// `MULE_CHEST`) and posts no mob equip event, which only the saddle and
@@ -148,7 +150,8 @@ use super::*;
             game.stop_audio_capture();
             let equip_events = sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
                 .with(|events| events.borrow_mut().take().unwrap_or_default());
-            sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = None);
+            sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+                .with(|events| *events.borrow_mut() = None);
             assert!(game.mobs[0].extra.chested, "{kind} wears the chest");
             assert_eq!(sounds.len(), 1, "{kind}: {sounds:?}");
             assert_eq!(sounds[0].0, sound, "{kind} chest sound");
@@ -164,7 +167,7 @@ use super::*;
             );
         }
     }
-/// `AbstractHorse.handleEating`: a mouthful that ages a baby up draws the
+    /// `AbstractHorse.handleEating`: a mouthful that ages a baby up draws the
     /// happy villager's position from the mount's own random (`getRandomX`,
     /// `getRandomY` and `getRandomZ` take a double each) before it grows; a
     /// mount that is not silent then eats with `1.0F + (nextFloat() -
@@ -256,7 +259,7 @@ use super::*;
         assert_eq!(shown.events, vec![("minecraft:eat", at, Some(Who::Mob(4)))]);
         assert_eq!(game.mobs[0].extra.age, -23800, "camel cactus ages 10 s");
     }
-/// `LivingEntity.onEquipItem`: a saddle or horse armour plays its equip sound
+    /// `LivingEntity.onEquipItem`: a saddle or horse armour plays its equip sound
     /// at pitch `1.0F`, at the mount's feet, seeded with the mount's own random's
     /// `nextLong`. A chest's sound is `AbstractChestedHorse.playChestEquipsSound`'s,
     /// pitched from two floats of that random at volume 1.0. A silent mount plays
@@ -356,7 +359,7 @@ use super::*;
             "a silent mount's equip draws nothing"
         );
     }
-/// `CamelHusk.interact` sets `PersistenceRequired` before it hands the click
+    /// `CamelHusk.interact` sets `PersistenceRequired` before it hands the click
     /// on, so a husk a player saddled is kept past the monster category's 128
     /// blocks (`Mob.checkDespawn` reads `isPersistenceRequired`).
     #[test]
@@ -382,7 +385,6 @@ use super::*;
         assert!(game.mobs[0].persistent, "a clicked camel husk stays");
     }
 }
-
 
 #[cfg(test)]
 pub(crate) mod off_level_tests {
@@ -464,9 +466,10 @@ pub(crate) mod off_level_tests {
                 game.mobs.push(m);
             }
             let ghost = sunrise_sim::mobs::Mob::new(72, pig, Vec3::ZERO, 0.0);
-            game.persist
-                .off_level
-                .insert(72, sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(ghost));
+            game.persist.off_level.insert(
+                72,
+                sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(ghost),
+            );
             game.dismount_underwater_mob_riders();
             assert_eq!(game.mob_object(74).unwrap().extra.mount, Some(73));
             assert_eq!(game.mob_object(76).unwrap().extra.mount, None);

@@ -7,7 +7,8 @@ impl crate::game::ServerGame<'_> {
         check: SwimmingCheck,
     ) -> Option<bool> {
         let uuid = self.server.lan_acting_uuid.or_else(|| {
-            self.common.level
+            self.common
+                .level
                 .player_uuid
                 .map(sunrise_sim::lan::playerdata::ints_uuid)
         })?;

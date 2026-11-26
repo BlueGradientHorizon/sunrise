@@ -1,6 +1,3 @@
-use sunrise_core::geometry::Vec3;
-use sunrise_sim::projectiles::Projectile;
-use sunrise_sim::projectiles::ProjectileKind;
 use super::*;
 use crate::game::creatures::projectile_batch_tests::WindContinuationObserved;
 use crate::game::creatures::projectile_batch_tests::WindContinuationObserver;
@@ -8,9 +5,16 @@ use crate::game::creatures::projectile_batch_tests::assert_boat_matches_witness;
 use crate::game::creatures::projectile_batch_tests::assert_vec3_bits;
 use crate::game::creatures::projectile_batch_tests::load_wind_continuation_witness_26_3;
 use crate::game::creatures::projectile_batch_tests::wind_continuation_witness_26_3;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_projectiles::impact_probe::Action, crate::game::server_side::native_projectiles::impact_probe::with_probe};
 use std::sync::{Arc, atomic::Ordering};
+use sunrise_core::geometry::Vec3;
 use sunrise_level::chunk::Chunk;
+use sunrise_sim::projectiles::Projectile;
+use sunrise_sim::projectiles::ProjectileKind;
+use {
+    crate::game::server_side::native_projectiles::impact_probe::Action,
+    crate::game::server_side::native_projectiles::impact_probe::with_probe,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -56,8 +60,7 @@ fn a_first_shot_listener_can_clear_the_eggs_captured_block_before_landing() {
     );
 }
 
-pub(crate) fn run_continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass()
- {
+pub(crate) fn run_continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass() {
     let witness = load_wind_continuation_witness_26_3();
     const CASE: &str = "SUNRISE_PROJECTILE_BATCH_CASE";
     if run_fresh_cases(
@@ -98,12 +101,13 @@ pub(crate) fn run_continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_
                 "reversed" => (40.5, 5_u32, "boat_rev", "w6_rev", Some("a2_rev")),
                 _ => (8.5, 5_u32, "boat_main", "w6_main", Some("a2_main")),
             };
-            game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(
-                71,
-                Arc::from("oak"),
-                Vec3::new(4.5, -60.0, z),
-                0.0,
-            ));
+            game.boats
+                .push(sunrise_gameplay_common::game::boats_common::Boat::new(
+                    71,
+                    Arc::from("oak"),
+                    Vec3::new(4.5, -60.0, z),
+                    0.0,
+                ));
             for i in 0..breakers {
                 let mut p =
                     Projectile::new(ProjectileKind::WindCharge, Vec3::new(4.5, -59.2, z), None);

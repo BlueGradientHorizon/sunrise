@@ -1,11 +1,11 @@
 //! The adventure-mode gates on a right click: `TntBlock.prime` refuses to
 //! light TNT for a player whose held stack's `can_break` does not name it,
 //! and `ItemStack.useOn`'s `can_place_on` is what lets a placement through.
-use {sunrise_gameplay_common::game::Hit, sunrise_gameplay::game::game_tests::tests::server_game};
 use sunrise_command::args::GameMode;
 use sunrise_core::nbt::Tag;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::Who;
+use {sunrise_gameplay::game::game_tests::tests::server_game, sunrise_gameplay_common::game::Hit};
 
 type Posted = (&'static str, [f64; 3], Option<Who>);
 
@@ -26,7 +26,11 @@ fn game<'a>(
 fn client_game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
 ) -> Option<sunrise_client_gameplay::game::ClientGame<'a>> {
-    use {sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::execution_role, crate::game::load_resources};
+    use {
+        crate::game::load_resources, crate::settings::Settings, sunrise_client_lib::audio::Audio,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        sunrise_gameplay_common::game::execution_role,
+    };
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES")?);
     let settings = Settings::default();
     let loaded = load_resources(
@@ -105,11 +109,12 @@ fn hit(pos: [i32; 3]) -> Hit {
 fn click(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: [i32; 3]) -> (bool, Vec<Posted>) {
     let hit = hit(pos);
     game.server.forced_hit = Some(hit);
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|events| *events.borrow_mut() = Some(Vec::new()));
     let consumed = game.with_player_actor(|g| g.use_hand(Some(&hit))).unwrap();
     game.server.forced_hit = None;
-    let events =
-        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| events.borrow_mut().take().unwrap());
+    let events = sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|events| events.borrow_mut().take().unwrap());
     (consumed, events)
 }
 
@@ -189,7 +194,8 @@ fn an_adventure_placement_is_predicted_when_can_place_on_names_the_clicked_block
         .default_state("minecraft:stone")
         .unwrap();
     game.world.set(pos[0], pos[1], pos[2], stone).unwrap();
-    game.common.world
+    game.common
+        .world
         .set(pos[0], pos[1] + 1, pos[2], game.common.res.facts().air)
         .unwrap();
     game.mode = GameMode::Adventure;

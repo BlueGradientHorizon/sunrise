@@ -1,18 +1,21 @@
 //! Chiseled bookshelves: `ChiseledBookShelfBlockEntity.updateState` follows the
 //! slot a container write names, and `ChiseledBookShelfBlock.removeBook` on a
 //! slot the state calls occupied but that holds nothing.
-use sunrise_gameplay_common::hoppers::shelf_signal;
-use sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS;
-use {sunrise_gameplay_common::game::Hit, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::Settings, crate::game::load_resources};
 use std::sync::Arc;
 use sunrise_core::geometry::Direction;
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS;
+use sunrise_gameplay_common::hoppers::shelf_signal;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{
     chunk::Chunk,
     containers::{BlockEntity, ChiseledBookshelf},
 };
 use sunrise_sim::mobs::Who;
+use {
+    crate::game::Settings, crate::game::load_resources, sunrise_gameplay_common::game::Hit,
+    sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+};
 
 const POS: [i32; 3] = [8, 64, 8];
 const CENTRE: [f64; 3] = [8.5, 64.5, 8.5];
@@ -37,7 +40,8 @@ fn with_game<R>(f: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>) -> R
     .ok()?;
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut resources = None;
     let res = &*resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
@@ -67,7 +71,11 @@ fn record(f: impl FnOnce()) -> Vec<(&'static str, [f64; 3], Option<Who>)> {
 /// A chiseled bookshelf facing south at `POS`: the state's `occupied` slots
 /// are full and the block entity holds a book in `books`. They may disagree,
 /// as `/setblock` leaves them.
-fn place_shelf(game: &mut sunrise_gameplay::game::ServerGame<'_>, occupied: &[usize], books: &[usize]) {
+fn place_shelf(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    occupied: &[usize],
+    books: &[usize],
+) {
     let registry = game.pack.assets.registry;
     let default = registry
         .default_state("minecraft:chiseled_bookshelf")

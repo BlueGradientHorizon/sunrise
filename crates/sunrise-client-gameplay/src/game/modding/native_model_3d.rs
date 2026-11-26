@@ -3,8 +3,8 @@
 //! The item is the slot's own item (`item_render::gui::draw_posed`) under a pose with the turn in
 //! it; the model is projected as a scene's blocks are. Both have a depth of their own
 //! (`HudBatch::depth_glint_over` for items, `HudBatch::depth_over` for models).
-use crate::game::ClientGame;
 use super::native_scene::{SceneQuad, face_shade, project_quads, shaded};
+use crate::game::ClientGame;
 use glam::{Mat4, Vec3};
 use mod_api::{Gui3dError, Gui3dSubject, Gui3dView, ModelError};
 use sunrise_client::{hud::HudBatch, world_geometry::row_major_3x4};
@@ -53,8 +53,9 @@ impl ClientGame<'_> {
                 if self.common.res.items().get(item).is_none() {
                     return Err(Gui3dError::UnknownItem);
                 }
-                let stack = sunrise_gameplay_common::game::api_values::encode_stack(stack, item.into())
-                    .map_err(|_| Gui3dError::InvalidStack)?;
+                let stack =
+                    sunrise_gameplay_common::game::api_values::encode_stack(stack, item.into())
+                        .map_err(|_| Gui3dError::InvalidStack)?;
                 if !self.draw_item_model_posed(batch, &stack, pose) {
                     return Err(Gui3dError::NotFinite);
                 }

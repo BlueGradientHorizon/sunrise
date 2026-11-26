@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 #[path = "block_entity_tick/tests.rs"]

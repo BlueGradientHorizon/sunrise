@@ -2,10 +2,7 @@ use super::*;
 
 impl crate::game::ServerGame<'_> {
     /// `CauldronInteractions` for the held item aimed at a cauldron.
-    pub fn use_on_cauldron(
-        &mut self,
-        pos: [i32; 3],
-    ) -> Result<sunrise_sim::cauldron::Outcome> {
+    pub fn use_on_cauldron(&mut self, pos: [i32; 3]) -> Result<sunrise_sim::cauldron::Outcome> {
         use sunrise_sim::cauldron::{self, Outcome};
         let registry = self.common.pack.assets.registry;
         let Some((state, under_water)) = self.common.cauldron_at(pos) else {
@@ -34,7 +31,8 @@ impl crate::game::ServerGame<'_> {
             let mut hand = sunrise_gameplay_common::game::powder_snow::HeldSlot {
                 game: self,
                 slot,
-                dropper: None, resource_lifetime: std::marker::PhantomData,
+                dropper: None,
+                resource_lifetime: std::marker::PhantomData,
             };
             let result =
                 cauldron::interact_selected(&state, under_water, entry.as_ref(), &mut hand);
@@ -85,7 +83,8 @@ impl crate::game::ServerGame<'_> {
             let mut hand = sunrise_gameplay_common::game::powder_snow::HeldSlot {
                 game,
                 slot,
-                dropper: Some(player), resource_lifetime: std::marker::PhantomData,
+                dropper: Some(player),
+                resource_lifetime: std::marker::PhantomData,
             };
             let result =
                 cauldron::interact_selected(&state, under_water, entry.as_ref(), &mut hand);

@@ -37,8 +37,8 @@ impl crate::game::ClientGame<'_> {
     ) -> Option<TrackingBody> {
         let remote = self.client.remote.as_ref()?;
         if let Some(row) = remote.general.rows.get(&id) {
-            let (width, height) =
-                sunrise_gameplay_common::game::general::general_type_catalog().dimensions(row.type_slot);
+            let (width, height) = sunrise_gameplay_common::game::general::general_type_catalog()
+                .dimensions(row.type_slot);
             return Some(TrackingBody {
                 feet: row.position,
                 width,
@@ -62,15 +62,29 @@ impl crate::game::ClientGame<'_> {
                 height: f64::from(entity.height),
             });
         }
-        let (mut width, mut height) = self.common.res.rest().spawner_types.get(kind)?.entity_dimensions();
+        let (mut width, mut height) = self
+            .common
+            .res
+            .rest()
+            .spawner_types
+            .get(kind)?
+            .entity_dimensions();
         let feet = match kind {
             "minecraft:ender_dragon" => {
-                let dragon = self.common.dragon.as_ref().filter(|dragon| dragon.id == eid)?;
+                let dragon = self
+                    .common
+                    .dragon
+                    .as_ref()
+                    .filter(|dragon| dragon.id == eid)?;
                 let Vec3 { x, y, z } = dragon.position;
                 [x, y, z]
             }
             "minecraft:armor_stand" => {
-                let stand = self.common.armor_stands.iter().find(|stand| stand.id == eid)?;
+                let stand = self
+                    .common
+                    .armor_stands
+                    .iter()
+                    .find(|stand| stand.id == eid)?;
                 (width, height) = sunrise_gameplay_common::game::entity::armor_stand_size(stand);
                 let Vec3 { x, y, z } = stand.position;
                 [x, y, z]
@@ -87,12 +101,19 @@ impl crate::game::ClientGame<'_> {
             "minecraft:splash_potion"
             | "minecraft:lingering_potion"
             | "minecraft:experience_bottle" => {
-                let (_, _, _, position, _) =
-                    self.common.potions.thrown_tracked().find(|(id, ..)| *id == eid)?;
+                let (_, _, _, position, _) = self
+                    .common
+                    .potions
+                    .thrown_tracked()
+                    .find(|(id, ..)| *id == eid)?;
                 [position.x, position.y, position.z]
             }
             "minecraft:fishing_bobber" => {
-                let hook = self.client.remote_hooks.iter().find(|hook| hook.id == eid)?;
+                let hook = self
+                    .client
+                    .remote_hooks
+                    .iter()
+                    .find(|hook| hook.id == eid)?;
                 let Vec3 { x, y, z } = hook.position;
                 [x, y, z]
             }
@@ -136,7 +157,9 @@ impl crate::game::ClientGame<'_> {
             if dragon.id == eid {
                 return Some([dragon.position.x, dragon.position.y, dragon.position.z]);
             }
-            if let Some(part) = sunrise_gameplay_common::game::dragon_common::dragon_part_index(dragon.id, eid) {
+            if let Some(part) =
+                sunrise_gameplay_common::game::dragon_common::dragon_part_index(dragon.id, eid)
+            {
                 let p = dragon.parts[part].0;
                 return Some([p.x, p.y, p.z]);
             }
@@ -156,7 +179,13 @@ impl crate::game::ClientGame<'_> {
         if let Some(o) = self.common.orbs.iter().find(|o| o.id == eid) {
             return Some([o.position.x, o.position.y, o.position.z]);
         }
-        if let Some(p) = self.common.creatures.projectiles.iter().find(|p| p.id == eid) {
+        if let Some(p) = self
+            .common
+            .creatures
+            .projectiles
+            .iter()
+            .find(|p| p.id == eid)
+        {
             return Some([p.position.x, p.position.y, p.position.z]);
         }
         if let Some(t) = self.common.tridents.iter().find(|t| t.id == eid) {
@@ -208,13 +237,23 @@ impl crate::game::ClientGame<'_> {
         if let Some(s) = self.common.ominous_spawners.iter().find(|s| s.id == eid) {
             return Some(s.position);
         }
-        if let Some((_, _, _, p, _)) = self.common.potions.thrown_tracked().find(|(tid, ..)| *tid == eid) {
+        if let Some((_, _, _, p, _)) = self
+            .common
+            .potions
+            .thrown_tracked()
+            .find(|(tid, ..)| *tid == eid)
+        {
             return Some([p.x, p.y, p.z]);
         }
         if let Some(c) = self.client.remote_clouds.iter().find(|c| c.id == eid) {
             return Some(c.at);
         }
-        if let Some((_, p)) = self.common.end.eye_positions().find(|(eye_id, _)| *eye_id == eid) {
+        if let Some((_, p)) = self
+            .common
+            .end
+            .eye_positions()
+            .find(|(eye_id, _)| *eye_id == eid)
+        {
             return Some(p);
         }
         if let Some(h) = self.client.remote_hooks.iter().find(|h| h.id == eid) {
@@ -226,13 +265,7 @@ impl crate::game::ClientGame<'_> {
         }
         None
     }
-    pub fn spawn_entity(
-        &mut self,
-        id: i32,
-        kind: &str,
-        position: [f64; 3],
-        rotation: [f32; 3],
-    ) {
+    pub fn spawn_entity(&mut self, id: i32, kind: &str, position: [f64; 3], rotation: [f32; 3]) {
         self.detach_remote_tracking_entity(id);
         let [yaw, pitch, head] = rotation;
         let at = Vec3::new(position[0], position[1], position[2]);
@@ -250,7 +283,8 @@ impl crate::game::ClientGame<'_> {
         if kind == "minecraft:experience_orb" {
             // Its value (ExperienceOrb.DATA_VALUE) follows in SetEntityData.
             self.common.orbs.retain(|o| o.id != id as u32);
-            self.common.orbs
+            self.common
+                .orbs
                 .push(ExperienceOrb::new(id as u32, at, Vec3::ZERO, 1));
         }
         if let Some(t) = mob_type {

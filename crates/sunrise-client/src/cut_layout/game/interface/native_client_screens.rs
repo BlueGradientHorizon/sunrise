@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use mod_api::SignEditView;
 use sunrise_core::position::BlockPos;
@@ -7,9 +5,9 @@ use sunrise_gameplay_common::game::Screen;
 #[cfg(test)]
 pub(crate) mod client_screen_tests {
     use super::*;
-    use sunrise_client_gameplay::game::books::BookScreen;
-    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use crate::game::remote::tests::connect_menu_test;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
+    use sunrise_client_gameplay::game::books::BookScreen;
     use sunrise_core::geometry::Vec3;
     use sunrise_items::items::ItemStack;
     use sunrise_level::containers::BlockEntity;
@@ -219,8 +217,7 @@ pub(crate) mod client_screen_tests {
         run_done_on_an_unedited_book_sends_it_and_drops_its_filtered_text();
     }
 
-    pub(crate) fn run_done_on_an_unedited_book_sends_it_and_drops_its_filtered_text()
-     {
+    pub(crate) fn run_done_on_an_unedited_book_sends_it_and_drops_its_filtered_text() {
         use std::fmt::Write as _;
         #[derive(serde::Deserialize)]
         struct Witness {
@@ -429,9 +426,10 @@ pub(crate) mod client_screen_tests {
         with_client_game(|game| {
             let mut reader = logged_in(game);
             // The player's keys act once the client told the server it loaded.
-            game.client
-                .streaming
-                .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
+            game.client.streaming.insert_remote(
+                &mut game.common.world,
+                sunrise_level::chunk::Chunk::empty(0, 0),
+            );
             game.poll_stationary_client().unwrap();
             sent(&mut reader); // PlayerLoaded precedes the inventory action.
             let kind = game.res.mob_types().get("minecraft:horse").unwrap().clone();

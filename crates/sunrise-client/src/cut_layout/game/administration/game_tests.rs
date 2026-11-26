@@ -1,14 +1,14 @@
-
-
 #![cfg(test)]
 use sunrise_game_data::text::Text;
-use sunrise_gameplay_common::game::Dim;
 use sunrise_gameplay::game::game_tests::Out;
+use sunrise_gameplay_common::game::Dim;
 use sunrise_world::worldgen::structure::Rotation;
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use sunrise_gameplay::game::game_tests::{Action, DimGrid, GameTests, Grid, Info, report_of, retry_line, verify_batches};
+    use sunrise_gameplay::game::game_tests::{
+        Action, DimGrid, GameTests, Grid, Info, report_of, retry_line, verify_batches,
+    };
     use sunrise_gameplay::game::server_side::test_instances::TestDef;
     use sunrise_gameplay::game::server_side::test_instances::TestDefSample as _;
     use sunrise_gameplay::game_tests::{Retry, TestError};
@@ -320,13 +320,13 @@ mod completed_test_coordinate_feedback_tests {
 mod added_test_summary_context_tests;
 #[cfg(test)]
 mod registered_game_test_tests {
-    use sunrise_gameplay::game::server_side::test_instances::TestDefSample as _;
-use super::*;
+    use super::*;
     use mod_api::{GameTestContext, GameTestFunction, GameTestResult, GameTests};
+    use std::sync::Arc;
     use sunrise_gameplay::game::game_tests::{Info, Runner, Tracked};
     use sunrise_gameplay::game::server_side::test_instances::TestDef;
+    use sunrise_gameplay::game::server_side::test_instances::TestDefSample as _;
     use sunrise_gameplay::game_tests::TestError;
-    use std::sync::Arc;
 
     struct ChangeBlock(mod_api::BlockState);
     impl GameTestFunction for ChangeBlock {
@@ -414,7 +414,8 @@ use super::*;
             game.native_register_game_tests(&mut functions);
             assert!(functions.resolve("example:pass").is_none());
             let hooks = Box::new(TestMod(
-                sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(&stone).unwrap(),
+                sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(&stone)
+                    .unwrap(),
             ));
             let mods = vec![mod_api::ModEntry::new("example", hooks)];
             mod_platform::testing::with_mods(mods.into(), || {

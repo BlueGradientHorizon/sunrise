@@ -1,11 +1,14 @@
 //! Explicit living consume effects reach real native listeners, including nested kinds.
 #![cfg(test)]
-use {sunrise_gameplay_common::game::api_values::TryIntoApi, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{ConsumeEffectEvent, Hooks, ModEntry, ServerHost};
 use std::sync::{Arc, Mutex};
 use sunrise_core::{geometry::Vec3, nbt::Tag};
 use sunrise_items::items::{ConsumeEffect, ItemStack};
 use sunrise_sim::mobs::Mob;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay_common::game::api_values::TryIntoApi,
+};
 
 struct First(Arc<Mutex<Vec<&'static str>>>);
 #[mod_api::__subscriptions]

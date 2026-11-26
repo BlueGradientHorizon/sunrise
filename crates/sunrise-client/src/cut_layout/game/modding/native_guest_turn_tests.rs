@@ -2,7 +2,6 @@
 
 #![cfg(test)]
 
-use sunrise_gameplay::game::server_side::lan::LanSettings;
 use mod_api::{
     __private::{HookPanicReport, take_hook_panics},
     EntityMoveEvent, Flow, Hooks, LoopContext, MoveCause,
@@ -14,6 +13,7 @@ use std::sync::{
     atomic::{AtomicI32, AtomicUsize, Ordering},
 };
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::server_side::lan::LanSettings;
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_sim::{
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
@@ -29,7 +29,10 @@ pub use sunrise_gameplay::game::native_guest_turn_tests::{
 #[ignore = "daily"]
 fn player_dimensions_validate_identity_on_both_server_roles() {
     use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-    let previous_extra = sunrise_gameplay_common::game::EXTRA_DIMS.read().unwrap().clone();
+    let previous_extra = sunrise_gameplay_common::game::EXTRA_DIMS
+        .read()
+        .unwrap()
+        .clone();
     with_guests(|game| {
         sunrise_gameplay_common::game::Dim::add_extra("test:pocket");
         for role in [
@@ -59,21 +62,35 @@ fn player_dimensions_validate_identity_on_both_server_roles() {
             );
             let replaced = mod_api::__private::game::player_ref(other.entity(), player.uuid());
             for invalid in [unknown, stale, replaced] {
-                assert_eq!(NativeServerGameExt1::player_level(game, invalid), None, "{role:?}");
-                assert_eq!(NativeServerGameExt1::player_dimension(game, invalid), None, "{role:?}");
+                assert_eq!(
+                    NativeServerGameExt1::player_level(game, invalid),
+                    None,
+                    "{role:?}"
+                );
+                assert_eq!(
+                    NativeServerGameExt1::player_dimension(game, invalid),
+                    None,
+                    "{role:?}"
+                );
             }
             assert_eq!(
-                NativeServerGameExt1::player_level(game, player).unwrap().dimension_id(),
+                NativeServerGameExt1::player_level(game, player)
+                    .unwrap()
+                    .dimension_id(),
                 "minecraft:overworld"
             );
             game.as_guest(12, |game| {
                 assert_eq!(
-                    NativeServerGameExt1::player_dimension(game, player).unwrap().to_string(),
+                    NativeServerGameExt1::player_dimension(game, player)
+                        .unwrap()
+                        .to_string(),
                     "minecraft:overworld"
                 );
                 game.as_guest(13, |game| {
                     assert_eq!(
-                        NativeServerGameExt1::player_level(game, player).unwrap().dimension_id(),
+                        NativeServerGameExt1::player_level(game, player)
+                            .unwrap()
+                            .dimension_id(),
                         "minecraft:overworld"
                     );
                 })
@@ -90,11 +107,15 @@ fn player_dimensions_validate_identity_on_both_server_roles() {
                 })
                 .unwrap();
             assert_eq!(
-                NativeServerGameExt1::player_dimension(game, player).unwrap().to_string(),
+                NativeServerGameExt1::player_dimension(game, player)
+                    .unwrap()
+                    .to_string(),
                 "minecraft:the_nether"
             );
             assert_eq!(
-                NativeServerGameExt1::player_level(game, player).unwrap().dimension_id(),
+                NativeServerGameExt1::player_level(game, player)
+                    .unwrap()
+                    .dimension_id(),
                 "minecraft:the_nether"
             );
             game.server
@@ -107,11 +128,15 @@ fn player_dimensions_validate_identity_on_both_server_roles() {
                 })
                 .unwrap();
             assert_eq!(
-                NativeServerGameExt1::player_dimension(game, player).unwrap().to_string(),
+                NativeServerGameExt1::player_dimension(game, player)
+                    .unwrap()
+                    .to_string(),
                 "test:pocket"
             );
             assert_eq!(
-                NativeServerGameExt1::player_level(game, player).unwrap().dimension_id(),
+                NativeServerGameExt1::player_level(game, player)
+                    .unwrap()
+                    .dimension_id(),
                 "test:pocket"
             );
         }
@@ -346,12 +371,13 @@ fn a_players_move_by_stops_at_a_boat() {
             .unwrap();
         game.server.next_entity += 1;
         let id = game.server.next_entity;
-        game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(
-            id,
-            "oak".into(),
-            Vec3::new(x + 2.0, y, z),
-            0.0,
-        ));
+        game.boats
+            .push(sunrise_gameplay_common::game::boats_common::Boat::new(
+                id,
+                "oak".into(),
+                Vec3::new(x + 2.0, y, z),
+                0.0,
+            ));
         let by = game
             .entity_move_by(b.entity(), [4.0, 0.0, 0.0], MoveCause::SelfMovement)
             .unwrap();
@@ -470,13 +496,21 @@ fn another_guests_menu_and_push_work_during_a_turn() {
             .update_guest(13, |guest| guest.inventory[0] = Some(stone.clone()))
             .unwrap();
         game.as_guest(12, |game| {
-            assert_eq!(NativeMenuRefsCommonGameExt1::player_container_menu(game, a), Some(a_menu));
+            assert_eq!(
+                NativeMenuRefsCommonGameExt1::player_container_menu(game, a),
+                Some(a_menu)
+            );
             assert_eq!(a_menu.slot_count(game), Some(46));
-            assert_eq!(NativeMenuRefsCommonGameExt1::player_container_menu(game, b), Some(b_menu));
+            assert_eq!(
+                NativeMenuRefsCommonGameExt1::player_container_menu(game, b),
+                Some(b_menu)
+            );
             assert_eq!(b_menu.slot_count(game), Some(46));
             assert_eq!(
                 b_menu.slot(game, 36),
-                Some(Some(sunrise_gameplay_common::game::api_values::test_snapshot(&stone)))
+                Some(Some(
+                    sunrise_gameplay_common::game::api_values::test_snapshot(&stone)
+                ))
             );
             assert!(game.entity_set_rotation(b.entity(), 90.0, 10.0));
             assert!(game.entity_set_head_yaw(b.entity(), 45.0));
@@ -489,7 +523,10 @@ fn another_guests_menu_and_push_work_during_a_turn() {
                     Vec3::new(0.25, 0.5, -0.25)
                 );
                 assert!(NativeMenuRefsCommonGameExt1::player_container_menu(game, a).is_none());
-                assert_eq!(NativeMenuRefsCommonGameExt1::player_container_menu(game, b), Some(b_menu));
+                assert_eq!(
+                    NativeMenuRefsCommonGameExt1::player_container_menu(game, b),
+                    Some(b_menu)
+                );
                 assert_eq!(b_menu.slot_count(game), Some(46));
                 assert!(!game.entity_push(a.entity(), [1.0, 0.0, 0.0]));
             })
@@ -502,7 +539,9 @@ fn another_guests_menu_and_push_work_during_a_turn() {
         .unwrap();
         assert_eq!(
             b_menu.slot(game, 36),
-            Some(Some(sunrise_gameplay_common::game::api_values::test_snapshot(&stone)))
+            Some(Some(
+                sunrise_gameplay_common::game::api_values::test_snapshot(&stone)
+            ))
         );
         assert_eq!(
             game.server
@@ -604,7 +643,8 @@ fn velocity_writes_send_only_the_owning_player_the_replacement_motion() {
         })
         .unwrap();
         // The player's own level can be parked while the mod runs in another one.
-        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+            .unwrap();
         let living = NativeEntityRefsCommonGameExt1::living(game, b).unwrap();
         assert!(living.knockback(game, 1.0, [0.0, 1.0]));
         let b_body = game.command_guest(13).unwrap().motion.as_ref().unwrap();
@@ -672,11 +712,15 @@ fn velocity_writes_send_only_the_owning_player_the_replacement_motion() {
 #[test]
 #[ignore = "daily"]
 fn another_guests_services_work_during_a_turn() {
-    use {sunrise_gameplay_common::game::commands_common::Target,sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Ender, sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Player};
     use mod_api::{CriterionContext, CriterionTest, CriterionTestError, TriggerCriterionError};
     use sunrise_command::args::Selector;
     use sunrise_items::items::ItemStack;
     use sunrise_sim::advancements as adv;
+    use {
+        sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Ender,
+        sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Player,
+        sunrise_gameplay_common::game::commands_common::Target,
+    };
 
     struct Accept;
     impl CriterionTest for Accept {
@@ -892,8 +936,12 @@ fn nested_guest_turns_restore_each_equipment_store() {
 #[test]
 #[ignore = "daily"]
 fn another_guests_live_merchant_session_is_visible_during_a_turn() {
-    use {sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer, sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn, sunrise_gameplay_common::game::trading_common::MerchantState};
     use sunrise_sim::merchant::{Session, Trader};
+    use {
+        sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn,
+        sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer,
+        sunrise_gameplay_common::game::trading_common::MerchantState,
+    };
 
     with_guests(|game| {
         let villager = spawn(game, 40, "minecraft:villager");
@@ -923,7 +971,9 @@ fn another_guests_live_merchant_session_is_visible_during_a_turn() {
         game.as_guest(12, |game| {
             assert_eq!(
                 villager.offers(game),
-                Some(vec![sunrise_gameplay_common::game::api_values::test_snapshot(&live)])
+                Some(vec![
+                    sunrise_gameplay_common::game::api_values::test_snapshot(&live)
+                ])
             );
             assert_eq!(villager.xp(game), Some(17));
             assert_eq!(villager.level(game), Some(2));
@@ -1199,7 +1249,8 @@ fn canonical_permissions_preserve_owner_and_fake_player_reads() {
     use sunrise_sim::motion::PlayerMotion;
 
     with_guests(|game| {
-        let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(game, false);
+        let _serving =
+            sunrise_gameplay::game::server_side::integrated::tests::install_serving(game, false);
         game.level.player_uuid = Some([0, 0, 0, 99]);
         let mut body = PlayerMotion::new(game.motion, Vec3::new(0.0, 64.0, 0.0)).unwrap();
         body.entity_id = 99;
@@ -1302,7 +1353,8 @@ fn level_players_exclude_guests_in_other_levels() {
 #[ignore = "daily"]
 fn level_players_exclude_fake_players() {
     with_guests(|game| {
-        let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(game, false);
+        let _serving =
+            sunrise_gameplay::game::server_side::integrated::tests::install_serving(game, false);
         place_host(game);
         game.server.next_entity = 100;
         let level = NativeEntityRefsCommonGameExt1::level(game, game.dim.id()).unwrap();
@@ -1334,9 +1386,9 @@ fn level_players_exclude_fake_players() {
 #[test]
 #[ignore = "daily"]
 fn tick_advancement_notice_precedes_recipe_reward() {
-    use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
     use mod_api::{Hooks, ModEntry, Mods, PlayerAdvancementProgressEvent, ServerHost};
     use std::sync::Mutex;
+    use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
 
     if run_fresh_cases(
         "game::server_side::native_guest_turn_tests::tick_advancement_notice_precedes_recipe_reward",
@@ -1454,9 +1506,9 @@ fn set_selected_slot_tells_an_acting_guests_client() {
 #[test]
 #[ignore = "daily"]
 fn a_vetoed_drop_gives_the_stack_back() {
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use mod_api::{Flow, Hooks, ItemTossEvent, ModEntry, ServerHost};
     use mod_platform::testing::with_mods;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use sunrise_items::items::ItemStack;
 
     struct Veto;
@@ -1707,7 +1759,14 @@ fn a_panic_in_a_turn_end_callback_still_restores_the_guest() {
                 })
                 .unwrap();
             let food = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-                game.server.lan.as_ref().unwrap().hub.guest(13).unwrap().food
+                game.server
+                    .lan
+                    .as_ref()
+                    .unwrap()
+                    .hub
+                    .guest(13)
+                    .unwrap()
+                    .food
             };
             let before = food(game);
             let outer = game.server.lan_acting;
@@ -1787,8 +1846,8 @@ fn run_command_checks_the_line_at_the_level_given() {
 #[test]
 #[ignore = "daily"]
 fn run_command_runs_as_the_entity_from_where_it_is() {
-    use sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Player;
     use mod_api::PermissionLevel::Gamemasters;
+    use sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Player;
     use sunrise_items::items::ItemStack;
 
     with_command_guests("run_command_runs_as_the_entity_from_where_it_is", |game| {
@@ -1896,9 +1955,9 @@ fn run_command_answers_false_for_a_bad_line_or_a_stale_handle() {
 #[test]
 #[ignore = "daily"]
 fn run_command_refuses_a_player_whose_level_is_parked() {
-    use sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Player;
     use mod_api::PermissionLevel::Owners;
     use sunrise_game_data::gamerules::vanilla::SEND_COMMAND_FEEDBACK;
+    use sunrise_gameplay::game::server_side::native_inventories::NativeInventoryKind::Player;
     use sunrise_items::items::ItemStack;
 
     let name = "run_command_refuses_a_player_whose_level_is_parked";
@@ -1941,8 +2000,8 @@ fn run_command_refuses_a_player_whose_level_is_parked() {
 #[test]
 #[ignore = "daily"]
 fn run_command_runs_from_the_players_own_place_inside_an_outer_command() {
-    use sunrise_gameplay::game::server_side::commands::execute::Source;
     use mod_api::PermissionLevel::Gamemasters;
+    use sunrise_gameplay::game::server_side::commands::execute::Source;
 
     let name = "run_command_runs_from_the_players_own_place_inside_an_outer_command";
     with_command_guests(name, |game| {

@@ -40,7 +40,8 @@ impl crate::game::ClientGame<'_> {
     /// player may edit.
     pub(in crate::game::client_side) fn open_command_block_if_editable(&mut self, pos: Pos) {
         let is_command_block = self
-            .common.block_state_at(pos)
+            .common
+            .block_state_at(pos)
             .is_some_and(|state| Mode::of_block(&state.name).is_some());
         if is_command_block && self.common.can_use_game_master_blocks() {
             self.open_command_block(pos);
@@ -53,7 +54,12 @@ impl crate::game::ClientGame<'_> {
         s: &CommandBlockScreen,
     ) -> Option<&CommandBlock> {
         match s.cart {
-            Some(id) => self.common.carts.iter().find(|c| c.id == id).map(|c| &c.command),
+            Some(id) => self
+                .common
+                .carts
+                .iter()
+                .find(|c| c.id == id)
+                .map(|c| &c.command),
             None => self.common.command_block(s.pos),
         }
     }
@@ -306,7 +312,10 @@ impl crate::game::ClientGame<'_> {
                 dispatcher: super::chat::chat_tree(&self.client.remote),
                 registries: &self.common.ui.registries,
             };
-            let (x, y) = (f64::from(self.client.cursor.0), f64::from(self.client.cursor.1));
+            let (x, y) = (
+                f64::from(self.client.cursor.0),
+                f64::from(self.client.cursor.1),
+            );
             let double_click = s.command.live_double_click(x, y);
             if s.command.click(&m, &c, x, y, double_click) {
                 self.client.command_block_screen.0 = Some(s);
@@ -542,6 +551,4 @@ pub(in crate::game) mod tests {
             );
         });
     }
-
-
 }

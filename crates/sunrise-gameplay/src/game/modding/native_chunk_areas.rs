@@ -67,7 +67,8 @@ impl ServerGame<'_> {
         let owner =
             mod_api::content::crash::current_native_mod().ok_or(ChunkAreaRefusal::Unavailable)?;
         let epoch = self
-            .common.native_lifecycle
+            .common
+            .native_lifecycle
             .epoch()
             .ok_or(ChunkAreaRefusal::NotOnline)?;
         if self.online_player_record(player).is_none()
@@ -93,7 +94,11 @@ impl ServerGame<'_> {
                 mode: mode(a.mode),
             })
             .collect();
-        let host = self.server.lan.as_mut().ok_or(ChunkAreaRefusal::NotOnline)?;
+        let host = self
+            .server
+            .lan
+            .as_mut()
+            .ok_or(ChunkAreaRefusal::NotOnline)?;
         host.hub
             .set_viewed_areas(player.uuid(), owner, asked)
             .map_err(|refused| {

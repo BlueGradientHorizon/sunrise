@@ -6,12 +6,12 @@
 //! client keeps what its tracking server sent in `Remote::colliders`. A level with no colliders
 //! holds empty maps, so nothing else in the game pays for them.
 use super::{Dim, commands::Target};
-use sunrise_gameplay_common::game::native_collider_state::{
-    ColliderEntry, Placement, PlacementKey, SAVE_KEY, origin_bits,
-};
 use mod_api::{Collider, ColliderError, EntityRef};
 use std::collections::{HashMap, HashSet};
 use sunrise_core::{geometry::Vec3, nbt::Tag};
+use sunrise_gameplay_common::game::native_collider_state::{
+    ColliderEntry, Placement, PlacementKey, SAVE_KEY, origin_bits,
+};
 use sunrise_mod_runtime::attachments::Holder;
 use sunrise_protocol::collider_sync::{self, Message};
 use sunrise_sim::colliders::{ColliderState, valid_rotation};
@@ -48,7 +48,8 @@ impl crate::game::ServerGame<'_> {
 
     pub(in crate::game) fn entity_collider(&self, entity: EntityRef) -> Option<Collider> {
         let id = self.collider_holder(entity).ok()?;
-        self.common.entity_attachments
+        self.common
+            .entity_attachments
             .collider(id)
             .map(|entry| entry.state.to_api())
     }
@@ -84,7 +85,8 @@ impl crate::game::ServerGame<'_> {
         };
         let saved = state.to_nbt();
         let level = self.common.dim;
-        self.common.entity_attachments
+        self.common
+            .entity_attachments
             .insert_collider(id, level, ColliderEntry { state, saved });
         if !messages.is_empty() {
             self.server.collider_changes.push(ColliderChange {
@@ -174,7 +176,11 @@ impl crate::game::ServerGame<'_> {
         &self,
         id: u32,
     ) -> Option<sunrise_core::geometry::oriented::Frame> {
-        let state = self.common.entity_attachments.collider(id).map(|e| &e.state)?;
+        let state = self
+            .common
+            .entity_attachments
+            .collider(id)
+            .map(|e| &e.state)?;
         Some(state.frame(self.collider_origin(id)?))
     }
 
@@ -217,9 +223,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The colliders of the server level in place, where they stand now.
-    pub fn placed_moving_colliders(
-        &mut self,
-    ) -> sunrise_world::moving_colliders::Prepared {
+    pub fn placed_moving_colliders(&mut self) -> sunrise_world::moving_colliders::Prepared {
         use sunrise_world::moving_colliders::{Placed, Prepared};
         let level = self.common.dim;
         let mut any = false;
@@ -285,7 +289,11 @@ impl crate::game::ServerGame<'_> {
     pub fn level_collider_history(
         &self,
     ) -> Option<std::rc::Rc<std::cell::RefCell<sunrise_world::moving_colliders::History>>> {
-        self.server.collider_histories.0.get(&self.common.dim).cloned()
+        self.server
+            .collider_histories
+            .0
+            .get(&self.common.dim)
+            .cloned()
     }
 
     /// The server level in place, including the world lifetime and runtime level generation.
@@ -294,10 +302,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Runs `f` with this server level's moving colliders and history.
-    pub fn in_this_levels_colliders<R>(
-        &mut self,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> R {
+    pub fn in_this_levels_colliders<R>(&mut self, f: impl FnOnce(&mut Self) -> R) -> R {
         use sunrise_world::moving_colliders::{HistoryScope, Scope};
 
         let level = self.collider_level();
@@ -305,7 +310,12 @@ impl crate::game::ServerGame<'_> {
             return f(self);
         }
         let placed = self.placed_moving_colliders();
-        let history = self.server.collider_histories.0.get(&self.common.dim).cloned();
+        let history = self
+            .server
+            .collider_histories
+            .0
+            .get(&self.common.dim)
+            .cloned();
         let _history = HistoryScope::replace(history);
         let _scope = Scope::enter_level(level, placed);
         f(self)
@@ -421,7 +431,9 @@ impl crate::game::ServerGame<'_> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-    use sunrise_gameplay_common::game::{native_collider_state::stack_in_graph, remote::passengers::PassengerSeat};
+    use sunrise_gameplay_common::game::{
+        native_collider_state::stack_in_graph, remote::passengers::PassengerSeat,
+    };
 
     /// What a client works out from the riding its server told: the root, every rider at any
     /// depth, siblings included.

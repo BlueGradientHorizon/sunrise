@@ -1,6 +1,6 @@
 //! Generator construction cannot turn shared source resources into a level registry owner.
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use std::sync::Arc;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_world::worldgen::generator::{GeneratorData, OverworldGenerator};
 
 fn assert_preset_unavailable(game: &sunrise_gameplay::game::ServerGame<'_>, data: &GeneratorData) {

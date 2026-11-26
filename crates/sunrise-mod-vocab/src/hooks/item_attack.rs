@@ -11,7 +11,8 @@ pub trait Hooks {
     /// is not hurt, `hurt_enemy` does not fire and the stack takes no wear.
     /// Only the `ItemPart`s attached to `stack`'s item are asked. Server-side,
     /// for every player of the world (the helpers read the acting one).
-    #[hook(target = "sunrise_gameplay::game::native_hooks::item_attack::ServerGame<'_>::native_on_left_click_entity", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::item_attack::ServerGame<'_>::native_on_left_click_entity",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

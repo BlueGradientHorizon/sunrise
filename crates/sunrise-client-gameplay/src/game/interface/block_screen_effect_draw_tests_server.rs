@@ -8,7 +8,8 @@ pub(in crate::game) fn sample_eye_in_water(game: &mut crate::game::ClientGame<'_
     let layout = game.common.world.layout();
     for (x, z) in [(-1, -1), (-1, 0), (0, -1)] {
         if !game.common.world.chunks.contains_key(&(x, z)) {
-            game.common.world
+            game.common
+                .world
                 .chunks
                 .insert((x, z), Arc::new(Chunk::with_layout(x, z, layout)));
         }

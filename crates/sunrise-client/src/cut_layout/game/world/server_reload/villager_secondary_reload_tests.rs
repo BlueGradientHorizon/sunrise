@@ -46,7 +46,9 @@ fn memory(game: &sunrise_gameplay::game::ServerGame<'_>, mob: &mut Mob) -> Optio
         .value()
 }
 
-fn fixture(run: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Arc<AtomicBool>, &mut Mob)) {
+fn fixture(
+    run: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Arc<AtomicBool>, &mut Mob),
+) {
     let enabled = Arc::new(AtomicBool::new(true));
     mod_platform::testing::with_mods(
         vec![ModEntry::new(
@@ -149,7 +151,6 @@ fn failed_reload_preparation_keeps_secondary_tag_entries() {
         assert_eq!(memory(game, mob), Some(vec![[0, 63, 1], [1, 63, 0]]));
     });
 }
-
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 

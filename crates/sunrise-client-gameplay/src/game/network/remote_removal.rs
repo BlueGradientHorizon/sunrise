@@ -42,7 +42,8 @@ impl ClientGame<'_> {
             .chain(self.common.armor_stands.iter().filter_map(|a| a.vehicle))
             .chain(self.client.interactions.values().filter_map(|i| i.vehicle))
             .chain(
-                self.common.boats
+                self.common
+                    .boats
                     .iter()
                     .filter(|b| b.paddle_controller)
                     .map(|b| b.id),

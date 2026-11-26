@@ -916,10 +916,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// Draw the browser's contents once, leaving its tooltip for the screen's
     /// overlay phase. The carried stack belongs to the enclosing screen.
-    pub fn draw_mod_browser(
-        &mut self,
-        batch: &mut HudBatch,
-    ) -> Option<BrowserTooltip> {
+    pub fn draw_mod_browser(&mut self, batch: &mut HudBatch) -> Option<BrowserTooltip> {
         let owner = self.browser_sync()?;
         let mut layout = self.browser_layout(batch)?;
         // A search text the owner set (`panel_search`) goes into its box only
@@ -1292,11 +1289,7 @@ impl crate::game::ClientGame<'_> {
         handled
     }
     /// Text typed (or one backspace) into the search box (`sunrise-ctl type`).
-    pub fn mod_browser_text(
-        &mut self,
-        text: Option<&str>,
-        backspace: bool,
-    ) {
+    pub fn mod_browser_text(&mut self, text: Option<&str>, backspace: bool) {
         let Some(search) = self.client.panel.search.as_mut() else {
             return;
         };
@@ -1432,8 +1425,8 @@ pub mod tests {
         NativeRecipeLayout, NativeRecipeResult, NativeRecipeView,
     };
 
-#[cfg(test)]
-pub fn keys() {
+    #[cfg(test)]
+    pub fn keys() {
         mod_platform::__private::part_tests::install_parts_fixture(&[]).unwrap();
         mod_api::__private::resolve_items([
             "minecraft:oak_log",
@@ -1450,17 +1443,17 @@ pub fn keys() {
         )
         .unwrap();
     }
-pub fn stack(item: &str) -> BrowserStack {
+    pub fn stack(item: &str) -> BrowserStack {
         BrowserStack {
             item: mod_api::__private::item_key(item).unwrap(),
             count: 1,
             components: String::new(),
         }
     }
-fn fluid(id: &str, amount: u32) -> FluidStack {
+    fn fluid(id: &str, amount: u32) -> FluidStack {
         FluidStack::new(mod_api::__private::fluid_key(id).unwrap(), amount)
     }
-pub fn view() -> NativeRecipeView {
+    pub fn view() -> NativeRecipeView {
         NativeRecipeView {
             layout: NativeRecipeLayout::Grid,
             width: 5,
@@ -1478,12 +1471,12 @@ pub fn view() -> NativeRecipeView {
             action: Some(true),
         }
     }
-/// The menu every `held` press goes down on.
+    /// The menu every `held` press goes down on.
     pub const MENU: u64 = 7;
-/// Each `Search` the panel's mods heard: the mod it was for and the text.
+    /// Each `Search` the panel's mods heard: the mod it was for and the text.
     pub static HEARD: std::sync::Mutex<Vec<(String, String)>> = std::sync::Mutex::new(Vec::new());
-pub struct Listener;
-#[mod_api::__subscriptions]
+    pub struct Listener;
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for Listener {
         fn panel_event(
             &self,
@@ -1496,7 +1489,7 @@ pub struct Listener;
             }
         }
     }
-pub fn heard(mod_id: &str, text: &str) -> Vec<(String, String)> {
+    pub fn heard(mod_id: &str, text: &str) -> Vec<(String, String)> {
         vec![(mod_id.to_owned(), text.to_owned())]
     }
 

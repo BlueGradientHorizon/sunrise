@@ -1,14 +1,14 @@
 //! Levels a mod opens at run time: the table's rules, and a mod's calls against a game.
 
 use super::native_entity_refs::tests::with_game;
-use sunrise_gameplay::game::server_side::runtime_levels::RuntimeTable;
-use sunrise_gameplay_common::game::Dim;
 use mod_api::{
     ChunkRef, ChunkUnloadEvent, Hooks, HostSide, LevelLoadEvent, LevelRef, LevelTickPostEvent,
     LevelUnloadEvent, ModEntry, RuntimeGenerator, RuntimeLevel, RuntimeLevelError, ServerHost,
 };
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{Arc, Mutex};
+use sunrise_gameplay::game::server_side::runtime_levels::RuntimeTable;
+use sunrise_gameplay_common::game::Dim;
 
 fn flat() -> RuntimeLevel {
     RuntimeLevel::new("minecraft:overworld", RuntimeGenerator::Flat, 1)
@@ -509,8 +509,8 @@ fn an_idle_level_aborts_an_abandoned_chunk_unload_transaction_before_it_closes()
 #[test]
 #[ignore = "daily"]
 fn a_ticket_a_chunk_unload_listener_adds_keeps_an_idle_custom_level_open() {
-    use sunrise_gameplay::game::server_side::levels::IDLE_TICKS;
     use super::native_entity_refs::tests::run_fresh_cases;
+    use sunrise_gameplay::game::server_side::levels::IDLE_TICKS;
 
     // A parallel world load can replace the process-wide dimension list during the idle ticks.
     if run_fresh_cases(
@@ -637,8 +637,8 @@ fn load_chunk_fails_where_a_mods_generator_panics() {
 #[test]
 #[ignore = "daily"]
 fn a_live_loading_ticket_keeps_an_idle_custom_level_open_until_it_expires() {
-    use sunrise_gameplay::game::server_side::levels::IDLE_TICKS;
     use super::native_entity_refs::tests::run_fresh_cases;
+    use sunrise_gameplay::game::server_side::levels::IDLE_TICKS;
 
     // A parallel world load can replace the process-wide dimension list during the idle ticks.
     if run_fresh_cases(
@@ -1622,17 +1622,11 @@ fn a_level_the_player_left_in_single_player_still_unloads_and_deletes() {
         let mut window = crate::game::client_side::viewed_worlds::tests::client(&mut resources);
         window.handle_packet(travel("solo:a")).unwrap();
         window.handle_packet(travel("minecraft:overworld")).unwrap();
-        assert!(
-            Dim::extra("solo:a").is_some(),
-            "still the server's level"
-        );
+        assert!(Dim::extra("solo:a").is_some(), "still the server's level");
         assert_eq!(unload_as(game, "solo", "solo:a"), Ok(()));
         game.apply_runtime_levels();
         assert!(!game.runtime_level_is_open("solo:a"));
-        assert!(
-            Dim::extra("solo:a").is_none(),
-            "closed by the server"
-        );
+        assert!(Dim::extra("solo:a").is_none(), "closed by the server");
         // Opened again by the mod, entered and left again, then deleted.
         tick_post(game);
         game.apply_runtime_levels();

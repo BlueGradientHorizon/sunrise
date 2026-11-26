@@ -114,7 +114,8 @@ impl crate::game::ClientGame<'_> {
                 Some(state)
             }
             Screen::Creative
-                if self.client.creative_screen.0.tab().search && !self.client.creative_ignore_text =>
+                if self.client.creative_screen.0.tab().search
+                    && !self.client.creative_ignore_text =>
             {
                 if edited.is_some() {
                     self.client.creative_screen.0.scroll = 0.0;
@@ -146,8 +147,8 @@ impl crate::game::ClientGame<'_> {
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_client_game;
-    use crate::game::native_hooks::particle_count_tests::frame_scene;
     use super::*;
+    use crate::game::native_hooks::particle_count_tests::frame_scene;
     use mod_api::{ClientHost, Flow, Hooks, ModEntry, ScreenCharTypedPreEvent};
     use std::sync::{Arc, Mutex};
     use sunrise_client::chat::{ChatAbilities, ChatScreen, ChatVisibility};
@@ -301,7 +302,14 @@ mod tests {
                 game.client.title.0 = Some(menu);
                 game.screen_chars_typed(Some("y?"));
                 assert_eq!(taken(), ["y:\u{1f600}:1:1", "?:\u{1f600}y:2:2"]);
-                let (_, value, _) = game.client.title.0.as_mut().unwrap().focused_field().unwrap();
+                let (_, value, _) = game
+                    .client
+                    .title
+                    .0
+                    .as_mut()
+                    .unwrap()
+                    .focused_field()
+                    .unwrap();
                 assert_eq!(value, "\u{1f600}y");
             });
         });

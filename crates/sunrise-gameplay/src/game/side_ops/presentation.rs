@@ -1,13 +1,8 @@
-
 #[allow(unused_variables)]
 impl SideOps for crate::game::server_side::ServerState {
     type Game<'g> = crate::game::ServerGame<'g>;
 
-    fn side_swing_hand(
-        game: &mut Self::Game<'_>,
-        hand: Hand,
-        animation: SwingAnimation,
-    ) -> bool {
+    fn side_swing_hand(game: &mut Self::Game<'_>, hand: Hand, animation: SwingAnimation) -> bool {
         game.server_swing_hand(hand, animation)
     }
     fn side_sound_event_names(game: &Self::Game<'_>) -> Vec<String> {
@@ -44,10 +39,7 @@ impl SideOps for crate::game::server_side::ServerState {
             game.server_expire_cracks();
         }
     }
-    fn side_update_spawner_display(
-        game: &mut Self::Game<'_>,
-        key: (i32, i32, i32),
-    ) -> bool {
+    fn side_update_spawner_display(game: &mut Self::Game<'_>, key: (i32, i32, i32)) -> bool {
         game.server_update_spawner_display(key)
     }
     fn side_memory_inputs(game: &Self::Game<'_>) -> MemoryInputs {
@@ -80,10 +72,10 @@ impl SideOps for crate::game::server_side::ServerState {
         }
     }
 }
-use sunrise_gameplay_common::game::side_ops::presentation::SideOps;
 use sunrise_gameplay_common::game::memory_common::MemoryInputs;
 use sunrise_gameplay_common::game::memory_common::MemoryReport;
-use sunrise_world::collision_context::EntityContextKind;
-use sunrise_world::worldgen::structure::Rotation;
+use sunrise_gameplay_common::game::side_ops::presentation::SideOps;
 use sunrise_sim::first_person_sim::Hand;
 use sunrise_sim::first_person_sim::SwingAnimation;
+use sunrise_world::collision_context::EntityContextKind;
+use sunrise_world::worldgen::structure::Rotation;

@@ -1,10 +1,10 @@
 //! Client jukebox song playback, Now Playing overlay, and level-event handlers.
 use crate::game::ClientGame;
+use sunrise_game_data::text::Text;
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay_common::game::jukebox_common::{
     jukebox_playable, jukebox_signals, song_of_record,
 };
-use sunrise_game_data::text::Text;
 use sunrise_level::containers::BlockEntity;
 
 #[cfg(feature = "client")]

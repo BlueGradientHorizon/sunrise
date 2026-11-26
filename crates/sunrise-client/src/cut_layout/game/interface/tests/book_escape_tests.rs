@@ -8,9 +8,14 @@
 //! empty — `!getValue().isEmpty()`, not blank — and trims the title on send
 //! (`:70`).
 use sunrise_client_gameplay::game::client_side::books::BookScreen;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role, crate::game::{Audio, Settings, load_resources}};
 use sunrise_items::items::ItemStack;
 use winit::keyboard::KeyCode;
+use {
+    crate::game::{Audio, Settings, load_resources},
+    sunrise_gameplay_common::game::Options,
+    sunrise_gameplay_common::game::Progress,
+    sunrise_gameplay_common::game::execution_role,
+};
 
 /// A game whose selected hotbar slot holds a book and quill, its editor open,
 /// `text` typed on the page.

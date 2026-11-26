@@ -1,7 +1,4 @@
 //! Minecraft 26.3 display parity tests against VanillaDisplayParityOracle (.local witness).
-use {sunrise_client_gameplay::game::client_side::text_displays::RemoteTextDisplay, sunrise_client_gameplay::game::client_side::text_displays::Shows};
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
-use sunrise_client_gameplay::game::native_hooks::particle_count_tests::frame_scene;
 use glam::{DVec3, Mat4};
 use sunrise_client::{
     gfx::{
@@ -9,10 +6,19 @@ use sunrise_client::{
     },
     mesher::{SHADED_CULL_W, SectionMesh, Vertex},
 };
+use sunrise_client_gameplay::game::native_hooks::particle_count_tests::frame_scene;
 use sunrise_core::nbt::{Compound, Tag};
 use sunrise_items::items::ItemStack;
 use sunrise_level::camera_math::CameraType;
 use sunrise_protocol::entity_data::Value;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+};
+use {
+    sunrise_client_gameplay::game::client_side::text_displays::RemoteTextDisplay,
+    sunrise_client_gameplay::game::client_side::text_displays::Shows,
+};
 
 fn parity_witness() -> serde_json::Value {
     let path = std::env::var("SUNRISE_DISPLAY_PARITY_WITNESS").expect(
@@ -880,11 +886,16 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
             let abgr =
                 0xFF00_0000u32 | ((argb & 0xFF) << 16) | (argb & 0xFF00) | ((argb >> 16) & 0xFF);
             expected_bgs.push((eid, abgr));
-            game.client.text_displays.0.get_mut(&eid).unwrap().metadata(&[
-                (23, 0, Value::Text(Tag::String(" ".into()))),
-                (25, 1, Value::Int(argb as i32)),
-                (26, 0, Value::Byte(-1)),
-            ]);
+            game.client
+                .text_displays
+                .0
+                .get_mut(&eid)
+                .unwrap()
+                .metadata(&[
+                    (23, 0, Value::Text(Tag::String(" ".into()))),
+                    (25, 1, Value::Int(argb as i32)),
+                    (26, 0, Value::Byte(-1)),
+                ]);
         }
         // Removing a middle display must preserve the remaining displays' insertion order.
         game.client.text_displays.0.shift_remove(&83242);
@@ -1014,12 +1025,17 @@ fn text_display_render_order_solid_split_and_see_through_sort_26_3() {
                 (0.0, 0.0),
                 0
             ));
-            game.client.text_displays.0.get_mut(&id).unwrap().metadata(&[
-                (23, 0, Value::Text(Tag::String("T".into()))),
-                (25, 1, Value::Int(argb as i32)),
-                (26, 0, Value::Byte(-1)),
-                (27, 0, Value::Byte(2)), // see_through
-            ]);
+            game.client
+                .text_displays
+                .0
+                .get_mut(&id)
+                .unwrap()
+                .metadata(&[
+                    (23, 0, Value::Text(Tag::String("T".into()))),
+                    (25, 1, Value::Int(argb as i32)),
+                    (26, 0, Value::Byte(-1)),
+                    (27, 0, Value::Byte(2)), // see_through
+                ]);
         }
         game.tick_text_displays(game.clock.runs_normally());
         normal.clear();
@@ -1149,30 +1165,32 @@ fn block_display_backface_culling_translucent_pass_and_light_emission_26_3() {
         let chunk = sunrise_level::chunk::Chunk::empty(0, 0);
         game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
 
-        let emit_block =
-            |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: i32, block: &str| -> Vec<Vertex> {
-                game.client.text_displays.0.clear();
-                game.client.glowing_vertices.borrow_mut().clear();
-                let state = game.pack.assets.registry.default_state(block).unwrap();
-                assert!(game.spawn_remote_object(
-                    id,
-                    "minecraft:block_display",
-                    [0.5, 64.0, 0.5],
-                    (0.0, 0.0),
-                    0,
-                ));
-                game.client
-                    .text_displays
-                    .0
-                    .get_mut(&id)
-                    .unwrap()
-                    .show(&[(23, 0, Value::Id(state.0 as i32))], None);
-                game.tick_text_displays(game.clock.runs_normally());
-                let mut out = Vec::new();
-                game.block_item_display_geometry(DVec3::new(0.5, 64.0, 3.5), 1.0, &mut out);
-                assert!(!out.is_empty(), "{block} emitted no vertices");
-                out
-            };
+        let emit_block = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                          id: i32,
+                          block: &str|
+         -> Vec<Vertex> {
+            game.client.text_displays.0.clear();
+            game.client.glowing_vertices.borrow_mut().clear();
+            let state = game.pack.assets.registry.default_state(block).unwrap();
+            assert!(game.spawn_remote_object(
+                id,
+                "minecraft:block_display",
+                [0.5, 64.0, 0.5],
+                (0.0, 0.0),
+                0,
+            ));
+            game.client
+                .text_displays
+                .0
+                .get_mut(&id)
+                .unwrap()
+                .show(&[(23, 0, Value::Id(state.0 as i32))], None);
+            game.tick_text_displays(game.clock.runs_normally());
+            let mut out = Vec::new();
+            game.block_item_display_geometry(DVec3::new(0.5, 64.0, 3.5), 1.0, &mut out);
+            assert!(!out.is_empty(), "{block} emitted no vertices");
+            out
+        };
 
         let concrete = emit_block(game, 5001, "minecraft:black_concrete");
         assert!(
@@ -1528,11 +1546,12 @@ fn section_compiled_and_visible_gates_displays_and_mobs_26_3() {
                 (0.0, 0.0),
                 0,
             ));
-            game.client.text_displays.0.get_mut(&id).unwrap().metadata(&[(
-                23,
-                0,
-                Value::Text(Tag::String("Out".into())),
-            )]);
+            game.client
+                .text_displays
+                .0
+                .get_mut(&id)
+                .unwrap()
+                .metadata(&[(23, 0, Value::Text(Tag::String("Out".into())))]);
             game.tick_text_displays(game.clock.runs_normally());
             normal.clear();
             collect_text_display_geometry(
@@ -1767,8 +1786,8 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
     ) {
         return;
     }
-    use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
     use sunrise_client::level_loading::Reason;
+    use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
     use sunrise_protocol::{
         connection::Pipe,
         packets::play::{self, Clientbound as C, SpawnInfo},
@@ -1913,7 +1932,9 @@ fn set_camera_on_display_and_unbobbed_culling_match_vanilla_26_3() {
                 (27, 0, Value::Byte(2)), // see_through
             ]);
         game.tick_text_displays(true);
-        let mut collector = sunrise_client_gameplay::game::client_side::text_displays::SeeThroughCollector::default();
+        let mut collector =
+            sunrise_client_gameplay::game::client_side::text_displays::SeeThroughCollector::default(
+            );
         let (mut solid, mut st_out) = (Vec::new(), Vec::new());
         let cam = DVec3::new(0.0, 64.0, 0.0);
         game.name_tag_geometry(cam, 1.0, &mut solid, &mut collector);

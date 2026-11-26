@@ -1,8 +1,8 @@
 //! The item modifiers of the live attribute maps of mobs, armor stands and the
 //! dragon (`LivingEntity.collectEquipmentChanges`). The map and the NBT are in
 //! `sunrise_client::living_attributes`.
-use crate::game::ServerGame;
 use super::commands::Target;
+use crate::game::ServerGame;
 use std::convert::Infallible;
 use std::sync::Arc;
 use sunrise_items::items::Items;
@@ -176,7 +176,12 @@ impl ServerGame<'_> {
         }
         let catalog = self.common.motion.attributes.clone();
         let items = server_world_items!(self);
-        let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+        let Some(m) = self
+            .common
+            .mobs
+            .iter_mut()
+            .find(|m| m.id == id && !m.removed)
+        else {
             return;
         };
         collect_equipment(&catalog, items, m);
@@ -185,7 +190,9 @@ impl ServerGame<'_> {
             && let Some(changes) = before.diff(&after)
         {
             let dim = self.common.dim;
-            self.common.transactions.journal_modifier_changes(dim, id, changes);
+            self.common
+                .transactions
+                .journal_modifier_changes(dim, id, changes);
         }
     }
 }
@@ -413,14 +420,17 @@ impl ServerGame<'_> {
                 && let Some(changes) = before.diff(after)
             {
                 let dim = self.common.dim;
-                self.common.transactions.journal_modifier_changes(dim, id, changes);
+                self.common
+                    .transactions
+                    .journal_modifier_changes(dim, id, changes);
             }
             if done && let Some(modifier) = explicit {
                 // The explicit write persists through abort. Earlier entries
                 // for that row must not undo it; the subsequent refresh,
                 // however, is journaled against the newly written value.
                 let dim = self.common.dim;
-                self.common.transactions
+                self.common
+                    .transactions
                     .keep_explicit_modifier_write(dim, id, name, &modifier);
             }
             self.collect_mob_equipment_attributes(id, after_write);
@@ -457,7 +467,11 @@ impl ServerGame<'_> {
                     // The body's map owns the command value, while bodiless physics
                     // reads the base and permanent modifiers from finalize's cache.
                     if done && name == "minecraft:knockback_resistance" {
-                        let m = self.common.mobs.iter_mut().find(|m| m.id == mob && !m.removed)?;
+                        let m = self
+                            .common
+                            .mobs
+                            .iter_mut()
+                            .find(|m| m.id == mob && !m.removed)?;
                         // Admission belongs to the body's map. Its archetype changes can
                         // remove an ID without touching finalize's mirror, so an accepted
                         // add replaces any stale copy there rather than being refused twice.
@@ -477,7 +491,11 @@ impl ServerGame<'_> {
                     }
                     return Some(done);
                 }
-                let m = self.common.mobs.iter_mut().find(|m| m.id == mob && !m.removed)?;
+                let m = self
+                    .common
+                    .mobs
+                    .iter_mut()
+                    .find(|m| m.id == mob && !m.removed)?;
                 if let Some(a) = own_attribute(m, name) {
                     return Some(write_own_attribute(m, a, write));
                 }
@@ -524,7 +542,12 @@ impl ServerGame<'_> {
         let catalog = self.common.motion.attributes.clone();
         let (live, entity, seed) = match t {
             Target::Mob(id) => {
-                let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+                let Some(m) = self
+                    .common
+                    .mobs
+                    .iter_mut()
+                    .find(|m| m.id == id && !m.removed)
+                else {
                     return;
                 };
                 // The seed is only read when the map is not built yet.
@@ -572,8 +595,6 @@ pub mod tests {
     use sunrise_items::items::ItemStack;
     use sunrise_sim::{entities::ArmorStand, mobs::Mob};
 
-    
-
     /// A zombie, an armor stand and the dragon, ids 12, 13 and 14.
     pub fn spawn(game: &mut crate::game::ServerGame<'_>) {
         let zombie = game
@@ -584,12 +605,17 @@ pub mod tests {
             .clone();
         game.mobs.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
         game.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
-        let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+        let mut dragon =
+            sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
         dragon.id = 14;
         game.dragon.replace(dragon);
     }
 
-    pub fn read(game: &crate::game::ServerGame<'_>, id: u32, name: &str) -> (Option<f64>, Option<f64>) {
+    pub fn read(
+        game: &crate::game::ServerGame<'_>,
+        id: u32,
+        name: &str,
+    ) -> (Option<f64>, Option<f64>) {
         let living = game.living(game.entity(id).unwrap()).unwrap();
         (
             living.attribute_value(game, name),
@@ -597,50 +623,11 @@ pub mod tests {
         )
     }
 
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
     pub fn living(game: &crate::game::ServerGame<'_>, id: u32) -> mod_api::LivingRef {
         game.living(game.entity(id).unwrap()).unwrap()
     }
 
-    
-
     use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetime};
-
-    
-
-    
-
-    
-
-    
-    
-
-    
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;

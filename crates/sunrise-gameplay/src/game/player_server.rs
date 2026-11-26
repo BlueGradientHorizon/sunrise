@@ -1,4 +1,8 @@
 use super::*;
+use mod_api::{EntityRef, LevelRef, PlayerAbilities, PlayerRef};
+use sunrise_command::args::GameMode;
+use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_game_data::text::Text;
 use sunrise_gameplay_common::game::{
     Hit,
     commands_common::Target,
@@ -9,10 +13,6 @@ use sunrise_gameplay_common::game::{
     remote::movement::MovePacket,
     view_vector,
 };
-use mod_api::{EntityRef, LevelRef, PlayerAbilities, PlayerRef};
-use sunrise_command::args::GameMode;
-use sunrise_core::geometry::{Aabb, Vec3};
-use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{
     join_seq::residency::{Kind, Owner, Source},
@@ -88,7 +88,8 @@ impl crate::game::ServerGame<'_> {
             return speed;
         }
         let base = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .and_then(|p| {
                 p.attributes
@@ -101,7 +102,8 @@ impl crate::game::ServerGame<'_> {
                 .attack_item_info()
                 .map_or(0.0, |i| f64::from(i.attack_speed));
         let value = self
-            .common.potions
+            .common
+            .potions
             .effects
             .modifiers()
             .into_iter()
@@ -112,7 +114,8 @@ impl crate::game::ServerGame<'_> {
 
     pub(in crate::game) fn server_known_player_movement(&self) -> Vec3 {
         if let Some(i) = self
-            .common.riding
+            .common
+            .riding
             .and_then(|v| self.common.mobs.iter().position(|m| m.id == v))
         {
             return self.common.mob_speed(i).scale(1.0 / 20.0);
@@ -120,9 +123,9 @@ impl crate::game::ServerGame<'_> {
         if self.server.lan_acting.is_some() {
             return self.server.known_movement;
         }
-        self.common.player
-            .as_ref()
-            .map_or(Vec3::ZERO, |p| p.position.subtract(self.common.previous_position))
+        self.common.player.as_ref().map_or(Vec3::ZERO, |p| {
+            p.position.subtract(self.common.previous_position)
+        })
     }
 
     pub(in crate::game) fn server_apply_equipment(&mut self) {
@@ -173,7 +176,8 @@ impl crate::game::ServerGame<'_> {
     /// Acting guest's UUID during a turn; legacy local body's saved UUID only when that body exists.
     pub(in crate::game) fn server_own_profile_uuid(&self) -> Option<u128> {
         self.server.lan_acting_uuid.or_else(|| {
-            self.common.player
+            self.common
+                .player
                 .as_ref()
                 .and(self.common.level.player_uuid)
                 .map(ints_uuid)
@@ -228,7 +232,11 @@ impl crate::game::ServerGame<'_> {
             return Some(hit);
         }
         let (origin, dir) = self.server_aim()?;
-        self.clip_ray(origin, dir, self.common.block_reach.max(self.common.entity_reach))
+        self.clip_ray(
+            origin,
+            dir,
+            self.common.block_reach.max(self.common.entity_reach),
+        )
     }
 
     /// Visits every authoritative server pickable entity intersecting `search_box`.
@@ -300,7 +308,8 @@ impl crate::game::ServerGame<'_> {
             emit(c.id, c.bounds(), 0.0);
         }
         if let Some(d) = self
-            .common.dragon
+            .common
+            .dragon
             .as_ref()
             .filter(|d| !self.server_is_pick_camera(d.id))
         {
@@ -435,7 +444,8 @@ impl crate::game::ServerGame<'_> {
         };
         let (seg_from, seg_to) = pick_ray_segment(eye, dir, entity_max_distance);
         let search_box = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map_or_else(|| Aabb::new(seg_from, seg_from), |p| p.bounds())
             .expand_towards(Vec3::new(
@@ -463,7 +473,8 @@ impl crate::game::ServerGame<'_> {
             };
         }
         if let Some(block) = block_hit
-            && from.distance_squared(v3(block.point)) < self.common.block_reach * self.common.block_reach
+            && from.distance_squared(v3(block.point))
+                < self.common.block_reach * self.common.block_reach
         {
             CrosshairDecision::Block(block)
         } else {
@@ -602,7 +613,8 @@ impl crate::game::ServerGame<'_> {
             return self.common.riding;
         }
         self.vehicle_of_any(entity).or_else(|| {
-            self.common.armor_stands
+            self.common
+                .armor_stands
                 .iter()
                 .find(|a| a.id == entity)
                 .and_then(|a| a.vehicle)
@@ -631,7 +643,11 @@ impl crate::game::ServerGame<'_> {
         let actor_root = self
             .server_pick_camera_id()
             .and_then(|actor| self.server_pick_vehicle_root(actor))
-            .or_else(|| self.common.riding.and_then(|v| self.server_pick_vehicle_root(v)));
+            .or_else(|| {
+                self.common
+                    .riding
+                    .and_then(|v| self.server_pick_vehicle_root(v))
+            });
         actor_root.is_some() && self.server_pick_vehicle_root(id) == actor_root
     }
 

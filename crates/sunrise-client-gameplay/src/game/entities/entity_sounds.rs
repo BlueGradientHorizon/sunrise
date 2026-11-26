@@ -1,8 +1,10 @@
 //! Client-side entity-bound level sound playback and entity sound state lookup.
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::{entity_sounds_common::saved_silent, level_sounds_common::LevelSound};
 #[cfg(feature = "client")]
 use sunrise_game_data::sound_source::SoundEntityState;
+use sunrise_gameplay_common::game::{
+    entity_sounds_common::saved_silent, level_sounds_common::LevelSound,
+};
 
 #[cfg(feature = "client")]
 impl ClientGame<'_> {
@@ -20,7 +22,11 @@ impl ClientGame<'_> {
         pitch: f32,
         _except_actor: bool,
     ) {
-        let id = self.client.remote.as_ref().map_or(0, |r| r.entity_id as u32);
+        let id = self
+            .client
+            .remote
+            .as_ref()
+            .map_or(0, |r| r.entity_id as u32);
         let mut sound = LevelSound::new(event, [0.0; 3], volume, pitch)
             .in_source(mod_api::SoundSource::ALL[source]);
         sound.emitter = Some(id);

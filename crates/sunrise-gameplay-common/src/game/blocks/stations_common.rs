@@ -201,14 +201,12 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait StationsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-
     /// `slotsChanged` / `createResult` for the open station.
-     fn station_changed(&mut self) {
+    fn station_changed(&mut self) {
         self.side_station_changed();
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> StationsCommonGameExt1<'__sg> for G {}
-
 
 use crate::game::side_ops::blocks::BlocksSideGameExt as _;
 

@@ -1,8 +1,11 @@
 //! `/time` addresses the clock the End runs on: the one `World.end_clock`
 //! ticks and `world_clocks.dat` saves (`ServerClockManager.getInstance`).
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role};
 use crate::game::load_resources;
 use crate::settings::Settings;
+use {
+    sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::Options,
+    sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role,
+};
 
 pub(crate) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,

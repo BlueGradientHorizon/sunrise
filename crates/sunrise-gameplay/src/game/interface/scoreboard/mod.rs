@@ -3,11 +3,13 @@
 //! entities, the selector options `scores=`, `team=` and `tag=`, the
 //! commands' [`Env`] and the sidebar.
 use super::chat_common::PLAYER_NAME;
-use sunrise_gameplay_common::game::commands_common::Target;
-use sunrise_gameplay_common::game::scoreboard_common::{Recorded, pet_team, root_owner, tame_owner};
 use mod_api::EntityTags;
 use std::collections::{HashMap, HashSet};
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::game::commands_common::Target;
+use sunrise_gameplay_common::game::scoreboard_common::{
+    Recorded, pet_team, root_owner, tame_owner,
+};
 use sunrise_gameplay_common::stats::{StatScoreChange, StatScoreOp};
 #[allow(unused_imports)]
 use {
@@ -60,7 +62,8 @@ impl crate::game::ServerGame<'_> {
     /// `ServerLevel.getWorldBorder`'s file: each dimension's own
     /// `data/minecraft/world_border.dat`.
     pub(in crate::game::server_side) fn border_path(&self, dim: super::Dim) -> std::path::PathBuf {
-        save::dimension_dir(&self.server.world_root, dim.id()).join("data/minecraft/world_border.dat")
+        save::dimension_dir(&self.server.world_root, dim.id())
+            .join("data/minecraft/world_border.dat")
     }
     /// The border `dim`'s level saved. The Overworld also reads the root file older Sunrise
     /// builds wrote for their one shared border; the other levels start from the default.
@@ -70,7 +73,12 @@ impl crate::game::ServerGame<'_> {
     ) -> sunrise_level::worldborder::WorldBorder {
         let mut root = save::read_dat(&self.border_path(dim));
         if root.is_none() && dim == super::Dim::Overworld {
-            root = save::read_dat(&self.server.world_root.join("data/minecraft/world_border.dat"));
+            root = save::read_dat(
+                &self
+                    .server
+                    .world_root
+                    .join("data/minecraft/world_border.dat"),
+            );
         }
         root.as_ref()
             .and_then(|root| root.get("data"))
@@ -107,7 +115,8 @@ impl crate::game::ServerGame<'_> {
         }
         self.common.score.storage =
             sunrise_sim::command_storage::CommandStorage::load(&self.server.world_root);
-        self.common.score.stopwatches = sunrise_sim::stopwatches::Stopwatches::load(&self.server.world_root);
+        self.common.score.stopwatches =
+            sunrise_sim::stopwatches::Stopwatches::load(&self.server.world_root);
         self.sync_score_registries();
     }
     pub fn save_scoreboard(&mut self) {
@@ -176,7 +185,8 @@ impl crate::game::ServerGame<'_> {
             Target::Guest(conn) => self.command_guest(conn).map(|g| g.name.clone()),
             // It keeps its UUID with itself.
             Target::Spawner(id) => self
-                .common.ominous_spawners
+                .common
+                .ominous_spawners
                 .iter()
                 .find(|s| s.id == id)
                 .map(|s| uuid_text(s.uuid)),
@@ -244,12 +254,14 @@ impl crate::game::ServerGame<'_> {
             // A server's player: the saved compound the guest's file is written from.
             Target::Guest(conn) => self.command_guest(conn).and_then(|g| g.saved.as_ref()),
             Target::Spawner(id) => self
-                .common.ominous_spawners
+                .common
+                .ominous_spawners
                 .iter()
                 .find(|s| s.id == id)
                 .and_then(|s| s.raw.as_deref()),
             Target::Falling(id) => self
-                .common.falling
+                .common
+                .falling
                 .iter()
                 .find(|f| f.id == id)
                 .and_then(|f| f.saved.as_ref().map(|s| &s.1)),
@@ -413,7 +425,8 @@ impl crate::game::ServerGame<'_> {
             let criteria = sb::stat_criteria(&ty, &key);
             if self.common.score.board.has_objectives_for(&criteria) {
                 self.journal_scoreboard();
-                self.common.score
+                self.common
+                    .score
                     .board
                     .for_all_objectives(&criteria, name, |v| match op {
                         StatScoreOp::Add(amount) => v.wrapping_add(amount),
@@ -560,7 +573,11 @@ impl crate::game::ServerGame<'_> {
         // The mob is looked up only when its own name has no team: the
         // owner's team is the fallback.
         self.team_with_owner(id, || {
-            self.common.mobs.iter().find(|m| m.id == id).and_then(tame_owner)
+            self.common
+                .mobs
+                .iter()
+                .find(|m| m.id == id)
+                .and_then(tame_owner)
         })
     }
     /// `mob_team_of` while the mob tick has lent its mobs out of `Game`.
@@ -582,7 +599,8 @@ impl crate::game::ServerGame<'_> {
         }
         let owner = tame_owner(m)?;
         let loaned = |uuid: [i32; 4]| {
-            self.common.persist
+            self.common
+                .persist
                 .uuids
                 .iter()
                 .filter(|(_, found)| **found == uuid)
@@ -604,7 +622,8 @@ impl crate::game::ServerGame<'_> {
             let Target::Mob(id) = self.target_by_uuid(ints_uuid(uuid))? else {
                 return None;
             };
-            self.common.mobs
+            self.common
+                .mobs
                 .iter()
                 .find(|mob| mob.id == id)
                 .and_then(tame_owner)
@@ -622,7 +641,10 @@ impl crate::game::ServerGame<'_> {
         pet_team(&self.common.score.board, &own, Some(&owner_name))
     }
     pub(in crate::game) fn player_team(&self) -> Option<&sb::Team> {
-        self.common.score.board.players_team(self.acting_player_name())
+        self.common
+            .score
+            .board
+            .players_team(self.acting_player_name())
     }
     /// The teams of the player and of the mobs on one (empty without teams).
     pub(in crate::game) fn mob_teams(&self) -> sunrise_sim::mobs::Teams<'_> {
@@ -631,7 +653,8 @@ impl crate::game::ServerGame<'_> {
         }
         // One pass over the mobs, not one per mob.
         let tame_owners: HashMap<u32, [i32; 4]> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter_map(|m| Some((m.id, tame_owner(m)?)))
             .collect();
@@ -652,7 +675,8 @@ impl crate::game::ServerGame<'_> {
             player: self.player_team(),
             players,
             mobs: self
-                .common.persist
+                .common
+                .persist
                 .uuids
                 .keys()
                 .filter_map(|id| {
@@ -692,7 +716,8 @@ impl crate::game::ServerGame<'_> {
         let Some(team) = self.player_team() else {
             return HashSet::new();
         };
-        self.common.persist
+        self.common
+            .persist
             .uuids
             .iter()
             .filter(|(id, uuid)| team.players.contains(&self.scoreboard_name(**id, **uuid)))
@@ -760,7 +785,8 @@ impl crate::game::ServerGame<'_> {
                     let objective = score.get("objective").and_then(Comp::as_str).unwrap_or("");
                     let name = if name == "*" { PLAYER_NAME } else { name };
                     let text = self
-                        .common.score
+                        .common
+                        .score
                         .board
                         .score(name, objective)
                         .map_or_else(String::new, |s| s.value.to_string());
@@ -792,7 +818,8 @@ impl crate::game::ServerGame<'_> {
             single: false,
             players: false,
         };
-        let Ok(sunrise_command::Arg::Entity(sel)) = ty.parse(&mut reader, &self.common.ui.registries)
+        let Ok(sunrise_command::Arg::Entity(sel)) =
+            ty.parse(&mut reader, &self.common.ui.registries)
         else {
             return raw.to_owned();
         };

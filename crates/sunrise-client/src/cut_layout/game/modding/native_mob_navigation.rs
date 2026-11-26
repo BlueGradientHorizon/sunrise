@@ -1,15 +1,13 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
-use super::super::native_entity_refs::tests::with_game;
-    use sunrise_gameplay::game::server_side::native_mob_navigation::supplied_path_accepts;
+    use super::super::native_entity_refs::tests::with_game;
     use mod_api::{EntityRef, MobRef, MoveToPathError, PathNode, WorldEpoch};
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay::game::server_side::native_mob_navigation::supplied_path_accepts;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::mobs::Mob;
 
@@ -94,15 +92,16 @@ use super::super::native_entity_refs::tests::with_game;
                 assert!(mob.stop(game));
                 assert_eq!(mob.is_done(game), Some(true));
                 assert!(!mob.move_to(game, [1000.0, 65.0, 0.0], 1.0));
-                let compare_extreme =
-                    |game: &mut sunrise_gameplay::game::ServerGame<'_>, extreme: f64, boundary: f64| {
-                        let result = mob.move_to(game, [10.5, boundary, 3.5], 1.0);
-                        let path = game.mobs[0].ai.nav.path.clone();
-                        mob.stop(game);
-                        assert_eq!(mob.move_to(game, [10.5, extreme, 3.5], 1.0), result);
-                        assert_eq!(game.mobs[0].ai.nav.path, path);
-                        mob.stop(game);
-                    };
+                let compare_extreme = |game: &mut sunrise_gameplay::game::ServerGame<'_>,
+                                       extreme: f64,
+                                       boundary: f64| {
+                    let result = mob.move_to(game, [10.5, boundary, 3.5], 1.0);
+                    let path = game.mobs[0].ai.nav.path.clone();
+                    mob.stop(game);
+                    assert_eq!(mob.move_to(game, [10.5, extreme, 3.5], 1.0), result);
+                    assert_eq!(game.mobs[0].ai.nav.path, path);
+                    mob.stop(game);
+                };
                 let top = f64::from(game.world.top_y() - 1);
                 let bottom = f64::from(game.world.bottom_y());
                 compare_extreme(game, 2_000_000_000.0, top);

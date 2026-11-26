@@ -1,6 +1,6 @@
 //! The client hand's bone meal interaction.
-use sunrise_gameplay_common::game::native_hooks::BonemealAsk;
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::native_hooks::BonemealAsk;
 use sunrise_items::items::ItemStack;
 
 #[cfg(feature = "client")]
@@ -29,37 +29,28 @@ impl crate::game::ClientGame<'_> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
 
-
-
-    use sunrise_gameplay_common::game::growth_features::{build_live_features, install_live_features};
     use mod_api::{self, BonemealEvent, BonemealSource, Flow, Hooks, HostSide};
     use std::sync::Arc;
     use std::sync::{Mutex, MutexGuard, PoisonError};
     use sunrise_core::{geometry::Direction, position::BlockPos};
+    use sunrise_gameplay_common::game::growth_features::{
+        build_live_features, install_live_features,
+    };
     use sunrise_items::items::ItemStack;
-
-    
 
     /// Sets the stack's count to `count`, then cancels with `successful`.
     struct Meal {
         count: Option<u32>,
         cancel: Option<bool>,
     }
-    
-
-    
-
-    
-
-    
 
     /// What each `bonemeal` listener heard: the player, the target check
     /// and the source. The test that reads it runs in a process of its own,
     /// so no other test's events cross into it; a failed assertion doesn't
     /// hide the next one behind poison.
     static HEARD: Mutex<Vec<(Option<u128>, bool, BonemealSource)>> = Mutex::new(Vec::new());
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl Hooks for Meal {
         fn bonemeal(&self, _: HostSide, event: &mut BonemealEvent<'_>) -> Flow {
             heard().push((event.player, event.valid_bonemeal_target, event.source));
@@ -77,16 +68,16 @@ pub(in crate::game) mod tests {
             Flow::Cancel
         }
     }
-pub fn heard() -> MutexGuard<'static, Vec<(Option<u128>, bool, BonemealSource)>> {
+    pub fn heard() -> MutexGuard<'static, Vec<(Option<u128>, bool, BonemealSource)>> {
         HEARD.lock().unwrap_or_else(PoisonError::into_inner)
     }
-pub const CROP: BlockPos = BlockPos { x: 0, y: 64, z: 0 };
+    pub const CROP: BlockPos = BlockPos { x: 0, y: 64, z: 0 };
 
     /// A successful cancel keeps the meal and grows nothing; an unsuccessful
     /// one fails; an untouched use grows the stack the mod edited. One test,
     /// run in order in a fresh process, since every case reads `HEARD`.
     #[cfg(any())]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_dispensers_bonemeal_follows_the_cancel_and_the_edited_stack() {
         if super::super::native_entity_refs::tests::run_fresh_cases(
@@ -193,8 +184,6 @@ pub const CROP: BlockPos = BlockPos { x: 0, y: 64, z: 0 };
                 .is_none()
         );
     }
-
-    
 }
 
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

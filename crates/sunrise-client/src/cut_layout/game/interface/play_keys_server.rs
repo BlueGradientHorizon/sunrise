@@ -1,22 +1,20 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 #[cfg(any())]
 pub(crate) mod swap_hands_tests {
 
-use sunrise_client_gameplay::game::client_side::play_keys::swap_hands_tests::Torch;
+    use sunrise_client_gameplay::game::client_side::play_keys::swap_hands_tests::Torch;
 
-use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::with_game;
 
-use std::sync::{
+    use std::sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     };
 
-use sunrise_items::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
-/// The server's own swap contract: a cancel keeps both hands, and a listener's stack lands in the off hand.
+    /// The server's own swap contract: a cancel keeps both hands, and a listener's stack lands in the off hand.
     #[test]
     #[ignore = "daily"]
     fn the_own_player_swap_asks_the_listener_for_each_hand() {

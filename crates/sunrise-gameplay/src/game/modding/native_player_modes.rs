@@ -46,10 +46,7 @@ impl ServerGame<'_> {
     /// player last left (`previousPlayerGameType`, saved with the player), or
     /// `Some(None)` when they never changed mode. None for a stale or
     /// unavailable player.
-    pub fn player_previous_game_mode(
-        &self,
-        player: PlayerRef,
-    ) -> Option<Option<GameMode>> {
+    pub fn player_previous_game_mode(&self, player: PlayerRef) -> Option<Option<GameMode>> {
         Some(match self.player_handle_read(player)? {
             // The acting player's own: a guest's turn swaps theirs in.
             PlayerRead::Acting { .. } => self.common.previous_mode,

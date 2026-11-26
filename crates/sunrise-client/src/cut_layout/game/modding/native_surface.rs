@@ -1,21 +1,19 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
 
-    use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_surface::NativeSurfaceGameExt1;
-use sunrise_gameplay_common::game::native_world_read_common::NativeWorldReadGameExt1;
-use sunrise_gameplay_common::game::tables::GameItems;
-use sunrise_gameplay_common::game::side_ops::world::WorldSideGameExt;
-use sunrise_gameplay_common::game::tables::WorldTablesExt;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-    use sunrise_gameplay_common::game::native_surface::TryIntoApi;
-    use sunrise_gameplay_common::game_side;
     use std::sync::atomic::Ordering;
     use sunrise_core::{geometry::Vec3, position::BlockPos};
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_surface::NativeSurfaceGameExt1;
+    use sunrise_gameplay_common::game::native_surface::TryIntoApi;
+    use sunrise_gameplay_common::game::native_world_read_common::NativeWorldReadGameExt1;
+    use sunrise_gameplay_common::game::side_ops::world::WorldSideGameExt;
+    use sunrise_gameplay_common::game::tables::GameItems;
+    use sunrise_gameplay_common::game::tables::WorldTablesExt;
+    use sunrise_gameplay_common::game_side;
     use sunrise_sim::entities::{ArmorStand, StandMedium};
     use sunrise_sim::motion::{MotionWorld, PlayerMotion};
     use sunrise_world::living_air::{LivingAirWorld, travel_in_air};
@@ -155,7 +153,8 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
                 )
             };
             // An armor stand moving 0.2 along x on the ground, after one travel: 0.2 × friction × 0.91.
-            let travel_stand = |game: &sunrise_gameplay::game::ServerGame<'_>, stand: &mut ArmorStand| {
+            let travel_stand = |game: &sunrise_gameplay::game::ServerGame<'_>,
+                                stand: &mut ArmorStand| {
                 let scene = sunrise_level::collisions::SceneCollisions {
                     world: &game.world,
                     binding: game.collision,
@@ -406,15 +405,19 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     #[test]
     #[ignore = "daily"]
     fn a_server_friction_part_reads_its_block_entitys_saved_material() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
-        use sunrise_gameplay_common::game::native_surface::FrictionLevel;
         use mod_api::{
             Block, BlockEntityEvent, BlockEntityPart, BlockPart, BlockUpdateFlags, BlocksEvent,
             Compound, FrictionEvent, Hooks, LevelSide, ModEntry, Mods, Registrar,
             RegistrationContext, Tag,
         };
         use std::sync::Arc;
+        use sunrise_gameplay_common::game::native_surface::FrictionLevel;
         use sunrise_level::chunk::Chunk;
+        use {
+            sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+            sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+            sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+        };
 
         if run_fresh_cases(
             "game::native_surface::tests::a_server_friction_part_reads_its_block_entitys_saved_material",
@@ -483,7 +486,9 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
         let mods: Mods = vec![ModEntry::new("friction_data_test", Box::new(Panel))].into();
         mod_platform::__private::install(mods.clone());
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
-        let root = sunrise_gameplay_common::game::mods::content_root(&fixture_root(), &Default::default()).unwrap();
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&fixture_root(), &Default::default())
+                .unwrap();
         with_game_at(root.prepared().to_path_buf(), |game| {
             game.options.dedicated = Some(Vec::new());
             game.world
@@ -520,11 +525,14 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     #[test]
     #[ignore = "daily"]
     fn the_friction_view_reads_tags_and_resident_block_entities_of_its_side() {
-        use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-        use {sunrise_gameplay_common::game::native_surface::FrictionLevel, sunrise_gameplay_common::game::native_surface::FrictionView};
         use mod_api::{
             __private::game::{Fields, block_entity_ref},
             LevelHost, Tag,
+        };
+        use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+        use {
+            sunrise_gameplay_common::game::native_surface::FrictionLevel,
+            sunrise_gameplay_common::game::native_surface::FrictionView,
         };
         let _parts = mod_platform::__private::part_tests::friction_game_thread();
         with_game(|game| {

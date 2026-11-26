@@ -52,13 +52,16 @@ impl crate::game::ServerGame<'_> {
         {
             return Err(format!("{name}: wrong listener setup for {KIND}").into());
         }
-        self.common.world = sunrise_gameplay_common::game::world_for_mods(self.common.res.facts().air, 7);
-        self.common.world
+        self.common.world =
+            sunrise_gameplay_common::game::world_for_mods(self.common.res.facts().air, 7);
+        self.common
+            .world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         let block = if listening {
             let block = self
-                .common.pack
+                .common
+                .pack
                 .assets
                 .registry
                 .default_state(KIND)
@@ -72,7 +75,8 @@ impl crate::game::ServerGame<'_> {
             }
             block
         } else {
-            self.common.pack
+            self.common
+                .pack
                 .assets
                 .registry
                 .default_state("minecraft:stone")

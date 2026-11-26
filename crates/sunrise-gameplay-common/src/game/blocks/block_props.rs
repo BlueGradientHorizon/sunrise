@@ -26,11 +26,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// The same block with other properties (`withProperty`).
-    pub fn with_props(
-        &self,
-        state: BlockStateId,
-        props: &[(&str, &str)],
-    ) -> Option<BlockStateId> {
+    pub fn with_props(&self, state: BlockStateId, props: &[(&str, &str)]) -> Option<BlockStateId> {
         let mut s = self.pack.assets.registry.state(state)?.clone();
         for (k, v) in props {
             s.properties.insert((*k).to_owned(), (*v).to_owned());
@@ -85,12 +81,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// `LivingEntity.canUsePortal` over a player's body and its transport.
-    pub fn can_use_portal_of(
-        &self,
-        p: &PlayerMotion,
-        riding: bool,
-        sleeping: bool,
-    ) -> bool {
+    pub fn can_use_portal_of(&self, p: &PlayerMotion, riding: bool, sleeping: bool) -> bool {
         !p.health.dead_or_dying() && !riding && !sleeping
     }
 
@@ -103,9 +94,8 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait BlockPropsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-
     /// `CampfireBlock.canLight || CandleBlock.canLight || CandleCakeBlock.canLight`.
-     fn can_light(&self, state: BlockStateId, name: &str) -> bool {
+    fn can_light(&self, state: BlockStateId, name: &str) -> bool {
         let lit = self.prop(state, "lit");
         let waterlogged = self.prop(state, "waterlogged");
         let dry_unlit = lit.as_deref() == Some("false") && waterlogged.as_deref() == Some("false");
@@ -117,7 +107,7 @@ pub trait BlockPropsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `LivingEntity.startSleeping`'s height: the top of the shape the player lies on.
-     fn sleep_height(&self, head: [i32; 3]) -> Option<f64> {
+    fn sleep_height(&self, head: [i32; 3]) -> Option<f64> {
         let state = self.world.block(head[0], head[1], head[2]);
         if !self.is_bed(state) {
             return None;
@@ -147,16 +137,14 @@ pub trait BlockPropsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// Where the sleeper lies (`setPosToBed`), when the bed gives it a shape.
-     fn sleeping_position(&self, head: [i32; 3]) -> Option<Vec3> {
+    fn sleeping_position(&self, head: [i32; 3]) -> Option<Vec3> {
         self.sleep_height(head)
             .map(|height| pos_to_bed(head, height))
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> BlockPropsGameExt1<'__sg> for G {}
 
-
 impl crate::game::CommonGame<'_> {
-
     /// Whether a vehicle can take the server players riding it through a
     /// portal: only a server moves players between its levels. Elsewhere a
     /// ridden vehicle stays, rather than leave its rider behind.
@@ -169,7 +157,7 @@ pub trait BlockPropsGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// `canUsePortal(false)` of a mob: what the mob itself decides
     /// (`mobs::mob_can_use_portal`), riding nothing, not asleep, and not
     /// carrying the players this side does.
-     fn mob_portal_eligible(&self, m: &sunrise_sim::mobs::Mob) -> bool {
+    fn mob_portal_eligible(&self, m: &sunrise_sim::mobs::Mob) -> bool {
         sunrise_sim::mobs::mob_can_use_portal(m)
             && m.extra.mount.is_none()
             && self.riding != Some(m.id)
@@ -177,7 +165,6 @@ pub trait BlockPropsGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> BlockPropsGameExt2<'__sg> for G {}
-
 
 impl crate::game::CommonGame<'_> {
     /// The level in place (`minecraft:overworld`), for a hook that isn't told

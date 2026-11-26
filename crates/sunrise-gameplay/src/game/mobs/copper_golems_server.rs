@@ -1,9 +1,9 @@
-use crate::game::ServerGame;
 use super::level_sounds_common::LevelSound;
-use sunrise_gameplay_common::game::copper_golems::RECHECK_TICKS;
+use crate::game::ServerGame;
 use mod_api::SoundSource;
 use sunrise_core::nbt::{Compound, Tag};
 use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::copper_golems::RECHECK_TICKS;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::mobs::{
@@ -23,7 +23,12 @@ impl ServerGame<'_> {
             self.mod_container_opener(key, open, Some(sunrise_sim::mobs::Who::Mob(mob)), 3.0);
             return;
         }
-        let entry = self.common.world.chest_openers.entry(key).or_insert((0, 0.0));
+        let entry = self
+            .common
+            .world
+            .chest_openers
+            .entry(key)
+            .or_insert((0, 0.0));
         let before = entry.0;
         if open {
             entry.0 += 1;
@@ -66,7 +71,9 @@ impl ServerGame<'_> {
     }
     /// `CopperGolem.mobInteract`; true when handled.
     pub fn interact_copper_golem(&mut self, index: usize, item: &str) -> bool {
-        if self.common.mobs[index].species() != Species::CopperGolem || !self.common.mobs[index].alive() {
+        if self.common.mobs[index].species() != Species::CopperGolem
+            || !self.common.mobs[index].alive()
+        {
             return false;
         }
         let at = {
@@ -177,7 +184,13 @@ impl ServerGame<'_> {
         for key in open {
             let p = [key.0, key.1, key.2];
             let other = self.common.chest_other_half(key).map(|o| [o.0, o.1, o.2]);
-            let range = self.common.world.chest_openers.get(&key).map_or(0.0, |o| o.1) + 4.0;
+            let range = self
+                .common
+                .world
+                .chest_openers
+                .get(&key)
+                .map_or(0.0, |o| o.1)
+                + 4.0;
             let area = sunrise_core::geometry::Aabb::new(
                 sunrise_core::geometry::Vec3::new(
                     f64::from(p[0]) - range,
@@ -191,7 +204,8 @@ impl ServerGame<'_> {
                 ),
             );
             let count = self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .filter(|m| {
                     m.species() == Species::CopperGolem
@@ -220,7 +234,8 @@ impl ServerGame<'_> {
     /// `ChestBlockEntity.playSound` for a chest the recheck closed.
     pub(in crate::game::server_side) fn golem_chest_sound(&mut self, p: [i32; 3], open: bool) {
         let name = self
-            .common.res
+            .common
+            .res
             .facts()
             .get(self.common.world.block(p[0], p[1], p[2]))
             .name
@@ -248,7 +263,12 @@ impl ServerGame<'_> {
     }
     /// `CopperGolem.turnToStatue`, which its weathering asked for.
     pub fn golem_become_statue(&mut self, id: u32) {
-        let Some(i) = self.common.mobs.iter().position(|m| m.id == id && !m.removed) else {
+        let Some(i) = self
+            .common
+            .mobs
+            .iter()
+            .position(|m| m.id == id && !m.removed)
+        else {
             return;
         };
         let statue_at = self.with_entity_held_out(id, |game| {
@@ -266,11 +286,13 @@ impl ServerGame<'_> {
             self.remove_mob_now(id, false);
             self.server_play_sound("minecraft:entity.copper_golem_become_statue", at, 1.0, 1.0);
             if self
-                .common.mob_object(id)
+                .common
+                .mob_object(id)
                 .is_some_and(|mob| mob.extra.leash.is_some())
             {
                 let drop = self
-                    .common.ui
+                    .common
+                    .ui
                     .rules
                     .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS);
                 self.break_leash(id, drop, false);
@@ -318,7 +340,8 @@ impl ServerGame<'_> {
     pub(in crate::game::server_side) fn golem_name_tag(&self, m: &Mob) -> Option<Tag> {
         let plain = m.custom_name.as_ref()?;
         let saved = self
-            .common.persist
+            .common
+            .persist
             .raw
             .get(&m.id)
             .and_then(|raw| raw.get("CustomName"))
@@ -350,7 +373,8 @@ impl ServerGame<'_> {
             m.custom_name_text = Some(sunrise_sim::entity_nbt::name_text(&name));
         }
         if let Tag::Compound(raw) = self
-            .common.persist
+            .common
+            .persist
             .raw
             .entry(id)
             .or_insert_with(|| Tag::Compound(Default::default()))
@@ -394,7 +418,12 @@ impl ServerGame<'_> {
             f64::from(pos[1]),
             f64::from(pos[2]) + 0.5,
         ];
-        let name = match self.common.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+        let name = match self
+            .common
+            .world
+            .block_entities
+            .get(&(pos[0], pos[1], pos[2]))
+        {
             Some(BlockEntity::CopperGolemStatue(components)) => {
                 components.get(&"minecraft:custom_name".into()).cloned()
             }
@@ -424,7 +453,10 @@ impl ServerGame<'_> {
         if let Some(replacement) = replacement {
             let _ = self.level_set(pos, replacement);
         }
-        self.common.world.block_entities.remove(&(pos[0], pos[1], pos[2]));
+        self.common
+            .world
+            .block_entities
+            .remove(&(pos[0], pos[1], pos[2]));
         true
     }
 }

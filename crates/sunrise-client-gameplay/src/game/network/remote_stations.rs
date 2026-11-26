@@ -56,7 +56,12 @@ impl crate::game::ClientGame<'_> {
         }) {
             return;
         }
-        if self.common.station.as_ref().is_some_and(|s| s.kind == Kind::Anvil) {
+        if self
+            .common
+            .station
+            .as_ref()
+            .is_some_and(|s| s.kind == Kind::Anvil)
+        {
             self.anvil_menu_session(|game, menu, to_menu| {
                 let i = to_menu(internal)?;
                 let stack = menu.slot(i).cloned();

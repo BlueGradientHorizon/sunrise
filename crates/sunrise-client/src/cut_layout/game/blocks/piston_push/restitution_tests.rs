@@ -1,16 +1,25 @@
-use {crate::game::piston_push::*, sunrise_gameplay_common::game::piston_push::{Aabb, Direction, Lid, Vec3}};
-use sunrise_gameplay_common::game::boats_common::Boat;
-use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
-use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
-use sunrise_gameplay_common::game::remote::passengers::PassengerSeat;
 use mod_api::{
     BlockPart, BounceOnEvent, BounceRestitutionEvent, Flow, Hooks, LevelRandomHost, LevelSide,
     Registrar, RegistrationContext,
 };
 use std::sync::{Arc, Mutex};
+use sunrise_gameplay_common::game::boats_common::Boat;
+use sunrise_gameplay_common::game::remote::passengers::PassengerSeat;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::play::{self, Clientbound};
 use sunrise_sim::mobs::Mob;
+use {
+    crate::game::piston_push::*,
+    sunrise_gameplay_common::game::piston_push::{Aabb, Direction, Lid, Vec3},
+};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
+use {
+    sunrise_gameplay_common::game::minecarts::CartKind,
+    sunrise_gameplay_common::game::minecarts::Minecart,
+};
 
 #[derive(Clone, Default)]
 struct PushBounce {
@@ -61,7 +70,10 @@ impl Hooks for RemoveLaterBoat {
     }
 }
 
-fn boats_over_glass<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(game: &mut G, boats: &[(u32, i32)]) {
+fn boats_over_glass<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+    game: &mut G,
+    boats: &[(u32, i32)],
+) {
     game.world
         .chunks
         .insert((0, 0), Arc::new(Chunk::empty(0, 0)));

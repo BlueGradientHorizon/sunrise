@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::LegacyRandom;
@@ -10,17 +8,17 @@ use sunrise_sim::projectiles::ProjectileKind;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_core::random::RandomSource;
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay_common::game::server_side::dragon::tests::flying;
-use sunrise_gameplay_common::game::dragon_common::Phase;
-use sunrise_gameplay_common::game::server_side::dragon::tests::dragon;
-use sunrise_gameplay::game::server_side::dragon::{DragonHitOrigin, Hurt};
-use sunrise_protocol::entity_data::Value;
+    use sunrise_core::random::RandomSource;
+    use sunrise_gameplay::game::server_side::dragon::{DragonHitOrigin, Hurt};
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::dragon_common::Phase;
+    use sunrise_gameplay_common::game::server_side::dragon::tests::dragon;
+    use sunrise_gameplay_common::game::server_side::dragon::tests::flying;
+    use sunrise_protocol::entity_data::Value;
 
-use super::*;
+    use super::*;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_spawn_egg_dragon_joins_once_and_a_canceled_spawn_fails() {
         use mod_api::{EntityJoinLevelEvent, Flow, Hooks, ModEntry, ServerHost};
@@ -97,7 +95,7 @@ use super::*;
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn dragon_finalization_preserves_the_site_and_both_cancels() {
         use mod_api::{FinalizeSpawnEvent, Flow, Hooks, Host, ModEntry};
@@ -174,7 +172,7 @@ use super::*;
             }
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn dragon_summon_command_finalizes_only_without_nbt() {
         use mod_api::{
@@ -290,7 +288,7 @@ use super::*;
             }
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn carry_dragon_dispatches_only_after_phase_and_source_guards() {
         use std::sync::{
@@ -352,7 +350,7 @@ use super::*;
             });
         });
     }
-/// `dealDefaultKnockback` reads the dragon's `getAttributeValue(KNOCKBACK_RESISTANCE)` at the
+    /// `dealDefaultKnockback` reads the dragon's `getAttributeValue(KNOCKBACK_RESISTANCE)` at the
     /// hit: a netherite chestplate's `0.1F` (`ArmorMaterials.NETHERITE`, widened to the
     /// modifier's double) shortens the push to `0.4F * (1 - 0.1F)`.
     #[test]
@@ -394,7 +392,7 @@ use super::*;
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn the_tracked_dragon_lists_its_data_defaults() {
         use sunrise_protocol::entity_data::serializer;
@@ -415,7 +413,6 @@ use super::*;
     }
 }
 
-
 #[cfg(test)]
 #[path = "dragon/residency_tests.rs"]
 pub(crate) mod residency_tests;
@@ -429,7 +426,7 @@ pub(crate) mod walls_tests;
 #[cfg(test)]
 pub(crate) mod dragon_fireball_spawn_tests {
     use sunrise_gameplay_common::game::GameGameExt1;
-include!("dragon/fireball_spawn_tests.rs");
+    include!("dragon/fireball_spawn_tests.rs");
 }
 #[cfg(test)]
 #[path = "dragon/wing_push_tests.rs"]

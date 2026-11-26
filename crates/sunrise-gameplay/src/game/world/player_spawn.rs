@@ -7,17 +7,23 @@ impl crate::game::ServerGame<'_> {
         if self.common.player.is_some() || !self.common.is_logical_server() {
             return Ok(());
         }
-        let saved = self.common.level.position.map(|p| Vec3::new(p[0], p[1], p[2]));
+        let saved = self
+            .common
+            .level
+            .position
+            .map(|p| Vec3::new(p[0], p[1], p[2]));
         if self.common.spawn.is_none() {
             self.common.spawn = self
-                .common.level
+                .common
+                .level
                 .spawn
                 .map(|s| Vec3::new(s[0] + 0.5, s[1], s[2] + 0.5));
         }
         let feet = if let Some(p) = saved {
             let (cx, cz) = ((p.x.floor() as i32) >> 4, (p.z.floor() as i32) >> 4);
             self.server.streaming.center = (cx, cz);
-            if !(-1..=1).all(|dz| (-1..=1).all(|dx| self.server.streaming.is_lit(cx + dx, cz + dz))) {
+            if !(-1..=1).all(|dz| (-1..=1).all(|dx| self.server.streaming.is_lit(cx + dx, cz + dz)))
+            {
                 return Ok(());
             }
             self.common.level.position = None;
@@ -46,7 +52,8 @@ impl crate::game::ServerGame<'_> {
                 }
             }
             let s = self
-                .common.level
+                .common
+                .level
                 .spawn
                 .unwrap_or_default()
                 .map(|v| v.floor() as i32);
@@ -58,7 +65,8 @@ impl crate::game::ServerGame<'_> {
             let s = self.common.spawn.unwrap_or_default();
             let (cx, cz) = ((s.x.floor() as i32) >> 4, (s.z.floor() as i32) >> 4);
             self.server.streaming.center = (cx, cz);
-            if !(-1..=1).all(|dz| (-1..=1).all(|dx| self.server.streaming.is_lit(cx + dx, cz + dz))) {
+            if !(-1..=1).all(|dz| (-1..=1).all(|dx| self.server.streaming.is_lit(cx + dx, cz + dz)))
+            {
                 return Ok(());
             }
             let column = [s.x.floor() as i32, s.y.floor() as i32, s.z.floor() as i32];
@@ -73,7 +81,8 @@ impl crate::game::ServerGame<'_> {
             } else {
                 // A spawnpoint: the stored column, lifted onto its current surface.
                 let y = self
-                    .common.land_column(column[0], column[2])
+                    .common
+                    .land_column(column[0], column[2])
                     .map_or(s.y, f64::from);
                 Vec3::new(s.x, y.max(s.y), s.z)
             }

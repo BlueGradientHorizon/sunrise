@@ -1,8 +1,8 @@
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{BlockPart, FenceGateInWallEvent, Hooks, LevelSide, Registrar};
 use std::sync::Arc;
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::GameGameExt1;
 
 struct Wall(bool);
 #[mod_api::sunrise_part]

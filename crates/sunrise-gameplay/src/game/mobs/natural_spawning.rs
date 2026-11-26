@@ -2,7 +2,6 @@
 //! it reads, the spawning chunks and caps of `ServerChunkCache.tickChunks`,
 //! and the mobs it adds (finalized with the game's `finalizeSpawn`).
 use super::Dim;
-use sunrise_gameplay_common::game::creatures::Finalized;
 use mod_api::{SpawnCheck, SpawnFlags, SpawnLimits};
 use std::collections::HashMap;
 use sunrise_core::{
@@ -10,6 +9,8 @@ use sunrise_core::{
     position::BlockPos,
     random::{LegacyRandom, LevelRandom, RandomSource, WorldgenRandom, XoroshiroRandom},
 };
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+use sunrise_gameplay_common::game::creatures::Finalized;
 use sunrise_items::blocks::BlockFacts;
 use sunrise_level::{
     biome::{BiomeInfo, SpawnEntry},
@@ -25,7 +26,6 @@ use sunrise_sim::mobs::{
         SpawnPlayer, SpawnRequest, SpawnState, Spawned, StructureAt, StructureSpawns,
     },
 };
-use sunrise_gameplay_common::game::GameGameExt1 as _;
 use sunrise_sim::vanillagen::VanillaTerrain;
 use sunrise_world::dimension_type::DimensionFacts;
 use {
@@ -1085,7 +1085,8 @@ impl<'a> crate::game::ServerGame<'a> {
             COLLISION_EPSILON,
         ));
         !self
-            .common.boats
+            .common
+            .boats
             .iter()
             .any(|boat| boat.bounds().intersects(query))
             && !mob_collision(query)
@@ -1303,17 +1304,15 @@ impl<'a> crate::game::ServerGame<'a> {
     /// ticket that forces natural spawning (NeoForge's
     /// `shouldForceNaturalSpawning`). Also returns how many chunks the tracker
     /// holds (`getNaturalSpawnChunkCount`).
-    pub fn spawning_chunks(
-        &self,
-        players: &[LevelPlayer],
-        scratch: &mut SpawnScratch,
-    ) -> i32 {
+    pub fn spawning_chunks(&self, players: &[LevelPlayer], scratch: &mut SpawnScratch) -> i32 {
         let tickets = self.server.streaming.mod_tickets();
         let levels = self.server.tickets.0.levels();
         scratch.collect(
             players,
             |chunk| tickets.forces_natural_spawning(chunk),
-            |(cx, cz)| levels.loaded_ticking(cx, cz) && super::ticking_chunk(&self.common.world, cx, cz),
+            |(cx, cz)| {
+                levels.loaded_ticking(cx, cz) && super::ticking_chunk(&self.common.world, cx, cz)
+            },
         )
     }
     /// `NaturalSpawner.createState` for a pass over the level in place, under
@@ -1335,10 +1334,7 @@ impl<'a> crate::game::ServerGame<'a> {
     /// `spawn_mobs` rule off, else `getFilteredSpawningCategories` with the
     /// `spawn_monsters` rule, the persistent ones every 400 ticks, and the
     /// level's spawn flags (`SpawnPolicy`) taking away.
-    pub fn natural_categories(
-        &self,
-        state: &SpawnState,
-    ) -> Vec<Category> {
+    pub fn natural_categories(&self, state: &SpawnState) -> Vec<Category> {
         let rules = &self.common.ui.rules;
         if !rules.bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS) {
             return Vec::new();
@@ -1364,7 +1360,8 @@ impl<'a> crate::game::ServerGame<'a> {
         sunrise_level::spans::time("spawn_natural", || self.spawn_natural());
         // ServerChunkCache.tickChunks: the custom spawners tick only with spawn_mobs.
         if self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
         {
@@ -1429,7 +1426,8 @@ impl<'a> crate::game::ServerGame<'a> {
             };
             laps.lap("sn_level");
             let counted: Vec<Counted> = self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .map(|m| Counted {
                     entity: &m.kind.id,
@@ -1578,11 +1576,11 @@ impl<'a> crate::game::ServerGame<'a> {
 
 #[cfg(test)]
 mod tests {
-#[cfg(test)]
-/// Answers both spawn checks with one fixed result.
+    #[cfg(test)]
+    /// Answers both spawn checks with one fixed result.
     struct ChecksMod(SpawnCheck);
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for ChecksMod {
         fn mob_spawn_placement_check(
             &self,
@@ -1599,20 +1597,20 @@ mod tests {
             *event.result = self.0;
         }
     }
-#[cfg(test)]
-type MobReads = (
+    #[cfg(test)]
+    type MobReads = (
         Result<mod_api::Identifier, mod_api::UnspawnedMobError>,
         Result<[f64; 3], mod_api::UnspawnedMobError>,
         Result<bool, mod_api::UnspawnedMobError>,
     );
-#[cfg(test)]
-type Log = std::sync::Arc<std::sync::Mutex<Vec<Heard>>>;
-#[cfg(test)]
-/// Gives every natural monster position one entry: the sulfur cube, whose spawn predicate
+    #[cfg(test)]
+    type Log = std::sync::Arc<std::sync::Mutex<Vec<Heard>>>;
+    #[cfg(test)]
+    /// Gives every natural monster position one entry: the sulfur cube, whose spawn predicate
     /// has no conditions, in packs of four.
     struct SulfurCubesOnly;
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for SulfurCubesOnly {
         fn potential_spawns(
             &self,
@@ -1631,13 +1629,13 @@ type Log = std::sync::Arc<std::sync::Mutex<Vec<Heard>>>;
             mod_api::Flow::Continue
         }
     }
-pub const SULFUR_CUBE: &str = "minecraft:sulfur_cube";
-#[cfg(test)]
-/// A spawned mob as the draw comparisons see it: id, kind, position, yaw, persistence and
+    pub const SULFUR_CUBE: &str = "minecraft:sulfur_cube";
+    #[cfg(test)]
+    /// A spawned mob as the draw comparisons see it: id, kind, position, yaw, persistence and
     /// the next draw of its own random (seeded from its id).
     type Snap = (u32, String, [f64; 3], f32, bool, i32);
-#[cfg(test)]
-fn snap(m: &Mob) -> Snap {
+    #[cfg(test)]
+    fn snap(m: &Mob) -> Snap {
         (
             m.id,
             m.kind.id.clone(),
@@ -1647,7 +1645,7 @@ fn snap(m: &Mob) -> Snap {
             m.random.clone().next_int(),
         )
     }
-/// Runs `go` with no mod (`None`), or with a position-check listener answering `answer`
+    /// Runs `go` with no mod (`None`), or with a position-check listener answering `answer`
     /// beside `extra` mods, and what that listener heard.
     pub fn with_checks<R>(
         answer: Option<SpawnCheck>,
@@ -1673,18 +1671,18 @@ fn snap(m: &Mob) -> Snap {
         let heard = log.lock().unwrap().clone();
         (out, heard)
     }
-#[cfg(test)]
-/// Answers `finalize_spawn` the way a test asks.
+    #[cfg(test)]
+    /// Answers `finalize_spawn` the way a test asks.
     #[derive(Clone, Copy)]
     enum FinalizeAnswer {
         Pass,
         SkipFinalize,
         StopSpawn,
     }
-#[cfg(test)]
-struct FinalizeMod(FinalizeAnswer);
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    struct FinalizeMod(FinalizeAnswer);
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for FinalizeMod {
         fn finalize_spawn(
             &self,
@@ -1699,11 +1697,11 @@ struct FinalizeMod(FinalizeAnswer);
             mod_api::Flow::Continue
         }
     }
-#[cfg(test)]
-/// Counts the `finalize_spawn` events it hears.
+    #[cfg(test)]
+    /// Counts the `finalize_spawn` events it hears.
     struct CountFinalize(std::sync::Arc<std::sync::atomic::AtomicUsize>);
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for CountFinalize {
         fn finalize_spawn(
             &self,
@@ -1714,11 +1712,11 @@ struct FinalizeMod(FinalizeAnswer);
             mod_api::Flow::Continue
         }
     }
-#[cfg(test)]
-/// Records the kind and reason of every `finalize_spawn` event.
+    #[cfg(test)]
+    /// Records the kind and reason of every `finalize_spawn` event.
     struct RecordFinalize(std::sync::Arc<std::sync::Mutex<Vec<(String, mod_api::SpawnReason)>>>);
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for RecordFinalize {
         fn finalize_spawn(
             &self,
@@ -1732,25 +1730,25 @@ struct FinalizeMod(FinalizeAnswer);
             mod_api::Flow::Continue
         }
     }
-#[cfg(test)]
-/// Answers every `mob_despawn` event with the value in its cell and counts them.
+    #[cfg(test)]
+    /// Answers every `mob_despawn` event with the value in its cell and counts them.
     struct Despawns(
         std::sync::Arc<std::sync::Mutex<mod_api::Despawn>>,
         std::sync::Arc<std::sync::atomic::AtomicUsize>,
     );
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for Despawns {
         fn mob_despawn(&self, _: &dyn mod_api::Host, event: &mut mod_api::MobDespawnEvent<'_>) {
             self.1.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             *event.result = *self.0.lock().unwrap();
         }
     }
-#[cfg(test)]
-/// Answers the group size limit of a type, reading the mob it is lent.
+    #[cfg(test)]
+    /// Answers the group size limit of a type, reading the mob it is lent.
     struct ZombieClusters;
-#[cfg(test)]
-#[mod_api::sunrise_part]
+    #[cfg(test)]
+    #[mod_api::sunrise_part]
     impl mod_api::EntityPart for ZombieClusters {
         fn spawn_cluster_size(
             &self,
@@ -1768,11 +1766,11 @@ struct FinalizeMod(FinalizeAnswer);
             })
         }
     }
-#[cfg(test)]
-/// A second part on the same type: asked only when the first does not answer.
+    #[cfg(test)]
+    /// A second part on the same type: asked only when the first does not answer.
     struct LaterClusters;
-#[cfg(test)]
-#[mod_api::sunrise_part]
+    #[cfg(test)]
+    #[mod_api::sunrise_part]
     impl mod_api::EntityPart for LaterClusters {
         fn spawn_cluster_size(
             &self,
@@ -1785,16 +1783,16 @@ struct FinalizeMod(FinalizeAnswer);
             Some(9)
         }
     }
-#[cfg(test)]
-/// A part that leaves the limit to vanilla.
+    #[cfg(test)]
+    /// A part that leaves the limit to vanilla.
     struct SilentClusters;
-#[cfg(test)]
-#[mod_api::sunrise_part]
+    #[cfg(test)]
+    #[mod_api::sunrise_part]
     impl mod_api::EntityPart for SilentClusters {}
-#[cfg(test)]
-struct ClusterMod;
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    struct ClusterMod;
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for ClusterMod {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
             r.entity_part("minecraft:zombie", ZombieClusters);
@@ -1805,13 +1803,6 @@ struct ClusterMod;
 
     use super::*;
 
-    
-
-    
-
-    
-
-    
     fn player(x: f64, y: f64, z: f64, spectator: bool) -> LevelPlayer {
         LevelPlayer {
             uuid: 0,
@@ -2021,9 +2012,6 @@ struct ClusterMod;
         );
     }
 
-    
-    
-
     /// The placement check runs after vanilla's predicate (`default_result` is its answer), so
     /// its draws are vanilla's whatever a mod answers. The position check replaces vanilla's two
     /// checks: no listener and `Default` draw exactly as vanilla, `Succeed` and `Fail` draw nothing.
@@ -2114,8 +2102,7 @@ struct ClusterMod;
         spawner: Option<mod_api::Spawner>,
         mob: Option<MobReads>,
     }
-    
-    
+
     /// Records both spawn checks and answers the position check with `answer`, reading the lent
     /// mob and changing nothing else.
     struct ContextMod {
@@ -2159,12 +2146,7 @@ struct ClusterMod;
             *event.result = self.answer;
         }
     }
-    
-    
-    
-    
-    
-    
+
     /// A survival player standing at `at`, and empty lit chunks around the origin.
     fn spawn_check_world(game: &mut crate::game::ServerGame<'_>, at: Vec3) {
         use std::sync::Arc;
@@ -2453,10 +2435,6 @@ struct ClusterMod;
         });
     }
 
-    
-    
-    
-
     /// No listener and a listener that changes nothing finalize and draw as vanilla; a cancel
     /// skips finalization and its draws, the mob still spawning; `spawn_cancelled` adds no mob.
     #[test]
@@ -2507,16 +2485,13 @@ struct ClusterMod;
         });
     }
 
-    
-    
-
     /// A site vanilla makes without `finalizeSpawn` (an infested block's silverfish) is not
     /// told; one it finalizes is.
     #[test]
     #[ignore = "daily"]
     fn finalize_spawn_is_told_only_where_vanilla_finalizes() {
-        use sunrise_gameplay_common::game::creatures::SpawnSite;
         use crate::game::native_entity_refs::tests::with_game;
+        use sunrise_gameplay_common::game::creatures::SpawnSite;
         let heard = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let mods = vec![mod_api::ModEntry::new(
             "count-finalize",
@@ -2545,16 +2520,13 @@ struct ClusterMod;
         });
     }
 
-    
-    
-
     /// `ZombieHorse.finalizeSpawn` finalizes its rider with the horse's own
     /// `spawnReason`, a baby zombie's chicken with `JOCKEY`.
     #[test]
     #[ignore = "daily"]
     fn jockeys_finalize_with_the_parents_reason() {
-        use sunrise_gameplay_common::game::creatures::SpawnSite;
         use crate::game::native_entity_refs::tests::with_game;
+        use sunrise_gameplay_common::game::creatures::SpawnSite;
         let heard = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let mods = vec![mod_api::ModEntry::new(
             "record-finalize",
@@ -2583,9 +2555,6 @@ struct ClusterMod;
             });
         });
     }
-
-    
-    
 
     /// `MobDespawnEvent` wraps the whole of `Mob.checkDespawn`: `Default` and no
     /// listener leave vanilla's checks and their `nextInt(800)` draw as they
@@ -2628,13 +2597,14 @@ struct ClusterMod;
                         id,
                     ));
                     let pos = [mob.position.x, mob.position.y, mob.position.z];
-                    sunrise_gameplay_common::game::native_hooks::NativeHookHost { host: game }.native_mob_despawn(
-                        "minecraft:overworld",
-                        handle,
-                        &mob.kind.id,
-                        pos,
-                        &mut mob.despawn,
-                    );
+                    sunrise_gameplay_common::game::native_hooks::NativeHookHost { host: game }
+                        .native_mob_despawn(
+                            "minecraft:overworld",
+                            handle,
+                            &mob.kind.id,
+                            pos,
+                            &mut mob.despawn,
+                        );
                     let mut world = game.mob_world_base(&[]);
                     world.difficulty.effective = if peaceful { 0.0 } else { 2.0 };
                     let mut player = mob.position;
@@ -2703,15 +2673,6 @@ struct ClusterMod;
         });
     }
 
-    
-    
-    
-    
-    
-    
-    
-    
-
     /// The parts of the new mob's type answer the group size limit: a part's answer replaces
     /// vanilla's for its type and reason (the first part to answer wins), a part that does not
     /// answer, and a type with no part, leave it to vanilla.
@@ -2755,8 +2716,6 @@ struct ClusterMod;
             assert_eq!(ask("minecraft:cow", mod_api::SpawnReason::Natural), None);
         });
     }
-
-    
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

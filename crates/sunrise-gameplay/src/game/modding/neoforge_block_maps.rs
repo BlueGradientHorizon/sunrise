@@ -3,12 +3,12 @@
 //! data packs and mods' files as a mod's own data maps are, and installed on
 //! the world's behaviours for fire spread, weathering, scraping and waxing.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::native_data_maps_common::{
-    DataMapType, MapRegistries, WorldRegistries, load_maps,
-};
 use serde_json::Value;
 use std::sync::Arc;
 use sunrise_core::identifier::Identifier;
+use sunrise_gameplay_common::game::native_data_maps_common::{
+    DataMapType, MapRegistries, WorldRegistries, load_maps,
+};
 use sunrise_world::level::{BlockMapValue, BlockMaps};
 
 /// The three maps' ids, all on `minecraft:block`.
@@ -90,7 +90,8 @@ impl ServerGame<'_> {
             // Tables and the registry generation are installed together before this call.
             // Use the same membership boundary as their staged data-map load.
             let registries = WorldRegistries::new(
-                self.common.ui
+                self.common
+                    .ui
                     .registries
                     .by_registry
                     .iter()

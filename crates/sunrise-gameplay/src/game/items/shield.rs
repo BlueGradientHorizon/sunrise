@@ -4,8 +4,8 @@
 //! the block sound, attacker knockback (`blockedByItem`) and axes disabling
 //! the shield (`Player.blockUsingItem`, `BlocksAttacks.disable`).
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::held_items::block_delay_passed;
 use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::held_items::block_delay_passed;
 #[allow(unused_imports)]
 use sunrise_items::items::ItemStack;
 use sunrise_sim::health::Attack;
@@ -109,7 +109,9 @@ impl ServerGame<'_> {
         source: HurtSource<'_>,
         attack: &Attack,
     ) {
-        let Some((slot, _)) = self.common.using else { return };
+        let Some((slot, _)) = self.common.using else {
+            return;
+        };
         let Some(stack) = self.common.stack_in(slot).cloned() else {
             return;
         };
@@ -120,7 +122,8 @@ impl ServerGame<'_> {
             return;
         };
         let at = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z]);
         if outcome.sound
@@ -204,7 +207,8 @@ impl ServerGame<'_> {
             let mut events = Vec::new();
             let roaring = m.extra.anim_ticks != 0;
             let stunned = self
-                .common.mobs
+                .common
+                .mobs
                 .iter_mut()
                 .find(|m| m.id == id)
                 .is_some_and(|m| sunrise_sim::mobs::ravager::blocked(m, &mut events));
@@ -263,13 +267,15 @@ impl ServerGame<'_> {
             0
         };
         if ticks > 0 {
-            if let (Some(player), Some(name)) =
-                (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-            {
+            if let (Some(player), Some(name)) = (
+                self.server.lan_acting_uuid,
+                self.server.lan_acting_name.clone(),
+            ) {
                 self.native_player_shield_disable(player, &name, ticks);
             }
             let used = self
-                .common.using
+                .common
+                .using
                 .and_then(|(slot, _)| self.common.stack_in(slot))
                 .cloned();
             let item = used.as_ref().map(|stack| stack.item.clone());

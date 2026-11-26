@@ -3,13 +3,16 @@
 //! overlay opening drops them at once, a binding's modifier must be held, a rebinding moves the
 //! mapping, a mouse press counts for a mapping on its button, and the window losing its focus
 //! lets go of a held mapping.
-use sunrise_gameplay_common::game::Screen;
-use sunrise_client_gameplay::game::client_side::event_loop::EventLoopCtl;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use mod_api::prelude::ClientInputClientHost;
 use mod_api::*;
 use std::sync::Mutex;
+use sunrise_client_gameplay::game::client_side::event_loop::EventLoopCtl;
+use sunrise_gameplay_common::game::Screen;
 use winit::event_loop::ControlFlow;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+};
 
 struct NoLoop;
 impl EventLoopCtl for NoLoop {

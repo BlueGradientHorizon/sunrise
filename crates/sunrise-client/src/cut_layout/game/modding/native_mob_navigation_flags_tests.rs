@@ -1,8 +1,11 @@
-use sunrise_gameplay_common::game::GameGameExt1;
-use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{EntityRef, MobRef, WorldEpoch};
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_sim::mobs::{Mob, nav::NavKind};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 fn zombie(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> MobRef {
     let kind = game

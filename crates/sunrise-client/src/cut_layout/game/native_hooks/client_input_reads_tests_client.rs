@@ -1,11 +1,14 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use {sunrise_gameplay_common::game::Screen, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use mod_api::MappingError;
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::motion::PlayerMotion;
     use winit::{event::MouseButton, keyboard::KeyCode};
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_gameplay_common::game::Screen,
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -88,7 +91,10 @@ pub(crate) mod tests {
 
             // A new client input store resolves the same fixed vanilla slot with a new identity.
             game.client.mod_keys = sunrise_client::keymapping::ModKeys::default();
-            game.client.settings.keys.set("key.attack", "key.keyboard.r");
+            game.client
+                .settings
+                .keys
+                .set("key.attack", "key.keyboard.r");
             assert_eq!(old.binding(game), Err(MappingError::Stale));
             assert_eq!(old.is_down(game), Err(MappingError::Stale));
             assert_eq!(old.physical_down(game), Err(MappingError::Stale));

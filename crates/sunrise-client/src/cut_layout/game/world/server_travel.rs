@@ -1,24 +1,22 @@
-
-
 #![cfg(test)]
-use sunrise_gameplay_common::game::Dim;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::Dim;
 use sunrise_gameplay_common::game::entity_memory::OffLevel;
 use sunrise_gameplay_common::game::minecarts;
 use sunrise_sim::mobs::Mob;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::GameGameExt1;
-use super::*;
+    use super::*;
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 
-use mod_api::ServerHost;
+    use mod_api::ServerHost;
 
-use std::sync::Arc;
+    use std::sync::Arc;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn guest_portal_entry_uses_body_sleep_and_vehicle() {
         super::super::native_guest_turn_tests::with_guests(|game| {
@@ -70,7 +68,7 @@ use std::sync::Arc;
             }
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn arriving_vehicle_is_announced_once_after_destination_entities() {
         use mod_api::{self, EntityJoinLevelEvent, Flow, Hooks};
@@ -147,7 +145,7 @@ use std::sync::Arc;
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn natural_carrier_moves_full_objects_and_readmits_the_tree_in_order() {
         use mod_api::{AttachmentType, EntityConstructingEvent, Holder, Hooks, HostSide};
@@ -201,7 +199,12 @@ use std::sync::Arc;
                     assert!(game.persist.off_level.contains_key(&sibling));
                     STATE.set(game, Holder::Entity(leaf), 77).unwrap();
                     game.persist.forced_meta.insert(leaf, [5, 6, 7, 8]);
-                    game.server.portals.entities.entry(leaf).or_default().cooldown = 19;
+                    game.server
+                        .portals
+                        .entities
+                        .entry(leaf)
+                        .or_default()
+                        .cooldown = 19;
                     let source = game.dim;
                     game.enter_level(Dim::Nether).unwrap();
                     let owner = conflict.then(|| {
@@ -274,7 +277,7 @@ use std::sync::Arc;
             });
         }
     }
-/// `Entity.teleportCrossDimension` admits the passengers before the copied
+    /// `Entity.teleportCrossDimension` admits the passengers before the copied
     /// vehicle, so a pig that shares its boat's or minecart's UUID takes it in
     /// the destination and the vehicle is retained off-level below it.
     #[test]
@@ -322,7 +325,7 @@ use std::sync::Arc;
             });
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn natural_portal_schedules_a_player_on_a_retained_indirect_vehicle() {
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -394,22 +397,21 @@ use std::sync::Arc;
     }
 }
 
-
 #[cfg(test)]
 pub(crate) mod transfer_lifetime_tests {
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_client_lib::join_seq::Joined;
-use sunrise_gameplay_common::game::server_side::server_travel::transfer_lifetime_tests::VALUE;
+    use sunrise_client_lib::join_seq::Joined;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::server_side::server_travel::transfer_lifetime_tests::VALUE;
 
-use super::*;
+    use super::*;
 
-use sunrise_mod_runtime::attachments::{
+    use sunrise_mod_runtime::attachments::{
         AttachmentLifetime, AttachmentType, Attachments, HasAttachmentLifetime, Holder,
         index::AttachmentIndex,
     };
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn transfer_arrival_rebinds_only_bound_owners_with_the_same_id() {
         for kind in ["minecraft:minecart", "minecraft:oak_boat", "minecraft:pig"] {
@@ -537,29 +539,28 @@ use sunrise_mod_runtime::attachments::{
     }
 }
 
-
 #[cfg(test)]
 pub(crate) mod credits_respawn_tests {
 
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
-use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::ANCHOR;
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
+    use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::ANCHOR;
 
-use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::placed_guest;
+    use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::placed_guest;
 
-use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::received_packets;
+    use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::received_packets;
 
-use sunrise_gameplay::game::server_side::server_travel::credits_respawn_tests::charge_anchor;
+    use sunrise_gameplay::game::server_side::server_travel::credits_respawn_tests::charge_anchor;
 
-use sunrise_gameplay::game::server_side::server_travel::credits_respawn_tests::light_spawn_chunks;
+    use sunrise_gameplay::game::server_side::server_travel::credits_respawn_tests::light_spawn_chunks;
 
-use sunrise_gameplay_common::game::Dim;
+    use sunrise_gameplay_common::game::Dim;
 
-use std::sync::{Arc, atomic::AtomicI32, mpsc};
+    use std::sync::{Arc, atomic::AtomicI32, mpsc};
 
-use sunrise_level::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
 
-use sunrise_protocol::{
+    use sunrise_protocol::{
         buf::Reader,
         packets::{
             configuration::ClientInformation,
@@ -567,13 +568,13 @@ use sunrise_protocol::{
         },
     };
 
-use sunrise_sim::lan::{
+    use sunrise_sim::lan::{
         Joined, NetConfig, Out, PlayerSender,
         guest::{Guest, InboxItem, SPECTATOR},
         hub::HubConfig,
     };
 
-/// `ServerGamePacketListenerImpl.handleClientCommand(PERFORM_RESPAWN)` for a
+    /// `ServerGamePacketListenerImpl.handleClientCommand(PERFORM_RESPAWN)` for a
     /// player who won the game: `restartClientLoadTimerAfterRespawn`, so the
     /// respawned player is not loaded (its actions wait, `isInvulnerableTo`
     /// spares it) until the client says so or 60 ticks pass.
@@ -643,7 +644,7 @@ use sunrise_sim::lan::{
             "the real first-End-exit path drops only data outside PlayerPersisted"
         );
     }
-/// A scratch server whose Overworld guest has a Nether respawn point.
+    /// A scratch server whose Overworld guest has a Nether respawn point.
     pub(super) fn server_with_a_nether_anchor<'a>(
         resources: &'a mut Option<Arc<sunrise_gameplay_common::game::Resources>>,
     ) -> (
@@ -689,7 +690,7 @@ use sunrise_sim::lan::{
         game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         (scratch, game, rx)
     }
-/// A player whose own point is a charged Nether anchor and who has seen the
+    /// A player whose own point is a charged Nether anchor and who has seen the
     /// credits comes back at that anchor, in the Nether, and the anchor keeps
     /// its charge: `PlayerList.respawn(keepAllPlayerData = true)` resolves the
     /// point in the config's own level and does not use the block up
@@ -741,7 +742,7 @@ use sunrise_sim::lan::{
         );
         assert!(!game.on_server_trip(2), "the trip has arrived");
     }
-/// A spectator that right-clicks the exit portal in the End leaves for the
+    /// A spectator that right-clicks the exit portal in the End leaves for the
     /// level of its own point, not the Overworld: a spectator is a
     /// `ServerPlayer`, so `EndPortalBlock.getPortalDestination` resolves its
     /// point too (`findRespawnPositionAndUseSpawnBlock(false, ..)`).
@@ -786,7 +787,6 @@ use sunrise_sim::lan::{
         assert!(!game.has_pending_travel(2));
     }
 }
-
 
 #[cfg(test)]
 #[path = "server_travel/hold_tests.rs"]

@@ -30,7 +30,8 @@ impl crate::game::ClientGame<'_> {
             .split_once(',')
             .ok_or("SUNRISE_SCREEN_BUILD_FIXTURE=CASES,OUTPUT")?;
         // The container screens read their panel from the block at POS.
-        self.common.world
+        self.common
+            .world
             .chunks
             .insert((0, 0), std::sync::Arc::new(Chunk::empty(0, 0)));
         let text = std::fs::read_to_string(input)?;
@@ -178,7 +179,8 @@ impl crate::game::ClientGame<'_> {
                     _ => ("minecraft:furnace", 3),
                 };
                 let state = self
-                    .common.pack
+                    .common
+                    .pack
                     .assets
                     .registry
                     .default_state(block)
@@ -203,14 +205,16 @@ impl crate::game::ClientGame<'_> {
             }
             "crafting" => {
                 self.common.craft_size = 3;
-                self.common.pack
+                self.common
+                    .pack
                     .assets
                     .registry
                     .default_state("minecraft:air")
                     .ok_or("air")?
             }
             "inventory" => self
-                .common.pack
+                .common
+                .pack
                 .assets
                 .registry
                 .default_state("minecraft:air")

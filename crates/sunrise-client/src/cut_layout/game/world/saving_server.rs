@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use std::time::Duration;
 use std::time::Instant;
@@ -8,9 +6,9 @@ use sunrise_gameplay_common::game::saving::Stage;
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use std::sync::{Arc, mpsc};
     use sunrise_core::nbt::{DISK_WRITE_NESTING_GUARD, Tag};
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_sim::save::{LevelShape, SaveDir};
 
     pub(crate) fn finish_server_staged_save(

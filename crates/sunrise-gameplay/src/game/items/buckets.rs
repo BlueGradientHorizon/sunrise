@@ -31,7 +31,10 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn bucket_use_refused(&self, pos: [i32; 3]) -> bool {
         self.server
             .lan_acting_spawn_protection
-            .is_some_and(|radius| self.common.spawn_protects(radius, self.common.dim.id(), pos))
+            .is_some_and(|radius| {
+                self.common
+                    .spawn_protects(radius, self.common.dim.id(), pos)
+            })
             || (!self.may_build() && !self.can_place_on_in_adventure(pos))
     }
 }

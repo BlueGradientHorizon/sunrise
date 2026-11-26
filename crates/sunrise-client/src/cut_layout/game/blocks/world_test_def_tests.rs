@@ -3,13 +3,13 @@
 //! game's own data: a definition only a world pack has is found and runs
 //! (tools/test_world_test_def_parity.py measures the same on vanilla 26.3).
 use super::*;
-use std::sync::Arc;
-use sunrise_core::geometry::Vec3;
-use sunrise_level::chunk::Chunk;
-use sunrise_client::settings::Settings;
-use sunrise_gameplay_common::game::resource_load::Progress;
 use crate::game::load_resources;
+use std::sync::Arc;
+use sunrise_client::settings::Settings;
+use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::launch_options::Options;
+use sunrise_gameplay_common::game::resource_load::Progress;
+use sunrise_level::chunk::Chunk;
 
 /// A world folder with one data pack holding `h275:broken`.
 fn world_with_pack(tag: &str) -> std::path::PathBuf {
@@ -55,7 +55,8 @@ fn game<'a>(
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         res,

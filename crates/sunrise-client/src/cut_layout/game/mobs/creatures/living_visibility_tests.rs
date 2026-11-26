@@ -1,6 +1,9 @@
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
 use std::sync::{Arc, Mutex};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use {
+    sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+    sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+};
 
 /// Halves the player's visibility, and logs what it was asked.
 struct Halve(Arc<Mutex<Vec<(u32, Option<u32>, f64)>>>);

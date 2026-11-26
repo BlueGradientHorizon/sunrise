@@ -176,7 +176,7 @@ fn encode((width, height, pixels): atlas_sources::Image) -> Option<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
-pub fn fixture_png(width: u32, height: u32, channel: u8) -> Vec<u8> {
+    pub fn fixture_png(width: u32, height: u32, channel: u8) -> Vec<u8> {
         let mut bytes = Vec::new();
         let mut encoder = png::Encoder::new(&mut bytes, width, height);
         encoder.set_color(png::ColorType::Rgba);
@@ -187,13 +187,13 @@ pub fn fixture_png(width: u32, height: u32, channel: u8) -> Vec<u8> {
             .unwrap();
         bytes
     }
-pub fn registration(atlas: &str, definition: &str) -> TextureAtlasRegistration {
+    pub fn registration(atlas: &str, definition: &str) -> TextureAtlasRegistration {
         TextureAtlasRegistration {
             atlas: Identifier::parse(atlas).unwrap(),
             definition: Identifier::parse(definition).unwrap(),
         }
     }
-pub fn root(files: &[(&str, Vec<u8>)]) -> ResourceRoot {
+    pub fn root(files: &[(&str, Vec<u8>)]) -> ResourceRoot {
         let files = files
             .iter()
             .map(|(name, bytes)| ((*name).to_owned(), Resource::bytes(bytes.clone())))
@@ -204,7 +204,7 @@ pub fn root(files: &[(&str, Vec<u8>)]) -> ResourceRoot {
             ResourceSource::indexed(files),
         )
     }
-pub const ICONS: &str = r#"{"sources":[
+    pub const ICONS: &str = r#"{"sources":[
         {"type":"directory","source":"icons","prefix":"icons/"},
         {"type":"single","resource":"icons_mod:misc/badge","sprite":"icons_mod:renamed"},
         {"type":"unstitch","resource":"icons_mod:misc/sheet","divisor_x":2,"divisor_y":1,
@@ -212,14 +212,6 @@ pub const ICONS: &str = r#"{"sources":[
     ]}"#;
 
     use super::*;
-
-    
-
-    
-
-    
-
-    
 
     #[test]
     fn a_registered_atlas_stages_each_sprite_under_its_gui_name_and_refuses_the_rest() {
@@ -399,22 +391,10 @@ pub const ICONS: &str = r#"{"sources":[
         assert_eq!(filtered.source().read(&sprite("moon")).unwrap(), moon);
     }
 
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
     /// Source types a test registers for itself, recording what each question's reader could
     /// list of the load's resources.
-#[cfg(test)]
-impl atlas_sources::ModSources for Recording {
+    #[cfg(test)]
+    impl atlas_sources::ModSources for Recording {
         fn is_registered(&self, kind: &str) -> bool {
             kind == "staged_mod:own"
         }
@@ -432,12 +412,12 @@ impl atlas_sources::ModSources for Recording {
             Vec::new()
         }
     }
-#[cfg(test)]
-/// A mod's sprite source, answering its entries in `icons_mod:icons`: a 2x2 sprite of the
+    #[cfg(test)]
+    /// A mod's sprite source, answering its entries in `icons_mod:icons`: a 2x2 sprite of the
     /// entry's `shade`, and the removal of every listed star.
     struct Checker;
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for Checker {
         fn register_sprite_sources(
             &self,
@@ -475,7 +455,6 @@ impl atlas_sources::ModSources for Recording {
         prefix: &'static str,
         seen: std::sync::Mutex<Vec<(String, Vec<String>)>>,
     }
-    
 
     /// The game's atlases and the registered ones are all listed over the stack the packs gave:
     /// no reader sees a texture staged for a registered atlas, and no directory source of a game
@@ -553,9 +532,6 @@ impl atlas_sources::ModSources for Recording {
         let staged = stage_texture_atlases(base.clone(), &[]);
         assert!(staged.source().same_generation(base.source()));
     }
-
-    
-    
 
     /// A registered source type lists the mod's sprites where its entry stands, a reload asks
     /// again with the definition as the packs now give it, and a provider returning no outputs

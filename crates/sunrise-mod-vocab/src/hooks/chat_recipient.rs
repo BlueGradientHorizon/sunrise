@@ -17,7 +17,8 @@ pub trait Hooks {
     /// nothing is allocated. A `/say` requested while this hook is running fails rather than
     /// reentering the hook or sending an unchecked line. No player's state is swapped in.
     /// Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::chat_recipient::ServerGame<'_>::native_chat_recipient", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::chat_recipient::ServerGame<'_>::native_chat_recipient",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

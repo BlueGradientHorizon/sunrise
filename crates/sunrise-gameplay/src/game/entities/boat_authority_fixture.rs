@@ -1,7 +1,6 @@
 //! The native parity harness runs the client boat ticker and authoritative
 //! boat attacks without a renderer, on an empty world.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::boats_common::Boat;
 use serde::Deserialize;
 use serde_json::json;
 use std::{
@@ -10,6 +9,7 @@ use std::{
 };
 use sunrise_core::geometry::Vec3;
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::boats_common::Boat;
 
 #[derive(Deserialize)]
 struct Case {
@@ -52,7 +52,8 @@ impl ServerGame<'_> {
             boat.velocity = Vec3::new(x, y, z);
             boat.delta_rotation = case.spin;
             self.common.boats.push(boat);
-            let mut player = sunrise_sim::motion::PlayerMotion::new(self.common.motion, Vec3::ZERO)?;
+            let mut player =
+                sunrise_sim::motion::PlayerMotion::new(self.common.motion, Vec3::ZERO)?;
             player.velocity = Vec3::new(
                 attack.player_velocity[0],
                 attack.player_velocity[1],

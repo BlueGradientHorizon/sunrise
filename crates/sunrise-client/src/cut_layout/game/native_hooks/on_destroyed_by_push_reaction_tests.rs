@@ -1,8 +1,6 @@
 //! `on_destroyed_by_push_reaction` heard by a block Part: a piston's move destroying a torch
 //! tells the torch's part before its cell becomes air, and the move overwrites what the part
 //! writes into the move's cells but keeps what it writes elsewhere.
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{
     BlockPart, BlockUpdateFlags, Flow, Hooks, LevelHost, LevelWriteHost,
     OnDestroyedByPushReactionEvent, PistonPreEvent, Registrar,
@@ -15,6 +13,8 @@ use sunrise_core::{
     geometry::Direction,
     position::{BlockPos, ChunkPos},
 };
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_world::{
     level::LevelAccess,
     registry::{BlockRegistry, BlockStateId},
@@ -131,28 +131,30 @@ fn a_block_part_hears_a_piston_destroy_it_before_the_move_overwrites_its_cells()
                     .map(|(_, m)| m.moved_state)
             };
             // A powered piston facing east at (2, 64, z), `ahead` east of it, then a torch.
-            let extend =
-                |game: &mut sunrise_gameplay::game::ServerGame<'_>, z, ahead: &[BlockStateId], client| {
-                    game.with_level(|b, level, ticks| {
-                        level.set_raw(BlockPos::new(1, 64, z), power);
-                        level.set_raw(BlockPos::new(2, 64, z), piston);
-                        for (i, state) in ahead.iter().chain([&torch_state]).enumerate() {
-                            level.set_raw(BlockPos::new(3 + i as i32, 64, z), *state);
-                        }
-                        if client {
-                            // A client replays the server's move with no hooks.
-                            level.client_side = true;
-                            level.native_authoritative = false;
-                        }
-                        b.client_block_event(
-                            level,
-                            ticks,
-                            BlockPos::new(2, 64, z),
-                            0,
-                            Direction::East as i32,
-                        );
-                    });
-                };
+            let extend = |game: &mut sunrise_gameplay::game::ServerGame<'_>,
+                          z,
+                          ahead: &[BlockStateId],
+                          client| {
+                game.with_level(|b, level, ticks| {
+                    level.set_raw(BlockPos::new(1, 64, z), power);
+                    level.set_raw(BlockPos::new(2, 64, z), piston);
+                    for (i, state) in ahead.iter().chain([&torch_state]).enumerate() {
+                        level.set_raw(BlockPos::new(3 + i as i32, 64, z), *state);
+                    }
+                    if client {
+                        // A client replays the server's move with no hooks.
+                        level.client_side = true;
+                        level.native_authoritative = false;
+                    }
+                    b.client_block_event(
+                        level,
+                        ticks,
+                        BlockPos::new(2, 64, z),
+                        0,
+                        Direction::East as i32,
+                    );
+                });
+            };
             let torches = |game: &sunrise_gameplay::game::ServerGame<'_>| {
                 game.dropped
                     .iter()

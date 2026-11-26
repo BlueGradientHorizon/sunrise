@@ -1,7 +1,3 @@
-use sunrise_gameplay_common::game::native_hooks::block_particle_effects_tests::Calls;
-use sunrise_gameplay_common::game::native_hooks::block_particle_effects_tests::Register;
-use sunrise_gameplay_common::game::native_hooks::block_particle_effects_tests::fresh;
-use {sunrise_gameplay_common::game::execution_role::ExecutionRole, crate::game::client_side::native_client_session::tests::logged_client, crate::game::native_entity_refs::tests::fixture_root, crate::game::native_entity_refs::tests::with_game_role_and_facts_client};
 use mod_api::{BlockPos, Direction, ModEntry};
 use std::sync::Arc;
 use sunrise_client::particles::{ParticleLevel, requested_count};
@@ -9,8 +5,17 @@ use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, RandomSource as _},
 };
+use sunrise_gameplay_common::game::native_hooks::block_particle_effects_tests::Calls;
+use sunrise_gameplay_common::game::native_hooks::block_particle_effects_tests::Register;
+use sunrise_gameplay_common::game::native_hooks::block_particle_effects_tests::fresh;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    crate::game::client_side::native_client_session::tests::logged_client,
+    crate::game::native_entity_refs::tests::fixture_root,
+    crate::game::native_entity_refs::tests::with_game_role_and_facts_client,
+    sunrise_gameplay_common::game::execution_role::ExecutionRole,
+};
 
 pub(in crate::game::client_side) fn admit(game: &mut crate::game::ClientGame<'_>) -> usize {
     game.client.particles.0.tick(&ParticleLevel {

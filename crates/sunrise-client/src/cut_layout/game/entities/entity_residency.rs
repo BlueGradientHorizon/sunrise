@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use mod_api::DimensionKey;
 #[cfg(test)]
@@ -11,12 +9,12 @@ mod lifetime_tests;
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use sunrise_client_lib::join_seq::Joined;
-use super::*;
+    use sunrise_core::{geometry::Vec3, position::BlockPos};
     use sunrise_gameplay::game::commands::Target;
     use sunrise_gameplay::game::entity_residency::SlotAccess;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-    use sunrise_core::{geometry::Vec3, position::BlockPos};
     use sunrise_sim::{
         join_seq::{RestoreOrder, residency::table::EntityLookup},
         mobs::Mob,
@@ -25,8 +23,8 @@ use super::*;
     #[test]
     #[ignore = "daily"]
     fn resident_slot_access_routes_live_parked_taken_and_disjoint() {
-        use sunrise_gameplay_common::game::Dim;
         use std::num::NonZeroU32;
+        use sunrise_gameplay_common::game::Dim;
         let id = |value| NonZeroU32::new(value).unwrap();
         with_game(|game| {
             game.reset_entity_residency();
@@ -150,7 +148,8 @@ use super::*;
                 )
             });
             assert!(game.resident_entities.table.try_borrow_mut().is_ok());
-            game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+                .unwrap();
             assert!(matches!(
                 game.with_resident_slot(&DimensionKey::OVERWORLD, id, |slot| slot.is_bound()),
                 SlotAccess::Done(true)

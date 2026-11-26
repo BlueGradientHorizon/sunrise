@@ -1,9 +1,8 @@
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
+use sunrise_sim::projectiles::Hit;
 use sunrise_sim::projectiles::Projectile;
 use sunrise_sim::projectiles::ProjectileKind;
-use sunrise_sim::projectiles::Hit;
 #[cfg(test)]
 #[path = "tests/wind_charged_tests.rs"]
 pub(crate) mod wind_charged_tests;
@@ -15,11 +14,11 @@ pub(crate) mod wind_dragon_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_client_lib::join_seq::Joined;
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use super::*;
+    use super::*;
+    use sunrise_client_lib::join_seq::Joined;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_wind_push_waits_for_fresh_tnt_even_after_a_later_orb_ticked() {
         use std::sync::Arc;

@@ -1,8 +1,8 @@
 //! Client-only workstation UI state (`StationUi`, `EnchantBook`, `CyclingSlot`, `rename_box`)
 //! and the lockstep station open/clear helpers on `ClientGame`.
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::stations_common::{NAME_CHARS, Station};
 use sunrise_core::random::{LegacyRandom, RandomSource};
+use sunrise_gameplay_common::game::stations_common::{NAME_CHARS, Station};
 use sunrise_items::items::ItemStack;
 use sunrise_level::random_source;
 

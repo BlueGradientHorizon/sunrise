@@ -1,11 +1,14 @@
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_level::containers::BlockEntity;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
 use mod_api::*;
 use std::sync::{Arc, Mutex};
 use sunrise_core::{geometry::Vec3, position::BlockPos, random::RandomSource};
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
+use sunrise_level::containers::BlockEntity;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+};
 
 const DEPOT: &str = "contents_changed:depot";
 
@@ -216,7 +219,12 @@ fn with_changes(
     });
 }
 
-fn place(game: &mut sunrise_gameplay::game::ServerGame<'_>, level: LevelRef, pos: [i32; 3], block: &str) {
+fn place(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    level: LevelRef,
+    pos: [i32; 3],
+    block: &str,
+) {
     let state = game.pack.assets.registry.default_state(block).unwrap();
     assert_eq!(
         game.level_set_block(level, pos, state, BlockUpdateFlags::NONE),
@@ -565,7 +573,10 @@ fn a_crafter_notices_its_source_but_not_a_vehicles_placeholder() {
         "game::server_side::machines::contents_changed_tests::a_crafter_notices_its_source_but_not_a_vehicles_placeholder",
         NoticeAction::Observe,
         |game, level, changes| {
-            use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
+            use {
+                sunrise_gameplay_common::game::minecarts::CartKind,
+                sunrise_gameplay_common::game::minecarts::Minecart,
+            };
             let pos = [0, 66, 0];
             let base = game
                 .pack

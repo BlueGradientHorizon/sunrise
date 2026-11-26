@@ -43,7 +43,8 @@ impl crate::game::ClientGame<'_> {
             return;
         };
         let flying: sunrise_level::fast_hash::FxHashSet<u32> = self
-            .common.creatures
+            .common
+            .creatures
             .projectiles
             .iter()
             .map(|p| p.id)
@@ -51,7 +52,10 @@ impl crate::game::ClientGame<'_> {
             .collect();
         let told = |id: i32| {
             let id = id as u32;
-            self.common.mob_index.get_ref(&self.common.mobs, id).is_some()
+            self.common
+                .mob_index
+                .get_ref(&self.common.mobs, id)
+                .is_some()
                 || self.client.text_displays.0.contains_key(&(id as i32))
                 || flying.contains(&id)
         };
@@ -205,7 +209,10 @@ impl crate::game::ClientGame<'_> {
         // trying again a tick before the server's entry ends.
         self.common.cooldowns.tick();
         // Player.tick's sleep counter (the darkening and the wake-up fade).
-        self.common.sleep_timer = sunrise_gameplay_common::game::tick_sleep_timer(self.common.sleep_timer, self.common.sleeping.is_some());
+        self.common.sleep_timer = sunrise_gameplay_common::game::tick_sleep_timer(
+            self.common.sleep_timer,
+            self.common.sleeping.is_some(),
+        );
         if self.common.player.is_none() {
             return Ok(None);
         }
@@ -247,7 +254,8 @@ impl crate::game::ClientGame<'_> {
         // look and the vehicle's fluid shelter are this tick's); positionRider then puts
         // it on the new seat and changes nothing else.
         let old_seat = self
-            .common.riding
+            .common
+            .riding
             .filter(|_| self.client.screen != Screen::Dead)
             .and_then(|_| self.common.player.as_ref().map(|p| p.position));
         let riding = self.client.screen != Screen::Dead && self.remote_ride(keys);
@@ -262,7 +270,8 @@ impl crate::game::ClientGame<'_> {
         // Entity.getFluidInteractionBox asks the vehicle: a boat afloat shelters
         // its passenger's eyes (AbstractBoat.modifyPassengerFluidInteractionBox).
         let boat = self
-            .common.riding
+            .common
+            .riding
             .and_then(|id| self.common.boats.iter().find(|b| b.id == id))
             .map(|b| sunrise_sim::motion::RiddenBoat {
                 under_water: b.under_water(),
@@ -346,7 +355,8 @@ impl crate::game::ClientGame<'_> {
             player.spin_targets.clear();
             if player.auto_spin_attack_ticks > 0 {
                 player.spin_targets.extend(
-                    self.common.mobs
+                    self.common
+                        .mobs
                         .iter()
                         .filter(|m| !m.removed)
                         .map(|m| (m.id, m.bounds())),
@@ -369,7 +379,12 @@ impl crate::game::ClientGame<'_> {
             motion.finish_fluid_tick(answer)?;
             let keys = motion.prepare_local_sprint(keys)?;
             self.player_sprint_tick(keys, sprint_window, None)?;
-            if !self.common.player.as_ref().is_some_and(|p| p.entity_id == body) {
+            if !self
+                .common
+                .player
+                .as_ref()
+                .is_some_and(|p| p.entity_id == body)
+            {
                 return Ok(None);
             }
             // LocalPlayer.aiStep: water vision reads this tick's `Entity.baseTick`
@@ -381,7 +396,8 @@ impl crate::game::ClientGame<'_> {
                 return Ok(None);
             };
             // Only travel writes positions; the fluid and sprint decisions precede this pass.
-            let _sections = section_scope.map(|scope| scope.begin(&mut self.common.native_lifecycle));
+            let _sections =
+                section_scope.map(|scope| scope.begin(&mut self.common.native_lifecycle));
             motion_world!(side, &mut *player).finish_local_tick(keys)?;
             // LocalPlayer.aiStep's makeJump adds a key press to this tick's input.
             packet_keys.jump |= player.was_auto_jump;
@@ -408,21 +424,29 @@ impl crate::game::ClientGame<'_> {
                 let answer = self.ask_swim_entry(decision);
                 let side_server = self.game_side_client();
                 let side = client_game_side!(self, side_server);
-                let Some(player) = self.common.player.as_mut().filter(|p| p.entity_id == body) else {
+                let Some(player) = self.common.player.as_mut().filter(|p| p.entity_id == body)
+                else {
                     return Ok(None);
                 };
                 motion_world!(side, player).finish_rider_base_tick(answer);
                 self.remote_rider_sprint(keys, sprint_window)?;
-                if !self.common.player.as_ref().is_some_and(|p| p.entity_id == body) {
+                if !self
+                    .common
+                    .player
+                    .as_ref()
+                    .is_some_and(|p| p.entity_id == body)
+                {
                     return Ok(None);
                 }
                 self.tick_local_water_vision();
                 let side_server = self.game_side_client();
                 let side = client_game_side!(self, side_server);
-                let Some(player) = self.common.player.as_mut().filter(|p| p.entity_id == body) else {
+                let Some(player) = self.common.player.as_mut().filter(|p| p.entity_id == body)
+                else {
                     return Ok(None);
                 };
-                let _sections = section_scope.map(|scope| scope.begin(&mut self.common.native_lifecycle));
+                let _sections =
+                    section_scope.map(|scope| scope.begin(&mut self.common.native_lifecycle));
                 let mut passenger = motion_world!(side, player);
                 passenger.finish_rider_tick(keys.direction())?;
                 sunrise_world::entity_move::EntityMoveWorld::set_position(&mut passenger, seat)?;
@@ -606,10 +630,13 @@ impl crate::game::ClientGame<'_> {
     /// `isEyeInFluid(FluidTags.WATER)` sample and `this.isSpectator()`.
     pub(in crate::game::client_side) fn tick_local_water_vision(&mut self) {
         let in_water = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .is_some_and(|p| p.is_eye_in_fluid(sunrise_sim::motion::WATER));
-        self.client.fog.tick(in_water, self.own_player_is_spectator());
+        self.client
+            .fog
+            .tick(in_water, self.own_player_is_spectator());
     }
     /// One client tick while connected (Minecraft.tick with a ClientLevel).
     pub fn tick_remote(&mut self) -> Result<()> {
@@ -658,9 +685,9 @@ impl crate::game::ClientGame<'_> {
                 } else {
                     sunrise_items::equipment::MAINHAND
                 };
-                m.extra
-                    .slot_stack(using_slot)
-                    .map_or(25, |stack| sunrise_gameplay_common::game::CommonGame::charge_ticks(stack).max(1)) as i32
+                m.extra.slot_stack(using_slot).map_or(25, |stack| {
+                    sunrise_gameplay_common::game::CommonGame::charge_ticks(stack).max(1)
+                }) as i32
             });
             self.common.mobs[i].extra.held_arm_pose = poses;
             if let Some(duration) = charge_duration {
@@ -687,7 +714,11 @@ impl crate::game::ClientGame<'_> {
             .get_mut()
             .begin_entity_ticks();
         self.tick_remote_entity_turns(running);
-        self.client.client_pick.sections.get_mut().end_entity_ticks();
+        self.client
+            .client_pick
+            .sections
+            .get_mut()
+            .end_entity_ticks();
     }
     pub(in crate::game::client_side) fn tick_remote_entity_turns(&mut self, running: bool) {
         use sunrise_gameplay_common::game::native_ticks::{PLAYER, TickKind};
@@ -871,7 +902,8 @@ impl crate::game::ClientGame<'_> {
         // What a wither's side heads can look at, by network entity id: the
         // mobs and the player (position and eye height).
         let wither_targets: Vec<(i32, [f64; 3], f64)> = if self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .any(|m| m.species() == sunrise_sim::mobs::Species::Wither)
         {
@@ -881,7 +913,8 @@ impl crate::game::ClientGame<'_> {
                 .as_ref()
                 .zip(self.common.eye_position())
                 .map(|(r, eye)| (r.entity_id, eye, eye[1]));
-            self.common.mobs
+            self.common
+                .mobs
                 .iter()
                 .map(|m| {
                     (
@@ -899,7 +932,8 @@ impl crate::game::ClientGame<'_> {
         // their feet and the point `eyeHeight / 2` above them.
         let followed: Vec<([f64; 3], [f64; 3])> = {
             let own = self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .filter(|p| !p.health.dead_or_dying() && !p.spectator)
                 .map(|p| {
@@ -908,7 +942,8 @@ impl crate::game::ClientGame<'_> {
                     (feet, [feet[0], feet[1] + eye / 2.0, feet[2]])
                 });
             let others = self.client.remote.as_ref().into_iter().flat_map(|r| {
-                self.common.mobs
+                self.common
+                    .mobs
                     .iter()
                     .filter(move |m| m.alive() && r.level_players.contains_key(&(m.id as i32)))
                     .filter(move |m| r.remote_player_info_game_mode(m.id as i32) != Some(SPECTATOR))
@@ -929,7 +964,8 @@ impl crate::game::ClientGame<'_> {
             .remote
             .as_ref()
             .map(|r| {
-                self.common.mobs
+                self.common
+                    .mobs
                     .iter()
                     .filter(|m| {
                         r.level_players.contains_key(&(m.id as i32)) && m.extra.ints[1] != 0
@@ -971,7 +1007,9 @@ impl crate::game::ClientGame<'_> {
         };
         let mut places = None;
         for (slot, rain) in rain.iter().copied().enumerate() {
-            let Some(mut i) = sunrise_gameplay_common::game::native_ticks::slot_place(&places, &slots, slot) else {
+            let Some(mut i) =
+                sunrise_gameplay_common::game::native_ticks::slot_place(&places, &slots, slot)
+            else {
                 continue;
             };
             let id = self.common.mobs[i].id;
@@ -1020,7 +1058,8 @@ impl crate::game::ClientGame<'_> {
                         self.common.mobs.iter().map(|m| m.id),
                     ));
                 }
-                match sunrise_gameplay_common::game::native_ticks::slot_place(&places, &slots, slot) {
+                match sunrise_gameplay_common::game::native_ticks::slot_place(&places, &slots, slot)
+                {
                     Some(at) if ticks => i = at,
                     _ => continue,
                 }
@@ -1321,7 +1360,11 @@ impl crate::game::ClientGame<'_> {
         // push out of a block, which are the server's): gravity, buoyancy,
         // collisions and the pull of the nearest player between the server's
         // updates; the server removes it on pickup.
-        let (world, facts, collision) = (&self.common.world, self.common.res.facts(), self.common.collision);
+        let (world, facts, collision) = (
+            &self.common.world,
+            self.common.res.facts(),
+            self.common.collision,
+        );
         let border = Some(self.common.border.geometry());
         let mut lava_random = None;
         let mut next_float = || {
@@ -1448,7 +1491,8 @@ impl crate::game::ClientGame<'_> {
             self.guardian_bubbles();
             // The dragon: LivingEntity's interpolation, inside its aiStep.
             let dragon_lerp = self
-                .common.dragon
+                .common
+                .dragon
                 .as_ref()
                 .and_then(|d| lerps.get_mut(&(d.id as i32)))
                 .filter(|l| l.steps > 0)
@@ -1578,7 +1622,8 @@ impl crate::game::ClientGame<'_> {
         let mut looks = std::mem::take(&mut self.client.guardian_look_scratch);
         looks.clear();
         looks.extend(
-            self.common.mobs
+            self.common
+                .mobs
                 .iter()
                 .enumerate()
                 .filter(|(_, m)| {
@@ -1587,7 +1632,8 @@ impl crate::game::ClientGame<'_> {
                 .filter_map(|(i, m)| {
                     let look = match m.ai.target.filter(|_| m.extra.flag) {
                         Some(Who::Mob(id)) => self
-                            .common.mobs
+                            .common
+                            .mobs
                             .iter()
                             .find(|t| t.id == id)
                             .map(|t| [t.position.x, t.eye_y(), t.position.z]),

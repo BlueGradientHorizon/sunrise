@@ -1,17 +1,17 @@
-use sunrise_core::random::RandomSource;
-use sunrise_sim::projectiles::Hit;
-use sunrise_core::geometry::Vec3;
-use sunrise_sim::mobs::Who;
-use sunrise_sim::projectiles::Projectile;
-use sunrise_sim::projectiles::ProjectileKind;
 use super::*;
 use crate::game::creatures::mob_pearl_hook_tests::PlayerPearlProbe;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::ModEntry;
 use std::sync::{
     Arc,
     atomic::{AtomicU8, Ordering},
 };
+use sunrise_core::geometry::Vec3;
+use sunrise_core::random::RandomSource;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_sim::mobs::Who;
+use sunrise_sim::projectiles::Hit;
+use sunrise_sim::projectiles::Projectile;
+use sunrise_sim::projectiles::ProjectileKind;
 
 pub(crate) fn run_player_pearl_keeps_acting_context_cancellation_and_mutable_damage() {
     use sunrise_sim::motion::PlayerMotion;

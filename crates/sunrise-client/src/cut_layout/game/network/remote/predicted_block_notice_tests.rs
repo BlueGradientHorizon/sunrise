@@ -1,11 +1,17 @@
 // Applied client writes, held server updates and reconciliation through the real Game.
-use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
-use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{BlockStateId, C, Chunk, play}};
-use sunrise_gameplay_common::game::remote::dry_level::DryLevel;
 use mod_api::{BlockPart, LevelDimension, LevelSide, OnBlockStateChangeEvent, Registrar};
 use std::sync::{Arc, Mutex};
+use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::remote::dry_level::DryLevel;
+use {
+    crate::game::remote::*,
+    sunrise_gameplay_common::game::remote::{BlockStateId, C, Chunk, play},
+};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+};
 
 #[derive(Debug, PartialEq, Eq)]
 struct Notice {
@@ -107,7 +113,11 @@ fn expected(pos: [i32; 3], old: &str, new: &str, predicted: bool) -> Notice {
         predicted,
     }
 }
-fn update(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, pos: [i32; 3], state: BlockStateId) {
+fn update(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    pos: [i32; 3],
+    state: BlockStateId,
+) {
     game.handle_packet(C::BlockUpdate(play::BlockUpdate {
         pos,
         state: state.0 as i32,
@@ -237,7 +247,10 @@ fn applied_placement_carries_predicted_true() {
     with_client(
         "applied_placement_carries_predicted_true",
         |game, seen, stone| {
-            game.common.world.set(1, 64, 1, game.common.world.air).unwrap();
+            game.common
+                .world
+                .set(1, 64, 1, game.common.world.air)
+                .unwrap();
             game.predict_blocks(&[(BlockPos::new(1, 64, 1), stone)], 7);
             assert_eq!(
                 *seen.0.lock().unwrap(),

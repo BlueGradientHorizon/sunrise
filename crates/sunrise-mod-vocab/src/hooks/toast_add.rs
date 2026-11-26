@@ -16,7 +16,8 @@ pub trait Hooks {
     /// with a `ClientHost` before applying.
     /// Diagnostics naming a mod's panicking callback are not candidates for
     /// this hook and cannot be edited or cancelled.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::toast_add::ClientGame<'_>::native_toast_add", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::toast_add::ClientGame<'_>::native_toast_add",
         receiver = "read",
         dispatch = "flat",
         side = "client",

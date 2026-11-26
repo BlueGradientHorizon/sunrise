@@ -161,7 +161,8 @@ impl crate::game::ClientGame<'_> {
         &mut self,
         p: play::SetBorderLerpSize,
     ) {
-        self.common.border
+        self.common
+            .border
             .lerp_between(p.old_size, p.new_size, p.lerp_time);
     }
     /// `ClientPacketListener.handleSetSpawn` / `ClientLevel.setRespawnData`: store the
@@ -175,7 +176,8 @@ impl crate::game::ClientGame<'_> {
         // the active level's border, even when the packet names a different level.
         if let Some(remote) = &self.client.remote
             && !self
-                .common.border
+                .common
+                .border
                 .geometry()
                 .is_within_bounds(f64::from(x), f64::from(z), 0.0)
         {
@@ -184,7 +186,8 @@ impl crate::game::ClientGame<'_> {
             // this level's sea level, and for missing chunks use its build minimum.
             const WORLD_RANGE: std::ops::Range<i32> = -30_000_000..30_000_000;
             y = if WORLD_RANGE.contains(&x) && WORLD_RANGE.contains(&z) {
-                self.common.world
+                self.common
+                    .world
                     .chunks
                     .get(&(x >> 4, z >> 4))
                     .and_then(|chunk| chunk.packet_motion_blocking_height(x, z))

@@ -69,7 +69,11 @@ pub(super) fn store<'a>(
 
 /// The server sets the level's value, committed or rolled back.
 #[cfg(any())]
-pub(super) fn set_level(game: &sunrise_client_gameplay::game::ClientGame<'_>, value: i32, commit: bool) {
+pub(super) fn set_level(
+    game: &sunrise_client_gameplay::game::ClientGame<'_>,
+    value: i32,
+    commit: bool,
+) {
     game.client
         .integrated
         .as_ref()

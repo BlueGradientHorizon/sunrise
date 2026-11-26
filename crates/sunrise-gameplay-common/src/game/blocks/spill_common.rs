@@ -80,12 +80,7 @@ impl Pending {
     ) -> Option<std::sync::Arc<sunrise_world::loot::copy::BlockSource>> {
         self.sources.get(&pos).cloned()
     }
-    pub fn record_from(
-        &mut self,
-        world: &sunrise_level::world::World,
-        pos: [i32; 3],
-        saved: Tag,
-    ) {
+    pub fn record_from(&mut self, world: &sunrise_level::world::World, pos: [i32; 3], saved: Tag) {
         let key = (pos[0], pos[1], pos[2]);
         let name = world.block_names.get(&key).cloned();
         self.record_source(pos, source_snapshot(saved, name, world.block_lock(key)));
@@ -93,11 +88,7 @@ impl Pending {
     pub fn record_saved(&mut self, pos: [i32; 3], tag: &sunrise_core::nbt::Tag) {
         self.record_source(pos, source_snapshot(tag.clone(), None, None));
     }
-    pub fn record_source(
-        &mut self,
-        pos: [i32; 3],
-        source: sunrise_world::loot::copy::BlockSource,
-    ) {
+    pub fn record_source(&mut self, pos: [i32; 3], source: sunrise_world::loot::copy::BlockSource) {
         let source = std::sync::Arc::new(source);
         self.sources.insert(pos, source.clone());
         let tag = &source.nbt;
@@ -1000,12 +991,7 @@ impl GameLevel<'_> {
     /// `BlockEntity.preRemoveSideEffects` and `removeBlockEntity` for the block
     /// entity of `old` at `pos`. A block entity Sunrise never created reads as
     /// vanilla's fresh one: an empty container still draws a spot per slot.
-    pub fn remove_entity(
-        &mut self,
-        pos: BlockPos,
-        old: BlockStateId,
-        side_effects: bool,
-    ) -> u8 {
+    pub fn remove_entity(&mut self, pos: BlockPos, old: BlockStateId, side_effects: bool) -> u8 {
         let removal = self.pre_remove_entity(pos, old, side_effects);
         self.finish_remove_entity(pos, old, removal)
     }
@@ -1310,4 +1296,3 @@ impl GameLevel<'_> {
         }
     }
 }
-

@@ -1,10 +1,15 @@
-use sunrise_core::random::RandomSource;
-use {crate::game::creatures::*, sunrise_gameplay_common::game::creatures::{Arc, Hit, Mob, Projectile, ProjectileKind, Species, Vec3, Who}};
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{EnderPearlTeleportEvent, EntityTeleportEvent, Flow, Hooks, ModEntry, ServerHost};
 use std::sync::{
     Mutex,
     atomic::{AtomicU8, Ordering},
+};
+use sunrise_core::random::RandomSource;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use {
+    crate::game::creatures::*,
+    sunrise_gameplay_common::game::creatures::{
+        Arc, Hit, Mob, Projectile, ProjectileKind, Species, Vec3, Who,
+    },
 };
 
 pub(crate) struct PearlProbe {
@@ -95,7 +100,7 @@ fn mob_pearls_use_the_hook_and_recheck_listener_writes_without_player_side_effec
 }
 
 pub(crate) fn run_mob_pearls_use_the_hook_and_recheck_listener_writes_without_player_side_effects()
- {
+{
     let mode = Arc::new(AtomicU8::new(0));
     let owners = Arc::new(Mutex::new(Vec::new()));
     let command_teleports = Arc::new(Mutex::new(Vec::new()));

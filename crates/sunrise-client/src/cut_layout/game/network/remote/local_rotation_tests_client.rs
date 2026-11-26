@@ -1,11 +1,14 @@
-use {sunrise_client_gameplay::game::client_side::native_client_session::tests::finish_login, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client};
-use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use crate::game::remote::movement_input_tests::local_rotation_tests::sent_moves;
 use crate::game::remote::movement_input_tests::local_rotation_tests::sent_packets;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use mod_api::LocalRotationError;
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::connection::Connection;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    sunrise_client_gameplay::game::client_side::native_client_session::tests::finish_login,
+    sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client,
+};
 
 #[test]
 #[ignore = "daily"]

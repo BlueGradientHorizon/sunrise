@@ -1,6 +1,6 @@
 //! AI goals of native mod mob handles.
-use super::native_namespaced_id::namespaced;
 use super::commands::Target;
+use super::native_namespaced_id::namespaced;
 use mod_api::{GoalSpec, MobFilter, MobGoalEntry, MobRef};
 use sunrise_sim::mobs::{
     self, Species,
@@ -60,17 +60,13 @@ impl crate::game::ServerGame<'_> {
     /// (`nearest_target`, `hurt_by_target`) go in through
     /// `add_target_goal`; both selectors take them, as vanilla's two
     /// selectors do.
-    pub fn mob_add_goal(
-        &mut self,
-        mob: MobRef,
-        priority: i32,
-        goal: &GoalSpec,
-    ) -> bool {
+    pub fn mob_add_goal(&mut self, mob: MobRef, priority: i32, goal: &GoalSpec) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         let Some((species, navigation)) = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .find(|m| m.id == id)
             .map(|m| (m.species(), m.ai.nav.kind))
@@ -89,17 +85,13 @@ impl crate::game::ServerGame<'_> {
 
     /// `GoalSelector.addGoal` on the mob's target selector. The same rules
     /// as `add_goal`.
-    pub fn mob_add_target_goal(
-        &mut self,
-        mob: MobRef,
-        priority: i32,
-        goal: &GoalSpec,
-    ) -> bool {
+    pub fn mob_add_target_goal(&mut self, mob: MobRef, priority: i32, goal: &GoalSpec) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         let Some((species, navigation)) = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .find(|m| m.id == id)
             .map(|m| (m.species(), m.ai.nav.kind))
@@ -190,9 +182,16 @@ impl crate::game::ServerGame<'_> {
     /// makes land as any tick's do.
     fn remove_from_selector(&mut self, index: usize, id: &str, targets: bool) -> usize {
         let snapshot: Vec<_> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
-            .map(|m| sunrise_gameplay_common::game::creatures::seen(m, self.common.level.player_uuid, self.items()))
+            .map(|m| {
+                sunrise_gameplay_common::game::creatures::seen(
+                    m,
+                    self.common.level.player_uuid,
+                    self.items(),
+                )
+            })
             .collect();
         let mut mobs = self.common.mobs.lift();
         #[cfg(test)]
@@ -235,7 +234,8 @@ impl crate::game::ServerGame<'_> {
         };
         drop(w);
         lent.give_back(&mut self.common.world);
-        self.common.mobs
+        self.common
+            .mobs
             .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         self.handle_mob_events(events).ok();
         removed
@@ -460,7 +460,11 @@ impl crate::game::ServerGame<'_> {
 
     /// The species of the mob type `id` names (`minecraft:zombie`).
     fn species_of(&self, id: &str) -> Option<Species> {
-        self.common.res.mob_types().get(&namespaced(id)).map(|t| t.species)
+        self.common
+            .res
+            .mob_types()
+            .get(&namespaced(id))
+            .map(|t| t.species)
     }
 }
 

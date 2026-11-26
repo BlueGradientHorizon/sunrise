@@ -1,9 +1,13 @@
 //! Production gateway counters and direct phases over a silent, empty Game.
-use {sunrise_gameplay_common::game::boats_common::Boat, sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_sim::{
     end_gateway::Traveller,
     projectiles::{Projectile, ProjectileKind},
+};
+use {
+    sunrise_gameplay_common::game::boats_common::Boat,
+    sunrise_gameplay_common::game::minecarts::CartKind,
+    sunrise_gameplay_common::game::minecarts::Minecart,
 };
 
 #[test]
@@ -81,10 +85,13 @@ pub(crate) fn run_gateway_counters_match_actual_vanilla_methods() {
 
 // Exercise the real dispatch with cooldown-only states, so no teleport destination is resolved.
 fn game_gateway_phases() -> [[i32; 2]; 4] {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::nbt::Tag;
     use sunrise_level::chunk::Chunk;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -104,7 +111,8 @@ fn game_gateway_phases() -> [[i32; 2]; 4] {
     options.resources = root.clone();
     options.headless = true;
     options.game_dir = Some(std::env::current_dir().unwrap());
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,

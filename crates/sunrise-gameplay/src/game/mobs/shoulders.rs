@@ -35,10 +35,10 @@ impl ServerGame<'_> {
     /// `ServerPlayer.setEntityOnShoulder` for a parrot that touched its
     /// owner: stored in the first free slot, the parrot gone from the world.
     pub fn parrot_to_shoulder(&mut self, mob: u32) {
-        let Some(i) = self
-            .common.mobs
-            .iter()
-            .position(|m| m.id == mob && m.alive() && !m.removed && m.species() == Species::Parrot)
+        let Some(i) =
+            self.common.mobs.iter().position(|m| {
+                m.id == mob && m.alive() && !m.removed && m.species() == Species::Parrot
+            })
         else {
             return;
         };
@@ -58,7 +58,8 @@ impl ServerGame<'_> {
             return;
         }
         let extra = self
-            .common.level
+            .common
+            .level
             .player_extra
             .get_or_insert_with(|| Tag::Compound(Default::default()));
         let Some(key) = KEYS.into_iter().find(|k| !occupied(extra, k)) else {
@@ -84,7 +85,8 @@ impl ServerGame<'_> {
             return;
         };
         let any = self
-            .common.level
+            .common
+            .level
             .player_extra
             .as_ref()
             .is_some_and(|e| KEYS.iter().any(|k| occupied(e, k)));
@@ -107,7 +109,12 @@ impl ServerGame<'_> {
     /// `Silent` chirps or imitates a mob within 20 blocks, one tick in 200
     /// (drawn from the level's random; the player's own is not kept).
     fn play_shoulder_entity_ambient_sound(&mut self, key: &str) {
-        let Some(Tag::Compound(tag)) = self.common.level.player_extra.as_ref().and_then(|e| e.get(key))
+        let Some(Tag::Compound(tag)) = self
+            .common
+            .level
+            .player_extra
+            .as_ref()
+            .and_then(|e| e.get(key))
         else {
             return;
         };
@@ -116,7 +123,10 @@ impl ServerGame<'_> {
             tag.get(&"id".into()),
             Some(Tag::String(id)) if id.to_string_lossy() == "minecraft:parrot"
         );
-        if tag.is_empty() || silent || self.common.world.random.next_int_bound(200).unwrap_or(1) != 0 {
+        if tag.is_empty()
+            || silent
+            || self.common.world.random.next_int_bound(200).unwrap_or(1) != 0
+        {
             return;
         }
         let Some(p) = self.common.player.as_ref() else {
@@ -129,7 +139,8 @@ impl ServerGame<'_> {
         let at = [p.position.x, p.position.y, p.position.z];
         let alive = !p.health.dead_or_dying();
         let nearby: Vec<_> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter(|m| m.alive() && !m.removed && m.bounds().intersects(area))
             .map(|m| (m.kind.id.as_str(), m.silent))
@@ -158,7 +169,8 @@ impl ServerGame<'_> {
     pub fn remove_entities_on_shoulder(&mut self) {
         let (uuid, now) = (self.acting_uuid(), self.common.world.game_time);
         if self
-            .common.creatures
+            .common
+            .creatures
             .shoulder_time
             .get(&uuid)
             .is_some_and(|t| t + 20 >= now)

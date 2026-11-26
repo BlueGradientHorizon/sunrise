@@ -27,10 +27,7 @@ pub fn jukebox_playable(
 }
 
 /// `JukeboxSong.fromStack`: the song the disc names, by its id.
-pub fn song_of_record(
-    record: &ItemStack,
-    items: &sunrise_items::items::Items,
-) -> Option<String> {
+pub fn song_of_record(record: &ItemStack, items: &sunrise_items::items::Items) -> Option<String> {
     jukebox_playable(record, items).flatten()
 }
 

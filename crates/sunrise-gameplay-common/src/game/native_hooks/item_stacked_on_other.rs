@@ -1,8 +1,6 @@
 use super::*;
 
-impl crate::game::CommonGame<'_> {
-
-}
+impl crate::game::CommonGame<'_> {}
 
 pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// NeoForge's `ItemStackedOnOtherEvent`, before either item override: a pickup click on a menu
@@ -12,18 +10,18 @@ pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// validates the answer once and applies it once. Authoritative server side only; only the
     /// `ItemPart` callback below runs on both sides.
     #[inline(never)]
-     fn native_item_stacked_on_other(
+    fn native_item_stacked_on_other(
         &mut self,
         event: &mod_api::item::menu::StackedOnOther,
         result: &mut mod_api::item::menu::StackedOnOtherResult,
         canceled: &mut bool,
     ) {
-        crate::game::native_hooks::fire::FireHooks::fire_item_stacked_on_other(self, event, result, canceled);
+        crate::game::native_hooks::fire::FireHooks::fire_item_stacked_on_other(
+            self, event, result, canceled,
+        );
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> GameHooks<'__sg> for G {}
-
-
 
 pub trait ItemStackedPartGameExt<'g>: crate::game::SideGame<'g> {
     /// `ItemPart::item_stacked_on_other` for `item` (either the carried stack in

@@ -1,17 +1,15 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay_common::game::in_own_process;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::in_own_process;
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
 
-use super::*;
-use mod_api::CommandInvocation;
+    use super::*;
+    use mod_api::CommandInvocation;
 
-/// The issue's case: a console `execute in minecraft:the_nether` reaches the mod with the
+    /// The issue's case: a console `execute in minecraft:the_nether` reaches the mod with the
     /// nether as its level; without it, the console's overworld and spawn corner.
     #[test]
     #[ignore = "daily"]
@@ -75,7 +73,7 @@ use mod_api::CommandInvocation;
             },
         );
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_profile_keeps_its_login_properties() {
         use sunrise_core::profile::AccountProperty;

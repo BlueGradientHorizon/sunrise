@@ -2,9 +2,9 @@
 //! reach (NeoForge's `ExplosionEvent.Detonate`), and the list of them the
 //! listeners leave behind.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::entity::EntityHandle;
 use mod_api::EntityRef;
 use std::collections::HashSet;
+use sunrise_gameplay_common::game::entity::EntityHandle;
 
 impl ServerGame<'_> {
     /// `ServerExplosion.explode` posting `onExplosionDetonate` before any block or
@@ -30,12 +30,11 @@ impl ServerGame<'_> {
         let reach = f64::from(radius) * 2.0 + 1.0;
         let min = center.map(|c| (c - reach).floor());
         let max = center.map(|c| (c + reach).floor());
-        let source = self
+        let source = self.server.combat.0.explosion_direct.or(self
             .server
             .combat
             .0
-            .explosion_direct
-            .or(self.server.combat.0.explosion_source);
+            .explosion_source);
         let mut entities = self
             .level(self.common.dim.id())
             .and_then(|level| self.level_entities_in(level, min, max))
@@ -132,7 +131,13 @@ impl ServerGame<'_> {
         if let Some(i) = self.common.orbs.iter().position(|m| m.id == id) {
             return Some(EntityHandle::Orb(i));
         }
-        if let Some(i) = self.common.creatures.projectiles.iter().position(|m| m.id == id) {
+        if let Some(i) = self
+            .common
+            .creatures
+            .projectiles
+            .iter()
+            .position(|m| m.id == id)
+        {
             return Some(EntityHandle::Projectile(i));
         }
         if let Some(i) = self.common.rockets.iter().position(|m| m.id == id) {
@@ -142,7 +147,8 @@ impl ServerGame<'_> {
             return Some(EntityHandle::Trident(i));
         }
         if let Some(i) = self
-            .common.resident_entities
+            .common
+            .resident_entities
             .general
             .rows
             .iter()

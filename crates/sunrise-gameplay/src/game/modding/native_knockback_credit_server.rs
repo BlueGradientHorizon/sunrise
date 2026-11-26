@@ -53,7 +53,11 @@ impl crate::game::ServerGame<'_> {
         let mob = observed
             .then(|| self.common.mobs.iter().find(|mob| mob.id as i32 == victim))
             .flatten();
-        let existing_player = self.server.last_hurt_by_player.get(&(victim as u32)).copied();
+        let existing_player = self
+            .server
+            .last_hurt_by_player
+            .get(&(victim as u32))
+            .copied();
         let existing_player_live =
             existing_player.is_some_and(|credit| self.resolve_player_credit(credit).is_some());
         let player = mob.and(existing_player);
@@ -62,7 +66,8 @@ impl crate::game::ServerGame<'_> {
                 .player_uuid
                 .map(|uuid| Some(PlayerCredit(sunrise_sim::lan::playerdata::ints_uuid(uuid)))),
             Some(Who::Mob(id)) => self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|mob| mob.id == id && mob.species() == Species::Wolf && mob.extra.tame)
                 .map(|wolf| {
@@ -100,7 +105,8 @@ impl crate::game::ServerGame<'_> {
                 (id, entity(credited))
             });
         let hurt_by = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .any(|m| m.id as i32 == victim && m.species() == Species::Villager)
             .then(|| HurtBy {

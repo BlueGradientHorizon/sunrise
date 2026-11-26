@@ -1,5 +1,5 @@
-use sunrise_gameplay_common::game::maps::{MapBanner, MapData, MapFrame};
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::game::maps::{MapBanner, MapData, MapFrame};
 
 const OPTIONAL: [&str; 6] = [
     "scale",

@@ -1,11 +1,15 @@
 //! Real server/client Game owners, world publication and negotiated client registry limits.
-use sunrise_gameplay_common::game::native_registry_entries::NativeRegistryReads;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{
     DatapackField, DatapackFieldKind, DatapackRegistrySync, Hooks, ModEntry, Registrar,
     RegistrationContext,
 };
 use std::{path::Path, sync::Arc};
+use sunrise_gameplay_common::game::native_registry_entries::NativeRegistryReads;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 struct RegistryMod;
 #[mod_api::__subscriptions]
@@ -45,7 +49,9 @@ pub fn request(root: &Path) -> sunrise_gameplay::game::world_loading::WorldReque
     request.save_root = root.to_owned();
     request
 }
-fn host<'g, 'a, G: sunrise_gameplay_common::game::SideGame<'g> + mod_api::Host>(game: &'a G) -> &'a dyn mod_api::Host {
+fn host<'g, 'a, G: sunrise_gameplay_common::game::SideGame<'g> + mod_api::Host>(
+    game: &'a G,
+) -> &'a dyn mod_api::Host {
     game
 }
 fn id(value: &str) -> mod_api::Identifier {
@@ -53,7 +59,9 @@ fn id(value: &str) -> mod_api::Identifier {
 }
 
 // Feed the same server-built snapshot to both Host implementations.
-fn check_rejected_sync_tags<'g, G: sunrise_gameplay_common::game::SideGame<'g> + mod_api::Host>(game: &G) {
+fn check_rejected_sync_tags<'g, G: sunrise_gameplay_common::game::SideGame<'g> + mod_api::Host>(
+    game: &G,
+) {
     for (registry, name) in [
         ("minecraft:enchantment", "minecraft:sharpness"),
         ("minecraft:entity_type", "minecraft:zombie"),

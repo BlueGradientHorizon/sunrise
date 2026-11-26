@@ -20,7 +20,8 @@ pub trait Hooks {
     /// Only a panic disables that mod's callback for the session. Fall damage follows whether
     /// the trample applies or not. With no listener, the lift, write and damage run in the same
     /// order, without a transaction.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::farmland_trample::ServerGame<'_>::native_farmland_trample", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::farmland_trample::ServerGame<'_>::native_farmland_trample",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

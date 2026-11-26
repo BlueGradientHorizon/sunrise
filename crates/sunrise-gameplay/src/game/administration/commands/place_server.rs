@@ -9,10 +9,14 @@ impl crate::game::ServerGame<'_> {
         min: [i32; 2],
         max: [i32; 2],
     ) -> R<()> {
-        let dimension = self.server.command_source.map_or(self.common.dim, |s| s.dimension);
+        let dimension = self
+            .server
+            .command_source
+            .map_or(self.common.dim, |s| s.dimension);
         for cx in min[0]..=max[0] {
             for cz in min[1]..=max[1] {
-                if dimension != self.common.dim || !self.common.world.chunks.contains_key(&(cx, cz)) {
+                if dimension != self.common.dim || !self.common.world.chunks.contains_key(&(cx, cz))
+                {
                     return Err(err("argument.pos.unloaded", &[]));
                 }
             }
@@ -34,14 +38,16 @@ impl crate::game::ServerGame<'_> {
             .join("structures")
             .join(format!("{path}.nbt"));
         let prepared = self
-            .common.options
+            .common
+            .options
             .resources
             .join("worldgen/structure")
             .join(ns)
             .join(format!("{path}.nbt"));
         let name = format!("data/{ns}/structure/{path}.nbt");
         let resource = self.server.fns.0.data_resource(&name).or_else(|| {
-            self.common.pack
+            self.common
+                .pack
                 .data_source
                 .contains(&name)
                 .then(|| Resource::file(self.common.pack.data_source.clone(), name))

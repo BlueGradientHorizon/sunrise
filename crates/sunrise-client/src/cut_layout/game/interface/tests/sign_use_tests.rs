@@ -46,13 +46,17 @@ fn click_sign(
     let registry = game.pack.assets.registry;
     let sign_state = registry.default_state("minecraft:oak_sign").unwrap();
     game.world.set(2, 4, 3, sign_state).unwrap();
-    game.common.world.set(2, 4, 4, game.common.res.facts().air).unwrap();
+    game.common
+        .world
+        .set(2, 4, 4, game.common.res.facts().air)
+        .unwrap();
     game.world
         .block_entities
         .insert((2, 4, 3), BlockEntity::Sign(sign));
     game.set_mode(GameMode::Adventure);
     *game.held_mut() = Some(stack);
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|events| *events.borrow_mut() = Some(Vec::new()));
     let hit = sunrise_gameplay_common::game::Hit {
         pos: [2, 4, 3],
         face: [0, 0, 1],
@@ -60,7 +64,8 @@ fn click_sign(
         inside: false,
     };
     game.with_player_actor(|g| g.use_hand(Some(&hit))).unwrap();
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| events.borrow_mut().take().unwrap())
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|events| events.borrow_mut().take().unwrap())
 }
 
 /// `SignBlock.useWithoutItem` answers PASS for a sign with no click action to

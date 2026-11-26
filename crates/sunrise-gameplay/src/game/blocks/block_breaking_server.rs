@@ -59,11 +59,7 @@ impl crate::game::ServerGame<'_> {
     /// mined the block `name`: an item with a `tool` component counts as used
     /// and loses its `damage_per_block` on a block that doesn't break
     /// instantly (`ShearsItem`: on any block but fire).
-    pub fn mine_block_with_held(
-        &mut self,
-        name: &str,
-        hardness: f32,
-    ) -> Option<ItemStack> {
+    pub fn mine_block_with_held(&mut self, name: &str, hardness: f32) -> Option<ItemStack> {
         let stack = self.common.inventory[self.common.selected].clone()?;
         let per_block = self.items().mining_damage(&stack)?;
         let max = self.items().mining_damage_capacity(&stack);

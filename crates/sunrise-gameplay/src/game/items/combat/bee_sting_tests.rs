@@ -4,12 +4,7 @@
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::mobs::{Mob, Who, ai::do_hurt_target, goals::Cx};
 
-pub fn spawn(
-    game: &mut crate::game::ServerGame<'_>,
-    id: u32,
-    kind: &str,
-    position: Vec3,
-) -> u32 {
+pub fn spawn(game: &mut crate::game::ServerGame<'_>, id: u32, kind: &str, position: Vec3) -> u32 {
     let kind = game.common.res.mob_types().get(kind).unwrap().clone();
     game.common.mobs.push(Mob::new(id, kind, position, 0.0));
     id
@@ -30,7 +25,8 @@ pub fn sting(game: &mut crate::game::ServerGame<'_>, bee_id: u32, who: Who) {
         };
         do_hurt_target(&mut mobs[i], who, &mut cx);
     }
-    game.common.mobs
+    game.common
+        .mobs
         .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SpawnsFirst);
     game.handle_mob_events(events).unwrap();
 }

@@ -1,7 +1,7 @@
 //! The mouse in play: the look it turns, the pointer grab (`MouseHandler.grabMouse` /
 //! `releaseMouse`), the cursor icon, and pausing a world whose window loses focus.
-use crate::game::client_side::screens::ScreenClientExt as _;
 use super::*;
+use crate::game::client_side::screens::ScreenClientExt as _;
 
 fn studio_suppresses_focus_pause(replay_active: bool, freecam_active: bool) -> bool {
     replay_active || freecam_active
@@ -97,7 +97,10 @@ impl crate::game::ClientGame<'_> {
             .is_some_and(|t| t.elapsed() > Duration::from_millis(500))
             && self.common.control.is_none()
             && self.client.screen == Screen::Playing
-            && !studio_suppresses_focus_pause(self.client.replay.playing(), self.client.studio.flying())
+            && !studio_suppresses_focus_pause(
+                self.client.replay.playing(),
+                self.client.studio.flying(),
+            )
             && self.common.player.is_some()
             && !self.common.options.no_pause
             && self.client.settings.file.bool("pauseOnLostFocus")
@@ -157,7 +160,8 @@ impl crate::game::ClientGame<'_> {
         // are screens over the world that keep the pointer, as does a screen a
         // mod's `screen_opening` answer kept or opened in place of none.
         if capture
-            && ((self.client.screen_state.0.answered.get() && self.client.screen != Screen::Playing)
+            && ((self.client.screen_state.0.answered.get()
+                && self.client.screen != Screen::Playing)
                 || (!self.client.focused && !self.client.unclaimed_window && !self.scripted_run())
                 || self.client.server_packs.0.prompt.is_some()
                 || self.dialog_open()
@@ -409,7 +413,9 @@ impl crate::game::ClientGame<'_> {
             self.capture(false);
             return;
         }
-        if std::mem::take(&mut self.client.regrab_on_refocus) && self.client.screen == Screen::Playing {
+        if std::mem::take(&mut self.client.regrab_on_refocus)
+            && self.client.screen == Screen::Playing
+        {
             self.capture(true);
         }
     }
@@ -426,8 +432,6 @@ fn top_screen_pauses(dialog: Option<bool>, book: Option<bool>, screen: bool, win
 #[cfg(test)]
 mod tests {
     use super::{studio_suppresses_focus_pause, top_screen_pauses};
-
-    
 
     #[test]
     fn studio_replay_and_freecam_never_pause_on_focus_loss() {

@@ -1,9 +1,9 @@
-use std::sync::Arc;
-use sunrise_core::geometry::Vec3;
-use sunrise_sim::mobs::Mob;
 use super::*;
 use mod_api::{self, Hooks, LivingConversionPostEvent, ModEntry, ServerHost};
+use std::sync::Arc;
 use std::sync::Mutex;
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::Mob;
 
 #[test]
 #[ignore = "daily"]

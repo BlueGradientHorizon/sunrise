@@ -1,7 +1,7 @@
 //! Explicit client attack batches; the stored tick/frame pick lives in client_pick.
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::commands_common::Target;
 use mod_api::{CrosshairTarget, EntityRef};
+use sunrise_gameplay_common::game::commands_common::Target;
 
 fn target_point(eye: [f64; 3], bounds: [[f64; 3]; 2], reach: f64) -> Option<([f64; 3], f64)> {
     if !reach.is_finite()
@@ -24,10 +24,7 @@ fn target_point(eye: [f64; 3], bounds: [[f64; 3]; 2], reach: f64) -> Option<([f6
 }
 
 impl ClientGame<'_> {
-    pub fn targeting_entity_hit(
-        &self,
-        entity: EntityRef,
-    ) -> Option<([f64; 3], f64)> {
+    pub fn targeting_entity_hit(&self, entity: EntityRef) -> Option<([f64; 3], f64)> {
         let remote = self.client.remote.as_ref().filter(|r| r.logged_in)?;
         if !self.common.native_window() || remote.entity_id as u32 == entity.id() {
             return None;
@@ -45,12 +42,14 @@ impl ClientGame<'_> {
             | Target::Cushion(_) => true,
             Target::Other(id) => self.client.interactions.contains_key(&(id as i32)),
             Target::Projectile(id) => self
-                .common.creatures
+                .common
+                .creatures
                 .projectiles
                 .iter()
                 .any(|p| p.id == id && self.projectile_is_pickable(p)),
             Target::Trident(id) => self
-                .common.tridents
+                .common
+                .tridents
                 .iter()
                 .any(|t| t.id == id && self.trident_is_pickable(t)),
             _ => false,
@@ -121,7 +120,7 @@ impl ClientGame<'_> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-pub fn receive_attacks(server: &mut sunrise_protocol::connection::Connection) -> Vec<i32> {
+    pub fn receive_attacks(server: &mut sunrise_protocol::connection::Connection) -> Vec<i32> {
         use sunrise_protocol::packets::play::Serverbound as S;
         let mut ids = Vec::new();
         loop {
@@ -137,7 +136,7 @@ pub fn receive_attacks(server: &mut sunrise_protocol::connection::Connection) ->
     use super::*;
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn target_range_uses_nearest_box_point_and_rejects_invalid_geometry() {
         let bounds = [[2.0, -1.0, -1.0], [4.0, 1.0, 1.0]];
         assert_eq!(
@@ -157,13 +156,11 @@ pub fn receive_attacks(server: &mut sunrise_protocol::connection::Connection) ->
     }
 
     #[cfg(test)]
-#[derive(Default)]
+    #[derive(Default)]
     struct AttackBatch {
         targets: std::sync::Mutex<Vec<EntityRef>>,
         cancel: std::sync::atomic::AtomicBool,
     }
-    
-    
 
     pub fn finish_login(
         game: &mut crate::game::ClientGame<'_>,
@@ -212,10 +209,6 @@ pub fn receive_attacks(server: &mut sunrise_protocol::connection::Connection) ->
         game.send(S::Punch(Empty));
         receive_attacks(server)
     }
-
-    
-
-    
 }
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;

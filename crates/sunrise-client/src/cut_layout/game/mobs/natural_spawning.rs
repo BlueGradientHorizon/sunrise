@@ -1,11 +1,9 @@
-
-
 #![cfg(test)]
-use sunrise_gameplay::game::server_side::natural_spawning::SpawnScratch;
-use sunrise_sim::mobs::spawn_selection;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::LegacyRandom;
+use sunrise_gameplay::game::server_side::natural_spawning::SpawnScratch;
 use sunrise_gameplay_common::game::Dim;
+use sunrise_sim::mobs::spawn_selection;
 #[cfg(test)]
 #[path = "natural_spawning/spawn_obstruction_fixture.rs"]
 mod spawn_obstruction_fixture;
@@ -13,15 +11,15 @@ mod spawn_obstruction_fixture;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_client_lib::mobs::spawn_rules::SpawnLevel;
-use sunrise_client_lib::mobs::spawn_selection::NaturalLevel;
-use sunrise_core::random::RandomSource;
-use sunrise_gameplay_common::game::GameGameExt1;
-use super::*;
-use sunrise_sim::mobs::spawn_selection::{Category, Heightmap};
-use sunrise_gameplay_common::world_biomes;
+    use super::*;
+    use sunrise_client_lib::mobs::spawn_rules::SpawnLevel;
+    use sunrise_client_lib::mobs::spawn_selection::NaturalLevel;
+    use sunrise_core::random::RandomSource;
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::world_biomes;
+    use sunrise_sim::mobs::spawn_selection::{Category, Heightmap};
 
-/// `Level.hasNearbyAlivePlayer` as spawners ask it, against the same
+    /// `Level.hasNearbyAlivePlayer` as spawners ask it, against the same
     /// test on every player's full record (`level_players`).
     #[test]
     #[ignore = "daily"]
@@ -113,7 +111,7 @@ use sunrise_gameplay_common::world_biomes;
             assert_eq!(full(&game, x, range), near, "{x} {range}");
         }
     }
-/// An End chunk read back from a save holds the table's first biome (badlands) in the
+    /// An End chunk read back from a save holds the table's first biome (badlands) in the
     /// sections its widened column adds below Y 0 and above 255. Natural spawning reads the
     /// level's own range (`getMinY` 0, `getMaxY` 255) and biomes clamped to it
     /// (`getNoiseBiome`): next to a floor at Y 0 every monster list is the End's, and an
@@ -155,7 +153,7 @@ use sunrise_gameplay_common::world_biomes;
         assert_eq!(level.heightmap(Heightmap::WorldSurface, 3, 3), 0);
         assert_eq!(level.heightmap(Heightmap::MotionBlocking, 3, 3), 0);
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn authoritative_world_border_gates_positions_and_whole_chunks() {
         use sunrise_core::position::BlockPos;
@@ -184,7 +182,7 @@ use sunrise_gameplay_common::world_biomes;
             assert!(!game.mob_world_base(&[]).within_world_border(17, 0));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn world_border_outer_chunk_gate_keeps_attempt_randomness() {
         use std::sync::Arc;
@@ -239,7 +237,7 @@ use sunrise_gameplay_common::world_biomes;
             );
         });
     }
-/// `ServerLevel.tick` ticks the raids before the chunk source spawns
+    /// `ServerLevel.tick` ticks the raids before the chunk source spawns
     /// (`raids.tick`, then `getChunkSource().tick`): a wave that lands in a
     /// tick joins before that tick's natural and custom spawns, with the
     /// lower entity ids. The phases name themselves in the spans they run in.

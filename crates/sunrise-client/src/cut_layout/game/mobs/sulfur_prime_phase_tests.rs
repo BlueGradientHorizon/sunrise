@@ -4,12 +4,17 @@
 //! (`detectEquipmentUpdates` → `collectEquipmentChanges`), so a cube loaded
 //! with a TNT body on a redstone block primes on its second tick
 //! (tools/test_sulfur_prime_phase_parity.py measures the same on vanilla 26.3).
-use {crate::game::*, sunrise_gameplay_common::game::{Instant, Options, PathBuf, Progress, Resources, entity, execution_role}};
 use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{
+        Instant, Options, PathBuf, Progress, Resources, entity, execution_role,
+    },
+};
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,

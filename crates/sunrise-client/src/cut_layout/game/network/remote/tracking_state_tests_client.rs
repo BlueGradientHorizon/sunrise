@@ -1,10 +1,9 @@
 #[test]
 #[ignore = "daily"]
 fn tracking_emitters_follow_the_packet_target() {
-    use sunrise_client_lib::audio::Audio;
     use crate::game::load_resources;
     use crate::settings::Settings;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay_common::game::totem_common::TOTEM_EVENT};
+    use sunrise_client_lib::audio::Audio;
     use sunrise_core::geometry::Vec3;
     use sunrise_level::particle_options::ParticleType;
     use sunrise_protocol::{
@@ -12,6 +11,11 @@ fn tracking_emitters_follow_the_packet_target() {
         packets::play::{self, Clientbound as C},
     };
     use sunrise_sim::{motion::PlayerMotion, pose::Pose};
+    use {
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        sunrise_gameplay_common::game::execution_role::ExecutionRole,
+        sunrise_gameplay_common::game::totem_common::TOTEM_EVENT,
+    };
 
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
@@ -57,26 +61,24 @@ fn tracking_emitters_follow_the_packet_target() {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(0.0, 64.0, 0.0)).unwrap());
     game.client.particles.0.seed_randoms(42, 43, 44);
 
-    let check = |game: &sunrise_client_gameplay::game::ClientGame<'_>,
-                 ty,
-                 feet: [f64; 3],
-                 height: f32| {
-        let mut seen = false;
-        for (options, at, velocity) in game.client.particles.0.requested.as_ref().unwrap() {
-            if options.ty != ty {
-                continue;
+    let check =
+        |game: &sunrise_client_gameplay::game::ClientGame<'_>, ty, feet: [f64; 3], height: f32| {
+            let mut seen = false;
+            for (options, at, velocity) in game.client.particles.0.requested.as_ref().unwrap() {
+                if options.ty != ty {
+                    continue;
+                }
+                seen = true;
+                let y = feet[1] + f64::from(height) * (0.5 + (velocity[1] - 0.2) / 4.0);
+                assert!((at[0] - feet[0]).abs() <= f64::from(0.6_f32) / 4.0);
+                assert!(
+                    (at[1] - y).abs() < 1e-10,
+                    "{ty:?} at {at:?}, expected y {y}"
+                );
+                assert!((at[2] - feet[2]).abs() <= f64::from(0.6_f32) / 4.0);
             }
-            seen = true;
-            let y = feet[1] + f64::from(height) * (0.5 + (velocity[1] - 0.2) / 4.0);
-            assert!((at[0] - feet[0]).abs() <= f64::from(0.6_f32) / 4.0);
-            assert!(
-                (at[1] - y).abs() < 1e-10,
-                "{ty:?} at {at:?}, expected y {y}"
-            );
-            assert!((at[2] - feet[2]).abs() <= f64::from(0.6_f32) / 4.0);
-        }
-        assert!(seen, "no {ty:?} emissions");
-    };
+            assert!(seen, "no {ty:?} emissions");
+        };
     let types = [
         ParticleType::Crit,
         ParticleType::EnchantedHit,

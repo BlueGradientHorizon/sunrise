@@ -83,7 +83,8 @@ impl crate::game::ClientGame<'_> {
             );
             true
         } else if self
-            .common.res
+            .common
+            .res
             .items()
             .get(&stack.item)
             .is_some_and(|i| i.cushion_color.is_some())
@@ -217,7 +218,11 @@ impl crate::game::ClientGame<'_> {
             let block = sunrise_core::position::BlockPos::containing(Vec3::new(
                 origin[0], origin[1], origin[2],
             ));
-            if !self.common.border.contains(f64::from(block.x), f64::from(block.z)) {
+            if !self
+                .common
+                .border
+                .contains(f64::from(block.x), f64::from(block.z))
+            {
                 return true;
             }
             let Some(eye) = self.common.eye_position() else {
@@ -254,14 +259,16 @@ impl crate::game::ClientGame<'_> {
             let is_painting = self.common.paintings.iter().any(|p| p.id as i32 == hit.id);
             let held = self.with_hand(hand, |g| g.held().cloned());
             let frame_passes = self
-                .common.item_frames
+                .common
+                .item_frames
                 .iter()
                 .find(|f| f.id as i32 == hit.id)
                 .is_some_and(|f| {
                     item_frame_interact_passes(f.fixed, f.item.is_some(), held.is_some())
                 });
             let boat_passes = self
-                .common.boats
+                .common
+                .boats
                 .iter()
                 .enumerate()
                 .find(|(_, b)| b.id as i32 == hit.id)
@@ -274,15 +281,19 @@ impl crate::game::ClientGame<'_> {
                     )
                 });
             let (cart_passes, is_rideable_cart) = self
-                .common.carts
+                .common
+                .carts
                 .iter()
                 .find(|c| c.id as i32 == hit.id)
                 .map(|c| {
                     let ridden = self.common.riding == Some(c.id)
                         || self.common.mobs.iter().any(|m| m.extra.mount == Some(c.id));
                     (
-                        c.kind
-                            .interact_passes(sneaking, ridden, self.common.can_use_game_master_blocks()),
+                        c.kind.interact_passes(
+                            sneaking,
+                            ridden,
+                            self.common.can_use_game_master_blocks(),
+                        ),
                         c.kind == sunrise_gameplay_common::game::minecarts::CartKind::Rideable,
                     )
                 })
@@ -301,7 +312,11 @@ impl crate::game::ClientGame<'_> {
             // EndCrystal, EnderDragonPart, PrimedTnt, and FallingBlock keep Entity.interact's PASS.
             let crystal_passes = self.common.crystals.iter().any(|c| c.id as i32 == hit.id)
                 || self.common.dragon.as_ref().is_some_and(|d| {
-                    sunrise_gameplay_common::game::dragon_common::dragon_part_index(d.id, hit.id as u32).is_some()
+                    sunrise_gameplay_common::game::dragon_common::dragon_part_index(
+                        d.id,
+                        hit.id as u32,
+                    )
+                    .is_some()
                 });
             let tnt_or_falling_passes = self.common.tnts.iter().any(|t| t.id as i32 == hit.id)
                 || self.common.falling.iter().any(|f| f.id as i32 == hit.id);
@@ -332,14 +347,17 @@ impl crate::game::ClientGame<'_> {
             // a successful boarding click, not on SetPassengers (commands
             // can mount a player without this interaction).
             if let Some(i) = self.common.carts.iter().position(|c| {
-                c.id as i32 == hit.id && c.kind == sunrise_gameplay_common::game::minecarts::CartKind::Rideable
+                c.id as i32 == hit.id
+                    && c.kind == sunrise_gameplay_common::game::minecarts::CartKind::Rideable
             }) {
-                self.common.carts
+                self.common
+                    .carts
                     .update(i, |c| c.player_rotation_offset = c.rotation_offset);
             }
             // MinecartCommandBlock.interact on the client: the editor opens.
             if self.common.carts.iter().any(|c| {
-                c.id as i32 == hit.id && c.kind == sunrise_gameplay_common::game::minecarts::CartKind::CommandBlock
+                c.id as i32 == hit.id
+                    && c.kind == sunrise_gameplay_common::game::minecarts::CartKind::CommandBlock
             }) {
                 self.open_cart_command_block(hit.id as u32);
             }
@@ -378,7 +396,10 @@ impl crate::game::ClientGame<'_> {
             }
             if !player
                 && self.with_hand(hand, |g| {
-                    g.item_interact_mob(Some(sunrise_gameplay_common::game::InteractTarget { id, location }))
+                    g.item_interact_mob(Some(sunrise_gameplay_common::game::InteractTarget {
+                        id,
+                        location,
+                    }))
                 })
             {
                 return true;
@@ -471,7 +492,8 @@ impl crate::game::ClientGame<'_> {
                     || held.as_ref().is_some_and(|stack| {
                         self.items().get(&stack.item).is_some_and(|info| {
                             !self
-                                .common.cooldowns
+                                .common
+                                .cooldowns
                                 .is_on_cooldown(&sunrise_items::cooldowns::group(
                                     stack,
                                     info.use_cooldown.as_ref(),
@@ -503,7 +525,9 @@ impl crate::game::ClientGame<'_> {
                 && vanilla_block
                 && self.common.shelf_hit(&hit).is_some();
             let (result, changes) = if let Some(answer) = block_answer {
-                if let Some(result) = sunrise_gameplay_common::game::native_hooks::block_use_result(answer) {
+                if let Some(result) =
+                    sunrise_gameplay_common::game::native_hooks::block_use_result(answer)
+                {
                     (result, DryUse::default())
                 } else if hand == Hand::Main {
                     self.remote_block_template(&hit, held.as_ref(), true, true)
@@ -581,10 +605,13 @@ impl crate::game::ClientGame<'_> {
                 self.redstone_ore_particles(hit.pos);
                 let state = self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
                 let name = self.block_name(hit.pos);
-                let lit =
-                    self.common.pack.assets.registry.state(state).is_some_and(|s| {
-                        s.properties.get("lit").map(String::as_str) == Some("true")
-                    });
+                let lit = self
+                    .common
+                    .pack
+                    .assets
+                    .registry
+                    .state(state)
+                    .is_some_and(|s| s.properties.get("lit").map(String::as_str) == Some("true"));
                 let snuffs = if name.ends_with("candle_cake") {
                     hit.point[1] - f64::from(hit.pos[1]) > 0.5
                 } else {
@@ -744,7 +771,13 @@ impl crate::game::ClientGame<'_> {
             {
                 // PotionItem.useOn pours out the bottle and turns the block to
                 // mud locally; sounds and splash particles come from the server.
-                if let Some(mud) = self.common.pack.assets.registry.default_state("minecraft:mud") {
+                if let Some(mud) = self
+                    .common
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:mud")
+                {
                     let pos =
                         sunrise_core::position::BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]);
                     self.predict_blocks(&[(pos, mud)], seq);
@@ -801,7 +834,8 @@ impl crate::game::ClientGame<'_> {
             .get(&entity.id())
             .copied()
             .or_else(|| {
-                self.common.resident_entities
+                self.common
+                    .resident_entities
                     .knots
                     .iter()
                     .find(|k| k.id == entity.id())

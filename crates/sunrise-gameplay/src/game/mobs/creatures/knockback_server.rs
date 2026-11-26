@@ -1,6 +1,6 @@
 use super::*;
-use sunrise_gameplay_common::game::creatures::knockback::apply_player_knockback;
 use mod_api::KnockbackEntry;
+use sunrise_gameplay_common::game::creatures::knockback::apply_player_knockback;
 
 impl crate::game::ServerGame<'_> {
     /// `LivingEntity.knockback` on the player: pushed `power` away from the

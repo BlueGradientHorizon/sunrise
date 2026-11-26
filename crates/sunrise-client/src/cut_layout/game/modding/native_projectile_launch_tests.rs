@@ -1,8 +1,8 @@
 //! Owner launch boundary regression with vanilla's deterministic sequence.
 #![cfg(test)]
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::Identifier;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::Mob;
 

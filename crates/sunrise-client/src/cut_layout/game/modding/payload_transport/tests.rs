@@ -434,15 +434,20 @@ fn integrated_memory_delivers_registered_raw_payload_and_reply() {
                 "production integrated server handle"
             );
             let wire_timeline = timeline.clone();
-            game.client.remote.as_ref().unwrap().session.start_recording(
-                WireReceipt {
-                    channel: CHANNEL,
-                    expected: expected.clone(),
-                    hits: wire_hits.clone(),
-                    observed: Some(Arc::new(move || wire_timeline.mark(5))),
-                },
-                |_| {},
-            );
+            game.client
+                .remote
+                .as_ref()
+                .unwrap()
+                .session
+                .start_recording(
+                    WireReceipt {
+                        channel: CHANNEL,
+                        expected: expected.clone(),
+                        hits: wire_hits.clone(),
+                        observed: Some(Arc::new(move || wire_timeline.mark(5))),
+                    },
+                    |_| {},
+                );
             let deadline = Instant::now() + WAIT_BUDGET;
             timeline.mark(2);
             sampler.start();

@@ -172,8 +172,10 @@ impl ViewedWorld {
                     .ok_or(RouteError::ClockOverflow)?;
                 if let Some(clock) = &mut self.clock {
                     let mut moved = clock.clone();
-                    sunrise_gameplay_common::game::remote::client_level_tick::advance_clock(&mut moved, delta)
-                        .ok_or(RouteError::ClockOverflow)?;
+                    sunrise_gameplay_common::game::remote::client_level_tick::advance_clock(
+                        &mut moved, delta,
+                    )
+                    .ok_or(RouteError::ClockOverflow)?;
                     *clock = moved;
                 }
                 self.world.game_time = p.game_time;

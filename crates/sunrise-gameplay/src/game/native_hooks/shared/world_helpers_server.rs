@@ -41,7 +41,8 @@ impl crate::game::ServerGame<'_> {
         {
             return Vec::new();
         }
-        self.common.dropped
+        self.common
+            .dropped
             .iter()
             .filter(|e| e.stack.count > 0 && box_meets(&e.bounds(), min, max))
             .map(|e| NativeItemEntity {

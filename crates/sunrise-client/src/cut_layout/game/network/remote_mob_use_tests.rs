@@ -33,7 +33,8 @@ fn remote_mob_takes_only_adult_piglin_currency_with_free_offhand() {
             g.mobs[0].extra.age = -24000;
             assert!(!g.remote_mob_takes(0, Hand::Main));
             g.mobs[0].extra.age = 0;
-            g.common.inventory[g.common.selected] = Some(ItemStack::new("minecraft:golden_apple", 1));
+            g.common.inventory[g.common.selected] =
+                Some(ItemStack::new("minecraft:golden_apple", 1));
             assert!(!g.remote_mob_takes(0, Hand::Main));
             g.remote_use_item(Hand::Main);
             assert!(g.using.is_some());

@@ -10,7 +10,8 @@ pub trait Hooks {
     /// `selection` starts at `None`. Listeners share it in dispatch order: leave it
     /// unchanged, replace it, or clear it. The final answer applies only to this
     /// frame. An absent, freed or non-64×64 dynamic texture keeps both vanilla values.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::resolve_player_skin::ClientGame<'_>::native_resolve_player_skin", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::resolve_player_skin::ClientGame<'_>::native_resolve_player_skin",
         receiver = "read",
         dispatch = "flat",
         side = "client",

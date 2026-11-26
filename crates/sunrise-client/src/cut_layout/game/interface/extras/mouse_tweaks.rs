@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
@@ -9,9 +7,9 @@ mod result_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use sunrise_client_gameplay::game::client_side::extras::mouse_tweaks::Drag;
     use sunrise_gameplay_common::game::Screen;
-    use crate::game::server_side::native_entity_refs::tests::with_client_game;
 
     #[test]
     #[ignore = "daily"]

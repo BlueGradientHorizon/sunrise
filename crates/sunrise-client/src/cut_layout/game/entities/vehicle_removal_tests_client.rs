@@ -1,4 +1,3 @@
-use sunrise_gameplay_common::game::commands_common::Target;
 use crate::game::server_side::vehicle_removal_tests::finish_death_on_next_tick;
 use crate::game::server_side::vehicle_removal_tests::push_pig;
 use crate::game::server_side::vehicle_removal_tests::with_removal_test_hooks;
@@ -7,6 +6,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
+use sunrise_gameplay_common::game::commands_common::Target;
 
 #[test]
 #[ignore = "daily"]

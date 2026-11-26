@@ -137,12 +137,7 @@ impl crate::game::ServerGame<'_> {
     /// `Player.attack` for a player, a mob or another entity, and the deflection of a fireball,
     /// a wind charge or a shulker bullet. True when the blow landed. A fake player's
     /// `PlayerRef::perform_action` runs it as the packet does.
-    pub fn guest_attack(
-        &mut self,
-        conn: u32,
-        gi: usize,
-        id: i32,
-    ) -> Result<bool, ActionRefused> {
+    pub fn guest_attack(&mut self, conn: u32, gi: usize, id: i32) -> Result<bool, ActionRefused> {
         let Some(host) = self.server.lan.as_ref() else {
             return Err(ActionRefused::Stale);
         };
@@ -218,7 +213,9 @@ impl crate::game::ServerGame<'_> {
         // view (ServerGamePacketListenerImpl.handleInteract, then
         // Player.attack's AIM_DEFLECT).
         if let Some(i) = self.common.creatures.projectiles.iter().position(|p| {
-            p.id != 0 && p.id as i32 == id && sunrise_gameplay_common::game::deflect_common::attackable(p)
+            p.id != 0
+                && p.id as i32 == id
+                && sunrise_gameplay_common::game::deflect_common::attackable(p)
         }) {
             return Ok(self.as_guest_at(gi, conn, |g| {
                 if !g.within_interaction_range(i) {
@@ -236,10 +233,16 @@ impl crate::game::ServerGame<'_> {
             }) == Ok(true));
         }
         if let Some(index) = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .position(|m| m.id as i32 == id && m.alive())
-            .filter(|_| self.common.dragon.as_ref().is_none_or(|d| d.id as i32 != id))
+            .filter(|_| {
+                self.common
+                    .dragon
+                    .as_ref()
+                    .is_none_or(|d| d.id as i32 != id)
+            })
         {
             let Some(host) = self.server.lan.as_ref() else {
                 return Err(ActionRefused::Stale);
@@ -277,18 +280,30 @@ impl crate::game::ServerGame<'_> {
             return Err(ActionRefused::Stale);
         };
         let (old_yaw, old_pitch) = (host.hub.guests[gi].yaw, host.hub.guests[gi].pitch);
-        let boat = self.common.boats.iter().position(|boat| boat.id as i32 == id);
+        let boat = self
+            .common
+            .boats
+            .iter()
+            .position(|boat| boat.id as i32 == id);
         let tnt = self
-            .common.tnts
+            .common
+            .tnts
             .iter()
             .find(|tnt| tnt.id as i32 == id)
             .map(|tnt| tnt.id);
-        let falling = self.common.falling.iter().any(|block| block.id as i32 == id);
+        let falling = self
+            .common
+            .falling
+            .iter()
+            .any(|block| block.id as i32 == id);
         if falling {
             // FallingBlockEntity.isAttackable is false: Player.attack exits at cannotAttack.
             return Ok(false);
         }
-        let general = match u32::try_from(id).ok().and_then(|id| self.common.general_row(id)) {
+        let general = match u32::try_from(id)
+            .ok()
+            .and_then(|id| self.common.general_row(id))
+        {
             Some(row) => {
                 let catalog = sunrise_gameplay_common::game::general::general_type_catalog();
                 if !catalog.pickable(row.type_slot) {
@@ -384,7 +399,11 @@ impl crate::game::ServerGame<'_> {
                 .as_guest_at(gi, conn, |g| {
                     let swings = g.swings_started;
                     let consumed = g.with_hand(hand, |g| g.use_knot(knot, true));
-                    reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.common.swings_started);
+                    reset_use_attack_strength(
+                        &mut g.server.attack_ticks,
+                        swings,
+                        g.common.swings_started,
+                    );
                     (g.swings_started != swings, consumed)
                 })
                 .ok();
@@ -408,7 +427,11 @@ impl crate::game::ServerGame<'_> {
                 let consumed = matches!(g.use_item(), Ok(Some(_))) && !g.server.use_failed;
                 g.server.guest_use = saved;
                 g.server.use_failed = failed;
-                reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.common.swings_started);
+                reset_use_attack_strength(
+                    &mut g.server.attack_ticks,
+                    swings,
+                    g.common.swings_started,
+                );
                 (g.swings_started != swings, consumed)
             })
             .ok();
@@ -479,7 +502,8 @@ impl crate::game::ServerGame<'_> {
                 Vec3::new(p.x + half, p.y + knot.height, p.z + half),
             ));
         }
-        self.common.creatures
+        self.common
+            .creatures
             .projectiles
             .iter()
             .find(|p| p.id != 0 && p.id as i32 == id)
@@ -532,7 +556,8 @@ impl crate::game::ServerGame<'_> {
             return Ok(false);
         };
         if !self
-            .common.item_features
+            .common
+            .item_features
             .item_enabled(held, self.enabled_feature_ids())
         {
             return Ok(false);
@@ -542,15 +567,21 @@ impl crate::game::ServerGame<'_> {
             use sunrise_sim::lan::hub::wrap_degrees;
             let (yaw, pitch) = (wrap_degrees(yaw), wrap_degrees(pitch));
             if yaw != g.yaw || pitch != g.pitch {
-                self.server.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
-                    // Entity.setYRot/setXRot discard non-finite values independently.
-                    if yaw.is_finite() {
-                        g.yaw = yaw;
-                    }
-                    if pitch.is_finite() {
-                        g.pitch = pitch.clamp(-90.0, 90.0);
-                    }
-                });
+                self.server
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(gi, |g| {
+                        // Entity.setYRot/setXRot discard non-finite values independently.
+                        if yaw.is_finite() {
+                            g.yaw = yaw;
+                        }
+                        if pitch.is_finite() {
+                            g.pitch = pitch.clamp(-90.0, 90.0);
+                        }
+                    });
             }
         }
         // ServerPlayerGameMode.useItem returns PASS for spectators, after the turn.
@@ -580,7 +611,11 @@ impl crate::game::ServerGame<'_> {
                 let swings = g.swings_started;
                 let consumed = matches!(g.use_item(), Ok(Some(_)));
                 g.server.guest_use = saved;
-                reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.common.swings_started);
+                reset_use_attack_strength(
+                    &mut g.server.attack_ticks,
+                    swings,
+                    g.common.swings_started,
+                );
                 (g.swings_started != swings, horn, consumed)
             })
             .ok();
@@ -666,7 +701,8 @@ impl crate::game::ServerGame<'_> {
             self.spawn_protection_message(conn, hit.pos);
             refused = Some(ActionRefused::Protected);
         } else if self
-            .common.border
+            .common
+            .border
             .contains(f64::from(hit.pos[0]), f64::from(hit.pos[2]))
         {
             if spectator && self.spectator_use_portal(conn, gi, hit.pos) {
@@ -697,7 +733,11 @@ impl crate::game::ServerGame<'_> {
                     })
                 );
                 (g.server.forced_hit, g.server.guest_use) = saved;
-                reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.common.swings_started);
+                reset_use_attack_strength(
+                    &mut g.server.attack_ticks,
+                    swings,
+                    g.common.swings_started,
+                );
                 (
                     g.swings_started != swings && g.server.predicted_swings == predicted,
                     result.map(|used| used.is_some()),
@@ -749,7 +789,8 @@ impl crate::game::ServerGame<'_> {
             return refused.map_or(Ok(consumed), Err);
         };
         for pos in [hit.pos, hit.beside()] {
-            host.hub.send_authoritative_block(conn, &self.common.world, pos);
+            host.hub
+                .send_authoritative_block(conn, &self.common.world, pos);
         }
         refused.map_or(Ok(consumed), Err)
     }
@@ -810,11 +851,16 @@ impl crate::game::ServerGame<'_> {
             let on = (0..3).all(|k| (point[k] - inside[k]).abs() < 0.1);
             Some(if on { inside } else { middle })
         };
-        let mob_box = self.common.mobs.iter().find(|m| m.id as i32 == id).map(|m| {
-            let b = m.bounds();
-            let (mn, mx) = (b.min_position(), b.max_position());
-            ([mn.x, mn.y, mn.z], [mx.x, mx.y, mx.z])
-        });
+        let mob_box = self
+            .common
+            .mobs
+            .iter()
+            .find(|m| m.id as i32 == id)
+            .map(|m| {
+                let b = m.bounds();
+                let (mn, mx) = (b.min_position(), b.max_position());
+                ([mn.x, mn.y, mn.z], [mx.x, mx.y, mx.z])
+            });
         let centre = match mob_box {
             Some((lo, hi)) => visible_aim_point(eye, lo, hi, |p| self.block_between(eye, p)),
             None if self.server_object_target(id).is_some() => object()?,
@@ -852,6 +898,5 @@ use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
-
 
 use sunrise_gameplay_common::game::spear::SpearGameExt1 as _;

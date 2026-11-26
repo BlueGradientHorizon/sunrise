@@ -1,7 +1,6 @@
 #[test]
 #[ignore = "daily"]
 fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
-    use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::{
         __private::game::RegistrationContextNew, CameraType, ClientHost, DimensionTransition,
@@ -15,6 +14,7 @@ fn a_failed_presentation_discards_its_draws_without_disabling_its_factory() {
         hud::HudBatch,
         level_loading::{self, Reason},
     };
+    use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
     use sunrise_protocol::packets::play;
 
     const NETHER: &str = "minecraft:the_nether";

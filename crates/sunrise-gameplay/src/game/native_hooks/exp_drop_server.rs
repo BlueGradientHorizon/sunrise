@@ -10,14 +10,15 @@ impl crate::game::ServerGame<'_> {
         block_entity: BlockDropEntity<'_>,
         drops: Vec<ItemStack>,
     ) -> BlockDrops {
-        let breaker =
-            if sunrise_gameplay_common::game::api_values::block_state::block_listens(mod_api::HookId::ExpDrop, state)
-                || mod_api::__private::listened(mod_api::HookId::BlockDrops)
-            {
-                breaker.and_then(|id| self.entity(id))
-            } else {
-                None
-            };
+        let breaker = if sunrise_gameplay_common::game::api_values::block_state::block_listens(
+            mod_api::HookId::ExpDrop,
+            state,
+        ) || mod_api::__private::listened(mod_api::HookId::BlockDrops)
+        {
+            breaker.and_then(|id| self.entity(id))
+        } else {
+            None
+        };
         self.with_level(|_, level, _| {
             let pos = BlockPos::new(pos[0], pos[1], pos[2]);
             // with_level rebuilds GameLevel with both fields None on every call.

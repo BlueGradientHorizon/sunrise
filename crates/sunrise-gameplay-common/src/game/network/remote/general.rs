@@ -1,8 +1,7 @@
-
 pub trait GeneralGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The declared type key of general row `id`: the level's own row, or on a client the
     /// one its server shows it.
-     fn general_kind(&self, id: u32) -> Option<&'static str> {
+    fn general_kind(&self, id: u32) -> Option<&'static str> {
         let slot = match self.resident_entities.general.row(id) {
             Some(row) => row.type_slot,
             None => self.side_remote_general_type_slot(id)?,
@@ -11,7 +10,6 @@ pub trait GeneralGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> GeneralGameExt1<'__sg> for G {}
-
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
@@ -34,11 +32,10 @@ pub mod tests {
         sync: true,
     };
 
-    
     #[cfg(any(test, feature = "test-support"))]
-pub struct Declare;
+    pub struct Declare;
     #[cfg(any(test, feature = "test-support"))]
-#[mod_api::__subscriptions]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for Declare {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
             let types = [
@@ -105,20 +102,6 @@ pub struct Declare;
             changes,
         }
     }
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
 }
 
 use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
-
-

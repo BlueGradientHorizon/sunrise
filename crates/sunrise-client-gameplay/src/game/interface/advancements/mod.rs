@@ -1,14 +1,12 @@
-
-
 #[cfg(test)]
 pub(crate) mod tests {
 
-use super::*;
+    use super::*;
     use sunrise_sim::advancements::Frame;
 
-use crate::game::client_side::advancement_toast::{Toast, toast_label};
+    use crate::game::client_side::advancement_toast::{Toast, toast_label};
 
-#[test]
+    #[test]
     fn toast_labels_are_yellow_or_pink() {
         // The batch takes colours as `rgba`: 0xFFFF_FF00 there is cyan (#5850).
         for frame in [Frame::Task, Frame::Goal] {

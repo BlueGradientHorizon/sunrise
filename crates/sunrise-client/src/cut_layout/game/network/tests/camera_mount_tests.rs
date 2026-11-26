@@ -1,11 +1,14 @@
 //! A spectated rider backs off by its living vehicle's scale and camera distance (26.3 `Camera.alignWithEntity`).
 //! Expected frames are recorded into `.local` by `tools/test_camera_parity.py` (`VanillaCameraOracle`).
-use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use serde_json::Value;
 use sunrise_client::camera::Camera;
 use sunrise_core::geometry::Vec3;
 use sunrise_level::camera_math::CameraType;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client,
+};
 
 const RIDER: i32 = 31;
 const VEHICLE: i32 = 32;
@@ -57,18 +60,24 @@ fn spawn(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: i32, kind
     if kind == "minecraft:oak_boat" {
         // The boat models are not loaded here, so the boat is tracked and listed by hand.
         game.spawn_entity(id, kind, [at().x, at().y, at().z], [0.0; 3]);
-        game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(
-            id as u32,
-            "oak".into(),
-            at(),
-            0.0,
-        ));
+        game.boats
+            .push(sunrise_gameplay_common::game::boats_common::Boat::new(
+                id as u32,
+                "oak".into(),
+                at(),
+                0.0,
+            ));
     } else {
         add(game, id, kind);
     }
 }
 
-fn attributes(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: i32, scale: f64, distance: f64) {
+fn attributes(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    id: i32,
+    scale: f64,
+    distance: f64,
+) {
     let snapshot = |name: &str, base: f64| {
         let attribute = game.motion.attributes.id(name).unwrap().registry_id();
         play::AttributeSnapshot {
@@ -141,7 +150,11 @@ fn want(r: &Value) -> String {
 }
 
 /// Builds the rider and its vehicle as a server's packets do, `attributes_first` or seats first.
-fn setup(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, key: &Value, attributes_first: bool) {
+fn setup(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    key: &Value,
+    attributes_first: bool,
+) {
     let rider_kind = if key["rider"] == "zombie" {
         "minecraft:zombie"
     } else {
@@ -207,8 +220,7 @@ fn a_spectated_rider_backs_off_by_its_living_vehicles_camera_distance() {
     run_a_spectated_rider_backs_off_by_its_living_vehicles_camera_distance();
 }
 
-pub(crate) fn run_a_spectated_rider_backs_off_by_its_living_vehicles_camera_distance()
- {
+pub(crate) fn run_a_spectated_rider_backs_off_by_its_living_vehicles_camera_distance() {
     let path = std::env::var("SUNRISE_CAMERA_MOUNT_WITNESS")
         .expect("run through tools/test_camera_parity.py, which records the witness");
     let raw = std::fs::read_to_string(&path).unwrap_or_else(|err| {

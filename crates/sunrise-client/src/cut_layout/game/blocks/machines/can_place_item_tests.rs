@@ -1,27 +1,27 @@
-use mod_api::ItemResource;
-use sunrise_core::geometry::Direction;
-use sunrise_gameplay_common::game::machine_containers::{PlacementAttempt, PlacementQuery};
-use sunrise_gameplay_common::hoppers::Pos;
-use sunrise_level::containers::HOPPER_SLOTS;
-use sunrise_core::nbt::Tag;
-use sunrise_core::position::BlockPos;
-use sunrise_items::items::ItemStack;
-use sunrise_level::containers::BlockEntity;
-use sunrise_level::containers::ModContainer;
-use sunrise_world::registry::BlockStateId;
 use super::*;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use mod_api::ItemResource;
 use mod_api::{
     BlockEntityPart, BlockPart, CanPlaceItemEvent, Hooks, ITEMS, ModEntry, Mods, Registrar,
     RegistrationContext, STORAGE,
 };
 use std::sync::Arc;
+use sunrise_core::geometry::Direction;
+use sunrise_core::nbt::Tag;
+use sunrise_core::position::BlockPos;
 use sunrise_core::position::ChunkPos;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::machine_containers::{PlacementAttempt, PlacementQuery};
+use sunrise_gameplay_common::hoppers::Pos;
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
+use sunrise_level::containers::HOPPER_SLOTS;
+use sunrise_level::containers::ModContainer;
 use sunrise_level::{
     chunk::Chunk,
     containers::{ModBlockEntity, ModBlockEntityFields, ModContainerInsertRule},
     world::World,
 };
+use sunrise_world::registry::BlockStateId;
 
 const TARGET: Pos = (8, 64, 8);
 const ABOVE: Pos = (8, 65, 8);
@@ -41,7 +41,8 @@ impl BlockEntityPart for Filter {
             Some(4) => return Some(event.slot == 1 && event.stack.count() == 2),
             Some(5) => {
                 let barrel = mod_api::__private::block_key("minecraft:barrel").unwrap();
-                let metadata = sunrise_gameplay_common::game::api_values::block_metadata_table().unwrap();
+                let metadata =
+                    sunrise_gameplay_common::game::api_values::block_metadata_table().unwrap();
                 return Some(
                     event.pos == mod_api::BlockPos::new(TARGET.0, TARGET.1, TARGET.2)
                         && event.state.block() == barrel
@@ -118,7 +119,11 @@ fn fixture(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     });
 }
 
-fn source(game: &mut sunrise_gameplay::game::ServerGame<'_>, block: &str, slots: usize) -> BlockStateId {
+fn source(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    block: &str,
+    slots: usize,
+) -> BlockStateId {
     let state = game
         .pack
         .assets
@@ -308,7 +313,12 @@ fn refusing_a_capability_insert_does_not_journal_the_slot() {
         let before = (target(game).revision(), game.transactions.writes());
         let aborted = game.storage_transaction(|game, tx| {
             assert_eq!(handler.insert_at(game, tx, 0, &resource, 1), Ok(0));
-            assert_eq!(sunrise_gameplay_common::game::transactions::TransactionsGameExt::journal_kept(game), (0, 0));
+            assert_eq!(
+                sunrise_gameplay_common::game::transactions::TransactionsGameExt::journal_kept(
+                    game
+                ),
+                (0, 0)
+            );
             Err::<(), ()>(())
         });
         assert_eq!(aborted, Err(()));

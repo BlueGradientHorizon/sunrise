@@ -1,26 +1,24 @@
-
-
 #![cfg(test)]
-use sunrise_gameplay_common::game::execution_role;
 use std::time::Instant;
 use sunrise_client::hud::HudBatch;
+use sunrise_gameplay_common::game::execution_role;
 use winit::keyboard::KeyCode;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_client_gameplay::game::client_side::debug_options::footer;
+    use sunrise_client_gameplay::game::client_side::debug_options::footer;
 
-use super::*;
-use crate::game::load_resources;
-use crate::settings::Settings;
-use sunrise_gameplay_common::game::resource_load::Progress;
-use sunrise_gameplay_common::game::launch_options::Options;
-use sunrise_client::audio::Audio;
-use sunrise_client::debug_entries::Status;
-use sunrise_gameplay_common::game::Screen;
-use sunrise_client::debug_entries::Profile;
+    use super::*;
+    use crate::game::load_resources;
+    use crate::settings::Settings;
+    use sunrise_client::audio::Audio;
+    use sunrise_client::debug_entries::Profile;
+    use sunrise_client::debug_entries::Status;
+    use sunrise_gameplay_common::game::Screen;
+    use sunrise_gameplay_common::game::launch_options::Options;
+    use sunrise_gameplay_common::game::resource_load::Progress;
 
-fn title_game<'a>(
+    fn title_game<'a>(
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
     ) -> sunrise_client_gameplay::game::ClientGame<'a> {
         use super::super::*;
@@ -66,12 +64,12 @@ fn title_game<'a>(
         game.client.title.0 = Some(game.new_title(std::path::PathBuf::from("saves")));
         game
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn title_debug_overlay_draws_without_a_level() {
         run_title_debug_overlay_draws_without_a_level();
     }
-pub(crate) fn run_title_debug_overlay_draws_without_a_level() {
+    pub(crate) fn run_title_debug_overlay_draws_without_a_level() {
         use mod_api::prelude::ScreensClientHost;
         use sunrise_client::debug_keys::KeyAction;
         let mut resources = None;
@@ -116,13 +114,12 @@ pub(crate) fn run_title_debug_overlay_draws_without_a_level() {
         game.client.chat_ui.hide_gui = false;
         assert!(ScreensClientHost::debug_overlay_visible(&game));
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn title_debug_options_open_draw_and_return_without_a_level() {
         run_title_debug_options_open_draw_and_return_without_a_level();
     }
-pub(crate) fn run_title_debug_options_open_draw_and_return_without_a_level()
-     {
+    pub(crate) fn run_title_debug_options_open_draw_and_return_without_a_level() {
         use sunrise_client::debug_keys::KeyAction;
         let mut resources = None;
         let mut game = title_game(&mut resources);
@@ -219,6 +216,9 @@ pub(crate) fn run_title_debug_options_open_draw_and_return_without_a_level()
         game.debug_key(KeyCode::F6, KeyAction::Release);
         game.debug_key(KeyCode::F6, KeyAction::Press);
         assert!(game.client.debug_options.is_none());
-        assert_eq!(game.client.title.0.as_ref().unwrap().screen_key(), selection);
+        assert_eq!(
+            game.client.title.0.as_ref().unwrap().screen_key(),
+            selection
+        );
     }
 }

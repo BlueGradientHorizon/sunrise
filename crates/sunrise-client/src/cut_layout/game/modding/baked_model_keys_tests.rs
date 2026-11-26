@@ -1,12 +1,12 @@
 //! A client mod borrows a block state's baked variants and quads in `model_baking_completed`.
 //! It keeps keys, and a reload supersedes them.
-use sunrise_client_gameplay::game::client_side::model_baking_completed_tests::reload;
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use mod_api::{
     BakedModelKey, ClientHost, Hooks, ModEntry, ModelBakingCompletedEvent, ModelError, ModelRef,
 };
 use mod_platform::testing::with_mods;
 use std::sync::{Arc, Mutex};
+use sunrise_client_gameplay::game::client_side::model_baking_completed_tests::reload;
 
 /// What the mod retained in each `model_baking_completed`: keys and refusals, not views.
 #[derive(Default)]
@@ -133,12 +133,21 @@ fn a_client_mod_reads_a_block_states_baked_models_once_per_load() {
             let next_key = read.lock().unwrap().keys[1].as_ref().unwrap()[0];
             assert_ne!(next_key, first, "a new generation's key");
             assert_eq!(
-                game.client.client_pack.render.baked_model(first).unwrap_err(),
+                game.client
+                    .client_pack
+                    .render
+                    .baked_model(first)
+                    .unwrap_err(),
                 ModelError::StaleModel,
                 "the first load's key is superseded"
             );
             let before = previous.baked_model(first).unwrap();
-            let after = game.client.client_pack.render.baked_model(next_key).unwrap();
+            let after = game
+                .client
+                .client_pack
+                .render
+                .baked_model(next_key)
+                .unwrap();
             let slot = mod_api::__private::game::Fields::fields(&first).slot;
             let particle_layer = previous
                 .model_catalog

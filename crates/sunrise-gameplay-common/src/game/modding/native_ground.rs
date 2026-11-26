@@ -13,10 +13,7 @@ use sunrise_world::registry::BlockStateId as EngineState;
 /// The engine's `alter_ground` callback: `replaced` is set only when a mod put
 /// its provider in place of the decorator's own. Nothing is built or read while
 /// no mod listens.
-pub fn alter_ground(
-    tree: &AlterGroundTree<'_>,
-    replaced: &mut Option<Arc<dyn ModGroundProvider>>,
-) {
+pub fn alter_ground(tree: &AlterGroundTree<'_>, replaced: &mut Option<Arc<dyn ModGroundProvider>>) {
     if !mod_api::__private::listened(HookId::AlterGround) {
         return;
     }

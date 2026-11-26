@@ -13,11 +13,7 @@ impl ServerGame<'_> {
     /// The point orb `i` homes on this tick (`ExperienceOrb.followNearbyPlayer`):
     /// the nearest of `followed` within 8 blocks, unless the mods choose
     /// another player or none.
-    pub fn orb_target(
-        &mut self,
-        i: usize,
-        followed: &[OrbCandidate],
-    ) -> Option<[f64; 3]> {
+    pub fn orb_target(&mut self, i: usize, followed: &[OrbCandidate]) -> Option<[f64; 3]> {
         let o = &self.common.orbs[i];
         let (id, at, join) = (o.id, o.position, o.join);
         let distance = |feet: &[f64; 3]| -> f64 {

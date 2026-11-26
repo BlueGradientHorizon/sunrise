@@ -1,10 +1,8 @@
-
-
 #![cfg(test)]
-use sunrise_gameplay_common::game::Dim;
+use mod_api::PortalAngle;
 use mod_api::PortalError;
 use mod_api::PortalRotation;
-use mod_api::PortalAngle;
+use sunrise_gameplay_common::game::Dim;
 #[cfg(test)]
 mod tests {
     use super::*;

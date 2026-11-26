@@ -2,11 +2,13 @@
 use super::super::dedicated::{SLOW_TICK_MS, report::Recording};
 use super::super::perf_remote::Done;
 use super::super::tick_profile;
-use sunrise_gameplay_common::game::profile_capture_common::{Live, Phase, Target, reply_text, shown};
 use std::io;
 use std::path::PathBuf;
 use std::sync::{Arc, mpsc::Sender};
 use std::time::Instant;
+use sunrise_gameplay_common::game::profile_capture_common::{
+    Live, Phase, Target, reply_text, shown,
+};
 use sunrise_level::spans;
 use sunrise_perf_format::{
     files,

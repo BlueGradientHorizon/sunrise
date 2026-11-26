@@ -1,11 +1,14 @@
 //! The issue #3977 merge contract through a real `Game`: `3 x 2` and `5 x 1` become
 //! `11 x 1`, which saves unchanged and pays 11 once on pickup.
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
 use mod_api::{ExperienceOrbCanMergeEvent, ExperienceOrbMergeEvent, Flow, Hooks, ServerHost};
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_sim::entities::ExperienceOrb;
 use sunrise_sim::entity_nbt::{orb_to_nbt, orbs_from_nbt};
+use {
+    sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+    sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+};
 
 fn orb(id: u32, x: f64, value: i32, count: u32) -> ExperienceOrb {
     let at = Vec3::new(x, 70.0, 0.5);

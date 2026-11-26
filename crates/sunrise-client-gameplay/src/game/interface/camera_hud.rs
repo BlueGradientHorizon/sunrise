@@ -68,10 +68,7 @@ impl ClientGame<'_> {
     }
 
     /// `Hud.getPlayerVehicleWithHealth`: the camera player's vehicle as its max health and health.
-    pub fn camera_vehicle(
-        &mut self,
-        camera: CameraPlayer,
-    ) -> Option<(f32, f32)> {
+    pub fn camera_vehicle(&mut self, camera: CameraPlayer) -> Option<(f32, f32)> {
         let id = match camera {
             CameraPlayer::Absent | CameraPlayer::Detached => return None,
             CameraPlayer::Own => self.common.riding?,
@@ -98,7 +95,10 @@ impl ClientGame<'_> {
         }
         let (default_max, health) =
             if let Some(dragon) = self.common.dragon.as_ref().filter(|d| d.id == id) {
-                (sunrise_gameplay_common::game::dragon_common::MAX_HEALTH, dragon.health)
+                (
+                    sunrise_gameplay_common::game::dragon_common::MAX_HEALTH,
+                    dragon.health,
+                )
             } else if let Some(m) = self.common.mob_index.get(&self.common.mobs, id) {
                 (m.attrs.max_health, m.health)
             } else {
@@ -106,7 +106,8 @@ impl ClientGame<'_> {
                 (20.0, stand.health)
             };
         let max_health = self
-            .common.motion
+            .common
+            .motion
             .attributes
             .id("minecraft:max_health")
             .and_then(|attr| self.remote_attribute(id as i32, attr))
@@ -115,10 +116,7 @@ impl ClientGame<'_> {
     }
 
     /// `Hud.extractVehicleHealth`: `(max_hearts, health)` of `camera_vehicle`, when positive.
-    pub fn camera_vehicle_health(
-        &mut self,
-        camera: CameraPlayer,
-    ) -> Option<(i32, f32)> {
+    pub fn camera_vehicle_health(&mut self, camera: CameraPlayer) -> Option<(i32, f32)> {
         let (max_health, health) = self.camera_vehicle(camera)?;
         let hearts = sunrise_client::hud_layout::vehicle_max_hearts(max_health);
         (hearts > 0).then_some((hearts, health))
@@ -178,15 +176,16 @@ impl ClientGame<'_> {
                     )
                 };
                 let max_health = self
-                    .common.motion
+                    .common
+                    .motion
                     .attributes
                     .id("minecraft:max_health")
                     .and_then(|attr| self.remote_attribute(mob_id, attr))
                     .map_or(default_max, |v| v as f32);
-                let blink = self
-                    .client
-                    .health_hud
-                    .update_health(health, tick, millis, invulnerable);
+                let blink =
+                    self.client
+                        .health_hud
+                        .update_health(health, tick, millis, invulnerable);
                 let inputs = HealthInputs {
                     tick,
                     max_health,
@@ -230,10 +229,10 @@ impl ClientGame<'_> {
                         hud.wither,
                     )
                 };
-                let blink = self
-                    .client
-                    .health_hud
-                    .update_health(health, tick, millis, invulnerable);
+                let blink =
+                    self.client
+                        .health_hud
+                        .update_health(health, tick, millis, invulnerable);
                 let inputs = HealthInputs {
                     tick,
                     max_health,
@@ -278,7 +277,8 @@ impl ClientGame<'_> {
                     (m.id as i32, finalize::value(m, Attr::Armor) as i32)
                 };
                 Some(
-                    self.common.motion
+                    self.common
+                        .motion
                         .attributes
                         .id("minecraft:armor")
                         .and_then(|attr| self.remote_attribute(mob_id, attr))
@@ -310,7 +310,11 @@ impl ClientGame<'_> {
                 tick,
                 food: REMOTE_FOOD,
                 saturation: REMOTE_SATURATION,
-                hunger: self.common.mobs[i].extra.client_effects.get("hunger").is_some(),
+                hunger: self.common.mobs[i]
+                    .extra
+                    .client_effects
+                    .get("hunger")
+                    .is_some(),
             }),
             CameraPlayer::Detached => Some(FoodInputs {
                 tick,

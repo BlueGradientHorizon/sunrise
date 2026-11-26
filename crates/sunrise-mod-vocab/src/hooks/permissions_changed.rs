@@ -9,7 +9,8 @@ pub trait Hooks {
     /// not be online: `player_entity_id` is their server entity id when they are. Clearing
     /// the list (`operators/clear`) is not a call to either, as in vanilla. Dedicated
     /// servers only; a single-player world has no operator list. Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::permissions_changed::ServerGame<'_>::native_permissions_changed", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::permissions_changed::ServerGame<'_>::native_permissions_changed",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

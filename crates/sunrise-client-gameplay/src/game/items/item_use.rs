@@ -1,15 +1,13 @@
-
-
 #[cfg(test)]
 pub(crate) mod tests {
 
-use crate::game::client_side::item_use_client::use_pose;
+    use crate::game::client_side::item_use_client::use_pose;
 
-use sunrise_client::first_person::ItemPose;
+    use sunrise_client::first_person::ItemPose;
 
-use sunrise_core::use_animation::UseAnimation;
+    use sunrise_core::use_animation::UseAnimation;
 
-#[test]
+    #[test]
     fn a_use_animation_picks_the_hand_pose() {
         let pose = |animation| use_pose(animation, 12.0, 32.0, 0.5);
         assert!(matches!(

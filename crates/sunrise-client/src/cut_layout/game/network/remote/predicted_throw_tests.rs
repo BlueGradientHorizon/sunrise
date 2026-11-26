@@ -25,11 +25,22 @@ fn a_predicted_throw_from_a_slot_swings_the_hand() {
     let none = &sunrise_world::loot::PackOverlay::NONE;
     let defaults = sunrise_world::item_defaults::read(&root).unwrap();
     let items = Items::catalog(&root, none, &defaults).unwrap();
-    let recipes = Recipes::load(&root, &items, none, &sunrise_gameplay_common::game::test_server_load()).unwrap();
+    let recipes = Recipes::load(
+        &root,
+        &items,
+        none,
+        &sunrise_gameplay_common::game::test_server_load(),
+    )
+    .unwrap();
     let brewing = Brewing::load(&root, &items, none);
     let banners = Banners::load(&root, &defaults);
-    let station_recipes =
-        StationRecipes::load(&root, &items, none, &sunrise_gameplay_common::game::test_server_load()).unwrap();
+    let station_recipes = StationRecipes::load(
+        &root,
+        &items,
+        none,
+        &sunrise_gameplay_common::game::test_server_load(),
+    )
+    .unwrap();
     let enchantments = Enchantments::default();
     let names = Names::default();
     let env = Env {

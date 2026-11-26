@@ -41,7 +41,8 @@ the viewer as `RecipeTransferCheck::missing_cells` and `craftable_cells`, with a
 known layout (one for a stonecutting recipe, three for smithing, the placement's slots for crafting and cooking;
 256 for a recipe it can't inspect, such as a mod's own type), each once, in ascending order; pushes outside a dry
 run are dropped."##]
-    #[hook(target = "sunrise_gameplay::game::native_hooks::menu_transfer::ServerGame<'_>::native_menu_transfer", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::menu_transfer::ServerGame<'_>::native_menu_transfer",
         dispatch = "api_carrier",
         side = "server",
         contract = "replace",

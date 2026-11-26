@@ -1,7 +1,9 @@
 //! First-access loot shared by blocks and chest vehicles.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::container_loot_level::{LootTarget, fill_with_random, take_block_pending};
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::game::container_loot_level::{
+    LootTarget, fill_with_random, take_block_pending,
+};
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::save::PendingContainerLoot;
 
@@ -12,7 +14,8 @@ impl ServerGame<'_> {
         index: usize,
     ) -> Option<sunrise_items::items::ItemStack> {
         self.unpack_loot(LootTarget::Block(key), None);
-        self.common.world
+        self.common
+            .world
             .block_entities
             .get(&key)?
             .slots()
@@ -29,7 +32,8 @@ impl ServerGame<'_> {
             return true;
         }
         let Some(i) = self
-            .common.carts
+            .common
+            .carts
             .iter()
             .position(|c| c.id == cart.id && c.join == cart.join)
         else {
@@ -42,7 +46,8 @@ impl ServerGame<'_> {
         });
         self.unpack_loot(LootTarget::Cart(cart.id), None);
         let Some(i) = self
-            .common.carts
+            .common
+            .carts
             .iter()
             .position(|c| c.id == cart.id && c.join == cart.join)
         else {
@@ -56,11 +61,7 @@ impl ServerGame<'_> {
     }
     /// Consumes metadata before callbacks, so reentrant access cannot roll twice.
     /// A player context is captured from the admitted actor, also during as_guest.
-    pub fn unpack_loot(
-        &mut self,
-        target: LootTarget,
-        player: Option<mod_api::PlayerRef>,
-    ) {
+    pub fn unpack_loot(&mut self, target: LootTarget, player: Option<mod_api::PlayerRef>) {
         let (pending, pos) = match target {
             LootTarget::Block(key) => {
                 let Some(pending) = take_block_pending(&mut self.common.world, key) else {
@@ -83,7 +84,11 @@ impl ServerGame<'_> {
                 let Some(pending) = self.common.carts.update(i, |c| c.loot.take()) else {
                     return;
                 };
-                self.common.store_cart_items((i32::MAX - 15, super::minecarts::CART_KEY_Y, id as i32));
+                self.common.store_cart_items((
+                    i32::MAX - 15,
+                    super::minecarts::CART_KEY_Y,
+                    id as i32,
+                ));
                 let c = &self.common.carts[i];
                 (
                     pending,
@@ -99,7 +104,8 @@ impl ServerGame<'_> {
                     return;
                 };
                 let Some(pending) = self
-                    .common.persist
+                    .common
+                    .persist
                     .raw
                     .get(&id)
                     .and_then(PendingContainerLoot::from_tag)
@@ -110,7 +116,11 @@ impl ServerGame<'_> {
                     map.remove(&"LootTable".into());
                     map.remove(&"LootTableSeed".into());
                 }
-                self.common.store_cart_items((i32::MAX - 15, super::minecarts::CART_KEY_Y, id as i32));
+                self.common.store_cart_items((
+                    i32::MAX - 15,
+                    super::minecarts::CART_KEY_Y,
+                    id as i32,
+                ));
                 let b = &self.common.boats[i];
                 (
                     pending,
@@ -137,12 +147,14 @@ impl ServerGame<'_> {
         let mut entity = player.map(|_| self.killer_loot_entity(None));
         if let Some(entity) = &mut entity {
             entity.on_fire = self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .is_some_and(sunrise_sim::motion::PlayerMotion::is_on_fire);
         }
         let luck = if player.is_some() {
-            self.common.player
+            self.common
+                .player
                 .as_mut()
                 .and_then(|p| p.attribute("minecraft:luck").ok())
                 .unwrap_or(0.0) as f32
@@ -156,17 +168,20 @@ impl ServerGame<'_> {
         };
         let Some(mut slots) = (match target {
             LootTarget::Block(key) => self
-                .common.world
+                .common
+                .world
                 .block_entities
                 .get(&key)
                 .map(|e| e.slots().to_vec()),
             LootTarget::Cart(id) => self
-                .common.carts
+                .common
+                .carts
                 .iter()
                 .find(|c| c.id == id)
                 .map(|c| c.items.clone()),
             LootTarget::Boat(id) => self
-                .common.boats
+                .common
+                .boats
                 .iter()
                 .find(|b| b.id == id)
                 .map(|b| b.items.clone()),
@@ -176,11 +191,23 @@ impl ServerGame<'_> {
         let origin = match target {
             LootTarget::Block(_) => [pos.0 as f64 + 0.5, pos.1 as f64 + 0.5, pos.2 as f64 + 0.5],
             LootTarget::Cart(id) => {
-                let p = self.common.carts.iter().find(|c| c.id == id).unwrap().position;
+                let p = self
+                    .common
+                    .carts
+                    .iter()
+                    .find(|c| c.id == id)
+                    .unwrap()
+                    .position;
                 [p.x, p.y, p.z]
             }
             LootTarget::Boat(id) => {
-                let p = self.common.boats.iter().find(|b| b.id == id).unwrap().position;
+                let p = self
+                    .common
+                    .boats
+                    .iter()
+                    .find(|b| b.id == id)
+                    .unwrap()
+                    .position;
                 [p.x, p.y, p.z]
             }
         };
@@ -222,12 +249,14 @@ impl ServerGame<'_> {
         if let Some(id) = id {
             let items = match target {
                 LootTarget::Cart(_) => self
-                    .common.carts
+                    .common
+                    .carts
                     .iter()
                     .find(|c| c.id == id)
                     .map(|c| c.items.clone()),
                 _ => self
-                    .common.boats
+                    .common
+                    .boats
                     .iter()
                     .find(|b| b.id == id)
                     .map(|b| b.items.clone()),

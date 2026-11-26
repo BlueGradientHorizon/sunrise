@@ -1,5 +1,3 @@
-
-
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// `ModelEvent.BakingCompleted`: the resources' models are baked and published, the

@@ -52,8 +52,9 @@ impl crate::game::ClientGame<'_> {
     /// `Entity.push`'s share of the other entities' ticks: added to the local
     /// player's deltaMovement, unless it lies dead, sleeps or rides.
     pub(in crate::game::client_side) fn apply_remote_push(&mut self, pushed: Vec3) {
-        let still =
-            self.client.screen == Screen::Dead || self.common.sleeping.is_some() || self.common.riding.is_some();
+        let still = self.client.screen == Screen::Dead
+            || self.common.sleeping.is_some()
+            || self.common.riding.is_some();
         if let Some(player) = self.common.player.as_mut()
             && !still
         {
@@ -61,7 +62,11 @@ impl crate::game::ClientGame<'_> {
         }
     }
     pub(in crate::game) fn creative_stacks(&self) -> Vec<Option<ItemStack>> {
-        creative_sync_stacks(&self.common.inventory, &self.common.offhand, &self.common.armor)
+        creative_sync_stacks(
+            &self.common.inventory,
+            &self.common.offhand,
+            &self.common.armor,
+        )
     }
     /// `LocalPlayer.tickDeath`: the level stops ticking the player at death tick 20,
     /// but the client keeps the player for death-screen rendering until respawn.
@@ -158,7 +163,8 @@ impl crate::game::ClientGame<'_> {
             if !m.alive()
                 || m.species() == sunrise_sim::mobs::Species::Bat
                 || self
-                    .common.riding
+                    .common
+                    .riding
                     .is_some_and(|v| v == m.id || m.extra.mount == Some(v))
                 || !m.bounds().intersects(bounds)
             {
@@ -198,7 +204,8 @@ impl crate::game::ClientGame<'_> {
         let area = Vec3::new(f64::from(0.2_f32), f64::from(-0.01_f32), f64::from(0.2_f32));
         // A boat pushes from its own tick, in the same order as the mobs.
         for b in self
-            .common.boats
+            .common
+            .boats
             .iter()
             .filter(|b| order(b.id) && self.common.riding != Some(b.id))
         {
@@ -212,7 +219,9 @@ impl crate::game::ClientGame<'_> {
             );
             if times > 0
                 && sunrise_gameplay_common::game::boats_common::boat_pushes(bb, bounds, false)
-                && let Some(v) = sunrise_gameplay_common::game::boats_common::push_impulse(b.position, p.position)
+                && let Some(v) = sunrise_gameplay_common::game::boats_common::push_impulse(
+                    b.position, p.position,
+                )
             {
                 push = push.add_vector(v.scale(times as f64));
             }
@@ -376,7 +385,11 @@ impl crate::game::ClientGame<'_> {
             // this client predicts for them isn't an edit to send (it would
             // overwrite the server's stacks whenever the prediction is wrong).
             let in_menu = r.menu.as_ref().is_some();
-            let stacks = creative_sync_stacks(&self.common.inventory, &self.common.offhand, &self.common.armor);
+            let stacks = creative_sync_stacks(
+                &self.common.inventory,
+                &self.common.offhand,
+                &self.common.armor,
+            );
             for (i, stack) in stacks.into_iter().enumerate() {
                 if stack != r.synced[i] {
                     r.synced[i] = stack.clone();
@@ -409,15 +422,18 @@ impl crate::game::ClientGame<'_> {
         if player.is_some_and(|p| p.0 == id) {
             return entity_sound_state(id, player, None, &r.entities, None);
         }
-        let mob = self.common.mob_index.get(&self.common.mobs, id as u32).map(|m| {
-            sunrise_game_data::sound_source::SoundEntityState {
+        let mob = self
+            .common
+            .mob_index
+            .get(&self.common.mobs, id as u32)
+            .map(|m| sunrise_game_data::sound_source::SoundEntityState {
                 position: [m.position.x, m.position.y, m.position.z],
                 silent: m.silent,
                 removed: m.removed,
-            }
-        });
+            });
         let dragon = self
-            .common.dragon
+            .common
+            .dragon
             .as_ref()
             .map(|d| (d.id as i32, [d.position.x, d.position.y, d.position.z]));
         let mut state = entity_sound_state(id, player, mob, &r.entities, dragon)?;
@@ -513,7 +529,8 @@ impl crate::game::ClientGame<'_> {
     ) -> Result<()> {
         use play::relative as rel;
         let (had_player, current) = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map(|pl| (true, pl.position))
             .unwrap_or((false, Vec3::ZERO));
@@ -523,7 +540,8 @@ impl crate::game::ClientGame<'_> {
             .as_mut()
             .and_then(|r| r.respawn_velocity.take());
         let velocity = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map(|pl| pl.velocity)
             .or(respawn_velocity)
@@ -695,9 +713,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
 
-    pub fn remote_tab_players(
-        &mut self,
-    ) -> Option<(Vec<TabPlayer>, bool, Vec<u128>)> {
+    pub fn remote_tab_players(&mut self) -> Option<(Vec<TabPlayer>, bool, Vec<u128>)> {
         self.update_remote_skins();
         self.publish_tab_object_skins();
         let r = self.client.remote.as_ref()?;

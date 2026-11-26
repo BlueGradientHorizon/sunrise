@@ -40,15 +40,16 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         let old = &self.client.client_pack.context;
-        self.client.client_pack.context = Arc::new(sunrise_client_render::streaming::WorkerContext {
-            chunk: old.chunk.clone(),
-            mesh: sunrise_client_render::streaming::MeshWorkerContext {
-                render: old.mesh.render.clone(),
-                tables: old.mesh.tables.clone(),
-                hidden_states: hidden,
-                part_tables: Arc::new(part_tables),
-            },
-        });
+        self.client.client_pack.context =
+            Arc::new(sunrise_client_render::streaming::WorkerContext {
+                chunk: old.chunk.clone(),
+                mesh: sunrise_client_render::streaming::MeshWorkerContext {
+                    render: old.mesh.render.clone(),
+                    tables: old.mesh.tables.clone(),
+                    hidden_states: hidden,
+                    part_tables: Arc::new(part_tables),
+                },
+            });
         let context = self.worker_context();
         self.client
             .streaming

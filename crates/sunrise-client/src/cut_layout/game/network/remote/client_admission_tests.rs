@@ -33,7 +33,10 @@ pub(in crate::game) fn roundtrip(packet: C) -> C {
     C::decode(reader.varint().unwrap(), reader.rest()).unwrap()
 }
 
-pub(in crate::game) fn deliver(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, packet: C) {
+pub(in crate::game) fn deliver(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    packet: C,
+) {
     game.handle_packet(roundtrip(packet)).unwrap();
 }
 

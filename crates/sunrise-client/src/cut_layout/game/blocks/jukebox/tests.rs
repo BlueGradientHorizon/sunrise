@@ -12,9 +12,11 @@ use sunrise_world::registry::BlockStateId;
 
 /// The game events posted while `f` runs, as `(event, position, source)`.
 fn record(f: impl FnOnce()) -> Vec<(&'static str, [f64; 3], Option<Who>)> {
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|e| *e.borrow_mut() = Some(Vec::new()));
     f();
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| e.borrow_mut().take().unwrap_or_default())
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|e| e.borrow_mut().take().unwrap_or_default())
 }
 
 /// A windowless integrated-server game from the prepared resources with a
@@ -32,7 +34,11 @@ fn with_game<R>(f: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>) -> R
     answer
 }
 
-fn click(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
+fn click(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    pos: [i32; 3],
+    held: Option<&ItemStack>,
+) -> bool {
     use mod_api::InteractionResult;
     use sunrise_world::level::UseBranch;
     let state = game.world.block(pos[0], pos[1], pos[2]);
@@ -187,9 +193,13 @@ fn a_saved_song_comes_back_without_its_sound() {
         place_jukebox(game, true);
         let signal = |game: &sunrise_gameplay::game::ServerGame<'_>| {
             let p = sunrise_core::position::BlockPos::new(0, 64, 0);
-            sunrise_gameplay_common::game::jukebox_common::jukebox_signals(&game.world, game.items(), p)
-                .unwrap()
-                .0
+            sunrise_gameplay_common::game::jukebox_common::jukebox_signals(
+                &game.world,
+                game.items(),
+                p,
+            )
+            .unwrap()
+            .0
         };
         game.server.audio_capture_active = true;
         let mut cases = Vec::new();

@@ -139,7 +139,8 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<PlayerStab> {
         let victim = self.server.stab_players.get(target)?.conn;
         let from = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z])?;
         let magic_boost = self.enchant_damage_bonus(
@@ -173,7 +174,8 @@ impl crate::game::ServerGame<'_> {
         let disable_blocking = if self.common.using.is_some() {
             0.0
         } else {
-            self.common.held()
+            self.common
+                .held()
                 .map_or(0.0, |stack| self.items().weapon_disable_blocking(stack))
         };
         Some(PlayerStab {
@@ -320,7 +322,14 @@ impl crate::game::ServerGame<'_> {
             affected = true;
             // attackVisualEffects: no attack sound, the enchantments' magic crit.
             if l.magic {
-                self.critical_hit(self.server.lan_acting, l.id, l.feet, l.width, l.height, true);
+                self.critical_hit(
+                    self.server.lan_acting,
+                    l.id,
+                    l.feet,
+                    l.width,
+                    l.height,
+                    true,
+                );
             }
             // setLastHurtMob at this stab's own tail: a mob contact that came later
             // in the same use already wrote the record during the turn.

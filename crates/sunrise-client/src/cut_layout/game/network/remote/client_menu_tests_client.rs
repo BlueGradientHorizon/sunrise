@@ -5,9 +5,9 @@ use super::*;
 #[test]
 #[ignore = "daily"]
 fn client_menu_close_and_button_click_reach_the_server() {
-    use sunrise_gameplay_common::game::Screen;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use sunrise_core::nbt::Tag;
+    use sunrise_gameplay_common::game::Screen;
     use sunrise_protocol::packets::play::{self, Clientbound as C};
 
     with_client_game(|game| {
@@ -95,11 +95,11 @@ fn client_menu_close_and_button_click_reach_the_server() {
 #[test]
 #[ignore = "daily"]
 fn client_menu_reads_follow_packets_and_lifetimes() {
-    use sunrise_gameplay_common::game::Screen;
-    use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use sunrise_client::level_loading::Reason;
+    use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
     use sunrise_core::nbt::Tag;
+    use sunrise_gameplay_common::game::Screen;
     use sunrise_protocol::{
         buf::Reader,
         connection::Pipe,

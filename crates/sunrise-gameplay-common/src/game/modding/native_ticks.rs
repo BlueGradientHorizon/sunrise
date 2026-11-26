@@ -244,7 +244,7 @@ impl TickRound {
 pub trait NativeTicksGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// A round for a family about to tick, on the server or on a client, only while a mod
     /// listens (`native_entity_tick_listened`). Its list is kept between ticks.
-     fn native_tick_round(&mut self) -> TickRound {
+    fn native_tick_round(&mut self) -> TickRound {
         let told = self.native_tick_told();
         let sections = self.side_tick_uses_server_sections();
         TickRound {
@@ -263,7 +263,7 @@ pub trait NativeTicksGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// Whether the tick hooks are heard on this side (`native_entity_tick_listened`), and which
     /// entities are told alone.
-     fn native_tick_told(&mut self) -> Told {
+    fn native_tick_told(&mut self) -> Told {
         let mut listening = false;
         self.native_entity_tick_listened(&mut listening);
         let alone = match mod_api::__private::entity_tick_each() {
@@ -276,7 +276,7 @@ pub trait NativeTicksGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `native_entity_tick_pre`, once for the family's entities the round holds (`add`): those
     /// a mod cancels leave it and do not tick.
-     fn native_tick_pre_batch(&mut self, round: &mut TickRound) {
+    fn native_tick_pre_batch(&mut self, round: &mut TickRound) {
         if !round.told.listening || round.ticking.is_empty() {
             return;
         }
@@ -291,7 +291,7 @@ pub trait NativeTicksGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `native_entity_tick_post`, once for the family's entities the round let through, after
     /// their position writes have already filed and told their crossings.
-     fn native_tick_post_batch(&mut self, mut round: TickRound) {
+    fn native_tick_post_batch(&mut self, mut round: TickRound) {
         if round.told.listening && !round.ticking.is_empty() {
             let buffers = std::mem::take(&mut self.creatures.tick_hooks);
             let (mut ids, mut kinds): (_, Vec<&str>) = (buffers.ids, buffers.kinds);
@@ -307,12 +307,7 @@ pub trait NativeTicksGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `native_entity_tick_pre` for one entity about to tick, told alone: whether it does.
-     fn native_tick_pre_one(
-        &mut self,
-        round: &mut TickRound,
-        id: u32,
-        kind: &str,
-    ) -> bool {
+    fn native_tick_pre_one(&mut self, round: &mut TickRound, id: u32, kind: &str) -> bool {
         if !round.told.listening {
             return true;
         }
@@ -332,7 +327,7 @@ pub trait NativeTicksGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `native_entity_tick_post` for one entity told alone, right after its tick, its move filed
     /// and told.
-     fn native_tick_post_one(&mut self, round: &TickRound, id: u32, kind: &str) {
+    fn native_tick_post_one(&mut self, round: &TickRound, id: u32, kind: &str) {
         if round.told.listening {
             self.native_entity_tick_post(
                 self.dim.id(),
@@ -344,15 +339,10 @@ pub trait NativeTicksGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeTicksGameExt1<'__sg> for G {}
 
-
 impl TickBuffers {
     /// The buffers back, emptied: collecting a vector's own iterator into one of the same
     /// layout keeps its allocation, so the kinds' buffer outlives the borrow it held.
-    pub fn emptied(
-        mut ids: Vec<u32>,
-        mut kinds: Vec<&str>,
-        mut names: KindNames,
-    ) -> Self {
+    pub fn emptied(mut ids: Vec<u32>, mut kinds: Vec<&str>, mut names: KindNames) -> Self {
         ids.clear();
         kinds.clear();
         names.clear();

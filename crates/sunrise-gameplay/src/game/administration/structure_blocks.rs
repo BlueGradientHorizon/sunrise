@@ -109,8 +109,12 @@ impl ServerGame<'_> {
                     }
                     let nbt = self.common.world.block_entities.get(&at).map(|entity| {
                         let name = &*self.common.res.facts().get(state).name;
-                        let mut tag =
-                            self.encode_live_block_entity(at, entity, name, self.common.res.items());
+                        let mut tag = self.encode_live_block_entity(
+                            at,
+                            entity,
+                            name,
+                            self.common.res.items(),
+                        );
                         Self::write_pending_loot(&self.common.world, at, &mut tag);
                         let Tag::Compound(mut c) = tag else {
                             return Compound::new();
@@ -286,7 +290,8 @@ impl ServerGame<'_> {
         mirror: sunrise_world::worldgen::structure::Mirror,
         rotation: sunrise_world::worldgen::structure::Rotation,
     ) -> bool {
-        let (Some(transforms), registry) = (self.state_transforms(), self.common.pack.assets.registry)
+        let (Some(transforms), registry) =
+            (self.state_transforms(), self.common.pack.assets.registry)
         else {
             return false;
         };
@@ -319,7 +324,8 @@ impl ServerGame<'_> {
         // The block entities the template loaded reach the clients.
         let area = template.bounding_box([at.x, at.y, at.z], rotation, settings.pivot, mirror);
         let keys: Vec<Pos> = self
-            .common.world
+            .common
+            .world
             .block_entities
             .keys()
             .copied()
@@ -488,7 +494,12 @@ impl ServerGame<'_> {
         conn: u32,
         p: play::SetStructureBlock,
     ) {
-        let Some(g) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(g) = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+        else {
             return;
         };
         let allowed = g.creative() && g.permission >= 2;

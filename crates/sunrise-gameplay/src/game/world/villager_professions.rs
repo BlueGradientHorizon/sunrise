@@ -20,7 +20,14 @@ impl crate::game::ServerGame<'_> {
         for (owner, definition) in declarations {
             for workstation in &definition.workstations {
                 let name = workstation.block.to_string();
-                if self.common.pack.assets.registry.default_state(&name).is_none() {
+                if self
+                    .common
+                    .pack
+                    .assets
+                    .registry
+                    .default_state(&name)
+                    .is_none()
+                {
                     return Err(format!(
                         "mod {owner}, profession {}: unknown workstation block {name}",
                         definition.key.0
@@ -30,7 +37,8 @@ impl crate::game::ServerGame<'_> {
                 let states: Vec<_> = (0..self.common.pack.assets.registry.len())
                     .filter_map(|index| {
                         let state = self
-                            .common.pack
+                            .common
+                            .pack
                             .assets
                             .registry
                             .state(sunrise_world::registry::BlockStateId(index as u32))?;
@@ -65,7 +73,13 @@ impl crate::game::ServerGame<'_> {
                         "poi" => pois.resolve(&name).is_some(),
                         "trade_set" => stations.trades.sets.contains_key(&name),
                         "item" => items.get(&name).is_some(),
-                        "block" => self.common.pack.assets.registry.default_state(&name).is_some(),
+                        "block" => self
+                            .common
+                            .pack
+                            .assets
+                            .registry
+                            .default_state(&name)
+                            .is_some(),
                         "sound" => std::fs::read(
                             root.join("assets").join(id.namespace()).join("sounds.json"),
                         )
@@ -89,7 +103,8 @@ impl crate::game::ServerGame<'_> {
         if !declarations.is_empty() {
             candidate.workstation_pois = (0..self.common.pack.assets.registry.len())
                 .map(|index| {
-                    self.common.pack
+                    self.common
+                        .pack
                         .assets
                         .registry
                         .state(sunrise_world::registry::BlockStateId(index as u32))
@@ -124,8 +139,14 @@ impl crate::game::ServerGame<'_> {
 impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn install_profession_save_snapshots(&self) {
         let table = self.stations().professions.clone();
-        self.server.save.0.install_profession_snapshot(table.clone());
-        self.server.levels.0.install_profession_save_snapshots(table);
+        self.server
+            .save
+            .0
+            .install_profession_snapshot(table.clone());
+        self.server
+            .levels
+            .0
+            .install_profession_save_snapshots(table);
     }
 }
 

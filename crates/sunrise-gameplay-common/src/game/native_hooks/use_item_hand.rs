@@ -2,10 +2,7 @@ use super::*;
 
 pub trait UseItemHandGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Apply a consuming result's swing on its owning logical side.
-     fn interaction_consumed(
-        &mut self,
-        answer: mod_api::InteractionResult,
-    ) -> bool {
+    fn interaction_consumed(&mut self, answer: mod_api::InteractionResult) -> bool {
         use mod_api::InteractionResult as Answer;
         if (answer == Answer::Success && !self.is_logical_server())
             || (answer == Answer::SuccessServer && self.is_logical_server())
@@ -16,7 +13,7 @@ pub trait UseItemHandGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `ItemStack.useOn` after the block and before the item's implementation.
-     fn item_on_interaction(
+    fn item_on_interaction(
         &mut self,
         hit: &crate::game::Hit,
         hand: Hand,
@@ -47,7 +44,7 @@ pub trait UseItemHandGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// Dispatch the item Part and apply the result on this logical side.
-     fn use_item_in_hand(&mut self, stack: &ItemStack) -> Option<bool> {
+    fn use_item_in_hand(&mut self, stack: &ItemStack) -> Option<bool> {
         use mod_api::InteractionResult as Result;
         let mut result = None;
         if mod_api::__private::has_part_hook(mod_api::HookId::UseItem)
@@ -83,7 +80,6 @@ pub trait UseItemHandGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> UseItemHandGameExt1<'__sg> for G {}
-
 
 use crate::game::native_hooks::base::GameHooks as _;
 

@@ -4,10 +4,10 @@ use super::*;
 impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn bind_guest_residency(&self, hub: &mut Hub) {
         hub.payload_player_epoch = self.common.native_lifecycle.epoch();
-        hub.guests
-            .bind_residency(&self.common.resident_entities.table.borrow().producer(), |id| {
-                sunrise_gameplay_common::game::Dim::from_id(id).key()
-            });
+        hub.guests.bind_residency(
+            &self.common.resident_entities.table.borrow().producer(),
+            |id| sunrise_gameplay_common::game::Dim::from_id(id).key(),
+        );
     }
 }
 

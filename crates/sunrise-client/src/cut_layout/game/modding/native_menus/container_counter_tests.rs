@@ -3,13 +3,17 @@
 //! inside the player's own turn (`ServerPlayer.closeContainer`, which vanilla's `openMenu`
 //! calls from inside the player's use action), through the handles a mod calls.
 
-use sunrise_gameplay_common::game::server_side::native_menus::tests::sent;
-use {sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
 use mod_api::{EntityRef, Host, MenuReplace, ServerHost, WorldEpoch};
 use std::sync::{Arc, mpsc};
+use sunrise_gameplay_common::game::server_side::native_menus::tests::sent;
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::Clientbound as C;
 use sunrise_sim::lan::{Out, PlayerSender};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+    sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+};
 
 /// Guest 1 (UUID 123) on a world open to LAN, and what their client is sent.
 fn watched_guest(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> mpsc::Receiver<Out> {

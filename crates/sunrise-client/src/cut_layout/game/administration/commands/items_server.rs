@@ -1,12 +1,11 @@
-
 #![cfg(test)]
 use sunrise_gameplay::game::server_side::commands::items::Slot;
 
 #[cfg(test)]
 pub(crate) mod mob_equipment_command_tests {
+    use crate::game::server_side::commands::items::mob_equipment_command_tests::with_game;
     use sunrise_gameplay_common::game::tables::GameItems;
-use sunrise_gameplay_common::game::tables::WorldTablesExt;
-use crate::game::server_side::commands::items::mob_equipment_command_tests::with_game;
+    use sunrise_gameplay_common::game::tables::WorldTablesExt;
 
     #[test]
     #[ignore = "daily"]
@@ -226,7 +225,7 @@ pub(crate) mod registered_slot_source_read_tests {
 
 #[cfg(test)]
 pub(crate) mod registered_slot_source_preservation_tests {
-use sunrise_gameplay::game::server_side::commands::items::registered_slot_source_preservation_tests::count;
+    use sunrise_gameplay::game::server_side::commands::items::registered_slot_source_preservation_tests::count;
 
     use super::*;
 

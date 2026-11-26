@@ -45,10 +45,7 @@ impl ServerGame<'_> {
     /// The guest `conn`'s real identity — the uuid its lent view carries and
     /// its entity id — when the guest is a player the tick can name: a fake
     /// guest resolves as none, as the write handle refuses it (#1077).
-    pub fn guest_identity(
-        &self,
-        conn: u32,
-    ) -> Option<([i32; 4], u32)> {
+    pub fn guest_identity(&self, conn: u32) -> Option<([i32; 4], u32)> {
         let guest = self.server.lan.as_ref()?.hub.guest(conn)?;
         if guest.is_fake() {
             return None;
@@ -91,7 +88,9 @@ impl ServerGame<'_> {
         if events.is_empty() {
             return;
         }
-        for (conn, mob, e) in sunrise_gameplay_common::game::creatures::RemainingActions::new(events) {
+        for (conn, mob, e) in
+            sunrise_gameplay_common::game::creatures::RemainingActions::new(events)
+        {
             self.guest_hit_by(conn, |g| g.guest_mob_event(mob, e));
         }
     }
@@ -219,11 +218,7 @@ impl ServerGame<'_> {
     /// A player's melee hit on a guest (Player.causeExtraKnockback on a
     /// ServerPlayer): a hurt that marked the velocity sends it at once, and
     /// the server's copy goes back to the velocity it had before the hit.
-    pub fn guest_struck_by<R>(
-        &mut self,
-        conn: u32,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> Option<R> {
+    pub fn guest_struck_by<R>(&mut self, conn: u32, f: impl FnOnce(&mut Self) -> R) -> Option<R> {
         let (result, sent) = self.as_guest(conn, |g| {
             let before = g.player.as_ref().map(|p| p.velocity);
             let result = f(g);
@@ -245,7 +240,10 @@ impl ServerGame<'_> {
     ) {
         if let (Some(v), Some(g)) = (
             velocity,
-            self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)),
+            self.server
+                .lan
+                .as_ref()
+                .and_then(|host| host.hub.guest(conn)),
         ) {
             g.send(&C::SetEntityMotion(play::SetEntityMotion {
                 id: g.entity_id,

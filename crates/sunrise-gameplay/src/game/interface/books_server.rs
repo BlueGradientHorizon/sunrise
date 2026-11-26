@@ -69,9 +69,10 @@ impl crate::game::ServerGame<'_> {
             self.set_lectern_powered(key, false);
             self.set_lectern_has_book(key, false, None);
             self.container_changed(key);
-            if let (Some(player), Some(name)) =
-                (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-            {
+            if let (Some(player), Some(name)) = (
+                self.server.lan_acting_uuid,
+                self.server.lan_acting_name.clone(),
+            ) {
                 self.native_player_take_lectern_book(
                     player,
                     &name,
@@ -84,9 +85,10 @@ impl crate::game::ServerGame<'_> {
             self.server.lectern_pulses.push((key, 2));
             self.server_level_event_at(1043, [key.0, key.1, key.2], 0);
             self.container_changed(key);
-            if let (Some(player), Some(name)) =
-                (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-            {
+            if let (Some(player), Some(name)) = (
+                self.server.lan_acting_uuid,
+                self.server.lan_acting_name.clone(),
+            ) {
                 self.native_player_lectern_page_change(
                     player,
                     &name,
@@ -142,14 +144,11 @@ impl crate::game::ServerGame<'_> {
         true
     }
     /// `LecternBlock.useItemOn`: a book goes onto an empty lectern.
-    pub fn use_lectern(
-        &mut self,
-        pos: [i32; 3],
-        held: Option<&ItemStack>,
-    ) -> bool {
+    pub fn use_lectern(&mut self, pos: [i32; 3], held: Option<&ItemStack>) -> bool {
         let key = (pos[0], pos[1], pos[2]);
         if &*self
-            .common.res
+            .common
+            .res
             .facts()
             .get(self.common.world.block(pos[0], pos[1], pos[2]))
             .name
@@ -180,7 +179,11 @@ impl crate::game::ServerGame<'_> {
                 page: 0,
             }),
         );
-        self.set_lectern_has_book(key, true, self.common.is_logical_server().then_some(Who::Player));
+        self.set_lectern_has_book(
+            key,
+            true,
+            self.common.is_logical_server().then_some(Who::Player),
+        );
         if !self.common.creative {
             self.consume_held();
         }
@@ -191,33 +194,31 @@ impl crate::game::ServerGame<'_> {
         ];
         self.server_play_sound("minecraft:item.book.put", at, 1.0, 1.0);
         self.container_changed(key);
-        if let (Some(player), Some(name)) =
-            (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-        {
+        if let (Some(player), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             self.native_player_insert_lectern_book(player, &name, pos, &book.item);
         }
         true
     }
     /// The book and quill at `slot` takes the pages, or with a title becomes
     /// the written book its writer signed.
-    pub fn write_book(
-        &mut self,
-        slot: usize,
-        pages: Vec<String>,
-        title: Option<String>,
-    ) {
+    pub fn write_book(&mut self, slot: usize, pages: Vec<String>, title: Option<String>) {
         let author = self
             .server
             .lan_acting_name
             .clone()
             .unwrap_or_else(|| super::chat_common::PLAYER_NAME.to_owned());
-        self.common.write_book_with_author(slot, pages, title, author);
+        self.common
+            .write_book_with_author(slot, pages, title, author);
     }
 
     /// `ServerPlayer.openItemGui` -> `WrittenBookContent.resolveForItem`: resolve selectors/scores.
     pub(in crate::game::server_side) fn resolve_held_book(&mut self) -> bool {
         let Some(mut book) = self
-            .common.held()
+            .common
+            .held()
             .and_then(|s| s.data())
             .and_then(|d| d.written.clone())
         else {
@@ -245,7 +246,8 @@ impl crate::game::ServerGame<'_> {
                 name.as_str()
             };
             Some(
-                self.common.score
+                self.common
+                    .score
                     .board
                     .score(name, &objective)
                     .map_or_else(String::new, |s| s.value.to_string()),
@@ -271,12 +273,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `LecternBlock.resetBookState`: the property with the block change event.
-    pub fn set_lectern_has_book(
-        &mut self,
-        key: (i32, i32, i32),
-        has_book: bool,
-        who: Option<Who>,
-    ) {
+    pub fn set_lectern_has_book(&mut self, key: (i32, i32, i32), has_book: bool, who: Option<Who>) {
         self.set_lectern_property(key, "has_book", has_book);
         let after = self.common.world.block(key.0, key.1, key.2);
         self.post_block_game_event(
@@ -287,12 +284,7 @@ impl crate::game::ServerGame<'_> {
         );
     }
 
-    pub fn set_lectern_property(
-        &mut self,
-        key: (i32, i32, i32),
-        name: &str,
-        value: bool,
-    ) {
+    pub fn set_lectern_property(&mut self, key: (i32, i32, i32), name: &str, value: bool) {
         let state = self.common.world.block(key.0, key.1, key.2);
         let registry = self.common.pack.assets.registry;
         let Some(mut s) = registry.state(state).cloned() else {

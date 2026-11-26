@@ -93,7 +93,11 @@ impl crate::game::ServerGame<'_> {
             ),
             // LivingEntity: not removed. ArmorStand: not a marker.
             Some(Target::Mob(_)) => self.camera_state(id).is_some(),
-            Some(Target::Stand(s)) => self.common.armor_stands.iter().any(|a| a.id == s && !a.marker),
+            Some(Target::Stand(s)) => self
+                .common
+                .armor_stands
+                .iter()
+                .any(|a| a.id == s && !a.marker),
             // BlockAttachedEntity, minecarts, boats, end crystals.
             Some(Target::Frame(_) | Target::Painting(_) | Target::Boat(_) | Target::Cart(_))
             | Some(Target::Crystal(_)) => true,
@@ -131,7 +135,8 @@ impl crate::game::ServerGame<'_> {
         };
         let block = at.map(|v| v.floor() as i32);
         if !self
-            .common.border
+            .common
+            .border
             .contains(f64::from(block[0]), f64::from(block[2]))
         {
             return;

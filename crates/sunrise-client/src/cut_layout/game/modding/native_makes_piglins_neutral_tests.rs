@@ -3,15 +3,19 @@
 //! player the piglins read carries (`gold_armor`, `PiglinAi.isWearingSafeArmor`), for the host
 //! and for each LAN guest, and a calm piglin targets only a player whose view has none
 //! (`NEAREST_TARGETABLE_PLAYER_NOT_WEARING_GOLD`).
-use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood, sunrise_gameplay::game::native_entity_refs::tests::with_game};
-use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use mod_api::{Hooks, Host, ItemPart, MakesPiglinsNeutralEvent, Registrar, RegistrationContext};
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
+use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::{Species, Who};
 use sunrise_sim::motion::PlayerMotion;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+    sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 /// Each question a part was asked: the item it is attached to and the wearer's entity id.
 static ASKED: Mutex<Vec<(&'static str, u32)>> = Mutex::new(Vec::new());
@@ -68,7 +72,11 @@ fn armor(head: Option<&str>, feet: Option<&str>) -> [Option<ItemStack>; 4] {
 }
 
 /// The host wears `head` and `feet` and nothing else; whether calm piglins leave them alone.
-fn wearing(game: &mut sunrise_gameplay::game::ServerGame<'_>, head: Option<&str>, feet: Option<&str>) -> bool {
+fn wearing(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    head: Option<&str>,
+    feet: Option<&str>,
+) -> bool {
     game.armor = armor(head, feet);
     ASKED.lock().unwrap().clear();
     game.player_view().unwrap().gold_armor

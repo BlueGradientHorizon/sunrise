@@ -1,7 +1,10 @@
-use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{Chunk, Hit, ItemStack, Path, inventory}};
-use std::sync::Arc;
 use crate::game::server_side::native_entity_refs::tests::with_game_role_client;
 use mod_api::{BlockPart, Hooks, LevelSide, Registrar, SmokeSourceEvent};
+use std::sync::Arc;
+use {
+    crate::game::remote::*,
+    sunrise_gameplay_common::game::remote::{Chunk, Hit, ItemStack, Path, inventory},
+};
 
 struct Bale;
 #[mod_api::sunrise_part]
@@ -119,7 +122,10 @@ fn client_placement_predicts_signal_fire_from_a_block_part() {
                         .default_state("minecraft:stone")
                         .unwrap();
                     game.world.set(x, 63, 0, ground).unwrap();
-                    game.common.world.set(x, 64, 0, game.common.res.facts().air).unwrap();
+                    game.common
+                        .world
+                        .set(x, 64, 0, game.common.res.facts().air)
+                        .unwrap();
                     game.world.set(x, 65, 0, campfire).unwrap();
                     let hit = sunrise_gameplay_common::game::Hit {
                         pos: [x, 63, 0],

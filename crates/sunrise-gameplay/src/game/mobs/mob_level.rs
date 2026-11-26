@@ -30,7 +30,8 @@ impl MobLevel for crate::game::ServerGame<'_> {
         }
     }
     fn mob_griefing(&self) -> bool {
-        self.common.ui
+        self.common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
     }

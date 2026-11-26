@@ -1,14 +1,17 @@
 use super::*;
 use mod_api::{AddToastError, Identifier, ModToast, ToastIcon, ToastKind};
-use sunrise_client_gameplay::game::client_side::mod_toasts::Entry;
-use sunrise_client_gameplay::game::toast_manager::Toast;
-use {sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use mod_api::{ClientHost, Flow, Hooks, ModEntry, ScreenRenderPostEvent, Text, ToastAddEvent};
 use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 use sunrise_client::hud::rgba;
+use sunrise_client_gameplay::game::client_side::mod_toasts::Entry;
+use sunrise_client_gameplay::game::toast_manager::Toast;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay_common::game::in_own_process,
+};
 
 const OPTIONS_MARKER: u32 = 0xFF5D_3E5D;
 
@@ -69,7 +72,9 @@ fn client_toasts_share_the_draw_list_and_admit_replacements_before_updating() {
                     );
                     assert!(seen.lock().unwrap().is_empty(), "no synchronous dispatch");
 
-                    let draw = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>| game.hud([960, 540]);
+                    let draw = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>| {
+                        game.hud([960, 540])
+                    };
                     draw(game);
                     assert_eq!(*seen.lock().unwrap(), ["Queued sprite", "Queued item"]);
                     assert_eq!(

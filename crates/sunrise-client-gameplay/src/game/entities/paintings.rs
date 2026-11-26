@@ -1,5 +1,3 @@
-
-
 #[cfg(test)]
 pub(in crate::game) mod face_tests {
     use crate::game::client_side::paintings_client::faces_camera;

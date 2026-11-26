@@ -118,7 +118,8 @@ impl crate::game::ServerGame<'_> {
                 single: false,
                 players: false,
             };
-            let Ok(Arg::Entity(sel)) = entities.parse(&mut reader, &self.common.ui.registries) else {
+            let Ok(Arg::Entity(sel)) = entities.parse(&mut reader, &self.common.ui.registries)
+            else {
                 return Text::literal(raw);
             };
             let found = self.select(&sel);

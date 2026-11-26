@@ -1,17 +1,17 @@
-use sunrise_client_gameplay::game::native_hooks::game_shutting_down::GameHooks;
-use mod_api::HookId;
-use mod_api::__private::reload::ReloadStageError;
 use super::*;
+use mod_api::__private::reload::ReloadStageError;
+use mod_api::ClientReloadListenerContext;
+use mod_api::HookId;
 use mod_api::{
     ClientReloadContext, ClientReloadListener, ClientReloadListeners, FileToIdConverter,
     Identifier, ReloadResourceError,
 };
 use std::{path::PathBuf, sync::Arc};
-use mod_api::ClientReloadListenerContext;
 use sunrise_client_gameplay::game::client_reload::{
     APPLY_GENERATIONS, PreparedClientReload, register_startup_client_reload_listeners,
     stage_client_reload,
 };
+use sunrise_client_gameplay::game::native_hooks::game_shutting_down::GameHooks;
 
 fn id(value: &str) -> Identifier {
     Identifier::parse(value).unwrap()
@@ -73,11 +73,14 @@ fn root_with_asset(name: &str, bytes: &[u8]) -> PathBuf {
 #[test]
 #[ignore = "daily"]
 fn panicking_client_reload_registration_discards_its_listener_and_edges() {
-    use {sunrise_gameplay_common::game::Progress, crate::game::server_side::native_entity_refs::tests::with_uncached_client_game, sunrise_client_gameplay::game::packs::stage_pack};
     use mod_api::{AddClientReloadListenersEvent, Hooks, ModEntry, VanillaClientListeners};
     use std::sync::{
         Mutex,
         atomic::{AtomicBool, Ordering},
+    };
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_uncached_client_game,
+        sunrise_client_gameplay::game::packs::stage_pack, sunrise_gameplay_common::game::Progress,
     };
 
     struct Listener {
@@ -383,7 +386,6 @@ fn a_converted_file_outside_the_pack_is_absent_not_empty() {
 #[test]
 #[ignore = "daily"]
 fn initial_load_stages_and_applies_client_reload_listeners() {
-    use {sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_client_gameplay::game::client_side::resource_load_client::load_resources_for_mods, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_client_gameplay::game::client_side::loading_window::start_client_game};
     use mod_api::{
         __private::game::RegistrationContextNew, AddClientReloadListenersEvent, ClientHost,
         ClientItemExtensionsRegistrar, ClientReloadListenerContext, Hooks, ModEntry,
@@ -392,6 +394,14 @@ fn initial_load_stages_and_applies_client_reload_listeners() {
     };
     use std::{sync::Mutex, time::Instant};
     use sunrise_assets::resource_source::{ResourceRoot, ResourceSource};
+    use {
+        crate::settings::Settings,
+        sunrise_client_gameplay::game::client_side::loading_window::start_client_game,
+        sunrise_client_gameplay::game::client_side::resource_load_client::load_resources_for_mods,
+        sunrise_client_lib::audio::Audio,
+        sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     struct Listener {
         trace: Arc<Mutex<Vec<&'static str>>>,
@@ -933,8 +943,8 @@ fn client_setup_reaches_each_listener_once_per_firing() {
 #[ignore = "daily"]
 fn only_the_first_local_client_is_the_client_start() {
     use sunrise_client_gameplay::game::client_side::launch_options_client::is_client_start;
-    use sunrise_gameplay_common::game::execution_role::ExecutionRole;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 
     with_game(|game| {
         game.options.execution_role = ExecutionRole::Client;
@@ -951,10 +961,13 @@ fn only_the_first_local_client_is_the_client_start() {
 #[test]
 #[ignore = "daily"]
 fn the_lifecycle_moments_fire_once_each_in_order() {
-    use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use mod_api::{ClientHost, Hooks, ModEntry, ServerHost};
     use mod_platform::testing::with_mods;
     use std::sync::Mutex;
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    };
 
     struct Log(Arc<Mutex<Vec<String>>>);
     #[mod_api::__subscriptions]
@@ -1163,7 +1176,11 @@ fn resolved_ui_resources_do_not_restore_a_filtered_panorama_face() {
         }
     }
     assert!(base.contains("assets/minecraft/textures/gui/title/background/panorama_1.png"));
-    let gui = sunrise_client_gameplay::game::UiResources::load(&ResourceSource::indexed(files), &scratch.0).unwrap();
+    let gui = sunrise_client_gameplay::game::UiResources::load(
+        &ResourceSource::indexed(files),
+        &scratch.0,
+    )
+    .unwrap();
     assert_eq!(
         gui.panorama.texels().unwrap(),
         [96, 110, 111, 255].repeat(6)
@@ -1173,9 +1190,12 @@ fn resolved_ui_resources_do_not_restore_a_filtered_panorama_face() {
 #[test]
 #[ignore = "daily"]
 fn refused_client_context_keeps_pack_and_listeners() {
-    use {sunrise_gameplay_common::game::Progress, crate::game::server_side::native_entity_refs::tests::with_uncached_client_game, sunrise_client_gameplay::game::packs::stage_pack};
     use mod_api::__private::reload::PreparedStep;
     use std::sync::atomic::{AtomicBool, Ordering};
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_uncached_client_game,
+        sunrise_client_gameplay::game::packs::stage_pack, sunrise_gameplay_common::game::Progress,
+    };
 
     with_uncached_client_game(|game| {
         let mut staged = stage_pack(

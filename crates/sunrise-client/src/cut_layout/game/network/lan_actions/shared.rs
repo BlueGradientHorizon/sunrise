@@ -1,18 +1,19 @@
-
-
 #[cfg(test)]
 pub(in crate::game) mod swing_echo_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_items::items::ItemStack;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_core::position::ChunkPos;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_items::items::ItemStack;
     use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::{
         configuration::ClientInformation,
         play::{self, Clientbound, Serverbound},
     };
     use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     /// handleUseItemOn swings the player's arm, but sends the swing to the
     /// player's own client only when the client did not predict it: a block
@@ -41,7 +42,8 @@ use sunrise_items::items::ItemStack;
         options.game_dir = Some(
             std::env::temp_dir().join(format!("sunrise-swing-echo-unit-{}", std::process::id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -182,17 +184,20 @@ use sunrise_items::items::ItemStack;
 
 #[cfg(test)]
 pub(in crate::game) mod item_on_block_cooldown_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_items::items::ItemStack;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_core::position::ChunkPos;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_items::items::ItemStack;
     use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::{
         configuration::ClientInformation,
         play::{self, Clientbound, Serverbound},
     };
     use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     // Actual registered guest packet route, with real loaded block facts.
     fn placement_control(check_start: Option<bool>) {
@@ -216,7 +221,8 @@ use sunrise_items::items::ItemStack;
         options.game_dir = Some(
             std::env::temp_dir().join(format!("sunrise-use-cooldown-unit-{}", std::process::id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,

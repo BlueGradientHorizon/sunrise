@@ -55,7 +55,8 @@ impl crate::game::ServerGame<'_> {
         let state = self.player_will_destroy(pos, state, facts, filled_hive);
         if !creative
             && self
-                .common.res
+                .common
+                .res
                 .behaviours()
                 .data(state)
                 .is(sunrise_world::level::classes::Class::Door)
@@ -96,7 +97,10 @@ impl crate::game::ServerGame<'_> {
         // TripWireBlock.playerWillDestroy: shears disarm the string first (flags
         // 260), so taking it down does not trip the hook.
         if &*facts.name == "minecraft:tripwire"
-            && self.common.held().is_some_and(|s| &*s.item == "minecraft:shears")
+            && self
+                .common
+                .held()
+                .is_some_and(|s| &*s.item == "minecraft:shears")
             && let Some(disarmed) = self.common.with_props(state, &[("disarmed", "true")])
         {
             let at = BlockPos::new(pos[0], pos[1], pos[2]);
@@ -111,7 +115,8 @@ impl crate::game::ServerGame<'_> {
         if creative
             && filled_hive
             && self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS)
             && let Some(stack) = self.picked_stack(pos, true)

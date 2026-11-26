@@ -13,7 +13,8 @@ pub trait Hooks {
     /// own column. No mob is supplied. These answers run after static
     /// classification; per-search evaluator caches remain.
     /// Diverges from upstream: new hook.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::adjacent_block_path_type::ServerGame<'_>::native_adjacent_block_path_type", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::adjacent_block_path_type::ServerGame<'_>::native_adjacent_block_path_type",
         receiver = "read",
         dispatch = "flat",
         side = "server",

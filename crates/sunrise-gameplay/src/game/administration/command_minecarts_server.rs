@@ -16,7 +16,8 @@ impl crate::game::ServerGame<'_> {
     pub fn perform_cart_command(&mut self, id: u32) -> bool {
         let game_time = self.common.world.game_time;
         let rules_work = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::COMMAND_BLOCKS_WORK);
         let dimension = self.common.dim;
@@ -61,7 +62,8 @@ impl crate::game::ServerGame<'_> {
         };
         if let Some((command, source)) = command {
             let successes = self.run_as_game_master(&command, source);
-            self.common.edit_command_cart(id, |c| c.command.success_count = successes);
+            self.common
+                .edit_command_cart(id, |c| c.command.success_count = successes);
         }
         self.common.edit_command_cart(id, |c| {
             c.command.last_execution = if c.command.update_last_execution {
@@ -95,7 +97,8 @@ impl crate::game::ServerGame<'_> {
     /// `CommandSourceStack.sendSuccess` for a command minecart.
     pub(in crate::game::server_side) fn cart_command_success(&mut self, id: u32, message: Text) {
         if self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
         {
@@ -109,7 +112,12 @@ impl crate::game::ServerGame<'_> {
         conn: u32,
         p: play::SetCommandMinecart,
     ) {
-        let Some(g) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(g) = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+        else {
             return;
         };
         let allowed = g.creative() && g.permission >= 2;
@@ -130,11 +138,13 @@ impl crate::game::ServerGame<'_> {
         track_output: bool,
     ) {
         let enabled = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::COMMAND_BLOCKS_WORK);
         if self
-            .common.edit_command_cart(id, |c| {
+            .common
+            .edit_command_cart(id, |c| {
                 c.command.set_command(&command);
                 c.command.track_output = track_output;
                 if !track_output {

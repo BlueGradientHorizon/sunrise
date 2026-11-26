@@ -1,14 +1,14 @@
 //! `Player.attack`'s admission of a hit (`baseDamage > 0.0F || magicBoost > 0.0F`), the
 //! attacker's `ATTACK_KNOCKBACK` in `LivingEntity.getKnockback`, and a creative player's
 //! blow through `Entity.isInvulnerableToBase`'s `!source.isCreativePlayer()`.
+use super::super::*;
+use crate::game::load_resources;
 use crate::settings::Settings;
+use std::sync::Arc;
+use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::Options;
 use sunrise_gameplay_common::game::Progress;
-use crate::game::load_resources;
-use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
-use super::super::*;
-use std::sync::Arc;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
 
@@ -37,7 +37,8 @@ fn game<'a>(
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         res,

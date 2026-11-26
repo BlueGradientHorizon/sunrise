@@ -1,9 +1,12 @@
 //! A custom crafting remainder reaches the normal server toss moment.
-use {crate::game::*, sunrise_gameplay_common::game::{ItemStack, Recipes, api_values, host, mods}};
 use std::result::Result;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
+};
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{ItemStack, Recipes, api_values, host, mods},
 };
 pub(crate) struct Probe {
     pub tosses: Arc<AtomicUsize>,

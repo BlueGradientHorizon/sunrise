@@ -3,10 +3,13 @@
 /// a chat type the registry lacks is `minecraft:chat`'s.
 #[test]
 fn chat_is_narrated_with_its_chat_types_narration_decoration() {
-    use sunrise_gameplay_common::game::remote::chat::chat_type_decorate;
-    use {sunrise_gameplay_common::game::remote::chat::Decoration, sunrise_gameplay_common::game::remote::play};
     use serde_json::json;
     use sunrise_core::nbt::{JavaString, Tag, parse_snbt};
+    use sunrise_gameplay_common::game::remote::chat::chat_type_decorate;
+    use {
+        sunrise_gameplay_common::game::remote::chat::Decoration,
+        sunrise_gameplay_common::game::remote::play,
+    };
     let bound = play::ChatTypeBound {
         chat_type: 0,
         name: Tag::String(JavaString::from("Steve")),

@@ -1,11 +1,9 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_items::items::ItemStack;
-use sunrise_sim::beehive::Beehive;
 use sunrise_level::containers::BlockEntity;
+use sunrise_sim::beehive::Beehive;
 #[cfg(test)]
 pub(crate) mod honey_overflow_tests {
     use super::*;
@@ -102,11 +100,14 @@ pub(crate) mod stay_tests {
             game.world
                 .block_entities
                 .insert(key, BlockEntity::Beehive(Box::new(hive)));
-            let inside =
-                |game: &sunrise_gameplay::game::ServerGame<'_>| match game.world.block_entities.get(&key) {
-                    Some(BlockEntity::Beehive(h)) => h.bees.len(),
-                    _ => panic!("the hive is gone"),
-                };
+            let inside = |game: &sunrise_gameplay::game::ServerGame<'_>| match game
+                .world
+                .block_entities
+                .get(&key)
+            {
+                Some(BlockEntity::Beehive(h)) => h.bees.len(),
+                _ => panic!("the hive is gone"),
+            };
             game.world.day_time = 13_000;
             game.tick_beehive(key);
             assert_eq!((inside(game), game.mobs.len()), (3, 0), "night");
@@ -119,16 +120,20 @@ pub(crate) mod stay_tests {
 
 #[cfg(test)]
 pub(crate) mod changed_tests {
-    use sunrise_gameplay::game::game_tests::tests::server_game;
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Tag;
+    use sunrise_gameplay::game::game_tests::tests::server_game;
     use sunrise_level::containers::BlockEntity;
     use sunrise_sim::{
         beehive::{Beehive, Occupant},
         mobs::Mob,
     };
 
-    fn hive_at(game: &mut sunrise_gameplay::game::ServerGame<'_>, key: (i32, i32, i32), hive: Beehive) {
+    fn hive_at(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        key: (i32, i32, i32),
+        hive: Beehive,
+    ) {
         let state = game
             .pack
             .assets

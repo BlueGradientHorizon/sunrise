@@ -1,5 +1,3 @@
-
-
 use sunrise_level::block_entities::Ticking;
 use sunrise_level::containers::BlockEntity;
 #[cfg(test)]
@@ -13,7 +11,10 @@ pub(crate) mod jukebox_stop_tests {
     fn with_jukebox(
         f: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &ItemStack),
     ) -> Option<Vec<String>> {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        };
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES")?);
         let settings = Settings::default();
         let loaded = load_resources(
@@ -31,7 +32,8 @@ pub(crate) mod jukebox_stop_tests {
         .ok()?;
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -397,13 +399,16 @@ pub(crate) mod add_blocks_tests {
 
 #[cfg(test)]
 pub(crate) mod furnace_changed_tests {
-    use {sunrise_gameplay::game::game_tests::tests::server_game, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases};
     use std::{
         collections::HashMap,
         sync::{Arc, Mutex},
     };
     use sunrise_items::items::ItemStack;
     use sunrise_level::containers::{BlockEntity, Furnace, FurnaceKind};
+    use {
+        sunrise_gameplay::game::game_tests::tests::server_game,
+        sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    };
 
     type Burn = ([i32; 3], String);
     struct Burns(Arc<Mutex<Vec<Burn>>>);
@@ -752,10 +757,19 @@ pub(crate) mod furnace_changed_tests {
 
 #[cfg(test)]
 pub(crate) mod slot_guard_tests {
-    use {sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTick, sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTickSlot, sunrise_gameplay::game::server_side::block_entity_ticks::TickedKind};
-    use sunrise_gameplay::game::game_tests::tests::server_game;
-    use {sunrise_gameplay_common::game::published_loops::Attributed, sunrise_gameplay_common::game::published_loops::LoopFlow, sunrise_gameplay_common::game::published_loops::LoopMod, sunrise_gameplay_common::game::published_loops::LoopSlots};
     use mod_api::content::crash::{ModCall, current_native_call};
+    use sunrise_gameplay::game::game_tests::tests::server_game;
+    use {
+        sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTick,
+        sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTickSlot,
+        sunrise_gameplay::game::server_side::block_entity_ticks::TickedKind,
+    };
+    use {
+        sunrise_gameplay_common::game::published_loops::Attributed,
+        sunrise_gameplay_common::game::published_loops::LoopFlow,
+        sunrise_gameplay_common::game::published_loops::LoopMod,
+        sunrise_gameplay_common::game::published_loops::LoopSlots,
+    };
 
     struct Row;
     impl LoopMod for Row {
@@ -810,11 +824,14 @@ pub(crate) mod slot_guard_tests {
 #[cfg(test)]
 pub(crate) mod slot_mutation_tests {
     use sunrise_gameplay_common::game::GameGameExt1;
-use {sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTick, sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTickSlot};
+    use {
+        sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTick,
+        sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTickSlot,
+    };
 
+    use sunrise_core::geometry::Vec3;
     use sunrise_gameplay::game::game_tests::tests::server_game;
     use sunrise_gameplay_common::game::published_loops::LoopFlow;
-    use sunrise_core::geometry::Vec3;
     use sunrise_items::items::ItemStack;
     use sunrise_level::block_entities::Pos;
     use sunrise_level::containers::BlockEntity;
@@ -862,7 +879,10 @@ use {sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTick, s
 
     /// A server game with a player beside `A`, `B` and `C`, whose chunk ticks blocks, and
     /// `blocks` placed in order.
-    fn with_blocks(blocks: &[(Pos, &str)], test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+    fn with_blocks(
+        blocks: &[(Pos, &str)],
+        test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
+    ) {
         let mut game_resources = None;
         let mut game = server_game(&mut game_resources);
         game.player = Some(
@@ -1023,7 +1043,10 @@ use {sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTick, s
                         tick.game.server.item_columns.is_some(),
                         "the outer pass's columns"
                     );
-                    assert!(tick.game.server.pass_mobs.is_some(), "the outer pass's mobs");
+                    assert!(
+                        tick.game.server.pass_mobs.is_some(),
+                        "the outer pass's mobs"
+                    );
                     stone_above(tick.game, C);
                 }
                 LoopFlow::Continue
@@ -1052,27 +1075,27 @@ use {sunrise_gameplay::game::server_side::block_entity_ticks::BlockEntityTick, s
 #[cfg(any())]
 pub(crate) mod own_block_entity_tests {
 
-use sunrise_gameplay_common::game::server_side::block_entity_ticks::own_block_entity_tests::A;
+    use sunrise_gameplay_common::game::server_side::block_entity_ticks::own_block_entity_tests::A;
 
-use sunrise_gameplay_common::game::server_side::block_entity_ticks::own_block_entity_tests::B;
+    use sunrise_gameplay_common::game::server_side::block_entity_ticks::own_block_entity_tests::B;
 
-use sunrise_gameplay_common::game::server_side::block_entity_ticks::own_block_entity_tests::DETECTOR;
+    use sunrise_gameplay_common::game::server_side::block_entity_ticks::own_block_entity_tests::DETECTOR;
 
-use sunrise_gameplay::game::server_side::block_entity_ticks::own_block_entity_tests::place_mod_entity;
+    use sunrise_gameplay::game::server_side::block_entity_ticks::own_block_entity_tests::place_mod_entity;
 
-use sunrise_gameplay::game::server_side::block_entity_ticks::own_block_entity_tests::ticks_of;
+    use sunrise_gameplay::game::server_side::block_entity_ticks::own_block_entity_tests::ticks_of;
 
-use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
+    use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
 
-use std::sync::{Arc, OnceLock};
+    use std::sync::{Arc, OnceLock};
 
-use sunrise_core::geometry::Vec3;
+    use sunrise_core::geometry::Vec3;
 
-use sunrise_level::block_entities::Pos;
+    use sunrise_level::block_entities::Pos;
 
-use sunrise_level::containers::{BlockEntity, ModBlockEntity};
+    use sunrise_level::containers::{BlockEntity, ModBlockEntity};
 
-/// `mods` installed, a game on the prepared resources with a player over chunk (0, 0), whose
+    /// `mods` installed, a game on the prepared resources with a player over chunk (0, 0), whose
     /// blocks tick, and `placed` set there as a player's placement sets them.
     fn with_machines(
         mods: Mods,
@@ -1084,7 +1107,9 @@ use sunrise_level::containers::{BlockEntity, ModBlockEntity};
             mod_api::__private::mark_game_thread();
             let base =
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-            let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+            let root =
+                sunrise_gameplay_common::game::mods::content_root(&base, &Default::default())
+                    .unwrap();
             with_game_at(root.prepared().to_path_buf(), |game| {
                 game.options.dedicated = Some(Vec::new());
                 game.world
@@ -1107,7 +1132,7 @@ use sunrise_level::containers::{BlockEntity, ModBlockEntity};
             });
         });
     }
-/// Two mods' block entities and a hopper in one world, one of mod B's standing on mod A's block
+    /// Two mods' block entities and a hopper in one world, one of mod B's standing on mod A's block
     /// (B made its type valid there): each slot sees all awake tickers but counts only its own
     /// entities, whatever block they stand on. The hopper is offered only on the first pass, and
     /// an id with no type counts nothing.
@@ -1156,7 +1181,7 @@ use sunrise_level::containers::{BlockEntity, ModBlockEntity};
             assert_eq!(missing.mine, []);
         });
     }
-/// Mod B's block entity standing on a vanilla block, a daylight detector, that B made its type
+    /// Mod B's block entity standing on a vanilla block, a daylight detector, that B made its type
     /// valid on, beside each mod's own block and a detector with its vanilla block entity: mod B's
     /// slot counts it, mod A's doesn't, and it ticks as B's. Neither counts the vanilla detector.
     #[test]
@@ -1202,7 +1227,7 @@ use sunrise_level::containers::{BlockEntity, ModBlockEntity};
             assert_eq!(ticks_of(game, d), [2, 2]);
         });
     }
-/// A slot's `before` replaces mod A's block entity with one of mod B's type and continues: a
+    /// A slot's `before` replaces mod A's block entity with one of mod B's type and continues: a
     /// later slot's `before` in the same entry still gets the cursor from before the edit (mod
     /// A's type, though B's entity stands there), the replaced entity does not tick, as A's or at
     /// all, and no slot's `after` sees it. The next pass visits it as B's.
@@ -1255,6 +1280,5 @@ use sunrise_level::containers::{BlockEntity, ModBlockEntity};
         });
     }
 }
-
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

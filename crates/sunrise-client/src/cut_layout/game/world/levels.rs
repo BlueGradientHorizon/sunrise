@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use std::sync::Arc;
 use std::time::Duration;
@@ -9,16 +7,16 @@ use sunrise_sim::save::SaveDir;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1;
-use sunrise_gameplay_common::game::tables::WorldTablesExt;
-use sunrise_gameplay_common::game::server_side::levels::tests::LOGGED;
-use sunrise_gameplay::game::server_side::levels::IDLE_TICKS;
+    use sunrise_gameplay::game::server_side::levels::IDLE_TICKS;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1;
+    use sunrise_gameplay_common::game::server_side::levels::tests::LOGGED;
+    use sunrise_gameplay_common::game::tables::WorldTablesExt;
 
-#[cfg(test)]
-struct LogCapture;
-#[cfg(test)]
-impl log::Log for LogCapture {
+    #[cfg(test)]
+    struct LogCapture;
+    #[cfg(test)]
+    impl log::Log for LogCapture {
         fn enabled(&self, _: &log::Metadata) -> bool {
             true
         }
@@ -28,14 +26,17 @@ impl log::Log for LogCapture {
         fn flush(&self) {}
     }
 
-use super::*;
+    use super::*;
 
-/// A game on the prepared resources in `SUNRISE_TEST_RESOURCES`, with no
+    /// A game on the prepared resources in `SUNRISE_TEST_RESOURCES`, with no
     /// world opened and commands allowed.
     fn prepared_game<'a>(
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
     ) -> sunrise_gameplay::game::ServerGame<'a> {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        };
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -53,7 +54,8 @@ use super::*;
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         // The game keeps its resources for the whole test.
         let resources = &*resources.insert(loaded.resources);
         let mut game = sunrise_gameplay::game::ServerGame::new(
@@ -69,7 +71,7 @@ use super::*;
         game.set_allow_commands(true);
         game
     }
-/// `WorldBorderCommand.setSize` from `/worldborder add` with a time: the
+    /// `WorldBorderCommand.setSize` from `/worldborder add` with a time: the
     /// new change lasts the ticks still running plus the argument
     /// (`getLerpTime() + time`), where `/worldborder set` replaces it.
     #[test]
@@ -96,7 +98,7 @@ use super::*;
         assert_eq!(game.border.target_size(), 200.0);
         assert_eq!(game.border.remaining_ticks(), 40);
     }
-/// `ServerLevel.getWorldBorder`: `/worldborder` in one level leaves the others' alone.
+    /// `ServerLevel.getWorldBorder`: `/worldborder` in one level leaves the others' alone.
     #[test]
     #[ignore = "daily"]
     fn each_level_keeps_its_own_world_border() {
@@ -109,12 +111,15 @@ use super::*;
         let nether = game.server.levels.0.parked_border(Dim::Nether).unwrap();
         assert_eq!(nether.size(), 100.0);
     }
-/// 300 slow ticks in ten seconds log no Sunrise slow-tick line, and the ring holds the last 256.
+    /// 300 slow ticks in ten seconds log no Sunrise slow-tick line, and the ring holds the last 256.
     #[test]
     #[ignore = "daily"]
     fn slow_ticks_enter_the_ring_and_not_the_log() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
         use sunrise_sim::server_perf::{ServerPerf, TickDetail, WorldCounts};
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        };
         log::set_logger(&LogCapture).expect("no other logger in this test run");
         log::set_max_level(log::LevelFilter::Info);
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -134,7 +139,8 @@ use super::*;
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         options.spikes = Some(0.0);
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
@@ -174,7 +180,7 @@ use super::*;
             "{logged:?}"
         );
     }
-/// A game on a scratch world folder, the way `dedicated.rs` opens one
+    /// A game on a scratch world folder, the way `dedicated.rs` opens one
     /// (`load_world` with an absolute folder).
     fn open_game<'a>(
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
@@ -182,7 +188,10 @@ use super::*;
         home: &std::path::Path,
         world: &std::path::Path,
     ) -> sunrise_gameplay::game::ServerGame<'a> {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        };
         let settings = Settings::default();
         let loaded = load_resources(
             sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
@@ -204,7 +213,8 @@ use super::*;
         options.game_dir = Some(home.to_path_buf());
         // A fixed name: no generated sunrise-player.txt in the working directory.
         options.player_name = Some("H260".into());
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             resources,
             loaded.pack,
@@ -225,14 +235,16 @@ use super::*;
                 Some(260),
                 true,
                 None,
-                std::sync::Arc::new(sunrise_gameplay_common::game::api_values::game_rule_registry()),
+                std::sync::Arc::new(
+                    sunrise_gameplay_common::game::api_values::game_rule_registry(),
+                ),
             )
             .unwrap(),
         )
         .unwrap();
         game
     }
-/// `MinecraftServer.prepareLevels` activates each level's saved tickets and
+    /// `MinecraftServer.prepareLevels` activates each level's saved tickets and
     /// waits for their ticking chunks without a player visiting either level.
     #[test]
     #[ignore = "daily"]
@@ -348,7 +360,7 @@ use super::*;
             assert!(ticking(&game, end, commanded_chunk));
         });
     }
-/// `WorldDimensions.BUILTIN_ORDER` is independent of a saved player's dimension.
+    /// `WorldDimensions.BUILTIN_ORDER` is independent of a saved player's dimension.
     #[test]
     #[ignore = "daily"]
     fn built_in_level_load_order_ignores_the_saved_player_dimension() {
@@ -381,7 +393,10 @@ use super::*;
             let mut game = open_game(&mut resources, &root, home.path(), &world);
             game.level.dimension = "minecraft:the_nether".into();
             game.level.position = Some([0.0, 64.0, 0.0]);
-            game.common.level.write(&world, game.common.res.items()).unwrap();
+            game.common
+                .level
+                .write(&world, game.common.res.items())
+                .unwrap();
         }
 
         let seen = Arc::new(Mutex::new(Vec::new()));
@@ -404,7 +419,7 @@ use super::*;
             ]
         );
     }
-/// Vanilla 26.3 (`MinecraftServer.createLevels` / `MinecraftServer.levels` /
+    /// Vanilla 26.3 (`MinecraftServer.createLevels` / `MinecraftServer.levels` /
     /// `ServerLevel.noSave` / `ChunkMap.processUnloads`): built-in levels open
     /// once at startup, stay open and addressable across idle ticks while
     /// unloading released chunks (except during server pause or `/save-off`,
@@ -414,11 +429,14 @@ use super::*;
     #[test]
     #[ignore = "daily"]
     fn built_in_levels_stay_open_across_idle_ticks_until_shutdown() {
-        use {sunrise_gameplay::game::lan::LanSettings, sunrise_gameplay_common::game::lan_actions::GuestCommand};
         use mod_api::{Hooks, LevelLoadEvent, LevelUnloadEvent, ModEntry, ServerHost};
         use std::sync::{Arc, Mutex};
         use sunrise_server_files::user_lists::{BanList, IpBanList, OpList, WhiteList};
         use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
+        use {
+            sunrise_gameplay::game::lan::LanSettings,
+            sunrise_gameplay_common::game::lan_actions::GuestCommand,
+        };
 
         const BUILT_INS: [&str; 3] = [
             "minecraft:overworld",
@@ -470,21 +488,23 @@ use super::*;
             game.server.settings.render_distance = 2;
             game.server.settings.simulation_distance = 2;
             game.server.streaming.radius = -1;
-            game.server.server_lists.0 = Some(Arc::new(Mutex::new(sunrise_gameplay::game::dedicated::Lists {
-                ops: OpList::new(home.path().join("ops.json")),
-                white: WhiteList::new(home.path().join("whitelist.json")),
-                bans: BanList::new(home.path().join("banned-players.json")),
-                ip_bans: IpBanList::new(home.path().join("banned-ips.json")),
-                use_whitelist: false,
-                enforce_whitelist: false,
-                op_level: 4,
-                player_idle_timeout: 0,
-                stop: false,
-                autosave: true,
-            })));
-            game.ui.dispatcher = sunrise_gameplay_common::game::chat_common::SessionDispatcher(Arc::new(
-                sunrise_command::vanilla::build_for(false, true),
-            ));
+            game.server.server_lists.0 = Some(Arc::new(Mutex::new(
+                sunrise_gameplay::game::dedicated::Lists {
+                    ops: OpList::new(home.path().join("ops.json")),
+                    white: WhiteList::new(home.path().join("whitelist.json")),
+                    bans: BanList::new(home.path().join("banned-players.json")),
+                    ip_bans: IpBanList::new(home.path().join("banned-ips.json")),
+                    use_whitelist: false,
+                    enforce_whitelist: false,
+                    op_level: 4,
+                    player_idle_timeout: 0,
+                    stop: false,
+                    autosave: true,
+                },
+            )));
+            game.ui.dispatcher = sunrise_gameplay_common::game::chat_common::SessionDispatcher(
+                Arc::new(sunrise_command::vanilla::build_for(false, true)),
+            );
             game.lan_host(
                 LanSettings {
                     port: 0,
@@ -673,7 +693,7 @@ use super::*;
             assert_eq!(*unloads.lock().unwrap(), BUILT_INS);
         });
     }
-/// Expected values from the official 26.3 dedicated server restarted on the
+    /// Expected values from the official 26.3 dedicated server restarted on the
     /// same world: each level's `world_border` SavedData is read when the level
     /// is made, so the Overworld's saved border is in place for the first
     /// command, and a first `/worldborder set` is not overwritten later.
@@ -712,14 +732,18 @@ use super::*;
                 .0
                 .parked_border(Dim::Nether)
                 .map(|b| b.size()),
-            game.server.levels.0.parked_border(Dim::End).map(|b| b.size()),
+            game.server
+                .levels
+                .0
+                .parked_border(Dim::End)
+                .map(|b| b.size()),
         );
         if sizes != (70.0, Some(100.0), Some(59_999_968.0)) {
             failures.push(format!("after the first set and a tick: {sizes:?}"));
         }
         assert!(failures.is_empty(), "reopened borders: {failures:#?}");
     }
-/// Added controls (H260, after the baseline): a new world, and a read and a
+    /// Added controls (H260, after the baseline): a new world, and a read and a
     /// set before the first tick that survive a tick, a save and another reopen.
     #[test]
     #[ignore = "daily"]
@@ -790,7 +814,7 @@ use super::*;
         }
         assert!(failures.is_empty(), "reopened borders: {failures:#?}");
     }
-/// `ImposterProtoChunk(…, false)`: a new chunk's features read a full
+    /// `ImposterProtoChunk(…, false)`: a new chunk's features read a full
     /// neighbour but their ordinary `setBlockState` writes do not change it,
     /// while `BulkSectionAccess` (ores) writes its sections. Expected values
     /// from the official 26.3 server on the constructed 1.20.4 world
@@ -852,7 +876,7 @@ use super::*;
             "the full chunk (12, -1): {failures:#?}"
         );
     }
-/// `BlendingData.pack` of an old chunk whose border columns a new chunk's
+    /// `BlendingData.pack` of an old chunk whose border columns a new chunk's
     /// generation calculated (`getOrUpdateBlendingData`), as the official 26.3
     /// server saves it: a constructed 1.20.4 world (full old chunks, their
     /// partial ring removed, `H077_OLD_WORLD`) where chunk (13, 0) is new.
@@ -951,7 +975,7 @@ use super::*;
         }
         assert!(failures.is_empty(), "saved blending data: {failures:#?}");
     }
-/// Added control (H077, after the baseline): the exact cache state the save
+    /// Added control (H077, after the baseline): the exact cache state the save
     /// reads. After the generation of (13, 0), the Overworld folder's lookup
     /// holds the calculated data of the edge chunk (12, 0), with the official
     /// server's heights; an old neighbour without new sides holds no height,
@@ -1015,10 +1039,9 @@ use super::*;
     }
 }
 
-
 #[cfg(test)]
 mod request_save_tests {
-    use {sunrise_gameplay_common::game::Dim, sunrise_gameplay::game::server_side::levels::Levels};
+    use {sunrise_gameplay::game::server_side::levels::Levels, sunrise_gameplay_common::game::Dim};
 
     #[test]
     #[ignore = "daily"]

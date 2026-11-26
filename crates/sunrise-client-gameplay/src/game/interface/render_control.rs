@@ -106,7 +106,10 @@ impl ClientGame<'_> {
                     .new_block_entity_for_state(state)
                     .filter(|e| matches!(e, sunrise_level::containers::BlockEntity::Sign(_)))
                     .ok_or("no sign there")?;
-                self.common.world.block_entities.get_or_insert_with(key, || entity);
+                self.common
+                    .world
+                    .block_entities
+                    .get_or_insert_with(key, || entity);
                 self.open_sign_editor(key, words.get(4) != Some(&"back"));
                 Ok(Some(json!({ "ok": true })))
             }

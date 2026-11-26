@@ -2,12 +2,19 @@
 //! tick pending in the source box is scheduled at the same offset in the
 //! destination, with its trigger time, whatever the clone placed there
 //! (tools/test_clone_block_ticks_parity.py measures the same on vanilla 26.3).
-use {crate::game::*, sunrise_gameplay_common::game::{Instant, Options, PathBuf, Progress, Resources, execution_role}};
 use std::sync::Arc;
 use sunrise_core::position::{BlockPos, ChunkPos};
 use sunrise_level::chunk::Chunk;
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{
+        Instant, Options, PathBuf, Progress, Resources, execution_role,
+    },
+};
 
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::game::ServerGame<'_> {
+fn game(
+    resources: &mut Option<std::sync::Arc<Resources>>,
+) -> sunrise_gameplay::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),

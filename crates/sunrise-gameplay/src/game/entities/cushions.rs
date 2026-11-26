@@ -38,14 +38,21 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game::server_side) fn cushion_survives(&self, c: &Cushion) -> bool {
-        sunrise_sim::cushion::survives(&PlacementWorld(self, std::marker::PhantomData), aabb(c.bounds()))
+        sunrise_sim::cushion::survives(
+            &PlacementWorld(self, std::marker::PhantomData),
+            aabb(c.bounds()),
+        )
     }
 
     /// `Cushion.destroyIfInFire`: a fire-tagged block inside the deflated box.
     pub(in crate::game::server_side) fn cushion_in_fire(&self, c: &Cushion) -> bool {
         let bounds = aabb(c.bounds()).next_deflated();
         blocks_in(bounds).any(|p| {
-            let facts = self.common.res.facts().get(self.common.world.block(p[0], p[1], p[2]));
+            let facts = self
+                .common
+                .res
+                .facts()
+                .get(self.common.world.block(p[0], p[1], p[2]));
             self.items().block_in_tag("minecraft:fire", &facts.name)
         })
     }
@@ -56,11 +63,7 @@ impl crate::game::ServerGame<'_> {
     /// spawn box of a cushion that may go there.
     /// `CushionItem.useOn`: spawn the cushion where `cushion_spawn` allows,
     /// unless another cushion is in the way.
-    pub fn place_cushion(
-        &mut self,
-        hit: &Hit,
-        stack: &ItemStack,
-    ) -> bool {
+    pub fn place_cushion(&mut self, hit: &Hit, stack: &ItemStack) -> bool {
         let Some(info) = self.items().get(&stack.item).cloned() else {
             return false;
         };
@@ -80,7 +83,8 @@ impl crate::game::ServerGame<'_> {
         };
         // `getEntitiesOfClass(Cushion.class, spawnAABB).isEmpty()`.
         if self
-            .common.cushions
+            .common
+            .cushions
             .iter()
             .any(|c| overlaps(aabb(c.bounds()), bounds))
         {
@@ -107,7 +111,8 @@ impl crate::game::ServerGame<'_> {
             // copies the stack's `CUSTOM_NAME` onto the placed cushion.
             custom_name: stack.data().and_then(|d| d.custom_name.clone()),
         });
-        self.common.world
+        self.common
+            .world
             .modified
             .insert((attached[0] >> 4, attached[2] >> 4));
         // `destroyIfInFire`: placed into fire, it breaks at once.
@@ -181,7 +186,9 @@ impl crate::game::ServerGame<'_> {
             Some(Target::Player) => self.common.creative,
             // The guest whose turn it is is in place already (the hub is out of
             // `self.lan` while it acts), as `sculk::entity_event_by` reads it.
-            Some(Target::Guest(conn)) if self.server.lan_acting == Some(*conn) => self.common.creative,
+            Some(Target::Guest(conn)) if self.server.lan_acting == Some(*conn) => {
+                self.common.creative
+            }
             Some(Target::Guest(conn)) => self.command_guest(*conn).is_some_and(|g| g.creative()),
             _ => false,
         }
@@ -252,8 +259,12 @@ impl crate::game::ServerGame<'_> {
     /// cushion under the crosshair, or the one a guest's interact packet named.
     pub fn interact_cushion(&mut self, target: Option<InteractTarget>) -> bool {
         let Some((i, d, _)) = (match target {
-            Some(t) => sunrise_gameplay_common::game::item_actions::named_entity(&self.common.cushions, t.id, |c| c.id)
-                .map(|i| (i, 0.0, [0.0; 3])),
+            Some(t) => sunrise_gameplay_common::game::item_actions::named_entity(
+                &self.common.cushions,
+                t.id,
+                |c| c.id,
+            )
+            .map(|i| (i, 0.0, [0.0; 3])),
             None => self.cushion_hit(),
         }) else {
             return false;
@@ -284,7 +295,13 @@ impl crate::game::ServerGame<'_> {
         }
         // After each hook the cushion is found again by its id: a listener
         // may have removed it, and the click is then spent.
-        if sunrise_gameplay_common::game::item_actions::named_entity(&self.common.cushions, id as i32, |c| c.id).is_none() {
+        if sunrise_gameplay_common::game::item_actions::named_entity(
+            &self.common.cushions,
+            id as i32,
+            |c| c.id,
+        )
+        .is_none()
+        {
             return true;
         }
         self.stop_riding();
@@ -293,8 +310,11 @@ impl crate::game::ServerGame<'_> {
         if self.common.riding.is_some() {
             return true;
         }
-        let Some(i) = sunrise_gameplay_common::game::item_actions::named_entity(&self.common.cushions, id as i32, |c| c.id)
-        else {
+        let Some(i) = sunrise_gameplay_common::game::item_actions::named_entity(
+            &self.common.cushions,
+            id as i32,
+            |c| c.id,
+        ) else {
             return true;
         };
         self.start_riding(id);
@@ -313,7 +333,10 @@ impl crate::game::ServerGame<'_> {
         killed: bool,
     ) -> bool {
         let id = self.common.cushions[index].id;
-        if self.common.target_removed(&super::commands::Target::Cushion(id)) {
+        if self
+            .common
+            .target_removed(&super::commands::Target::Cushion(id))
+        {
             return false;
         }
         let Some(c) = self.take_removed_cushion(id) else {
@@ -329,7 +352,8 @@ impl crate::game::ServerGame<'_> {
         // `Cushion.dropItem`: the item unless drops are off or the cause is a
         // player with infinite materials (the TNT's owner for a blast).
         if !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS)
             || self.infinite_materials(source.as_ref())
@@ -371,7 +395,8 @@ impl crate::game::ServerGame<'_> {
         let (x, y, z) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
         // collidedWithFluid: the fluid box of the cushion's own block against its box.
         if let Some((height, _)) =
-            self.common.fluid_height_of(x, y, z, Some(sunrise_items::blocks::Fluid::Lava))
+            self.common
+                .fluid_height_of(x, y, z, Some(sunrise_items::blocks::Fluid::Lava))
         {
             let fluid = Aabb::new(
                 Vec3::new(f64::from(x), f64::from(y), f64::from(z)),
@@ -425,7 +450,8 @@ impl crate::game::ServerGame<'_> {
     /// `Player.rideTick` on a cushion: hold the seat, and get up on sneak.
     pub(in crate::game::server_side) fn tick_cushion_riding(&mut self, keys: Keys) -> bool {
         let Some(c) = self
-            .common.cushions
+            .common
+            .cushions
             .iter()
             .find(|c| Some(c.id) == self.common.riding)
             .cloned()

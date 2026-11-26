@@ -1,10 +1,10 @@
-use {sunrise_protocol::packets::play::Clientbound as C, sunrise_protocol::packets::play};
 use crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in;
 use crate::game::remote::tests::client_admission_tests::add_entity;
 use crate::game::remote::tests::client_admission_tests::deliver;
 use crate::game::remote::tests::client_admission_tests::with_isolated_client;
 use sunrise_client::sound_engine::{SoundEntity, SoundInstance};
 use sunrise_core::random::LegacyRandom;
+use {sunrise_protocol::packets::play, sunrise_protocol::packets::play::Clientbound as C};
 
 #[test]
 #[ignore = "daily"]

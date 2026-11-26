@@ -24,13 +24,15 @@ impl crate::game::ServerGame<'_> {
             None,
         );
         out.extend(
-            self.common.mobs
+            self.common
+                .mobs
                 .iter()
                 .filter(|m| rule.takes(m.solid_kind()))
                 .map(|m| m.solid_candidate()),
         );
         out.extend(
-            self.common.boats
+            self.common
+                .boats
                 .iter()
                 .map(|b| boat(|id, p, bounds| self.client_copy_box(id, p, bounds), b)),
         );
@@ -65,16 +67,17 @@ impl crate::game::ServerGame<'_> {
     ) {
         match mover {
             Mover::Cart(c) => {
-                for o in self
-                    .common.carts
-                    .iter()
-                    .filter(|o| o.id != c.id)
-                    .map(|c| cart(|id, p, bounds| self.client_copy_box(id, p, bounds), c))
-                    .chain(
-                        self.common.boats
-                            .iter()
-                            .map(|b| boat(|id, p, bounds| self.client_copy_box(id, p, bounds), b)),
-                    )
+                for o in
+                    self.common
+                        .carts
+                        .iter()
+                        .filter(|o| o.id != c.id)
+                        .map(|c| cart(|id, p, bounds| self.client_copy_box(id, p, bounds), c))
+                        .chain(
+                            self.common.boats.iter().map(|b| {
+                                boat(|id, p, bounds| self.client_copy_box(id, p, bounds), b)
+                            }),
+                        )
                 {
                     if solids.accepts(&o, || None) {
                         each(&o, None);
@@ -121,7 +124,8 @@ impl crate::game::ServerGame<'_> {
                     }
                 });
                 for (c, target) in self
-                    .common.boats
+                    .common
+                    .boats
                     .iter()
                     .map(|b| {
                         (

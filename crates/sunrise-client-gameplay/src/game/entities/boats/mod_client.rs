@@ -1,10 +1,12 @@
 use super::{entity_culling::at, view_vector};
-use sunrise_gameplay_common::game::boats_common::{Boat, HEIGHT, PLAYER_RIDING_OFFSET, Status, WIDTH};
 use std::collections::HashMap;
 use std::{f32::consts::PI, sync::Arc};
 use sunrise_client::mesher::Vertex;
 use sunrise_client::mobs::Part;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_gameplay_common::game::boats_common::{
+    Boat, HEIGHT, PLAYER_RIDING_OFFSET, Status, WIDTH,
+};
 use sunrise_sim::mobs::anim::Poses;
 
 #[cfg_attr(test, derive(Clone))]
@@ -161,7 +163,10 @@ impl crate::game::ClientGame<'_> {
                 continue;
             }
             let entity_start = out.len();
-            self.mark_motion(entity_start, sunrise_gameplay_common::game::MOTION_OBJECT | u64::from(b.id));
+            self.mark_motion(
+                entity_start,
+                sunrise_gameplay_common::game::MOTION_OBJECT | u64::from(b.id),
+            );
             let models = if b.chest {
                 &self.client.boat_models.chest_models
             } else {
@@ -299,7 +304,13 @@ impl crate::game::ClientGame<'_> {
                         }
                         break;
                     }
-                    if self.common.res.facts().get(self.common.world.block(x, y, z)).solid_render {
+                    if self
+                        .common
+                        .res
+                        .facts()
+                        .get(self.common.world.block(x, y, z))
+                        .solid_render
+                    {
                         break;
                     }
                 }

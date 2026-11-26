@@ -24,7 +24,8 @@ impl crate::game::ServerGame<'_> {
         let first_kill = fight && !self.server.fight.previously_killed;
         let xp = if first_kill { 12000 } else { 500 };
         let drops = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::MOB_DROPS);
         if t > 150 && t % 5 == 0 && drops {
@@ -48,7 +49,11 @@ impl crate::game::ServerGame<'_> {
             if drops {
                 self.spawn_orbs([p.x, p.y, p.z], (xp as f32 * 0.2) as u32);
             }
-            let (id, at) = self.common.dragon.as_ref().map_or((0, p), |d| (d.id, d.position));
+            let (id, at) = self
+                .common
+                .dragon
+                .as_ref()
+                .map_or((0, p), |d| (d.id, d.position));
             self.discard_resident_dragon();
             if fight {
                 self.dragon_killed();

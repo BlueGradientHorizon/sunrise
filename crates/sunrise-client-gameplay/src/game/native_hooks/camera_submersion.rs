@@ -1,5 +1,3 @@
-
-
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// `Camera.getFluidInCamera`: the fog type at `camera`, after `state_at_viewpoint`; the mods

@@ -8,11 +8,7 @@ impl crate::game::ServerGame<'_> {
     /// with the guest's state swapped in, in their level, as their own turn.
     /// What `f` tells the player (`system_message`) goes to their chat; the
     /// command's own feedback is the caller's to send.
-    pub fn for_player<T>(
-        &mut self,
-        t: Target,
-        f: impl FnOnce(&mut Self) -> T,
-    ) -> Option<T> {
+    pub fn for_player<T>(&mut self, t: Target, f: impl FnOnce(&mut Self) -> T) -> Option<T> {
         let conn = match t {
             Target::Player => return Some(f(self)),
             Target::Guest(conn) if self.server.lan_acting == Some(conn) => return Some(f(self)),
@@ -75,7 +71,10 @@ impl crate::game::ServerGame<'_> {
             || s.pos.iter().any(Option::is_some)
             || s.delta.iter().any(Option::is_some);
         let here = self.common.dim.id();
-        let in_place = self.server.lan_acting.filter(|_| self.common.player.is_some());
+        let in_place = self
+            .server
+            .lan_acting
+            .filter(|_| self.common.player.is_some());
         self.server
             .lan
             .iter()
@@ -135,7 +134,8 @@ impl crate::game::ServerGame<'_> {
                     })
                     .or_else(|| {
                         source.cart.and_then(|id| {
-                            self.common.carts
+                            self.common
+                                .carts
                                 .iter()
                                 .find(|cart| cart.id == id)
                                 .map(|cart| cart.command.name())

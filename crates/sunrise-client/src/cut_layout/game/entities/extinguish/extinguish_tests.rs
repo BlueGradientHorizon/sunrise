@@ -1,13 +1,13 @@
 //! Powder snow and water cauldrons putting a burning player out: the hiss
 //! (`Entity.playEntityOnFireExtinguishedSound`) plays either way, the block
 //! change only where `mayInteract` allows it.
-use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::game_tests::tests::server_game;
+use sunrise_gameplay_common::game_side;
 use sunrise_sim::motion::{MotionWorld, PlayerMotion};
 use sunrise_world::chunk::BlockState;
 use sunrise_world::entity_move::MovementRecord;
 use sunrise_world::registry::BlockStateId;
-use sunrise_gameplay_common::game_side;
 
 /// A server's game on the prepared resources, or None when they are absent
 /// (CI has none: the tests then skip quietly).
@@ -33,10 +33,7 @@ pub(crate) fn state(
     game.pack.assets.registry.resolve(&state).unwrap()
 }
 
-pub(crate) fn block(
-    game: &sunrise_gameplay::game::ServerGame<'_>,
-    pos: [i32; 3],
-) -> String {
+pub(crate) fn block(game: &sunrise_gameplay::game::ServerGame<'_>, pos: [i32; 3]) -> String {
     let state = game.world.block(pos[0], pos[1], pos[2]);
     game.res.facts().get(state).name.to_string()
 }
@@ -65,14 +62,26 @@ pub(crate) fn burn_in(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: [i
             let key = common.dim.key();
             let id = mod_api::__private::dimension_id(key)?;
             Some(mod_api::LevelRef::with_generation(
-                epoch, key, sunrise_gameplay_common::game::Side::levels_generation(state, id),
+                epoch,
+                key,
+                sunrise_gameplay_common::game::Side::levels_generation(state, id),
             ))
         });
         let side = sunrise_gameplay_common::game_side!(
             common,
-            (sunrise_gameplay_common::game::Side::lan_acting_uuid(state), level, false),
-            sunrise_gameplay_common::game::side_ops::tables::SideOps::side_level_features(state, common.level.enabled_features.as_arc()),
-            sunrise_gameplay_common::game::side_ops::tables::SideOps::side_game_tag_items(state, &common.res)
+            (
+                sunrise_gameplay_common::game::Side::lan_acting_uuid(state),
+                level,
+                false
+            ),
+            sunrise_gameplay_common::game::side_ops::tables::SideOps::side_level_features(
+                state,
+                common.level.enabled_features.as_arc()
+            ),
+            sunrise_gameplay_common::game::side_ops::tables::SideOps::side_game_tag_items(
+                state,
+                &common.res
+            )
         );
         let mut w = MotionWorld {
             side: &side,

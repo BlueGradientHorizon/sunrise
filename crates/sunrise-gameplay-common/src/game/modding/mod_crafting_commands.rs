@@ -1,12 +1,7 @@
 //! Hidden crafting recipe knowledge for /recipe, without recipe-book displays.
 
-
 pub trait ModCraftingCommandsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-     fn change_mod_crafting_recipes(
-        &mut self,
-        give: bool,
-        ids: &[String],
-    ) -> (Vec<String>, i32) {
+    fn change_mod_crafting_recipes(&mut self, give: bool, ids: &[String]) -> (Vec<String>, i32) {
         let (custom, ordinary): (Vec<_>, Vec<_>) = ids.iter().cloned().partition(|id| {
             matches!(
                 crate::game::tables::GameItems::recipes(self).recipe(id),

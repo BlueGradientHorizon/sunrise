@@ -1,5 +1,3 @@
-
-
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// A key event after handling, the window's or the control socket's `key` (one press, then

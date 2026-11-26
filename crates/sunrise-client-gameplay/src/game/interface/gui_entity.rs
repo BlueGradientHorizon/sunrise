@@ -11,7 +11,6 @@
 //! screen drawing the same entity every frame makes it once and allocates
 //! nothing once the buffers have grown.
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::commands_common::Target;
 use glam::{DVec3, Mat4, Vec3};
 use mod_api::{GuiEntity, GuiEntityError, GuiEntityLook, GuiEntityView};
 use std::{cell::RefCell, sync::Arc};
@@ -20,6 +19,7 @@ use sunrise_core::{
     geometry::Vec3 as Position,
     nbt::{Compound, JavaString, Tag},
 };
+use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_sim::mobs::Mob;
 
 /// How many entities made for `GuiEntity::Kind` are kept: a mob page shows a
@@ -338,7 +338,7 @@ fn seen_quads(verts: &[Vertex], gui: Mat4, quads: &mut Vec<SeenQuad>) {
 
 #[cfg(test)]
 mod tests {
-fn vertex(pos: [f32; 3], w: i8, u: f32) -> Vertex {
+    fn vertex(pos: [f32; 3], w: i8, u: f32) -> Vertex {
         Vertex {
             pos,
             uv: [u, 0.0],
@@ -349,7 +349,7 @@ fn vertex(pos: [f32; 3], w: i8, u: f32) -> Vertex {
             glint_uv: [0.0; 2],
         }
     }
-/// A face at depth `z` looking towards the viewer (or away, reversed), its
+    /// A face at depth `z` looking towards the viewer (or away, reversed), its
     /// vertices' normal w `w` and its UVs marked `u`.
     pub fn face(z: f32, w: i8, u: f32, away: bool) -> [Vertex; 4] {
         let mut f = [
@@ -393,10 +393,6 @@ fn vertex(pos: [f32; 3], w: i8, u: f32) -> Vertex {
         );
         assert_eq!(fixed, (210.0, 210.0, 10.0, 0.0));
     }
-
-    
-
-    
 
     #[test]
     fn faces_looking_away_are_culled_and_the_rest_sorted_far_to_near() {
@@ -461,8 +457,6 @@ fn vertex(pos: [f32; 3], w: i8, u: f32) -> Vertex {
         };
         assert!(!GuiEntityView::new([0.0, 0.0, 50.0, 70.0], 30.0, 0.0, nan).is_drawable());
     }
-
-    
 }
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

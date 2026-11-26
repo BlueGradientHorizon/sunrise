@@ -1,12 +1,15 @@
 //! A block's parts decide whether a player breaking it destroyed it (`on_destroyed_by_player`),
 //! in place of `playerWillDestroy` and the removal.
-use {sunrise_gameplay_common::game::BlockEntity, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use std::{path::PathBuf, sync::Arc};
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
 use sunrise_world::registry::BlockStateId;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay_common::game::BlockEntity,
+};
 
 const POS: [i32; 3] = [5, 63, 4];
 

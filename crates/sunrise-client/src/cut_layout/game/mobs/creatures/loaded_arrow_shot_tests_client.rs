@@ -24,13 +24,14 @@ fn a_falling_rocket_hits_the_ground_and_one_in_water_splashes() {
             game.tick_rockets();
             falls.push(game.rockets[0].fall_distance);
         }
-        let events: Vec<_> = sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|v| {
-            std::mem::take(v.borrow_mut().as_mut().unwrap())
-                .into_iter()
-                .map(|e| (e.0, e.1[0].floor() as i32))
-                .filter(|e| matches!(e.0, "minecraft:hit_ground" | "minecraft:splash"))
-                .collect()
-        });
+        let events: Vec<_> = sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+            .with(|v| {
+                std::mem::take(v.borrow_mut().as_mut().unwrap())
+                    .into_iter()
+                    .map(|e| (e.0, e.1[0].floor() as i32))
+                    .filter(|e| matches!(e.0, "minecraft:hit_ground" | "minecraft:splash"))
+                    .collect()
+            });
         stop_events();
         // The fourth move ends on the stone without a collision; the fifth lands.
         assert_eq!(falls, [0.5, 1.0, 1.5, 2.0, 0.0, 0.0]);

@@ -4,6 +4,8 @@
 //! content root's — with the server's recipes of the types its native mods
 //! had it send (`sunrise:recipe_content`) in their place, while the known
 //! displays follow the server's book as the recipe book does.
+use mod_api::CreativeGiveError;
+use std::{collections::HashMap, sync::Arc};
 use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
 use sunrise_gameplay_common::game::native_hooks::{
     NativeItem as RecipeItem, NativeRecipe as Recipe, NativeRecipeKind as RecipeKind,
@@ -11,15 +13,12 @@ use sunrise_gameplay_common::game::native_hooks::{
 };
 #[cfg(feature = "client")]
 use sunrise_gameplay_common::game::native_recipe_tables::IncomingRecipes;
-use mod_api::CreativeGiveError;
-use std::{collections::HashMap, sync::Arc};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{
     crafting::{Ingredient, qualified},
     recipe_book::{Category, Display},
     stations::Smithing,
 };
-
 
 /// Item id -> its index in [`Recipes::items`].
 pub struct Index(HashMap<Arc<str>, u32>);
@@ -85,7 +84,8 @@ impl crate::game::ClientGame<'_> {
         kind: &str,
     ) -> Option<mod_api::item::recipe_book::RecipeBookCategory> {
         self.ensure_mod_book_displays();
-        self.common.recipe_tables
+        self.common
+            .recipe_tables
             .books
             .as_ref()?
             .as_ref()
@@ -115,7 +115,10 @@ impl crate::game::ClientGame<'_> {
         &mut self,
         stack: &mod_api::ItemStack,
     ) -> Result<Option<mod_api::ItemStack>, CreativeGiveError> {
-        if self.common.is_logical_server() || self.common.player.is_none() || self.common.res.rest.get().is_none() {
+        if self.common.is_logical_server()
+            || self.common.player.is_none()
+            || self.common.res.rest.get().is_none()
+        {
             return Err(CreativeGiveError::Unavailable);
         }
         if !self.common.creative {
@@ -405,7 +408,8 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         let built = self
-            .common.res
+            .common
+            .res
             .recipes()
             .with_recipe_content(self.items(), received, &types);
         match built {

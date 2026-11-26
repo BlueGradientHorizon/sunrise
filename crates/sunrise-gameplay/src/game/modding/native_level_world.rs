@@ -26,7 +26,9 @@ impl crate::game::ServerGame<'_> {
     /// or `hard`, as `/difficulty` names it.
     pub(in crate::game) fn level_difficulty(&self, level: LevelRef) -> Option<&'static str> {
         self.native_level_world(level)?;
-        DIFFICULTIES.get(usize::from(self.common.ui.difficulty)).copied()
+        DIFFICULTIES
+            .get(usize::from(self.common.ui.difficulty))
+            .copied()
     }
     /// `ServerLevel.getCurrentDifficultyAt(pos)` in the level the handle names, in place or
     /// parked.
@@ -46,7 +48,8 @@ impl crate::game::ServerGame<'_> {
         key: BoolGameRuleKey,
     ) -> Option<bool> {
         self.native_level_world(level)?;
-        self.common.ui
+        self.common
+            .ui
             .rules
             .bool_slot(mod_api::__private::game_rule_bool_slot(key)?)
     }
@@ -57,7 +60,8 @@ impl crate::game::ServerGame<'_> {
         key: mod_api::IntGameRuleKey,
     ) -> Option<i32> {
         self.native_level_world(level)?;
-        self.common.ui
+        self.common
+            .ui
             .rules
             .int_slot(mod_api::__private::game_rule_int_slot(key)?)
     }
@@ -204,11 +208,7 @@ impl crate::game::ServerGame<'_> {
     /// it rains there and `pos` is under open sky in a biome that rains. None for a stale
     /// handle, on a client, and where `pos` is not loaded or outside the world's height; a
     /// read never loads a chunk.
-    pub fn level_is_raining_at(
-        &self,
-        level: LevelRef,
-        pos: [i32; 3],
-    ) -> Option<bool> {
+    pub fn level_is_raining_at(&self, level: LevelRef, pos: [i32; 3]) -> Option<bool> {
         let world = self.native_level_world(level)?;
         if !world.is_loaded_at(pos[0], pos[1], pos[2]) {
             return None;

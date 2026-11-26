@@ -1,10 +1,16 @@
 //! Full stack and hand proofs at real consumption and durability write paths.
-use {crate::game::*, sunrise_gameplay_common::game::{Hand, HashMap, InteractTarget, ItemStack, Mob, PlayerMotion, Screen, Vec3, api_values, entity, host, in_own_process, mods, remote}};
 use mod_api::{Hooks, HostSide, PlayerDestroyItemEvent};
 use std::sync::{Arc, Mutex};
-use sunrise_protocol::connection::Pipe;
 #[cfg(test)]
 use sunrise_gameplay::game::shield;
+use sunrise_protocol::connection::Pipe;
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{
+        Hand, HashMap, InteractTarget, ItemStack, Mob, PlayerMotion, Screen, Vec3, api_values,
+        entity, host, in_own_process, mods, remote,
+    },
+};
 
 #[derive(Debug)]
 struct Notice {
@@ -180,7 +186,10 @@ fn refused_use_preserves_the_moved_stack(
     game.offhand = None;
 }
 
-fn mining_reports_after_the_drop_hook(game: &mut sunrise_gameplay::game::ServerGame<'_>, observer: &Observer) {
+fn mining_reports_after_the_drop_hook(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    observer: &Observer,
+) {
     use sunrise_core::position::ChunkPos;
     game.block_ticks
         .add_empty_chunk(ChunkPos::new(0, 0))
@@ -258,7 +267,11 @@ fn continuations_preserve_listener_hand_writes(
     game.inventory[slot] = Some(bow.clone());
     game.offhand = Some(named_stack("minecraft:arrow", 1));
     observer.0.lock().unwrap().hand_write = Some(HandWrite::MoveBowAndReplace(replacement));
-    game.tick_crossbow(slot, sunrise_gameplay_common::game::CommonGame::charge_ticks(&bow), &bow);
+    game.tick_crossbow(
+        slot,
+        sunrise_gameplay_common::game::CommonGame::charge_ticks(&bow),
+        &bow,
+    );
     let notice = take_notice(observer, Some(Hand::Off), "minecraft:arrow", 0);
     assert!(
         notice.in_hand.is_none(),
@@ -292,7 +305,11 @@ fn continuations_preserve_listener_hand_writes(
     game.inventory[slot] = Some(bow.clone());
     game.offhand = None;
     game.using = None;
-    game.tick_crossbow(slot, sunrise_gameplay_common::game::CommonGame::charge_ticks(&bow), &bow);
+    game.tick_crossbow(
+        slot,
+        sunrise_gameplay_common::game::CommonGame::charge_ticks(&bow),
+        &bow,
+    );
     assert!(game.stack_in(slot).is_none());
     let notice = take_notice(observer, Some(Hand::Main), "minecraft:crossbow", 0);
     assert_eq!(notice.original, bow.try_into_api().unwrap());

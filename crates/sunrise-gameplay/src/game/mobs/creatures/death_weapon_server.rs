@@ -12,12 +12,7 @@ impl crate::game::ServerGame<'_> {
         sunrise_gameplay_common::game::CommonGame::set_projectile_attack(&mut attack, shot);
         attack
     }
-    pub fn shot_damage(
-        &mut self,
-        shot: &mut Projectile,
-        victim: Option<&str>,
-        who: Who,
-    ) -> f32 {
+    pub fn shot_damage(&mut self, shot: &mut Projectile, victim: Option<&str>, who: Who) -> f32 {
         let base = self.shot_damage_base(shot, victim, who);
         if matches!(shot.kind, ProjectileKind::Trident) {
             base as f32
@@ -56,7 +51,8 @@ impl crate::game::ServerGame<'_> {
         consumed: bool,
     ) -> Option<i32> {
         let mob_drops = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::MOB_DROPS);
         let experience = sunrise_sim::mobs::drops::experience_reward(m, player_killed, mob_drops);
@@ -81,14 +77,18 @@ impl crate::game::ServerGame<'_> {
             });
         }
         let Some(index) = self
-            .common.mob_index
+            .common
+            .mob_index
             .find(&self.common.mobs, id)
             .filter(|&i| !self.common.mobs[i].removed)
         else {
             return false;
         };
-        let plan =
-            self.prepare_knockback_credit(id as i32, source.attacker, self.server.combat.0.attack());
+        let plan = self.prepare_knockback_credit(
+            id as i32,
+            source.attacker,
+            self.server.combat.0.attack(),
+        );
         // The projectile's shooter, the hit's causing entity.
         let shooter = self.server.combat.0.attack().attacker;
         let decision = crate::game::server_side::entity_server::causer_decision!(self, shooter);
@@ -149,7 +149,8 @@ impl crate::game::ServerGame<'_> {
             let source = match d.attacker {
                 Some(Who::Player) => Some(player()),
                 Some(Who::Mob(id)) => self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter()
                     .any(|mob| mob.id == id)
                     .then(|| self.target_loot_entity(crate::game::commands::Target::Mob(id)))
@@ -212,7 +213,8 @@ impl crate::game::ServerGame<'_> {
             luck: 0.0,
             vehicle,
             mob_drops: self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::MOB_DROPS),
             world_seed: self.common.level.seed,
@@ -226,7 +228,9 @@ impl crate::game::ServerGame<'_> {
             }
         };
         // LootContextParams.ORIGIN of a death: the mob's position.
-        let place = self.common.loot_place_at([m.position.x, m.position.y, m.position.z], None);
+        let place = self
+            .common
+            .loot_place_at([m.position.x, m.position.y, m.position.z], None);
         let hurt = accepted.as_ref().map(|hit| hit.source()).or_else(|| {
             source.map(|(damage_type, causing)| {
                 let mut hit = death_hurt_source(damage_type, causing);
@@ -413,7 +417,8 @@ impl crate::game::ServerGame<'_> {
         let attacker_kind = match shot.owner {
             Some(Who::Player) => Some("minecraft:player".to_owned()),
             Some(Who::Mob(id)) => self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == id)
                 .map(|m| m.kind.id.clone()),
@@ -452,7 +457,10 @@ impl crate::game::ServerGame<'_> {
             Who::Mob(id) => id,
         };
         let victim = if victim >= sunrise_gameplay_common::game::dragon_common::SPECIAL {
-            self.common.dragon.as_ref().map_or(victim, |dragon| dragon.id)
+            self.common
+                .dragon
+                .as_ref()
+                .map_or(victim, |dragon| dragon.id)
         } else {
             victim
         };

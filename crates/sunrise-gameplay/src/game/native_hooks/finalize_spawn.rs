@@ -1,5 +1,3 @@
-
-
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
     /// `FinalizeSpawnEvent`: the mob of type `kind` at `pos` is about to be

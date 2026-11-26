@@ -85,7 +85,8 @@ impl HeartHost for Host<'_> {
 
 impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn heart_state_name(&self, state: BlockStateId) -> String {
-        self.common.pack
+        self.common
+            .pack
             .assets
             .registry
             .state(state)
@@ -117,7 +118,12 @@ impl crate::game::ServerGame<'_> {
         let mut next_entity = self.server.next_entity;
         let mut random = self.common.world.random.clone();
         let spawning = self.spawning_monsters();
-        let creaking = self.common.res.mob_types().get("minecraft:creaking").cloned();
+        let creaking = self
+            .common
+            .res
+            .mob_types()
+            .get("minecraft:creaking")
+            .cloned();
         let player_uuid = self.common.level.player_uuid;
         let snapshot: Vec<_> = if others {
             mobs.iter()
@@ -145,7 +151,8 @@ impl crate::game::ServerGame<'_> {
         // The heart's additions go after every slot the index holds.
         self.common.mob_index = index;
         mobs.extend(added);
-        self.common.mobs
+        self.common
+            .mobs
             .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         self.common.persist.uuids = uuids;
         self.server.next_entity = next_entity;
@@ -212,14 +219,16 @@ impl crate::game::ServerGame<'_> {
             }
         });
         let restored = self
-            .common.world
+            .common
+            .world
             .block_entities
             .put(lease, BlockEntity::CreakingHeart(heart));
         if protects
             && restored
             && live_heart(self)
             && let Some(mob) = self
-                .common.mobs
+                .common
+                .mobs
                 .iter_mut()
                 .find(|m| m.id == id && m.join == join && !m.removed)
         {
@@ -265,7 +274,8 @@ impl crate::game::ServerGame<'_> {
         });
         let state = self.common.world.block(key.0, key.1, key.2);
         let natural = self
-            .common.pack
+            .common
+            .pack
             .assets
             .registry
             .state(state)
@@ -276,7 +286,8 @@ impl crate::game::ServerGame<'_> {
             // Block.popExperience: the amount is drawn, then nothing pops
             // with `block_drops` off.
             if self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS)
             {
@@ -290,7 +301,8 @@ impl crate::game::ServerGame<'_> {
                 );
             }
         }
-        self.common.world
+        self.common
+            .world
             .block_entities
             .put(lease, BlockEntity::CreakingHeart(heart));
     }
@@ -304,8 +316,9 @@ impl crate::game::ServerGame<'_> {
             return Ok(());
         };
         let state = self.common.world.block(key.0, key.1, key.2);
-        if sunrise_game_data::block_entity_types::factory_block(&self.common.res.facts().get(state).name)
-            != "minecraft:creaking_heart"
+        if sunrise_game_data::block_entity_types::factory_block(
+            &self.common.res.facts().get(state).name,
+        ) != "minecraft:creaking_heart"
         {
             // The block is gone: preRemoveSideEffects.
             self.common.world.block_entities.forget(&key);
@@ -327,7 +340,8 @@ impl crate::game::ServerGame<'_> {
                 }
             })?;
         }
-        self.common.world
+        self.common
+            .world
             .block_entities
             .put(lease, BlockEntity::CreakingHeart(heart));
         Ok(())
@@ -336,11 +350,13 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn spawning_monsters(&self) -> bool {
         self.common.ui.difficulty != 0
             && self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
             && self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MONSTERS)
     }
@@ -350,7 +366,8 @@ impl crate::game::ServerGame<'_> {
     /// of thousands, and reading each one every tick cost milliseconds.
     pub(in crate::game) fn scan_for_hearts(&mut self) {
         if self
-            .common.pack
+            .common
+            .pack
             .assets
             .registry
             .default_state("minecraft:creaking_heart")
@@ -358,7 +375,9 @@ impl crate::game::ServerGame<'_> {
         {
             return;
         }
-        self.server.creaking.follow_chunks(&self.common.world.chunks);
+        self.server
+            .creaking
+            .follow_chunks(&self.common.world.chunks);
         let mut keys: Vec<(i32, i32)> = self
             .server
             .creaking
@@ -376,7 +395,8 @@ impl crate::game::ServerGame<'_> {
             };
             if self.server.creaking.hearts.is_empty() {
                 self.server.creaking.hearts = self
-                    .common.res
+                    .common
+                    .res
                     .facts()
                     .states
                     .iter()
@@ -402,7 +422,8 @@ impl crate::game::ServerGame<'_> {
                         self.common.world.bottom_y() + si as i32 * 16 + ly,
                         key.1 * 16 + lz,
                     );
-                    self.common.world
+                    self.common
+                        .world
                         .block_entities
                         .get_or_insert_with(pos, || BlockEntity::CreakingHeart(Box::default()));
                 }

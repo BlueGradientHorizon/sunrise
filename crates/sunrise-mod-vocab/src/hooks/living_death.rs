@@ -14,7 +14,8 @@ pub trait Hooks {
     /// Cancellation skips death and loot without changing the listener's health:
     /// heal it to keep it alive; at health <= 0 its body is removed after 20 ticks.
     /// Armor stands, boats and other non-mob entities are not told.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::living_death::ServerGame<'_>::native_living_death", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::living_death::ServerGame<'_>::native_living_death",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

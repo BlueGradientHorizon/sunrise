@@ -2,10 +2,6 @@
 use crate::game::ClientGame;
 use crate::game::client_side::memory_client;
 use crate::game::client_side::profile_lines::{self as lines, Notice};
-use sunrise_gameplay_common::game::integrated_link::NO_ANSWER;
-use sunrise_gameplay_common::game::memory_common::{MEMORY_EVERY_S, PendingMemory};
-use sunrise_gameplay_common::game::owner_link::OwnerRequest;
-use sunrise_gameplay_common::game::profile_capture_common::{ENV_DIR, Live, Target, reply_text, reports_dir, shown};
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
 use std::sync::{
@@ -23,6 +19,12 @@ use sunrise_client::client_perf::{
 };
 use sunrise_command::{Arg, CommandError, Dispatcher, PROFILER_GPU, Registries};
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::integrated_link::NO_ANSWER;
+use sunrise_gameplay_common::game::memory_common::{MEMORY_EVERY_S, PendingMemory};
+use sunrise_gameplay_common::game::owner_link::OwnerRequest;
+use sunrise_gameplay_common::game::profile_capture_common::{
+    ENV_DIR, Live, Target, reply_text, reports_dir, shown,
+};
 use sunrise_level::spans::{self, Span};
 use sunrise_perf_format::{
     files,
@@ -573,11 +575,14 @@ impl ClientGame<'_> {
         start.mods = self.common.perf_mods();
         start.client_settings = Some(self.perf_client_settings());
         let t = self.client.profile.perf.now();
-        let path =
-            self.client
-                .profile
-                .perf
-                .start(t, &reports_dir(), trigger, options, start, Vec::new())?;
+        let path = self.client.profile.perf.start(
+            t,
+            &reports_dir(),
+            trigger,
+            options,
+            start,
+            Vec::new(),
+        )?;
         self.client.profile.started_by = trigger;
         self.client.profile.gpu = options.gpu;
         self.client.profile.trace_file = options.file.as_ref().map(|f| f.display().to_string());
@@ -655,7 +660,8 @@ impl ClientGame<'_> {
         if !matches!(self.client.profile.link, ServerLink::Pending) {
             return;
         }
-        let (Some(integrated), Some(join)) = (&self.client.integrated, self.client.profile.perf.join())
+        let (Some(integrated), Some(join)) =
+            (&self.client.integrated, self.client.profile.perf.join())
         else {
             return;
         };
@@ -686,7 +692,8 @@ impl ClientGame<'_> {
         self.client.profile.memory.cancel();
         let t = self.client.profile.perf.now();
         if self.client.profile.stopped_after.is_none() {
-            self.client.profile.stopped_after = self.client.profile.perf.status(t).map(|s| s.elapsed_s);
+            self.client.profile.stopped_after =
+                self.client.profile.perf.status(t).map(|s| s.elapsed_s);
         }
         let gpu = self.gpu_readout();
         let server = self.client.profile.server_live();
@@ -714,16 +721,22 @@ impl ClientGame<'_> {
         e: &CommandError,
         command: &str,
     ) {
-        self.client_system_message(sunrise_gameplay_common::game::commands_common::formatted_command_failure(
-            e.message.clone(),
-            None,
-        ));
+        self.client_system_message(
+            sunrise_gameplay_common::game::commands_common::formatted_command_failure(
+                e.message.clone(),
+                None,
+            ),
+        );
         if let Some(context) =
-            sunrise_gameplay_common::game::commands_common::format_syntax_failure_context(e, command)
+            sunrise_gameplay_common::game::commands_common::format_syntax_failure_context(
+                e, command,
+            )
         {
-            self.client_system_message(sunrise_gameplay_common::game::commands_common::formatted_command_failure(
-                context, None,
-            ));
+            self.client_system_message(
+                sunrise_gameplay_common::game::commands_common::formatted_command_failure(
+                    context, None,
+                ),
+            );
         }
     }
 
@@ -1316,8 +1329,8 @@ pub(in crate::game) mod tests {
         }
         assert_eq!(parse_trace(&["a", "2", "3"]), Err(TRACE_USAGE));
     }
-    use sunrise_gameplay_common::game::profile_capture_common::Phase;
     use std::time::Duration;
+    use sunrise_gameplay_common::game::profile_capture_common::Phase;
 
     fn live(phase: Phase) -> Arc<Live> {
         let live = Live::new();

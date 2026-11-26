@@ -1,9 +1,18 @@
-use sunrise_gameplay_common::game::dragon_common::Dragon;
 use super::*;
-use {sunrise_gameplay_common::game::dragon_common::FightWho, sunrise_gameplay_common::game::dragon_common::SPECIAL};
 use crate::game::server_side::dragon::thorns_tests::thorny;
-use {crate::game::*, sunrise_gameplay_common::game::{Instant, Options, PathBuf, PlayerMotion, Progress, Vec3, World, dragon_common, execution_role, hit}};
+use sunrise_gameplay_common::game::dragon_common::Dragon;
 use sunrise_sim::mobs::{Damage, DamageKind, Mob, Who, finalize as f};
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{
+        Instant, Options, PathBuf, PlayerMotion, Progress, Vec3, World, dragon_common,
+        execution_role, hit,
+    },
+};
+use {
+    sunrise_gameplay_common::game::dragon_common::FightWho,
+    sunrise_gameplay_common::game::dragon_common::SPECIAL,
+};
 
 pub(crate) fn check_answer(g: &sunrise_gameplay::game::ServerGame<'_>, slot: usize, answers: bool) {
     let health = g.mobs[0].health;

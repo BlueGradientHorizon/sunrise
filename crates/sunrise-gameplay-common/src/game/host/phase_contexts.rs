@@ -1,6 +1,5 @@
 //! Phase-scoped context trait implementations for [`Game`].
 
-
 #[doc(hidden)]
 #[macro_export]
 macro_rules! impl_shared_phase_contexts {

@@ -14,12 +14,11 @@ pub struct ResidentEntities {
 pub trait ResidentStateGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `Player.drop(stack, false)`, as `ItemUtils.createFilledResult` drops what no longer fits
     /// in the inventory: thrown from the eyes, with no thrower, statistic or drop hook.
-     fn drop_plain(&mut self, stack: ItemStack) -> Option<u32> {
+    fn drop_plain(&mut self, stack: ItemStack) -> Option<u32> {
         self.drop_stack_from_eyes(stack, false)
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> ResidentStateGameExt1<'__sg> for G {}
-
 
 impl Default for ResidentEntities {
     fn default() -> Self {

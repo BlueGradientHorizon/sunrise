@@ -12,24 +12,31 @@ impl ClientGame<'_> {
     }
     /// `getTicksSinceLastKineticHitFeedback` of this window's player.
     pub(in crate::game) fn kinetic_hit_ticks(&self, partial: f32) -> f32 {
-        self.common.kinetic_feedback
+        self.common
+            .kinetic_feedback
             .get(&OWN)
             .map_or(0.0, |&t| (self.common.world.game_time - t) as f32 + partial)
     }
     /// `LivingEntity.handleEntityEvent(2)` on a server's client: the
     /// player `id` (this one, or another) was hit by the spear it uses.
     pub(in crate::game) fn remote_kinetic_hit(&mut self, id: i32) {
-        let own = self.client.remote.as_ref().is_some_and(|r| r.entity_id == id);
+        let own = self
+            .client
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.entity_id == id);
         let (item, at) = if own {
             let item = self
-                .common.using
+                .common
+                .using
                 .and_then(|(slot, _)| self.common.stack_in(slot))
                 .map(|s| s.item.clone());
             let at = self.common.player.as_ref().map(|p| p.position);
             (item, at)
         } else {
             let mob = self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == id as u32 && m.extra.using_item > 0);
             let item = mob.and_then(|m| {
@@ -42,7 +49,11 @@ impl ClientGame<'_> {
             (item, mob.map(|m| m.position))
         };
         if let (Some(kinetic), Some(at)) = (item.as_deref().and_then(Kinetic::of), at) {
-            self.common.kinetic_hit_feedback(if own { OWN } else { id }, &kinetic, [at.x, at.y, at.z]);
+            self.common.kinetic_hit_feedback(
+                if own { OWN } else { id },
+                &kinetic,
+                [at.x, at.y, at.z],
+            );
         }
     }
 }

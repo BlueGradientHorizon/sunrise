@@ -1,5 +1,3 @@
-use sunrise_client_gameplay::game::native_hooks::item_fallthrough::ItemFallthroughGameExt1;
-use {sunrise_gameplay::game::server_side::lan::LanSettings, crate::game::server_side::native_entity_refs::tests::with_game};
 use crate::game::remote::interaction_event_tests::Controls;
 use crate::game::remote::interaction_event_tests::Observer;
 use crate::game::remote::interaction_event_tests::Step;
@@ -11,9 +9,14 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicI32, AtomicUsize},
 };
+use sunrise_client_gameplay::game::native_hooks::item_fallthrough::ItemFallthroughGameExt1;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::packets::configuration::ClientInformation;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_game,
+    sunrise_gameplay::game::server_side::lan::LanSettings,
+};
 use {
     sunrise_items::items::ItemStack, sunrise_level::chunk::Chunk,
     sunrise_sim::first_person_sim::Hand, sunrise_sim::lan::Joined, sunrise_sim::lan::NetConfig,
@@ -399,7 +402,8 @@ fn an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server() {
             );
 
             // A main hand item nothing answers for passes too: both hands' hooks, in order.
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:stone", 1));
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:stone", 1));
             *observer.0.lock().unwrap() = Controls::default();
             assert_eq!(game.use_item_as_player().unwrap(), Some(Hand::Off));
             assert_eq!(
@@ -428,7 +432,10 @@ fn an_item_used_from_the_off_hand_reaches_the_use_hooks_on_the_server() {
             game.world.set(0, 63, 0, stone).unwrap();
             game.world.set(0, 64, 0, stone).unwrap();
             game.set_test_forced_hit(Some(hit()));
-            for guest in [None, Some(sunrise_gameplay_common::game::GuestUse::on_block(Hand::Off))] {
+            for guest in [
+                None,
+                Some(sunrise_gameplay_common::game::GuestUse::on_block(Hand::Off)),
+            ] {
                 game.common.inventory[game.common.selected] = None;
                 *observer.0.lock().unwrap() = Controls {
                     hands: Some(Vec::new()),
@@ -716,8 +723,9 @@ fn item_use_overlap_matrix_on_the_server() {
                                                 Answer::Success | Answer::Fail | Answer::Consume
                                             )
                                     };
-                                    game.server.guest_use =
-                                        Some(sunrise_gameplay_common::game::GuestUse::on_block(hand));
+                                    game.server.guest_use = Some(
+                                        sunrise_gameplay_common::game::GuestUse::on_block(hand),
+                                    );
                                     game.adv.progress = Default::default();
                                     let swings = game.swings_started;
                                     let used =

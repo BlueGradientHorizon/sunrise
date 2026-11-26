@@ -2,7 +2,6 @@
 //! state is compared once per event loop turn, after the game ran, so watching never changes
 //! what the game does.
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::events_common::{Condition, Events, KEPT, Snapshot, Wait};
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
@@ -10,6 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::events_common::{Condition, Events, KEPT, Snapshot, Wait};
 
 pub(in crate::game) const HELP: &[&str] = &[
     "events [--since SEQ]           what happened (screen, chat, death, respawn, item, hurt, heal, food, dimension, world), oldest first",
@@ -198,7 +198,8 @@ impl ClientGame<'_> {
                 BTreeMap::new()
             },
             vitals: self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .filter(|_| world.is_some())
                 .map(|p| (p.health.health(), p.health.food.food as i64)),
@@ -237,7 +238,8 @@ impl ClientGame<'_> {
                 None => Vec::new(),
             };
             let at = self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .map(|p| [p.position.x, p.position.y, p.position.z]);
             for mut event in diff(before, &now, &lines) {
@@ -259,10 +261,15 @@ impl ClientGame<'_> {
         for wait in waits {
             let done = match &wait.condition {
                 Condition::Screen(name) => self.screen_label() == name,
-                Condition::Widget(id) => self.ui_nodes().iter().any(|n| n.id.as_str() == id.as_str()),
+                Condition::Widget(id) => {
+                    self.ui_nodes().iter().any(|n| n.id.as_str() == id.as_str())
+                }
                 Condition::Loaded => self.loaded(),
                 Condition::Chat(text) => since(&self.common.events, wait.since).any(|e| {
-                    e["event"] == "chat" && e["text"].as_str().is_some_and(|t| t.contains(text.as_str()))
+                    e["event"] == "chat"
+                        && e["text"]
+                            .as_str()
+                            .is_some_and(|t| t.contains(text.as_str()))
                 }),
                 Condition::Event(kind) => {
                     since(&self.common.events, wait.since).any(|e| e["event"] == kind.as_str())

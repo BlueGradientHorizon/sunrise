@@ -1,5 +1,8 @@
-use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{Vec3, motion}};
 use sunrise_sim::motion::PlayerMotion;
+use {
+    crate::game::remote::*,
+    sunrise_gameplay_common::game::remote::{Vec3, motion},
+};
 
 /// ClientLevel ticks entities in the order they joined: a boat added after the
 /// player pushes it after its move, one the level held when the player respawned
@@ -13,8 +16,12 @@ fn a_boat_pushes_the_player_in_the_level_tick_order() {
         player.client_side = true;
         game.player = Some(player);
         game.mobs.clear();
-        let boat =
-            sunrise_gameplay_common::game::boats_common::Boat::new(9, "oak".into(), Vec3::new(0.5, 64.0, 3.5), 0.0);
+        let boat = sunrise_gameplay_common::game::boats_common::Boat::new(
+            9,
+            "oak".into(),
+            Vec3::new(0.5, 64.0, 3.5),
+            0.0,
+        );
         game.boats.push(boat);
         let after = game.remote_pushes(false);
         assert_eq!(game.remote_pushes(true), Vec3::ZERO);

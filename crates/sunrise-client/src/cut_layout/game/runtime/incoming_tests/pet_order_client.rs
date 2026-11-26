@@ -1,15 +1,15 @@
-use crate::game::load_resources;
-use crate::settings::Settings;
-use sunrise_gameplay_common::game::resource_load::Progress;
-use sunrise_gameplay_common::game::Options;
-use sunrise_core::geometry::Vec3;
-use sunrise_sim::motion::PlayerMotion;
 use super::*;
 use crate::game::core_tests::pet_order_tests::WOLF;
+use crate::game::load_resources;
+use crate::settings::Settings;
 use std::sync::Arc;
+use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
+use sunrise_gameplay_common::game::Options;
+use sunrise_gameplay_common::game::resource_load::Progress;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::Mob;
+use sunrise_sim::motion::PlayerMotion;
 
 pub(crate) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
@@ -34,7 +34,8 @@ pub(crate) fn game<'a>(
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         res,

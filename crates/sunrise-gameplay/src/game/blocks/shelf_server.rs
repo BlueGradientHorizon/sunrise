@@ -79,7 +79,8 @@ impl crate::game::ServerGame<'_> {
             for (i, p) in chain.into_iter().enumerate() {
                 let key = (p[0], p[1], p[2]);
                 let limit = self.common.world.container_stack_limit(key);
-                let Some(BlockEntity::Shelf(shelf)) = self.common.world.block_entities.get_mut(&key)
+                let Some(BlockEntity::Shelf(shelf)) =
+                    self.common.world.block_entities.get_mut(&key)
                 else {
                     continue;
                 };
@@ -115,39 +116,45 @@ impl crate::game::ServerGame<'_> {
             if !accepts(self.common.world.container_stack_limit(key), held.as_ref()) {
                 return Some(false);
             }
-            let Some(BlockEntity::Shelf(shelf)) = self.common.world.block_entities.get_mut(&key) else {
+            let Some(BlockEntity::Shelf(shelf)) = self.common.world.block_entities.get_mut(&key)
+            else {
                 return None;
             };
             let removed = std::mem::replace(&mut shelf.items[slot], held.clone());
-            self.common.inventory[self.common.selected] = if self.common.creative && removed.is_none() {
-                held.clone()
-            } else {
-                removed.clone()
-            };
-            self.container_changed(key);
-            let vibrations = self.common.inventory[self.common.selected].as_ref().is_none_or(|stack| {
-                let default = self
-                    .common.res
-                    .items()
-                    .get(&stack.item)
-                    .is_none_or(|item| item.interact_vibrations);
-                let Some(data) = stack.data() else {
-                    return default;
+            self.common.inventory[self.common.selected] =
+                if self.common.creative && removed.is_none() {
+                    held.clone()
+                } else {
+                    removed.clone()
                 };
-                if data
-                    .preserved_components()
-                    .iter()
-                    .any(|(key, _)| key == "!minecraft:use_effects")
-                {
-                    return true;
-                }
-                data.preserved_components()
-                    .iter()
-                    .find(|(key, _)| key == "minecraft:use_effects")
-                    .map_or(default, |(_, tag)| {
-                        sunrise_sim::save::number(tag.get("interact_vibrations")).unwrap_or(1) != 0
-                    })
-            });
+            self.container_changed(key);
+            let vibrations = self.common.inventory[self.common.selected]
+                .as_ref()
+                .is_none_or(|stack| {
+                    let default = self
+                        .common
+                        .res
+                        .items()
+                        .get(&stack.item)
+                        .is_none_or(|item| item.interact_vibrations);
+                    let Some(data) = stack.data() else {
+                        return default;
+                    };
+                    if data
+                        .preserved_components()
+                        .iter()
+                        .any(|(key, _)| key == "!minecraft:use_effects")
+                    {
+                        return true;
+                    }
+                    data.preserved_components()
+                        .iter()
+                        .find(|(key, _)| key == "minecraft:use_effects")
+                        .map_or(default, |(_, tag)| {
+                            sunrise_sim::save::number(tag.get("interact_vibrations")).unwrap_or(1)
+                                != 0
+                        })
+                });
             if vibrations {
                 self.post_block_game_event(
                     "minecraft:item_interact_finish",

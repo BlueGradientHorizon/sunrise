@@ -1,16 +1,21 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_hooks::base::BaseGameExt1;
-use sunrise_gameplay_common::game::GameGameExt1;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-    use {crate::game::native_world_read_common::*, sunrise_gameplay_common::game::native_world_read_common::{BlockRegistry, BlockStateId, EngineFluidState, FluidKind, Items, World, api_fluid_state, block_in_tag, can_see_sky, fluid_in_tag, fluid_shape, install_block_tags, prepare_block_tags}};
     use mod_api::LevelHost;
     use std::sync::Arc;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::native_hooks::base::BaseGameExt1;
     use sunrise_items::items::TagRegistry;
     use sunrise_level::chunk::{Chunk, Light};
+    use {
+        crate::game::native_world_read_common::*,
+        sunrise_gameplay_common::game::native_world_read_common::{
+            BlockRegistry, BlockStateId, EngineFluidState, FluidKind, Items, World,
+            api_fluid_state, block_in_tag, can_see_sky, fluid_in_tag, fluid_shape,
+            install_block_tags, prepare_block_tags,
+        },
+    };
 
     #[test]
     fn sky_visibility_uses_the_published_sky_layer() {
@@ -104,7 +109,8 @@ use sunrise_gameplay_common::game::GameGameExt1;
         ] {
             // Build reordered numeric registries from the same API definitions.
             let registry = BlockRegistry::from_facts_json(facts.as_bytes()).unwrap();
-            sunrise_gameplay_common::game::api_values::resolve_block_definitions(&registry).unwrap();
+            sunrise_gameplay_common::game::api_values::resolve_block_definitions(&registry)
+                .unwrap();
             install_block_tags(prepare_block_tags(&items.block_tags));
             assert_eq!(block_in_tag(machine, "test:machines"), Some(true));
             assert_eq!(block_in_tag(stone, "test:machines"), Some(false));
@@ -134,7 +140,10 @@ use sunrise_gameplay_common::game::GameGameExt1;
 
     #[test]
     fn reads_only_loaded_in_bounds_states() {
-        use {sunrise_gameplay::game::server_side::native_world_read_server::NativeBlockReadError, sunrise_gameplay::game::server_side::native_world_read_server::read_block};
+        use {
+            sunrise_gameplay::game::server_side::native_world_read_server::NativeBlockReadError,
+            sunrise_gameplay::game::server_side::native_world_read_server::read_block,
+        };
 
         let facts = br#"{"defaults":{"minecraft:air":0,"test:pillar":1},"states":[
             ["air",true,false,"","minecraft:air"],
@@ -214,7 +223,8 @@ use sunrise_gameplay_common::game::GameGameExt1;
         with_game(|game| {
             let dir =
                 std::env::temp_dir().join(format!("sunrise-tag-reads-{}", std::process::id()));
-            game.server.session_lock.0 = Some(sunrise_sim::save::SessionLock::acquire(&dir).unwrap());
+            game.server.session_lock.0 =
+                Some(sunrise_sim::save::SessionLock::acquire(&dir).unwrap());
             let registry = game.pack.assets.registry;
             let stone = registry.default_state("minecraft:stone").unwrap();
             let water = registry.default_state("minecraft:water").unwrap();
@@ -379,7 +389,8 @@ use sunrise_gameplay_common::game::GameGameExt1;
             );
             assert_eq!(game.level_fluid_state(level, [16, 64, 1]), None);
             assert_eq!(game.level_fluid_state(level, [1, 4000, 1]), None);
-            game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+            game.options.execution_role =
+                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
             game.with_level(|_, host, _| {
                 // Not an authoritative level: tags are not the server's, so they read None.
                 assert_eq!(
@@ -429,7 +440,8 @@ use sunrise_gameplay_common::game::GameGameExt1;
                 );
                 assert_eq!(host.block_state_id("minecraft:oak_slab[bad=true]"), None);
 
-                let wrapped = sunrise_gameplay_common::game::mod_api_host::LevelTicks::new(&*host, ticks);
+                let wrapped =
+                    sunrise_gameplay_common::game::mod_api_host::LevelTicks::new(&*host, ticks);
                 assert_eq!(
                     wrapped.block_state_id("minecraft:oak_slab[waterlogged=true]"),
                     parsed
@@ -533,14 +545,15 @@ use sunrise_gameplay_common::game::GameGameExt1;
             }
             {
                 use mod_api::LevelHost;
-                let hit =
-                    sunrise_gameplay_common::game::native_hooks::HitLevel(sunrise_sim::health::DamageLevel::of(
+                let hit = sunrise_gameplay_common::game::native_hooks::HitLevel(
+                    sunrise_sim::health::DamageLevel::of(
                         &mut game.common.world,
                         game.common.pack.assets.registry,
                         None,
                         None,
                         &game.common.damage_hooks,
-                    ));
+                    ),
+                );
                 assert_eq!(hit.block_state_id("minecraft:stone"), None);
                 assert_eq!(
                     hit.block_state_default(mod_platform::__private::part_tests::block_key(
@@ -558,7 +571,8 @@ use sunrise_gameplay_common::game::GameGameExt1;
                 assert_eq!(hit.fluid_in_tag("minecraft:water", "minecraft:water"), None);
             }
             assert_eq!(game.world.chunks.len(), chunks, "nothing was loaded");
-            game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+            game.options.execution_role =
+                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
             let host: &dyn mod_api::Host = game;
             let tags = host.tags();
             let oak_tag = tags

@@ -1,12 +1,15 @@
-
-
 #![cfg(test)]
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[cfg(any())]
 mod warning_tests {
-    use {sunrise_client_gameplay::game::client_side::integrated_client::Integrated, sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::server_side::integrated::Serving};
     use sunrise_protocol::connection::Pipe;
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_client_gameplay::game::client_side::integrated_client::Integrated,
+        sunrise_gameplay::game::server_side::integrated::Serving,
+        sunrise_gameplay_common::game::in_own_process,
+    };
 
     #[test]
     #[ignore = "daily"]

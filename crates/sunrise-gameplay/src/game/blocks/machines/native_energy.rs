@@ -43,7 +43,8 @@ impl ServerGame<'_> {
         }
         let [x, y, z] = at.pos;
         let buffer = self
-            .common.world
+            .common
+            .world
             .block_entities
             .mod_energy(self.common.world.block(x, y, z).0)?;
         let reached = at.side.is_none_or(|face| {
@@ -81,7 +82,8 @@ impl ServerGame<'_> {
         if moved > 0 {
             let [x, y, z] = at.pos;
             self.journal_block_entity((x, y, z));
-            if let Some(BlockEntity::Mod(m)) = self.common.world.block_entities.get_mut(&(x, y, z)) {
+            if let Some(BlockEntity::Mod(m)) = self.common.world.block_entities.get_mut(&(x, y, z))
+            {
                 m.nbt.insert(JavaString::from("energy"), Tag::Int(after));
                 self.common.world.modified.insert((x >> 4, z >> 4));
             }
@@ -164,7 +166,10 @@ mod tests {
         with_game(|game| {
             let _mods = game_thread();
             // Installing the capability fixture replaces the registry snapshot.
-            sunrise_gameplay_common::game::mods::register_iterated_registries(&game.options.resources).unwrap();
+            sunrise_gameplay_common::game::mods::register_iterated_registries(
+                &game.options.resources,
+            )
+            .unwrap();
             game.options.dedicated = Some(Vec::new());
             game.world
                 .chunks

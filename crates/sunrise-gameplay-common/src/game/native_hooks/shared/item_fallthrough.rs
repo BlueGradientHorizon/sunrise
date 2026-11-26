@@ -2,7 +2,7 @@ use super::*;
 
 pub trait ItemFallthroughGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Item.use after the same hand's target passed, or for a server UseItem packet.
-     fn right_click_item(
+    fn right_click_item(
         &mut self,
         hand: Hand,
         stack: &ItemStack,
@@ -40,7 +40,6 @@ pub trait ItemFallthroughGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> ItemFallthroughGameExt1<'__sg> for G {}
-
 
 use crate::game::side_ops::modapi_hooks::ModapiHooksSideGameExt as _;
 

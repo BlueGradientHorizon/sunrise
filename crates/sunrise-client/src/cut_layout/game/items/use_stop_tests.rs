@@ -31,9 +31,12 @@ fn stopping_spear_use_is_silent() {
 }
 
 fn guest_action(item: &str, action: u8) -> Vec<String> {
-    use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
     use sunrise_items::items::ItemStack;
     use sunrise_protocol::packets::play::{self, Serverbound};
+    use {
+        sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+        sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+    };
     with_game(item, |game| {
         game.reset_entity_residency();
         game.native_lifecycle
@@ -201,9 +204,12 @@ fn same_dimension_tp_keeps_use() {
 #[test]
 #[ignore = "daily"]
 fn swap_with_emptied_used_slot_clears_silently() {
-    use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
     use sunrise_items::items::ItemStack;
     use sunrise_protocol::packets::play::{PlayerAction, Serverbound};
+    use {
+        sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+        sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+    };
     let lines = with_game("minecraft:golden_apple", |game| {
         open_to_lan(game);
         let mut player = guest(1);
@@ -234,12 +240,15 @@ fn swap_with_emptied_used_slot_clears_silently() {
 #[test]
 #[ignore = "daily"]
 fn nether_portal_stops_use_in_target_level() {
-    use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
     use std::sync::{Arc, Mutex};
-    use sunrise_gameplay_common::game::Dim;
     use sunrise_core::{geometry::Vec3, position::BlockPos};
+    use sunrise_gameplay_common::game::Dim;
     use sunrise_items::items::ItemStack;
     use sunrise_level::chunk::Chunk;
+    use {
+        sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+        sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+    };
     struct Heard(Arc<Mutex<Vec<(String, [f64; 3])>>>);
     #[mod_api::__subscriptions]
     impl mod_api::Hooks for Heard {

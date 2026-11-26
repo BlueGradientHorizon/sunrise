@@ -1,7 +1,7 @@
 //! The experience orb's saved form (docs: `entity_nbt::orb_to_nbt`) and the exact-total
 //! write boundary that keeps a merge's result reloadable.
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_sim::entities::ExperienceOrb;
 use sunrise_sim::entity_nbt::{orb_to_nbt, orbs_from_nbt};
 

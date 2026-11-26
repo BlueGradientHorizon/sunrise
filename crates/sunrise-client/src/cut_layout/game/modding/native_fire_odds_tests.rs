@@ -3,11 +3,14 @@
 //! vanilla's table.
 #![cfg(test)]
 
-use sunrise_gameplay_common::game::remote::dry_level::DryLevelGameExt2 as _;
-use sunrise_gameplay_common::game::GameGameExt1;
-use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{self, BlockPart, FireOddsEvent, Hooks, LevelSide, Registrar};
 use sunrise_core::{geometry::Direction, position::BlockPos};
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::remote::dry_level::DryLevelGameExt2 as _;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 /// Glass that ignites from its west face only while the square south of the fire is air.
 struct WestFace {

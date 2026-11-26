@@ -1,6 +1,9 @@
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::projectile_world::ProjWorld;
-use sunrise_sim::{mobs::{MobWorld, spawning}, projectiles::{Projectile, ProjectileKind}};
+use sunrise_sim::{
+    mobs::{MobWorld, spawning},
+    projectiles::{Projectile, ProjectileKind},
+};
 
 /// A pearl's water test is `Entity.isInWater`: `wasTouchingWater` from the
 /// last `updateFluidInteraction`, water whose surface reaches its 0.25

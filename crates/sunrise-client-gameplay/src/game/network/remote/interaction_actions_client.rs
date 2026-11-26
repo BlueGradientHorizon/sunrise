@@ -26,7 +26,8 @@ impl crate::game::ClientGame<'_> {
         };
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
         match self
-            .common.collision
+            .common
+            .collision
             .collision_shape_with_context(&mut scene, state, at, &context)
         {
             Ok(shape) => shape_meets(&shape, pos, entity),
@@ -49,11 +50,7 @@ impl crate::game::ClientGame<'_> {
     /// Whether a main-hand right click with `held` would end on the block hit, for the gameplay
     /// guide: what `remote_block_reacts` answers on its dry level, by the templates' rules alone,
     /// so looking asks no mod's placement or survival hook.
-    pub fn block_takes_click(
-        &mut self,
-        hit: &super::super::Hit,
-        held: Option<&ItemStack>,
-    ) -> bool {
+    pub fn block_takes_click(&mut self, hit: &super::super::Hit, held: Option<&ItemStack>) -> bool {
         self.remote_block_reacts(hit, held, false)
             .0
             .consumes_action()
@@ -86,12 +83,13 @@ impl crate::game::ClientGame<'_> {
             "minecraft:redstone_ore" | "minecraft:deepslate_redstone_ore" => {
                 let beside = [0, 1, 2].map(|i| hit.pos[i] + hit.face[i]);
                 let takes = self
-                    .common.res
+                    .common
+                    .res
                     .facts()
                     .get(self.common.world.block(beside[0], beside[1], beside[2]))
                     .replaceable;
-                let places =
-                    held.is_some_and(|s| self.common.res.items().block_items.contains_key(&*s.item));
+                let places = held
+                    .is_some_and(|s| self.common.res.items().block_items.contains_key(&*s.item));
                 Some(if places && takes {
                     InteractionResult::Pass
                 } else {
@@ -145,7 +143,8 @@ impl crate::game::ClientGame<'_> {
     /// Put the copy under the landing spot.
     pub(in crate::game::client_side) fn place_ghast_under(&mut self, id: u32, spot: Vec3) {
         let Some(m) = self
-            .common.mobs
+            .common
+            .mobs
             .iter_mut()
             .find(|m| m.id == id && m.species() == sunrise_sim::mobs::Species::HappyGhast)
         else {
@@ -175,12 +174,7 @@ impl crate::game::ClientGame<'_> {
     /// than past them (the server would refuse it). Its place sound is the
     /// placer's own (`playSound(player, ...)`: the server sends it to the
     /// others only).
-    pub fn predict_place(
-        &mut self,
-        placed: &DryPlace,
-        stack: &ItemStack,
-        seq: i32,
-    ) {
+    pub fn predict_place(&mut self, placed: &DryPlace, stack: &ItemStack, seq: i32) {
         let pos = placed.pos;
         let at = [pos.x, pos.y, pos.z];
         // The dry simulation puts the stack state in the primary write. The
@@ -259,7 +253,8 @@ impl crate::game::ClientGame<'_> {
             || self.common.using.is_some()
             || self.client.client_item_use.0.is_some()
             || self
-                .common.held()
+                .common
+                .held()
                 .is_some_and(|s| sunrise_sim::spear_sim::Kinetic::of(&s.item).is_some())
         {
             return;
@@ -318,7 +313,8 @@ impl crate::game::ClientGame<'_> {
             return;
         };
         let stop = std::mem::take(&mut r.stop_mining);
-        let ready = r.loaded_sent && self.common.sleeping.is_none() && !self.mod_mappings_screen_open();
+        let ready =
+            r.loaded_sent && self.common.sleeping.is_none() && !self.mod_mappings_screen_open();
         self.side_refresh_client_pick(1.0);
         if stop || !ready {
             self.stop_remote_mining();
@@ -392,7 +388,8 @@ impl crate::game::ClientGame<'_> {
             return true;
         }
         let spear = self
-            .common.held()
+            .common
+            .held()
             .and_then(|s| sunrise_sim::spear_sim::Kinetic::of(&s.item));
         if spear.is_some() && self.cannot_attack_with_item(self.client.hand_strength.ticker, 0) {
             return false;
@@ -451,7 +448,8 @@ impl crate::game::ClientGame<'_> {
             // block again after the dig, which may have broken it.
             if mod_api::__private::listened(mod_api::HookId::LeftClickEmpty)
                 && self
-                    .common.res
+                    .common
+                    .res
                     .facts()
                     .is_air(self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]))
             {
@@ -461,7 +459,8 @@ impl crate::game::ClientGame<'_> {
                 return false;
             }
             instant = self
-                .common.res
+                .common
+                .res
                 .facts()
                 .is_air(self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]));
         } else {
@@ -518,11 +517,7 @@ impl crate::game::ClientGame<'_> {
     /// Whether a click would place `stack` (the controller guide's look): as
     /// `remote_can_place`, by the templates' rules alone, so looking asks no
     /// mod's placement or survival hook.
-    pub fn remote_would_place(
-        &mut self,
-        hit: &super::super::Hit,
-        stack: &ItemStack,
-    ) -> bool {
+    pub fn remote_would_place(&mut self, hit: &super::super::Hit, stack: &ItemStack) -> bool {
         self.remote_place_preview(hit, stack, false).is_some()
     }
     /// Whether `held`'s `Item.use` needs a target this client sees none of
@@ -533,7 +528,8 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game::client_side) fn use_finds_no_target(&self, held: &ItemStack) -> bool {
         let id = &*held.item;
         let facts = |pos: [i32; 3]| {
-            self.common.res
+            self.common
+                .res
                 .facts()
                 .get(self.common.world.block(pos[0], pos[1], pos[2]))
         };

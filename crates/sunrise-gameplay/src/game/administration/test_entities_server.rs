@@ -19,11 +19,14 @@ impl ServerGame<'_> {
             }
         }
         // EntityType.ITEM and EXPERIENCE_ORB.
-        self.common.dropped
+        self.common
+            .dropped
             .retain(|i| !intersects(standing(at(i.position), 0.25, 0.25), bounds));
-        self.common.orbs
+        self.common
+            .orbs
             .retain(|o| !intersects(standing(at(o.position), 0.5, 0.5), bounds));
-        self.common.creatures
+        self.common
+            .creatures
             .projectiles
             .retain(|p| !intersects(standing(at(p.position), 0.5, 0.5), bounds));
         self.common.armor_stands.retain(|a| {
@@ -36,14 +39,19 @@ impl ServerGame<'_> {
             };
             !intersects(standing(at(a.position), w, h), bounds)
         });
-        self.common.item_frames.retain(|f| !intersects(f.bounds(), bounds));
-        self.common.paintings.retain(|p| !intersects(p.bounds(), bounds));
+        self.common
+            .item_frames
+            .retain(|f| !intersects(f.bounds(), bounds));
+        self.common
+            .paintings
+            .retain(|p| !intersects(p.bounds(), bounds));
         let (boat_w, boat_h) = (
             sunrise_gameplay_common::game::boats_common::WIDTH,
             sunrise_gameplay_common::game::boats_common::HEIGHT,
         );
         let gone: Vec<u32> = self
-            .common.boats
+            .common
+            .boats
             .iter()
             .filter(|b| intersects(standing(at(b.position), boat_w, boat_h), bounds))
             .map(|b| b.id)
@@ -55,10 +63,12 @@ impl ServerGame<'_> {
             }
         }
         let (cart_w, cart_h) = (super::minecarts::WIDTH, super::minecarts::HEIGHT);
-        self.common.carts
+        self.common
+            .carts
             .retain(|c| !intersects(standing(at(c.position), cart_w, cart_h), bounds));
         // EntityType.END_CRYSTAL is 2 by 2.
-        self.common.crystals
+        self.common
+            .crystals
             .retain(|c| !intersects(standing(at(c.position), 2.0, 2.0), bounds));
         // Entities Sunrise does not simulate have no box of their own: the
         // position decides.

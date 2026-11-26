@@ -3,7 +3,6 @@
 //! duration draw, the timeout, `can_still_use` and its one-tick default,
 //! panic containment, and the typed `NoBrain` refusal — driven through the
 //! same goal-host view the goal tests use.
-use sunrise_gameplay_common::game::creatures;
 use super::super::native_entity_refs::tests::with_game;
 use super::tests::zombie;
 use mod_api::{
@@ -11,6 +10,7 @@ use mod_api::{
     MemoryStatus, ModEntry, RegisteredBehavior, Registrar, RegistrationContext,
 };
 use std::sync::Mutex;
+use sunrise_gameplay_common::game::creatures;
 use sunrise_sim::health::DamageLevel;
 use sunrise_sim::join_seq::RestoreOrder;
 use sunrise_sim::mobs::{self, Mob, MobWorld};
@@ -21,7 +21,11 @@ static TEST: Mutex<()> = Mutex::new(());
 /// The mods of these tests, installed with their parts, as a game's open does.
 fn install_game_mods() {
     mod_platform::__private::install(vec![ModEntry::new("test", Box::new(Mod))].into());
-    sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new("test", Box::new(Mod))]).unwrap();
+    sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new(
+        "test",
+        Box::new(Mod),
+    )])
+    .unwrap();
 }
 
 /// What one test behavior did, in order, tagged by behavior.
@@ -359,7 +363,9 @@ impl Behavior for WalkWriter {
 
 /// `with_game` over a phase that answers its random states.
 fn with_game_states(
-    phase: fn(&mut sunrise_gameplay::game::ServerGame<'_>) -> ((u64, Option<f64>), (u64, Option<f64>)),
+    phase: fn(
+        &mut sunrise_gameplay::game::ServerGame<'_>,
+    ) -> ((u64, Option<f64>), (u64, Option<f64>)),
 ) -> ((u64, Option<f64>), (u64, Option<f64>)) {
     let mut states = None;
     with_game(|game| states = Some(phase(game)));

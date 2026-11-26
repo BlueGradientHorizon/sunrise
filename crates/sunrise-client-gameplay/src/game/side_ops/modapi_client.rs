@@ -1,7 +1,7 @@
 //! Client-side implementations of `side_ops::modapi`.
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::transactions::decision::Residence;
 use mod_api::AttachmentAccess;
+use sunrise_gameplay_common::game::transactions::decision::Residence;
 
 impl ClientGame<'_> {
     pub(in crate::game) fn client_attachment_map(
@@ -30,7 +30,11 @@ impl ClientGame<'_> {
         };
         if (id == remote.entity_id && self.common.player.is_some())
             || self.common.dragon.as_ref().is_some_and(|dragon| {
-                sunrise_gameplay_common::game::dragon_common::dragon_part_index(dragon.id, holder.id()).is_some()
+                sunrise_gameplay_common::game::dragon_common::dragon_part_index(
+                    dragon.id,
+                    holder.id(),
+                )
+                .is_some()
             })
             || remote.tracked(id).is_some()
         {

@@ -25,13 +25,7 @@ pub(in crate::game) fn average(a: u32, b: u32) -> u32 {
 
 /// `BeaconBlockEntity.applyEffects` box: `AABB(pos).inflate(range).expandTowards(0, height, 0)`,
 /// tested with `AABB.intersects` (strict) against the player's bounding box.
-pub fn effect_box_hits(
-    p: [i32; 3],
-    range: f64,
-    height: f64,
-    lo: [f64; 3],
-    hi: [f64; 3],
-) -> bool {
+pub fn effect_box_hits(p: [i32; 3], range: f64, height: f64, lo: [f64; 3], hi: [f64; 3]) -> bool {
     let [x, y, z] = p.map(f64::from);
     lo[0] < x + 1.0 + range
         && hi[0] > x - range
@@ -109,9 +103,8 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait BeaconCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-
     /// `IBlockStateExtension.getBeaconColorMultiplier` of `state` at `pos` for `beacon`.
-     fn beacon_color(
+    fn beacon_color(
         &self,
         state: BlockStateId,
         name: &str,
@@ -138,11 +131,7 @@ pub trait BeaconCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// Shared 10-block beam & pyramid scan; returns `(previous_levels, ambient_ready, reached_surface)`.
-     fn advance_beacon_beam(
-        &self,
-        (x, y, z): (i32, i32, i32),
-        b: &mut Beacon,
-    ) -> (i32, bool, bool) {
+    fn advance_beacon_beam(&self, (x, y, z): (i32, i32, i32), b: &mut Beacon) -> (i32, bool, bool) {
         let mut check = if b.last_check_y < y {
             b.checking.clear();
             b.last_check_y = y - 1;
@@ -199,7 +188,6 @@ pub trait BeaconCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> BeaconCommonGameExt1<'__sg> for G {}
-
 
 use crate::game::tables::GameItems as _;
 

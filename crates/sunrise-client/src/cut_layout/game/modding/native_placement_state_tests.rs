@@ -1,8 +1,5 @@
 //! The server placement-state query through the public handle on prepared resources.
-use sunrise_gameplay_common::game::Dim;
-use super::{
-    native_entity_refs::tests::{run_fresh_cases, with_game_at},
-};
+use super::native_entity_refs::tests::{run_fresh_cases, with_game_at};
 use mod_api::{
     Block, BlockPart, BlockState, BlocksEvent, FenceGateInWallEvent, Hooks, LevelRef, LevelSide,
     ModEntry, Mods, PlacementContext, PlacementSource, PlacementStateError, Registrar,
@@ -13,6 +10,7 @@ use sunrise_core::{
     geometry::Direction,
     position::{BlockPos, ChunkPos},
 };
+use sunrise_gameplay_common::game::Dim;
 use sunrise_level::chunk::Chunk;
 
 const BLOCK: &str = "placement_read:camouflage";
@@ -103,7 +101,8 @@ fn with_game(name: &str, test: impl FnOnce(&mut sunrise_gameplay::game::ServerGa
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_api::__private::mark_game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
         with_game_at(root.prepared().to_path_buf(), |game| {
             game.options.dedicated = Some(Vec::new());
             game.world
@@ -250,9 +249,9 @@ fn placement_refusals_are_typed() {
         context.inside = true;
         assert_eq!(
             level.state_for_placement(game, mod_block, &context),
-            Ok(game
-                .block_state_default(mod_block)
-                .map(|state| sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(&state).unwrap()))
+            Ok(game.block_state_default(mod_block).map(|state| {
+                sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(&state).unwrap()
+            }))
         );
 
         for (hit_y, yaw, pitch) in [

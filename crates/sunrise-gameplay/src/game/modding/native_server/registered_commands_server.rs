@@ -1,9 +1,9 @@
 use super::{BaseTree, command_arguments, command_tree_for, register_command_nodes};
+use mod_api::__private::{RetainedCallback, mod_index, split_command_registration};
+use std::{collections::HashMap, sync::Arc};
 use sunrise_gameplay_common::game::native_server::registered_commands::NativeCommands;
 use sunrise_gameplay_common::game::native_server::registered_commands::RegisteredExecutor;
 use sunrise_gameplay_common::game::native_server::registered_commands::without_reserved_roots;
-use mod_api::__private::{RetainedCallback, mod_index, split_command_registration};
-use std::{collections::HashMap, sync::Arc};
 
 impl crate::game::ServerGame<'_> {
     /// `Commands`' constructor with `RegisterCommandsEvent`: asks the mods for their commands and
@@ -27,8 +27,10 @@ impl crate::game::ServerGame<'_> {
                 Some((command, RegisteredExecutor { callback, call }))
             })
             .unzip();
-        let vanilla =
-            sunrise_command::vanilla::session_dispatcher(&self.common.level.rule_registry, features);
+        let vanilla = sunrise_command::vanilla::session_dispatcher(
+            &self.common.level.rule_registry,
+            features,
+        );
         let arguments = command_arguments();
         let mut slots = HashMap::new();
         let (tree, levels, problems) = command_tree_for(

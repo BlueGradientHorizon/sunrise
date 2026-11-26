@@ -1,14 +1,15 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_game;
-    use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
     use mod_api::{Hooks, ModEntry, ServerHost, XpOrbTargetingEvent};
     use std::sync::{Arc, Mutex};
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::entities::ExperienceOrb;
+    use {
+        sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+        sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+    };
 
     /// What the hook heard: the orb's id, the scan distance and the default
     /// player's UUID.

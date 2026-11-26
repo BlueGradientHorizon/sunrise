@@ -1,7 +1,4 @@
 //! First End exit is a PlayerList respawn; later exits are teleports of the same player.
-use sunrise_gameplay_common::game::GameGameExt1;
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::ANCHOR, sunrise_gameplay::game::server_side::server_travel::credits_respawn_tests::charge_anchor, sunrise_gameplay::game::server_side::server_travel::credits_respawn_tests::light_spawn_chunks, sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::placed_guest, sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::received_packets, crate::game::server_side::server_travel::credits_respawn_tests::server_with_a_nether_anchor};
-use sunrise_gameplay::game::native_entity_refs::tests::run_with_game_stack;
 use mod_api::{
     BlockPart, BlockPos, EntityTravelToDimensionEvent, Flow, GlobalPos, Hooks, Host, Identifier,
     ModEntry, PlayerChangedDimensionEvent, PlayerCloneEvent, PlayerRespawnConfig,
@@ -10,10 +7,21 @@ use mod_api::{
 };
 use std::sync::{Arc, Mutex, mpsc};
 use sunrise_core::{dimension::Dimension, random::LegacyRandom};
+use sunrise_gameplay::game::native_entity_refs::tests::run_with_game_stack;
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::world_biomes;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
-use sunrise_gameplay_common::world_biomes;
 use sunrise_sim::lan::{Out, guest::InboxItem, hub::game_event};
+use {
+    crate::game::server_side::server_travel::credits_respawn_tests::server_with_a_nether_anchor,
+    sunrise_gameplay::game::server_side::server_travel::credits_respawn_tests::charge_anchor,
+    sunrise_gameplay::game::server_side::server_travel::credits_respawn_tests::light_spawn_chunks,
+    sunrise_gameplay_common::game::Dim,
+    sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::ANCHOR,
+    sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::placed_guest,
+    sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::received_packets,
+};
 
 fn put_guest_in_end_exit(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
@@ -124,7 +132,9 @@ impl Hooks for EndTravel {
 
 fn with_end_travel(
     veto: Option<Dim>,
-    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &mpsc::Receiver<Out>, &Heard) + Send + 'static,
+    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &mpsc::Receiver<Out>, &Heard)
+    + Send
+    + 'static,
 ) {
     run_with_game_stack(move || {
         let heard = Heard::default();
@@ -559,8 +569,11 @@ impl Hooks for AnchorRules {
 
 fn with_anchor_death(
     rules: AnchorRules,
-    test: impl FnOnce(&sunrise_gameplay::game::ServerGame<'_>, &mpsc::Receiver<Out>, &mpsc::Receiver<Out>)
-    + Send
+    test: impl FnOnce(
+        &sunrise_gameplay::game::ServerGame<'_>,
+        &mpsc::Receiver<Out>,
+        &mpsc::Receiver<Out>,
+    ) + Send
     + 'static,
 ) {
     run_with_game_stack(move || {
@@ -612,7 +625,10 @@ fn with_anchor_death(
     });
 }
 
-fn anchor_sounds(game: &sunrise_gameplay::game::ServerGame<'_>, rx: &mpsc::Receiver<Out>) -> Vec<play::Sound> {
+fn anchor_sounds(
+    game: &sunrise_gameplay::game::ServerGame<'_>,
+    rx: &mpsc::Receiver<Out>,
+) -> Vec<play::Sound> {
     let registry_id = game
         .server
         .lan

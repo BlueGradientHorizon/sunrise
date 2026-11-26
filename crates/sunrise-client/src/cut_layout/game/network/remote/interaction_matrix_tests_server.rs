@@ -4,9 +4,7 @@ use crate::game::remote::interaction_event_tests::interaction_matrix_tests::case
 use crate::game::remote::interaction_event_tests::interaction_matrix_tests::*;
 
 pub(crate) fn matrix(mods: mod_api::Mods) {
-    fn run<'g, S: InteractionSide<'g>>(game: &mut S)
-
-    {
+    fn run<'g, S: InteractionSide<'g>>(game: &mut S) {
         let client = S::IS_CLIENT;
         let registry = game.pack.assets.registry;
         let stone = registry.default_state("minecraft:stone").unwrap();

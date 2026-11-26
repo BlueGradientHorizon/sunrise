@@ -140,11 +140,7 @@ impl<'g> crate::game::ClientGame<'g> {
     /// Draws inserted layers not drawn yet this frame, below `until` or to the end with `None`.
     /// A skipped vanilla layer keeps its place; its neighbours draw at the next paint site.
     /// Inserted layers don't draw while the HUD is hidden.
-    pub fn draw_mod_gui_layers(
-        &mut self,
-        until: Option<VanillaGuiLayer>,
-        batch: &mut HudBatch,
-    ) {
+    pub fn draw_mod_gui_layers(&mut self, until: Option<VanillaGuiLayer>, batch: &mut HudBatch) {
         let Some(next) = self.client.hud_layer_next else {
             return;
         };

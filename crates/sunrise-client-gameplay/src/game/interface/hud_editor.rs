@@ -70,8 +70,15 @@ impl crate::game::ClientGame<'_> {
         self.capture(false);
     }
     pub fn close_hud_editor(&mut self) {
-        let from_options = self.client.pvp.editor.take().is_some_and(|e| e.from_options);
-        self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+        let from_options = self
+            .client
+            .pvp
+            .editor
+            .take()
+            .is_some_and(|e| e.from_options);
+        self.client
+            .settings
+            .save(&sunrise_gameplay_common::game::options_path());
         if from_options {
             self.open_options_at(false, sunrise_client::options_ui::Page::Pvp);
         } else {
@@ -186,7 +193,9 @@ impl crate::game::ClientGame<'_> {
                 }
             }
             self.client.audio.0.play_button_click();
-            self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+            self.client
+                .settings
+                .save(&sunrise_gameplay_common::game::options_path());
             return true;
         }
         let Some((id, [x, y, _, _])) = self.widget_under_cursor() else {
@@ -194,7 +203,9 @@ impl crate::game::ClientGame<'_> {
         };
         if right {
             *self.client.settings.extras.pvp.layout.get_mut(id) = Place::default();
-            self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+            self.client
+                .settings
+                .save(&sunrise_gameplay_common::game::options_path());
             return true;
         } else if let Some(e) = &mut self.client.pvp.editor {
             e.drag = Some((id, self.client.cursor.0 - x, self.client.cursor.1 - y));
@@ -228,7 +239,9 @@ impl crate::game::ClientGame<'_> {
             && e.drag.take().is_some()
         {
             e.guides = (None, None);
-            self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+            self.client
+                .settings
+                .save(&sunrise_gameplay_common::game::options_path());
             return true;
         }
         false
@@ -245,7 +258,9 @@ impl crate::game::ClientGame<'_> {
         } else {
             place.scale.saturating_sub(10).max(lo)
         };
-        self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+        self.client
+            .settings
+            .save(&sunrise_gameplay_common::game::options_path());
         true
     }
 }

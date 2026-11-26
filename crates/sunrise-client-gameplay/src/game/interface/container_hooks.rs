@@ -4,10 +4,10 @@
 //! moments. With none registered nothing here builds a view.
 use super::stations::{self, Kind as StationKind};
 use crate::game::client_side::key_codes::glfw_button;
-use sunrise_gameplay_common::game::Screen;
 use std::cell::RefCell;
 use std::hash::{Hash, Hasher};
 use sunrise_client::hud::{HudAtlas, HudBatch, rgba};
+use sunrise_gameplay_common::game::Screen;
 use sunrise_hooks::{
     containers::{self as api, Button, Click, Container, Panel, Role, Slot, SlotId, Stack},
     hud,
@@ -78,7 +78,9 @@ pub(in crate::game::client_side) fn local_menu_id(local: Local) -> Option<String
         Local::Brewing => "minecraft:brewing_stand".into(),
         Local::Crafter => "minecraft:crafter_3x3".into(),
         Local::Station(StationKind::Merchant) => "minecraft:merchant".into(),
-        Local::Station(kind) => sunrise_gameplay_common::game::lan_station_data::menu_of(kind)?.0.into(),
+        Local::Station(kind) => sunrise_gameplay_common::game::lan_station_data::menu_of(kind)?
+            .0
+            .into(),
         Local::Mount => sunrise_gameplay_common::game::native_menu_ids::MOUNT_MENU.into(),
     };
     Some(id)
@@ -94,8 +96,8 @@ fn kind_of(stack: &ItemStack) -> u64 {
 /// The role of game slot `slot` in mod menu `menu`, whose slots use the disjoint mod-menu
 /// range (`MOD_MENU_SLOT_BASE..`): `None` outside them.
 fn mod_menu_role(menu: &ModMenuType, slot: usize) -> Option<Role> {
-    let index =
-        sunrise_gameplay_common::game::inventory_slots::container_slot_index(slot).filter(|&i| i < menu.slots)?;
+    let index = sunrise_gameplay_common::game::inventory_slots::container_slot_index(slot)
+        .filter(|&i| i < menu.slots)?;
     Some(match menu.crafting {
         Some(c) if c.result == index => Role::Result,
         Some(c) if c.grid_slots().contains(&index) => Role::Input,
@@ -313,7 +315,9 @@ impl<'g> crate::game::ClientGame<'g> {
             | sunrise_gameplay_common::mount_rules::ARMOR => Role::Equipment,
             s if (stations::INPUT..stations::RESULT).contains(&s) => Role::Input,
             s if self.is_mount_chest_slot(s) => Role::Storage,
-            s if sunrise_gameplay_common::game::inventory_slots::container_slot_index(s).is_some() => {
+            s if sunrise_gameplay_common::game::inventory_slots::container_slot_index(s)
+                .is_some() =>
+            {
                 match self.common.container_kind() {
                     Some(BlockEntity::Furnace(_)) if slot == 302 => Role::Result,
                     Some(BlockEntity::Crafter(_)) if slot == 309 => Role::Result,
@@ -384,21 +388,13 @@ impl<'g> crate::game::ClientGame<'g> {
     }
     /// A mouse button's release clears the latch of a press a hook took: true when the press was
     /// the hooks', so the release is too. Called for every real button-up, before any hook.
-    pub fn container_button_up(
-        &mut self,
-        button: MouseButton,
-    ) -> bool {
+    pub fn container_button_up(&mut self, button: MouseButton) -> bool {
         self.client.container_buttons.remove(&button)
     }
     /// A mouse button down or up on a menu screen, once the mods' pre hooks let it through: true
     /// when a hook took it, or for the release of a press a hook took (`owned`). A release a hook
     /// takes from vanilla's own press ends vanilla's quick craft drag without a click.
-    pub fn container_mouse(
-        &mut self,
-        button: MouseButton,
-        pressed: bool,
-        owned: bool,
-    ) -> bool {
+    pub fn container_mouse(&mut self, button: MouseButton, pressed: bool, owned: bool) -> bool {
         if !api::engine::any() {
             return owned;
         }
@@ -505,12 +501,7 @@ impl<'g> crate::game::ClientGame<'g> {
 
 impl crate::game::ClientGame<'_> {
     /// One ordinary click on a game slot. False when nothing took it.
-    pub fn slot_click(
-        &mut self,
-        slot: usize,
-        button: i32,
-        input: Input,
-    ) -> bool {
+    pub fn slot_click(&mut self, slot: usize, button: i32, input: Input) -> bool {
         if self.client.remote.is_none() {
             return false;
         }
@@ -568,27 +559,6 @@ mod tests {
     use super::*;
     use crate::game::native_entity_refs::tests::with_client_game;
     use sunrise_hooks::containers::{ContainerHooks, engine::with_registrants};
-
-    
-    
-    
-
-    
-    
-    
-
-    
-    
-    
-
-    
-    
-    
-    
-
-    
-    
-    
 
     #[test]
     fn a_local_container_has_vanillas_menu_id() {
@@ -679,16 +649,4 @@ mod tests {
             kind_of(&ItemStack::new("minecraft:enchanted_book", 1))
         );
     }
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
 }

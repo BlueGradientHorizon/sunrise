@@ -10,9 +10,9 @@
 //! ENDS-WHEN: every kind ticks from the join-order walk.
 
 use super::Result;
-use sunrise_gameplay_common::game::collision_source::Mover;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::RandomSource as _;
+use sunrise_gameplay_common::game::collision_source::Mover;
 use sunrise_level::random_source;
 use sunrise_sim::join_seq::{JoinSeq, Joined};
 
@@ -139,11 +139,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// Ticks each ordered entity that joined before `cut` and has not ticked yet.
-    pub fn run_ordered_ticks(
-        &mut self,
-        cut: JoinSeq,
-        late: bool,
-    ) -> Result<()> {
+    pub fn run_ordered_ticks(&mut self, cut: JoinSeq, late: bool) -> Result<()> {
         let _span = sunrise_level::spans::guard("ordered_ticks");
         let mut first_error = None;
         let mut followed = None;
@@ -174,9 +170,16 @@ impl crate::game::ServerGame<'_> {
                 pending.push((j, kind));
             }
         };
-        self.common.orbs.iter().for_each(|e| offer(e.join, Pending::Orb));
-        self.common.tnts.iter().for_each(|e| offer(e.join, Pending::Tnt));
-        self.common.falling
+        self.common
+            .orbs
+            .iter()
+            .for_each(|e| offer(e.join, Pending::Orb));
+        self.common
+            .tnts
+            .iter()
+            .for_each(|e| offer(e.join, Pending::Tnt));
+        self.common
+            .falling
             .iter()
             .for_each(|e| offer(e.join, Pending::Falling));
         if let Some(dragon) = self.common.dragon.as_ref() {
@@ -210,13 +213,15 @@ impl crate::game::ServerGame<'_> {
             // ServerLevel.tick: only entities in entity-ticking chunks tick.
             match kind {
                 Pending::Dragon => {
-                    let Some(dragon) = self.common.dragon.as_ref().filter(|d| d.join == join) else {
+                    let Some(dragon) = self.common.dragon.as_ref().filter(|d| d.join == join)
+                    else {
                         continue;
                     };
                     let at = dragon.position;
                     if entity_ticking(at.x.floor() as i32, at.z.floor() as i32) {
                         self.tick_dragon();
-                        if let Some(dragon) = self.common.dragon.as_ref().filter(|d| d.join == join) {
+                        if let Some(dragon) = self.common.dragon.as_ref().filter(|d| d.join == join)
+                        {
                             self.entity_section_step(
                                 dragon.id,
                                 at.components(),
@@ -347,17 +352,21 @@ impl crate::game::ServerGame<'_> {
                     let Some(i) = self.common.orbs.locate(join) else {
                         continue;
                     };
-                    let response =
-                        self.common.orbs[i].move_restitution(self.common.body_motion(&game_side!(self)), tick);
+                    let response = self.common.orbs[i]
+                        .move_restitution(self.common.body_motion(&game_side!(self)), tick);
                     let entity = (orb_id, "minecraft:experience_orb");
-                    let mut velocity =
-                        self.finish_body_restitution(entity, self.common.orbs[i].position, response);
+                    let mut velocity = self.finish_body_restitution(
+                        entity,
+                        self.common.orbs[i].position,
+                        response,
+                    );
                     let Some(mut i) = self.common.orbs.locate(join) else {
                         continue;
                     };
                     let orb = &self.common.orbs[i];
                     let (footprint, ground) = ((orb.position, orb.bounds()), orb.ground);
-                    self.common.body_motion(&game_side!(self))
+                    self.common
+                        .body_motion(&game_side!(self))
                         .apply_block_speed(orb.position, &mut velocity);
                     if !tick.burnt_out {
                         let writes = self.body_step_on(entity, footprint, &ground, &mut velocity);
@@ -374,7 +383,8 @@ impl crate::game::ServerGame<'_> {
                                     else {
                                         continue;
                                     };
-                                    let Some(kind) = self.common.health_resources.damage.id(name) else {
+                                    let Some(kind) = self.common.health_resources.damage.id(name)
+                                    else {
                                         continue;
                                     };
                                     let source = sunrise_sim::health::HurtSource {
@@ -430,7 +440,12 @@ impl crate::game::ServerGame<'_> {
                     };
                     let stays = o.finish_tick(
                         &mut &mut self.common.world,
-                        (self.common.collision, self.common.res.facts(), &self.common.loop_context, &side),
+                        (
+                            self.common.collision,
+                            self.common.res.facts(),
+                            &self.common.loop_context,
+                            &side,
+                        ),
                         &self.common.res.motion().fluids,
                         tick,
                         server,
@@ -502,7 +517,9 @@ impl crate::game::ServerGame<'_> {
     fn remove_landed_falling(&mut self) {
         if !self.server.ordered.landed.is_empty() {
             let landed = &mut self.server.ordered.landed;
-            self.common.falling.retain(|block| !landed.contains(&block.join));
+            self.common
+                .falling
+                .retain(|block| !landed.contains(&block.join));
             landed.clear();
         }
     }
@@ -523,7 +540,8 @@ impl crate::game::ServerGame<'_> {
     pub fn orb_moved(&mut self, i: usize, step: sunrise_sim::entities::OrbMove) {
         let o = &self.common.orbs[i];
         let effect = self
-            .common.body_motion(&game_side!(self))
+            .common
+            .body_motion(&game_side!(self))
             .legacy_contact(o.position, &o.ground);
         self.orb_fall(i, step, effect);
     }
@@ -536,7 +554,9 @@ impl crate::game::ServerGame<'_> {
         effect: sunrise_sim::motion::BodyContact,
     ) {
         let o = &self.common.orbs[i];
-        let mut fall = self.common.vehicle_fall_reset(o.fall_distance, step.from, step.moved);
+        let mut fall = self
+            .common
+            .vehicle_fall_reset(o.fall_distance, step.from, step.moved);
         if !step.in_water && step.moved.y < 0.0 {
             fall -= f64::from(step.moved.y as f32);
         }
@@ -560,10 +580,6 @@ mod tests {
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::join_seq::{JoinList, JoinSeq, Joined as _};
-
-    
-
-    
 
     #[test]
     fn first_join_uses_join_sequence_when_storage_is_reordered() {
@@ -589,7 +605,6 @@ mod tests {
         assert_eq!(first_join(&list), Some(first));
     }
 }
-
 
 use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
 

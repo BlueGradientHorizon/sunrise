@@ -43,7 +43,9 @@ impl crate::game::ServerGame<'_> {
         marker: &Identifier,
     ) -> Option<i64> {
         let now = self.level_clock_time(level)?;
-        let clock = self.common.level_clock_name(Dim::from_id(level.dimension_id()));
+        let clock = self
+            .common
+            .level_clock_name(Dim::from_id(level.dimension_id()));
         self.clock_marker(&clock, marker)?.resolve(now)
     }
 
@@ -102,23 +104,16 @@ fn wake_time(
 
 #[cfg(test)]
 mod tests {
-use sunrise_gameplay_common::game::server_side::wake_time::tests::NOW;
+    use sunrise_gameplay_common::game::server_side::wake_time::tests::NOW;
 
-use sunrise_gameplay_common::game::server_side::wake_time::tests::marker;
+    use sunrise_gameplay_common::game::server_side::wake_time::tests::marker;
 
     use super::{Refused, WAKE_UP_FROM_SLEEP, vanilla_morning, wake_time};
     use mod_api::{ClockAdjustment, Identifier};
     use sunrise_gameplay::world_clock::TimeMarker;
 
-    
-
-    
-    
-    
-    
-
-#[cfg(test)]
-/// The Overworld clock's markers as vanilla ships the two used here.
+    #[cfg(test)]
+    /// The Overworld clock's markers as vanilla ships the two used here.
     fn overworld(id: &Identifier) -> Option<TimeMarker> {
         let at = |ticks| TimeMarker {
             ticks,
@@ -131,8 +126,8 @@ use sunrise_gameplay_common::game::server_side::wake_time::tests::marker;
             _ => None,
         }
     }
-#[cfg(test)]
-/// A clock that defines no markers, as every clock but the Overworld's today.
+    #[cfg(test)]
+    /// A clock that defines no markers, as every clock but the Overworld's today.
     fn bare(_: &Identifier) -> Option<TimeMarker> {
         None
     }
@@ -222,6 +217,4 @@ use sunrise_gameplay_common::game::server_side::wake_time::tests::marker;
         let last = end - end.rem_euclid(24_000);
         assert_eq!(vanilla_morning(last - 1), Some(last));
     }
-
-    
 }

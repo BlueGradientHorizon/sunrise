@@ -25,7 +25,12 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         let pending = chunk.dynamic_pending;
-        let cells = self.common.pack.chunk_context.light.dynamic_cells(chunk, |_| true);
+        let cells = self
+            .common
+            .pack
+            .chunk_context
+            .light
+            .dynamic_cells(chunk, |_| true);
         if cells.is_empty() && !pending {
             return;
         }
@@ -42,7 +47,9 @@ impl crate::game::ServerGame<'_> {
                 None => return,
             },
         };
-        sunrise_gameplay_common::game::light_emission::apply_chunk_light_emission(world, key, pending, answers);
+        sunrise_gameplay_common::game::light_emission::apply_chunk_light_emission(
+            world, key, pending, answers,
+        );
     }
 }
 

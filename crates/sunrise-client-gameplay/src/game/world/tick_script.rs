@@ -6,8 +6,8 @@
 //! plays: its first tick sends `/wire-mark`, which marks it in the capture, then each tick's lines act
 //! before the tick runs, as a player's input in the frame before it; when its ticks have run, the client
 //! writes the scenario's name to PATH with the extension `done`.
-use crate::game::ClientGame;
 use super::event_loop::EventLoopCtl;
+use crate::game::ClientGame;
 pub(in crate::game) use sunrise_client_gameplay::tick_script::{TickScript, parse};
 
 impl ClientGame<'_> {

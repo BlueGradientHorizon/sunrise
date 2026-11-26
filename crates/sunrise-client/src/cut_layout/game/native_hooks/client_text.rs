@@ -1,9 +1,7 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use {crate::game::native_hooks::client_text::*};
+    use crate::game::native_hooks::client_text::*;
     use sunrise_gameplay_common::game::api_values::TryIntoEngine;
 
     #[test]

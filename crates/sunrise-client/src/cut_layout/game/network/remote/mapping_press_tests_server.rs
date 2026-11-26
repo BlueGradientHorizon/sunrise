@@ -34,7 +34,9 @@ fn a_creative_drop_sends_no_creative_slot() {
             "{sent:?}"
         );
         assert_eq!(
-            game.common.inventory[game.common.selected].as_ref().map(|s| s.count),
+            game.common.inventory[game.common.selected]
+                .as_ref()
+                .map(|s| s.count),
             Some(15)
         );
     });

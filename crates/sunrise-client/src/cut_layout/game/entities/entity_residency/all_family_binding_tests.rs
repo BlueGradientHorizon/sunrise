@@ -1,10 +1,10 @@
 use super::super::native_entity_refs::tests::with_game;
-use sunrise_gameplay::game::server_side::entity_residency::SlotAccess;
 use mod_api::DimensionKey;
 use std::{
     num::NonZeroU32,
     sync::{Arc, Mutex},
 };
+use sunrise_gameplay::game::server_side::entity_residency::SlotAccess;
 use sunrise_items::items::ItemStack;
 use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, Holder, index::AttachmentIndex,
@@ -27,33 +27,34 @@ fn every_ordinary_resident_family_binds_its_actual_owned_slot() {
         let index = Arc::new(Mutex::new(AttachmentIndex::default()));
         let key = ("test".into(), "all_resident_families".into());
         let mut maps = Vec::new();
-        let mut bind = |game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32, expected: Kind| {
-            let EntityLookup::Found { location, .. } = game.server_resident_entity(id) else {
-                panic!("{expected:?} did not become resident");
+        let mut bind =
+            |game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32, expected: Kind| {
+                let EntityLookup::Found { location, .. } = game.server_resident_entity(id) else {
+                    panic!("{expected:?} did not become resident");
+                };
+                assert_eq!(location.owner.kind, expected);
+                let holder = game.entity(id).unwrap();
+                let mut map = Attachments::default();
+                VALUE.set(&mut map, Holder::Entity(id), 31).unwrap();
+                assert_eq!(
+                    game.with_resident_slot(
+                        &DimensionKey::OVERWORLD,
+                        NonZeroU32::new(id).unwrap(),
+                        |slot| {
+                            assert!(!slot.is_bound(), "{expected:?} was already bound");
+                            slot.bind(&mut map, &index, holder);
+                            slot.is_bound()
+                        }
+                    ),
+                    SlotAccess::Done(true)
+                );
+                maps.push(map);
+                assert_eq!(
+                    index.lock().unwrap().snapshot(&key).len(),
+                    maps.len(),
+                    "{expected:?} failed to publish"
+                );
             };
-            assert_eq!(location.owner.kind, expected);
-            let holder = game.entity(id).unwrap();
-            let mut map = Attachments::default();
-            VALUE.set(&mut map, Holder::Entity(id), 31).unwrap();
-            assert_eq!(
-                game.with_resident_slot(
-                    &DimensionKey::OVERWORLD,
-                    NonZeroU32::new(id).unwrap(),
-                    |slot| {
-                        assert!(!slot.is_bound(), "{expected:?} was already bound");
-                        slot.bind(&mut map, &index, holder);
-                        slot.is_bound()
-                    }
-                ),
-                SlotAccess::Done(true)
-            );
-            maps.push(map);
-            assert_eq!(
-                index.lock().unwrap().snapshot(&key).len(),
-                maps.len(),
-                "{expected:?} failed to publish"
-            );
-        };
         macro_rules! summon {
             ($name:literal, $kind:ident, $($field:tt).+) => {{
                 game.summon_with_nbt(concat!("minecraft:", $name), [0.5, 70.0, 0.5], "{}").unwrap();
@@ -111,10 +112,8 @@ fn every_ordinary_resident_family_binds_its_actual_owned_slot() {
         bind(game, id, Kind::Dragon);
         // #792: a general row joins its own family's list; the lookup is the
         // same table path every family takes.
-        game.resident_entities
-            .general
-            .rows
-            .push(sunrise_gameplay_common::game::general::GeneralRow {
+        game.resident_entities.general.rows.push(
+            sunrise_gameplay_common::game::general::GeneralRow {
                 id: 4242,
                 uuid: [11, 12, 13, 14],
                 join: sunrise_sim::join_seq::JoinSeq::UNJOINED,
@@ -131,7 +130,8 @@ fn every_ordinary_resident_family_binds_its_actual_owned_slot() {
                 vehicle_order: 0,
                 boarding_cooldown: 0,
                 attachment_lifetime: Default::default(),
-            });
+            },
+        );
         bind(game, 4242, Kind::General);
         assert_eq!(maps.len(), 23);
         assert_eq!(index.lock().unwrap().snapshot(&key).len(), 23);

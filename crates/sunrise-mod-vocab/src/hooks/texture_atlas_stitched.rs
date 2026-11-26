@@ -11,7 +11,8 @@ pub trait Hooks {
     /// [`TextureAtlas::Gui`]. Never look them up by name every frame. Client-side.
     /// A panic rolls back the callback's journaled writes; the mod is reported and its callback skipped for
     /// the session without suppressing other mods' notifications.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::texture_atlas_stitched::ClientGame<'_>::native_texture_atlas_stitched", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::texture_atlas_stitched::ClientGame<'_>::native_texture_atlas_stitched",
         dispatch = "direct",
         staged_surface = "host",
         side = "client",

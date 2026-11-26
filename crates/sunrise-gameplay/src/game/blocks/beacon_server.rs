@@ -14,15 +14,23 @@ fn effect_id(name: &str) -> Option<&'static str> {
 impl ServerGame<'_> {
     /// `BeaconBlockEntity.tick` of the beacon at `key`.
     pub(in crate::game) fn tick_beacon_at(&mut self, key: (i32, i32, i32)) {
-        let Some((lease, BlockEntity::Beacon(mut b))) = self.common.world.block_entities.take(&key) else {
+        let Some((lease, BlockEntity::Beacon(mut b))) = self.common.world.block_entities.take(&key)
+        else {
             return;
         };
         let previous = b.levels;
         self.server_tick_beacon(key, &mut b);
         let current = b.levels;
-        self.common.world.block_entities.put(lease, BlockEntity::Beacon(b));
+        self.common
+            .world
+            .block_entities
+            .put(lease, BlockEntity::Beacon(b));
         if (previous == 0) != (current == 0) {
-            self.native_beacon_state_change(self.common.dim.id(), [key.0, key.1, key.2], current > 0);
+            self.native_beacon_state_change(
+                self.common.dim.id(),
+                [key.0, key.1, key.2],
+                current > 0,
+            );
         }
     }
 
@@ -47,7 +55,8 @@ impl ServerGame<'_> {
     /// `BeaconBlockEntity.tick` after activating: `CONSTRUCT_BEACON` in box.
     fn beacon_constructed(&mut self, p: [i32; 3], levels: i32) {
         let Some(bb) = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map(|pl| pl.dimensions.bounds(pl.position))
         else {
@@ -85,7 +94,12 @@ impl ServerGame<'_> {
             return;
         };
         let range = f64::from(b.levels * 10 + 10);
-        let Some((pp, pl)) = self.common.player.as_ref().map(|p| (p.position, p.dimensions)) else {
+        let Some((pp, pl)) = self
+            .common
+            .player
+            .as_ref()
+            .map(|p| (p.position, p.dimensions))
+        else {
             return;
         };
         let height = f64::from(self.common.world.top_y() - self.common.world.bottom_y());

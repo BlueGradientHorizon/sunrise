@@ -100,7 +100,12 @@ impl ServerGame<'_> {
     /// `handleSetTestBlock` for a guest: only a creative player with game
     /// master commands edits the block.
     pub(in crate::game) fn lan_set_test_block(&mut self, conn: u32, p: play::SetTestBlock) {
-        let Some(g) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(g) = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+        else {
             return;
         };
         let allowed = g.creative() && g.permission >= 2;

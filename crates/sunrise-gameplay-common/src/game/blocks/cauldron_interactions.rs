@@ -96,10 +96,7 @@ pub(in crate::game) fn tag_id(tag: &str) -> Option<String> {
         .map(|id| id.to_string())
 }
 impl<'a> Registrar<'a> {
-    pub fn new(
-        items: &'a Items,
-        registry: &'a sunrise_world::registry::BlockRegistry,
-    ) -> Self {
+    pub fn new(items: &'a Items, registry: &'a sunrise_world::registry::BlockRegistry) -> Self {
         Self {
             items,
             registry,

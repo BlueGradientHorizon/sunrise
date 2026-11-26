@@ -12,7 +12,8 @@ impl ClientGame<'_> {
         cause: BlockSoundCause,
     ) -> BlockSoundType {
         let player = (self.own_entity_id() as u32, "minecraft:player");
-        self.common.block_sound_type(pos, state, Some(player), cause)
+        self.common
+            .block_sound_type(pos, state, Some(player), cause)
     }
     /// `LevelEventHandler`'s break sound (level event 2001, which a client's predicted break
     /// also plays): the block's break sound at its centre, at `(volume + 1) / 2` and pitch × 0.8.
@@ -21,7 +22,9 @@ impl ClientGame<'_> {
         if self.common.res.facts().is_air(state) {
             return;
         }
-        let sound = self.common.block_sound_type(pos, state, None, BlockSoundCause::Break);
+        let sound = self
+            .common
+            .block_sound_type(pos, state, None, BlockSoundCause::Break);
         self.client.audio.0.play(
             &sound.break_sound,
             Some(pos.map(|v| f64::from(v) + 0.5)),

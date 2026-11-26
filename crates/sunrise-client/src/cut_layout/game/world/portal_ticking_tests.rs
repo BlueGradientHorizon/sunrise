@@ -3,10 +3,10 @@
 //! distance a mob in a nether portal doesn't cross, and a mob cooling down
 //! from one keeps its cooldown until it ticks again.
 
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::Mob;
 use sunrise_sim::nether_portal::ENTITY_DELAY;

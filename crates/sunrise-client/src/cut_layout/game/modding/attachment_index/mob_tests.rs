@@ -1,10 +1,10 @@
-use mod_api::AttachmentHolder;
-use std::sync::Arc;
-use sunrise_gameplay_common::game::Dim;
 use super::*;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use mod_api::AttachmentHolder;
 use mod_api::{AttachmentQueries, AttachmentQueriesMut, AttachmentType};
+use std::sync::Arc;
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::Dim;
 use sunrise_mod_runtime::attachments::Holder;
 
 static VALUE: AttachmentType<i32> = AttachmentType {

@@ -1,4 +1,3 @@
-
 #![cfg(test)]
 #[cfg(test)]
 #[path = "fangs/current_tests.rs"]
@@ -6,10 +5,13 @@ pub(crate) mod current_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use {sunrise_gameplay::game::server_side::fangs::Party, sunrise_gameplay::game::server_side::fangs::fangs_allied};
     use sunrise_client_gameplay::game::client_side::fangs_client::fang_crit;
-    use sunrise_gameplay_common::game::fangs_common::fang_attack_pitch;
     use sunrise_core::random::LegacyRandom;
+    use sunrise_gameplay_common::game::fangs_common::fang_attack_pitch;
+    use {
+        sunrise_gameplay::game::server_side::fangs::Party,
+        sunrise_gameplay::game::server_side::fangs::fangs_allied,
+    };
 
     #[test]
     #[ignore = "daily"]

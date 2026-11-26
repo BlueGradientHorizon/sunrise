@@ -1,23 +1,21 @@
-
-
 #[cfg(any())]
 pub mod own_block_entity_tests {
 
-use super::{BlockEntityTick, BlockEntityTickSlot, OwnBlockEntities, TickedKind};
+    use super::{BlockEntityTick, BlockEntityTickSlot, OwnBlockEntities, TickedKind};
 
-use crate::game::published_loops::LoopFlow;
+    use crate::game::published_loops::LoopFlow;
 
-use std::sync::{Arc, OnceLock};
+    use std::sync::{Arc, OnceLock};
 
-use sunrise_level::block_entities::Pos;
+    use sunrise_level::block_entities::Pos;
 
-use sunrise_level::containers::{BlockEntity, ModBlockEntity};
+    use sunrise_level::containers::{BlockEntity, ModBlockEntity};
 
-pub const A: &str = "own_a:machine";
-pub const B: &str = "own_b:machine";
-pub const DETECTOR: &str = "minecraft:daylight_detector";
-#[cfg(test)]
-impl Machines {
+    pub const A: &str = "own_a:machine";
+    pub const B: &str = "own_b:machine";
+    pub const DETECTOR: &str = "minecraft:daylight_detector";
+    #[cfg(test)]
+    impl Machines {
         fn new(block: &'static str, also_on: Option<&'static str>) -> Self {
             Self {
                 block,
@@ -26,8 +24,8 @@ impl Machines {
             }
         }
     }
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl Hooks for Machines {
         fn register(&self, r: &mut dyn Registrar, _: &RegistrationContext) {
             let kind = r.block_entity_type("machine").blocks(&[self.block]).build();
@@ -52,15 +50,15 @@ impl Machines {
             }
         }
     }
-#[cfg(test)]
-/// Makes block `self.0`'s block entity tick, and notes each tick in the entity's data:
+    #[cfg(test)]
+    /// Makes block `self.0`'s block entity tick, and notes each tick in the entity's data:
     /// [`mark`] of the type whose part ran.
     struct Ticks(&'static str);
-#[cfg(test)]
-#[mod_api::sunrise_part]
+    #[cfg(test)]
+    #[mod_api::sunrise_part]
     impl BlockPart for Ticks {}
-#[cfg(test)]
-#[mod_api::sunrise_part]
+    #[cfg(test)]
+    #[mod_api::sunrise_part]
     impl BlockEntityPart for Ticks {
         fn block_entity_ticks(&self, _: &dyn Host, event: &mut BlockEntityTicksEvent<'_>) {
             if event.block == self.0 {
@@ -75,12 +73,12 @@ impl Machines {
             });
         }
     }
-/// What a tick of mod A's type (1) or mod B's (2) leaves in a block entity's data.
+    /// What a tick of mod A's type (1) or mod B's (2) leaves in a block entity's data.
     pub fn mark(kind: &str) -> i32 {
         if kind == A { 1 } else { 2 }
     }
-#[cfg(test)]
-impl Count {
+    #[cfg(test)]
+    impl Count {
         fn new(ids: &'static [&'static str]) -> Self {
             Self {
                 own: OwnBlockEntities::new(ids),
@@ -89,8 +87,8 @@ impl Count {
             }
         }
     }
-#[cfg(test)]
-impl BlockEntityTickSlot for Count {
+    #[cfg(test)]
+    impl BlockEntityTickSlot for Count {
         fn before(&mut self, tick: &mut BlockEntityTick<'_, '_>) -> LoopFlow {
             self.visited += 1;
             if self.own.contains(tick) {
@@ -99,8 +97,8 @@ impl BlockEntityTickSlot for Count {
             LoopFlow::Continue
         }
     }
-#[cfg(test)]
-impl BlockEntityTickSlot for Swap {
+    #[cfg(test)]
+    impl BlockEntityTickSlot for Swap {
         fn before(&mut self, tick: &mut BlockEntityTick<'_, '_>) -> LoopFlow {
             if self.at == Some(tick.pos) {
                 self.at = None;
@@ -115,12 +113,12 @@ impl BlockEntityTickSlot for Swap {
             self.after.push(tick.pos);
         }
     }
-#[cfg(test)]
-/// For each entry: its position, whether the cursor is of mod A's type and of mod B's, and
+    #[cfg(test)]
+    /// For each entry: its position, whether the cursor is of mod A's type and of mod B's, and
     /// the type of the block entity standing there.
     type Entry = (Pos, bool, bool, &'static str);
-#[cfg(test)]
-impl Seen {
+    #[cfg(test)]
+    impl Seen {
         fn new() -> Self {
             Self {
                 a: OwnBlockEntities::new(&[A]),
@@ -144,8 +142,8 @@ impl Seen {
             )
         }
     }
-#[cfg(test)]
-impl BlockEntityTickSlot for Seen {
+    #[cfg(test)]
+    impl BlockEntityTickSlot for Seen {
         fn before(&mut self, tick: &mut BlockEntityTick<'_, '_>) -> LoopFlow {
             let entry = self.entry(tick);
             self.before.push(entry);

@@ -8,7 +8,8 @@ pub trait Hooks {
     /// before the take used them (`None` for an empty slot). It comes once the click is done, so the
     /// menu already holds the used inputs, but before the table sounds.
     /// Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::player_item_smithed::ServerGame<'_>::native_player_item_smithed", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::player_item_smithed::ServerGame<'_>::native_player_item_smithed",
         dispatch = "flat",
         side = "server",
         contract = "listen",

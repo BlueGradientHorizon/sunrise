@@ -1,6 +1,4 @@
-use super::{
-    item_draw::{BlockItemDraw, block_entity_pose},
-};
+use super::item_draw::{BlockItemDraw, block_entity_pose};
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{
     block_entity_render::vertex_light, camera::rotate_degrees, item_render, mesher::Vertex,
@@ -53,8 +51,8 @@ impl crate::game::ClientGame<'_> {
             pose.translate(0.5, 0.4, 0.5);
             rotate_degrees(&mut pose, 1, vault.display_spin(alpha as f32));
             let light = vertex_light(self.common.world.light(key.0, key.1, key.2));
-            let seed =
-                i64::from(self.common.item_number(&stack.item).unwrap_or(0)) + i64::from(stack.damage);
+            let seed = i64::from(self.common.item_number(&stack.item).unwrap_or(0))
+                + i64::from(stack.damage);
             for copy in item_render::cluster_poses(
                 &state,
                 pose.to_glam(),
@@ -85,10 +83,16 @@ impl crate::game::ClientGame<'_> {
     ) -> bool {
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
         held.is_some()
-            && self.common.pack.assets.registry.state(state).is_some_and(|block| {
-                sunrise_game_data::block_entity_types::factory_block(&block.name)
-                    == "minecraft:vault"
-                    && block.properties.get("vault_state").map(String::as_str) == Some("active")
-            })
+            && self
+                .common
+                .pack
+                .assets
+                .registry
+                .state(state)
+                .is_some_and(|block| {
+                    sunrise_game_data::block_entity_types::factory_block(&block.name)
+                        == "minecraft:vault"
+                        && block.properties.get("vault_state").map(String::as_str) == Some("active")
+                })
     }
 }

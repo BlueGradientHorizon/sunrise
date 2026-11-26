@@ -2,12 +2,17 @@
 //! (`item_pickup_cooldown_ticks`, `{value: …}`), which `AllayAi` sets to 60 when
 //! it throws an item (tools/test_allay_pickup_cooldown_parity.py measures the
 //! same on vanilla 26.3).
-use {crate::game::*, sunrise_gameplay_common::game::{Instant, Mob, Options, PathBuf, Progress, Resources, entity, execution_role}};
 use std::sync::Arc;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::allay;
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{
+        Instant, Mob, Options, PathBuf, Progress, Resources, entity, execution_role,
+    },
+};
 
 const SUPPLIED: &str = "00006096-0000-0000-0000-000000000001";
 
@@ -177,12 +182,9 @@ fn the_saved_pickup_cooldown_follows_the_model() {
     assert!(game.run_command(
         "summon allay 7.5 101 8.5 {NoAI:1b,PersistenceRequired:1b,NoGravity:1b,UUID:[I;24726,0,0,2],Brain:{memories:{\"minecraft:item_pickup_cooldown_ticks\":{value:30}}}}"
     ));
-    let at = |game: &mut sunrise_gameplay::game::ServerGame<'_>, tail: u32| match game.target_with_uuid([
-        24726,
-        0,
-        0,
-        tail as i32,
-    ]) {
+    let at = |game: &mut sunrise_gameplay::game::ServerGame<'_>, tail: u32| match game
+        .target_with_uuid([24726, 0, 0, tail as i32])
+    {
         Some(sunrise_gameplay_common::game::commands_common::Target::Mob(id)) => {
             game.mobs.iter().position(|m| m.id == id).unwrap()
         }

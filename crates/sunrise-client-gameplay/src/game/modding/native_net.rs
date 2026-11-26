@@ -52,10 +52,7 @@ impl ClientGame<'_> {
     /// exact physical protocol incarnation. Registered and engine-reserved
     /// channels require their payload/service API; unrelated plugin payloads
     /// retain vanilla's discard-codec limit. No local effects are applied. API 409.
-    pub fn send_packet(
-        &mut self,
-        packet: ServerboundPlayPacket,
-    ) -> Result<(), SendPacketError> {
+    pub fn send_packet(&mut self, packet: ServerboundPlayPacket) -> Result<(), SendPacketError> {
         let remote = self
             .client
             .remote

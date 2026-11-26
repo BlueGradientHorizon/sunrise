@@ -1,4 +1,3 @@
-
 thread_local! {
     pub static PROJECT_VIEW: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }

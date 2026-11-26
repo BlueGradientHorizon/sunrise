@@ -2,9 +2,9 @@
 //! in front, cycled by F5), the detached camera (`Camera.setup` with
 //! `getMaxZoom`), and the local player drawn as a model: in third person
 //! and in the inventory (`InventoryScreen.extractEntityInInventoryFollowsMouse`).
+use super::Screen;
 #[cfg(feature = "client")]
 use super::native_mob_draw::PlayerRender;
-use super::Screen;
 use mod_api::Hand;
 use std::{
     io,
@@ -495,7 +495,9 @@ impl crate::game::ClientGame<'_> {
             .is_some_and(|s| s.data().is_some_and(|d| !d.charged.is_empty()));
         let charge_duration = self.common.inventory[self.common.selected]
             .as_ref()
-            .map_or(25, |s| sunrise_gameplay_common::game::CommonGame::charge_ticks(s).max(1)) as i32;
+            .map_or(25, |s| {
+                sunrise_gameplay_common::game::CommonGame::charge_ticks(s).max(1)
+            }) as i32;
         let attack = (self.common.swing.old_animation, self.common.swing.animation);
         let swinging = self.common.swing.swinging();
         // currentSwing.hand().asArm(mainArm).
@@ -519,7 +521,10 @@ impl crate::game::ClientGame<'_> {
         let previous_position = self.common.previous_position;
         // LivingEntity.getBedOrientation: the model lies in the bed as
         // another player's does (`villager::sleep_pose`).
-        let bed = self.common.sleeping.map_or(0, |head| self.common.bed_facing(head));
+        let bed = self
+            .common
+            .sleeping
+            .map_or(0, |head| self.common.bed_facing(head));
         let spectator = self.own_player_is_spectator();
         let ridden = self.ridden_body();
         // LivingEntity.DATA_ARROW_COUNT_ID and DATA_STINGER_COUNT_ID come from the server.

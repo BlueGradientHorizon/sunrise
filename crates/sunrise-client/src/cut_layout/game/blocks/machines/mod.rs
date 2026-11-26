@@ -1,5 +1,3 @@
-
-
 use sunrise_core::geometry::Direction;
 use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::hoppers::Pos;
@@ -18,8 +16,8 @@ pub(crate) mod tank_reopen_tests;
 #[cfg(test)]
 pub(crate) mod brewing_fuel_transfer_tests {
     use super::*;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::HostTransaction;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_level::brewing::BrewingStand;
 
     struct PrepareProbe {
@@ -204,9 +202,12 @@ pub(crate) mod brewing_fuel_transfer_tests {
 #[cfg(test)]
 pub(crate) mod furnace_fuel_transfer_tests {
     use super::*;
-    use {sunrise_gameplay::game::game_tests::tests::server_game, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases};
     use sunrise_items::item_data::parse_stack;
     use sunrise_level::containers::{Furnace, FurnaceKind};
+    use {
+        sunrise_gameplay::game::game_tests::tests::server_game,
+        sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -230,7 +231,8 @@ pub(crate) mod furnace_fuel_transfer_tests {
         hopper_state
             .properties
             .insert("facing".into(), "east".into());
-        game.common.world
+        game.common
+            .world
             .set(
                 hopper.0,
                 hopper.1,
@@ -238,7 +240,8 @@ pub(crate) mod furnace_fuel_transfer_tests {
                 registry.resolve(&hopper_state).unwrap(),
             )
             .unwrap();
-        game.common.world
+        game.common
+            .world
             .set(
                 furnace.0,
                 furnace.1,
@@ -315,11 +318,11 @@ pub(crate) mod furnace_fuel_transfer_tests {
 
 #[cfg(test)]
 pub(crate) mod part_front_tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use super::super::native_entity_refs::tests::{declared_part_root, with_game_at};
+    use super::super::native_entity_refs::tests::{declared_part_root, with_game_at};
     use mod_api::BlockUpdateFlags;
     use std::sync::Arc;
     use sunrise_core::position::BlockPos;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_items::items::ItemStack;
     use sunrise_level::chunk::Chunk;
     use sunrise_level::containers::BlockEntity;
@@ -468,15 +471,16 @@ use super::super::native_entity_refs::tests::{declared_part_root, with_game_at};
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let level = game.level("minecraft:overworld").unwrap();
-            let state = |game: &sunrise_gameplay::game::ServerGame<'_>, name: &str, prop: (&str, &str)| {
-                let state = sunrise_world::chunk::BlockState {
-                    name: name.to_owned(),
-                    properties: [(prop.0.to_owned(), prop.1.to_owned())]
-                        .into_iter()
-                        .collect(),
+            let state =
+                |game: &sunrise_gameplay::game::ServerGame<'_>, name: &str, prop: (&str, &str)| {
+                    let state = sunrise_world::chunk::BlockState {
+                        name: name.to_owned(),
+                        properties: [(prop.0.to_owned(), prop.1.to_owned())]
+                            .into_iter()
+                            .collect(),
+                    };
+                    game.pack.assets.registry.resolve(&state).unwrap()
                 };
-                game.pack.assets.registry.resolve(&state).unwrap()
-            };
             let dropper = state(game, "minecraft:dropper", ("facing", "east"));
             let crafter = state(game, "minecraft:crafter", ("orientation", "east_up"));
             let chest = game
@@ -564,11 +568,11 @@ pub(crate) mod hopper_cart_rider_tests;
 
 #[cfg(test)]
 pub(crate) mod hopper_cart_transfer_tests {
+    use super::super::native_entity_refs::tests::with_game;
     use sunrise_gameplay_common::game::{
         boats_common::Boat,
         minecarts::{CartKind, Minecart},
     };
-    use super::super::native_entity_refs::tests::with_game;
 
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Tag;
@@ -789,9 +793,12 @@ pub(crate) mod hopper_cart_transfer_tests {
 #[cfg(test)]
 pub(crate) mod pot_hopper_insertion_tests {
     use super::*;
-    use {sunrise_gameplay::game::game_tests::tests::server_game, sunrise_gameplay_common::game::spill_common as spill};
     use sunrise_core::nbt::Tag;
     use sunrise_sim::save;
+    use {
+        sunrise_gameplay::game::game_tests::tests::server_game,
+        sunrise_gameplay_common::game::spill_common as spill,
+    };
 
     fn count(game: &sunrise_gameplay::game::ServerGame<'_>, pos: Pos, slot: usize) -> u32 {
         let Some(BlockEntity::Chest(slots)) = game.world.block_entities.get(&pos) else {
@@ -931,9 +938,9 @@ pub(crate) mod pot_signal_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
-use super::*;
+    use super::*;
     use sunrise_gameplay::game::game_tests::tests::server_game;
+    use sunrise_gameplay_common::game::GameGameExt1;
 
     /// `ShelfBlockEntity.setChanged` (no arguments) posts `BLOCK_ACTIVATE`:
     /// a container writing a shelf's slot is a block activation.
@@ -957,7 +964,8 @@ use super::*;
             .containers()
             .view(key, false)
             .expect("the shelf's view");
-        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+            .with(|e| *e.borrow_mut() = Some(Vec::new()));
 
         game.view_changed(&view);
 
@@ -1133,10 +1141,12 @@ pub(crate) mod can_take_tests {
             .registry
             .default_state("minecraft:hopper")
             .unwrap();
-        game.common.world
+        game.common
+            .world
             .set(shelf_pos.0, shelf_pos.1, shelf_pos.2, shelf_state)
             .unwrap();
-        game.common.world
+        game.common
+            .world
             .set(hopper_pos.0, hopper_pos.1, hopper_pos.2, hopper_state)
             .unwrap();
         let book = ItemStack::new("minecraft:book", 1);
@@ -1190,10 +1200,12 @@ pub(crate) mod can_take_tests {
             .registry
             .default_state("minecraft:oak_sign")
             .unwrap();
-        game.common.world
+        game.common
+            .world
             .set(hopper_pos.0, hopper_pos.1, hopper_pos.2, hopper_state)
             .unwrap();
-        game.common.world
+        game.common
+            .world
             .set(sign_pos.0, sign_pos.1, sign_pos.2, sign_state)
             .unwrap();
         game.world

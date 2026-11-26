@@ -16,7 +16,10 @@ impl crate::game::ServerGame<'_> {
     ) -> Result<(), mod_api::AttachmentRowError> {
         mod_api::__private::game::validate_attachment_write(
             &token,
-            self.common.attachment_indexes.get(&self.common.dim).map(Arc::as_ref),
+            self.common
+                .attachment_indexes
+                .get(&self.common.dim)
+                .map(Arc::as_ref),
         )
     }
 
@@ -33,13 +36,18 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         let Some(map) = self
-            .common.entity_attachments
+            .common
+            .entity_attachments
             .get_mut(&id)
             .filter(|map| map.has_index_entries())
         else {
             return;
         };
-        let index = self.common.attachment_indexes.entry(self.common.dim).or_default();
+        let index = self
+            .common
+            .attachment_indexes
+            .entry(self.common.dim)
+            .or_default();
         slot.bind(
             map,
             index,
@@ -53,10 +61,12 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         let index = self.common.attachment_indexes.entry(dim).or_default();
-        self.common.world
+        self.common
+            .world
             .attachments
             .bind_index(index, AttachmentHolder::Level(level));
-        self.common.world
+        self.common
+            .world
             .chunks
             .observe_attachments(Arc::new(IndexedAttachmentObserver::new(
                 index,
@@ -65,7 +75,8 @@ impl crate::game::ServerGame<'_> {
                     _ => None,
                 },
             )));
-        self.common.world
+        self.common
+            .world
             .block_entities
             .observe_attachments(Arc::new(IndexedAttachmentObserver::new(
                 index,

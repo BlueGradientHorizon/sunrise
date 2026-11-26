@@ -3,16 +3,16 @@ use super::{
     lan_trading::{MerchantRun, opaque_villager},
     stacked_on_other::Pickup,
 };
+use crate::game::lan_trade_decisions::TakePlan;
+use crate::game::lan_trade_decisions::TakeReads;
+use std::cell::RefCell;
+use sunrise_gameplay_common::game::lan_menu_data::{
+    Effect, Journal, KeptMerchantGuest, KeptMerchantMob, KeptMerchantWindow,
+};
 use sunrise_gameplay_common::game::transactions::{
     After,
     decision::{Identity, Reply, Side},
 };
-use sunrise_gameplay_common::game::lan_menu_data::{
-    Effect, Journal, KeptMerchantGuest, KeptMerchantMob, KeptMerchantWindow,
-};
-use crate::game::lan_trade_decisions::TakePlan;
-use crate::game::lan_trade_decisions::TakeReads;
-use std::cell::RefCell;
 use sunrise_protocol::packets::play;
 use sunrise_sim::{
     lan::conn::transaction_packets::Scope,
@@ -107,11 +107,7 @@ impl crate::game::ServerGame<'_> {
                 .get_or_insert_with(|| self.server.rand_sequences.clone());
         }
     }
-    pub fn lan_merchant_click(
-        &mut self,
-        conn: u32,
-        p: &play::ContainerClick,
-    ) -> bool {
+    pub fn lan_merchant_click(&mut self, conn: u32, p: &play::ContainerClick) -> bool {
         let input = match (p.slot, p.input) {
             (2, 0) => Input::Pickup,
             (2, 1) => Input::QuickMove,
@@ -134,13 +130,19 @@ impl crate::game::ServerGame<'_> {
         }) else {
             return self.lan_merchant_click_plain(conn, p);
         };
-        if self.common.mobs.iter().find(|m| m.id == mob).is_some_and(|m| {
-            opaque_villager(
-                &self.stations().professions,
-                m.species(),
-                &m.extra.profession,
-            )
-        }) {
+        if self
+            .common
+            .mobs
+            .iter()
+            .find(|m| m.id == mob)
+            .is_some_and(|m| {
+                opaque_villager(
+                    &self.stations().professions,
+                    m.species(),
+                    &m.extra.profession,
+                )
+            })
+        {
             return self.lan_merchant_click_plain(conn, p);
         }
         let Some(actor) = self.guest_actor(conn) else {
@@ -186,7 +188,8 @@ impl crate::game::ServerGame<'_> {
     /// Screen replacement cannot publish while a transaction owns a click. The older
     /// merchant guard protects its own guest; a scoped mod click can reach any guest's menu.
     pub(in crate::game::server_side) fn menu_click_in_progress(&self, conn: u32) -> bool {
-        self.common.transactions
+        self.common
+            .transactions
             .iter()
             .any(|level| level.menu_click_active.is_some() || level.trades.active == Some(conn))
     }
@@ -406,7 +409,12 @@ impl crate::game::ServerGame<'_> {
             }
             previous = moved;
         }
-        if traded && let Some(guest) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn))
+        if traded
+            && let Some(guest) = self
+                .server
+                .lan
+                .as_ref()
+                .and_then(|host| host.hub.guest(conn))
         {
             self.after_commit(After::Trade(Box::new(Effect::Notice(
                 guest.uuid,
@@ -520,10 +528,7 @@ pub(in crate::game) fn rollback_trade_journal(
 }
 
 impl TakeReads {
-    pub(in crate::game) fn fresh(
-        &self,
-        game: &crate::game::ServerGame<'_>,
-    ) -> bool {
+    pub(in crate::game) fn fresh(&self, game: &crate::game::ServerGame<'_>) -> bool {
         let Some(host) = game.server.lan.as_ref() else {
             return false;
         };

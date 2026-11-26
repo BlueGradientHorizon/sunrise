@@ -1,6 +1,6 @@
-use sunrise_client::hud::HudBatch;
-use sunrise_level::containers::BlockEntity;
 use super::*;
+use std::sync::Arc;
+use sunrise_client::hud::HudBatch;
 use sunrise_client_gameplay::game::native_hooks::screen_position_tests::CRATE_MENU;
 use sunrise_client_gameplay::game::native_hooks::screen_position_tests::CrateMod;
 use sunrise_client_gameplay::game::native_hooks::screen_position_tests::Frame;
@@ -10,20 +10,27 @@ use sunrise_client_gameplay::game::native_hooks::screen_position_tests::HopperSc
 use sunrise_client_gameplay::game::native_hooks::screen_position_tests::PACK;
 use sunrise_client_gameplay::game::native_hooks::screen_position_tests::Seen;
 use sunrise_client_gameplay::game::native_hooks::screen_position_tests::with_listener;
-use sunrise_client_gameplay::game::native_hooks::{OpenNativeMenu, OpenNativeScreen, seed_native_menu};
+use sunrise_client_gameplay::game::native_hooks::{
+    OpenNativeMenu, OpenNativeScreen, seed_native_menu,
+};
 use sunrise_gameplay_common::game::Screen;
-use std::sync::Arc;
+use sunrise_level::containers::BlockEntity;
 use winit::dpi::PhysicalPosition;
 
 #[test]
 #[ignore = "daily"]
 fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
-    use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_guest_turn_tests::register_test_menu, sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
     use sunrise_level::containers::{ModBlockEntity, ModBlockEntityFields};
     use sunrise_protocol::{
         buf::Reader, connection::Pipe, menu_extra, packets::play::Clientbound as C,
     };
     use sunrise_sim::lan::{Out, PlayerSender};
+    use {
+        sunrise_gameplay::game::native_guest_turn_tests::register_test_menu,
+        sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+        sunrise_gameplay_common::game::execution_role::ExecutionRole,
+        sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+    };
     const MENU: &str = "hopper_fixture:menu";
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
         "game::client_side::native_hooks_client::screen_position_tests::a_hopper_layout_mod_menu_opens_its_screen_from_block_packets",
@@ -49,7 +56,8 @@ fn a_hopper_layout_mod_menu_opens_its_screen_from_block_packets() {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_api::__private::mark_game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
         let pos = (1, 64, 1);
         sunrise_level::containers::with_mod_menu_types(
             [(
@@ -194,7 +202,8 @@ fn a_mod_blocks_custom_menu_gets_its_registered_screen() {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_api::__private::mark_game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
         sunrise_level::containers::with_mod_menu_types(
             [(
                 CRATE_MENU.into(),
@@ -396,7 +405,8 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_api::__private::mark_game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
         sunrise_level::containers::with_mod_menu_types(
             [
                 (
@@ -571,15 +581,19 @@ fn slotless_screen_draw_sees_full_width_updates_only_for_its_window() {
                         ["minecraft:anvil", PACK].map(str::to_owned).to_vec(),
                     ),
                 );
-                let open = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, window, menu| {
-                    game.handle_packet(C::OpenScreen(OpenScreen {
-                        container: window,
-                        menu,
-                        title: sunrise_core::nbt::Tag::String("Test".into()),
-                    }))
-                    .unwrap();
-                };
-                let receive = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, window, index, value| {
+                let open =
+                    |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, window, menu| {
+                        game.handle_packet(C::OpenScreen(OpenScreen {
+                            container: window,
+                            menu,
+                            title: sunrise_core::nbt::Tag::String("Test".into()),
+                        }))
+                        .unwrap();
+                    };
+                let receive = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                               window,
+                               index,
+                               value| {
                     game.handle_packet(C::CustomPayload(CustomPayload {
                         channel: DATA_CHANNEL.into(),
                         data: DataSlot {
@@ -708,7 +722,8 @@ fn stock_menu_data_sync_round_trips_above_255_and_enforces_signed_short_boundary
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_api::__private::mark_game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
         sunrise_client_gameplay::game::native_entity_refs::tests::with_game_role_client(
             root.prepared().to_owned(),
             sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,

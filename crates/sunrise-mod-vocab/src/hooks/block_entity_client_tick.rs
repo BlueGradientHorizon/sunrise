@@ -36,7 +36,8 @@ the same data and an update arriving during a frame is seen from the next frame'
 removed, replaced by another type, changed to a state without a client ticker or whose chunk unloads is not
 called again from that tick on, and its handle no longer reads once it is removed, replaced or unloaded: stop
 what you keep for it then. It never runs on a server."##]
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::block_entity_client_tick::native_block_entity_client_tick", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::block_entity_client_tick::native_block_entity_client_tick",
         receiver = "associated",
         dispatch = "flat",
         side = "client",

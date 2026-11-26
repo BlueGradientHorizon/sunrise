@@ -11,7 +11,11 @@ use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{entities::ItemEntity, lan::playerdata::uuid_ints};
 
-use {sunrise_gameplay_common::game::spill_common::BlockItemDrop, sunrise_gameplay_common::game::spill_common::DropState, sunrise_gameplay_common::game::spill_common::prepare_item_random};
+use {
+    sunrise_gameplay_common::game::spill_common::BlockItemDrop,
+    sunrise_gameplay_common::game::spill_common::DropState,
+    sunrise_gameplay_common::game::spill_common::prepare_item_random,
+};
 
 const KILLER: u128 = 0x1234;
 const THROWER: u128 = 0x5678;

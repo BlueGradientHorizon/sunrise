@@ -17,7 +17,8 @@ pub trait Hooks {
     /// removal. `Some(false)` ends the break there: no drops, tool wear or statistic. Left `None`,
     /// vanilla's removal runs. Server-side, for every player of the world; the first part answering
     /// wins. Asked of the block's own parts only, so a block with none costs nothing.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::on_destroyed_by_player::ServerGame<'_>::native_on_destroyed_by_player", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::on_destroyed_by_player::ServerGame<'_>::native_on_destroyed_by_player",
         dispatch = "flat",
         side = "server",
         contract = "replace",

@@ -1,9 +1,9 @@
-use sunrise_game_data::text::Text;
 use super::*;
 use crate::game::native_server::selector_tests::SelectorCommands;
 use mod_api::CommandArgumentValue as Value;
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
+use sunrise_game_data::text::Text;
 use sunrise_sim::mobs::Mob;
 
 /// One overworld cow (cow 1, tag `over`) and one nether cow (cow 2, tag `under`), then `lines`

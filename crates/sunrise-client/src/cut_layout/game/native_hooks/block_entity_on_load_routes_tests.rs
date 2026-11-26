@@ -1,18 +1,22 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay_common::game::native_hooks::block_entity_on_load::BlockEntityOnLoadGameExt1;
-use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
-    use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_role, crate::game::server_side::native_entity_refs::tests::with_game_role_client};
     use mod_api::*;
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     };
+    use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_hooks::block_entity_on_load::BlockEntityOnLoadGameExt1;
     use sunrise_level::{chunk::Chunk, containers::BlockEntity};
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_game_role_client,
+        sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game_role,
+    };
     type Log = Arc<Mutex<Vec<(&'static str, i32)>>>;
     type Payloads = Arc<Mutex<Vec<(BlockEntityRef, i32, [i32; 3], LevelRef)>>>;
     struct Listener {
@@ -201,7 +205,8 @@ use sunrise_client_gameplay::game::client_side::remote_client::session_state::Re
         mod_platform::__private::install(mods.clone());
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
         with_game_role(root.prepared().to_path_buf(), role, |game| {
             if game.is_logical_server() {
                 game.options.dedicated = Some(vec![]);
@@ -226,7 +231,12 @@ use sunrise_client_gameplay::game::client_side::remote_client::session_state::Re
         replace: bool,
         role: sunrise_gameplay_common::game::execution_role::ExecutionRole,
         report_payload: bool,
-        f: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, Log, Arc<AtomicBool>, Payloads),
+        f: impl FnOnce(
+            &mut sunrise_client_gameplay::game::ClientGame<'_>,
+            Log,
+            Arc<AtomicBool>,
+            Payloads,
+        ),
     ) {
         let log = Log::default();
         let payloads = Payloads::default();
@@ -243,7 +253,8 @@ use sunrise_client_gameplay::game::client_side::remote_client::session_state::Re
         mod_platform::__private::install(mods.clone());
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
         with_game_role_client(root.prepared().to_path_buf(), role, |game| {
             f(game, log, replace, payloads);
         });
@@ -322,7 +333,11 @@ use sunrise_client_gameplay::game::client_side::remote_client::session_state::Re
             );
         });
     }
-    fn assert_first_two_ticks(game: &mut sunrise_gameplay::game::ServerGame<'_>, log: &Log, count: i32) {
+    fn assert_first_two_ticks(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        log: &Log,
+        count: i32,
+    ) {
         assert!(log.lock().unwrap().is_empty());
         assert_eq!(game.world.block_entities.pending_on_load_len(), 1);
         game.tick_mod_block_entity((1, 64, 1));

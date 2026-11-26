@@ -1,11 +1,18 @@
-use sunrise_gameplay_common::game::GameGameExt1;
-use {sunrise_gameplay::game::server_side::commands::data::DataRef, sunrise_gameplay_common::game::commands_common::Target};
-use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use std::collections::HashSet;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+    sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
+use {
+    sunrise_gameplay::game::server_side::commands::data::DataRef,
+    sunrise_gameplay_common::game::commands_common::Target,
+};
 
 pub(crate) fn read_witness() -> String {
     let raw = std::env::var_os("SUNRISE_ENTITY_FIRE_TICKS_WITNESS").unwrap_or_else(|| {
@@ -286,7 +293,8 @@ pub(crate) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullets() {
         game.kill_target(neg_bullet);
 
         // Fresh vs already-ticked bullet in lava, plus shoot -> hurt -> discard -> entity_damage order and Silent:1b.
-        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+            .with(|e| *e.borrow_mut() = Some(Vec::new()));
         game.server.audio_capture_active = true;
         game.server.pending_sounds.clear();
         let fresh = summon_target_at(
@@ -297,12 +305,13 @@ pub(crate) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullets() {
         );
         tick_fire_entities(game);
         assert!(!target_exists(game, fresh));
-        let fresh_events: Vec<&'static str> = sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| {
-            std::mem::take(e.borrow_mut().as_mut().unwrap())
-                .into_iter()
-                .map(|(ev, ..)| ev)
-                .collect()
-        });
+        let fresh_events: Vec<&'static str> =
+            sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| {
+                std::mem::take(e.borrow_mut().as_mut().unwrap())
+                    .into_iter()
+                    .map(|(ev, ..)| ev)
+                    .collect()
+            });
         let fresh_sounds: Vec<String> = std::mem::take(&mut game.server.pending_sounds)
             .into_iter()
             .map(|s| s.event)
@@ -398,7 +407,8 @@ pub(crate) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullets() {
             std::mem::take(&mut game.server.pending_sounds).is_empty(),
             "Silent:1b bullet must not play hurt sound on attack path"
         );
-        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = None);
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+            .with(|e| *e.borrow_mut() = None);
 
         // ShulkerBullet.isOnFire() is always false, even with positive fire_ticks or visual fire.
         let bullet_vis = summon_target_at(

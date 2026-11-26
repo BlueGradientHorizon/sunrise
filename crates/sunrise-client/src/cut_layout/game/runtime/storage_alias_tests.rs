@@ -3,15 +3,17 @@
 //! non-empty array before it rejects the string. The command fails, and the
 //! storage keeps the cleared array, with no `setData` and so no save of its
 //! own (tools/test_storage_alias_parity.py measures the same on vanilla 26.3).
+use super::*;
+use crate::game::load_resources;
 use sunrise_client::settings::Settings;
+use sunrise_core::nbt::{Tag, parse_snbt};
+use sunrise_gameplay_common::game::Resources;
 use sunrise_gameplay_common::game::launch_options::Options;
 use sunrise_gameplay_common::game::resource_load::Progress;
-use sunrise_gameplay_common::game::Resources;
-use crate::game::load_resources;
-use super::*;
-use sunrise_core::nbt::{Tag, parse_snbt};
 
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::game::ServerGame<'_> {
+fn game(
+    resources: &mut Option<std::sync::Arc<Resources>>,
+) -> sunrise_gameplay::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -32,7 +34,8 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         res,

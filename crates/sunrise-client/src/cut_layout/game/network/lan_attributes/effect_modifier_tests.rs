@@ -1,9 +1,9 @@
 //! #478: a mob's effect attribute modifiers reach the attribute packet as the
 //! stored modifiers they are, once, and a loaded effect (which stores none)
 //! sends none.
-use sunrise_gameplay::game::server_side::lan_attributes::SpeedByType;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay::game::server_side::lan_attributes::SpeedByType;
 use sunrise_protocol::packets::play::{AttributeModifier, AttributeSnapshot};
 use sunrise_sim::mobs::{Mob, StoredEffect};
 

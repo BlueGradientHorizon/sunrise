@@ -59,7 +59,8 @@ impl crate::game::ServerGame<'_> {
             .iter()
             .find(|g| g.conn == conn && g.placed)?;
         let id = gm.merchant.mob?;
-        self.common.mobs
+        self.common
+            .mobs
             .iter()
             .find(|m| m.id == id && m.alive() && !m.removed)?;
         let stack = |s: &Option<ItemStack>| s.as_ref().map(|s| json!([s.item.as_ref(), s.count]));
@@ -403,7 +404,10 @@ impl crate::game::ServerGame<'_> {
         let mut session = gm.merchant.session.clone();
         Self::merchant_sync_in(
             &mut session,
-            self.common.mobs.iter().find(|m| Some(m.id) == gm.merchant.mob),
+            self.common
+                .mobs
+                .iter()
+                .find(|m| Some(m.id) == gm.merchant.mob),
         );
         let next_map = self.peek_map_id();
         let tag = |t: &str| self.structure_tag(t);
@@ -477,7 +481,8 @@ impl crate::game::ServerGame<'_> {
     /// Close an open merchant whose profession became unresolved, returning inputs.
     pub(in crate::game::server_side) fn close_opaque_merchant(&mut self, id: u32) {
         if self
-            .common.station
+            .common
+            .station
             .as_ref()
             .and_then(|s| s.merchant.as_ref())
             .is_some_and(|m| m.mob == Some(id))
@@ -523,7 +528,9 @@ impl crate::game::ServerGame<'_> {
         let op = move |menu: &mut Menu, env: &Env| {
             let _ = menu.click(env, slot, button, input);
         };
-        if !sunrise_gameplay_common::game::stacked_listened() || !matches!(input, Input::Pickup | Input::QuickCraft) {
+        if !sunrise_gameplay_common::game::stacked_listened()
+            || !matches!(input, Input::Pickup | Input::QuickCraft)
+        {
             return self.lan_merchant_op(conn, Some(p.container), false, op);
         }
         // Freeze what the click finds as the guest's trade state makes it, without a write.
@@ -560,7 +567,15 @@ impl crate::game::ServerGame<'_> {
             route,
             frozen,
             move |game| {
-                let now = game.server.lan.as_ref()?.hub.guests.get(gi?)?.carried.clone();
+                let now = game
+                    .server
+                    .lan
+                    .as_ref()?
+                    .hub
+                    .guests
+                    .get(gi?)?
+                    .carried
+                    .clone();
                 (now == carried).then(|| same.clone())
             },
             |game, carried, clicked| {
@@ -693,15 +708,19 @@ impl crate::game::ServerGame<'_> {
         g: &sunrise_sim::lan::guest::Guest,
         id: u32,
     ) -> bool {
-        self.common.mobs.iter().find(|m| m.id == id).is_some_and(|m| {
-            m.alive()
-                && !opaque_villager(
-                    &self.stations().professions,
-                    m.species(),
-                    &m.extra.profession,
-                )
-                && guest_within_entity_range(g, &m.bounds(), 4.0)
-        })
+        self.common
+            .mobs
+            .iter()
+            .find(|m| m.id == id)
+            .is_some_and(|m| {
+                m.alive()
+                    && !opaque_villager(
+                        &self.stations().professions,
+                        m.species(),
+                        &m.extra.profession,
+                    )
+                    && guest_within_entity_range(g, &m.bounds(), 4.0)
+            })
     }
     /// `ServerPlayer.tick`: broadcast menu changes before checking `stillValid`.
     pub(in crate::game) fn lan_merchant_tick(&mut self) {
@@ -783,7 +802,10 @@ impl crate::game::ServerGame<'_> {
         };
         let Some(guest) = host
             .hub
-            .holder_guest(sunrise_sim::lan::playerdata::ints_uuid(uuid), self.common.dim.id())
+            .holder_guest(
+                sunrise_sim::lan::playerdata::ints_uuid(uuid),
+                self.common.dim.id(),
+            )
             .filter(|guest| host.hub.here(guest))
         else {
             return false;
@@ -936,11 +958,7 @@ impl crate::game::ServerGame<'_> {
     /// Changes the session of a guest's open trading screen and sends the
     /// client its offers and result slot again. The merchant's own random is
     /// not drawn: the update sound is held back.
-    pub fn lan_trade_edit(
-        &mut self,
-        conn: u32,
-        edit: impl FnOnce(&mut merchant::Session),
-    ) -> bool {
+    pub fn lan_trade_edit(&mut self, conn: u32, edit: impl FnOnce(&mut merchant::Session)) -> bool {
         if self.menu_click_in_progress(conn) {
             return false;
         }
@@ -1006,7 +1024,10 @@ impl crate::game::ServerGame<'_> {
         }
         for id in needed {
             if let std::collections::btree_map::Entry::Vacant(slot) = session.sequences.entry(id) {
-                let random = self.server.rand_sequences.lend(slot.key(), self.common.level.seed);
+                let random = self
+                    .server
+                    .rand_sequences
+                    .lend(slot.key(), self.common.level.seed);
                 slot.insert(random);
             }
         }
@@ -1015,18 +1036,18 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer;
+    use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer;
 
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use super::super::native_entity_refs::tests::with_game;
-    use {crate::game::server_side::native_merchant_refs::tests::spawn};
     use super::*;
     use crate::game::lan::LanSettings;
+    use crate::game::server_side::native_merchant_refs::tests::spawn;
     use mod_api::ServerHost;
     use std::sync::{
         Arc,
         atomic::{AtomicI32, AtomicUsize},
     };
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use sunrise_protocol::packets::configuration::ClientInformation;
     use sunrise_sim::{
         lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
@@ -1142,18 +1163,8 @@ use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::off
         (villager, rx, first)
     }
 
-    
-
-    
-
-    
-
-    
-
-    
-
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_registered_profession_trades_normally_and_an_unregistered_one_stays_opaque() {
         use sunrise_sim::mobs::{
             Species,
@@ -1189,10 +1200,6 @@ use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::off
         ));
         assert!(!opaque_villager(&table, Species::WanderingTrader, &missing));
     }
-
-    
-
-    
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;

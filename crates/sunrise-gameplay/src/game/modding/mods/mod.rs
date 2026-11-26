@@ -1,11 +1,9 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
     #[test]
     fn entity_registry_and_spawner_facts_cannot_publish_different_generations() {
-        use sunrise_gameplay_common::game::mods::register_iterated_registries;
         use std::fs;
+        use sunrise_gameplay_common::game::mods::register_iterated_registries;
 
         mod_platform::__private::part_tests::install_parts_fixture(&[]).unwrap();
         let first = tempfile::tempdir().unwrap();
@@ -336,12 +334,28 @@ pub mod tests {
     }
 
     #[allow(unused_imports)]
-    use std::{collections::{BTreeSet, HashMap}, path::{Path, PathBuf}, sync::{Arc, Mutex}};
-    use {crate::game::mods::*, sunrise_gameplay_common::game::mods::{DeclarationError, DeclarationFailures, DeclarationKind, DeclarationRefusal, DisabledServingHost, ExecutionRole, Installed, MissingJar, ModsState, RegistrationContext, ServedContentLoadError, ServedContentStage, collect_key_mappings, content_overlay, content_owner_pairs, content_root, freeze_declarations, lang, live_switch_of, living_mod_types, mob_effect_entries, mod_list, native_declared, native_mods_detail, not_built, refuse_primary_namespace_claims, register_iterated_registries, register_mob_effects, validate_entity_type_families, validate_startup_packages, verdict}};
-    #[allow(unused_imports)]
     use mod_api::__private::native::BuiltMod;
     #[allow(unused_imports)]
+    use std::{
+        collections::{BTreeSet, HashMap},
+        path::{Path, PathBuf},
+        sync::{Arc, Mutex},
+    };
+    #[allow(unused_imports)]
     use sunrise_mod_package::runtime::Runtime;
+    use {
+        crate::game::mods::*,
+        sunrise_gameplay_common::game::mods::{
+            DeclarationError, DeclarationFailures, DeclarationKind, DeclarationRefusal,
+            DisabledServingHost, ExecutionRole, Installed, MissingJar, ModsState,
+            RegistrationContext, ServedContentLoadError, ServedContentStage, collect_key_mappings,
+            content_overlay, content_owner_pairs, content_root, freeze_declarations, lang,
+            live_switch_of, living_mod_types, mob_effect_entries, mod_list, native_declared,
+            native_mods_detail, not_built, refuse_primary_namespace_claims,
+            register_iterated_registries, register_mob_effects, validate_entity_type_families,
+            validate_startup_packages, verdict,
+        },
+    };
 
     #[test]
     fn a_package_cannot_claim_another_packages_primary_namespace() {
@@ -1126,7 +1140,9 @@ pub mod tests {
         mod_platform::__private::with_test_package_inventory(
             inventory("srv_runes", mod_api::Side::Server),
             || {
-                assert!(sunrise_gameplay_common::game::part_admission::admit_parts(&attr_mods).is_err());
+                assert!(
+                    sunrise_gameplay_common::game::part_admission::admit_parts(&attr_mods).is_err()
+                );
             },
         );
         assert_eq!(
@@ -2272,7 +2288,11 @@ pub mod tests {
                     .unwrap();
             }
         }
-        sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new("lucky", Box::new(Lucky))]).unwrap();
+        sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new(
+            "lucky",
+            Box::new(Lucky),
+        )])
+        .unwrap();
 
         let bits = |n: f64| format!("{:016x}", n.to_bits());
         let catalog = Arc::new(
@@ -2311,8 +2331,11 @@ pub mod tests {
         let modifications = mod_api::__private::entity_attribute_modifications();
         assert_eq!(modifications.len(), 1);
         let added = Arc::new(
-            sunrise_gameplay_common::game::resource_load::with_mod_attribute_additions(&catalog, modifications)
-                .unwrap(),
+            sunrise_gameplay_common::game::resource_load::with_mod_attribute_additions(
+                &catalog,
+                modifications,
+            )
+            .unwrap(),
         );
         let mut types: std::collections::HashMap<_, _> = living_mod_types()
             .into_iter()

@@ -49,7 +49,10 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         if first_store || map.has_index_entries() || map.has_index_binding() {
-            map.bind_index(self.common.attachment_indexes.entry(dim).or_default(), holder);
+            map.bind_index(
+                self.common.attachment_indexes.entry(dim).or_default(),
+                holder,
+            );
         }
     }
 }

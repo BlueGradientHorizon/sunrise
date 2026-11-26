@@ -139,7 +139,15 @@ impl AllayLevel for crate::game::ServerGame<'_> {
         pitch: f32,
         except_actor: bool,
     ) {
-        crate::game::ServerGame::play_mob_bound_sound(self, index, event, source, volume, pitch, except_actor);
+        crate::game::ServerGame::play_mob_bound_sound(
+            self,
+            index,
+            event,
+            source,
+            volume,
+            pitch,
+            except_actor,
+        );
     }
     fn with_sight_view<R>(&self, scan: impl FnOnce(SightView<'_>) -> R) -> R {
         let w = self.mob_world_base(&[]);

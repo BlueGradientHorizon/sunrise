@@ -54,12 +54,11 @@ pub trait SpearGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `Player.cannotAttackWithItem` for the held item: a spear needs its
     /// `minimum_attack_charge` of 1, counting `tolerance` ticks more than the
     /// `ticker` ticks charged.
-     fn cannot_attack_with_item(&self, ticker: i32, tolerance: i32) -> bool {
+    fn cannot_attack_with_item(&self, ticker: i32, tolerance: i32) -> bool {
         self.held().is_some_and(|s| Kinetic::of(&s.item).is_some())
             && (ticker + tolerance) as f32 / delay(self.main_hand_attack_speed()) < 1.0
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> SpearGameExt1<'__sg> for G {}
-
 
 use crate::game::held_items::HeldItemsGameExt1 as _;

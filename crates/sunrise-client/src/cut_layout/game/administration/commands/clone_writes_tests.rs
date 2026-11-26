@@ -1,17 +1,17 @@
 //! `/clone` counts what it wrote and needs every column of both boxes loaded
 //! (`CloneCommands.clone`: `Level.setBlock`'s result is the count, and
 //! `Level.hasChunksAt` covers the whole box, not just its corners).
-use crate::settings::Settings;
-use sunrise_gameplay_common::game::Dim;
-use sunrise_gameplay_common::game::Options;
-use crate::game::load_resources;
-use sunrise_gameplay_common::game::resource_load::Progress;
 use super::super::*;
+use crate::game::load_resources;
+use crate::settings::Settings;
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
-use sunrise_level::chunk::Chunk;
+use sunrise_gameplay_common::game::Dim;
+use sunrise_gameplay_common::game::Options;
 #[cfg(test)]
 use sunrise_gameplay_common::game::execution_role;
+use sunrise_gameplay_common::game::resource_load::Progress;
+use sunrise_level::chunk::Chunk;
 
 pub(crate) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
@@ -62,7 +62,11 @@ pub(crate) fn load_chunk(game: &mut sunrise_gameplay::game::ServerGame<'_>, x: i
 
 /// Opens `dim`'s level through the same adapter the clone uses, gives it the
 /// empty chunk at the origin, and returns to `back`.
-pub(crate) fn load_chunk_in(game: &mut sunrise_gameplay::game::ServerGame<'_>, dim: Dim, back: Dim) {
+pub(crate) fn load_chunk_in(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    dim: Dim,
+    back: Dim,
+) {
     game.enter_command_level(dim);
     assert_eq!(game.dim, dim, "the level is in place");
     load_chunk(game, 0, 0);

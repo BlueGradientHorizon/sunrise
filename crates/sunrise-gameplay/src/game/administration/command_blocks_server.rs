@@ -49,7 +49,8 @@ impl crate::game::ServerGame<'_> {
         };
         let (auto, powered) = (c.auto, c.powered);
         let mode = self
-            .common.block_state_at(pos)
+            .common
+            .block_state_at(pos)
             .and_then(|s| Mode::of_block(&s.name));
         if !was_auto && auto && !powered && mode.is_some_and(|m| m != Mode::Sequence) {
             self.schedule_command_block_tick(pos);
@@ -58,7 +59,11 @@ impl crate::game::ServerGame<'_> {
 
     /// `CommandBlockEntity.scheduleTick`.
     pub(in crate::game::server_side) fn schedule_command_block_tick(&mut self, pos: Pos) {
-        mark_condition_met(&mut self.common.world, self.common.pack.assets.registry, pos);
+        mark_condition_met(
+            &mut self.common.world,
+            self.common.pack.assets.registry,
+            pos,
+        );
         self.schedule_command_block(pos);
     }
 
@@ -76,7 +81,8 @@ impl crate::game::ServerGame<'_> {
             )
         });
         let feedback = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
         let Some(name) = self.common.block_state_at(pos).map(|s| s.name.as_str()) else {
@@ -118,7 +124,11 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         if mode == Mode::Auto {
-            mark_condition_met(&mut self.common.world, self.common.pack.assets.registry, key);
+            mark_condition_met(
+                &mut self.common.world,
+                self.common.pack.assets.registry,
+                key,
+            );
         }
         match command_block::tick_action(mode, was_met, conditional(state)) {
             Some(true) => self.command_block_execute(key, state),
@@ -144,7 +154,8 @@ impl crate::game::ServerGame<'_> {
         state: &BlockState,
     ) {
         let has_command = self
-            .common.command_block(pos)
+            .common
+            .command_block(pos)
             .is_some_and(|c| !c.command.is_empty());
         if has_command {
             self.perform_command_block(pos);
@@ -158,7 +169,8 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn execute_chain(&mut self, start: Pos, mut step: [i32; 3]) {
         let registry = self.common.pack.assets.registry;
         let limit = self
-            .common.ui
+            .common
+            .ui
             .rules
             .int_at(sunrise_game_data::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH);
         let mut remaining = limit;
@@ -214,7 +226,8 @@ impl crate::game::ServerGame<'_> {
         c.success_count = 0;
         let command = c.command.clone();
         if self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::COMMAND_BLOCKS_WORK)
             && !command.is_empty()
@@ -275,7 +288,8 @@ impl crate::game::ServerGame<'_> {
     /// `CommandSourceStack.sendSuccess` for a command block.
     pub(in crate::game::server_side) fn command_block_success(&mut self, pos: Pos, message: Text) {
         if self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
         {
@@ -289,7 +303,12 @@ impl crate::game::ServerGame<'_> {
         conn: u32,
         p: play::SetCommandBlock,
     ) {
-        let Some(g) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(g) = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+        else {
             return;
         };
         let allowed = g.creative() && g.permission >= 2;
@@ -411,7 +430,8 @@ impl crate::game::ServerGame<'_> {
         }
         if !command.is_empty() {
             let key = if self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::COMMAND_BLOCKS_WORK)
             {
@@ -429,7 +449,6 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
-
 
 #[cfg(test)]
 mod mode_switch_tests {

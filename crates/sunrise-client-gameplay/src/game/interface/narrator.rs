@@ -215,7 +215,9 @@ impl crate::game::ClientGame<'_> {
         self.client.chat_ui.options.layout_changed();
         // OptionInstance.set runs the option's onValueUpdate.
         self.narrator_status_changed();
-        self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+        self.client
+            .settings
+            .save(&sunrise_gameplay_common::game::options_path());
         self.on_narrator_status_changed(was_disabled, Trigger::Keyboard);
     }
     /// Where vanilla calls `screen.updateNarratorStatus(wasDisabled, trigger)`
@@ -238,7 +240,9 @@ impl crate::game::ClientGame<'_> {
         }
         let pad_focus = self.pad_focus_rect();
         let gui = self.gui_size();
-        self.client.narration.frame(gui, self.client.cursor, pad_focus);
+        self.client
+            .narration
+            .frame(gui, self.client.cursor, pad_focus);
     }
     /// `hasNoEditboxFocused`'s opposite: the open screen's focus is an
     /// `EditBox` that `canConsumeInput`. The chat, command block, anvil

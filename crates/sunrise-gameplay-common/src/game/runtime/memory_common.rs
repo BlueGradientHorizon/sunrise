@@ -437,17 +437,16 @@ pub struct PendingMemory {
 }
 
 pub trait MemoryCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-     fn memory_report(&self) -> MemoryReport {
+    fn memory_report(&self) -> MemoryReport {
         self.side_memory_report()
     }
 
     /// The report as JSON, for a manual control-socket request or a dedicated capture.
-     fn memory_value(&self) -> Value {
+    fn memory_value(&self) -> Value {
         serde_json::to_value(self.memory_report()).unwrap_or(Value::Null)
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> MemoryCommonGameExt1<'__sg> for G {}
-
 
 impl Drop for ServerMemoryRequest {
     fn drop(&mut self) {

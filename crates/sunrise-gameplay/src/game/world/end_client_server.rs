@@ -1,6 +1,6 @@
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::end_state::EyeOfEnder;
 use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::end_state::EyeOfEnder;
 use sunrise_items::items::ItemStack;
 
 impl ServerGame<'_> {
@@ -9,7 +9,8 @@ impl ServerGame<'_> {
     /// dimensions) nothing is thrown.
     pub(in crate::game::server_side) fn throw_ender_eye(&mut self) {
         let rings = self
-            .common.end
+            .common
+            .end
             .locator
             .lock()
             .unwrap()

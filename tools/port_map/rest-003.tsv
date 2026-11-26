@@ -129,11 +129,11 @@ MouseHandler.drawDebugMouseInfo	skip:debug		F3 mouse coordinates
 NarratorStatus.shouldNarrateSystemOrChat	port	crates/sunrise-narrator/src/lib.rs::Status::should_narrate_system_or_chat	All, System or Chat; gates saySystemChatQueued (GameNarrator::say_system_chat_queued)
 OptionInstance.createBoolean	skip:data		option definitions live in options_file.rs
 OptionInstance.createButton	skip:ui		widget creation
-OptionInstance.AltEnum.validateValue	port	crates/sunrise-client-render/src/options_file.rs::Spec::validate
+OptionInstance.AltEnum.validateValue	port	crates/sunrise-level/src/options_file.rs::Spec::validate
 OptionInstance.ClampingLazyMaxIntRange.codec	skip:java		codec
 OptionInstance.ClampingLazyMaxIntRange.valueListSupplier	skip:ui		widget value list
 OptionInstance.CycleableValueSet.createButton	port	crates/sunrise-client-render/src/options_ui.rs::Opt::cycle	gap: minor: cycle() does not save; the caller decides
-OptionInstance.IntRange.validateValue	port	crates/sunrise-client-render/src/options_file.rs::Spec::validate
+OptionInstance.IntRange.validateValue	port	crates/sunrise-level/src/options_file.rs::Spec::validate
 OptionInstance.IntRangeBase.toSliderValue	port	crates/sunrise-client-render/src/options_ui.rs::Opt::slider_position	the step over min..max; Options.chatDelay's tenths in options_ui_values.rs::kind
 OptionInstance.IntRangeBase.fromSliderValue	port	crates/sunrise-client-render/src/options_ui.rs::Opt::set_slider
 OptionInstance.OptionInstanceSliderButton.updateMessage	skip:ui		label and tooltip text

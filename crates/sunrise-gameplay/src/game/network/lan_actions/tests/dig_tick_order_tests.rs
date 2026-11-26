@@ -1,9 +1,12 @@
 //! ServerPlayer.tick precedes the connection phase, including across levels.
-use {crate::game::lan_actions::tick::*};
-use {sunrise_gameplay_common::game::Dim, crate::game::levels::ServerTickPhase, crate::game::levels::server_tick_phases};
+use crate::game::lan_actions::tick::*;
 use mod_api::{HostSide, ServerHost};
 use std::sync::{Arc, Mutex};
 use sunrise_world::registry::BlockRegistry;
+use {
+    crate::game::levels::ServerTickPhase, crate::game::levels::server_tick_phases,
+    sunrise_gameplay_common::game::Dim,
+};
 
 /// A stub for two levels, each with one connection mining one block. Drive
 /// the production dispatcher without a Game or the prepared resource tables.

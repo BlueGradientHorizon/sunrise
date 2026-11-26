@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
@@ -49,7 +47,10 @@ pub(crate) mod tests {
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
         root: &std::path::Path,
     ) -> (sunrise_gameplay::game::ServerGame<'a>, [f64; 3]) {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        };
         let settings = Settings::default();
         let loaded = load_resources(
             sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
@@ -66,7 +67,8 @@ pub(crate) mod tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.to_path_buf();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let res = resources.insert(loaded.resources);
         let mut game = sunrise_gameplay::game::ServerGame::new(
             res,

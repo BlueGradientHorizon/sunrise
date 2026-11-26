@@ -2,7 +2,6 @@
 //! `minecraft:tnt` draws in place of the primed TNT cube, reading the TNT fuse; with no
 //! renderer the family's own geometry is unchanged; a failing renderer leaves that cube until a
 //! resource reload resolves it again.
-use sunrise_client_gameplay::game::native_entity_renderers::EntityRendererTable;
 use mod_api::{
     BlockEntityDrawContext, EntityRenderState, EntityRenderer, Hooks, RegisterEntityRenderersEvent,
     RegistrationContext,
@@ -13,6 +12,7 @@ use std::sync::{
 };
 use sunrise_assets::model::Direction as Face;
 use sunrise_client::mesher::Vertex;
+use sunrise_client_gameplay::game::native_entity_renderers::EntityRendererTable;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::BlockPos;
 
@@ -243,7 +243,11 @@ fn primed(id: u32, fuse: i32) -> sunrise_gameplay_common::game::tnt_common::Prim
 }
 
 /// The vertices one frame of primed TNT draws for a single entity.
-fn tnt_frame(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: u32, fuse: i32) -> Vec<Vertex> {
+fn tnt_frame(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    id: u32,
+    fuse: i32,
+) -> Vec<Vertex> {
     game.tnts.clear();
     game.tnts.push(primed(id, fuse));
     let mut out = Vec::new();

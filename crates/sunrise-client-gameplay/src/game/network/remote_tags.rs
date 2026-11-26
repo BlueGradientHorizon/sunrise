@@ -141,11 +141,8 @@ pub(in crate::game) mod tests {
     };
     use sunrise_protocol::registry::Builtin;
 
-    
-
-    
-#[cfg(test)]
-/// What a listener read of the tags during its notice.
+    #[cfg(test)]
+    /// What a listener read of the tags during its notice.
     #[derive(Debug, PartialEq)]
     pub(in crate::game) struct Seen {
         pub(in crate::game) cause: TagsUpdateCause,
@@ -157,8 +154,8 @@ pub(in crate::game) mod tests {
         pub(in crate::game) stick_in_item_tag: Option<bool>,
         pub(in crate::game) lava_in_fluid_tag: Option<bool>,
     }
-#[cfg(test)]
-pub(in crate::game) struct Probe(pub(in crate::game) Arc<Mutex<Vec<Seen>>>);
+    #[cfg(test)]
+    pub(in crate::game) struct Probe(pub(in crate::game) Arc<Mutex<Vec<Seen>>>);
 
     #[mod_api::__subscriptions]
     impl Hooks for Probe {
@@ -183,22 +180,6 @@ pub(in crate::game) struct Probe(pub(in crate::game) Arc<Mutex<Vec<Seen>>>);
             });
         }
     }
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
@@ -206,4 +187,3 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::native_data_bound::NativeDataBoundGameExt1 as _;
-

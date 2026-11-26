@@ -3,13 +3,13 @@
 //! counts and `player_kills` whatever killed them, and the wither rose a
 //! wither's kill leaves where they fell.
 use super::{native_entity_refs::tests::run_fresh_cases, *};
-use sunrise_gameplay_common::game::chat_common::PLAYER_NAME;
 use mod_api::{Flow, Hooks, PlayerStatAwardEvent, ServerHost, StatType};
 use std::sync::{Arc, Mutex, atomic::AtomicI32, mpsc};
 use sunrise_game_data::{
     scoreboard::{RenderType, stat_criteria},
     text::Text,
 };
+use sunrise_gameplay_common::game::chat_common::PLAYER_NAME;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_sim::{
@@ -36,7 +36,9 @@ fn fresh(name: &str, cases: &[&str]) -> bool {
 
 /// A host on a dirt floor, its own player at (4.5, 100, 6.5), and one
 /// connected, placed guest standing on the floor at (22.5, 100, 9.5).
-fn game<'a>(resources: &'a mut Option<Arc<sunrise_gameplay_common::game::Resources>>) -> sunrise_gameplay::game::ServerGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<Arc<sunrise_gameplay_common::game::Resources>>,
+) -> sunrise_gameplay::game::ServerGame<'a> {
     let mut game = sunrise_gameplay::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);
@@ -144,7 +146,11 @@ fn kill(game: &mut sunrise_gameplay::game::ServerGame<'_>, attacker: Attacker, t
 }
 
 /// The score `holder` has on the objective `objective`, if any.
-fn score(game: &sunrise_gameplay::game::ServerGame<'_>, holder: &str, objective: &str) -> Option<i32> {
+fn score(
+    game: &sunrise_gameplay::game::ServerGame<'_>,
+    holder: &str,
+    objective: &str,
+) -> Option<i32> {
     game.score.board.score(holder, objective).map(|s| s.value)
 }
 
@@ -168,7 +174,10 @@ fn add_objectives(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     }
 }
 
-pub fn guest_stats<'a>(game: &'a sunrise_gameplay::game::ServerGame<'_>, conn: u32) -> &'a sunrise_gameplay::game::stats::Stats {
+pub fn guest_stats<'a>(
+    game: &'a sunrise_gameplay::game::ServerGame<'_>,
+    conn: u32,
+) -> &'a sunrise_gameplay::game::stats::Stats {
     &game.server.lan.as_ref().unwrap().play[&conn].stats
 }
 
@@ -252,7 +261,11 @@ fn a_local_player_sweep_credits_the_secondary_kill() {
     guests.update(victim, |g| g.health = 1.0);
     guests.update(primary, |g| g.position = [21.5, 100.0, 9.5]);
     let target = sunrise_gameplay::lan::mob_players::guest_bounds(&guests[primary]);
-    game.sweep_damage(target, sunrise_gameplay::game::server_side::mace::Spared::Player(KILLER_ID as i32), 1.0);
+    game.sweep_damage(
+        target,
+        sunrise_gameplay::game::server_side::mace::Spared::Player(KILLER_ID as i32),
+        1.0,
+    );
 
     assert!(
         game.server

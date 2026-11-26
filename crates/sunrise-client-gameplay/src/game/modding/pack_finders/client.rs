@@ -1,12 +1,12 @@
-use sunrise_gameplay_common::game::{
-    mods::ModsState,
-    pack_discovery::{DiscoveredPack, data_pack, discover},
-};
 use mod_api::PackType;
 use std::sync::Arc;
 use sunrise_client_render::{
     pack_screen::load_icon,
     packs::{Pack, pack_from_meta},
+};
+use sunrise_gameplay_common::game::{
+    mods::ModsState,
+    pack_discovery::{DiscoveredPack, data_pack, discover},
 };
 use sunrise_level::{
     datapack::DataPack,

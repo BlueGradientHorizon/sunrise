@@ -1,11 +1,8 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
     use super::*;
     use mod_api::ClientExecutor;
-    use {sunrise_client_gameplay::game::EventLoopCtl, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use mod_api::{
         __private::{HookPanicReport, take_hook_panics},
         AudioStream, AudioStreamRef, AudioStreamState, ClientDisconnectingEvent, ClientHost, Hooks,
@@ -16,8 +13,13 @@ mod tests {
         thread,
     };
     use sunrise_client::net::Event;
-    use sunrise_level::crash::ModCall;
     use sunrise_level::crash;
+    use sunrise_level::crash::ModCall;
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_client_gameplay::game::EventLoopCtl,
+        sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    };
 
     struct PanickingPayload;
     impl Drop for PanickingPayload {

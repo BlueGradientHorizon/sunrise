@@ -1,5 +1,4 @@
 //! Run alone with private prepared resources: installs process-wide trait mods.
-use {crate::game::*, sunrise_gameplay_common::game::{Hand, Instant, InteractTarget, ItemStack, Options, PathBuf, PlayerMotion, Progress, Vec3, World, api_values, entity, execution_role, host, in_own_process, mods}};
 use crate::settings::Settings;
 use mod_api::{
     self, EntityInteractEvent, Hooks, HostSide, InteractionResult, ItemInteractMobEvent, ItemPart,
@@ -13,6 +12,13 @@ use sunrise_level::chunk::Chunk;
 use sunrise_sim::{
     merchant::{ItemCost, MerchantOffer, Trader},
     mobs::Mob,
+};
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{
+        Hand, Instant, InteractTarget, ItemStack, Options, PathBuf, PlayerMotion, Progress, Vec3,
+        World, api_values, entity, execution_role, host, in_own_process, mods,
+    },
 };
 
 #[derive(Clone, Default)]

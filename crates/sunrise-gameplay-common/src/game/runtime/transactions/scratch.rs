@@ -50,12 +50,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// Takes up to `amount` of `resource`'s item and components out of lent scratch place `slot`.
-    pub fn scratch_extract(
-        &mut self,
-        slot: ScratchSlot,
-        resource: &ItemStack,
-        amount: u32,
-    ) -> u32 {
+    pub fn scratch_extract(&mut self, slot: ScratchSlot, resource: &ItemStack, amount: u32) -> u32 {
         let Some(held) = self.scratch_held(slot).filter(|held| {
             held.same_item_same_components_with_prototype(resource, self.res.items())
         }) else {
@@ -95,11 +90,10 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait ScratchGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-
     /// Runs `f` inside a new (or nested) storage transaction with a lent scratch [`ItemPlace`].
     /// Commits and returns the final slots when `f` returns `true`; aborts and returns `None` on
     /// `false` or unwind. Reports a refused commit separately from callback abort.
-     fn scratch_scope(
+    fn scratch_scope(
         &mut self,
         item: Option<Arc<str>>,
         stack: ItemStack,
@@ -129,7 +123,7 @@ pub trait ScratchGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// the same components, up to the item's stack size; a two-slot copy takes any item into its
     /// first slot where that is empty or holds the same, and what doesn't fit into its second.
     /// How many went.
-     fn scratch_insert(&mut self, slot: ScratchSlot, offer: &ItemStack) -> u32 {
+    fn scratch_insert(&mut self, slot: ScratchSlot, offer: &ItemStack) -> u32 {
         if offer.count == 0 {
             return 0;
         }
@@ -164,7 +158,6 @@ pub trait ScratchGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> ScratchGameExt1<'__sg> for G {}
-
 
 /// Puts up to `count` of `offer` into `slot`, empty or holding the same item and components,
 /// up to `max`: how many went.

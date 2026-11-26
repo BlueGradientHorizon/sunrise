@@ -53,7 +53,8 @@ impl crate::game::ClientGame<'_> {
             None => sunrise_sim::item_sync::item_equippable(item, self.common.res.items()),
         }?;
         let glint = self
-            .common.res
+            .common
+            .res
             .items()
             .enchantments
             .props
@@ -524,8 +525,8 @@ mod tests {
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod material_tests {
-    use crate::game::client_side::equipment_piece::tests::asset_layer;
     use super::*;
+    use crate::game::client_side::equipment_piece::tests::asset_layer;
     #[test]
     fn dyeable_without_default_uses_dye_or_skips_before_foil() {
         let layers = vec![

@@ -203,7 +203,11 @@ impl ClientGame<'_> {
         match self.sound_state(sound) {
             Some(SoundState::Waiting | SoundState::Playing) => {
                 let id = sound.fields().id;
-                self.client.mod_sounds.changes.borrow_mut().push((id, change));
+                self.client
+                    .mod_sounds
+                    .changes
+                    .borrow_mut()
+                    .push((id, change));
                 true
             }
             _ => false,

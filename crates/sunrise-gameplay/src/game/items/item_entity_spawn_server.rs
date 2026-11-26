@@ -1,6 +1,6 @@
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::spill_common as spill;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::spill_common as spill;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::entities::ItemEntity;
 
@@ -18,7 +18,8 @@ impl ServerGame<'_> {
         let random = random.unwrap_or_else(|| spill::prepare_item_random(velocity));
         self.server.next_entity += 1;
         let p = Vec3::new(position[0], position[1], position[2]);
-        self.common.persist
+        self.common
+            .persist
             .uuids
             .insert(self.server.next_entity, random.uuid);
         let (bob, yaw) = (random.bob, random.yaw);

@@ -54,7 +54,8 @@ impl ServerGame<'_> {
             // `resolveSlot`: an `equippable` item goes in its own slot, any
             // other in the main hand, each slot once.
             let slot = match self
-                .common.res
+                .common
+                .res
                 .items()
                 .get(&stack.item)
                 .and_then(|i| i.equip_slot.as_deref())
@@ -73,14 +74,10 @@ impl ServerGame<'_> {
     }
     /// `EnchantmentsByCostWithDifficulty.enchant` on the stack the mob holds
     /// in a `finalize` slot: nothing is drawn when the slot is empty.
-    pub fn enchant_item(
-        &mut self,
-        id: u32,
-        slot: usize,
-        special: f32,
-    ) {
+    pub fn enchant_item(&mut self, id: u32, slot: usize, special: f32) {
         let Some(stack) = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .find(|m| m.id == id)
             .and_then(|m| sunrise_sim::mobs::finalize::item_stack(m, slot))

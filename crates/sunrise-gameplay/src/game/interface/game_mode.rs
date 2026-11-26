@@ -56,7 +56,8 @@ impl crate::game::ServerGame<'_> {
         // ServerPlayerGameMode.changeGameModeForPlayer: a player left flying
         // by the change lands when the ground is within a block.
         let flying = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .filter(|p| p.flying)
             .map(|p| p.bounds());

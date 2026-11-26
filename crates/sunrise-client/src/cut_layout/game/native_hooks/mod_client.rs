@@ -1,5 +1,3 @@
-
-
 #[cfg(test)]
 #[path = "animate_tick_tests_client.rs"]
 pub(crate) mod animate_tick_tests;
@@ -20,11 +18,11 @@ pub(crate) mod label_tests;
 #[path = "shared/runtime_environment_tests_client.rs"]
 pub(crate) mod runtime_environment_tests;
 
+#[path = "shared/book_screen_client.rs"]
+pub(crate) mod book_screen;
 #[cfg(test)]
 #[path = "shared/screen_position_tests_client.rs"]
 pub(crate) mod screen_position_tests;
-#[path = "shared/book_screen_client.rs"]
-pub(crate) mod book_screen;
 
 #[path = "resolve_player_skin_client.rs"]
 pub(crate) mod resolve_player_skin;

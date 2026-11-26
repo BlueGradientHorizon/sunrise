@@ -119,7 +119,9 @@ pub(in crate::game) struct FrameGeometry {
     pub(in crate::game) gpu_spans: Vec<sunrise_client_render::render_geometry::EntitySpan>,
     pub(in crate::game) outlines: (usize, u32),
 }
-pub(in crate::game) fn frame_geometry(frame: &sunrise_client_render::gfx::Frame<'_>) -> FrameGeometry {
+pub(in crate::game) fn frame_geometry(
+    frame: &sunrise_client_render::gfx::Frame<'_>,
+) -> FrameGeometry {
     FrameGeometry {
         entities: bytemuck::cast_slice(frame.entities).to_vec(),
         glowing: bytemuck::cast_slice(frame.glowing).to_vec(),

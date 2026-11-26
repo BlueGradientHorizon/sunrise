@@ -221,7 +221,11 @@ impl ServerGame<'_> {
                 return Err(TransferError::UnsupportedBlock([pos.x, pos.y, pos.z]));
             }
             // Saved-only entities have no carrier payload adapter yet.
-            if sunrise_gameplay_common::game::spill_common::saved_entity(&self.common.world, [pos.x, pos.y, pos.z]).is_some()
+            if sunrise_gameplay_common::game::spill_common::saved_entity(
+                &self.common.world,
+                [pos.x, pos.y, pos.z],
+            )
+            .is_some()
             {
                 return Err(TransferError::SavedBlockEntity([pos.x, pos.y, pos.z]));
             }
@@ -240,7 +244,8 @@ impl ServerGame<'_> {
         // capacity override is the tests' retention seam.
         #[cfg(test)]
         let capacity = self
-            .common.world
+            .common
+            .world
             .carrier_fences
             .capacity_override
             .unwrap_or(MAX_CARRIERS);
@@ -274,7 +279,8 @@ impl ServerGame<'_> {
                 .state(state)
                 .ok_or(TransferError::UnsupportedBlock(key))?;
             let entity = self
-                .common.world
+                .common
+                .world
                 .block_entities
                 .get(&(key[0], key[1], key[2]))
                 .map(|entity| {
@@ -454,7 +460,10 @@ impl ServerGame<'_> {
         }
         // Fence the world cells and the carrier until the barrier lifts.
         for pos in cells {
-            self.common.world.carrier_fences.lock_cell([pos.x, pos.y, pos.z]);
+            self.common
+                .world
+                .carrier_fences
+                .lock_cell([pos.x, pos.y, pos.z]);
         }
         self.common.world.carrier_fences.lock_carrier(uuid);
         drop(_lease);
@@ -475,7 +484,10 @@ impl ServerGame<'_> {
             return Err(error);
         }
         for pos in cells {
-            self.common.world.carrier_fences.unlock_cell([pos.x, pos.y, pos.z]);
+            self.common
+                .world
+                .carrier_fences
+                .unlock_cell([pos.x, pos.y, pos.z]);
         }
         self.common.world.carrier_fences.unlock_carrier(uuid);
         Ok(())
@@ -529,7 +541,8 @@ impl ServerGame<'_> {
 
         #[cfg(test)]
         let capacity = self
-            .common.world
+            .common
+            .world
             .carrier_fences
             .capacity_override
             .unwrap_or(MAX_CARRIERS);
@@ -580,7 +593,8 @@ impl ServerGame<'_> {
                     .ok_or(TransferError::LocalRange)?,
             ];
             if !self
-                .common.world
+                .common
+                .world
                 .chunks
                 .contains_key(&(world[0] >> 4, world[2] >> 4))
             {
@@ -588,12 +602,15 @@ impl ServerGame<'_> {
             }
             let state = self.common.world.block(world[0], world[1], world[2]);
             let occupied = self
-                .common.world
+                .common
+                .world
                 .block_entities
                 .contains_key(&(world[0], world[1], world[2]));
             let replaceable =
                 self.with_level(|b, _level, _ticks| b.facts(state).flags & REPLACEABLE != 0);
-            if sunrise_gameplay_common::game::spill_common::saved_entity(&self.common.world, world).is_some() {
+            if sunrise_gameplay_common::game::spill_common::saved_entity(&self.common.world, world)
+                .is_some()
+            {
                 return Err(TransferError::SavedBlockEntity(world));
             }
             if !replaceable || occupied {
@@ -693,7 +710,8 @@ impl ServerGame<'_> {
                     name: cell.after.name.clone(),
                     properties: cell.after.properties.iter().cloned().collect(),
                 };
-                self.common.pack
+                self.common
+                    .pack
                     .assets
                     .registry
                     .resolve(&descriptor)
@@ -783,10 +801,13 @@ impl ServerGame<'_> {
             let replaceable =
                 self.with_level(|b, _level, _ticks| b.facts(state).flags & REPLACEABLE != 0);
             let entity = self
-                .common.world
+                .common
+                .world
                 .block_entities
                 .contains_key(&(pos[0], pos[1], pos[2]));
-            if sunrise_gameplay_common::game::spill_common::saved_entity(&self.common.world, pos).is_some() {
+            if sunrise_gameplay_common::game::spill_common::saved_entity(&self.common.world, pos)
+                .is_some()
+            {
                 return Err(TransferError::SavedBlockEntity(pos));
             }
             if !replaceable || entity {
@@ -834,7 +855,9 @@ impl ServerGame<'_> {
     ) -> Result<(), TransferError> {
         for cell in cells {
             let pos = cell.world;
-            if sunrise_gameplay_common::game::spill_common::saved_entity(&self.common.world, pos).is_some() {
+            if sunrise_gameplay_common::game::spill_common::saved_entity(&self.common.world, pos)
+                .is_some()
+            {
                 return Err(TransferError::SavedBlockEntity(pos));
             }
             let state = self.common.world.block(pos[0], pos[1], pos[2]);
@@ -850,7 +873,11 @@ impl ServerGame<'_> {
             if !same_state {
                 return Err(TransferError::Revalidation(pos));
             }
-            let found_entity = self.common.world.block_entities.get(&(pos[0], pos[1], pos[2]));
+            let found_entity = self
+                .common
+                .world
+                .block_entities
+                .get(&(pos[0], pos[1], pos[2]));
             match (found_entity, &cell.before.entity) {
                 (None, None) => {}
                 // Presence alone is not a witness: the live entity must
@@ -881,10 +908,9 @@ impl ServerGame<'_> {
     /// does not pass for an old one — and a transfer that never
     /// finished recovers before the first tick and any player. A
     /// refusal fails the open, and no save runs after it.
-    pub fn carrier_world_opened(
-        &mut self,
-    ) -> sunrise_game_data::Result<()> {
-        self.common.world.carrier_data_existed_at_open = self.server.world_root.join("data").is_dir();
+    pub fn carrier_world_opened(&mut self) -> sunrise_game_data::Result<()> {
+        self.common.world.carrier_data_existed_at_open =
+            self.server.world_root.join("data").is_dir();
         self.server.carrier_retention_snapshot = match Store::open(&self.server.world_root) {
             Ok(sunrise_sim::carrier_store::Opened::Live(store)) => store.retention_snapshot(),
             Ok(sunrise_sim::carrier_store::Opened::NeverUsed) => Vec::new(),
@@ -918,9 +944,7 @@ impl ServerGame<'_> {
     /// autosave uses. A refusal fails the world's load with a clear
     /// message — and nothing saves after it: the open itself aborts,
     /// while the store stays exactly as recovery found it.
-    pub fn carrier_recover_all_levels(
-        &mut self,
-    ) -> sunrise_game_data::Result<()> {
+    pub fn carrier_recover_all_levels(&mut self) -> sunrise_game_data::Result<()> {
         // No pending operation: no level is touched at all.
         let dimension = match sunrise_sim::carrier_store::Store::open(&self.server.world_root) {
             Ok(sunrise_sim::carrier_store::Opened::Live(store)) => {
@@ -1007,7 +1031,8 @@ impl ServerGame<'_> {
         // SaveDir::root is the dimension folder; the regions live in its
         // region/ child.
         let region = self.server.save.0.root.join("region");
-        let states = sunrise_sim::carrier_store::RegistryStates::new(self.common.pack.assets.registry);
+        let states =
+            sunrise_sim::carrier_store::RegistryStates::new(self.common.pack.assets.registry);
         sunrise_sim::carrier_store::recover(&mut store, &region, &states, self.common.dim.id())
             .map(|_| ())
             .map_err(|e| e.to_string())
@@ -1031,10 +1056,11 @@ impl ServerGame<'_> {
         if chunks.is_empty() {
             return Ok(());
         }
-        self.server
-            .save
-            .0
-            .save_later(&chunks, self.common.pack.assets.registry, world_biomes!(self))?;
+        self.server.save.0.save_later(
+            &chunks,
+            self.common.pack.assets.registry,
+            world_biomes!(self),
+        )?;
         self.server.save.0.flush()
     }
 }
@@ -1046,10 +1072,7 @@ impl ServerGame<'_> {
 /// (`save_game_with`, world/autosave.rs), so the exit path's save and
 /// any autosave write nothing over the affected regions. The prepared
 /// operation stays on disk for recovery at the next open.
-fn carrier_stop_session(
-    game: &mut crate::game::ServerGame<'_>,
-    error: &TransferError,
-) {
+fn carrier_stop_session(game: &mut crate::game::ServerGame<'_>, error: &TransferError) {
     if game.error.is_none() {
         game.error = Some(format!("carrier transfer failed: {error}").into());
     }
@@ -1059,28 +1082,10 @@ fn carrier_stop_session(
 mod tests {
     use super::*;
     use crate::game::native_entity_refs::tests::with_game;
-    use sunrise_gameplay_common::game::spill_common;
     use std::sync::Arc;
     use sunrise_core::geometry::Direction as CoreDirection;
     use sunrise_core::position::BlockPos;
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
+    use sunrise_gameplay_common::game::spill_common;
 
     /// The store's default capacity is the contract's 4,096.
     #[test]
@@ -1105,44 +1110,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
     /// The #2488 obligation is what autosave and `save-all` refuse on:
     /// holding it refuses, releasing it admits again.
     #[test]
@@ -1155,8 +1122,6 @@ mod tests {
         assert!(passes_settled());
         assert!(sunrise_gameplay_common::game::CommonGame::admit_entity_save().is_ok());
     }
-
-    
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;

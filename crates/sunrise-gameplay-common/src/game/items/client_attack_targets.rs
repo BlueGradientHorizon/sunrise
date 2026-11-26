@@ -1,14 +1,12 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use super::*;
+    use super::*;
 
-#[cfg(test)]
-struct Observer(std::sync::Arc<AttackBatch>);
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    struct Observer(std::sync::Arc<AttackBatch>);
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for Observer {
         fn client_attack_target(
             &self,
@@ -23,5 +21,4 @@ struct Observer(std::sync::Arc<AttackBatch>);
             }
         }
     }
-
 }

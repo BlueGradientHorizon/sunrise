@@ -30,7 +30,8 @@ impl crate::game::ClientGame<'_> {
     fn bundle_slot(&mut self, slot: usize) -> bool {
         slot < 36
             || slot == 504
-            || (sunrise_gameplay_common::game::inventory_slots::container_slot_index(slot).is_some()
+            || (sunrise_gameplay_common::game::inventory_slots::container_slot_index(slot)
+                .is_some()
                 && self.remote_storage_open()
                 && self.slots().contains(&slot))
     }

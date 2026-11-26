@@ -144,8 +144,7 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait NativeBlockStatesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-
-     fn crafting_remainder(&self, stack: &ItemStack) -> Option<ItemStack> {
+    fn crafting_remainder(&self, stack: &ItemStack) -> Option<ItemStack> {
         let mut remainder = self.item_crafting_remainder(stack);
         if mod_api::__private::item_listens(mod_api::HookId::CraftingRemainder, &stack.item) {
             self.side_crafting_remainder_hook(stack, &mut remainder);
@@ -154,7 +153,7 @@ pub trait NativeBlockStatesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     #[allow(dead_code)]
-     fn craft_grid_remainders(&self, recipe: &str) -> Vec<Option<ItemStack>> {
+    fn craft_grid_remainders(&self, recipe: &str) -> Vec<Option<ItemStack>> {
         self.recipes().remainders(
             &self.loop_context,
             recipe,
@@ -165,7 +164,6 @@ pub trait NativeBlockStatesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeBlockStatesGameExt1<'__sg> for G {}
-
 
 pub fn match_state_properties(
     definition: &[(String, Vec<String>)],
@@ -206,11 +204,7 @@ pub fn block_registries(registry: &BlockRegistry) -> Arc<Registries> {
 
 /// `BlockStateParser.parseForBlock` of the whole of `name`, NBT included, as
 /// `/setblock` reads it; a state with NBT has no id.
-pub fn parse(
-    reg: &Registries,
-    registry: &BlockRegistry,
-    name: &str,
-) -> Option<BlockStateId> {
+pub fn parse(reg: &Registries, registry: &BlockRegistry, name: &str) -> Option<BlockStateId> {
     let mut reader = Reader::new(name);
     let input = block::parse(&mut reader, reg, false).ok()?;
     if reader.can_read() || input.nbt.is_some() {
@@ -242,8 +236,6 @@ pub fn description_id(kind: &str, id: &str) -> Option<String> {
     let (namespace, path) = id.split_once(':')?;
     Some(format!("{kind}.{namespace}.{}", path.replace('/', ".")))
 }
-
-
 
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 

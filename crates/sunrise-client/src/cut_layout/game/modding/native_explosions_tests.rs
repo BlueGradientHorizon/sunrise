@@ -1,8 +1,6 @@
 //! `LevelRef::explode` through native mod calls: source, interactions, damage type,
 //! calculator, effects and unbounded radius.
 #![cfg(test)]
-use sunrise_gameplay_common::game::GameGameExt1;
-use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::run_with_game_stack, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{
     EntityRef, ExplodeError, ExplosionCalculator, ExplosionDetonateEvent, ExplosionInteraction,
     ExplosionSettings, ExplosionStartEvent, Flow, HitHost, Hooks, LivingDamagePostEvent,
@@ -13,12 +11,19 @@ use sunrise_core::{
     geometry::Vec3,
     position::{BlockPos, ChunkPos},
 };
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::{
     mobs::Mob,
     mobs::Who,
     motion::PlayerMotion,
     projectiles::{Projectile, ProjectileKind},
+};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::run_with_game_stack,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
 };
 
 /// One `explode` call.
@@ -92,7 +97,13 @@ fn stone(game: &sunrise_gameplay::game::ServerGame<'_>) -> usize {
         .count()
 }
 
-fn mob(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32, kind: &str, at: Vec3, health: f32) {
+fn mob(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    id: u32,
+    kind: &str,
+    at: Vec3,
+    health: f32,
+) {
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     let mut mob = Mob::new(id, kind, at, 0.0);
     mob.persistent = true;
@@ -542,7 +553,10 @@ impl Hooks for Listener {
 /// Runs `test` on a fresh game with a stone floor, the
 /// [`Listener`] hearing it, and hands it what was heard.
 fn heard(
-    test: impl Fn(&mut sunrise_gameplay::game::ServerGame<'_>, &Arc<Mutex<Heard>>) + Send + Sync + 'static,
+    test: impl Fn(&mut sunrise_gameplay::game::ServerGame<'_>, &Arc<Mutex<Heard>>)
+    + Send
+    + Sync
+    + 'static,
 ) {
     crate::entry::install_client_hooks();
     run_with_game_stack(move || {
@@ -980,7 +994,10 @@ fn targets(game: &mut sunrise_gameplay::game::ServerGame<'_>, flying: bool) {
 }
 
 /// A wind charge of `kind` above the blast, as its source.
-fn wind_charge(game: &mut sunrise_gameplay::game::ServerGame<'_>, kind: ProjectileKind) -> Option<EntityRef> {
+fn wind_charge(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    kind: ProjectileKind,
+) -> Option<EntityRef> {
     let charge = Projectile::new(kind, Vec3::new(8.5, 86.5, 8.5), None);
     let id = game.add_projectile(charge);
     game.entity(id)

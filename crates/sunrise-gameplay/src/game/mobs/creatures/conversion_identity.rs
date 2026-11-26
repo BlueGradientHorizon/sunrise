@@ -15,7 +15,8 @@ impl crate::game::ServerGame<'_> {
         self.load_scoreboard();
         let old_name = uuid_text(self.uuid_for(from));
         let team = self
-            .common.score
+            .common
+            .score
             .board
             .players_team(&old_name)
             .map(|t| t.name.clone());
@@ -31,7 +32,12 @@ impl crate::game::ServerGame<'_> {
     /// gave it. A value without a codec stays behind. The copy is not synced on its own: the new
     /// mob's spawn carries its synced values. A mob with no attachments costs one lookup.
     pub(in crate::game) fn copy_conversion_attachments(&mut self, from: u32, to: u32, kind: &str) {
-        let Some(saved) = self.common.entity_attachments.get(&from).map(|map| map.to_nbt()) else {
+        let Some(saved) = self
+            .common
+            .entity_attachments
+            .get(&from)
+            .map(|map| map.to_nbt())
+        else {
             return;
         };
         if saved.is_empty() {
@@ -40,7 +46,8 @@ impl crate::game::ServerGame<'_> {
         // The new mob is constructed (`EntityConstructing`) before the copy, as `convertTo`
         // builds it before `copyAttachmentsFrom`, so the copy wins key by key.
         self.initialize_entity(mod_api::Holder::Entity(to), kind);
-        self.common.entity_attachments
+        self.common
+            .entity_attachments
             .entry(to)
             .or_default()
             .read_saved_over(saved);

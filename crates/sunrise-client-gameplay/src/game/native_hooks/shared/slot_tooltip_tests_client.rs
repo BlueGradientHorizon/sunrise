@@ -1,11 +1,11 @@
 use super::*;
-use sunrise_gameplay_common::game::native_hooks::slot_tooltip_tests::Listener;
-use sunrise_gameplay_common::game::native_hooks::slot_tooltip_tests::MENU;
-use sunrise_gameplay_common::game::native_hooks::slot_tooltip_tests::ObservedComponent;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU8, AtomicUsize, Ordering},
 };
+use sunrise_gameplay_common::game::native_hooks::slot_tooltip_tests::Listener;
+use sunrise_gameplay_common::game::native_hooks::slot_tooltip_tests::MENU;
+use sunrise_gameplay_common::game::native_hooks::slot_tooltip_tests::ObservedComponent;
 
 #[test]
 #[ignore = "daily"]

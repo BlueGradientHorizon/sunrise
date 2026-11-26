@@ -1,20 +1,14 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt2;
-use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::with_game;
     use mod_api::{ActiveEffect, EntityRef, LivingRef, WorldEpoch};
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt2;
     use sunrise_sim::mobs::Mob;
 
-    pub(crate) fn effect(
-        id: &'static str,
-        duration: i32,
-        amplifier: i32,
-    ) -> ActiveEffect {
+    pub(crate) fn effect(id: &'static str, duration: i32, amplifier: i32) -> ActiveEffect {
         ActiveEffect::from(mod_api::__private::built::ActiveEffect {
             id: mod_platform::__private::part_tests::effect_key(id),
             duration,

@@ -150,7 +150,10 @@ impl crate::game::ClientGame<'_> {
             .registry
             .state(state)
             .and_then(|s| s.properties.get("candles")?.parse::<usize>().ok());
-        let offsets = sunrise_gameplay_common::game::CommonGame::candle_offsets(&self.common.res.facts().get(state).name, candles);
+        let offsets = sunrise_gameplay_common::game::CommonGame::candle_offsets(
+            &self.common.res.facts().get(state).name,
+            candles,
+        );
         for o in offsets {
             self.client.particles.0.add(
                 &ParticleOptions::simple(ParticleType::Smoke),
@@ -2334,8 +2337,10 @@ impl crate::game::ClientGame<'_> {
                     hud_layout::paint_items(batch, &g.client.gui.atlas, &draws, &mut items);
                     if indicator == 2 {
                         // Items and arm follow the camera; the charge belongs to the local player.
-                        let mut progress =
-                            g.client.hand_strength.scale(0.0, g.main_hand_attack_speed());
+                        let mut progress = g
+                            .client
+                            .hand_strength
+                            .scale(0.0, g.main_hand_attack_speed());
                         g.native_hotbar_attack_indicator_progress(
                             crate::game::native_hooks::HotbarAttackIndicatorProgressCall {
                                 progress: &mut progress,
@@ -5437,6 +5442,5 @@ use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1 as _;
-
 
 use sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::GameHooks as _;

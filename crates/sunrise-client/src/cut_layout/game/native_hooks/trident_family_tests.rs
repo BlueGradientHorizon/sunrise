@@ -1,13 +1,13 @@
 //! `WitherBoss.hurtServer` and `Shulker.hurtServer` inspect the direct AbstractArrow,
 //! not the damage type: ThrownTrident extends AbstractArrow but /damage does not.
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{
     Flow, HitHost, Hooks, HurtSource, LivingDeathEvent, LivingIncomingDamageEvent, ModEntry,
     ServerHost,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_core::{geometry::Vec3, nbt::Tag};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{
     mobs::{Mob, Who},

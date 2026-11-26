@@ -1,5 +1,5 @@
-use sunrise_gameplay_common::game::launch_options::Options;
 use std::time::Duration;
+use sunrise_gameplay_common::game::launch_options::Options;
 
 /// Whether this `Game` is the process's client.
 pub fn is_client_start(options: &Options) -> bool {

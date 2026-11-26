@@ -1,19 +1,20 @@
-
-
 #![cfg(test)]
 use sunrise_core::position::BlockPos;
 #[cfg(test)]
 pub(crate) mod entity_inside_tests {
-    use {crate::game::native_hooks::entity_inside::*};
+    use crate::game::native_hooks::entity_inside::*;
 
     /// Landing writes reach the level at the batch end, in the order asked, and only
     /// where the block is still the state landed on.
     #[test]
     #[ignore = "daily"]
     fn landing_writes_apply_at_the_batch_end() {
-        use {sunrise_gameplay_common::game::api_values::TryIntoApi, sunrise_gameplay_common::game::api_values::TryIntoEngine};
         use sunrise_sim::block_contact::{landed, take_pending};
         use sunrise_world::level::LandingWrite;
+        use {
+            sunrise_gameplay_common::game::api_values::TryIntoApi,
+            sunrise_gameplay_common::game::api_values::TryIntoEngine,
+        };
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             let state = |name| game.pack.assets.registry.default_state(name).unwrap();
@@ -101,25 +102,25 @@ pub(crate) mod entity_inside_tests {
 #[cfg(test)]
 pub(crate) mod sweep_tests {
 
-use sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS;
+    use sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS;
 
-use sunrise_gameplay_common::game::native_hooks::entity_inside::sweep_tests::InsidePart;
+    use sunrise_gameplay_common::game::native_hooks::entity_inside::sweep_tests::InsidePart;
 
-use sunrise_gameplay_common::game::in_own_process;
+    use sunrise_gameplay_common::game::in_own_process;
 
-use sunrise_gameplay_common::game::native_hooks::entity_inside::sweep_tests::arrow_shot;
+    use sunrise_gameplay_common::game::native_hooks::entity_inside::sweep_tests::arrow_shot;
 
-use sunrise_gameplay_common::game::native_hooks::entity_inside::sweep_tests::install_inside_mod;
+    use sunrise_gameplay_common::game::native_hooks::entity_inside::sweep_tests::install_inside_mod;
 
-use sunrise_gameplay::game::native_hooks::entity_inside::sweep_tests::item_at_blocks;
+    use sunrise_gameplay::game::native_hooks::entity_inside::sweep_tests::item_at_blocks;
 
-use sunrise_gameplay::game::native_hooks::entity_inside::sweep_tests::sweep_game_player;
+    use sunrise_gameplay::game::native_hooks::entity_inside::sweep_tests::sweep_game_player;
 
-use sunrise_gameplay::game::native_hooks::entity_inside::sweep_tests::sweep_game_player_runs;
+    use sunrise_gameplay::game::native_hooks::entity_inside::sweep_tests::sweep_game_player_runs;
 
-use super::*;
+    use super::*;
 
-/// A listening part is told mid-walk, in walk order, and its typed writes reach
+    /// A listening part is told mid-walk, in walk order, and its typed writes reach
     /// the player in this tick: both pushes add, and the wither effect event lands
     /// for the server's `give_player_effect`, which runs before this tick's effect
     /// tick.
@@ -160,7 +161,7 @@ use super::*;
             });
         });
     }
-/// A part that kills the player with its first write: the walk's later contacts
+    /// A part that kills the player with its first write: the walk's later contacts
     /// still happen, but the flush stops at the death, so the later writes and
     /// effects never apply.
     #[test]
@@ -194,7 +195,7 @@ use super::*;
             },
         );
     }
-/// A part that panics on its first contact is disabled for this hook. The walk
+    /// A part that panics on its first contact is disabled for this hook. The walk
     /// and the player's tick go on without applying the failed callback's writes.
     #[test]
     #[ignore = "daily"]
@@ -233,7 +234,7 @@ use super::*;
             });
         });
     }
-/// Without a listening part the walk runs its vanilla moments and leaves the
+    /// Without a listening part the walk runs its vanilla moments and leaves the
     /// player's writes and the pending queue alone: no part is installed, so the
     /// fire's gate answers false and its DamageLevel is never built.
     #[test]
@@ -264,7 +265,7 @@ use super::*;
             assert!(sunrise_sim::block_contact::take_pending().is_empty());
         });
     }
-/// A part's `AddEffect` keeps its collector position across the event channel:
+    /// A part's `AddEffect` keeps its collector position across the event channel:
     /// one write asked after FREEZE and one after EXTINGUISH land in that order,
     /// `applyAndClear`'s own, ready for the server's `give_player_effect` before
     /// this tick's effect tick.
@@ -304,7 +305,7 @@ use super::*;
             });
         });
     }
-/// A server's player is told once a tick: the early `ServerStuck` pass keeps
+    /// A server's player is told once a tick: the early `ServerStuck` pass keeps
     /// the moves for `server_block_damage`, and only the damage pass tells the
     /// part — two blocks, two contacts, not four, as vanilla's `entityInside`
     /// runs once a move.
@@ -361,7 +362,7 @@ use super::*;
             });
         });
     }
-/// Without a part the two server passes leave the player as vanilla has it:
+    /// Without a part the two server passes leave the player as vanilla has it:
     /// the walk still reports its blocks and nothing is queued.
     #[test]
     #[ignore = "daily"]
@@ -424,7 +425,7 @@ use super::*;
             assert!(sunrise_sim::block_contact::take_pending().is_empty());
         });
     }
-/// A part's pushes reach the item in its own tick, one contact a block.
+    /// A part's pushes reach the item in its own tick, one contact a block.
     #[test]
     #[ignore = "daily"]
     fn a_part_pushes_an_item_once_a_block() {
@@ -455,7 +456,7 @@ use super::*;
             });
         });
     }
-/// A panicking part inside the item batch: the staged fire contains it, the
+    /// A panicking part inside the item batch: the staged fire contains it, the
     /// lent level goes back, and the lifted row the batch holds returns to the
     /// level's list (#2194's and #2213's carrier discipline).
     #[test]
@@ -502,7 +503,7 @@ use super::*;
             });
         });
     }
-/// Without a part the item's sweep costs one gate test: nothing is written,
+    /// Without a part the item's sweep costs one gate test: nothing is written,
     /// nothing queued, exactly what main's recorded route did with no listener.
     #[test]
     #[ignore = "daily"]
@@ -526,7 +527,7 @@ use super::*;
             assert!(sunrise_sim::block_contact::take_pending().is_empty());
         });
     }
-/// The projectile's batch sweep: a part's push reaches it, one contact a
+    /// The projectile's batch sweep: a part's push reaches it, one contact a
     /// block, and a removed projectile's flush stops.
     #[test]
     #[ignore = "daily"]
@@ -607,7 +608,7 @@ use super::*;
             });
         });
     }
-/// Without a part the projectile's sweep costs one gate test and nothing else,
+    /// Without a part the projectile's sweep costs one gate test and nothing else,
     /// exactly what main's recorded route did with no listener.
     #[test]
     #[ignore = "daily"]
@@ -647,7 +648,7 @@ use super::*;
             assert!(sunrise_sim::block_contact::take_pending().is_empty());
         });
     }
-/// An arrow's contacts, on the same batch sweep the other projectiles':
+    /// An arrow's contacts, on the same batch sweep the other projectiles':
     /// a flying arrow meets its blocks in walk order, once each, and a stuck
     /// arrow keeps the contact of the block it sits in.
     #[test]
@@ -710,7 +711,7 @@ use super::*;
             });
         });
     }
-/// A panicking part inside the arrow batch: the listener's panic is contained
+    /// A panicking part inside the arrow batch: the listener's panic is contained
     /// in the staged fire, the lifted projectile row returns to the level's list
     /// exactly once, and the arrow keeps its state.
     #[test]

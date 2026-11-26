@@ -1,10 +1,13 @@
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::mobs::Mob;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 pub(crate) const ZOMBIE: u32 = 71;
 pub(crate) const TARGET_GUEST: u32 = 12;

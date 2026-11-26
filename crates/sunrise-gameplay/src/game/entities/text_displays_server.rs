@@ -48,4 +48,3 @@ pub(in crate::game) mod tests {
         });
     }
 }
-

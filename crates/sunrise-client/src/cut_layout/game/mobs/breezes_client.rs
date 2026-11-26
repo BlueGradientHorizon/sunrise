@@ -1,20 +1,18 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-use crate::game::{Audio, Options, Progress, Settings, load_resources};
+    use crate::game::{Audio, Options, Progress, Settings, load_resources};
 
-use std::sync::Arc;
+    use std::sync::Arc;
 
-use sunrise_core::geometry::Vec3;
+    use sunrise_core::geometry::Vec3;
 
-use sunrise_level::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
 
-use sunrise_sim::mobs::Mob;
+    use sunrise_sim::mobs::Mob;
 
-/// A game on the prepared resources with an empty chunk at (0, 0), the
+    /// A game on the prepared resources with an empty chunk at (0, 0), the
     /// window's player (the camera the dust needs) and one breeze standing
     /// with its feet at `feet`.
     pub(crate) fn game_with_breeze<'a>(
@@ -41,7 +39,8 @@ use sunrise_sim::mobs::Mob;
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
         let res = &*resources.insert(loaded.resources);
         let mut game = sunrise_client_gameplay::game::ClientGame::new(
             res,

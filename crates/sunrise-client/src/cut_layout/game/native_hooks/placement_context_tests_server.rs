@@ -1,10 +1,8 @@
-use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use crate::game::native_hooks::placement_context_tests::Notice;
 use crate::game::native_hooks::placement_context_tests::PlacementSubstitution;
 use crate::game::native_hooks::placement_context_tests::SourceSpy;
 use crate::game::native_hooks::placement_context_tests::VetoProbe;
 use crate::game::native_hooks::placement_context_tests::VetoTrace;
-use {sunrise_gameplay_common::game::GuestUse, sunrise_gameplay_common::game::Hit};
 use mod_api::PlacementSource;
 use std::sync::{Arc, Mutex};
 use sunrise_core::{
@@ -13,6 +11,11 @@ use sunrise_core::{
 };
 use sunrise_items::items::ItemStack;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
+use {sunrise_gameplay_common::game::GuestUse, sunrise_gameplay_common::game::Hit};
 
 #[test]
 #[ignore = "daily"]

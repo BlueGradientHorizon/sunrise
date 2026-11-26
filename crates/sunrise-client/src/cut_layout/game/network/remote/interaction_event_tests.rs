@@ -11,7 +11,6 @@ pub(crate) mod predicted_use_tests;
 pub(crate) mod use_item_hand_tests;
 #[path = "use_item_result_tests.rs"]
 pub(crate) mod use_item_result_tests;
-use {sunrise_gameplay_common::game::Hit, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::InteractionResult as Answer;
 use mod_api::{
     self, BlockPart, ENTITY_ITEMS, Flow, Hooks, HostSide, HostTransaction, ItemPart, ItemResource,
@@ -24,6 +23,11 @@ use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_protocol::connection::Pipe;
 use {
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay_common::game::Hit,
+    sunrise_gameplay_common::game::execution_role::ExecutionRole,
+};
+use {
     sunrise_items::items::ItemStack, sunrise_level::chunk::Chunk,
     sunrise_sim::first_person_sim::Hand, sunrise_sim::motion::PlayerMotion,
 };
@@ -32,7 +36,8 @@ use {
 #[cfg(any())]
 impl sunrise_client_gameplay::game::ClientGame<'_> {
     pub(crate) fn set_sent_sneak_for_test(&mut self) {
-        self.client.remote.as_mut().unwrap().last_input |= sunrise_gameplay_common::game::remote::SHIFT_INPUT;
+        self.client.remote.as_mut().unwrap().last_input |=
+            sunrise_gameplay_common::game::remote::SHIFT_INPUT;
     }
 }
 
@@ -298,7 +303,8 @@ pub(crate) fn with_interaction_client_game_at(
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:stick", 1));
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:stick", 1));
             test(game);
         },
     );
@@ -324,7 +330,8 @@ pub(crate) fn with_interaction_server_game_at(
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         let _receiver = setup_interaction_guest(game);
         game.as_guest(12, |game| {
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:stick", 1));
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:stick", 1));
             test(game);
         })
         .unwrap();
@@ -509,7 +516,8 @@ fn a_server_client_fires_use_item_finish_when_the_server_completes_the_use() {
             game.remote_complete_using();
             assert!(game.cooldowns.is_on_cooldown("test:finish"));
             // The server's inventory update replaces a mod's replacement.
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:apple", 3));
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:apple", 3));
             game.using = Some((game.selected, 5));
             *observer.0.lock().unwrap() = Controls {
                 finish_replacement: Some(Some(7)),
@@ -552,7 +560,9 @@ fn a_creative_hand_replaced_by_a_finish_listener_is_not_sent_as_a_creative_slot(
             let offhand = sunrise_gameplay::game::shield::OFFHAND_SLOT;
             let packets = |observer: &Observer| observer.0.lock().unwrap().creative_slot_packets;
             // Finish the use of `slot`, a listener setting the result's count to `count`.
-            let finish = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, slot: usize, count: u32| {
+            let finish = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                          slot: usize,
+                          count: u32| {
                 observer.0.lock().unwrap().finish_replacement = Some(Some(count));
                 game.using = Some((slot, 5));
                 game.remote_complete_using();
@@ -619,7 +629,8 @@ fn a_server_client_keeps_a_bundle_use_until_the_server_completes_it() {
     sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
     mod_platform::testing::with_mods(mods, || {
         with_interaction_client_game(|game| {
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:bundle", 1));
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:bundle", 1));
             assert!(game.start_using_item());
             // 200 client ticks: the use is still on, waiting for the server.
             for _ in 0..200 {

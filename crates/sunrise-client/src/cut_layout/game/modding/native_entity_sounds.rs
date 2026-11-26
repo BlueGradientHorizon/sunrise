@@ -1,14 +1,12 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay::game::server_side::dispense_fixture;
     use super::super::native_entity_refs::tests::with_game;
     use mod_api::{EntityRef, SoundSource, WorldEpoch};
     use sunrise_command::args::GameMode;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay::game::server_side::dispense_fixture;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_sim::mobs::Mob;
     use sunrise_sim::motion::PlayerMotion;
 
@@ -34,7 +32,8 @@ use sunrise_gameplay::game::server_side::dispense_fixture;
             let slime = spawn(game, 13, "minecraft:slime");
             let sulfur = spawn(game, 14, "minecraft:sulfur_cube");
             let bunny = spawn(game, 15, "minecraft:rabbit");
-            let source = |game: &sunrise_gameplay::game::ServerGame<'_>, e| game.entity_sound_source(e);
+            let source =
+                |game: &sunrise_gameplay::game::ServerGame<'_>, e| game.entity_sound_source(e);
             assert_eq!(source(game, cow), Some(SoundSource::Neutral));
             assert_eq!(source(game, zombie), Some(SoundSource::Hostile));
             assert_eq!(source(game, ghast), Some(SoundSource::Hostile));

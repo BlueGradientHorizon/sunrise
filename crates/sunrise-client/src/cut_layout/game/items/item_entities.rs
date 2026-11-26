@@ -1,13 +1,11 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
 #[cfg(test)]
 pub(crate) mod destroyed_contents_tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
-use super::*;
-    use sunrise_gameplay::game::game_tests::tests::server_game;
+    use super::*;
     use sunrise_core::random::RandomSource;
+    use sunrise_gameplay::game::game_tests::tests::server_game;
+    use sunrise_gameplay_common::game::GameGameExt1;
     use sunrise_items::items::ItemStack;
 
     /// The motion of each spilled stack, in the order the spill made them.
@@ -101,9 +99,9 @@ use super::*;
 
 #[cfg(test)]
 pub(crate) mod escape_tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay::game::game_tests::tests::server_game;
     use sunrise_core::random::RandomSource;
+    use sunrise_gameplay::game::game_tests::tests::server_game;
+    use sunrise_gameplay_common::game::GameGameExt1;
     use sunrise_items::items::ItemStack;
 
     /// `Entity.moveTowardsClosestSpace` uses the item's own random, never the

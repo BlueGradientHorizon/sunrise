@@ -2,7 +2,6 @@
 //! a renderer draws that renderer's geometry in place of its flying item, one without keeps its
 //! item, a vanilla boat is unchanged, the later registration for a type wins, an unknown type is
 //! refused by name, and a resource reload keeps the registered renderer in use.
-use sunrise_client_gameplay::game::native_entity_renderers::EntityRendererTable;
 use mod_api::{BlockEntityDrawContext, EntityRenderState, EntityRenderer};
 use std::{
     collections::BTreeMap,
@@ -12,6 +11,7 @@ use std::{
     },
 };
 use sunrise_client::mesher::Vertex;
+use sunrise_client_gameplay::game::native_entity_renderers::EntityRendererTable;
 use sunrise_sim::projectiles::ThrownType;
 
 /// Draws one stone quad a block wide, `height` blocks above the entity; `drew` says whether it was
@@ -165,7 +165,10 @@ fn feet() -> sunrise_core::geometry::Vec3 {
 }
 
 /// The vertices one frame of mobs and projectiles draws with these thrown types in flight.
-fn thrown_frame(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, kinds: &[&str]) -> Vec<Vertex> {
+fn thrown_frame(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    kinds: &[&str],
+) -> Vec<Vertex> {
     use sunrise_sim::projectiles::{Projectile, ProjectileKind, thrown_type};
     game.creatures.projectiles.clear();
     for (i, kind) in kinds.iter().enumerate() {
@@ -182,7 +185,10 @@ fn thrown_frame(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, kinds:
 /// Runs `check` on a client game with prepared resources, the thrown types `ruby:bolt`,
 /// `ruby:dart` and `ruby:spike` and the [`Scene`]'s registrations, resolved as the first load does. In a child
 /// process running only `test`: the thrown types and the registrations are kept once per process.
-fn in_scene(test: &str, check: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &Scene)) {
+fn in_scene(
+    test: &str,
+    check: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &Scene),
+) {
     if std::env::var_os("SUNRISE_ENTITY_RENDERERS_CHILD").is_none() {
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
@@ -284,12 +290,13 @@ fn a_vanilla_boat_is_unchanged_by_a_registration_for_its_type() {
     in_scene(
         "a_vanilla_boat_is_unchanged_by_a_registration_for_its_type",
         |game, scene| {
-            game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(
-                100,
-                "oak".into(),
-                feet(),
-                0.0,
-            ));
+            game.boats
+                .push(sunrise_gameplay_common::game::boats_common::Boat::new(
+                    100,
+                    "oak".into(),
+                    feet(),
+                    0.0,
+                ));
             let mut boat = Vec::new();
             game.boat_geometry(CAMERA, 1.0, &mut boat, 0..game.boats.len());
             assert!(!boat.is_empty(), "its vanilla model");

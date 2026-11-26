@@ -9,9 +9,9 @@
 //! between two ticks, on the server thread, so the player is never caught half-way through a
 //! tick. The rules are `lan/arrivals.rs`'s. All of them are refused while `server.toml`'s
 //! `[transfer]` is off, and those that bring a player in once the server has begun to stop.
-use sunrise_gameplay_common::game::Dim;
 use serde_json::{Value, json};
 use std::time::Instant;
+use sunrise_gameplay_common::game::Dim;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_sim::lan::arrivals;
 
@@ -319,14 +319,17 @@ impl crate::game::ServerGame<'_> {
         let host = self.server.lan.as_mut().expect("server host is present");
         let i = host.hub.imported_arrival(uuid, id)?;
         let g = host.hub.guests.take_for_save(i);
-        let written =
-            sunrise_sim::lan::playerdata::save_now(&g, &self.server.world_root, self.common.res.items())
-                .and_then(|()| {
-                    self.write_arrival_records(
-                        self.server.lan.as_ref().expect("server host is present"),
-                        &g,
-                    )
-                });
+        let written = sunrise_sim::lan::playerdata::save_now(
+            &g,
+            &self.server.world_root,
+            self.common.res.items(),
+        )
+        .and_then(|()| {
+            self.write_arrival_records(
+                self.server.lan.as_ref().expect("server host is present"),
+                &g,
+            )
+        });
         let name = g.name.clone();
         let host = self.server.lan.as_mut().expect("server host is present");
         host.hub.guests.insert(i, g);

@@ -3,8 +3,8 @@
 //! screens"). The blocks' models and their mod block entities' drawing are
 //! projected into the GUI with their own depth, as the smithing screen draws
 //! its armour stand.
-use crate::game::ClientGame;
 use super::native_block_entity_draw::BlockEntityDraw;
+use crate::game::ClientGame;
 use glam::{Mat4, Vec3};
 use mod_api::SceneView;
 use sunrise_client::{block_entity_render::diffuse_lights, hud::HudBatch};

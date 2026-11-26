@@ -1,7 +1,7 @@
-use crate::game::ServerGame;
 use super::minecarts::Minecart;
-use sunrise_gameplay_common::game::collision_source::Mover;
+use crate::game::ServerGame;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::collision_source::Mover;
 use sunrise_level::collisions::SceneCollisions;
 
 impl ServerGame<'_> {
@@ -87,11 +87,13 @@ impl ServerGame<'_> {
                 if !self
                     .finish_cart_landing(landing, effect, |game, power| game.explode_cart(c, power))
                     || !self
-                        .common.carts
+                        .common
+                        .carts
                         .iter()
                         .any(|row| row.id == id && row.join == join)
                     || self
-                        .common.persist
+                        .common
+                        .persist
                         .removals
                         .contains(&super::commands::Target::Cart(id))
                 {
@@ -112,7 +114,8 @@ impl ServerGame<'_> {
                 c.fall_distance,
             );
             c.velocity = self.finish_body_restitution(entity, c.position, response);
-            self.common.body_motion(&game_side!(self))
+            self.common
+                .body_motion(&game_side!(self))
                 .apply_block_speed(c.position, &mut c.velocity);
         }
         // OldMinecartBehavior applies block effects here and at tick end.

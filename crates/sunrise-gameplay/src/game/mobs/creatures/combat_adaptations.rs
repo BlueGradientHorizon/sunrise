@@ -54,7 +54,8 @@ impl crate::game::ServerGame<'_> {
     }
     pub(in crate::game) fn bred_wolf_voice(&mut self, parent: u32) -> Option<u8> {
         let voices = sunrise_sim::mobs::finalize::sound_variants(Species::Wolf);
-        self.common.mobs
+        self.common
+            .mobs
             .iter_mut()
             .find(|m| m.id == parent)
             .and_then(|m| m.random.next_int_bound(voices.len() as i32).ok())

@@ -10,7 +10,7 @@ pub trait ItemContainerGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `native_item_container.rs`). The contents are kept in the stack's
     /// `minecraft:container`, as a shulker box item keeps them.
     /// API 370.
-     fn native_item_container(&self, item: &str, slots: &mut Option<u32>) {
+    fn native_item_container(&self, item: &str, slots: &mut Option<u32>) {
         *slots = mod_api::__private::parts_installation::item_container_slots(
             <Self::State as crate::game::Side>::as_host(self),
             item,
@@ -18,5 +18,3 @@ pub trait ItemContainerGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> ItemContainerGameExt1<'__sg> for G {}
-
-

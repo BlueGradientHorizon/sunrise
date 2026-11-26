@@ -1,5 +1,5 @@
-use crate::game::ClientGame;
 use super::commands_common::Target;
+use crate::game::ClientGame;
 use mod_api::{EffectKey, LivingRef};
 
 impl ClientGame<'_> {

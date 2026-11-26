@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 #[path = "tests/phantom_spawn_tests.rs"]
@@ -14,15 +12,15 @@ mod stat_award_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay::game::server_side::bossbars::audience_tests::add_real_and_fake;
+    use sunrise_gameplay::game::server_side::bossbars::audience_tests::add_real_and_fake;
 
-use super::*;
+    use super::*;
 
-use std::path::Path;
+    use std::path::Path;
 
-use sunrise_gameplay_common::stats::player_json;
+    use sunrise_gameplay_common::stats::player_json;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn fake_players_do_not_advance_phantom_rng() {
         use sunrise_core::random::RandomSource;
@@ -35,7 +33,8 @@ use sunrise_gameplay_common::stats::player_json;
             let index = guests.iter().position(|g| g.uuid == 2).unwrap();
             guests.update(index, |g| g.position = [1000.0, 100.0, 0.0]);
             for guest in &host.hub.guests {
-                let mut play = sunrise_gameplay::game::server_side::lan_actions_server::GuestPlay::default();
+                let mut play =
+                    sunrise_gameplay::game::server_side::lan_actions_server::GuestPlay::default();
                 play.stats.custom("time_since_rest", 200_000);
                 host.play.insert(guest.conn, play);
             }
@@ -64,7 +63,7 @@ use sunrise_gameplay_common::stats::player_json;
             assert_eq!(with_fake, game.world.random.next_int());
         });
     }
-/// A write that cannot finish leaves the last saved JSON of a player: the owner's stats and
+    /// A write that cannot finish leaves the last saved JSON of a player: the owner's stats and
     /// advancements and a network player's, which a crash save can reach mid-write. The new
     /// file is written beside it and renamed over, so blocking the beside file stops the write
     /// before the saved one is touched; unblocked, the same saves write.

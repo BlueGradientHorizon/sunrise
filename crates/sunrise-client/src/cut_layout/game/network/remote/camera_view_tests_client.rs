@@ -1,4 +1,3 @@
-use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use crate::game::remote::camera_view_tests::BOAT;
 use crate::game::remote::camera_view_tests::FRAME_CASE;
 use crate::game::remote::camera_view_tests::FRAME_NAME;
@@ -13,6 +12,7 @@ use crate::game::remote::camera_view_tests::set_light;
 use crate::game::remote::camera_view_tests::update;
 use crate::game::remote::camera_view_tests::view;
 use crate::game::remote::camera_view_tests::with_spectator;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use sunrise_client::{gfx::pack_uniforms::ViewEntity, options_file::V};
 use sunrise_level::camera_math::CameraType;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -82,7 +82,8 @@ fn the_frame_reads_the_eye_light_in_first_and_third_person() {
         return;
     }
     with_client_game(|game| {
-        let _event_loop = sunrise_client_gameplay::game::native_hooks::particle_count_tests::frame_scene(game);
+        let _event_loop =
+            sunrise_client_gameplay::game::native_hooks::particle_count_tests::frame_scene(game);
         game.client.screen = sunrise_gameplay_common::game::Screen::Playing;
         // The view's uniforms are worked out while a pack is picked: an empty Sunrise pack.
         let packs = tempfile::tempdir().unwrap();

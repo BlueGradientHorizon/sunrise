@@ -39,7 +39,12 @@ fn guest_pickup_hooks_name_the_ground_item_entity() {
             let state = probe.0.lock().unwrap();
             assert_eq!(
                 state.touched,
-                vec![(id, Some(sunrise_gameplay_common::game::api_values::test_snapshot(&pick)))]
+                vec![(
+                    id,
+                    Some(sunrise_gameplay_common::game::api_values::test_snapshot(
+                        &pick
+                    ))
+                )]
             );
             assert_eq!(state.posted, vec![id]);
             assert_eq!(ground(game, id), None, "the pickaxe was taken");
@@ -58,7 +63,8 @@ fn host_pickup_tells_whole_and_partial_pickups_and_keeps_listener_changes() {
             )
             .join(format!("pickup-post-{}", std::process::id()));
             game.server.world_root = scratch.clone();
-            game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
+                .unwrap();
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(1.5, 64.0, 1.5)).unwrap());
             game.level.player_uuid = Some(sunrise_sim::lan::playerdata::uuid_ints(7));
             game.server.lan_acting_uuid = Some(7);

@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
 #[cfg(test)]
@@ -47,7 +45,8 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn pose_regression_dragon_dimensions() {
         with_game(|game| {
-            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon =
+                sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 55;
             game.dragon.replace(dragon);
             let living = game.living(game.entity(55).unwrap()).unwrap();
@@ -235,11 +234,11 @@ pub(crate) mod tests {
     #[test]
     #[ignore = "daily"]
     fn dimensions_follow_the_pose_asked() {
-        use sunrise_gameplay::game::server_side::lan::LanSettings;
         use std::sync::{
             Arc,
             atomic::{AtomicI32, AtomicUsize},
         };
+        use sunrise_gameplay::game::server_side::lan::LanSettings;
         use sunrise_protocol::packets::configuration::ClientInformation;
         use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 

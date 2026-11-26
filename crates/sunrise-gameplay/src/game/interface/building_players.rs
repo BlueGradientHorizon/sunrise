@@ -91,7 +91,7 @@ impl BuildingPlayers {
 
 #[cfg(test)]
 mod tests {
-pub fn player(conn: Option<u32>, x: f64, dimension: Dim, borrowed: bool) -> BuildingPlayer {
+    pub fn player(conn: Option<u32>, x: f64, dimension: Dim, borrowed: bool) -> BuildingPlayer {
         BuildingPlayer {
             conn,
             dimension,
@@ -102,15 +102,12 @@ pub fn player(conn: Option<u32>, x: f64, dimension: Dim, borrowed: bool) -> Buil
             )),
         }
     }
-pub fn xs(players: &BuildingPlayers, dim: Dim) -> Vec<f64> {
+    pub fn xs(players: &BuildingPlayers, dim: Dim) -> Vec<f64> {
         players.boxes(dim).iter().map(|(lo, _)| lo[0]).collect()
     }
 
     use super::*;
     use sunrise_core::geometry::Vec3;
-
-    
-    
 
     #[test]
     fn nested_turns_preserve_host_and_live_ancestors_without_the_new_actor() {
@@ -190,6 +187,4 @@ pub fn xs(players: &BuildingPlayers, dim: Dim) -> Vec<f64> {
         let second = first.for_turn(2, Some(outer), shared(Vec::new()));
         assert!(xs(&second, Dim::Overworld).is_empty());
     }
-
-    
 }

@@ -155,7 +155,8 @@ impl crate::game::ClientGame<'_> {
             }
             return view.index.panel(menu, key);
         }
-        self.common.recipe_tables
+        self.common
+            .recipe_tables
             .books
             .as_ref()?
             .as_ref()

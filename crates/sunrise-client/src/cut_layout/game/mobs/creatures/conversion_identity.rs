@@ -1,11 +1,9 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::{AttachmentType, Holder};
     use sunrise_core::{geometry::Vec3, nbt::Tag};
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_mod_runtime::attachments::{AttachmentCodec, AttachmentError};
     use sunrise_sim::mobs::{Mob, conversion::Params};
 

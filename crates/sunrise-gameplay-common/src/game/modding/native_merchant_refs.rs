@@ -1,13 +1,11 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use sunrise_items::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
-use sunrise_sim::merchant::{ItemCost, MerchantOffer};
+    use sunrise_sim::merchant::{ItemCost, MerchantOffer};
 
-pub fn offer(cost: &str, result: &str) -> MerchantOffer {
+    pub fn offer(cost: &str, result: &str) -> MerchantOffer {
         MerchantOffer {
             base_cost_a: ItemCost {
                 stack: ItemStack::new(cost, 20),

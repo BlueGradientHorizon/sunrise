@@ -4,7 +4,8 @@ pub trait Hooks {
     /// Before client disconnect teardown (NeoForge's
     /// `ClientPlayerNetworkEvent.LoggingOut`). The player may be absent.
     /// Client-side.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::client_player_logging_out::ClientGame<'_>::native_client_player_logging_out", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::client_player_logging_out::ClientGame<'_>::native_client_player_logging_out",
         dispatch = "flat",
         side = "client",
         contract = "listen",

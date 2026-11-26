@@ -6,9 +6,9 @@
 //! DialogScreen.WarningScreen ("Note about custom screens").
 //! https://mcsrc.dev/2/26.3/net/minecraft/client/gui/screens/dialog/ServerLinksDialogScreen
 use super::{Screen, packs::open_uri};
-use sunrise_gameplay_common::game::untrusted_uri::valid_untrusted_uri;
 use sunrise_client::{clipboard::Clipboard, hud::HudBatch, ui};
 use sunrise_game_data::{Result, text::Text};
+use sunrise_gameplay_common::game::untrusted_uri::valid_untrusted_uri;
 use sunrise_protocol::packets::configuration::{ServerLink, ServerLinkKind};
 
 /// HeaderAndFooterLayout's header and footer heights; the content wants to

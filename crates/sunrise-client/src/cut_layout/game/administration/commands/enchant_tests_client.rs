@@ -1,7 +1,6 @@
 use crate::game::server_side::commands::enchant_tests::RIPTIDE;
 use crate::game::server_side::commands::enchant_tests::TRIDENT;
 use crate::game::server_side::commands::enchant_tests::riptide;
-use {sunrise_gameplay_common::game::Screen, sunrise_gameplay::game::lan::LanHost, sunrise_gameplay::game::server_side::lan_particles::tests::test_hub, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::sent};
 use std::sync::Arc;
 use sunrise_client::creative::Creative;
 use sunrise_game_data::scoreboard::tag_to_json;
@@ -14,6 +13,17 @@ use sunrise_protocol::{
 use sunrise_sim::{
     lan::{Out, data::SyncData},
     menu::Input,
+};
+use {
+    crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in,
+    crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::sent,
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::lan::LanHost,
+    sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay::game::server_side::lan_particles::tests::test_hub,
+    sunrise_gameplay_common::game::Screen,
 };
 
 #[test]

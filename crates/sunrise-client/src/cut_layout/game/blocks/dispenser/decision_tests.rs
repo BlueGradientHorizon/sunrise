@@ -1,8 +1,8 @@
+use super::*;
+use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Direction;
 use sunrise_gameplay::dispense_rules::{Slot, mob_slot_item};
 use sunrise_items::items::ItemStack;
-use super::*;
-use std::sync::{Arc, Mutex};
 #[derive(Clone)]
 struct Accept23(Arc<Mutex<Vec<u32>>>);
 #[mod_api::sunrise_part]
@@ -67,7 +67,10 @@ fn crown_is_prepared_once_for_three_and_eight_dispenser_candidates() {
                 assert!(game.dispense_equipment((5, 64, 5), Direction::East, &mut helmet));
                 assert_eq!(helmet.count, 2);
                 assert_eq!(*asked.lock().unwrap(), ids);
-                assert_eq!(sunrise_gameplay_common::game::equip_answers::take_equip_conversions(), 1);
+                assert_eq!(
+                    sunrise_gameplay_common::game::equip_answers::take_equip_conversions(),
+                    1
+                );
                 for mob in game.mobs.iter().filter(|mob| ids.contains(&mob.id)) {
                     assert_eq!(mob_slot_item(mob, Slot::Head).is_some(), mob.id == 23);
                 }

@@ -1,12 +1,9 @@
+#[allow(unused_imports)]
+use crate::game::native_hooks::base::*;
 use mod_api::Hand;
 use mod_api::InteractionAttempt;
 use mod_api::InteractionKey;
 use mod_api::ScreenOpening;
-use sunrise_gameplay_common::game::Screen;
-use sunrise_client::hud::HudBatch;
-#[allow(unused_imports)]
-use {crate::game::native_hooks::base::*};
-use sunrise_client_gameplay::game::client_side::screen_build::ObservedScreen;
 #[allow(unused_imports)]
 use mod_api::{
     ClientHost, Flow, Hooks, InteractionKeyMappingTriggeredEvent, KeyMappingPreEvent, ModEntry,
@@ -16,6 +13,9 @@ use mod_api::{
 use mod_platform::testing::with_mods;
 #[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
+use sunrise_client::hud::HudBatch;
+use sunrise_client_gameplay::game::client_side::screen_build::ObservedScreen;
+use sunrise_gameplay_common::game::Screen;
 
 /// A mod that hears `screen_opening` and passes.
 pub(crate) struct Passer;
@@ -247,11 +247,14 @@ fn an_overlay_fires_opening_then_closing_through_the_observer() {
 #[test]
 #[ignore = "daily"]
 fn title_hook_requests_one_orderly_quit() {
-    use sunrise_client_gameplay::game::EventLoopCtl;
-    use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use mod_api::{ClientStoppingEvent, ScreenKeyPressedPreEvent};
     use std::cell::Cell;
+    use sunrise_client_gameplay::game::EventLoopCtl;
     use winit::event_loop::ControlFlow;
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    };
 
     if run_fresh_cases(
         "game::native_hooks::base::screen_open_tests::title_hook_requests_one_orderly_quit",

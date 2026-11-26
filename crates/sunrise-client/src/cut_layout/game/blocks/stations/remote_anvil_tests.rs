@@ -1,7 +1,10 @@
-use {sunrise_gameplay_common::game::stations_common::Kind, sunrise_gameplay_common::game::stations_common::Station};
 use std::sync::Arc;
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::connection::Pipe;
+use {
+    sunrise_gameplay_common::game::stations_common::Kind,
+    sunrise_gameplay_common::game::stations_common::Station,
+};
 
 /// A client on a server whose data pack adds `fixture:drill`, which the
 /// game's own table doesn't have: the registry sync sent its definition.

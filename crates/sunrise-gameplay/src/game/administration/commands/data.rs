@@ -293,7 +293,10 @@ impl crate::game::ServerGame<'_> {
         let output = normalized.get("OutputSignal").cloned();
         if let Some(Tag::Int(value)) = output {
             let pos = sunrise_core::position::BlockPos::new(p[0], p[1], p[2]);
-            self.common.block_ticks.comparator_outputs.insert(pos, value);
+            self.common
+                .block_ticks
+                .comparator_outputs
+                .insert(pos, value);
         }
         Some(Some(output != before))
     }
@@ -306,13 +309,15 @@ impl crate::game::ServerGame<'_> {
         }
         let pos = sunrise_core::position::BlockPos::new(p[0], p[1], p[2]);
         let output = self
-            .common.block_ticks
+            .common
+            .block_ticks
             .comparator_outputs
             .get(&pos)
             .copied()
             .or_else(|| {
                 let saved = self
-                    .common.world
+                    .common
+                    .world
                     .chunks
                     .get(&(p[0] >> 4, p[2] >> 4))?
                     .saved
@@ -355,7 +360,8 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn moving_piston_data(&self, p: [i32; 3]) -> Option<Tag> {
         let pos = sunrise_core::position::BlockPos::new(p[0], p[1], p[2]);
         let (_, piston) = self
-            .common.block_ticks
+            .common
+            .block_ticks
             .moving_pistons
             .iter()
             .find(|(at, _)| *at == pos)?;
@@ -387,7 +393,11 @@ impl crate::game::ServerGame<'_> {
             }
             "block" => {
                 let p = self.block_pos_arg(ctx, &format!("{prefix}Pos"))?;
-                if !self.common.world.block_entities.contains_key(&(p[0], p[1], p[2]))
+                if !self
+                    .common
+                    .world
+                    .block_entities
+                    .contains_key(&(p[0], p[1], p[2]))
                     && self.comparator_data(p).is_none()
                     && self.common.pot_data(p).is_none()
                     && self.moving_piston_data(p).is_none()
@@ -439,7 +449,8 @@ impl crate::game::ServerGame<'_> {
         let name = self.common.data_block_name(p);
         let e = self.common.world.block_entities.get(&key)?;
         let pending = self
-            .common.world
+            .common
+            .world
             .chunks
             .get(&(key.0 >> 4, key.2 >> 4))
             .and_then(|chunk| chunk.saved.as_ref())
@@ -591,12 +602,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `DataCommands.mergeData`: literal values keep the modern argument
     /// parser's decoded Tag contract through execution.
-    pub fn cmd_data_in(
-        &mut self,
-        id: &str,
-        ctx: &Context,
-        target: DataRef,
-    ) -> R<i32> {
+    pub fn cmd_data_in(&mut self, id: &str, ctx: &Context, target: DataRef) -> R<i32> {
         match id {
             "data.merge" => {
                 let Some(Arg::Str(nbt)) = ctx.get("nbt") else {
@@ -912,12 +918,7 @@ impl crate::game::ServerGame<'_> {
     // ---- /summon ---------------------------------------------------------
 
     /// The `summon <entity> <pos> <nbt>` form.
-    pub fn summon_with_nbt(
-        &mut self,
-        kind: &str,
-        pos: [f64; 3],
-        nbt: &str,
-    ) -> R<Option<Target>> {
+    pub fn summon_with_nbt(&mut self, kind: &str, pos: [f64; 3], nbt: &str) -> R<Option<Target>> {
         let (mut tag, _) = parse_snbt(nbt).map_err(|e| err("argument.nbt.invalid", &[&e]))?;
         if !matches!(tag, Tag::Compound(_)) {
             return Err(err("argument.nbt.expected.compound", &[]));
@@ -974,7 +975,8 @@ impl crate::game::ServerGame<'_> {
             riders.retain_mut(|rider| {
                 if let Some(kind) = entity_nbt::kind(rider)
                     && self
-                        .common.res
+                        .common
+                        .res
                         .mob_types()
                         .get(&kind)
                         .is_some_and(|t| !t.allowed_in_peaceful())

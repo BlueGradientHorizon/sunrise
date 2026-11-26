@@ -1,5 +1,3 @@
-
-
 use std::collections::HashSet;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
@@ -21,7 +19,11 @@ pub(crate) mod tests;
 mod interaction_saved_defaults_tests {
     use super::*;
     use sunrise_sim::entity_nbt;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        sunrise_gameplay_common::game::commands_common::Target,
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -44,7 +46,8 @@ mod interaction_saved_defaults_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.game_dir = Some(std::env::current_dir().unwrap().join("game"));
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -182,8 +185,12 @@ mod interaction_saved_defaults_tests {
 #[cfg(test)]
 mod loaded_tag_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
     use sunrise_sim::mobs::Species;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        sunrise_gameplay_common::game::commands_common::Target,
+    };
 
     fn check(
         game: &mut sunrise_gameplay::game::ServerGame<'_>,
@@ -259,7 +266,8 @@ mod loaded_tag_tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -430,10 +438,14 @@ mod loaded_tag_tests {
 #[cfg(test)]
 mod item_display_saved_transform_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        sunrise_gameplay_common::game::commands_common::Target,
+    };
     fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -456,7 +468,8 @@ mod item_display_saved_transform_tests {
             std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                 .join(format!("h132-{:?}", std::thread::current().id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -517,7 +530,11 @@ mod item_display_saved_transform_tests {
             .collect(),
         )
     }
-    fn summon(game: &mut sunrise_gameplay::game::ServerGame<'_>, n: i32, transform: Option<&str>) -> u32 {
+    fn summon(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        n: i32,
+        transform: Option<&str>,
+    ) -> u32 {
         let suffix = transform
             .map(|t| format!(",transformation:{t}"))
             .unwrap_or_default();
@@ -760,7 +777,10 @@ mod baby_modifier_mutation_tests {
     }
     /// The effective movement speed, the stored (permanent) minecraft:baby
     /// amount, and the transient one the model reports.
-    fn state(game: &sunrise_gameplay::game::ServerGame<'_>, n: i32) -> (f64, Option<f64>, Option<f64>) {
+    fn state(
+        game: &sunrise_gameplay::game::ServerGame<'_>,
+        n: i32,
+    ) -> (f64, Option<f64>, Option<f64>) {
         let m = &game.mobs[zombie(game, n)];
         assert!(
             close(m.movement_speed(), finalize::value(m, Attr::MovementSpeed)),
@@ -953,7 +973,8 @@ mod baby_modifier_mutation_tests {
             }
             let sel =
                 |n: i32| format!("@e[type=minecraft:zombie,nbt={{UUID:[I;235,0,0,{n}]}},limit=1]");
-            let removed = |game: &sunrise_gameplay::game::ServerGame<'_>, n: i32| state(game, n).2.is_none();
+            let removed =
+                |game: &sunrise_gameplay::game::ServerGame<'_>, n: i32| state(game, n).2.is_none();
             let mut failures = Vec::new();
             assert!(game.run_command(&format!(
                 "attribute {} {attr} modifier remove minecraft:baby",
@@ -1228,7 +1249,10 @@ mod mob_inventory_merge_tests {
         i[0]
     }
     /// The live inventory: (item, count, custom_data h138) per stack, in order.
-    fn live(game: &sunrise_gameplay::game::ServerGame<'_>, i: usize) -> Vec<(String, u32, Option<i32>)> {
+    fn live(
+        game: &sunrise_gameplay::game::ServerGame<'_>,
+        i: usize,
+    ) -> Vec<(String, u32, Option<i32>)> {
         let m = &game.mobs[i];
         let stacks = if m.species() == sunrise_sim::mobs::Species::Villager {
             sunrise_sim::mobs::villager::ext(m)
@@ -1254,7 +1278,10 @@ mod mob_inventory_merge_tests {
             .collect()
     }
     /// The saved Inventory, read the same way.
-    fn saved(game: &mut sunrise_gameplay::game::ServerGame<'_>, i: usize) -> Vec<(String, u32, Option<i32>)> {
+    fn saved(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        i: usize,
+    ) -> Vec<(String, u32, Option<i32>)> {
         let tag = game
             .command_target_nbt(Target::Mob(game.mobs[i].id))
             .expect("saved mob");
@@ -1388,7 +1415,12 @@ mod invalid_passenger_tests {
     fn pig(tag: &str, n: i32, extra: &str) -> String {
         format!("{{id:\"minecraft:pig\",UUID:[I;161,0,0,{n}],Tags:[\"{tag}\"],{PIG}{extra}}}")
     }
-    fn summon(game: &mut sunrise_gameplay::game::ServerGame<'_>, tag: &str, n: i32, passengers: &str) -> u32 {
+    fn summon(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        tag: &str,
+        n: i32,
+        passengers: &str,
+    ) -> u32 {
         assert!(game.run_command(&format!(
             "summon minecraft:pig 4.5 200 4.5 {{UUID:[I;161,0,0,{n}],Tags:[\"{tag}\"],{PIG},Passengers:{passengers}}}"
         )));
@@ -1612,12 +1644,15 @@ pub(crate) mod thrown_item_tests;
 
 #[cfg(test)]
 mod h262_enderman_absolute_anger_tests {
+    use super::*;
     use sunrise_core::random::RandomSource;
-use sunrise_gameplay_common::game::GameGameExt1;
-use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
+    use sunrise_gameplay_common::game::GameGameExt1;
     use sunrise_sim::motion::PlayerMotion;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
     pub(super) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -1640,7 +1675,8 @@ use super::*;
             std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                 .join(format!("h262-{:?}", std::thread::current().id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -1669,7 +1705,11 @@ use super::*;
         game.load_ticking_neighbourhood(0, 0);
         test(&mut game);
     }
-    fn load(game: &mut sunrise_gameplay::game::ServerGame<'_>, n: i32, end: Option<i64>) -> (u32, usize) {
+    fn load(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        n: i32,
+        end: Option<i64>,
+    ) -> (u32, usize) {
         let suffix = end
             .map(|v| format!(",anger_end_time:{v}L"))
             .unwrap_or_default();
@@ -1851,8 +1891,11 @@ use super::*;
 #[cfg(test)]
 mod sulfur_body_attribute_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_sim::motion::PlayerMotion;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -1876,7 +1919,8 @@ mod sulfur_body_attribute_tests {
             std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                 .join(format!("h192-{:?}", std::thread::current().id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -2131,12 +2175,16 @@ mod sulfur_body_attribute_tests {
 
 #[cfg(test)]
 mod summoned_knot_tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
-use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
+    use super::*;
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
+    use sunrise_gameplay_common::game::GameGameExt1;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        sunrise_gameplay_common::game::commands_common::Target,
+    };
     fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -2159,7 +2207,8 @@ use super::*;
             std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                 .join(format!("h129-{:?}", std::thread::current().id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -2440,7 +2489,10 @@ use super::*;
 #[cfg(test)]
 mod camel_pose_saved_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -2463,7 +2515,8 @@ mod camel_pose_saved_tests {
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.game_dir = Some(std::env::current_dir().unwrap().join("game"));
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -2858,8 +2911,11 @@ mod restored_vehicle_transfer_tests {
 #[cfg(test)]
 mod trader_llama_discard_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_sim::motion::PlayerMotion;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -2885,7 +2941,8 @@ mod trader_llama_discard_tests {
         );
         // A fixed name: no generated sunrise-player.txt in the working directory.
         options.player_name = Some("H182".into());
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,

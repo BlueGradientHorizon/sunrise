@@ -2,15 +2,15 @@
 //! the guest, and its own `pick` (eyes and view) finds the block, while the
 //! message goes to the command's issuer
 //! (tools/test_test_pos_guest_parity.py measures the same on vanilla 26.3).
-use sunrise_core::geometry::Vec3;
-use crate::settings::Settings;
-use sunrise_gameplay_common::game::{Options, Progress, Resources};
+use super::*;
 use crate::game::load_resources;
+use crate::settings::Settings;
+use std::sync::{Arc, atomic::AtomicI32, mpsc};
+use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::Dim;
+use sunrise_gameplay_common::game::{Options, Progress, Resources};
 #[cfg(test)]
 use sunrise_gameplay_common::game::{commands_common, execution_role};
-use super::*;
-use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_sim::{

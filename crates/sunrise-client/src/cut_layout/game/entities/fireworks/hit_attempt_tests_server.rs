@@ -1,24 +1,24 @@
-use sunrise_core::geometry::Vec3;
-use sunrise_gameplay_common::game::fireworks::Rocket;
-use sunrise_sim::mobs::Who;
 use super::*;
-use sunrise_items::firework::FireworkExplosion;
-use sunrise_gameplay_common::game::fireworks::hit_attempt_tests::Probe;
-use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
 use sunrise_command::args::GameMode;
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::fireworks::Rocket;
+use sunrise_gameplay_common::game::fireworks::hit_attempt_tests::Probe;
+use sunrise_items::firework::FireworkExplosion;
+use sunrise_sim::mobs::Who;
 use sunrise_sim::{
     motion::PlayerMotion,
     projectiles::{Hit, Projectile, ProjectileKind, ThrownType},
 };
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
-pub(crate) fn fresh_player(
-    game: &mut sunrise_gameplay::game::ServerGame<'_>,
-    mode: GameMode,
-) {
+pub(crate) fn fresh_player(game: &mut sunrise_gameplay::game::ServerGame<'_>, mode: GameMode) {
     game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
     bind_local_player(game, 7, 7);
     game.server.lan_acting_name = Some("attempts".into());
@@ -220,7 +220,10 @@ fn remaining_hit_callers_observe_refusals_and_zero_damage() {
                 },
             )
             .unwrap();
-            let (guest, _packets) = sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest(88, 88, [0.0; 3]);
+            let (guest, _packets) =
+                sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest(
+                    88, 88, [0.0; 3],
+                );
             game.server.lan.as_mut().unwrap().hub.guests.push(guest);
             // The egg hits above may hatch chicks (`ThrownEgg.onHit`, drawn from the level's
             // random); they would be splash targets too, so only the guest stays near the blast.

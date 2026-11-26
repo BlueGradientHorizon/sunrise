@@ -1,9 +1,12 @@
-use {sunrise_protocol::packets::play::Clientbound as C, sunrise_core::geometry::Vec3, sunrise_protocol::packets::play};
 use crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in;
 use crate::game::remote::tests::client_explosion_tests::registry_id;
 use crate::game::remote::tests::client_explosion_tests::roundtrip;
 use crate::game::remote::tests::client_explosion_tests::with_isolated_client;
 use sunrise_level::particle_options::ParticleType;
+use {
+    sunrise_core::geometry::Vec3, sunrise_protocol::packets::play,
+    sunrise_protocol::packets::play::Clientbound as C,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -12,9 +15,10 @@ fn explosion_validates_impulse_and_result_without_suppressing_effects() {
         "sunrise_client::game::client_side::remote_client::tests::client_explosion_tests::explosion_validates_impulse_and_result_without_suppressing_effects",
         |game| {
             let _reader = logged_in(game);
-            game.client
-                .streaming
-                .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
+            game.client.streaming.insert_remote(
+                &mut game.common.world,
+                sunrise_level::chunk::Chunk::empty(0, 0),
+            );
             game.client.particles.0.particle_level = 0;
             game.client.particles.0.seed_randoms(719, 11, 12);
             game.client.particles.0.seed_particle_randoms(719);

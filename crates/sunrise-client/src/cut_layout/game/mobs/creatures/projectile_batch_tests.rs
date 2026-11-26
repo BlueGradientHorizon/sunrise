@@ -1,5 +1,3 @@
-use {crate::game::creatures::*, sunrise_gameplay_common::game::creatures::{Arc, Projectile, ProjectileKind, Vec3}};
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_projectiles::impact_probe::{Action, with_probe}};
 use mod_api::{Flow, HearsProjectileImpactsEvent, Hooks, ProjectileImpactEvent, ServerHost};
 use std::sync::{Mutex, atomic::Ordering};
 use sunrise_level::chunk::Chunk;
@@ -7,6 +5,14 @@ use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
 };
 use sunrise_sim::join_seq::JoinSeq;
+use {
+    crate::game::creatures::*,
+    sunrise_gameplay_common::game::creatures::{Arc, Projectile, ProjectileKind, Vec3},
+};
+use {
+    crate::game::server_side::native_projectiles::impact_probe::{Action, with_probe},
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+};
 pub(crate) static VALUE: AttachmentType<i32> = AttachmentType {
     namespace: "test",
     name: "projectile_lifetime",
@@ -19,8 +25,7 @@ pub(crate) static VALUE: AttachmentType<i32> = AttachmentType {
 pub(crate) struct BoundProjectiles {
     pub(crate) _values: [Attachments; 2],
     pub(crate) index: Arc<Mutex<AttachmentIndex<mod_api::EntityRef>>>,
-    pub(crate) registrations:
-        [sunrise_mod_runtime::attachments::AttachmentRegistration; 2],
+    pub(crate) registrations: [sunrise_mod_runtime::attachments::AttachmentRegistration; 2],
 }
 
 impl BoundProjectiles {
@@ -579,12 +584,13 @@ fn wind_charges_retrace_only_after_gameplay_breaks_a_vehicle() {
             .into_iter()
             .take(if case == "miss" { 1 } else { 2 })
         {
-            game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(
-                id,
-                Arc::from("oak"),
-                Vec3::new(8.5, y, 0.5),
-                0.0,
-            ));
+            game.boats
+                .push(sunrise_gameplay_common::game::boats_common::Boat::new(
+                    id,
+                    Arc::from("oak"),
+                    Vec3::new(8.5, y, 0.5),
+                    0.0,
+                ));
         }
         for i in 0..charges {
             let mut p = Projectile::new(

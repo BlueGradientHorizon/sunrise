@@ -10,7 +10,8 @@ pub trait Hooks {
     /// tooltip (which asks `item_tooltip` and the `render_tooltip_*` hooks as any item tooltip
     /// does), and an entity hover shows its name, type and UUID while advanced tooltips are on.
     /// Asked each frame a hovered component shows, only while a mod listens. Client-side.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::component_hover::ClientGame<'_>::native_component_hover", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::component_hover::ClientGame<'_>::native_component_hover",
         receiver = "read",
         dispatch = "api_carrier",
         side = "client",

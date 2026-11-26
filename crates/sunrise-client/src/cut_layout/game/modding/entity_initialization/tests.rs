@@ -1,10 +1,14 @@
-use std::collections::HashSet;
-use mod_api::Holder;
 use super::*;
-use {sunrise_gameplay_common::game::Dim, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+use mod_api::Holder;
 use mod_api::{AttachmentType, EntityConstructingEvent, Hooks, HostSide};
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use sunrise_core::nbt::Tag;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay_common::game::Dim,
+};
 
 const VALUE: AttachmentType<i32> = AttachmentType {
     namespace: "constructing",
@@ -555,7 +559,11 @@ fn a_loaded_entity_reads_its_saved_attachments_over_the_listeners_and_is_named_b
                 7
             );
             // Serialize by object ID: the child's equal UUID cannot select the root's map.
-            sunrise_gameplay::game::persist::write_attachments(&mut child, ghost, &game.entity_attachments);
+            sunrise_gameplay::game::persist::write_attachments(
+                &mut child,
+                ghost,
+                &game.entity_attachments,
+            );
             let child_state = game.take_transferred_entity_state(ghost);
             let parent_state = game.take_transferred_entity_state(id);
             game.persist.off_level.remove(&ghost);
@@ -747,20 +755,25 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
                     game.dragon.discard();
                 }
             };
-            let spawn_dragon =
-                |game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32, position: [f64; 3], yaw: f32| {
-                    let at =
-                        sunrise_core::geometry::Vec3::new(position[0], position[1], position[2]);
-                    let mut d = sunrise_gameplay_common::game::dragon_common::Dragon::new(at, yaw, i64::from(id));
-                    d.id = id;
-                    d.phase = sunrise_gameplay_common::game::dragon_common::Phase::from_id(10);
-                    d.join = sunrise_sim::join_seq::JoinSeq::next();
-                    if let Some(old) = game.dragon.as_ref().map(|d| d.id) {
-                        remove_dragon(game, old);
-                    }
-                    game.dragon.replace(d);
-                    game.place_dragon_parts();
-                };
+            let spawn_dragon = |game: &mut sunrise_gameplay::game::ServerGame<'_>,
+                                id: u32,
+                                position: [f64; 3],
+                                yaw: f32| {
+                let at = sunrise_core::geometry::Vec3::new(position[0], position[1], position[2]);
+                let mut d = sunrise_gameplay_common::game::dragon_common::Dragon::new(
+                    at,
+                    yaw,
+                    i64::from(id),
+                );
+                d.id = id;
+                d.phase = sunrise_gameplay_common::game::dragon_common::Phase::from_id(10);
+                d.join = sunrise_sim::join_seq::JoinSeq::next();
+                if let Some(old) = game.dragon.as_ref().map(|d| d.id) {
+                    remove_dragon(game, old);
+                }
+                game.dragon.replace(d);
+                game.place_dragon_parts();
+            };
             game.options.dedicated = Some(Vec::new());
             game.native_level_opened(Dim::Overworld);
             spawn_dragon(game, 420, [1.0, 80.0, 1.0], 0.0);

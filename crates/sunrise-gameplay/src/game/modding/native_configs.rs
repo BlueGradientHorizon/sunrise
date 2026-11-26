@@ -1,5 +1,3 @@
-
-
 impl crate::game::ServerGame<'_> {
     /// The server stops: its `Server` configs unload.
     pub fn native_configs_server_stop(&mut self) {

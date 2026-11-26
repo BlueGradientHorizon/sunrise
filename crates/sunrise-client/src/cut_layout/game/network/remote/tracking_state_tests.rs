@@ -1,5 +1,8 @@
 use sunrise_client_gameplay::game::client_side::remote_client::sync::entity_sound_state;
-use {sunrise_client_gameplay::game::client_side::remote_client::session_state::Tracked, sunrise_client_gameplay::game::client_side::remote_client::session_state::seat_passengers};
+use {
+    sunrise_client_gameplay::game::client_side::remote_client::session_state::Tracked,
+    sunrise_client_gameplay::game::client_side::remote_client::session_state::seat_passengers,
+};
 
 /// `ClientPacketListener.handleSetEntityPassengersPacket`: the vehicle
 /// ejects its passengers, then each listed entity `startRiding`s it, so

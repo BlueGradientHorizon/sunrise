@@ -41,9 +41,10 @@ impl crate::game::ClientGame<'_> {
     fn resolve_fluid_look(&self, key: mod_api::FluidKey) -> Result<FluidBoxLook, FluidBoxError> {
         let layers = &self.client.client_pack.render.sprite_layers;
         let id = mod_api::__private::fluid_id(key).ok_or(FluidBoxError::UnsupportedFluid)?;
-        let luminosity = super::native_block_tables::BlockTables::new(&self.common.res, &self.common.pack)
-            .fluid_type_properties(key)
-            .map_or(0, |properties| properties.light_level);
+        let luminosity =
+            super::native_block_tables::BlockTables::new(&self.common.res, &self.common.pack)
+                .fluid_type_properties(key)
+                .map_or(0, |properties| properties.light_level);
         fluid_box_look(
             id,
             sunrise_sim::mod_content::fluid_look(id).as_ref(),

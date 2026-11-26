@@ -1,4 +1,3 @@
-
 use sunrise_assets::resource_source::{Resource, ResourceSource};
 
 const SCREENQUAD: &str = "assets/minecraft/shaders/core/screenquad.vsh";

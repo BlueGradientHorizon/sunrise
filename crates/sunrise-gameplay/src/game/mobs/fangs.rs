@@ -1,21 +1,18 @@
 //! Evoker fangs (`EvokerFangs`): rising out of the floor after a delay,
 //! biting what stands on them for 6 damage, sinking back after 22 ticks.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::fangs_common::{Fangs, fang_attack_pitch};
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::fangs_common::{Fangs, fang_attack_pitch};
 use sunrise_sim::mobs::Species;
 
 impl ServerGame<'_> {
     pub fn add_fangs(&mut self, at: [f64; 3], yaw: f32, delay: i32, owner: u32) {
         self.server.next_entity += 1;
-        self.common.insert_fangs(self.server.next_entity, at, yaw, delay, owner);
+        self.common
+            .insert_fangs(self.server.next_entity, at, yaw, delay, owner);
     }
 
-    pub fn fangs_to_nbt(
-        &self,
-        f: &Fangs,
-        uuid: [i32; 4],
-    ) -> sunrise_core::nbt::Tag {
+    pub fn fangs_to_nbt(&self, f: &Fangs, uuid: [i32; 4]) -> sunrise_core::nbt::Tag {
         sunrise_sim::entity_nbt::evoker_fangs_to_nbt(
             Vec3::new(f.pos[0], f.pos[1], f.pos[2]),
             f.motion,
@@ -73,7 +70,8 @@ impl ServerGame<'_> {
             f.life -= 1;
             f.life >= 0
         });
-        self.common.fangs
+        self.common
+            .fangs
             .list
             .restore(list, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
     }
@@ -109,7 +107,8 @@ impl ServerGame<'_> {
         // `EvokerFangs.dealDamageTo`: indirectMagic(fangs, owner) while the
         // owner lives, plain magic (nobody to name) once it is gone.
         let owner = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .any(|m| m.id == f.owner && m.alive())
             .then_some(f.owner);
@@ -131,7 +130,8 @@ impl ServerGame<'_> {
         // `considersEntityAsAlly`, teams included.
         let teams = self.mob_teams();
         let illagers: Vec<u32> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter(|m| is_illager(m.species()))
             .map(|m| m.id)
@@ -140,7 +140,8 @@ impl ServerGame<'_> {
         let owner_known = illagers.contains(&f.owner);
         let team_of = |id: u32| teams.of(sunrise_sim::mobs::Who::Mob(id));
         let allies: Vec<u32> = if owner_known {
-            self.common.mobs
+            self.common
+                .mobs
                 .iter()
                 .filter(|m| {
                     let other = Party {
@@ -174,7 +175,8 @@ impl ServerGame<'_> {
         // A hurt can run server hooks that change the mob list. Keep the selected
         // victims by identity, as `EvokerFangs.tick` does before `dealDamageTo`.
         let victims: Vec<_> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter(|m| m.id != f.owner && !allies.contains(&m.id) && m.bounds().intersects(b))
             .map(|m| m.id)
@@ -248,11 +250,7 @@ pub(in crate::game::server_side) fn illager_considers(me: Party, other: Party) -
 /// either way round. `vex_root` is the root owner of a vex target (whether it
 /// is the owner itself, and its party); the owner treats such a vex as an ally
 /// when its root owner is.
-pub fn fangs_allied(
-    owner: Party,
-    other: Party,
-    vex_root: Option<(bool, Party)>,
-) -> bool {
+pub fn fangs_allied(owner: Party, other: Party, vex_root: Option<(bool, Party)>) -> bool {
     illager_considers(owner, other)
         || other.illager && illager_considers(other, owner)
         || !other.illager && sunrise_game_data::scoreboard::teams_allied(other.team, owner.team)

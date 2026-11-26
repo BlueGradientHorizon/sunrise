@@ -1,4 +1,3 @@
-
 #[allow(unused_variables)]
 impl SideOps for crate::game::server_side::ServerState {
     type Game<'g> = crate::game::ServerGame<'g>;
@@ -23,10 +22,7 @@ impl SideOps for crate::game::server_side::ServerState {
     fn side_reset_creative_screen(game: &mut Self::Game<'_>) {
         {}
     }
-    fn side_ask_swim_eligibility(
-        game: &Self::Game<'_>,
-        check: SwimmingCheck,
-    ) -> Option<bool> {
+    fn side_ask_swim_eligibility(game: &Self::Game<'_>, check: SwimmingCheck) -> Option<bool> {
         game.server_ask_swim_eligibility(check)
     }
     fn side_acting_id(game: &mut Self::Game<'_>) -> u128 {
@@ -54,10 +50,10 @@ impl SideOps for crate::game::server_side::ServerState {
         }
     }
 }
-use sunrise_gameplay_common::game::side_ops::modapi_hooks::SideOps;
-use std::sync::Arc;
 use mod_api::PlayerRef;
 use mod_api::SwimmingCheck;
+use std::sync::Arc;
+use sunrise_gameplay_common::game::side_ops::modapi_hooks::SideOps;
 use sunrise_items::creative_catalog::Catalog;
 use sunrise_items::creative_catalog::Holders;
 use sunrise_items::items::ItemStack;

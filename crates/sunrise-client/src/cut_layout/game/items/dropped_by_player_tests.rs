@@ -1,11 +1,11 @@
 //! The held item's say on the drop key: `ItemPart::on_dropped_by_player` heard by a trait mod
 //! through a guest's drop.
-use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use mod_api::{
     self, Flow, Hooks, ItemPart, ItemTossEvent, OnDroppedByPlayerEvent, Registrar,
     RegistrationContext, ServerHost,
 };
 use std::sync::{Arc, Mutex};
+use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use sunrise_items::items::ItemStack;
 
 /// What the Part and `item_toss` heard, and what the Part answers.

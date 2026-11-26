@@ -1,9 +1,9 @@
 #![cfg(test)]
 #[cfg(test)]
 mod command_exploration_map_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use std::sync::Arc;
+    use std::sync::Arc;
     use sunrise_core::nbt::Tag;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 
     #[test]
     #[ignore = "daily"]
@@ -96,7 +96,10 @@ use std::sync::Arc;
         let saved =
             sunrise_sim::save::read_dat(&game.server.world_root.join("data/minecraft/maps/0.dat"));
         let counter = sunrise_sim::save::read_dat(
-            &game.server.world_root.join("data/minecraft/maps/last_id.dat"),
+            &game
+                .server
+                .world_root
+                .join("data/minecraft/maps/last_id.dat"),
         );
         let headers = saved.as_ref().and_then(|t| t.get("data")).map(|d| {
             (
@@ -135,8 +138,8 @@ use std::sync::Arc;
 // Added after the qualified baseline: bounded source-backed preservation controls.
 #[cfg(test)]
 mod added_preservation_tests {
+    use serde_json::json;
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use serde_json::json;
     use sunrise_items::items::ItemStack;
     use sunrise_level::containers::BlockEntity;
     use sunrise_sim::structure_blocks;

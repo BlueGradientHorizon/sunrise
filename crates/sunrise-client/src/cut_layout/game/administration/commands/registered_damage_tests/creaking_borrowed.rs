@@ -1,6 +1,4 @@
-use sunrise_gameplay_common::game::GameGameExt1;
 use super::setup_live_damage_world;
-use {sunrise_gameplay_common::game::combat_common::PlayerCredit, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENT_ORDER};
 use mod_api::{
     ActiveEffect, ApplyEffectTickEvent, BlockState, BlockUpdateFlags, Flow, Hooks, Host,
     HostBlockStates, MobEffectExpiredEvent, MobEffectPart, Registrar, RegistrationContext,
@@ -11,8 +9,15 @@ use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, RandomSource},
 };
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_level::{brewing, containers::BlockEntity};
 use sunrise_sim::mobs::{Who, creaking};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay_common::game::combat_common::PlayerCredit,
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENT_ORDER,
+};
 
 const HOME: [i32; 3] = [8, 64, 8];
 const FISH_AFTER_HURT: [f64; 3] = [12.5, 64.0, 4.5];
@@ -217,7 +222,9 @@ pub(crate) fn run_borrowed_creaking_hurt_finishes_before_the_tick_continues() {
         }
         with_game(|game| {
             if case == "sting" {
-                crate::game::server_side::native_living_flags::tests::guest_server(game, true, false);
+                crate::game::server_side::native_living_flags::tests::guest_server(
+                    game, true, false,
+                );
             }
             setup_live_damage_world(game);
             if case == "sting" {

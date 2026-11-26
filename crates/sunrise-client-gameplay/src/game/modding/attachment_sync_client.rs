@@ -16,7 +16,8 @@ impl ClientGame<'_> {
                     || remote.tracked(id_i32).is_some()
                     || remote.tracked_entity(id_i32).is_some()
                     || self.common.dragon.as_ref().is_some_and(|d| {
-                        sunrise_gameplay_common::game::dragon_common::dragon_part_index(d.id, id).is_some()
+                        sunrise_gameplay_common::game::dragon_common::dragon_part_index(d.id, id)
+                            .is_some()
                     });
                 if !known {
                     log::warn!("Sunrise: received attachment sync for unknown entity {id}");
@@ -81,7 +82,9 @@ impl ClientGame<'_> {
                     return;
                 };
                 let Some(entity) =
-                    sunrise_gameplay_common::game::native_block_entity_read::world_block_entity(world, level, pos)
+                    sunrise_gameplay_common::game::native_block_entity_read::world_block_entity(
+                        world, level, pos,
+                    )
                 else {
                     return;
                 };
@@ -97,7 +100,13 @@ impl ClientGame<'_> {
             .and_then(|r| r.attachments.get_mut(&holder))
             && !map.has_index_binding()
         {
-            map.bind_index(self.common.attachment_indexes.entry(self.common.dim).or_default(), scoped);
+            map.bind_index(
+                self.common
+                    .attachment_indexes
+                    .entry(self.common.dim)
+                    .or_default(),
+                scoped,
+            );
         }
     }
 }

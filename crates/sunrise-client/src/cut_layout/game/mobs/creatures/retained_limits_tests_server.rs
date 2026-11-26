@@ -3,7 +3,6 @@ use crate::game::creatures::retained_limits_tests::ObserveMovement;
 use crate::game::creatures::retained_limits_tests::PanicInMovement;
 use crate::game::creatures::retained_limits_tests::TARGET_GUEST;
 use crate::game::creatures::retained_limits_tests::ZOMBIE;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
 use mod_api::__private::{HookPanicReport, take_hook_panics};
 use std::{
     path::PathBuf,
@@ -17,6 +16,10 @@ use sunrise_level::chunk::Chunk;
 use sunrise_sim::{
     mobs::{Mob, Who},
     motion::PlayerMotion,
+};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_guest_turn_tests::with_guests,
 };
 
 #[test]
@@ -80,7 +83,8 @@ fn same_mob_guest_attack_survives_movement_panic() {
                         })
                         .unwrap();
                 }
-                let kind = game.common
+                let kind = game
+                    .common
                     .res
                     .mob_types()
                     .get("minecraft:zombie")

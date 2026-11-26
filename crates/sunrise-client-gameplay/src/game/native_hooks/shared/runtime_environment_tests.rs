@@ -36,8 +36,8 @@ fn observed_overlay_prefers_first_open_screen() {
 /// overlay (`owner: None`), or another mod's screen proceeds (`None`).
 #[test]
 fn a_mod_screen_opens_when_client_window_is_available() {
-    use sunrise_gameplay_common::game::native_hooks::Screen;
     use crate::game::client_side::native_hooks_client::mod_screen_opens;
+    use sunrise_gameplay_common::game::native_hooks::Screen;
     assert_eq!(mod_screen_opens(Screen::Playing, false, None, "a"), None);
     for other in [
         Screen::Paused,

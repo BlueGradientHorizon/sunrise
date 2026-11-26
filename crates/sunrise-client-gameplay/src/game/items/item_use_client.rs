@@ -1,9 +1,9 @@
+use sunrise_core::use_animation::UseAnimation;
 #[cfg(test)]
 use sunrise_gameplay_common::game::held_items::OFFHAND_SLOT;
 #[cfg(test)]
 use sunrise_gameplay_common::game::item_use_common::ItemUseState;
 use sunrise_gameplay_common::game::item_use_common::hand_of;
-use sunrise_core::use_animation::UseAnimation;
 use sunrise_items::items::{ItemInfo, ItemStack};
 
 impl crate::game::ClientGame<'_> {
@@ -37,12 +37,7 @@ impl crate::game::ClientGame<'_> {
     /// sends no creative packet in vanilla (its inventory-slot edits go out
     /// through the open creative screen's `CreativeInventoryListener`), so the
     /// slot counts as synced for this client's creative sync.
-    pub fn remote_use_item_finished(
-        &mut self,
-        slot: usize,
-        stack: &ItemStack,
-        info: &ItemInfo,
-    ) {
+    pub fn remote_use_item_finished(&mut self, slot: usize, stack: &ItemStack, info: &ItemInfo) {
         self.client_apply_use_cooldown(stack);
         let mut result = self.finish_result(stack, info);
         let hand = hand_of(Some((slot, 0))).unwrap_or(self.common.hand);
@@ -61,7 +56,8 @@ impl crate::game::ClientGame<'_> {
     /// Client-side `UseCooldown.apply`: updates local cooldowns until server sync confirms or clears.
     pub(in crate::game) fn client_apply_use_cooldown(&mut self, stack: &ItemStack) {
         let default = self
-            .common.res
+            .common
+            .res
             .items()
             .get(&stack.item)
             .and_then(|i| i.use_cooldown.clone());
@@ -108,9 +104,9 @@ pub(in crate::game) fn use_pose(
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
+    use sunrise_core::use_animation::UseAnimation;
     #[cfg(test)]
     use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
-    use sunrise_core::use_animation::UseAnimation;
 
     pub fn stand_in_first_person(game: &mut crate::game::ClientGame<'_>) {
         game.player = Some(
@@ -120,10 +116,8 @@ pub mod tests {
         game.tick_player_model();
     }
 
-    
-
     #[cfg(test)]
-/// `render_hand` draws in a hand that holds an item, where `render_arm`
+    /// `render_hand` draws in a hand that holds an item, where `render_arm`
     /// never fires. What the mod drew is in the hand's vertices, in a run of
     /// its own ahead of vanilla's, and it stays when the mod leaves vanilla's
     /// hand out. The pose the mod sets moves vanilla's hand, not what it
@@ -180,10 +174,9 @@ pub mod tests {
                 )
                 .unwrap(),
             );
-            game.common.inventory[game.common.selected] = Some(sunrise_items::items::ItemStack::new(
-                "minecraft:iron_sword",
-                1,
-            ));
+            game.common.inventory[game.common.selected] = Some(
+                sunrise_items::items::ItemStack::new("minecraft:iron_sword", 1),
+            );
             game.tick_player_model();
             game.client.visible_hands[0].1 = game.inventory[game.selected].clone();
         }
@@ -250,7 +243,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn item_animation_dispatches_vanilla_parts_and_refuses_invalid_spears() {
         use mod_api::{Hooks, Host, ItemPart, ModEntry, Mods, Registrar, UseAnimationEvent};
@@ -382,7 +375,12 @@ pub mod tests {
                 game.using = Some((game.selected, 0));
                 game.tick_player_model();
                 assert_eq!(
-                    game.client.player_model.as_ref().unwrap().extra.use_animation,
+                    game.client
+                        .player_model
+                        .as_ref()
+                        .unwrap()
+                        .extra
+                        .use_animation,
                     UseAnimation::Drink
                 );
                 assert_eq!(calls.load(Ordering::Relaxed), 10);
@@ -422,14 +420,11 @@ pub mod tests {
             assert!(overridden.iter().zip(&vanilla).any(|(a, b)| a.pos != b.pos));
         });
     }
-
-    
 }
 
 use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
-
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 

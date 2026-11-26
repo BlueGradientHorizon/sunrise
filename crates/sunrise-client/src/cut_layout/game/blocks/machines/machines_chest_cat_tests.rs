@@ -5,13 +5,13 @@
 //! that predicate, so a sitting cat leaves the comparator at 0. A hopper's
 //! `getContainer(.., true)` ignores the block, and the menu path keeps
 //! closing as before.
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::hoppers::Pos;
-use sunrise_core::position::BlockPos;
 use super::*;
-use sunrise_gameplay::game::game_tests::tests::server_game;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
+use sunrise_core::position::BlockPos;
+use sunrise_gameplay::game::game_tests::tests::server_game;
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::hoppers::Pos;
 use sunrise_level::chunk::Chunk;
 
 const CHEST: Pos = (0, 64, 0);
@@ -21,7 +21,9 @@ const WIRE: Pos = (2, 64, 0);
 /// A full chest at `CHEST`, a comparator east of it reading west into it,
 /// and the wire that carries the comparator's output, on a floor in a
 /// ticking chunk.
-fn game<'a>(resources: &'a mut Option<Arc<sunrise_gameplay_common::game::Resources>>) -> sunrise_gameplay::game::ServerGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<Arc<sunrise_gameplay_common::game::Resources>>,
+) -> sunrise_gameplay::game::ServerGame<'a> {
     let mut game = server_game(resources);
     game.build_registries();
     game.set_allow_commands(true);

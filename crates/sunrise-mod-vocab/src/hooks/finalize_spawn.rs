@@ -15,7 +15,8 @@ It searches the world's saved templates before data packs and returns the rotate
 in vanilla placement order, with each transformed state and its saved block-entity data. It uses
 the palette selected at `at`; processors and entities are not included. Invalid or missing names
 return `None`. A builder can retain this snapshot and place its blocks over time."#]
-    #[hook(target = "sunrise_gameplay::game::native_hooks::finalize_spawn::ServerGame<'_>::native_finalize_spawn", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::finalize_spawn::ServerGame<'_>::native_finalize_spawn",
         receiver = "read",
         dispatch = "api_carrier",
         side = "server",

@@ -64,7 +64,8 @@ fn client_tick_cancellation_skips_one_tick_and_countdown_continues() {
                 heard.lock().unwrap().clear();
                 effects.lock().unwrap().clear();
                 *answer.lock().unwrap() = Some((cancel, replacement));
-                game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:apple", 2));
+                game.common.inventory[game.common.selected] =
+                    Some(ItemStack::new("minecraft:apple", 2));
                 game.using = Some((game.selected, 0));
                 game.use_duration = 32;
                 game.use_start = sunrise_gameplay_common::game::item_use_common::UseStart::of(
@@ -93,7 +94,13 @@ fn client_tick_cancellation_skips_one_tick_and_countdown_continues() {
                 };
                 assert_eq!(*effects.lock().unwrap(), expected_effects);
                 // No client-side completion or consumption.
-                assert_eq!(game.common.inventory[game.common.selected].as_ref().unwrap().count, 2);
+                assert_eq!(
+                    game.common.inventory[game.common.selected]
+                        .as_ref()
+                        .unwrap()
+                        .count,
+                    2
+                );
             }
         });
     });

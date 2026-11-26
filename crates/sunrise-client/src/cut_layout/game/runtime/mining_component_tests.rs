@@ -1,8 +1,8 @@
-use sunrise_gameplay_common::game::tables::GameItems;
 use crate::game::{Settings, load_resources};
-use sunrise_gameplay_common::game::{Options, Progress};
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
+use sunrise_gameplay_common::game::tables::GameItems;
+use sunrise_gameplay_common::game::{Options, Progress};
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
 
@@ -26,7 +26,8 @@ fn mining_uses_admitted_stack_tools_and_actual_eye_immersion() {
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
@@ -162,7 +163,8 @@ fn with_survival_game(f: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
@@ -308,7 +310,6 @@ fn a_stacks_attribute_modifiers_replace_its_items_attack_damage() {
         }
     });
 }
-
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 

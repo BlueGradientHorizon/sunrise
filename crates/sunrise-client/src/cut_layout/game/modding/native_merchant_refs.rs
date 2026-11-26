@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use mod_api::EntityRef;
 use mod_api::MerchantRef;
@@ -7,27 +5,27 @@ use sunrise_sim::merchant::Trader;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::tables::GameItems;
-use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer;
+    use sunrise_gameplay_common::game::tables::GameItems;
 
-use sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn;
+    use sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn;
 
-use sunrise_gameplay_common::game::api_values::{StackReadError, TryIntoApi, TryIntoEngine};
+    use sunrise_gameplay_common::game::api_values::{StackReadError, TryIntoApi, TryIntoEngine};
 
-use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::with_game;
 
-use super::*;
+    use super::*;
 
-use mod_api::WorldEpoch;
+    use mod_api::WorldEpoch;
 
-use sunrise_core::geometry::Vec3;
+    use sunrise_core::geometry::Vec3;
 
-use sunrise_items::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
-use sunrise_sim::{merchant::ItemCost, mobs::Mob};
+    use sunrise_sim::{merchant::ItemCost, mobs::Mob};
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn unresolved_profession_preserves_offers_but_cannot_trade_them() {
         with_game(|game| {
@@ -50,7 +48,7 @@ use sunrise_sim::{merchant::ItemCost, mobs::Mob};
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn merchant_handles_edit_offers_and_villager_data() {
         with_game(|game| {

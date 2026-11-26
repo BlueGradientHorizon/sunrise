@@ -1,5 +1,3 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod player_status_tests {
     use super::Game;
@@ -26,10 +24,8 @@ pub mod player_status_tests {
     /// blocks, (0, 64, 0) and (0, 65, 0): the eight corners of the quart around (block - 2),
     /// (-1, 15, -1), which reach into the three neighbouring chunks. Then rain starts (`true`)
     /// or stops.
-    pub fn rain_on_the_player<S: crate::game::Side>(
-        game: &mut Game<'_, S>,
-        raining: bool,
-    ) where
+    pub fn rain_on_the_player<S: crate::game::Side>(game: &mut Game<'_, S>, raining: bool)
+    where
         for<'__g> crate::game::Game<'__g, S>: ::mod_api::Host,
     {
         let plains = game.res.biomes().id("minecraft:plains");
@@ -45,8 +41,4 @@ pub mod player_status_tests {
         game.world.weather.raining = raining;
         game.world.weather.settle_levels();
     }
-
-    
-
-    
 }

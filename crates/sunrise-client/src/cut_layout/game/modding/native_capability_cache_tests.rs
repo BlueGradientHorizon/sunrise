@@ -1,13 +1,13 @@
 //! `BlockCapabilityCache` in a real game: kept while nothing it depends on changes, looked up
 //! again for each way the answer can change, and a move through kept handlers that aborts
 //! loses nothing.
-use sunrise_gameplay_common::game::Dim;
 use mod_api::{
     BlockCapabilityCache, CapabilityKey, Hooks, HostTransaction, ITEMS, ItemResource, Registrar,
     ResourceHandler, ServerHost, TransactionContext,
 };
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use sunrise_gameplay_common::game::Dim;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{
     chunk::Chunk,

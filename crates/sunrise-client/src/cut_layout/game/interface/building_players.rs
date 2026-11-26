@@ -1,24 +1,25 @@
-
-
 #![cfg(test)]
 use sunrise_gameplay_common::game::Dim;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use super::*;
+    use super::*;
 
-use sunrise_core::geometry::Vec3;
+    use sunrise_core::geometry::Vec3;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn for_player_keeps_the_outer_body_in_its_original_dimension() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::load_resources};
         use crate::settings::Settings;
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
         use sunrise_protocol::packets::configuration::ClientInformation;
         use sunrise_sim::{
             lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
             motion::PlayerMotion,
+        };
+        use {
+            crate::game::load_resources, sunrise_gameplay_common::game::Options,
+            sunrise_gameplay_common::game::Progress,
         };
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -37,7 +38,8 @@ use sunrise_core::geometry::Vec3;
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -109,20 +111,23 @@ use sunrise_core::geometry::Vec3;
         guest.placed = true;
         guest.loaded = true;
         game.server.lan.as_mut().unwrap().hub.guests.push(guest);
-        let seen = game.for_player(sunrise_gameplay_common::game::commands_common::Target::Guest(2), |g| {
-            assert_eq!(g.dim, Dim::Nether);
-            // for_player already switched the level before entering the guest.
-            // The host's body must not become a phantom blocker in the Nether.
-            assert!(g.server.lan_building_boxes.0.boxes(Dim::Nether).is_empty());
-            assert_eq!(
-                g.server.lan_building_boxes.0.boxes(Dim::Overworld),
-                vec![(
-                    original.min_position().components(),
-                    original.max_position().components()
-                )]
-            );
-            g.player.as_ref().unwrap().position
-        });
+        let seen = game.for_player(
+            sunrise_gameplay_common::game::commands_common::Target::Guest(2),
+            |g| {
+                assert_eq!(g.dim, Dim::Nether);
+                // for_player already switched the level before entering the guest.
+                // The host's body must not become a phantom blocker in the Nether.
+                assert!(g.server.lan_building_boxes.0.boxes(Dim::Nether).is_empty());
+                assert_eq!(
+                    g.server.lan_building_boxes.0.boxes(Dim::Overworld),
+                    vec![(
+                        original.min_position().components(),
+                        original.max_position().components()
+                    )]
+                );
+                g.player.as_ref().unwrap().position
+            },
+        );
         assert_eq!(seen, Some(Vec3::new(20.5, 64.0, 0.5)));
         assert_eq!(game.dim, Dim::Overworld);
         assert_eq!(

@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_client::hud::HudBatch;
 #[cfg(test)]
@@ -12,7 +10,7 @@ pub(crate) mod screen_widgets_tests;
 
 #[cfg(test)]
 pub(crate) mod text_tests {
-    use {crate::game::native_hooks::base::*};
+    use crate::game::native_hooks::base::*;
 
     /// `DrawContext::text` takes ARGB as vanilla's `GuiGraphics` does: the alpha reaches the
     /// vertices, and fully transparent text draws nothing.
@@ -23,12 +21,8 @@ pub(crate) mod text_tests {
         sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
             let drawn = |argb: u32| {
                 let mut batch = HudBatch::scratch([640, 480]);
-                sunrise_client_gameplay::game::host::draw::GameDrawContext::new(game, &mut batch).text(
-                    "Hi",
-                    [4.0, 4.0],
-                    argb,
-                    false,
-                );
+                sunrise_client_gameplay::game::host::draw::GameDrawContext::new(game, &mut batch)
+                    .text("Hi", [4.0, 4.0], argb, false);
                 batch.vertices
             };
             let opaque = drawn(0xFFFF_FFFF);

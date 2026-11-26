@@ -91,7 +91,11 @@ fn synchronized_damage_defaults_override_a_different_local_definition() {
         }],
     });
     assert_eq!(
-        sunrise_gameplay_common::game::remote::selector_metadata::hurt_sound_for(&registries, &local, 0),
+        sunrise_gameplay_common::game::remote::selector_metadata::hurt_sound_for(
+            &registries,
+            &local,
+            0
+        ),
         "minecraft:entity.player.hurt"
     );
 }

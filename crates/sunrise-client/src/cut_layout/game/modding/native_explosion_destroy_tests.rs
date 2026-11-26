@@ -1,6 +1,5 @@
 //! `LevelRef::explosion_destroy_blocks` through the native handle on a fresh game.
 #![cfg(test)]
-use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::run_with_game_stack, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{
     BlockPart, EntityRef, ExplosionDestroyError, ExplosionDetonateEvent, ExplosionInteraction,
     ExplosionStartEvent, Flow, ModEntry, OnBlockExplodedEvent, Registrar, RegistrationContext,
@@ -13,6 +12,11 @@ use std::sync::{
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::{mobs::Who, motion::PlayerMotion};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+    sunrise_gameplay::game::native_entity_refs::tests::run_with_game_stack,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 /// One `explosion_destroy_blocks` call.
 struct Blast {
@@ -103,7 +107,9 @@ impl mod_api::Hooks for Watch {
 
 /// Runs `test` on a fresh server game with the watching mod and a loaded, empty overworld chunk
 /// (0, 0).
-fn with_watch(test: impl Fn(&mut sunrise_gameplay::game::ServerGame<'_>, &Watch) + Send + Sync + 'static) {
+fn with_watch(
+    test: impl Fn(&mut sunrise_gameplay::game::ServerGame<'_>, &Watch) + Send + Sync + 'static,
+) {
     run_with_game_stack(move || {
         let watch = Watch::default();
         let mods: mod_api::Mods = vec![ModEntry::new("watch", Box::new(watch.clone()))].into();

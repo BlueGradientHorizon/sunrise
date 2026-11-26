@@ -40,7 +40,12 @@ impl ClientGame<'_> {
             at.z.floor() as i32,
         );
         let block = |y| {
-            let state = self.common.pack.assets.registry.state(self.common.world.block(x, y, z))?;
+            let state = self
+                .common
+                .pack
+                .assets
+                .registry
+                .state(self.common.world.block(x, y, z))?;
             let properties = state
                 .properties
                 .iter()

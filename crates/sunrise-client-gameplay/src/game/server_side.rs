@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 #[path = "interface/block_screen_effect_draw_tests_server.rs"]
 pub(in crate::game) mod block_screen_effect_draw_tests_server;

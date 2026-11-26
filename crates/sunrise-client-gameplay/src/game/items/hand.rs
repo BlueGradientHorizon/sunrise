@@ -151,18 +151,22 @@ impl crate::game::ClientGame<'_> {
             }
             super::pick_entity::CrosshairDecision::Entity(hit) => {
                 self.client.tick_hit.set(Some(None));
-                let mob = self.common.mob_index.find(&self.common.mobs, hit.id).map(|i| {
-                    let feet = self.common.mobs[i].position;
-                    (
-                        i,
-                        hit.distance_sq.sqrt(),
-                        [
-                            hit.point[0] - feet.x,
-                            hit.point[1] - feet.y,
-                            hit.point[2] - feet.z,
-                        ],
-                    )
-                });
+                let mob = self
+                    .common
+                    .mob_index
+                    .find(&self.common.mobs, hit.id)
+                    .map(|i| {
+                        let feet = self.common.mobs[i].position;
+                        (
+                            i,
+                            hit.distance_sq.sqrt(),
+                            [
+                                hit.point[0] - feet.x,
+                                hit.point[1] - feet.y,
+                                hit.point[2] - feet.z,
+                            ],
+                        )
+                    });
                 self.client.tick_mob = Some(mob);
             }
             super::pick_entity::CrosshairDecision::Miss => {
@@ -208,11 +212,9 @@ impl crate::game::ClientGame<'_> {
             }
         }
     }
-    pub fn client_pick_entity_reach(
-        &self,
-        direction: [f64; 3],
-    ) -> f64 {
-        self.common.active_attack_range()
+    pub fn client_pick_entity_reach(&self, direction: [f64; 3]) -> f64 {
+        self.common
+            .active_attack_range()
             .map_or(self.common.entity_reach, |range| {
                 (f64::from(attack_reach(&range, self.own_player_is_creative()).1)
                     + self.known_player_movement().dot(v3(direction)).max(0.0))
@@ -334,16 +336,16 @@ impl crate::game::ClientGame<'_> {
     /// `LocalPlayer.isHandsBusy`: paddling a boat this player controls
     /// (`getControlledVehicle`: its first passenger, on a server's client).
     pub(in crate::game::client_side) fn hands_busy(&self) -> bool {
-        self.common.riding
-            .is_some_and(|id| self.controls_boat(id) && self.common.boats.iter().any(|b| b.id == id))
-            && [
-                winit::keyboard::KeyCode::KeyW,
-                winit::keyboard::KeyCode::KeyS,
-                winit::keyboard::KeyCode::KeyA,
-                winit::keyboard::KeyCode::KeyD,
-            ]
-            .iter()
-            .any(|k| self.movement_key_held(*k))
+        self.common.riding.is_some_and(|id| {
+            self.controls_boat(id) && self.common.boats.iter().any(|b| b.id == id)
+        }) && [
+            winit::keyboard::KeyCode::KeyW,
+            winit::keyboard::KeyCode::KeyS,
+            winit::keyboard::KeyCode::KeyA,
+            winit::keyboard::KeyCode::KeyD,
+        ]
+        .iter()
+        .any(|k| self.movement_key_held(*k))
     }
     /// `LocalPlayer.tick`: the swing (`LivingEntity.baseTick`), the attack
     /// strength and item swap tickers (`Player.tick`), then
@@ -351,7 +353,9 @@ impl crate::game::ClientGame<'_> {
     pub fn tick_hand(&mut self) {
         // LocalPlayer.applyInput (the camera is the player's own).
         if self.common.player.is_some() {
-            self.client.sway.tick_wrapped(self.common.pitch, self.common.yaw);
+            self.client
+                .sway
+                .tick_wrapped(self.common.pitch, self.common.yaw);
         }
         self.common.swing.tick();
         let main = self.common.inventory[self.common.selected].clone();
@@ -368,7 +372,10 @@ impl crate::game::ClientGame<'_> {
         if changed {
             self.apply_equipment();
         }
-        let next = [(self.common.selected, main), (OFFHAND, self.common.offhand.clone())];
+        let next = [
+            (self.common.selected, main),
+            (OFFHAND, self.common.offhand.clone()),
+        ];
         let mut changed = [false; 2];
         for h in 0..2 {
             let replaced = self.client.hands_replaced[h];
@@ -435,8 +442,16 @@ impl crate::game::ClientGame<'_> {
     /// standalone replay closes so a later world cannot inherit lowered hands
     /// or the replay player's visible stacks.
     pub(in crate::game::client_side) fn reset_studio_hand_state(&mut self) {
-        let main = self.common.inventory.get(self.common.selected).cloned().flatten();
-        self.client.visible_hands = [(self.common.selected, main), (OFFHAND, self.common.offhand.clone())];
+        let main = self
+            .common
+            .inventory
+            .get(self.common.selected)
+            .cloned()
+            .flatten();
+        self.client.visible_hands = [
+            (self.common.selected, main),
+            (OFFHAND, self.common.offhand.clone()),
+        ];
         self.client.hands_replaced = [false; 2];
         self.client.heights = sunrise_client::first_person::HandHeights {
             main: 1.0,
@@ -455,7 +470,8 @@ impl crate::game::ClientGame<'_> {
             let (entity, distance, _) = hit?;
             if !self.common.mobs.iter().any(|mob| mob.id == entity.id())
                 && !self
-                    .common.armor_stands
+                    .common
+                    .armor_stands
                     .iter()
                     .any(|stand| stand.id == entity.id())
             {
@@ -469,7 +485,8 @@ impl crate::game::ClientGame<'_> {
             return Some(true);
         }
         let active = self
-            .common.using
+            .common
+            .using
             .and_then(|(slot, _)| self.common.inventory.get(slot).and_then(Option::as_ref))
             .or_else(|| self.common.held());
         let range = active.and_then(|stack| self.common.attack_range_component(stack));
@@ -516,7 +533,11 @@ impl crate::game::ClientGame<'_> {
         if let Some(hit) = self.crosshair_entity_hit() {
             return self.common.carts.iter().any(|c| {
                 c.id as i32 == hit.id && matches!(c.kind, CartKind::Chest | CartKind::Hopper)
-            }) || self.common.boats.iter().any(|b| b.id as i32 == hit.id && b.chest);
+            }) || self
+                .common
+                .boats
+                .iter()
+                .any(|b| b.id as i32 == hit.id && b.chest);
         }
         self.pick()
             .is_some_and(|hit| self.block_interactable_for_spectator(&hit))
@@ -537,7 +558,8 @@ impl crate::game::ClientGame<'_> {
         let state = self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
         &*self.common.res.facts().get(state).name == "minecraft:lectern"
             && self
-                .common.pack
+                .common
+                .pack
                 .assets
                 .registry
                 .state(state)
@@ -550,7 +572,8 @@ impl crate::game::ClientGame<'_> {
             return false;
         }
         let id = &*self
-            .common.res
+            .common
+            .res
             .facts()
             .get(self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]))
             .name;
@@ -572,7 +595,11 @@ impl crate::game::ClientGame<'_> {
                         & sunrise_world::level::data::state_flags::CONDUCTOR
                         != 0
                 };
-                !blocked(key) && self.common.chest_other_half(key).is_none_or(|o| !blocked(o))
+                !blocked(key)
+                    && self
+                        .common
+                        .chest_other_half(key)
+                        .is_none_or(|o| !blocked(o))
             }
             _ => name.ends_with("shulker_box"),
         }
@@ -580,16 +607,21 @@ impl crate::game::ClientGame<'_> {
     /// `evaluateWhichHandsToRender`: which of the main and off hand show.
     pub(in crate::game::client_side) fn hands_to_render(&self) -> [bool; 2] {
         let held = |slot| {
-            self.common.stack_in(slot)
+            self.common
+                .stack_in(slot)
                 .map(|s: &ItemStack| (&*s.item, s.data().is_some_and(|d| !d.charged.is_empty())))
         };
         let using = self.common.used_hand().zip(
-            self.common.using
+            self.common
+                .using
                 .and_then(|(slot, _)| self.common.stack_in(slot))
                 .map(|s| &*s.item),
         );
         sunrise_client::first_person::hands_to_render(
-            [held(self.common.selected), held(super::held_items::OFFHAND_SLOT)],
+            [
+                held(self.common.selected),
+                held(super::held_items::OFFHAND_SLOT),
+            ],
             using,
         )
     }

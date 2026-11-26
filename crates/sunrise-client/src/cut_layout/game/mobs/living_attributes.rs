@@ -1,39 +1,37 @@
-
-
 #![cfg(test)]
 use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_world::attributes::{Modifier, Operation};
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::server_side::living_attributes::tests::modifier;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::server_side::living_attributes::tests::modifier;
 
-use sunrise_gameplay_common::game::server_side::living_attributes::tests::saved_ids;
+    use sunrise_gameplay_common::game::server_side::living_attributes::tests::saved_ids;
 
-use sunrise_gameplay_common::game::server_side::living_attributes::tests::stack;
+    use sunrise_gameplay_common::game::server_side::living_attributes::tests::stack;
 
-use sunrise_gameplay::game::server_side::living_attributes::tests::living;
+    use sunrise_gameplay::game::server_side::living_attributes::tests::living;
 
-use sunrise_gameplay::game::server_side::living_attributes::tests::read;
+    use sunrise_gameplay::game::server_side::living_attributes::tests::read;
 
-use sunrise_gameplay::game::server_side::living_attributes::tests::spawn;
+    use sunrise_gameplay::game::server_side::living_attributes::tests::spawn;
 
-use super::*;
+    use super::*;
 
-use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::with_game;
 
-use sunrise_core::geometry::Vec3;
+    use sunrise_core::geometry::Vec3;
 
-use sunrise_items::equipment::{CHEST, HEAD, MAINHAND};
+    use sunrise_items::equipment::{CHEST, HEAD, MAINHAND};
 
-use sunrise_items::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
-use sunrise_sim::{entities::ArmorStand, mobs::Mob};
+    use sunrise_sim::{entities::ArmorStand, mobs::Mob};
 
-use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetime};
+    use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetime};
 
-/// A held stack with its own `attribute_modifiers` hits by them, not by
+    /// A held stack with its own `attribute_modifiers` hits by them, not by
     /// its item type's defaults (#941).
     #[test]
     #[ignore = "daily"]
@@ -77,7 +75,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             assert_eq!(attack(game), 3.0);
         });
     }
-/// The mob's attribute packet is its live map's instances (#941): base
+    /// The mob's attribute packet is its live map's instances (#941): base
     /// and each modifier once — the equipment's own rows and `/attribute`'s
     /// writes among them — with no modifier applied twice, and no instance
     /// for an attribute nothing created.
@@ -142,7 +140,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             assert_eq!(synced.len(), 3, "{synced:?}");
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_base_write_preserves_covered_for_damage_and_attribute_sync() {
         with_game(|game| {
@@ -209,7 +207,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             );
         });
     }
-/// The armor a hit reads follows the live map at once (#941): a stack a
+    /// The armor a hit reads follows the live map at once (#941): a stack a
     /// mod or `/item` changed protects by its own `attribute_modifiers`, a
     /// `/attribute` write takes effect without a tick, a horse's body piece
     /// armors it by its stack's rows, and the save keeps a written base and
@@ -304,7 +302,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_zombie_reads_its_defaults() {
         with_game(|game| {
@@ -321,7 +319,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             assert_eq!(read(game, 13, "minecraft:attack_damage"), (None, None));
         });
     }
-/// A read of a mob that wears nothing builds its map once and keeps it,
+    /// A read of a mob that wears nothing builds its map once and keeps it,
     /// so the next reads allocate nothing.
     #[test]
     #[ignore = "daily"]
@@ -344,7 +342,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_held_sword_raises_the_attack_damage_until_it_is_put_away() {
         with_game(|game| {
@@ -370,7 +368,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             assert_eq!(read(game, 12, damage), (Some(3.0), Some(3.0)));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_stand_and_the_dragon_wear_armor_modifiers() {
         with_game(|game| {
@@ -393,7 +391,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             assert_eq!(read(game, 14, armor), (Some(8.0), Some(0.0)));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_stale_handle_reads_none() {
         with_game(|game| {
@@ -408,7 +406,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             assert_eq!(living.attribute_base(game, "minecraft:max_health"), None);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_saved_base_and_modifier_are_read_and_saved_again() {
         use sunrise_core::nbt::Tag;
@@ -436,7 +434,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             assert_eq!(Tag::List(list), saved);
         });
     }
-/// The live map takes a held stack's own `attribute_modifiers`, and
+    /// The live map takes a held stack's own `attribute_modifiers`, and
     /// another stack of the same item with other components is a change.
     #[test]
     #[ignore = "daily"]
@@ -465,7 +463,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             assert_eq!(read(game, 12, damage), (Some(9.0), Some(3.0)));
         });
     }
-/// A mob's gear knockback resistance reads its stacks once, keeps what it
+    /// A mob's gear knockback resistance reads its stacks once, keeps what it
     /// read while the same stacks are worn, and reads them again when one
     /// changes: here a chestplate with its own list.
     #[test]
@@ -509,7 +507,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             assert_eq!(read_at(game), (None, None));
         });
     }
-/// A mob's movement speed is kept where its gameplay reads it: a mod's
+    /// A mob's movement speed is kept where its gameplay reads it: a mod's
     /// permanent modifier is saved, a transient one is not, both count at once.
     #[test]
     #[ignore = "daily"]
@@ -566,7 +564,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             assert_eq!(game.mobs[0].attrs.speed, 1.0);
         });
     }
-/// An attribute only the live map keeps keeps a mod's writes when the map
+    /// An attribute only the live map keeps keeps a mod's writes when the map
     /// is built again, and saves the permanent ones.
     #[test]
     #[ignore = "daily"]
@@ -635,7 +633,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
             assert_eq!(read(game, 12, "minecraft:armor").1, Some(10.0));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_stand_the_dragon_and_a_player_take_writes() {
         use AttributeOperation::*;
@@ -717,7 +715,7 @@ use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetim
         }
     }
 
-/// A mod's answer to `item_attribute_modifier` is what the zombie's
+    /// A mod's answer to `item_attribute_modifier` is what the zombie's
     /// gameplay reads: its knockback and its live map.
     #[test]
     #[ignore = "daily"]

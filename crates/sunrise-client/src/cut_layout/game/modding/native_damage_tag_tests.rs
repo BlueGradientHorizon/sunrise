@@ -1,11 +1,15 @@
 //! A hit listener reads its source's damage type tags through the hit's host
 //! (`DamageSource.is(TagKey)`), against the vanilla damage registry the world bound.
-use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{Flow, HitHost, Hooks, Identifier, LivingIncomingDamageEvent};
 use std::sync::{Arc, Mutex};
 use sunrise_command::args::GameMode;
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 /// The damage type tags the listener reads, and what it read for each hit.
 #[derive(Default)]

@@ -2,8 +2,6 @@
 //! built and refuses a target that is no living entity type by name; a living type's layers draw
 //! over it in the order they were added, a player's are its model's, a type with none draws none,
 //! and a failing layer is dropped until a resource reload adds it again.
-use sunrise_gameplay_common::game::entity_type_rows::EntityTypeRows;
-use sunrise_client_gameplay::game::native_entity_layers::LayerRegistration;
 use mod_api::{
     BlockEntityDrawContext, EntityLayers, EntityRenderLayer, EntityRenderState, EntityRenderer,
     FrameModel, LayerTarget, PlayerModel,
@@ -16,6 +14,8 @@ use std::{
     },
 };
 use sunrise_client::mesher::Vertex;
+use sunrise_client_gameplay::game::native_entity_layers::LayerRegistration;
+use sunrise_gameplay_common::game::entity_type_rows::EntityTypeRows;
 use sunrise_sim::mobs::Mob;
 
 /// A load's entity types: a boat, a zombie, an armour stand, the ender dragon, the player and a mod's
@@ -209,7 +209,11 @@ fn mob(game: &sunrise_client_gameplay::game::ClientGame<'_>, kind: &str, slim: b
 
 /// The mods' layers one frame draws over a mob of `kind` (a player of the slim model when
 /// `slim`).
-fn layer_frame(game: &sunrise_client_gameplay::game::ClientGame<'_>, kind: &str, slim: bool) -> Vec<Vertex> {
+fn layer_frame(
+    game: &sunrise_client_gameplay::game::ClientGame<'_>,
+    kind: &str,
+    slim: bool,
+) -> Vec<Vertex> {
     let mut out = Vec::new();
     let mob = mob(game, kind, slim);
     let layers = game.mod_layers(&mob);
@@ -220,7 +224,10 @@ fn layer_frame(game: &sunrise_client_gameplay::game::ClientGame<'_>, kind: &str,
 /// Runs `check` on a client game with prepared resources and the [`Scene`]'s mods, resolved as
 /// the first load does. In a child process running only `test`: the registrations of a process
 /// are its own.
-fn in_scene(test: &str, check: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &Scene)) {
+fn in_scene(
+    test: &str,
+    check: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &Scene),
+) {
     if std::env::var_os("SUNRISE_ENTITY_LAYERS_CHILD").is_none() {
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .args([

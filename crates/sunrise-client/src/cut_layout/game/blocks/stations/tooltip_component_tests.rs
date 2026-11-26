@@ -2,21 +2,8 @@
 //! fixtures A–K, two-pass draw order & geometry (including audit [87] zero-sized components),
 //! `render_tooltip_pre` font replacement & cancellation, `render_tooltip_texture` & line-only
 //! `ItemResource::tooltip`, `show_tooltip_with_item_in_hand`, audit [88], and panic containment.
-use sunrise_gameplay_common::game::TryIntoApi;
-use mod_api::DefaultTooltipPositioner;
-use sunrise_client::tooltip_components::TooltipComponentPrepareError;
-use sunrise_client_gameplay::game::client_item_extensions::DEFAULT_TOOLTIP_FONT_ID;
-use sunrise_client_gameplay::game::client_side::stations::tooltip::{
-    GatheredTooltip, PreparedTooltipItem, WidgetTooltipPositioner, quantize_tooltip_anchor,
-};
-use sunrise_gameplay_common::game::Screen;
-use std::borrow::Cow;
-use sunrise_client::hud::HudBatch;
-use sunrise_client::hud::rgba;
-use sunrise_items::items::ItemStack;
 use super::*;
-use sunrise_client_gameplay::game::host::draw::EngineTooltipFont;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
+use mod_api::DefaultTooltipPositioner;
 use mod_api::{
     __private::game::RegistrationContextNew, ClientHost, ClientTooltipComponent, DrawContext, Flow,
     Hooks, Identifier, ItemPart, ItemResource, ModEntry, Mods,
@@ -24,12 +11,28 @@ use mod_api::{
     RenderTooltipGatherComponentsEvent, RenderTooltipPreEvent, RenderTooltipTextureEvent,
     TooltipComponent, TooltipComponentData, TooltipElement, TooltipFont, TooltipImageEvent,
 };
+use std::borrow::Cow;
 use std::cell::Cell;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicI32, AtomicU8, AtomicUsize, Ordering},
 };
+use sunrise_client::hud::HudBatch;
+use sunrise_client::hud::rgba;
+use sunrise_client::tooltip_components::TooltipComponentPrepareError;
 use sunrise_client::tooltip_components::{TooltipComponentFactories, with_test_factories};
+use sunrise_client_gameplay::game::client_item_extensions::DEFAULT_TOOLTIP_FONT_ID;
+use sunrise_client_gameplay::game::client_side::stations::tooltip::{
+    GatheredTooltip, PreparedTooltipItem, WidgetTooltipPositioner, quantize_tooltip_anchor,
+};
+use sunrise_client_gameplay::game::host::draw::EngineTooltipFont;
+use sunrise_gameplay_common::game::Screen;
+use sunrise_gameplay_common::game::TryIntoApi;
+use sunrise_items::items::ItemStack;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+};
 
 fn collect_factories() -> TooltipComponentFactories {
     let mut factories = TooltipComponentFactories::default();
@@ -112,7 +115,10 @@ fn run_tooltip_cases(test: &str, cases: &[&str]) -> bool {
     )
 }
 
-fn with_mod_factories(mods: Mods, test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
+fn with_mod_factories(
+    mods: Mods,
+    test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
+) {
     mod_platform::testing::with_mods(mods.clone(), || {
         mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
         let factories = collect_factories();
@@ -1001,7 +1007,9 @@ fn tooltip_texture_and_item_resource_tooltip_with_custom_components() {
 
         // ItemResource::tooltip stays line-only (TooltipElement::Text) for both custom and bundle items.
         for stack in [stick, populated_bundle()] {
-            let resource = ItemResource::of(&sunrise_gameplay_common::game::api_values::test_snapshot(&stack));
+            let resource = ItemResource::of(
+                &sunrise_gameplay_common::game::api_values::test_snapshot(&stack),
+            );
             let lines = resource.tooltip(game, false, false).unwrap();
             assert!(!lines.is_empty());
             assert!(
@@ -1166,7 +1174,8 @@ fn audit_88_no_listener_fast_path_and_deep_local_text() {
     // This one line is 198 pixels wide. Neither side of x=145 on a 160-pixel screen can fit
     // it, but vanilla's item tooltip still passes it to the positioner intact.
     const WIDE: &str = "long item name near a screen edge";
-    let assert_unwrapped = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, stack: &ItemStack| {
+    let assert_unwrapped = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                            stack: &ItemStack| {
         let original_font = std::mem::replace(
             &mut game.client.gui.atlas.font,
             synthetic_ascii_fonts([("default", 6)]),
@@ -2427,7 +2436,10 @@ fn item_tooltip_font_wraps_in_gather_pre_replaces_without_rewrap_and_anchor_quan
         );
         game.client.gui.atlas.font = sunrise_client::font::Font::metrics(&source);
         game.client.armor_stand_assets.0.extensions =
-            sunrise_client_gameplay::game::ClientGame::prepare_client_item_extensions(&game.client.gui).unwrap();
+            sunrise_client_gameplay::game::ClientGame::prepare_client_item_extensions(
+                &game.client.gui,
+            )
+            .unwrap();
 
         let stick = ItemStack::new("minecraft:stick", 1);
         let text = sunrise_game_data::text::Text::literal("aa aa");
@@ -2604,10 +2616,12 @@ fn only_hovered_slots_check_show_tooltip_with_item_in_hand() {
     .into();
 
     with_mod_factories(mods, |game| {
-        game.open_station_client(sunrise_gameplay_common::game::stations_common::Station::new(
-            sunrise_gameplay_common::game::stations_common::Kind::Anvil,
-            [0, 64, 0],
-        ));
+        game.open_station_client(
+            sunrise_gameplay_common::game::stations_common::Station::new(
+                sunrise_gameplay_common::game::stations_common::Kind::Anvil,
+                [0, 64, 0],
+            ),
+        );
         game.station_changed();
         game.inventory[9] = Some(ItemStack::new("minecraft:stick", 1));
         game.carried = Some(ItemStack::new("minecraft:stone", 1));
@@ -2642,10 +2656,12 @@ fn only_hovered_slots_check_show_tooltip_with_item_in_hand() {
         );
 
         // Both previews bypass that same callback (which would now answer false).
-        game.open_station_client(sunrise_gameplay_common::game::stations_common::Station::new(
-            sunrise_gameplay_common::game::stations_common::Kind::Stonecutter,
-            [0, 64, 0],
-        ));
+        game.open_station_client(
+            sunrise_gameplay_common::game::stations_common::Station::new(
+                sunrise_gameplay_common::game::stations_common::Kind::Stonecutter,
+                [0, 64, 0],
+            ),
+        );
         game.station_changed();
         let recipe = game
             .station_recipes()

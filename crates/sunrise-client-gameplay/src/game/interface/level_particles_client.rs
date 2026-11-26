@@ -22,30 +22,32 @@ impl ClientGame<'_> {
         let p = [pos.x, pos.y, pos.z];
         let state = self.common.world.block(p[0], p[1], p[2]);
         let facts = self.common.res.facts();
-        let (at, count, xz, height, floating) = match self.common.res.behaviours().bone_meal_spreads(state)
-        {
-            Some(spreads) => {
-                if spreads {
-                    // Neighbor spreaders spark over the block above (#11310).
-                    ([p[0], p[1] + 1, p[2]], count * 3, 3.0, 1.0, false)
-                } else {
-                    // Growers spark in place, or below for rooted dirt and mangrove leaves.
-                    let at = match &*facts.get(state).name {
-                        "minecraft:rooted_dirt" | "minecraft:mangrove_leaves" => {
-                            [p[0], p[1] - 1, p[2]]
-                        }
-                        _ => p,
-                    };
-                    (at, count, 0.5, self.block_shape_top(at), true)
+        let (at, count, xz, height, floating) =
+            match self.common.res.behaviours().bone_meal_spreads(state) {
+                Some(spreads) => {
+                    if spreads {
+                        // Neighbor spreaders spark over the block above (#11310).
+                        ([p[0], p[1] + 1, p[2]], count * 3, 3.0, 1.0, false)
+                    } else {
+                        // Growers spark in place, or below for rooted dirt and mangrove leaves.
+                        let at = match &*facts.get(state).name {
+                            "minecraft:rooted_dirt" | "minecraft:mangrove_leaves" => {
+                                [p[0], p[1] - 1, p[2]]
+                            }
+                            _ => p,
+                        };
+                        (at, count, 0.5, self.block_shape_top(at), true)
+                    }
                 }
-            }
-            None if &*facts.get(state).name == "minecraft:water" => (p, count * 3, 3.0, 1.0, false),
-            // Mod blocks default to in-block grower sparks.
-            None if !facts.get(state).name.starts_with("minecraft:") => {
-                (p, count, 0.5, self.block_shape_top(p), true)
-            }
-            None => return,
-        };
+                None if &*facts.get(state).name == "minecraft:water" => {
+                    (p, count * 3, 3.0, 1.0, false)
+                }
+                // Mod blocks default to in-block grower sparks.
+                None if !facts.get(state).name.starts_with("minecraft:") => {
+                    (p, count, 0.5, self.block_shape_top(p), true)
+                }
+                None => return,
+            };
         self.spawn_particles(at, count, xz, height, floating, ParticleType::HappyVillager);
     }
     /// `BlockState.getShape(..).max(Y)` of the block at `at`, 1.0 for air.
@@ -71,9 +73,14 @@ impl ClientGame<'_> {
     }
     /// `SpeleothemBlock.isStalactite`: a speleothem whose tip points down.
     pub(in crate::game::client_side) fn is_stalactite(&self, state: BlockStateId) -> bool {
-        self.common.res.facts().get(state).has_class("SpeleothemBlock")
+        self.common
+            .res
+            .facts()
+            .get(state)
+            .has_class("SpeleothemBlock")
             && self
-                .common.pack
+                .common
+                .pack
                 .assets
                 .registry
                 .state(state)
@@ -81,12 +88,7 @@ impl ClientGame<'_> {
                 .is_some_and(|d| d == "down")
     }
     /// `ClientLevel.addBreakingBlockEffects`: hit sound and mining crumb on the hit face.
-    pub fn breaking_block_effects(
-        &mut self,
-        pos: [i32; 3],
-        face: [i32; 3],
-        play_sound: bool,
-    ) {
+    pub fn breaking_block_effects(&mut self, pos: [i32; 3], face: [i32; 3], play_sound: bool) {
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
         if self.common.res.facts().is_air(state) {
             return;
@@ -409,7 +411,8 @@ impl ClientGame<'_> {
             let below = [x.floor() as i32, y.floor() as i32 - 1, z.floor() as i32];
             if floating
                 || !self
-                    .common.res
+                    .common
+                    .res
                     .facts()
                     .is_air(self.common.world.block(below[0], below[1], below[2]))
             {

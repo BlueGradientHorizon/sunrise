@@ -37,7 +37,8 @@ impl crate::game::ClientGame<'_> {
         let mut attachments = r.attachments.remove(&Holder::BlockEntity(pos));
         if let (Some(p), Some(entity)) = (r.predictions.get_mut(&pos), removed)
             && p.removed_entity.is_none()
-            && self.common.res.facts().get(p.state).name == self.common.res.facts().get(previous).name
+            && self.common.res.facts().get(p.state).name
+                == self.common.res.facts().get(previous).name
         {
             if let Some(attachments) = &mut attachments {
                 attachments.take_index_binding();
@@ -101,17 +102,18 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// MultiPlayerGameMode.destroyBlock: the predicted break.
-    pub fn predict_break(
-        &mut self,
-        pos: [i32; 3],
-        state: BlockStateId,
-        sequence: i32,
-    ) {
+    pub fn predict_break(&mut self, pos: [i32; 3], state: BlockStateId, sequence: i32) {
         self.tutorial_destroy(state, 1.0);
         // Block.playerWillDestroy's destroy event (particles and the break
         // sound), which BaseFireBlock skips: the server's extinguish sound
         // is all a player hears.
-        if !self.common.res.facts().get(state).has_class("BaseFireBlock") {
+        if !self
+            .common
+            .res
+            .facts()
+            .get(state)
+            .has_class("BaseFireBlock")
+        {
             self.play_break_sound(pos, state);
             self.destroy_particles(pos, state);
         }
@@ -153,11 +155,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// The blocks a use changed, kept under its sequence until acknowledgement.
-    pub fn predict_blocks(
-        &mut self,
-        changes: &[(BlockPos, BlockStateId)],
-        seq: i32,
-    ) {
+    pub fn predict_blocks(&mut self, changes: &[(BlockPos, BlockStateId)], seq: i32) {
         for &(p, state) in changes {
             let pos = [p.x, p.y, p.z];
             let previous = self.predict_block(pos, state, seq);
@@ -191,12 +189,7 @@ impl crate::game::ClientGame<'_> {
 
     /// ClientLevel.setServerVerifiedBlockState: a predicted block keeps its on-screen
     /// state until acknowledgement, but remembers the server's update for then.
-    pub fn server_block(
-        &mut self,
-        pos: [i32; 3],
-        state: i32,
-        group: Option<ReceivedGroup>,
-    ) {
+    pub fn server_block(&mut self, pos: [i32; 3], state: i32, group: Option<ReceivedGroup>) {
         // An unknown state (a server with mods we lack) reads as air, as in its chunks.
         let state = state.max(0) as u32;
         let state = BlockStateId(if sunrise_level::chunk::known_block_state(state) {
@@ -215,7 +208,8 @@ impl crate::game::ClientGame<'_> {
                 p.group = group;
             }
             if let Some(removed) = &p.removed_entity
-                && self.common.res.facts().get(removed.state).name != self.common.res.facts().get(state).name
+                && self.common.res.facts().get(removed.state).name
+                    != self.common.res.facts().get(state).name
             {
                 p.removed_entity = None;
             }
@@ -245,7 +239,8 @@ impl crate::game::ClientGame<'_> {
                 .filter(|_| self.common.world.is_loaded_at(x, y, z))
                 .map(|group| ([x, y, z], group))
         });
-        if let Err(error) = check_group_updates(&self.common.world, updates, self.connection_group_limit())
+        if let Err(error) =
+            check_group_updates(&self.common.world, updates, self.connection_group_limit())
         {
             return self.refuse_play_payload(error);
         }
@@ -286,7 +281,8 @@ impl crate::game::ClientGame<'_> {
         if previous != state
             && let Some(chunk) = self.common.world.chunks.get_mut(&(x >> 4, z >> 4))
         {
-            Arc::make_mut(chunk).update_packet_motion_blocking(pos, &self.common.pack.assets.properties);
+            Arc::make_mut(chunk)
+                .update_packet_motion_blocking(pos, &self.common.pack.assets.properties);
         }
         // LevelChunk.setBlockState drops the old pot only when the block changes;
         // a new state of the same pot keeps its event-driven wobble.
@@ -360,7 +356,8 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn remote_break_restricted(&self, pos: [i32; 3]) -> bool {
         use sunrise_protocol::item::{WirePatch, component::CAN_BREAK};
         if self
-            .common.held()
+            .common
+            .held()
             .and_then(|s| s.data())
             .is_some_and(|d| d.other("minecraft:can_break").is_some())
         {
@@ -369,7 +366,8 @@ impl crate::game::ClientGame<'_> {
         self.common.spectator()
             || (!self.may_build()
                 && !self
-                    .common.held()
+                    .common
+                    .held()
                     .and_then(|s| s.wire_patch())
                     .is_some_and(|p| WirePatch::adds(&p, CAN_BREAK)))
     }

@@ -72,7 +72,8 @@ impl ClientGame<'_> {
         } else {
             return false;
         };
-        self.common.world
+        self.common
+            .world
             .chunks
             .contains_key(&((pos[0].floor() as i32) >> 4, (pos[1].floor() as i32) >> 4))
     }
@@ -97,7 +98,8 @@ impl ClientGame<'_> {
     ) {
         self.remote_move_vehicle(position, rotation);
         let boat = self
-            .common.riding
+            .common
+            .riding
             .filter(|&id| self.controls_boat(id) && self.common.boats.iter().any(|b| b.id == id));
         if let Some(id) = self.driven_mount().map(|m| m.id).or(boat) {
             self.entity_section_moved_id(id);

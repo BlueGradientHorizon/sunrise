@@ -1,19 +1,20 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::creatures::ModGameExt1;
-use sunrise_gameplay::game::server_side::lan::LanSettings;
     use super::super::native_entity_refs::tests::with_game;
-    use {sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest, sunrise_gameplay_common::game::server_side::native_sound_refs::tests::packets};
     use mod_api::{HostSide, SoundSource};
     use std::sync::{Arc, Mutex};
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay::game::server_side::lan::LanSettings;
+    use sunrise_gameplay_common::game::creatures::ModGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_protocol::packets::play::Clientbound;
     use sunrise_sim::lan::{NetConfig, hub::HubConfig};
     use sunrise_sim::mobs::{Mob, MobEvent};
+    use {
+        sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest,
+        sunrise_gameplay_common::game::server_side::native_sound_refs::tests::packets,
+    };
 
     /// Quietens and moves the locked chest, cancels the pig, and turns a
     /// sound bound to an entity into a cow's; logs what it was asked.

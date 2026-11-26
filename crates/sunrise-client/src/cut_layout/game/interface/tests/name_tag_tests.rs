@@ -10,33 +10,33 @@
 //! stack it names with -- and `Player.interactOn` puts a creative player's
 //! count straight back -- and `EntityAttachment.NAME_TAG` says where the tag
 //! hangs, which `EntityTypes.SNIFFER` moves to 2.05 above the feet.
-#[cfg(test)]
-use sunrise_gameplay_common::game::execution_role;
-use sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS;
 use super::super::*;
-use sunrise_client_gameplay::game::client_side::names::name_tag_at;
-use sunrise_gameplay_common::game::creatures::render_fixture::mob;
+use crate::game::load_resources;
 use std::sync::Arc;
+use sunrise_client::audio::Audio;
 use sunrise_client::hud::HudBatch;
+use sunrise_client::settings::Settings;
+use sunrise_client_gameplay::game::client_side::names::name_tag_at;
+use sunrise_client_gameplay::game::client_side::resource_tables_client::UiResources;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;
 use sunrise_game_data::scoreboard as sb;
 use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::InteractTarget;
+use sunrise_gameplay_common::game::Options;
+use sunrise_gameplay_common::game::Screen;
+use sunrise_gameplay_common::game::creatures::render_fixture::mob;
+#[cfg(test)]
+use sunrise_gameplay_common::game::execution_role;
+use sunrise_gameplay_common::game::resource_load::Progress;
+use sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::entities::ArmorStand;
 use sunrise_sim::mobs::{Mob, Species, Who};
 use sunrise_sim::motion::PlayerMotion;
 use sunrise_sim::save::uuid_text;
-use crate::game::load_resources;
-use sunrise_client::settings::Settings;
-use sunrise_gameplay_common::game::resource_load::Progress;
-use sunrise_gameplay_common::game::Options;
-use sunrise_client::audio::Audio;
-use sunrise_gameplay_common::game::Screen;
-use sunrise_client_gameplay::game::client_side::resource_tables_client::UiResources;
-use sunrise_gameplay_common::game::InteractTarget;
 
 /// `EntityTypes.SNIFFER`: `.sized(1.9F, 1.75F).nameTagOffset(2.05F)`. The tag
 /// hangs 2.05 above the feet where every other type hangs it at its box
@@ -176,7 +176,12 @@ fn client_game<'a>(
     game
 }
 
-fn spawn(game: &mut sunrise_gameplay_common::game::CommonGame<'_>, kind: &str, id: u32, at: [f64; 3]) -> usize {
+fn spawn(
+    game: &mut sunrise_gameplay_common::game::CommonGame<'_>,
+    kind: &str,
+    id: u32,
+    at: [f64; 3],
+) -> usize {
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     game.mobs
         .push(Mob::new(id, kind, Vec3::new(at[0], at[1], at[2]), 0.0));

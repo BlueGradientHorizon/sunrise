@@ -1,11 +1,11 @@
 //! The actual player wrappers, damage continuations, effects and explosions reach one listener.
 use super::native_entity_refs::tests::{bind_local_player, with_game};
-#[cfg(any())]
-use sunrise_gameplay::game::server_side::entity_server::damage_level_of;
 use mod_api::{EntityInvulnerabilityCheckEvent, Hooks, LevelSide};
 use std::sync::{Arc, Mutex};
 use sunrise_command::args::GameMode;
 use sunrise_core::geometry::Vec3;
+#[cfg(any())]
+use sunrise_gameplay::game::server_side::entity_server::damage_level_of;
 use sunrise_level::effects::EffectAction;
 use sunrise_sim::{
     mobs::{Damage, DamageKind, Mob, Who},

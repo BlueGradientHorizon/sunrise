@@ -8,7 +8,8 @@ pub trait Hooks {
     /// ordinary toasts and audio stream failure notices, but not other callback error toasts.
     /// Does not fire when a server dialog or the connection screen covers the world HUD.
     /// Client-side.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::render_gui_pre::ClientGame<'_>::native_render_gui_pre", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::render_gui_pre::ClientGame<'_>::native_render_gui_pre",
         receiver = "read",
         dispatch = "flat",
         side = "client",

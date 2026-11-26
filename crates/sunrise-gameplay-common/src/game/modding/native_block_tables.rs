@@ -35,10 +35,7 @@ impl<'a> BlockTables<'a> {
     }
 
     /// The exported definition of a world fluid, or a tank-only identity.
-    pub fn fluid_state_definition(
-        &self,
-        fluid: FluidKey,
-    ) -> Option<FluidDefinition<'a>> {
+    pub fn fluid_state_definition(&self, fluid: FluidKey) -> Option<FluidDefinition<'a>> {
         let id = mod_api::__private::fluid_id(fluid)?;
         let Some(definition) = self.res.behaviours().fluid_definitions().get(id) else {
             return Some(FluidDefinition::TankOnly);
@@ -166,18 +163,12 @@ impl<'a> BlockTables<'a> {
         })
     }
 
-    pub fn block_next_weathering_stage(
-        &self,
-        state: BlockState,
-    ) -> Option<BlockStateId> {
+    pub fn block_next_weathering_stage(&self, state: BlockState) -> Option<BlockStateId> {
         let (rest, state) = self.weathering_state(state)?;
         rest.behaviours.weathering_next(state)
     }
 
-    pub fn block_previous_weathering_stage(
-        &self,
-        state: BlockState,
-    ) -> Option<BlockStateId> {
+    pub fn block_previous_weathering_stage(&self, state: BlockState) -> Option<BlockStateId> {
         let (rest, state) = self.weathering_state(state)?;
         rest.behaviours.weathering_previous(state)
     }
@@ -215,19 +206,13 @@ impl<'a> BlockTables<'a> {
         Some(self.res.facts().get(state).hardness)
     }
     /// `BlockState.requiresCorrectToolForDrops()`. None for an unknown state.
-    pub fn block_state_requires_correct_tool(
-        &self,
-        state: BlockStateId,
-    ) -> Option<bool> {
+    pub fn block_state_requires_correct_tool(&self, state: BlockStateId) -> Option<bool> {
         self.pack.assets.registry.state(state)?;
         Some(self.res.facts().get(state).requires_tool)
     }
     /// The explosion resistance the block of this state declares (`Block.getExplosionResistance`):
     /// stone 6, obsidian 1200, bedrock 3,600,000. None for an unknown state.
-    pub fn block_state_explosion_resistance(
-        &self,
-        state: BlockStateId,
-    ) -> Option<f32> {
+    pub fn block_state_explosion_resistance(&self, state: BlockStateId) -> Option<f32> {
         self.pack.assets.registry.state(state)?;
         Some(self.res.facts().get(state).explosion_resistance)
     }
@@ -240,10 +225,7 @@ impl<'a> BlockTables<'a> {
         ))
     }
     /// `BlockState.hasBlockEntity()`. None for an unknown state.
-    pub fn block_state_has_block_entity(
-        &self,
-        state: BlockStateId,
-    ) -> Option<bool> {
+    pub fn block_state_has_block_entity(&self, state: BlockStateId) -> Option<bool> {
         self.pack.assets.registry.state(state)?;
         Some(self.res.facts().get(state).block_entity)
     }
@@ -272,10 +254,7 @@ impl<'a> BlockTables<'a> {
         Some(self.res.facts().get(state).solid_render)
     }
     /// `BlockState.isRedstoneConductor` for a state alone, not a block in a level.
-    pub fn block_state_is_redstone_conductor(
-        &self,
-        state: BlockStateId,
-    ) -> Option<bool> {
+    pub fn block_state_is_redstone_conductor(&self, state: BlockStateId) -> Option<bool> {
         self.res.behaviours().state_redstone_conductor(state)
     }
     /// `instanceof` for the vanilla classes of [`mod_api::BlockClass`], from the block's exported
@@ -306,10 +285,7 @@ impl<'a> BlockTables<'a> {
     }
 
     /// The properties of a resolved block, borrowed from the command registry.
-    pub fn block_state_definition(
-        &self,
-        block: BlockKey,
-    ) -> Option<StateProperties<'a>> {
+    pub fn block_state_definition(&self, block: BlockKey) -> Option<StateProperties<'a>> {
         let default = super::api_values::default_state(block)?;
         let state = self.pack.assets.registry.state(default)?;
         let properties = self.pack.block_registries.blocks.get(&state.name)?;

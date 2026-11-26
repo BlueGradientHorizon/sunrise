@@ -1,6 +1,5 @@
 //! The PvP & HUD page's options in the game (`sunrise_client::pvp`, `docs/pvp.md`). Each
 //! does nothing while it is off.
-use sunrise_gameplay_common::game::{Dim, Side};
 use std::sync::Arc;
 use sunrise_client::{
     extras::Corner,
@@ -11,6 +10,7 @@ use sunrise_client::{
     pvp_hud::{self, Combo, Durability, Icon, Key, Line, Widget},
 };
 use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::{Dim, Side};
 use sunrise_level::particle_options::ParticleType;
 use winit::event::MouseButton;
 
@@ -134,8 +134,13 @@ impl crate::game::ClientGame<'_> {
         };
         let [x, y, z] = hit.pos;
         let state = self.common.world.block(x, y, z);
-        let boxes =
-            self.outline_boxes_iter(&self.common.world, state, self.client.shulkers(), hit.pos, true);
+        let boxes = self.outline_boxes_iter(
+            &self.common.world,
+            state,
+            self.client.shulkers(),
+            hit.pos,
+            true,
+        );
         let uv = sunrise_client::gfx::lightning::white_uv(&self.client.gui.atlas.font.white());
         let [a, r, g, b] = argb.to_be_bytes();
         let color = u32::from_le_bytes([r, g, b, a]);
@@ -186,7 +191,10 @@ impl crate::game::ClientGame<'_> {
     /// else the world's. The world's own `day_time` and everything that plays by it stay.
     pub(in crate::game::client_side) fn view_day_time(&self) -> i64 {
         let fixed = self.client.settings.extras.pvp.tweaks.time;
-        sunrise_client::pvp::view_day_time(self.common.world.day_time, fixed.filter(|_| self.own_view()))
+        sunrise_client::pvp::view_day_time(
+            self.common.world.day_time,
+            fixed.filter(|_| self.own_view()),
+        )
     }
     /// The rain and thunder levels the frame draws (rain, the sky's colour and light, fog): PvP &
     /// HUD's weather, else the world's. Gameplay (riptide, mobs, crops) keeps the world's.
@@ -257,7 +265,9 @@ impl crate::game::ClientGame<'_> {
     /// A mouse press, counted for clicks per second while playing with a widget that shows them.
     pub(in crate::game::client_side) fn pvp_click(&mut self, button: MouseButton) {
         let hud = &self.client.settings.extras.pvp.hud;
-        if !(hud.cps || hud.keys) || self.client.screen != sunrise_gameplay_common::game::Screen::Playing {
+        if !(hud.cps || hud.keys)
+            || self.client.screen != sunrise_gameplay_common::game::Screen::Playing
+        {
             return;
         }
         let i = match button {
@@ -318,7 +328,11 @@ impl crate::game::ClientGame<'_> {
         let multiplayer = self.client.remote.is_some() && !self.has_singleplayer_server();
         // 0 shows nothing rather than `0 ms`: no measurement yet.
         let ping = self.own_latency().filter(|&ms| ms > 0 && multiplayer);
-        let coords = self.common.player.as_ref().filter(|_| !self.reduced_debug_info());
+        let coords = self
+            .common
+            .player
+            .as_ref()
+            .filter(|_| !self.reduced_debug_info());
         let coords = coords.map(|p| {
             let at = [p.position.x, p.position.y, p.position.z].map(|v| v.floor() as i32);
             (at, pvp_hud::facing(self.common.yaw))
@@ -329,7 +343,11 @@ impl crate::game::ClientGame<'_> {
             .then(|| server.map(str::to_owned));
         let now = self.client.started.elapsed().as_secs_f64();
         let fps = self.client.fps.round() as u32;
-        let position = self.common.player.as_ref().map(|p| (p.position.x, p.position.z));
+        let position = self
+            .common
+            .player
+            .as_ref()
+            .map(|p| (p.position.x, p.position.z));
         if hud.keys {
             let held = Key::ALL.map(|k| self.binding_held(k.mapping()));
             self.client.pvp.keys.held = held;
@@ -365,14 +383,15 @@ impl crate::game::ClientGame<'_> {
             let w = &mut state.effects;
             let rate = self.common.clock.rate();
             w.next.clear();
-            w.next.extend(self.common.potions.effects.list.iter().map(|e| {
-                let secs = if e.duration == -1 {
-                    -1
-                } else {
-                    (e.duration as f32 / rate) as i32
-                };
-                (e.id, e.amplifier, secs)
-            }));
+            w.next
+                .extend(self.common.potions.effects.list.iter().map(|e| {
+                    let secs = if e.duration == -1 {
+                        -1
+                    } else {
+                        (e.duration as f32 / rate) as i32
+                    };
+                    (e.id, e.amplifier, secs)
+                }));
             let names = &self.common.pack.names;
             w.refresh(|effects, lines| {
                 for &(id, amplifier, secs) in effects {
@@ -747,8 +766,10 @@ impl crate::game::ClientGame<'_> {
             false => s.item == held.item,
         };
         let slots = self.common.inventory.iter().map(Option::as_ref).enumerate();
-        let offhand =
-            std::iter::once((sunrise_gameplay_common::game::held_items::OFFHAND_SLOT, self.common.offhand.as_ref()));
+        let offhand = std::iter::once((
+            sunrise_gameplay_common::game::held_items::OFFHAND_SLOT,
+            self.common.offhand.as_ref(),
+        ));
         let mut found = slots
             .chain(offhand)
             .filter_map(|(i, s)| Some((i, s?)))

@@ -26,11 +26,7 @@ impl ServerGame<'_> {
         self.spawn_item(item, at, [0.0, 0.2, 0.0], 10);
     }
     /// `SulfurCube.mobInteract`. Returns whether the click was used.
-    pub fn interact_sulfur_cube(
-        &mut self,
-        index: usize,
-        item: &str,
-    ) -> bool {
+    pub fn interact_sulfur_cube(&mut self, index: usize, item: &str) -> bool {
         let m = &self.common.mobs[index];
         if m.species() != Species::SulfurCube || !m.alive() {
             return false;
@@ -55,7 +51,8 @@ impl ServerGame<'_> {
         let explosive = sulfur_cube::archetype(m).is_some_and(|a| a.explosion.is_some());
         if explosive && matches!(item, "minecraft:flint_and_steel" | "minecraft:fire_charge") {
             if !self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
             {
@@ -74,7 +71,10 @@ impl ServerGame<'_> {
         }
         if item == "minecraft:shears" && sulfur_cube::has_body(m) {
             // shear: out comes the block, and nothing is swallowed for 5 s.
-            let sheared = self.common.mobs[index].extra.body_stack().map(|s| s.item.clone());
+            let sheared = self.common.mobs[index]
+                .extra
+                .body_stack()
+                .map(|s| s.item.clone());
             self.eject_sulfur_block(index);
             self.common.mobs[index].extra.ints[3] = sulfur_cube::PICKUP_TIMER;
             self.sulfur_sound(index, "entity.sulfur_cube.eject");
@@ -143,9 +143,10 @@ impl ServerGame<'_> {
         self.remove_mob_now(id, false);
         // ItemUtils.createFilledResult.
         self.filled_result(filled);
-        if let (Some(player), Some(name)) =
-            (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-        {
+        if let (Some(player), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             self.native_player_bucket_entity(player, &name, id as i32, "minecraft:sulfur_cube");
         }
     }
@@ -154,7 +155,8 @@ impl ServerGame<'_> {
     /// their cached `explosionData`, which `primeWhenOnPoweredPosition` may
     /// use this tick although the body has changed since.
     pub fn sulfur_cubes_adopted_explosive(&self) -> Vec<(u32, i32)> {
-        self.common.mobs
+        self.common
+            .mobs
             .iter()
             .filter(|m| m.species() == Species::SulfurCube)
             .filter_map(|m| Some((m.id, sulfur_cube::adopted_explosion(m)?.0)))
@@ -168,7 +170,8 @@ impl ServerGame<'_> {
     /// `explosionData`, so the fuse is that body's, not the live one's.
     pub fn sulfur_cube_power_priming(&mut self, primable: &[(u32, i32)]) {
         if !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
         {
@@ -208,7 +211,8 @@ impl ServerGame<'_> {
     pub(in crate::game::server_side) fn burning_arrow_primes(&mut self, p: &Projectile, who: Who) {
         if !p.arrow.as_ref().is_some_and(|a| a.on_fire())
             || !self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
         {
@@ -225,7 +229,8 @@ impl ServerGame<'_> {
     /// inside hops to a block it can swallow within 8 and takes it in.
     pub fn sulfur_cube_pickups(&mut self) {
         let griefing = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING);
         for i in 0..self.common.mobs.len() {
@@ -242,7 +247,8 @@ impl ServerGame<'_> {
                 .inflate(sunrise_core::geometry::Vec3::new(8.0, 8.0, 8.0));
             let pos = m.position;
             let best = self
-                .common.dropped
+                .common
+                .dropped
                 .iter()
                 .enumerate()
                 .filter(|(_, e)| {

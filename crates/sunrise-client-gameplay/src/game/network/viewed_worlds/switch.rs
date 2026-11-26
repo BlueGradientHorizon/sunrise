@@ -82,7 +82,8 @@ impl ClientGame<'_> {
     fn keep_as_viewed(&mut self, slot: i32, cap: u32, seed: i64) {
         // Hidden ring slots are not part of the view the server is replacing this level with.
         let mut hidden = self
-            .common.world
+            .common
+            .world
             .chunks
             .resident_keys()
             .filter(|key| !self.common.world.chunks.contains_key(key))
@@ -96,7 +97,10 @@ impl ClientGame<'_> {
         // The mods' extra block models were for the player's level.
         self.common.world.clear_extra_models();
         let air = self.common.res.facts().air;
-        let world = std::mem::replace(&mut self.common.world, sunrise_gameplay_common::game::world_for_mods(air, seed));
+        let world = std::mem::replace(
+            &mut self.common.world,
+            sunrise_gameplay_common::game::world_for_mods(air, seed),
+        );
         let Some(r) = self.client.remote.as_mut() else {
             return;
         };

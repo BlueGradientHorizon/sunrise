@@ -2,8 +2,8 @@
 //! awards `Stats.ITEM_USED` once a filled bucket emptied into the world, and
 //! `CauldronInteractions`' bucket and bottle interactions award it next to
 //! their own cauldron statistic (washing a shulker box does not).
-use {sunrise_gameplay_common::game::Hit, sunrise_gameplay::game::game_tests::tests::server_game};
 use sunrise_items::items::ItemStack;
+use {sunrise_gameplay::game::game_tests::tests::server_game, sunrise_gameplay_common::game::Hit};
 
 const POS: [i32; 3] = [2, 4, 3];
 

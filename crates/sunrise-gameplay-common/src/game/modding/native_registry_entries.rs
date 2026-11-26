@@ -83,11 +83,17 @@ pub trait NativeRegistryReads<'g>: crate::game::SideGame<'g> {
     fn context_registry<'__loan>(
         &'__loan self,
         registry: &str,
-    ) -> Option<&std::collections::HashMap<String, serde_json::Value>> where 'g: '__loan {
+    ) -> Option<&std::collections::HashMap<String, serde_json::Value>>
+    where
+        'g: '__loan,
+    {
         self.active_providers().registry(registry)
     }
 
-    fn local_registry<'__loan>(&'__loan self, registry: &str) -> Option<LocalRegistry<'_>> where 'g: '__loan {
+    fn local_registry<'__loan>(&'__loan self, registry: &str) -> Option<LocalRegistry<'_>>
+    where
+        'g: '__loan,
+    {
         Some(match registry {
             "minecraft:enchantment" => {
                 LocalRegistry::Enchantments(self.active_enchantment_definitions())
@@ -98,9 +104,12 @@ pub trait NativeRegistryReads<'g>: crate::game::SideGame<'g> {
                 self.side_state(),
                 FunctionRegistry::Predicate,
             )?),
-            "minecraft:item_modifier" => LocalRegistry::Json(
-                ModdingSideOps::side_function_registry(self.side_state(), FunctionRegistry::ItemModifier)?,
-            ),
+            "minecraft:item_modifier" => {
+                LocalRegistry::Json(ModdingSideOps::side_function_registry(
+                    self.side_state(),
+                    FunctionRegistry::ItemModifier,
+                )?)
+            }
             "minecraft:slot_source" => LocalRegistry::Json(ModdingSideOps::side_function_registry(
                 self.side_state(),
                 FunctionRegistry::SlotSource,
@@ -178,11 +187,7 @@ pub trait NativeRegistryReads<'g>: crate::game::SideGame<'g> {
     }
 
     /// `RegistryAccess.lookup` followed by `HolderGetter.get`: unknown registry/entry is absent.
-    fn registry_entry(
-        &self,
-        registry: &str,
-        id: &str,
-    ) -> Option<RegistryEntry> {
+    fn registry_entry(&self, registry: &str, id: &str) -> Option<RegistryEntry> {
         let registry = normalized(registry);
         let id = normalized(id);
         self.registry_has_entry(&registry, &id).then_some(())?;
@@ -245,11 +250,7 @@ pub trait NativeRegistryReads<'g>: crate::game::SideGame<'g> {
 
     /// `Holder.is(TagKey)`: plain values are resolved again against the current table.
     /// An absent tag is false; an absent registry or entry is None.
-    fn registry_entry_in_tag(
-        &self,
-        entry: &RegistryEntry,
-        tag: &str,
-    ) -> Option<bool> {
+    fn registry_entry_in_tag(&self, entry: &RegistryEntry, tag: &str) -> Option<bool> {
         let registry = entry.registry.to_string();
         let id = entry.id.to_string();
         if registry == "minecraft:damage_type" && self.is_logical_server() {
@@ -285,7 +286,9 @@ pub trait NativeRegistryReads<'g>: crate::game::SideGame<'g> {
         }
         if registry == "minecraft:slot_source" {
             return Some(ModdingSideOps::side_slot_source_tag_contains(
-                self.side_state(), &tag, &id,
+                self.side_state(),
+                &tag,
+                &id,
             ));
         }
         if registry == "minecraft:villager_trade" {

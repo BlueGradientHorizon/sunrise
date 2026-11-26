@@ -2,14 +2,17 @@
 //! packet adopts a column and tells its load once the blocks are in; every route that frees a
 //! column (eviction, a radius shrink, the forget packet, level close) tells its unload, and the
 //! view centre moving away hides slots untold.
-use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
-use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_game_role_client};
 use mod_api::{ClientChunkLoadEvent, ClientChunkUnloadEvent, ClientHost, Hooks};
 use std::sync::Mutex;
+use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
+use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 use sunrise_protocol::{
     chunk::{ChunkData, LightData, Paletted, Section, Strategy},
     packets::play::{LevelChunkWithLight, SpawnInfo},
+};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_game_role_client,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
 };
 
 /// What each event saw: its name, dimension, chunk and the block id at the chunk's corner
@@ -59,7 +62,8 @@ fn with_client(f: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>
 
 fn with_loopback(f: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
     let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-    let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+    let root =
+        sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
     with_game_role_client(
         root.prepared().to_path_buf(),
         ExecutionRole::Client,
@@ -96,7 +100,11 @@ fn overworld() -> SpawnInfo {
 }
 
 /// A chunk packet for column `(x, z)` with stone at its local `(0, 64, 0)`.
-fn stone_column(game: &sunrise_client_gameplay::game::ClientGame<'_>, x: i32, z: i32) -> LevelChunkWithLight {
+fn stone_column(
+    game: &sunrise_client_gameplay::game::ClientGame<'_>,
+    x: i32,
+    z: i32,
+) -> LevelChunkWithLight {
     let air = game.res.facts().air.0 as i32;
     let stone = game
         .pack

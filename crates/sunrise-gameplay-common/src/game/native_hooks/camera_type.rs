@@ -1,13 +1,10 @@
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod camera_type_tests {
     use mod_api::{CameraType, CameraTypeCycleEvent, ClientHost, Hooks};
     use std::sync::{Arc, Mutex};
 
     /// Skips the front view: F5 goes first person, behind, first person.
-    pub struct NoFront(
-        pub Arc<Mutex<Vec<(CameraType, CameraType)>>>,
-    );
+    pub struct NoFront(pub Arc<Mutex<Vec<(CameraType, CameraType)>>>);
     #[mod_api::__subscriptions]
     impl Hooks for NoFront {
         fn camera_type_cycle(

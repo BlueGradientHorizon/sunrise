@@ -2,9 +2,9 @@
 //! goal's water search, iron golem spawning) read the shape its block entity publishes,
 //! on the #1666 fixture.
 use super::published_shape_game_tests::{BUS, FULL, HALF, SMALL, place, shapes, with_bus};
-use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
 use mod_api::*;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
 use sunrise_sim::mobs::goals::{Cx, Goal, Panic};
 use sunrise_sim::mobs::{Mob, illager, villager};
 

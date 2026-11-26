@@ -15,8 +15,8 @@
 //! sits on the focused widget, hidden), so every screen keeps its mouse
 //! behaviour (drags, sliders, scrollbars, hover highlights) with no pad code
 //! of its own.
-use super::event_loop::EventLoopCtl;
 use super::Screen;
+use super::event_loop::EventLoopCtl;
 use crate::game::client_side::key_codes::glfw_modifiers;
 use crate::game::client_side::key_focus::{self, Act, Nav};
 use std::time::Instant;
@@ -900,7 +900,9 @@ impl crate::game::ClientGame<'_> {
         }
         // A with nothing focused lands the focus, as the D-pad does: nothing
         // fires on a widget the player hasn't seen highlighted.
-        if button == Button::South && self.pad_focus_mode() && self.client.pad.0.menu.focus.is_none()
+        if button == Button::South
+            && self.pad_focus_mode()
+            && self.client.pad.0.menu.focus.is_none()
         {
             let targets = self.pad_targets();
             if let Some(first) = self.pad_first_target(&targets) {
@@ -1001,7 +1003,8 @@ impl crate::game::ClientGame<'_> {
                     && self.client.title.0.is_none() =>
             {
                 self.pad_take_pointer(event_loop);
-                if self.client.screen != Screen::Creative || !self.client.creative_screen.0.tab().search
+                if self.client.screen != Screen::Creative
+                    || !self.client.creative_screen.0.tab().search
                 {
                     if button == Button::LeftStick {
                         self.pad_with_modifier(KeyCode::ControlLeft, |game| {
@@ -1282,7 +1285,13 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         let size = self.gui_size();
-        if let Some(title) = self.client.title.0.as_mut().filter(|t| t.focus_selects_row()) {
+        if let Some(title) = self
+            .client
+            .title
+            .0
+            .as_mut()
+            .filter(|t| t.focus_selects_row())
+        {
             title.focus_world_row(target.center(), size);
         }
     }
@@ -1295,11 +1304,11 @@ impl crate::game::ClientGame<'_> {
         }
         let size = self.gui_size();
         let mut moved = target;
-        if let Some(dy) = self
-            .client
-            .chat_ui
-            .options
-            .reveal(&self.client.settings, size, target.rect)
+        if let Some(dy) =
+            self.client
+                .chat_ui
+                .options
+                .reveal(&self.client.settings, size, target.rect)
         {
             moved.rect[1] += dy;
             self.client.pad.0.menu.revealed = Some(widgets::generation());
@@ -1536,7 +1545,8 @@ impl crate::game::ClientGame<'_> {
         // A real mouse move hands the pointer back. The keyboard's focus
         // stays where the next Tab or arrow goes on from.
         if let Some(at) = self.client.pad.0.menu.pos
-            && ((at.0 - self.client.cursor.0).abs() > 0.5 || (at.1 - self.client.cursor.1).abs() > 0.5)
+            && ((at.0 - self.client.cursor.0).abs() > 0.5
+                || (at.1 - self.client.cursor.1).abs() > 0.5)
         {
             self.client.pad.0.menu.pos = None;
             let focus = self.client.pad.0.menu.focus.take();
@@ -1588,7 +1598,8 @@ impl crate::game::ClientGame<'_> {
                 }
                 self.client.pad.0.menu.stick = dir;
                 if let Some(button) = dir {
-                    if self.client.pad.0.menu.pos.is_none() && self.client.pad.0.menu.osk.is_none() {
+                    if self.client.pad.0.menu.pos.is_none() && self.client.pad.0.menu.osk.is_none()
+                    {
                         self.pad_take_pointer(event_loop);
                     } else {
                         self.client.pad.0.menu.repeats = 0;
@@ -1801,7 +1812,8 @@ impl crate::game::ClientGame<'_> {
                         .and_then(|focus| found(focus.rect))
                 })
                 .map(|i| targets[i]);
-        } else if self.client.pad.0.menu.pos.is_some() && self.client.pad.0.menu.held == [false; 2] {
+        } else if self.client.pad.0.menu.pos.is_some() && self.client.pad.0.menu.held == [false; 2]
+        {
             let at = self.client.cursor;
             let on = before.iter().find(|r| {
                 (r[0] + r[2] / 2.0 - at.0).abs() <= 0.5 && (r[1] + r[3] / 2.0 - at.1).abs() <= 0.5
@@ -1843,7 +1855,9 @@ impl crate::game::ClientGame<'_> {
     /// name was read from. The keyboard's focus keeps to the rectangles it always followed.
     fn pad_named_focus(&self, focus: Target, rects: &[Rect]) -> Option<usize> {
         let named = self.client.pad.0.menu.focus_name.as_ref().filter(|n| {
-            !self.client.pad.0.menu.keyboard && n.rect == focus.rect && n.screen == self.key_screen()
+            !self.client.pad.0.menu.keyboard
+                && n.rect == focus.rect
+                && n.screen == self.key_screen()
         })?;
         named_target(&named.name, &widgets::last_labelled(), rects)
     }
@@ -1912,7 +1926,8 @@ impl crate::game::ClientGame<'_> {
             let mut from = p.from;
             let step = if let Some(dy) = shift {
                 from[1] += dy;
-                self.client.pad.0.menu.focus = gamepad::refind(from, &rects, 2.0).map(|i| targets[i]);
+                self.client.pad.0.menu.focus =
+                    gamepad::refind(from, &rects, 2.0).map(|i| targets[i]);
                 gamepad::list_step(from, p.button, &rects, &areas)
             } else {
                 gamepad::focus_step_rect(p.from, p.button, &rects)
@@ -2007,7 +2022,8 @@ impl crate::game::ClientGame<'_> {
                 self.client.pad.0.menu.focus = if self.prompt_open() {
                     self.pad_first_target(targets)
                 } else {
-                    gamepad::nearest(self.client.cursor, &centres, f32::INFINITY).map(|i| targets[i])
+                    gamepad::nearest(self.client.cursor, &centres, f32::INFINITY)
+                        .map(|i| targets[i])
                 };
             }
         }
@@ -2036,8 +2052,8 @@ impl crate::game::ClientGame<'_> {
         // A text field the keyboard focused keeps the pointer where its
         // click put the caret.
         let [x, y, w, h] = focus.rect;
-        let inside =
-            (x..x + w).contains(&self.client.cursor.0) && (y..y + h).contains(&self.client.cursor.1);
+        let inside = (x..x + w).contains(&self.client.cursor.0)
+            && (y..y + h).contains(&self.client.cursor.1);
         if self.client.pad.0.menu.keyboard
             && matches!(focus.kind, Kind::Field | Kind::Mounted { field: true, .. })
             && inside
@@ -2141,7 +2157,10 @@ impl crate::game::ClientGame<'_> {
         let playing_screen = |screen| self.client.title.0.is_none() && self.client.screen == screen;
         playing_screen(Screen::Chat)
             || self.client.sign_edit.is_some()
-            || matches!(self.client.book, Some(super::books::BookScreen::Edit { .. }))
+            || matches!(
+                self.client.book,
+                Some(super::books::BookScreen::Edit { .. })
+            )
             || (playing_screen(Screen::Creative) && self.client.creative_screen.0.tab().search)
             || self.recipe_search_focused()
             || self.mod_browser_typing()
@@ -2168,11 +2187,7 @@ impl crate::game::ClientGame<'_> {
     /// widget's own keys come first (a text field's caret, a slider's
     /// value). Whether the key was used; when not, the screen has it (a
     /// container also has Tab and the arrows once they moved the focus).
-    pub fn key_focus_key(
-        &mut self,
-        event_loop: &dyn EventLoopCtl,
-        key: KeyCode,
-    ) -> Option<bool> {
+    pub fn key_focus_key(&mut self, event_loop: &dyn EventLoopCtl, key: KeyCode) -> Option<bool> {
         if self
             .client
             .title
@@ -2255,7 +2270,12 @@ impl crate::game::ClientGame<'_> {
         let ctx = key_focus::Context {
             slider_edit,
             typing: self.edit_box_focused(),
-            rows_take_enter: self.client.title.0.as_ref().is_some_and(|t| t.list_focused()),
+            rows_take_enter: self
+                .client
+                .title
+                .0
+                .as_ref()
+                .is_some_and(|t| t.list_focused()),
             gui: self.gui_size(),
         };
         let act = if dialog && matches!(nav, Nav::Tab { .. }) {
@@ -2711,7 +2731,9 @@ impl crate::game::ClientGame<'_> {
             self.sign_input(key, text);
         } else if self.client.book.is_some() {
             self.book_input(key, text);
-        } else if self.client.screen == Screen::Creative && self.client.creative_screen.0.tab().search {
+        } else if self.client.screen == Screen::Creative
+            && self.client.creative_screen.0.tab().search
+        {
             if backspace {
                 self.creative_search_backspace(false);
             } else if key != Some(KeyCode::Enter) {
@@ -2763,7 +2785,10 @@ impl crate::game::ClientGame<'_> {
         } else if self.client.screen == Screen::Options {
             let result = match text {
                 Some(t) => {
-                    self.client.chat_ui.options.type_text(&self.client.gui.atlas, t);
+                    self.client
+                        .chat_ui
+                        .options
+                        .type_text(&self.client.gui.atlas, t);
                     Ok(())
                 }
                 None => self.options_key(key.expect("a key"), None).map(|_| ()),
@@ -2828,8 +2853,11 @@ impl crate::game::ClientGame<'_> {
                 .focus
                 .is_some_and(|f| f.center().1 > batch.height / 2.0)
                 || self.client.screen == Screen::Chat;
-            let mut ui =
-                sunrise_client::ui_theme::Ui::new(&self.client.gui.atlas, batch, self.client.cursor);
+            let mut ui = sunrise_client::ui_theme::Ui::new(
+                &self.client.gui.atlas,
+                batch,
+                self.client.cursor,
+            );
             let options = &self.client.chat_ui.options;
             keyboard.draw(
                 &mut ui,

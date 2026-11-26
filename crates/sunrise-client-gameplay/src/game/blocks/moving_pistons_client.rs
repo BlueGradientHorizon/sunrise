@@ -68,7 +68,8 @@ impl ClientGame<'_> {
         if name == "minecraft:piston_head" {
             let short = if progress <= 0.5 { "true" } else { "false" };
             return Some((
-                self.common.with_props(piston.moved_state, &[("short", short)])?,
+                self.common
+                    .with_props(piston.moved_state, &[("short", short)])?,
                 None,
             ));
         }
@@ -89,28 +90,27 @@ impl ClientGame<'_> {
                 registry.default_state("minecraft:piston_head")?,
                 &[("type", kind), ("facing", &facing), ("short", short)],
             )?;
-            let base = self.common.with_props(piston.moved_state, &[("extended", "true")])?;
+            let base = self
+                .common
+                .with_props(piston.moved_state, &[("extended", "true")])?;
             return Some((head, Some(base)));
         }
         Some((piston.moved_state, None))
     }
     /// `PistonHeadRenderer.extractRenderState` and `submit`.
-    pub fn moving_piston_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-    ) {
+    pub fn moving_piston_geometry(&self, camera: glam::DVec3, alpha: f64, out: &mut Vec<Vertex>) {
         let partial = alpha as f32;
         let live = self
-            .common.world
+            .common
+            .world
             .moving_pistons
             .iter()
             .map(|&(p, s)| (p, s, false));
         // A piston that just finished bridges the frames until the chunk mesh
         // shows the block it placed; drawn over that mesh, it z-fights (#3002).
         let finished = self
-            .common.world
+            .common
+            .world
             .moving_piston_fallback
             .iter()
             .filter(|(p, _)| self.section_mesh_pending(*p))
@@ -154,7 +154,8 @@ impl ClientGame<'_> {
     /// Whether the chunk mesh doesn't show the blocks at `p` yet (edited,
     /// meshing, or waiting for its upload).
     pub(in crate::game::client_side) fn section_mesh_pending(&self, p: [i32; 3]) -> bool {
-        self.common.section_of(p)
+        self.common
+            .section_of(p)
             .is_some_and(|section| self.section_mesh_pending_in(section))
     }
     /// [`Self::section_mesh_pending`] for a section already found.

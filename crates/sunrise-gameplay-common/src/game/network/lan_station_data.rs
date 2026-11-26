@@ -3,9 +3,7 @@ use sunrise_sim::menu::Kind;
 
 /// The `MenuType`, the engine's menu and the input slots
 /// (`clearContainer`'s container) of a station a guest can use.
-pub fn menu_of(
-    kind: StationKind,
-) -> Option<(&'static str, Kind, std::ops::Range<usize>)> {
+pub fn menu_of(kind: StationKind) -> Option<(&'static str, Kind, std::ops::Range<usize>)> {
     Some(match kind {
         StationKind::Loom => ("minecraft:loom", Kind::Loom, 0..3),
         StationKind::Stonecutter => ("minecraft:stonecutter", Kind::Stonecutter, 0..1),

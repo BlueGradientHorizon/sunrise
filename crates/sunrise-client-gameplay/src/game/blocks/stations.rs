@@ -1225,10 +1225,7 @@ impl crate::game::ClientGame<'_> {
 
     /// `ItemStack.getTooltipLines` subset: name in rarity colour, lore,
     /// potion effects, enchantments (gray, curses red), stored enchantments, trims.
-    pub fn stack_tooltip(
-        &self,
-        stack: &ItemStack,
-    ) -> Vec<(sunrise_game_data::text::Text, u32)> {
+    pub fn stack_tooltip(&self, stack: &ItemStack) -> Vec<(sunrise_game_data::text::Text, u32)> {
         self.stack_tooltip_lines(stack, false, false)
     }
     /// The same rarity colour in the GUI batch's packed RGBA format.
@@ -1820,9 +1817,7 @@ impl crate::game::ClientGame<'_> {
         )
     }
 
-    pub fn draw_tooltip_lines_positioned<
-        T: Clone + Into<sunrise_game_data::text::Text>,
-    >(
+    pub fn draw_tooltip_lines_positioned<T: Clone + Into<sunrise_game_data::text::Text>>(
         &self,
         batch: &mut HudBatch,
         lines: &[(T, u32)],
@@ -2116,7 +2111,7 @@ impl crate::game::ClientGame<'_> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     #[cfg(any())]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn spawn_egg_tooltip_warns_for_the_mod_type_in_peaceful() {
         use crate::game::{commands::peaceful_tests, execution_role::ExecutionRole};

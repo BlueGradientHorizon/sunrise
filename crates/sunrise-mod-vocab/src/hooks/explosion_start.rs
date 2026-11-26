@@ -7,7 +7,8 @@ pub trait Hooks {
     /// wind bursts. Set `cancel` and nothing of it happens: no blocks, no
     /// damage or knockback, no sound, particles or game event. Before
     /// `explosion_prime`, which a cancel skips. Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::explosion_start::ServerGame<'_>::native_explosion_start", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::explosion_start::ServerGame<'_>::native_explosion_start",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

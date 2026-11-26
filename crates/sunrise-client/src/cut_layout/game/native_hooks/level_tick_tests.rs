@@ -1,22 +1,28 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_hooks::base::GameHooks;
-use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
-    use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
     use mod_api::{Hooks, HostSide, LevelRef, LevelTickPostEvent, LevelTickPreEvent, ModEntry};
     use std::sync::{Arc, Mutex};
     use sunrise_client::level_loading::Reason;
+    use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_hooks::base::GameHooks;
     use sunrise_protocol::{connection::Pipe, packets::play::SpawnInfo};
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle,
+    };
 
     #[test]
     #[ignore = "daily"]
     fn server_hook_resolves_uuid_only_while_the_entity_is_in_its_active_level() {
-        use {sunrise_gameplay_common::game::Dim, sunrise_gameplay::game::native_entity_refs::tests::with_game};
         use mod_api::EntityUuid;
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::mobs::Mob;
+        use {
+            sunrise_gameplay::game::native_entity_refs::tests::with_game,
+            sunrise_gameplay_common::game::Dim,
+        };
 
         const UUID: EntityUuid = EntityUuid(0x0123_4567_89ab_cdef_1020_3040_ffff_ffff);
 

@@ -22,7 +22,10 @@ impl crate::game::ClientGame<'_> {
             return false;
         }
         // `SmithingScreen.containerTick`: the icons of the empty slots follow the template.
-        let (now, partial) = (self.visual_ticks(), self.common.clock.camera_fraction() as f32);
+        let (now, partial) = (
+            self.visual_ticks(),
+            self.common.clock.camera_fraction() as f32,
+        );
         if let Some((s, ui)) = self
             .station_and_ui_mut()
             .filter(|(s, _)| s.kind == Kind::Smithing)
@@ -106,7 +109,8 @@ impl crate::game::ClientGame<'_> {
             let default = self.translate_with_fallback("container.brewing", "Brewing Stand");
             let title = self.remote_menu_title().unwrap_or_else(|| {
                 let named = self
-                    .common.station
+                    .common
+                    .station
                     .as_ref()
                     .and_then(|s| self.common.block_name_plain((s.pos[0], s.pos[1], s.pos[2])));
                 Text::literal(named.unwrap_or(default)).resolve_legacy()
@@ -219,7 +223,8 @@ impl crate::game::ClientGame<'_> {
                             })
                             .collect();
                         let message = words.join(" ");
-                        let disabled = (gold < i as i32 + 1 || level < cost) && !self.common.creative;
+                        let disabled =
+                            (gold < i as i32 + 1 || level < cost) && !self.common.creative;
                         let col: i32 = if disabled {
                             batch.sprite_scaled(
                                 atlas,

@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use mod_api::EntityRef;
 use mod_api::MinecartKind;
@@ -8,27 +6,37 @@ use sunrise_gameplay_common::game::minecarts::CartKind;
 use sunrise_gameplay_common::game::minecarts::Minecart;
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::WorldEpoch;
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Tag;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use sunrise_sim::entities::ArmorStand;
 
-    fn spawn(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32, kind: CartKind) -> MinecartRef {
+    fn spawn(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        id: u32,
+        kind: CartKind,
+    ) -> MinecartRef {
         game.carts.push(Minecart::new(id, kind, Vec3::ZERO));
         game.minecart(game.entity(id).unwrap()).unwrap()
     }
 
     #[test]
     fn furnace_fuel_adds_with_java_int_arithmetic() {
-        assert_eq!(sunrise_gameplay_common::game::minecarts::furnace_fuel_after(0), Some(3600));
+        assert_eq!(
+            sunrise_gameplay_common::game::minecarts::furnace_fuel_after(0),
+            Some(3600)
+        );
         assert_eq!(
             sunrise_gameplay_common::game::minecarts::furnace_fuel_after(28_400),
             Some(32_000)
         );
-        assert_eq!(sunrise_gameplay_common::game::minecarts::furnace_fuel_after(28_401), None);
+        assert_eq!(
+            sunrise_gameplay_common::game::minecarts::furnace_fuel_after(28_401),
+            None
+        );
         assert_eq!(
             sunrise_gameplay_common::game::minecarts::furnace_fuel_after(i32::MAX),
             Some(i32::MIN + 3599)

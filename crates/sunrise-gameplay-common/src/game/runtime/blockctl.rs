@@ -65,7 +65,7 @@ pub trait BlockctlGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         }
         Ok(())
     }
-     fn block_command_local(&mut self, words: &[&str]) -> Result<Option<Value>> {
+    fn block_command_local(&mut self, words: &[&str]) -> Result<Option<Value>> {
         if !self.is_logical_server() && matches!(words.first(), Some(&("setblock" | "fill"))) {
             return Err("cannot modify blocks without a world connection".into());
         }
@@ -160,7 +160,6 @@ pub trait BlockctlGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> BlockctlGameExt1<'__sg> for G {}
-
 
 use crate::game::GameGameExt1 as _;
 

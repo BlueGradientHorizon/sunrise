@@ -35,7 +35,8 @@ The sampler asks the per-block table whether the picked state's block has a part
 nowhere the sampler asks nothing. `random` is the level's random itself: the part's draws and the game's own
 during the call (`host.add_particle`'s roll under the Decreased Particles option) move the one stream in call
 order. It never runs on a server, and a screen's block scene (`animate_scene`) does not call it."##]
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::animate_tick::ClientGame<'_>::native_animate_tick", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::animate_tick::ClientGame<'_>::native_animate_tick",
         side = "client",
         contract = "listen",
         scope = "block",

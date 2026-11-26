@@ -94,7 +94,11 @@ pub(crate) use crate::game::client_side::remote_client::raw_ingress::post_effect
 fn post_effects_before_login_disconnects_with_packet_error_26_3() {
     const NAME: &str = "game::remote::raw_ingress::post_effects_parity_tests::post_effects_before_login_disconnects_with_packet_error_26_3";
     const FLAG: &str = "SUNRISE_POST_EFFECTS_BEFORE_LOGIN_CASE";
-    if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(NAME, FLAG, &["empty", "nonempty"]) {
+    if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
+        NAME,
+        FLAG,
+        &["empty", "nonempty"],
+    ) {
         return;
     }
     let case_name = std::env::var(FLAG).unwrap();

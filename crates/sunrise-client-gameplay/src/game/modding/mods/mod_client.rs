@@ -1,12 +1,14 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::mods::ModsReload;
-use sunrise_gameplay_common::game::mods::ModsState;
-use sunrise_gameplay_common::game::owner_link::OwnerRequest;
-use sunrise_gameplay_common::game::{execution_role::ExecutionRole, mods::standalone::collect_standalone_models};
 #[allow(unused_imports)]
 use mod_api::__private::game::*;
 use mod_api::RegistrationContext;
 use sunrise_game_data::lang;
+use sunrise_gameplay_common::game::mods::ModsReload;
+use sunrise_gameplay_common::game::mods::ModsState;
+use sunrise_gameplay_common::game::owner_link::OwnerRequest;
+use sunrise_gameplay_common::game::{
+    execution_role::ExecutionRole, mods::standalone::collect_standalone_models,
+};
 
 #[path = "package_files_client.rs"]
 pub(in crate::game) mod package_files;
@@ -16,7 +18,8 @@ impl ClientGame<'_> {
     /// The content mods the resources load with: the ones applied, which a
     /// switch that needs a restart doesn't change.
     pub(in crate::game) fn applied_mods(&self) -> std::collections::BTreeSet<String> {
-        self.common.mods
+        self.common
+            .mods
             .applied
             .clone()
             .unwrap_or_else(|| self.client.settings.mods.enabled.clone())
@@ -97,7 +100,8 @@ impl ClientGame<'_> {
             }
         }
         let (_, host_waiting) = self
-            .common.mods
+            .common
+            .mods
             .reconcile_code_switches(&self.client.settings.mods.disabled);
         for id in host_waiting {
             log::info!("Sunrise: serving host mod {id} needs a restart to switch");
@@ -191,7 +195,10 @@ pub fn register_layer_definitions(
     );
     sunrise_client::mobs::model_layers::register(suppliers, vanilla_root)?;
     let mut models = Vec::new();
-    sunrise_gameplay_common::game::native_hooks::native_create_skull_models(&RegistrationContext::new(), &mut models);
+    sunrise_gameplay_common::game::native_hooks::native_create_skull_models(
+        &RegistrationContext::new(),
+        &mut models,
+    );
     sunrise_client::skull_models::register(models, vanilla_root);
     Ok(())
 }
@@ -382,9 +389,7 @@ pub(in crate::game) fn register_special_model_renderers() {
 /// The client presentation registrations, kept once at start, before resources load: the
 /// dimension transition screens, the entity spectator shaders, the render pipelines and the entity
 /// renderers.
-pub fn register_client_presentations(
-    role: ExecutionRole,
-) -> sunrise_game_data::Result<()> {
+pub fn register_client_presentations(role: ExecutionRole) -> sunrise_game_data::Result<()> {
     register_preset_editors(role);
     register_dimension_transition_screens(role);
     register_entity_spectator_shaders(role);
@@ -683,17 +688,13 @@ mod tests {
                             measures: Default::default(),
                         },
                     ]);
-                    super::register_fluid_models(
-                        ExecutionRole::Client,
-                    );
+                    super::register_fluid_models(ExecutionRole::Client);
                     assert_eq!(
                         sunrise_client::fluid_models::resolved()[0].still,
                         "reload_fluid:block/oil_0"
                     );
                     generation.store(1, Ordering::SeqCst);
-                    super::register_fluid_models(
-                        ExecutionRole::Client,
-                    );
+                    super::register_fluid_models(ExecutionRole::Client);
                     assert_eq!(
                         sunrise_client::fluid_models::resolved()[0].still,
                         "reload_fluid:block/oil_1"
@@ -741,15 +742,9 @@ mod tests {
                         ExecutionRole::IntegratedServer,
                         ExecutionRole::DedicatedServer,
                     ] {
-                        assert_eq!(
-                            super::collect_fluid_models(server),
-                            None
-                        );
+                        assert_eq!(super::collect_fluid_models(server), None);
                     }
-                    let models = super::collect_fluid_models(
-                        ExecutionRole::Client,
-                    )
-                    .unwrap();
+                    let models = super::collect_fluid_models(ExecutionRole::Client).unwrap();
                     assert_eq!(models.len(), 1);
                     assert_eq!(models[0].fluid, "registration_test:oil");
                     assert_eq!(

@@ -1,20 +1,18 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
-use sunrise_gameplay_common::game::weather::WeatherGameExt;
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
-use sunrise_gameplay_common::game::Dim;
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use super::super::native_entity_refs::tests::{run_fresh_cases, with_client_game, with_game};
-    use sunrise_gameplay_common::world_biomes;
     use mod_api::{ChunkRef, LevelRef, LightLayer, WorldEpoch};
     use sunrise_core::position::BlockPos;
+    use sunrise_gameplay_common::game::Dim;
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+    use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
+    use sunrise_gameplay_common::game::weather::WeatherGameExt;
+    use sunrise_gameplay_common::world_biomes;
 
     #[test]
     #[ignore = "daily"]
@@ -334,8 +332,10 @@ use sunrise_gameplay_common::game::Dim;
             );
             // SetWorldSpawnCommand in another level: the world spawn moves there, and every
             // level's handle reads it with that level.
-            game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
-            game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+                .unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
+                .unwrap();
             assert!(nether.set_respawn_data(game, [3, 40, 9], 0.0, 0.0));
             for handle in [level, nether] {
                 let data = handle.respawn_data(game).unwrap();
@@ -352,7 +352,12 @@ use sunrise_gameplay_common::game::Dim;
             );
 
             // A map repainted through the handle reads back and is marked to save and redraw.
-            let fresh = sunrise_gameplay_common::game::maps::MapData::fresh(0.0, 0.0, 0, "minecraft:overworld");
+            let fresh = sunrise_gameplay_common::game::maps::MapData::fresh(
+                0.0,
+                0.0,
+                0,
+                "minecraft:overworld",
+            );
             let id = game.new_map_id(fresh);
             let mut colors = level.map_data(game, id).unwrap().colors;
             assert_eq!(colors.len(), 128 * 128);
@@ -594,7 +599,10 @@ use sunrise_gameplay_common::game::Dim;
     /// A stone floor under chunk (0, 0) at `y - 1` and the standing level `y` returned, with
     /// `fluids` placed `dy` blocks above it: each a block id and its `level` property (0 is a
     /// source).
-    fn pool(game: &mut sunrise_gameplay::game::ServerGame<'_>, fluids: &[([i32; 3], &str, &str)]) -> i32 {
+    fn pool(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        fluids: &[([i32; 3], &str, &str)],
+    ) -> i32 {
         use std::sync::Arc;
         use sunrise_level::chunk::Chunk;
 
@@ -1029,10 +1037,10 @@ use sunrise_gameplay_common::game::Dim;
     #[test]
     #[ignore = "daily"]
     fn a_level_rng_draws_survive_transaction_abort_on_active_and_parked_levels() {
-        use sunrise_gameplay::game::journal_level_write::JournalLevelWrite;
         use mod_api::ObjectiveRenderType;
         use sunrise_core::random::{LegacyRandom, LevelRandom, RandomSource};
         use sunrise_game_data::text::Text;
+        use sunrise_gameplay::game::journal_level_write::JournalLevelWrite;
 
         with_game(|game| {
             let here = game.dim;
@@ -1404,7 +1412,8 @@ use sunrise_gameplay_common::game::Dim;
             assert!(!overlap.remove(game));
             drop(guard);
             // The client cannot query or mutate the server's in-memory marks.
-            game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+            game.options.execution_role =
+                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
             let guard = in_mod("machines");
             assert!(!nether.has_water_ticket(game, [0, 64, 0]));
             assert!(
@@ -1650,7 +1659,10 @@ use sunrise_gameplay_common::game::Dim;
     }
 
     /// The result `/forceload query` gives: the chunks listed, or 0 when it reports none.
-    fn query_result(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> Option<i32> {
+    fn query_result(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        command: &str,
+    ) -> Option<i32> {
         let d = game.ui.dispatcher.0.clone();
         let parse = d.parse(command, &game.ui.registries);
         let (ctx, _) = parse.executable().ok()?;
@@ -1996,7 +2008,9 @@ use sunrise_gameplay_common::game::Dim;
                 saved("machines:plain", [1, 64, 1], (10, 10)),
                 saved("other:vault", [1, 64, 1], (11, 11)),
             ];
-            game.server.streaming.load_forced(Default::default(), tickets);
+            game.server
+                .streaming
+                .load_forced(Default::default(), tickets);
             assert!(
                 game.server.streaming.forced.is_empty(),
                 "loaded, not yet validated"
@@ -2063,7 +2077,12 @@ use sunrise_gameplay_common::game::Dim;
                 let back = game.dim;
                 game.enter_level(other).unwrap();
                 game.enter_level(back).unwrap();
-                let parked = game.server.levels.0.parked_streaming_of(other.id()).unwrap();
+                let parked = game
+                    .server
+                    .levels
+                    .0
+                    .parked_streaming_of(other.id())
+                    .unwrap();
                 assert!(!parked.forced.contains(&(7, 7)));
                 assert!(parked.forced.contains(&(8, 8)));
                 assert!(game.levels_to_tick().contains(&other));
@@ -2082,7 +2101,9 @@ use sunrise_gameplay_common::game::Dim;
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 let tickets = vec![saved("idle:quarry", [1, 64, 1], (7, 7))];
-                game.server.streaming.load_forced(Default::default(), tickets);
+                game.server
+                    .streaming
+                    .load_forced(Default::default(), tickets);
                 game.validate_mod_chunk_tickets(game.dim);
                 assert!(game.server.streaming.forced.contains(&(7, 7)));
             });
@@ -2101,7 +2122,9 @@ use sunrise_gameplay_common::game::Dim;
                 assert!(game.chunk_set_mod_forced(live, quarry(), owner, true, false));
             }
             let tickets = vec![saved("machines:quarry", [1, 64, 1], (7, 7))];
-            game.server.streaming.load_forced(Default::default(), tickets);
+            game.server
+                .streaming
+                .load_forced(Default::default(), tickets);
             // `level_load` runs after the load: its hold is the same owner's.
             let fresh = game.level_chunk_ref(level, [6, 6]).unwrap();
             {
@@ -2210,13 +2233,17 @@ use sunrise_gameplay_common::game::Dim;
 
 #[cfg(test)]
 pub(crate) mod environment_read_tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::weather::WeatherGameExt;
-use {sunrise_gameplay_common::game::Dim, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use mod_api::{BiomeSearch, LevelRef, WorldEpoch};
     use std::sync::Arc;
-    use sunrise_level::chunk::Chunk;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::weather::WeatherGameExt;
     use sunrise_gameplay_common::world_biomes;
+    use sunrise_level::chunk::Chunk;
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game,
+        sunrise_gameplay_common::game::Dim,
+    };
 
     fn paint_biome(game: &mut sunrise_gameplay_common::game::CommonGame<'_>, name: &str) {
         let biome = world_biomes!(game).id(name);
@@ -2238,7 +2265,7 @@ use {sunrise_gameplay_common::game::Dim, crate::game::server_side::native_entity
     }
 
     pub(crate) fn run_biome_reads_follow_live_cells_parked_levels_and_client_login_without_loading()
-     {
+    {
         use sunrise_protocol::connection::Pipe;
 
         with_game(|game| {
@@ -2314,8 +2341,7 @@ use {sunrise_gameplay_common::game::Dim, crate::game::server_side::native_entity
         run_floor_reads_real_collision_shapes_and_refuses_unloaded_positions();
     }
 
-    pub(crate) fn run_floor_reads_real_collision_shapes_and_refuses_unloaded_positions()
-     {
+    pub(crate) fn run_floor_reads_real_collision_shapes_and_refuses_unloaded_positions() {
         with_game(|game| {
             game.world
                 .chunks
@@ -2365,8 +2391,7 @@ use {sunrise_gameplay_common::game::Dim, crate::game::server_side::native_entity
         run_sky_and_logical_height_read_the_named_dimension_and_client_state();
     }
 
-    pub(crate) fn run_sky_and_logical_height_read_the_named_dimension_and_client_state()
-     {
+    pub(crate) fn run_sky_and_logical_height_read_the_named_dimension_and_client_state() {
         use sunrise_level::chunk::LevelShape;
         use sunrise_protocol::connection::Pipe;
 
@@ -2455,8 +2480,7 @@ use {sunrise_gameplay_common::game::Dim, crate::game::server_side::native_entity
         run_closest_biome_uses_the_named_generator_without_loading_resident_chunks();
     }
 
-    pub(crate) fn run_closest_biome_uses_the_named_generator_without_loading_resident_chunks()
-     {
+    pub(crate) fn run_closest_biome_uses_the_named_generator_without_loading_resident_chunks() {
         use sunrise_sim::vanillagen::{TerrainResources, VanillaTerrain};
 
         with_game(|game| {
@@ -2572,8 +2596,7 @@ use {sunrise_gameplay_common::game::Dim, crate::game::server_side::native_entity
         run_nearest_structure_uses_the_named_generator_without_loading_resident_chunks();
     }
 
-    pub(crate) fn run_nearest_structure_uses_the_named_generator_without_loading_resident_chunks()
-     {
+    pub(crate) fn run_nearest_structure_uses_the_named_generator_without_loading_resident_chunks() {
         use mod_api::StructureSearch;
         use sunrise_sim::vanillagen::{TerrainResources, VanillaTerrain};
 

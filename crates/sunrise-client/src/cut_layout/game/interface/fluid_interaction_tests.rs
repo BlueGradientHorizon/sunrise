@@ -1,8 +1,6 @@
 //! A mod's fluid interaction in a real game: lava beside the mod's fluid turns to the block it
 //! declared, `fluid_place_block` can veto it, vanilla's two lava rules stay first, and the water
 //! tag is read again when the tables are installed again.
-use sunrise_gameplay_common::game::GameGameExt1;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
 use mod_api::{
     Flow, FluidBecomes, FluidInteraction, FluidNeighbour, FluidPlaceBlockEvent, Hooks, LevelHost,
     ModEntry, PlacedState, Registrar, WorldFluid,
@@ -12,8 +10,13 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_items::items::TagRegistry;
 use sunrise_level::chunk::Chunk;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+};
 
 static VETO: AtomicBool = AtomicBool::new(false);
 
@@ -84,15 +87,16 @@ fn a_declared_interaction_runs_after_vanillas_and_a_veto_stops_it() {
         game.install_fluid_interactions().unwrap();
         // Lava at (x, 64, z) with `beside` to its east; the beside block's placement tells
         // its neighbours, as a block set does.
-        let meet_with = |game: &mut sunrise_gameplay::game::ServerGame<'_>, z: i32, liquid, beside| {
-            game.world.set(4, 64, z, liquid).unwrap();
-            game.world.set(5, 64, z, beside).unwrap();
-            let at = BlockPos::new(5, 64, z);
-            game.with_level(|b, level, ticks| {
-                b.update_neighbours_on_block_set(level, ticks, at, air)
-            });
-            game.world.block(4, 64, z)
-        };
+        let meet_with =
+            |game: &mut sunrise_gameplay::game::ServerGame<'_>, z: i32, liquid, beside| {
+                game.world.set(4, 64, z, liquid).unwrap();
+                game.world.set(5, 64, z, beside).unwrap();
+                let at = BlockPos::new(5, 64, z);
+                game.with_level(|b, level, ticks| {
+                    b.update_neighbours_on_block_set(level, ticks, at, air)
+                });
+                game.world.block(4, 64, z)
+            };
 
         let meet = |game: &mut sunrise_gameplay::game::ServerGame<'_>, z: i32, beside| {
             meet_with(game, z, lava, beside)
@@ -127,7 +131,9 @@ fn a_declared_interaction_runs_after_vanillas_and_a_veto_stops_it() {
         // and with no world: nothing is placed and the hook is not asked.
         let read = |game: &sunrise_gameplay::game::ServerGame<'_>, liquid, beside, below| {
             let source = game.res.behaviours().fluid(liquid);
-            let source = sunrise_gameplay_common::game::native_world_read_common::api_fluid_state(source).unwrap();
+            let source =
+                sunrise_gameplay_common::game::native_world_read_common::api_fluid_state(source)
+                    .unwrap();
             game.fluid_interaction_result(source, beside, below)
         };
         let soul_soil = state("minecraft:soul_soil");

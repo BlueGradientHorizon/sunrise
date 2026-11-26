@@ -1,5 +1,3 @@
-
-
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// A section in the player's level is about to mesh (`section_visibility`): each listener

@@ -1,5 +1,3 @@
-
-
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
     /// Before a wind burst interacts with blocks, `blocks` holds the shuffled

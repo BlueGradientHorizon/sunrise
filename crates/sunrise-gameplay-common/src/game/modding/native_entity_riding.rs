@@ -1,5 +1,3 @@
-
-
 #[cfg(any())]
 pub mod tests {
     use super::super::{Game, commands::Target};
@@ -1185,6 +1183,3 @@ pub mod tests {
         });
     }
 }
-
-
-

@@ -3,12 +3,17 @@
 //! level-random draw (`SummonCommand.createEntity`), and `EntityType.create`
 //! (spawn eggs, a dispenser's eggs, mob buckets) wraps its draw with
 //! `Mth.wrapDegrees`.
-use sunrise_gameplay_common::game::creatures::SpawnReason;
-use sunrise_gameplay_common::game::creatures::SpawnSite;
-use {crate::game::*, sunrise_gameplay_common::game::{Instant, Options, PathBuf, Progress, Resources, creatures, execution_role}};
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
+use sunrise_gameplay_common::game::creatures::SpawnReason;
+use sunrise_gameplay_common::game::creatures::SpawnSite;
 use sunrise_level::chunk::Chunk;
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{
+        Instant, Options, PathBuf, Progress, Resources, creatures, execution_role,
+    },
+};
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
@@ -33,7 +38,8 @@ fn game<'a>(
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         res,

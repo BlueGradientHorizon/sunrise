@@ -24,7 +24,8 @@ impl ServerGame<'_> {
         // near `pos`; the vanilla client has no plain sound for 1023, 1028
         // and 1038 (they are only in `LevelEventHandler.globalLevelEvent`).
         if !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::GLOBAL_SOUND_EVENTS)
         {
@@ -46,7 +47,8 @@ impl ServerGame<'_> {
         data: i32,
     ) {
         if !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::GLOBAL_SOUND_EVENTS)
         {
@@ -54,7 +56,8 @@ impl ServerGame<'_> {
             return;
         }
         if let Some(host) = self.server.lan.as_ref() {
-            host.hub.global_level_event(self.common.dim.id(), id, pos, data);
+            host.hub
+                .global_level_event(self.common.dim.id(), id, pos, data);
         } else if self.server.audio_capture_active {
             self.server
                 .lan_global_events
@@ -85,7 +88,8 @@ impl ServerGame<'_> {
         });
         let _ = self.server_process_level_events();
         let recorded = std::mem::replace(&mut self.server.lan_events, saved_lan_events);
-        let extra_level_events = std::mem::replace(&mut self.common.level_events, saved_level_events);
+        let extra_level_events =
+            std::mem::replace(&mut self.common.level_events, saved_level_events);
         self.common.level_events.extend(extra_level_events);
         if let Some(host) = self.server.lan.as_mut() {
             if id == 2001 {

@@ -1,12 +1,12 @@
 //! Exercise the removal boundary through the live server, including the next actor's tick.
 use super::native_entity_refs::tests::with_game;
-use sunrise_gameplay_common::game::commands_common::Target;
 use mod_api::{Flow, Hooks, HostSide, ServerHost};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, Ordering},
 };
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
+use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_sim::{
     entities::{ArmorStand, Cushion},
     mobs::Mob,
@@ -88,8 +88,8 @@ fn nested_blast_skips_the_stand_or_cushion_already_being_removed() {
 #[ignore = "daily"]
 fn stand_equipment_and_below_world_spills_are_visible_at_dismount() {
     use super::hook_meddler_tests::with_meddler;
-    use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
     use sunrise_gameplay_common::game::boats_common::Boat;
+    use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
     use sunrise_items::items::ItemStack;
 
     for case in ["stand", "boat", "cart"] {
@@ -236,7 +236,10 @@ pub(crate) fn with_removal_test_hooks(
     });
 }
 
-pub(crate) fn finish_death_on_next_tick(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32) {
+pub(crate) fn finish_death_on_next_tick(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    id: u32,
+) {
     let mob = game.mob_object_mut(id).unwrap();
     mob.health = 0.0;
     mob.death_time = 19;
@@ -259,9 +262,10 @@ fn mob_removal_keeps_a_veto_until_the_next_eligible_pre_with_or_without_off_leve
                 push_pig(game, 73);
                 let mut rejected = Mob::new(75, game.mobs[2].kind.clone(), AT, 0.0);
                 rejected.extra.mount = Some(73);
-                game.persist
-                    .off_level
-                    .insert(75, sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(rejected));
+                game.persist.off_level.insert(
+                    75,
+                    sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(rejected),
+                );
             }
             finish_death_on_next_tick(game, 71);
             assert!(game.entity(71).is_none());
@@ -300,12 +304,13 @@ fn mob_removal_order_witness() {
 pub(crate) fn run_mob_removal_order_witness() {
     let observation = Arc::new(Observation::default());
     with_removal_test_hooks(Observe(observation.clone()), |game| {
-        game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(
-            70,
-            "oak".into(),
-            AT,
-            0.0,
-        ));
+        game.boats
+            .push(sunrise_gameplay_common::game::boats_common::Boat::new(
+                70,
+                "oak".into(),
+                AT,
+                0.0,
+            ));
         for id in 71..=75 {
             push_pig(game, id);
         }

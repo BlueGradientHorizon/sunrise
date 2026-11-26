@@ -89,10 +89,7 @@ pub(in crate::game) fn declared(
 
 impl crate::game::CommonGame<'_> {
     /// [`Self::install_fluid_interactions`] against `items`' tags.
-    pub fn install_fluid_interactions_from(
-        &self,
-        items: &Items,
-    ) -> Result<(), String> {
+    pub fn install_fluid_interactions_from(&self, items: &Items) -> Result<(), String> {
         let behaviours = self.res.behaviours();
         let mut declarations = Vec::new();
         for interaction in mod_api::__private::declared_fluid_interactions() {

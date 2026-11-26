@@ -1,12 +1,12 @@
 use super::*;
-use sunrise_gameplay_common::game::native_hooks::item_fall_on_tests::LOAN_VALUE;
-use sunrise_gameplay_common::game::native_hooks::item_fall_on_tests::Lands;
-use sunrise_gameplay_common::game::native_hooks::item_fall_on_tests::LoanMod;
-use sunrise_gameplay_common::game::native_hooks::item_fall_on_tests::Mod;
 use mod_api::ModEntry;
 use mod_platform::testing::with_mods;
 use std::sync::Arc;
 use sunrise_core::random::RandomSource as _;
+use sunrise_gameplay_common::game::native_hooks::item_fall_on_tests::LOAN_VALUE;
+use sunrise_gameplay_common::game::native_hooks::item_fall_on_tests::Lands;
+use sunrise_gameplay_common::game::native_hooks::item_fall_on_tests::LoanMod;
+use sunrise_gameplay_common::game::native_hooks::item_fall_on_tests::Mod;
 
 /// A dropped item that falls onto a block with a `fall_on` part is told to it once, as
 /// `minecraft:item`, with the whole fall and no damage; the write the part asks for lands
@@ -86,7 +86,10 @@ fn item_fall_on_returns_progressed_level_loan_after_part_panic() {
     sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
     let _ = sunrise_sim::block_contact::HOOKS.set(BLOCK_CONTACT_HOOKS);
     let mut loaded = 0;
-    for dimension in [sunrise_gameplay_common::game::Dim::Overworld, sunrise_gameplay_common::game::Dim::Nether] {
+    for dimension in [
+        sunrise_gameplay_common::game::Dim::Overworld,
+        sunrise_gameplay_common::game::Dim::Nether,
+    ] {
         let scratch =
             std::env::temp_dir().join(format!("item-loan-{}-{dimension:?}", std::process::id()));
         with_mods(mods.clone(), || {

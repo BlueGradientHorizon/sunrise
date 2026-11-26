@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_sim::mobs::Who;
 #[cfg(test)]
@@ -25,7 +23,8 @@ mod tests {
         // The lit campfire the douse looks for.
         let lit = game.lit_campfire(campfire, "minecraft:campfire");
         assert!(lit.is_some(), "the campfire starts lit");
-        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+            .with(|e| *e.borrow_mut() = Some(Vec::new()));
 
         game.douse_fire(pos, Some(Who::Mob(7)));
 

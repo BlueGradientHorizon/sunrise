@@ -19,11 +19,13 @@ use crate::game::ServerGame;
 pub(in crate::game) type MergedDataMaps = LoadedMaps<Value>;
 
 #[cfg(test)]
-use sunrise_gameplay_common::game::native_data_maps_common::{LoadedMaps, MapRegistries, load_maps};
-#[cfg(test)]
 use mod_api::game::DataMapType;
 #[cfg(test)]
 use serde_json::Value;
+#[cfg(test)]
+use sunrise_gameplay_common::game::native_data_maps_common::{
+    LoadedMaps, MapRegistries, load_maps,
+};
 
 /// Merge the types' raw JSON values in unit tests that do not test a specific codec.
 #[cfg(test)]
@@ -51,10 +53,10 @@ impl ServerGame<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_gameplay_common::game::native_data_maps_common::{DataMaps, WorldRegistries};
     use serde_json::json;
     use std::collections::HashMap;
     use sunrise_core::nbt::Tag;
+    use sunrise_gameplay_common::game::native_data_maps_common::{DataMaps, WorldRegistries};
 
     #[test]
     fn data_map_read_refuses_lossy_payloads_instead_of_successful_substitutes() {

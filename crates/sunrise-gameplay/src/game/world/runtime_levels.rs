@@ -126,10 +126,7 @@ impl RuntimeTable {
     }
 
     /// Queue the close of `id`: it must be open, not waiting to open or to close.
-    pub fn queue_unload(
-        &mut self,
-        id: &str,
-    ) -> Result<(), RuntimeLevelError> {
+    pub fn queue_unload(&mut self, id: &str) -> Result<(), RuntimeLevelError> {
         match self.entries.get_mut(id) {
             Some(entry) if entry.state == State::Open => {
                 entry.state = State::Closing;
@@ -143,11 +140,7 @@ impl RuntimeTable {
     /// Queue the removal of `id`, which the caller has checked except against the table. A level
     /// that is open is marked closing until the removal is applied; one that is not in the table
     /// has only files to remove. A level waiting to open is refused: its open comes first.
-    pub fn queue_delete(
-        &mut self,
-        owner: &'static str,
-        id: &str,
-    ) -> Result<(), RuntimeLevelError> {
+    pub fn queue_delete(&mut self, owner: &'static str, id: &str) -> Result<(), RuntimeLevelError> {
         if let Some(entry) = self.entries.get_mut(id) {
             if entry.state == State::Opening {
                 return Err(RuntimeLevelError::AlreadyOpen);
@@ -495,11 +488,7 @@ fn ensure_no_links(path: &Path, stop: &Path, include_path: bool) -> std::io::Res
 /// file, with the folders they leave empty. Whatever is not there is not an error; a link on the
 /// way is, before anything is removed. `id` has passed `owned_level_id`; the folder comes from it
 /// alone.
-pub fn erase_level_files(
-    root: &Path,
-    id: &str,
-    references: bool,
-) -> std::io::Result<()> {
+pub fn erase_level_files(root: &Path, id: &str, references: bool) -> std::io::Result<()> {
     let dimensions = root.join("dimensions");
     let folder = sunrise_sim::save::dimension_dir(root, id);
     // Never the folder of anything but a level: `dimension_dir` gives one under `dimensions/`.
@@ -635,7 +624,8 @@ impl crate::game::ServerGame<'_> {
         }
         let generation = self.server.levels.0.runtime.queue_open(owner, id, level)?;
         let epoch = self
-            .common.native_lifecycle
+            .common
+            .native_lifecycle
             .epoch()
             .expect("checked by the caller");
         Ok(LevelRef::with_generation(
@@ -646,10 +636,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `RuntimeLevels::unload`: check the request now, queue it for after the level loop.
-    pub fn runtime_level_unload(
-        &mut self,
-        id: &str,
-    ) -> Result<(), RuntimeLevelError> {
+    pub fn runtime_level_unload(&mut self, id: &str) -> Result<(), RuntimeLevelError> {
         let result = self.runtime_level_queue_unload(id);
         if let Err(error) = &result {
             self.runtime_refusal("unload", id, *error);
@@ -667,10 +654,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// `RuntimeLevels::delete`: check the request now, queue it for after the level loop.
-    pub fn runtime_level_delete(
-        &mut self,
-        id: &str,
-    ) -> Result<(), RuntimeLevelError> {
+    pub fn runtime_level_delete(&mut self, id: &str) -> Result<(), RuntimeLevelError> {
         let result = self.runtime_level_queue_delete(id);
         if let Err(error) = &result {
             self.runtime_refusal("delete", id, *error);
@@ -699,7 +683,10 @@ impl crate::game::ServerGame<'_> {
         let below = format!("{id}/");
         self.server.levels.0.runtime.any_below(id)
             || Dim::all().iter().any(|dim| dim.id().starts_with(&below))
-            || folder_holds_levels(&sunrise_sim::save::dimension_dir(&self.server.world_root, id))
+            || folder_holds_levels(&sunrise_sim::save::dimension_dir(
+                &self.server.world_root,
+                id,
+            ))
     }
 
     /// Whether the structure references file of `id` is also the file of a level that exists. A
@@ -736,15 +723,13 @@ impl crate::game::ServerGame<'_> {
             .as_ref()
             .is_some_and(|host| host.hub.guests.as_slice().iter().any(|g| g.dimension == id))
             || !self.arrival_chunks(dim).is_empty()
-            || (self.common.options.dedicated.is_none() && self.common.player.is_some() && self.common.dim == dim)
+            || (self.common.options.dedicated.is_none()
+                && self.common.player.is_some()
+                && self.common.dim == dim)
     }
 
     /// A handle to the server level `key`, of the generation it is open with.
-    pub fn level_ref(
-        &self,
-        epoch: mod_api::WorldEpoch,
-        key: mod_api::DimensionKey,
-    ) -> LevelRef {
+    pub fn level_ref(&self, epoch: mod_api::WorldEpoch, key: mod_api::DimensionKey) -> LevelRef {
         let id = mod_api::__private::dimension_id(key).expect("the game's table made the key");
         LevelRef::with_generation(epoch, key, self.server.levels.0.runtime.generation_of(id))
     }
@@ -891,7 +876,11 @@ impl crate::game::ServerGame<'_> {
         if self.server.levels.0.runtime.fail_erase {
             return Err(std::io::Error::other("injected removal failure"));
         }
-        erase_level_files(&self.server.world_root, id, !self.references_file_shared(id))
+        erase_level_files(
+            &self.server.world_root,
+            id,
+            !self.references_file_shared(id),
+        )
     }
 
     /// The runtime level `id` was unloaded, or failed to open: it leaves every table it was added

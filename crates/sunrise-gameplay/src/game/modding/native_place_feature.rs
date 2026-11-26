@@ -57,7 +57,8 @@ impl ServerGame<'_> {
         // The live features the world installed as it opened, as `/place feature` reads them.
         let known = feature.contains(':')
             && self
-                .common.res
+                .common
+                .res
                 .behaviours()
                 .live_features()
                 .is_some_and(|features| {

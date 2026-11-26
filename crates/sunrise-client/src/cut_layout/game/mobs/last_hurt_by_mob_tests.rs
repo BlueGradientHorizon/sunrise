@@ -3,12 +3,17 @@
 //! younger than 100 ticks (`LivingEntity.baseTick`); a value read from saved
 //! data ages the same way (tools/test_last_hurt_by_mob_parity.py measures the
 //! same on vanilla 26.3).
-use {crate::game::*, sunrise_gameplay_common::game::{Instant, Mob, Options, PathBuf, Progress, Resources, entity, execution_role, hit}};
-use std::sync::Arc;
-use crate::settings::Settings;
 use crate::game::load_resources;
+use crate::settings::Settings;
+use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{
+        Instant, Mob, Options, PathBuf, Progress, Resources, entity, execution_role, hit,
+    },
+};
 
 const VICTIM: &str = "00006094-0000-0000-0000-000000000001";
 const A: &str = "00006094-0000-0000-0000-000000000002";
@@ -146,7 +151,10 @@ fn index(game: &mut sunrise_gameplay::game::ServerGame<'_>, uuid: &str) -> usize
     }
 }
 
-fn fields(game: &mut sunrise_gameplay::game::ServerGame<'_>, i: usize) -> (Option<Tag>, Option<Tag>) {
+fn fields(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    i: usize,
+) -> (Option<Tag>, Option<Tag>) {
     let tag = game.mob_tree_nbt(i);
     (
         tag.get("last_hurt_by_mob").cloned(),

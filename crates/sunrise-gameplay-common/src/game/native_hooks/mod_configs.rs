@@ -26,23 +26,29 @@ pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// (`Server`); a game reads only its own kinds, so push them all every
     /// time. A file outside `config/`, or one already registered, is skipped.
     /// API 397.
-     fn native_register_configs(&mut self, configs: &mut Vec<mod_api::Config>) {
-        native_register_configs(<Self::State as crate::game::Side>::as_config_context(self), configs);
+    fn native_register_configs(&mut self, configs: &mut Vec<mod_api::Config>) {
+        native_register_configs(
+            <Self::State as crate::game::Side>::as_config_context(self),
+            configs,
+        );
     }
     /// A registered config was read (`ModConfigEvent.Loading`): `config`
     /// says whose, which file and its text, which the mod parses (TOML by
     /// convention). Every mod hears every config, so check `mod_id`. Fired
     /// where the config's kind loads (`native_register_configs`), a `Server`
     /// one before `native_server_about_to_start`. API 397.
-     fn native_config_loading(&mut self, config: &ConfigFile) {
-        native_config_loading(<Self::State as crate::game::Side>::as_config_context(self), config);
+    fn native_config_loading(&mut self, config: &ConfigFile) {
+        native_config_loading(
+            <Self::State as crate::game::Side>::as_config_context(self),
+            config,
+        );
     }
     /// A loaded config's file changed on disk (`ModConfigEvent.Reloading`):
     /// its new text. The game looks at the files' modification times once a
     /// second, on the window and on the server's tick; a file saved with the
     /// same text, removed or unreadable fires nothing and keeps its last
     /// text. API 397.
-     fn native_config_reloading(&mut self, config: &ConfigFile) {
+    fn native_config_reloading(&mut self, config: &ConfigFile) {
         crate::game::native_hooks::fire::FireHooks::fire_config_reloading(self, config);
     }
 }

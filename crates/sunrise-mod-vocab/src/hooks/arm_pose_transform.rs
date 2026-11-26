@@ -10,7 +10,8 @@ pub trait Hooks {
     /// components are non-finite, meaning preserve the base model angle. Each
     /// non-finite component is ignored. The ordinary swing and species animations
     /// still run afterward.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::arm_pose_transform::ClientGame<'_>::native_arm_pose_transform", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::arm_pose_transform::ClientGame<'_>::native_arm_pose_transform",
         receiver = "read",
         dispatch = "flat",
         side = "client",

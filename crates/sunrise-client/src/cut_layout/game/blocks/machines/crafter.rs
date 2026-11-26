@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_core::position::BlockPos;
 use sunrise_items::items::ItemStack;

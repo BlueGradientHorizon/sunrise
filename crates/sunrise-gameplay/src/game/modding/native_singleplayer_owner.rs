@@ -18,11 +18,7 @@ impl SingleplayerProfile {
     /// `setSingleplayerProfile(minecraft.getGameProfile())`: the signed-in account's
     /// properties, waiting for the fetch that started with the world's open as
     /// `getGameProfile` joins its `profileFuture`. An offline player has none.
-    pub fn launched(
-        name: String,
-        uuid: u128,
-        account: Option<&OwnerProfile>,
-    ) -> Self {
+    pub fn launched(name: String, uuid: u128, account: Option<&OwnerProfile>) -> Self {
         let properties = account.map(OwnerProfile::wait).unwrap_or_default().to_vec();
         Self {
             name,

@@ -35,10 +35,7 @@ pub fn clear_entities(game: &mut crate::game::ServerGame<'_>) {
     game.bind_local_player_residency();
 }
 
-pub fn summon_target(
-    game: &mut crate::game::ServerGame<'_>,
-    target: &str,
-) -> TrackedTarget {
+pub fn summon_target(game: &mut crate::game::ServerGame<'_>, target: &str) -> TrackedTarget {
     match target {
         "armor_stand" => {
             assert!(game.run_command("summon minecraft:armor_stand 3.5 64.0 4.5 {}"));
@@ -135,10 +132,7 @@ pub fn summon_target(
     }
 }
 
-pub fn target_alive(
-    game: &crate::game::ServerGame<'_>,
-    target: TrackedTarget,
-) -> bool {
+pub fn target_alive(game: &crate::game::ServerGame<'_>, target: TrackedTarget) -> bool {
     match target {
         TrackedTarget::Stand(id) => game.common.armor_stands.iter().any(|a| a.id == id),
         TrackedTarget::Painting(id) => game.common.paintings.iter().any(|p| p.id == id),
@@ -146,19 +140,24 @@ pub fn target_alive(
         TrackedTarget::Cushion(id) => game.common.cushions.iter().any(|c| c.id == id),
         TrackedTarget::Falling(id) => game.common.falling.iter().any(|f| f.id == id),
         TrackedTarget::ExplicitKnot(id) => game.server.others.0.iter().any(|o| o.id == id),
-        TrackedTarget::NaturalKnot { id, .. } => {
-            game.common.resident_entities.knots.iter().any(|k| k.id == id)
-        }
+        TrackedTarget::NaturalKnot { id, .. } => game
+            .common
+            .resident_entities
+            .knots
+            .iter()
+            .any(|k| k.id == id),
     }
 }
 
-pub fn target_bounds(
-    game: &crate::game::ServerGame<'_>,
-    target: TrackedTarget,
-) -> Aabb {
+pub fn target_bounds(game: &crate::game::ServerGame<'_>, target: TrackedTarget) -> Aabb {
     match target {
         TrackedTarget::Stand(id) => {
-            let a = game.common.armor_stands.iter().find(|a| a.id == id).unwrap();
+            let a = game
+                .common
+                .armor_stands
+                .iter()
+                .find(|a| a.id == id)
+                .unwrap();
             if a.marker {
                 Aabb::new(a.position, a.position)
             } else {

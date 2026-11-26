@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::BlockPos;
@@ -8,22 +6,22 @@ use sunrise_sim::mobs::Who;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_core::random::RandomSource;
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
-use sunrise_gameplay_common::game::creatures::ModGameExt1;
-use sunrise_gameplay_common::game::server_side::tnt::tests::on_big_stack;
+    use sunrise_core::random::RandomSource;
+    use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
+    use sunrise_gameplay_common::game::creatures::ModGameExt1;
+    use sunrise_gameplay_common::game::server_side::tnt::tests::on_big_stack;
 
-use sunrise_gameplay_common::game::server_side::tnt::tests::write_silence_output;
+    use sunrise_gameplay_common::game::server_side::tnt::tests::write_silence_output;
 
-use sunrise_gameplay::game::server_side::tnt::tests::particle_count;
+    use sunrise_gameplay::game::server_side::tnt::tests::particle_count;
 
-use sunrise_gameplay::game::server_side::tnt::tests::set_silent;
+    use sunrise_gameplay::game::server_side::tnt::tests::set_silent;
 
-use sunrise_gameplay::game::server_side::tnt::tests::sound_count;
+    use sunrise_gameplay::game::server_side::tnt::tests::sound_count;
 
-use super::*;
+    use super::*;
 
-/// A server's game on the prepared resources with the chunk at the origin
+    /// A server's game on the prepared resources with the chunk at the origin
     /// loaded, as `native_machines`' tests make one; None without them.
     pub(crate) fn server_game<'a>(
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
@@ -55,7 +53,8 @@ use super::*;
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let res = resources.insert(loaded.resources);
         // Keep nested fixture helpers from copying the large Game value
         // through several test-thread stack frames.
@@ -84,13 +83,12 @@ use super::*;
         game.server.streaming.forced.insert((0, 0));
         Some(game)
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn portal_transfer_tnt_state_follows_memory_but_not_saved_nbt() {
         run_portal_transfer_tnt_state_follows_memory_but_not_saved_nbt();
     }
-pub(crate) fn run_portal_transfer_tnt_state_follows_memory_but_not_saved_nbt()
-     {
+    pub(crate) fn run_portal_transfer_tnt_state_follows_memory_but_not_saved_nbt() {
         use sunrise_gameplay_common::game::commands_common::Target;
         let mut resources = None;
         let mut game = server_game(&mut resources).expect("set SUNRISE_TEST_RESOURCES");
@@ -116,13 +114,12 @@ pub(crate) fn run_portal_transfer_tnt_state_follows_memory_but_not_saved_nbt()
         assert!(game.tnts[0].used_portal);
         assert!(game.tnt_nbt(0).get("sunrise:tnt_used_portal").is_none());
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn portal_transfer_ordinary_nbt_cannot_supply_runtime_immunity() {
         run_portal_transfer_ordinary_nbt_cannot_supply_runtime_immunity();
     }
-pub(crate) fn run_portal_transfer_ordinary_nbt_cannot_supply_runtime_immunity()
-     {
+    pub(crate) fn run_portal_transfer_ordinary_nbt_cannot_supply_runtime_immunity() {
         use sunrise_core::nbt::Tag;
         let mut resources = None;
         let mut game = server_game(&mut resources).expect("set SUNRISE_TEST_RESOURCES");
@@ -140,12 +137,12 @@ pub(crate) fn run_portal_transfer_ordinary_nbt_cannot_supply_runtime_immunity()
             game.tnts.clear();
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn portal_blast_sulfur_cube_uses_only_positive_cooldown() {
         run_portal_blast_sulfur_cube_uses_only_positive_cooldown();
     }
-pub(crate) fn source_silence_game(
+    pub(crate) fn source_silence_game(
         resources: &mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
     ) -> Option<Box<sunrise_gameplay::game::ServerGame<'_>>> {
         let mut game = server_game(resources)?;
@@ -154,7 +151,7 @@ pub(crate) fn source_silence_game(
         game.server.lan_acting = Some(0);
         Some(game)
     }
-pub(crate) fn run_portal_blast_sulfur_cube_uses_only_positive_cooldown() {
+    pub(crate) fn run_portal_blast_sulfur_cube_uses_only_positive_cooldown() {
         use sunrise_sim::mobs::Mob;
         use sunrise_sim::nether_portal::PortalState;
         let mut resources = None;
@@ -220,7 +217,7 @@ pub(crate) fn run_portal_blast_sulfur_cube_uses_only_positive_cooldown() {
         .unwrap();
         assert_ne!(game.world.block(8, 64, 8), portal);
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn loaded_tnt_fuse_uses_numeric_short_and_saves_without_raw() {
         use sunrise_core::nbt::Tag;
@@ -307,11 +304,11 @@ pub(crate) fn run_portal_blast_sulfur_cube_uses_only_positive_cooldown() {
             }
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn live_data_commands_adopt_into_the_existing_tnt() {
-        use sunrise_gameplay_common::game::commands_common::Target;
         use sunrise_core::nbt::Tag;
+        use sunrise_gameplay_common::game::commands_common::Target;
         let mut resources = None;
         let mut game = server_game(&mut resources).expect("prepared Game resources are required");
         game.build_registries();
@@ -405,12 +402,12 @@ pub(crate) fn run_portal_blast_sulfur_cube_uses_only_positive_cooldown() {
             );
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn silent_tnt_keeps_the_blast_without_its_sound() {
         run_silent_tnt_keeps_the_blast_without_its_sound();
     }
-pub(crate) fn run_silent_tnt_keeps_the_blast_without_its_sound() {
+    pub(crate) fn run_silent_tnt_keeps_the_blast_without_its_sound() {
         on_big_stack(|| {
             let mut resources = None;
             let Some(mut game) = source_silence_game(&mut resources) else {
@@ -466,12 +463,12 @@ pub(crate) fn run_silent_tnt_keeps_the_blast_without_its_sound() {
             write_silence_output("explosion", &rows);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn silent_potions_keep_the_splash_without_its_sound() {
         run_silent_potions_keep_the_splash_without_its_sound();
     }
-pub(crate) fn run_silent_potions_keep_the_splash_without_its_sound() {
+    pub(crate) fn run_silent_potions_keep_the_splash_without_its_sound() {
         on_big_stack(|| {
             use sunrise_sim::projectiles::{Hit, Projectile, ProjectileKind};
             let mut resources = None;
@@ -529,12 +526,12 @@ pub(crate) fn run_silent_potions_keep_the_splash_without_its_sound() {
             write_silence_output("potions", &rows);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn silent_creeper_keeps_the_blast_after_its_source_is_removed() {
         run_silent_creeper_keeps_the_blast_after_its_source_is_removed();
     }
-pub(crate) fn run_silent_creeper_keeps_the_blast_after_its_source_is_removed() {
+    pub(crate) fn run_silent_creeper_keeps_the_blast_after_its_source_is_removed() {
         on_big_stack(|| {
             let mut resources = None;
             let Some(mut game) = source_silence_game(&mut resources) else {
@@ -568,12 +565,12 @@ pub(crate) fn run_silent_creeper_keeps_the_blast_after_its_source_is_removed() {
             }
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn silent_launched_potions_and_bottles_keep_their_impact() {
         run_silent_launched_potions_and_bottles_keep_their_impact();
     }
-pub(crate) fn run_silent_launched_potions_and_bottles_keep_their_impact() {
+    pub(crate) fn run_silent_launched_potions_and_bottles_keep_their_impact() {
         on_big_stack(|| {
             let mut resources = None;
             let Some(mut game) = source_silence_game(&mut resources) else {
@@ -588,12 +585,13 @@ pub(crate) fn run_silent_launched_potions_and_bottles_keep_their_impact() {
             game.world.set(8, 63, 8, stone).unwrap();
             for kind in ["splash_potion", "lingering_potion", "experience_bottle"] {
                 for silent in [false, true, false] {
-                    let mut shot = sunrise_gameplay::game::server_side::potions_server::thrown_projectile(
-                        ItemStack::new(&format!("minecraft:{kind}"), 1)
-                            .with_potion("minecraft:swiftness"),
-                        Vec3::new(8.5, 64.1, 8.5),
-                        false,
-                    );
+                    let mut shot =
+                        sunrise_gameplay::game::server_side::potions_server::thrown_projectile(
+                            ItemStack::new(&format!("minecraft:{kind}"), 1)
+                                .with_potion("minecraft:swiftness"),
+                            Vec3::new(8.5, 64.1, 8.5),
+                            false,
+                        );
                     shot.velocity = Vec3::new(0.0, -1.0, 0.0);
                     game.add_projectile(shot);
                     let id = game.creatures.projectiles.last().unwrap().id;
@@ -623,7 +621,7 @@ pub(crate) fn run_silent_launched_potions_and_bottles_keep_their_impact() {
             }
         });
     }
-/// #13201: a dispensed potion or bottle is a level entity
+    /// #13201: a dispensed potion or bottle is a level entity
     /// (`ProjectileDispenseBehavior` → `Projectile.spawnProjectileUsingShoot`
     /// → `level.addFreshEntity`), so selectors, `/data get` and `/kill` find
     /// it while it flies.
@@ -636,8 +634,8 @@ pub(crate) fn run_silent_launched_potions_and_bottles_keep_their_impact() {
         };
         // An operator's commands.
         game.ui.registries.permission = 4;
-        use sunrise_gameplay_common::game::commands_common::Target;
         use sunrise_core::nbt::Tag;
+        use sunrise_gameplay_common::game::commands_common::Target;
         for kind in ["splash_potion", "lingering_potion", "experience_bottle"] {
             let stack = ItemStack::new(&format!("minecraft:{kind}"), 1);
             // The dispenser at (8, 100, 8) facing south.
@@ -665,13 +663,12 @@ pub(crate) fn run_silent_launched_potions_and_bottles_keep_their_impact() {
             assert!(!game.creatures.projectiles.iter().any(|p| p.id == id));
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn silent_bottles_preserve_xp_and_the_server_random_stream() {
         run_silent_bottles_preserve_xp_and_the_server_random_stream();
     }
-pub(crate) fn run_silent_bottles_preserve_xp_and_the_server_random_stream()
-     {
+    pub(crate) fn run_silent_bottles_preserve_xp_and_the_server_random_stream() {
         on_big_stack(|| {
             use sunrise_sim::projectiles::{Hit, Projectile, ProjectileKind};
             let mut resources = None;
@@ -722,7 +719,7 @@ pub(crate) fn run_silent_bottles_preserve_xp_and_the_server_random_stream()
             write_silence_output("bottles", &rows);
         });
     }
-/// #10063: TNT lit between level ticks (flint and steel, a command) has its
+    /// #10063: TNT lit between level ticks (flint and steel, a command) has its
     /// first tick in the next level tick, so its fuse reads 79 after it, and it
     /// explodes on the 80th (`PrimedTnt.tick`). Sunrise held every TNT that
     /// joined during a tick back one more: the late pass compared its join
@@ -754,7 +751,7 @@ pub(crate) fn run_silent_bottles_preserve_xp_and_the_server_random_stream()
         }
         assert_eq!(exploded_on, Some(80), "explodes on the 80th tick");
     }
-/// TNT a blast primes joins while the entities tick (vanilla's
+    /// TNT a blast primes joins while the entities tick (vanilla's
     /// `EntityTickList` loop) and waits for the next tick. The fix for #10063
     /// must not tick it in the tick it joined.
     #[test]
@@ -799,9 +796,9 @@ pub(crate) fn run_silent_bottles_preserve_xp_and_the_server_random_stream()
 
 #[cfg(test)]
 pub(crate) mod entity_collision_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use std::sync::Arc;
+    use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_level::chunk::Chunk;
 
     /// `Entity.collide` for primed TNT, a falling block and an experience orb:

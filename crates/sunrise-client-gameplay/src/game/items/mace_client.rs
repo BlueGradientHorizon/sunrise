@@ -1,6 +1,6 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::mace_common::KNOCKBACK_RADIUS;
 use sunrise_core::{position::BlockPos, random::RandomSource};
+use sunrise_gameplay_common::game::mace_common::KNOCKBACK_RADIUS;
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
 impl ClientGame<'_> {

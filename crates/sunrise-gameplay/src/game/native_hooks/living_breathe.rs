@@ -1,5 +1,3 @@
-
-
 /// The hook point. It does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
     /// An entity's breathing this tick (`LivingBreatheEvent`, posted from

@@ -1,5 +1,5 @@
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use std::sync::{Arc, Mutex};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
 };

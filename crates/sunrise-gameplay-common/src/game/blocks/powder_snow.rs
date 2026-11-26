@@ -47,9 +47,12 @@ pub struct HeldSlot<'g, 'a, S: crate::game::SideGame<'a>> {
     pub slot: usize,
     /// The UUID of the player a mod's write acts as: what doesn't fit waits for the root
     /// commit of an open transaction. None for the game's own use.
-    pub dropper: Option<u128>, pub resource_lifetime: std::marker::PhantomData<fn(&'a ()) -> &'a ()>,
+    pub dropper: Option<u128>,
+    pub resource_lifetime: std::marker::PhantomData<fn(&'a ()) -> &'a ()>,
 }
-impl<'__carrier, S: crate::game::SideGame<'__carrier>> cauldron::Player for HeldSlot<'_, '__carrier, S> {
+impl<'__carrier, S: crate::game::SideGame<'__carrier>> cauldron::Player
+    for HeldSlot<'_, '__carrier, S>
+{
     fn creative(&self) -> bool {
         self.game.creative
     }
@@ -126,7 +129,8 @@ pub trait FilledResultGameExt<'g>: crate::game::SideGame<'g> {
         let mut held = HeldSlot {
             game: self,
             slot,
-            dropper: None, resource_lifetime: std::marker::PhantomData,
+            dropper: None,
+            resource_lifetime: std::marker::PhantomData,
         };
         cauldron::create_filled_result(&mut held, filled, true);
     }

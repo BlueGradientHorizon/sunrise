@@ -55,12 +55,7 @@ impl crate::game::ServerGame<'_> {
     /// told, `ItemStack.finishUsingItem` (a consumable is eaten, a potion
     /// drunk, a spyglass lowered, anything else given back) with its use
     /// cooldown, then `LivingEntityUseItemEvent.Finish`.
-    pub fn complete_using_item(
-        &mut self,
-        slot: usize,
-        stack: &ItemStack,
-        info: &ItemInfo,
-    ) {
+    pub fn complete_using_item(&mut self, slot: usize, stack: &ItemStack, info: &ItemInfo) {
         // a potion is drunk (no last tick of its own: a mod's tick ran it out).
         if self.finish_drinking(slot, stack) {
             self.use_item_finished(stack);
@@ -157,7 +152,13 @@ impl crate::game::ServerGame<'_> {
         if !self.use_vibrates(stack) {
             return;
         }
-        let Some(p) = self.common.mobs.iter().find(|m| m.id == id).map(|m| m.position) else {
+        let Some(p) = self
+            .common
+            .mobs
+            .iter()
+            .find(|m| m.id == id)
+            .map(|m| m.position)
+        else {
             return;
         };
         let ctx = self.mob_context(id, None);
@@ -197,7 +198,8 @@ impl crate::game::ServerGame<'_> {
         }
         // The hook may have changed the mob: the same checks again.
         let started = self
-            .common.mobs
+            .common
+            .mobs
             .iter_mut()
             .find(|m| m.id == id)
             .is_some_and(|m| free(m) && spear_use::start_using_item(m, off_hand));
@@ -314,10 +316,10 @@ pub(in crate::game) fn count_down(ticks: u32, duration: i32) -> Option<u32> {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::{bow_release_power, count_down, release_parts, use_counter_leaving};
+    use sunrise_core::use_animation::UseAnimation;
     use sunrise_gameplay_common::game::item_use_common::{
         consumes_at_once, duration_leaving, held, start_of, tick_left, ticks_left,
     };
-    use sunrise_core::use_animation::UseAnimation;
 
     /// A mob's use counter is 1 on the tick it starts and a bow's use lasts
     /// 72000 ticks: 71995 left is 5 ticks in, counter 6 (what releasing
@@ -350,16 +352,6 @@ pub(in crate::game) mod tests {
             ticks_left(own, got.unsigned_abs() - 1);
         }
     }
-
-    
-
-    
-
-    
-
-    
-
-    
 
     #[test]
     fn a_use_runs_out_on_its_last_tick() {
@@ -490,14 +482,11 @@ pub(in crate::game) mod tests {
         assert!(!consumes_at_once(1));
         assert!(!consumes_at_once(32));
     }
-
-    
 }
 
 use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
-
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

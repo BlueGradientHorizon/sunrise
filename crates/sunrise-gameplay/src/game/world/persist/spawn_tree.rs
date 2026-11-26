@@ -1,7 +1,7 @@
 //! Configured spawner NBT, decoded once and held until the spawn pass finishes.
 use super::{Mob, Tag, entity_nbt};
-use sunrise_gameplay_common::game::general::GeneralEntityRecord;
 use sunrise_core::fast_hash::FxHashSet;
+use sunrise_gameplay_common::game::general::GeneralEntityRecord;
 
 pub(in crate::game) struct SpawnTree(Vec<Member>);
 
@@ -21,10 +21,7 @@ enum Node {
 impl SpawnTree {
     /// `EntityType.loadPassengersRecursive`: read each supported member before
     /// its descendants. A record that cannot be decoded contributes no branch.
-    pub(in crate::game) fn decode(
-        game: &crate::game::ServerGame<'_>,
-        tag: Tag,
-    ) -> Option<Self> {
+    pub(in crate::game) fn decode(game: &crate::game::ServerGame<'_>, tag: Tag) -> Option<Self> {
         let mut members = Vec::new();
         let mut todo = vec![(None, tag)];
         while let Some((parent, mut tag)) = todo.pop() {
@@ -48,7 +45,9 @@ impl SpawnTree {
                     Node::Mob(Box::new(mob)),
                     entity_nbt::uuid(&tag).unwrap_or(fresh_uuid),
                 )
-            } else if let Some((slot, record)) = crate::game::ServerGame::decode_general_spawn_passenger(&tag, &kind) {
+            } else if let Some((slot, record)) =
+                crate::game::ServerGame::decode_general_spawn_passenger(&tag, &kind)
+            {
                 let uuid = record.uuid;
                 (Node::General(slot, record), uuid)
             } else {
@@ -104,10 +103,7 @@ impl SpawnTree {
         })
     }
 
-    pub(in crate::game) fn install(
-        self,
-        game: &mut crate::game::ServerGame<'_>,
-    ) -> u32 {
+    pub(in crate::game) fn install(self, game: &mut crate::game::ServerGame<'_>) -> u32 {
         let mut ids = Vec::with_capacity(self.0.len());
         for Member {
             node,

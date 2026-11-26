@@ -1,6 +1,4 @@
 //! Real assembler and template-placement regressions for position-sensitive rotate Parts.
-use {crate::game::native_rotate::*, sunrise_gameplay_common::game::native_rotate::{EngineState, native_worldgen_parts, rotate}};
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{BlockPart, Hooks, ModEntry, Mods, RotateEvent, WorldgenHost};
 use serde_json::json;
 use std::{
@@ -14,6 +12,7 @@ use sunrise_core::{
     position::ChunkPos,
     random::{LegacyRandom, RandomSource},
 };
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_world::{
     compression::Compression,
     heightmap::HeightmapType,
@@ -32,6 +31,10 @@ use sunrise_world::{
             start::{NoiseColumnTarget, StartContext},
         },
     },
+};
+use {
+    crate::game::native_rotate::*,
+    sunrise_gameplay_common::game::native_rotate::{EngineState, native_worldgen_parts, rotate},
 };
 
 /// The child faces down only at its actual placed height, never at its sampled local Y=2.

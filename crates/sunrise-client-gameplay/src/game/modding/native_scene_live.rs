@@ -6,9 +6,7 @@
 //! prepared for drawing only as `DrawContext::entity` prepares them. Nothing of it reaches
 //! the client's level, its particle engine or its sounds. A scene of blocks alone never
 //! comes here.
-use super::{
-    native_scene::{SceneBlock, SceneQuad, face_shade, shaded},
-};
+use super::native_scene::{SceneBlock, SceneQuad, face_shade, shaded};
 use glam::{DVec3, Quat, Vec3};
 use mod_api::{
     GuiEntity, GuiEntityError, SCENE_ANIMATE_PICKS, SCENE_CATCH_UP, SCENE_MAX_ANIMATING,
@@ -85,12 +83,7 @@ impl LiveScenes {
     }
     /// Whether scene (`owner`, `id`) may animate in `frame`: the first
     /// `SCENE_MAX_ANIMATING` scenes a frame do, each as often as it is drawn.
-    pub fn admit(
-        &mut self,
-        frame: u64,
-        owner: &'static str,
-        id: u32,
-    ) -> bool {
+    pub fn admit(&mut self, frame: u64, owner: &'static str, id: u32) -> bool {
         if self.frame != frame {
             self.frame = frame;
             self.animating.clear();
@@ -530,11 +523,7 @@ fn entity_quads(verts: &[Vertex], quads: &mut Vec<SceneQuad>) {
 #[cfg(any(test, feature = "test-support"))]
 impl crate::game::ClientGame<'_> {
     /// The live particles of the mod's scene `id`: positions, previous positions and ages.
-    pub fn scene_particles(
-        &self,
-        owner: &str,
-        id: u32,
-    ) -> Vec<([f64; 3], [f64; 3], i32)> {
+    pub fn scene_particles(&self, owner: &str, id: u32) -> Vec<([f64; 3], [f64; 3], i32)> {
         let scenes = self.client.live_scenes.0.borrow();
         scenes
             .live

@@ -24,10 +24,13 @@ use sunrise_world::{
 };
 
 pub(in crate::game) struct OutlineFluidRay<'a, 'r, S: crate::game::SideGame<'r>>(
-    pub(in crate::game) &'a S, pub std::marker::PhantomData<fn(&'r ()) -> &'r ()>,
+    pub(in crate::game) &'a S,
+    pub std::marker::PhantomData<fn(&'r ()) -> &'r ()>,
 );
 
-impl<'__carrier, S: crate::game::SideGame<'__carrier>> RayWorld for OutlineFluidRay<'_, '__carrier, S> {
+impl<'__carrier, S: crate::game::SideGame<'__carrier>> RayWorld
+    for OutlineFluidRay<'_, '__carrier, S>
+{
     type Error = io::Error;
     type Block = BlockStateId;
     type Fluid = Option<(f32, bool, Fluid)>;
@@ -101,7 +104,6 @@ impl<'__carrier, S: crate::game::SideGame<'__carrier>> RayWorld for OutlineFluid
 }
 
 impl crate::game::CommonGame<'_> {
-
     pub fn fluid_height(&self, x: i32, y: i32, z: i32) -> Option<(f32, bool)> {
         self.fluid_height_of(x, y, z, Some(Fluid::Water))
     }
@@ -156,8 +158,6 @@ impl crate::game::CommonGame<'_> {
         }
         (i64::from(y1) + 1) as f32
     }
-
-
 
     /// `Entity.move`'s fall reset for an entity that keeps a fall and moves on
     /// by `moved` from `from`: a move of a block or more casts up to 8 blocks
@@ -220,7 +220,6 @@ impl crate::game::CommonGame<'_> {
         }
         self.boats.store_back(index, boat)
     }
-
 
     /// `BubbleColumnBlock.entityInside`: the bubble columns boat `i` touches.
     pub fn boat_bubble_columns(&self, i: usize) -> Vec<BubbleColumn> {
@@ -289,12 +288,11 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait BoatsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-
     /// `AbstractInterpolationHandler.interpolate` for the boat this client
     /// drives: its own moves since the last step carry the target along (where
     /// the boat fits there), then `LinearInterpolationHandler.doInterpolate`
     /// takes a `1 / steps` share of the way.
-     fn interpolate_driven_boat(&self, b: &mut Boat) {
+    fn interpolate_driven_boat(&self, b: &mut Boat) {
         let Some(mut l) = b.lerp.take() else {
             return;
         };
@@ -323,7 +321,7 @@ pub trait BoatsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `AbstractInterpolationHandler.adjustInterpolationPosition`: check the
     /// shifted target against blocks, entities and the border at the boat's live pose.
-     fn boat_lerp_target_fits(&self, boat: &Boat, target: Vec3) -> bool {
+    fn boat_lerp_target_fits(&self, boat: &Boat, target: Vec3) -> bool {
         let bounds = boat.bounds_at(target);
         let scene = SceneCollisions {
             world: &self.world,
@@ -350,11 +348,7 @@ pub trait BoatsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `Entity.recordMovement` for a both-side lid push: move an active
     /// interpolation target by the displacement, if the boat fits there.
-     fn record_driven_boat_lid_movement(
-        &mut self,
-        i: usize,
-        delta: Vec3,
-    ) -> bool {
+    fn record_driven_boat_lid_movement(&mut self, i: usize, delta: Vec3) -> bool {
         let boat = &self.boats[i];
         let Some(mut lerp) = boat.lerp else {
             return false;
@@ -369,7 +363,7 @@ pub trait BoatsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         true
     }
 
-     fn tick_boat(&mut self, mut b: Boat, controlled: bool) -> Boat {
+    fn tick_boat(&mut self, mut b: Boat, controlled: bool) -> Boat {
         b.previous = b.position;
         b.previous_yaw = b.yaw;
         // Entity.commonTick: the client's interpolation, before the boat ticks.
@@ -587,22 +581,22 @@ pub trait BoatsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `Entity.canSimulateMovement`: for a boat (`AUTHORITATIVE_SIDE`).
-     fn boat_can_simulate_movement(&self, id: u32) -> bool {
+    fn boat_can_simulate_movement(&self, id: u32) -> bool {
         self.side_boat_can_simulate_movement(id)
     }
 
     /// `AbstractBoat.canAddPassenger`: a seat is free and the boat is not under water.
-     fn boat_has_room(&self, i: usize) -> bool {
+    fn boat_has_room(&self, i: usize) -> bool {
         self.side_boat_has_room(i)
     }
 
     /// Where the player in boat `i` sits: in the middle alone, in front of a mob.
-     fn player_boat_seat(&self, i: usize) -> Vec3 {
+    fn player_boat_seat(&self, i: usize) -> Vec3 {
         self.side_player_boat_seat(i)
     }
 
     /// `Entity.handleOnInsideBubbleColumn`.
-     fn boat_inside_bubble_column(&mut self, i: usize, column: BubbleColumn) {
+    fn boat_inside_bubble_column(&mut self, i: usize, column: BubbleColumn) {
         if !self.boat_can_simulate_movement(self.boats[i].id) {
             return;
         }
@@ -610,7 +604,7 @@ pub trait BoatsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `AbstractBoat.handleBubbleColumnEffect`: up at 0.6, down by -0.7.
-     fn handle_bubble_column_effect(&mut self, i: usize, drag_down: bool) {
+    fn handle_bubble_column_effect(&mut self, i: usize, drag_down: bool) {
         if !self.boat_can_simulate_movement(self.boats[i].id) {
             return;
         }
@@ -623,7 +617,7 @@ pub trait BoatsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         });
     }
 
-     fn boat_step_on(&mut self, boat: &mut Boat) {
+    fn boat_step_on(&mut self, boat: &mut Boat) {
         let mut velocity = boat.velocity;
         let writes = self.body_step_on(
             (boat.id, boat.entity_type_name()),
@@ -635,7 +629,7 @@ pub trait BoatsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// The second `applyEffectsFromBlocks` of `AbstractBoat.tick` uses the movement left by the first.
-     fn boat_second_step(&mut self, i: usize) {
+    fn boat_second_step(&mut self, i: usize) {
         let b = &self.boats[i];
         if b.ground.on_ground {
             let mut velocity = b.velocity;
@@ -652,7 +646,7 @@ pub trait BoatsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// The boat `BoatItem.use` would place for `stack` (id = 0; server caller assigns its entity id).
-     fn boat_to_place(&self, stack: &ItemStack) -> Option<Boat> {
+    fn boat_to_place(&self, stack: &ItemStack) -> Option<Boat> {
         let (wood, chest) = registered_boat_item(&stack.item, self.res.items())?;
         let hit = self.boat_item_hit()?;
         let mut boat = Boat::new(
@@ -683,7 +677,7 @@ pub trait BoatsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// What boat `b` may run into this tick.
-     fn boat_move_obstacles(&self, b: &Boat) -> Vec<Aabb> {
+    fn boat_move_obstacles(&self, b: &Boat) -> Vec<Aabb> {
         let reach = b.velocity.length() + 1.0;
         self.entity_collisions(Mover::Boat {
             id: b.id,
@@ -692,7 +686,7 @@ pub trait BoatsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `noEntityCollision(boat, box)` for a new boat (`BoatItem.use`).
-     fn boat_entity_collision(&self, bb: Aabb) -> bool {
+    fn boat_entity_collision(&self, bb: Aabb) -> bool {
         // EntityGetter.getEntityCollisions: the box grown by 1e-7.
         let area = bb.inflate(Vec3::new(1.0e-7, 1.0e-7, 1.0e-7));
         !self
@@ -701,7 +695,6 @@ pub trait BoatsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> BoatsCommonGameExt1<'__sg> for G {}
-
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Status {
@@ -1308,12 +1301,7 @@ impl<'g, G: crate::game::SideGame<'g>> BoatItemHitGameExt<'g> for G {}
 use crate::game::native_surface::BoatFrictionGameExt as _;
 
 pub trait BoatStatusGameExt<'g>: crate::game::SideGame<'g> {
-    fn boat_status(
-        &self,
-        b: &Boat,
-        water_level: &mut f64,
-        land_friction: &mut f32,
-    ) -> Status {
+    fn boat_status(&self, b: &Boat, water_level: &mut f64, land_friction: &mut f32) -> Status {
         let bb = b.bounds();
         let (lo, hi) = (bb.min_position(), bb.max_position());
         // isUnderwater

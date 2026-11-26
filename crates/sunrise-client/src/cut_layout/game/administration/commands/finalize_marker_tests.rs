@@ -4,7 +4,6 @@
 //! (`SummonCommand.createEntity` passes `finalize = false`; `Entity.load` reads
 //! only the fields it knows) never honour it, while a mob the level loads from
 //! its chunk still does.
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::execution_role, crate::game::load_resources};
 use std::{collections::HashSet, sync::Arc};
 use sunrise_core::nbt::Tag;
 use sunrise_level::chunk::Chunk;
@@ -14,6 +13,10 @@ use sunrise_sim::{
         Mob, Species,
         finalize::{self, Attr},
     },
+};
+use {
+    crate::game::load_resources, crate::settings::Settings, sunrise_gameplay_common::game::Options,
+    sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role,
 };
 
 fn with_game(f: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {

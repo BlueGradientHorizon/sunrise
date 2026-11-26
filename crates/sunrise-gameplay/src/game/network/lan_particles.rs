@@ -2,13 +2,13 @@
 //! `ClientboundLevelParticlesPacket` (`ServerLevel.sendParticles`, which
 //! `/particle` uses) and `ClientboundExplodePacket` (`ServerLevel.explode`).
 use super::{explosion_settings::BlastEffects, lan::LanHost};
-use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
 use mod_api::SoundSource;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
+use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
 use sunrise_level::particle_options::ParticleType;
 use sunrise_protocol::{
     entity_data::Particle,
@@ -192,7 +192,8 @@ impl crate::game::ServerGame<'_> {
         particle: &ServerParticle,
         at: [f64; 3],
     ) {
-        let (Some(host), Some(particle)) = (&self.server.lan, self.network_particle(particle)) else {
+        let (Some(host), Some(particle)) = (&self.server.lan, self.network_particle(particle))
+        else {
             return;
         };
         let packet = C::LevelParticles(play::LevelParticles {
@@ -296,11 +297,18 @@ impl crate::game::ServerGame<'_> {
     ) {
         // `particle_velocity` refuses no horizontal movement before any draw,
         // so a resting entity skips the sweep (most items, orbs and carts).
-        if !self.common.is_logical_server() || (known_movement.x == 0.0 && known_movement.z == 0.0) {
+        if !self.common.is_logical_server() || (known_movement.x == 0.0 && known_movement.z == 0.0)
+        {
             return;
         }
         let snow = sunrise_sim::powder_snow::contacts(previous, position, bounds, living, |p| {
-            &*self.common.res.facts().get(self.common.world.block(p.x, p.y, p.z)).name == "minecraft:powder_snow"
+            &*self
+                .common
+                .res
+                .facts()
+                .get(self.common.world.block(p.x, p.y, p.z))
+                .name
+                == "minecraft:powder_snow"
         });
         for block in snow {
             self.powder_snow_particle(block, position, known_movement);
@@ -317,7 +325,8 @@ impl crate::game::ServerGame<'_> {
         if !self.common.is_logical_server() {
             return;
         }
-        let Some(velocity) = powder_snow_velocity(known_movement, &mut self.common.world.random) else {
+        let Some(velocity) = powder_snow_velocity(known_movement, &mut self.common.world.random)
+        else {
             return;
         };
         self.snowflake_particle([position.x, f64::from(block.y + 1), position.z], velocity);
@@ -659,11 +668,11 @@ pub(in crate::game::server_side) fn explosion_packet(
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
     use super::*;
+    use mod_api::client::particles::PositionSource;
+    use sunrise_core::random::LegacyRandom;
     use sunrise_gameplay_common::game::lan_particle_data::{
         decode_mod_particle, particle_position_source, server_particle_from_options,
     };
-    use mod_api::client::particles::PositionSource;
-    use sunrise_core::random::LegacyRandom;
     use sunrise_level::particle_options::{ParticleOptions, ParticleType};
     use sunrise_protocol::{
         entity_data::{ParticleData, PositionSource as NetworkPositionSource},
@@ -902,7 +911,8 @@ pub mod tests {
     fn typed_particle_packet_is_shared_by_spawns_and_kept_from_vanilla_peers() {
         let entries = [mod_api::ModEntry::new("test", Box::new(MeasuredParticle))];
         mod_platform::__private::part_tests::install_parts_fixture(&entries).unwrap();
-        sunrise_gameplay_common::game::mods::resolve_particle_providers(&Default::default()).unwrap();
+        sunrise_gameplay_common::game::mods::resolve_particle_providers(&Default::default())
+            .unwrap();
         let (mut hub, sunrise, vanilla) =
             test_hub("TypedParticle", vec!["minecraft:crit".into()], None);
         hub.guests.update_all(|guest| {

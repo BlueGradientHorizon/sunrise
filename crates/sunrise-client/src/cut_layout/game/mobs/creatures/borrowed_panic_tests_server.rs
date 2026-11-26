@@ -1,12 +1,4 @@
-use sunrise_core::random::RandomSource;
-use std::sync::Arc;
-use sunrise_core::geometry::Vec3;
-use sunrise_gameplay_common::game::Dim;
-use sunrise_sim::mobs::Mob;
-use sunrise_sim::mobs::MobEvent;
 use super::*;
-use sunrise_gameplay_common::game::creatures::MobOutputBatch;
-use sunrise_gameplay_common::game::creatures::NormalMobActions;
 use crate::game::creatures::borrowed_panic_tests::BreathPanic;
 use crate::game::creatures::borrowed_panic_tests::Breather;
 use crate::game::creatures::borrowed_panic_tests::Consumer;
@@ -29,25 +21,34 @@ use crate::game::creatures::borrowed_panic_tests::guest_health;
 use crate::game::creatures::borrowed_panic_tests::prime_hook;
 use crate::game::creatures::borrowed_panic_tests::queue_egg;
 use crate::game::creatures::borrowed_panic_tests::tick_in_level;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::__private::take_hook_panics;
+use std::sync::Arc;
 use std::sync::{
     Mutex,
     atomic::{AtomicUsize, Ordering},
 };
+use sunrise_core::geometry::Vec3;
 use sunrise_core::random::LegacyRandom;
+use sunrise_core::random::RandomSource;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::Dim;
+use sunrise_gameplay_common::game::creatures::MobOutputBatch;
+use sunrise_gameplay_common::game::creatures::NormalMobActions;
 use sunrise_level::chunk::Chunk;
 use sunrise_mod_runtime::attachments::Holder;
 use sunrise_sim::join_seq::residency::{
     Change, Journal, Kind, Owner,
     table::{EntityLookup, EntityTable, SourceEntity},
 };
+use sunrise_sim::mobs::Mob;
+use sunrise_sim::mobs::MobEvent;
 
 /// One tick of a zombie with 100 air and an iron sword: the air it listened to, then the air
 /// and the sword's damage the tick left.
 pub(crate) fn breathing_tick(meddle: bool) -> (Vec<i32>, i32, i32) {
     crate::entry::install_client_hooks();
-    let _ = sunrise_sim::block_contact::HOOKS.set(sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS);
+    let _ = sunrise_sim::block_contact::HOOKS
+        .set(sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS);
     let scratch = Scratch(std::env::temp_dir().join(format!(
         "sunrise-breathing-{}-{:?}",
         std::process::id(),
@@ -102,7 +103,8 @@ pub(crate) fn breathing_tick(meddle: bool) -> (Vec<i32>, i32, i32) {
 #[ignore = "daily"]
 fn retained_breathing_tail() {
     crate::entry::install_client_hooks();
-    let _ = sunrise_sim::block_contact::HOOKS.set(sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS);
+    let _ = sunrise_sim::block_contact::HOOKS
+        .set(sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS);
     let calls = Arc::new(AtomicUsize::new(0));
     let scratch =
         Scratch(std::env::temp_dir().join(format!("sunrise-breath-panic-{}", std::process::id())));
@@ -169,7 +171,8 @@ fn retained_stale_push_target() {
         game.world
             .chunks
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-        game.common.creatures
+        game.common
+            .creatures
             .pending
             .entry(game.common.dim.id())
             .or_default()
@@ -190,7 +193,8 @@ fn retained_stale_push_target() {
 
 pub(crate) fn run_fixture(family: Family, output: Output, dim: Dim) {
     crate::entry::install_client_hooks();
-    let _ = sunrise_sim::block_contact::HOOKS.set(sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS);
+    let _ = sunrise_sim::block_contact::HOOKS
+        .set(sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS);
     if family == Family::Knockback {
         assert!(sunrise_level::brewing::register_mod_effects([(
             "borrowed-panic:hit".into(),
@@ -289,7 +293,8 @@ pub(crate) fn run_fixture(family: Family, output: Output, dim: Dim) {
             }
             if output == Output::Mixed {
                 // A guest action already queued in an older batch must beat the egg produced by 73.
-                game.common.creatures
+                game.common
+                    .creatures
                     .pending
                     .entry(game.common.dim.id())
                     .or_default()
@@ -299,9 +304,10 @@ pub(crate) fn run_fixture(family: Family, output: Output, dim: Dim) {
                         guests: vec![(12, 71, MobEvent::AttackPlayer(2.0, [1.0, 80.0, 0.5], None))],
                     });
             }
-            game.server
-                .last_hurt_by_player
-                .insert(71, sunrise_gameplay_common::game::combat_common::PlayerCredit(99));
+            game.server.last_hurt_by_player.insert(
+                71,
+                sunrise_gameplay_common::game::combat_common::PlayerCredit(99),
+            );
             let rows: Vec<_> = game.mobs.iter().map(|m| (m.id, m.join)).collect();
             VALUE
                 .set(&mut game.world.attachments, Holder::Level, 42)

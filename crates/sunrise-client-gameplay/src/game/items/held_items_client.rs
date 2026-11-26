@@ -4,10 +4,7 @@ use sunrise_items::items::ItemStack;
 
 impl ClientGame<'_> {
     /// `MultiPlayerGameMode.sameDestroyTarget`'s item half for `began`.
-    pub fn same_destroying_item(
-        &self,
-        began: &Option<ItemStack>,
-    ) -> bool {
+    pub fn same_destroying_item(&self, began: &Option<ItemStack>) -> bool {
         let held = self.common.held();
         let same = match (began, held) {
             (None, None) => true,

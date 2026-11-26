@@ -1,15 +1,13 @@
-
-
 #![cfg(test)]
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::Species;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use super::*;
+    use super::*;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 
-/// `PiglinAi.throwItemsTowardPos` swings the off hand once when it has
+    /// `PiglinAi.throwItemsTowardPos` swings the off hand once when it has
     /// something to throw, so barters leave the admiring hand (#12512).
     #[test]
     #[ignore = "daily"]

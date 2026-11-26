@@ -17,10 +17,12 @@ impl ServerGame<'_> {
         let harnessed = m.extra.body_id().is_some();
         // Equippable.equipOnInteract: a harness goes on a bare adult.
         if item.ends_with("_harness") && item.starts_with("minecraft:") && !harnessed {
-            let held = self.common.inventory[self.common.selected].clone().map(|mut stack| {
-                stack.count = 1;
-                stack
-            });
+            let held = self.common.inventory[self.common.selected]
+                .clone()
+                .map(|mut stack| {
+                    stack.count = 1;
+                    stack
+                });
             self.common.mobs[index].extra.set_body_stack(held);
             self.server_play_sound("minecraft:entity.happy_ghast.equip", at, 1.0, 1.0);
             self.consume_held();

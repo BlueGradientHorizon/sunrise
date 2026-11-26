@@ -1,5 +1,3 @@
-
-
 #[test]
 fn hidden_tab_skips_players_except_for_visibility_narration() {
     use crate::game::client_side::scoreboard_client::tab_players_needed;

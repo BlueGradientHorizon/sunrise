@@ -151,10 +151,7 @@ pub(in crate::game) fn body_potion_affected(body: LivingBody<'_>, index: usize) 
 }
 
 /// `LivingEntity.getItemBySlot`: the live stack, never a copy.
-pub fn body_equipment(
-    body: LivingBody<'_>,
-    slot: EquipmentSlot,
-) -> Option<EquipmentRead<'_>> {
+pub fn body_equipment(body: LivingBody<'_>, slot: EquipmentSlot) -> Option<EquipmentRead<'_>> {
     let stack = match body {
         LivingBody::Mob(m) => return finalize::equipment_slot(m, slot),
         LivingBody::Player(p) => *p.equipment.get(slot as usize)?,
@@ -265,7 +262,10 @@ pub fn mob_effect(m: &Mob, e: &sunrise_sim::mobs::StoredEffect) -> ActiveEffect 
 pub trait NativeLivingBodyGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The body a living target names now, where its reads are: the player in place's own
     /// fields, a guest's hub record, a mob that is not removed, an armor stand or the dragon.
-     fn native_living_body<'__loan>(&'__loan self, target: Target) -> Option<LivingBody<'_>> where '__sg: '__loan {
+    fn native_living_body<'__loan>(&'__loan self, target: Target) -> Option<LivingBody<'_>>
+    where
+        '__sg: '__loan,
+    {
         Some(match target {
             Target::Player => {
                 let p = self.player.as_ref()?;
@@ -307,20 +307,21 @@ pub trait NativeLivingBodyGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeLivingBodyGameExt1<'__sg> for G {}
 
-
 pub trait NativeLivingBodyGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// Where a player's or a guest's effects are: the acting player's own
     /// are the game's (swapped in by the entry of `guest_turn`; a player handle names
     /// the acting player, and a game without a hub keeps its single
     /// player's the same way), any other guest's are their hub record's.
     /// None for another kind.
-     fn native_living_player_effects<'__loan>(
-        &'__loan self,
-        t: Target,
-    ) -> Option<&PlayerEffects> where '__sg: '__loan {
+    fn native_living_player_effects<'__loan>(&'__loan self, t: Target) -> Option<&PlayerEffects>
+    where
+        '__sg: '__loan,
+    {
         match t {
             Target::Player => Some(&self.potions.effects),
-            Target::Guest(conn) if crate::game::Side::lan_acting(self.side_state()) == Some(conn) => {
+            Target::Guest(conn)
+                if crate::game::Side::lan_acting(self.side_state()) == Some(conn) =>
+            {
                 Some(&self.potions.effects)
             }
             Target::Guest(conn) => self.side_guest_player_effects(conn),
@@ -333,11 +334,7 @@ pub trait NativeLivingBodyGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// amplifier and the flags. The effect is a registration-slot key resolved at load.
     /// None when it has the effect not, before effect resolution, or for an armor
     /// stand, the dragon, a stale handle or a client.
-     fn living_effect(
-        &self,
-        living: LivingRef,
-        effect: EffectKey,
-    ) -> Option<ActiveEffect> {
+    fn living_effect(&self, living: LivingRef, effect: EffectKey) -> Option<ActiveEffect> {
         let def = mod_api::__private::effect_index(effect)
             .and_then(sunrise_game_data::potions::effect_by_index)?;
         let target = self.native_living_read_target(living)?;
@@ -347,7 +344,7 @@ pub trait NativeLivingBodyGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// The entity's active effects (`LivingEntity.getActiveEffects`), in the
     /// order their store keeps them, in `Some` even when it has none. None
     /// for an armor stand, the dragon, a stale handle or a client.
-     fn living_effects(&self, living: LivingRef) -> Option<Vec<ActiveEffect>> {
+    fn living_effects(&self, living: LivingRef) -> Option<Vec<ActiveEffect>> {
         let target = self.native_living_read_target(living)?;
         body_effects(self.native_living_body(target)?)
     }
@@ -356,11 +353,7 @@ pub trait NativeLivingBodyGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// False before effect resolution, for an armor stand, the dragon or a stale handle;
     /// on a client, for any entity but the local player, whose copy of what the server
     /// sent it is read.
-     fn living_potion_affected(
-        &self,
-        living: LivingRef,
-        effect: EffectKey,
-    ) -> bool {
+    fn living_potion_affected(&self, living: LivingRef, effect: EffectKey) -> bool {
         let Some(def) = mod_api::__private::effect_index(effect)
             .and_then(sunrise_game_data::potions::effect_by_index)
         else {
@@ -373,12 +366,11 @@ pub trait NativeLivingBodyGameExt2<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeLivingBodyGameExt2<'__sg> for G {}
 
-
 pub trait NativeLivingBodyGameExt3<'__sg>: crate::game::SideGame<'__sg> {
     /// `LivingEntity.getUsedItemHand` while `isUsingItem`: the hand of the item
     /// a player or a mob uses, None when it uses none. On a client, the local
     /// player's only.
-     fn living_used_item_hand(&self, living: LivingRef) -> Option<Hand> {
+    fn living_used_item_hand(&self, living: LivingRef) -> Option<Hand> {
         match self.native_living_read_target(living)? {
             Target::Player => self.used_hand(),
             Target::Guest(conn) => self.side_guest_used_hand(conn),
@@ -396,13 +388,12 @@ pub trait NativeLivingBodyGameExt3<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeLivingBodyGameExt3<'__sg> for G {}
 
-
 pub trait NativeLivingBodyGameExt4<'__sg>: crate::game::SideGame<'__sg> {
     /// The ticks the entity has glided (`LivingEntity.getFallFlyingTicks`),
     /// counted from 0 again the tick after the glide ends. Players (including
     /// inactive guests) and mobs read their own stored body counter. None
     /// for an armor stand or the dragon.
-     fn living_gliding_ticks(&self, living: LivingRef) -> Option<i32> {
+    fn living_gliding_ticks(&self, living: LivingRef) -> Option<i32> {
         match self.native_living_read_target(living)? {
             Target::Player => Some(self.player.as_ref()?.fall_fly_ticks),
             Target::Guest(conn) => Some(
@@ -426,7 +417,7 @@ pub trait NativeLivingBodyGameExt4<'__sg>: crate::game::SideGame<'__sg> {
     /// Paper's `LivingEntity#isGliding`). The player in place and the guests
     /// answer from their fall-flying flag, a mob from its own. None for an
     /// armor stand or the dragon: the game keeps no glide for them.
-     fn living_is_gliding(&self, living: LivingRef) -> Option<bool> {
+    fn living_is_gliding(&self, living: LivingRef) -> Option<bool> {
         match self.native_living_read_target(living)? {
             Target::Player => Some(self.player.as_ref()?.fall_flying),
             Target::Guest(conn) => Some(self.command_guest(conn)?.fall_flying),
@@ -445,7 +436,7 @@ pub trait NativeLivingBodyGameExt4<'__sg>: crate::game::SideGame<'__sg> {
     /// player in place, a guest, or a villager or wandering trader asleep in
     /// its bed. Other mobs never sleep. None for an armor stand or the
     /// dragon.
-     fn living_is_sleeping(&self, living: LivingRef) -> Option<bool> {
+    fn living_is_sleeping(&self, living: LivingRef) -> Option<bool> {
         match self.native_living_read_target(living)? {
             Target::Player => Some(self.sleeping.is_some()),
             Target::Guest(conn) => Some(self.command_guest(conn)?.sleeping),
@@ -464,7 +455,7 @@ pub trait NativeLivingBodyGameExt4<'__sg>: crate::game::SideGame<'__sg> {
     /// as the block position it lies at. A guest keeps the bed it last slept
     /// in while it sleeps, a villager or wandering trader its own. None for
     /// an awake entity, another mob, an armor stand or the dragon.
-     fn living_sleeping_pos(&self, living: LivingRef) -> Option<[i32; 3]> {
+    fn living_sleeping_pos(&self, living: LivingRef) -> Option<[i32; 3]> {
         match self.native_living_read_target(living)? {
             Target::Player => self.sleeping,
             Target::Guest(conn) => {
@@ -483,7 +474,7 @@ pub trait NativeLivingBodyGameExt4<'__sg>: crate::game::SideGame<'__sg> {
     /// own jump state. The guests' jump is their client's, and a mob has no
     /// jump controller in the game's own AI, so both read false. None for
     /// an armor stand or the dragon.
-     fn living_is_jumping(&self, living: LivingRef) -> Option<bool> {
+    fn living_is_jumping(&self, living: LivingRef) -> Option<bool> {
         match self.native_living_read_target(living)? {
             Target::Player => Some(self.player.as_ref()?.jumping),
             Target::Guest(_) => Some(false),
@@ -498,7 +489,7 @@ pub trait NativeLivingBodyGameExt4<'__sg>: crate::game::SideGame<'__sg> {
     /// trapdoor above a ladder. A spectator never climbs; a gliding entity
     /// ignores blocks tagged to glide through, such as vines. None for an
     /// armor stand or the dragon.
-     fn living_is_climbing(&self, living: LivingRef) -> Option<bool> {
+    fn living_is_climbing(&self, living: LivingRef) -> Option<bool> {
         let target = self.native_living_read_target(living)?;
         let (position, spectator, gliding) = match target {
             Target::Player => {
@@ -533,7 +524,7 @@ pub trait NativeLivingBodyGameExt4<'__sg>: crate::game::SideGame<'__sg> {
     /// Whether the entity is a baby (`LivingEntity.isBaby`): a mob answers
     /// from its age, negative until it grows up. A player, an armor stand
     /// and the dragon are never babies.
-     fn living_baby(&self, living: LivingRef) -> Option<bool> {
+    fn living_baby(&self, living: LivingRef) -> Option<bool> {
         match self.native_living_read_target(living)? {
             Target::Mob(id) => Some(
                 self.mobs
@@ -549,7 +540,6 @@ pub trait NativeLivingBodyGameExt4<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeLivingBodyGameExt4<'__sg> for G {}
-
 
 /// `LivingEntity.onClimbable` reads the world through `ClimbingWorld`; this
 /// walks the level the flag's entity stands in, at its feet.
@@ -617,11 +607,7 @@ pub trait NativeLivingBodyGameExt5<'__sg>: crate::game::SideGame<'__sg> {
     /// own state still answers where its `getDefaultDimensions` reads it: a
     /// digging sniffer or an emerging warden is low in every pose. None for
     /// a stale or unavailable handle.
-     fn living_dimensions_for_pose(
-        &self,
-        living: LivingRef,
-        pose: Pose,
-    ) -> Option<[f64; 3]> {
+    fn living_dimensions_for_pose(&self, living: LivingRef, pose: Pose) -> Option<[f64; 3]> {
         let target = self.native_living_read_target(living)?;
         // LivingEntity.getDimensions is final: sleeping wins over every
         // species' default dimensions, but never makes a stale handle valid.
@@ -684,7 +670,6 @@ pub trait NativeLivingBodyGameExt5<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeLivingBodyGameExt5<'__sg> for G {}
 
-
 /// The map's modifiers as the API's, in their order. Their ids are canonical
 /// (`Modifier` normalizes them), so none is dropped.
 fn attribute_modifiers(list: Vec<Modifier>) -> Vec<AttributeModifier> {
@@ -707,11 +692,7 @@ fn api_modifier(m: &Modifier) -> Option<AttributeModifier> {
 pub trait NativeLivingBodyGameExt6<'__sg>: crate::game::SideGame<'__sg> {
     /// The base value of an attribute, before modifiers
     /// (`AttributeMap.getBaseValue`), read as the effective value is.
-     fn living_attribute_base(
-        &self,
-        living: LivingRef,
-        id: &str,
-    ) -> Option<f64> {
+    fn living_attribute_base(&self, living: LivingRef, id: &str) -> Option<f64> {
         self.native_living_attribute(living, id, sunrise_world::attribute_map::ValueKind::Base)
     }
 
@@ -721,7 +702,7 @@ pub trait NativeLivingBodyGameExt6<'__sg>: crate::game::SideGame<'__sg> {
     /// unavailable entity; on a client, for any entity but the local player
     /// (the client keeps no attribute map of another entity's, only the few
     /// fields it draws).
-     fn living_attributes(&self, living: LivingRef) -> Option<Vec<Identifier>> {
+    fn living_attributes(&self, living: LivingRef) -> Option<Vec<Identifier>> {
         let catalog = &self.motion.attributes;
         let entity = self.native_living_attribute_entity(living)?;
         Some(
@@ -741,7 +722,7 @@ pub trait NativeLivingBodyGameExt6<'__sg>: crate::game::SideGame<'__sg> {
     /// empty list; None for an attribute the entity type does not have, a
     /// stale handle, or on a client for any entity but the local player,
     /// whose copy of the synced instances it reads.
-     fn living_attribute_modifiers(
+    fn living_attribute_modifiers(
         &self,
         living: LivingRef,
         id: &str,
@@ -749,7 +730,7 @@ pub trait NativeLivingBodyGameExt6<'__sg>: crate::game::SideGame<'__sg> {
         self.native_target_attribute_modifiers(self.native_living_read_target(living)?, id)
     }
 
-     fn native_living_attribute(
+    fn native_living_attribute(
         &self,
         living: LivingRef,
         name: &str,
@@ -761,10 +742,10 @@ pub trait NativeLivingBodyGameExt6<'__sg>: crate::game::SideGame<'__sg> {
     /// The entity's type key, for the catalog's attribute defaults: the same
     /// set the value and base reads answer for. On a client only the local
     /// player resolves (`native_living_read_target`).
-     fn native_living_attribute_entity<'__loan>(
-        &'__loan self,
-        living: LivingRef,
-    ) -> Option<&str> where '__sg: '__loan {
+    fn native_living_attribute_entity<'__loan>(&'__loan self, living: LivingRef) -> Option<&str>
+    where
+        '__sg: '__loan,
+    {
         match self.native_living_read_target(living)? {
             Target::Player | Target::Guest(_) => Some("minecraft:player"),
             Target::Mob(id) => self
@@ -780,7 +761,7 @@ pub trait NativeLivingBodyGameExt6<'__sg>: crate::game::SideGame<'__sg> {
 
     /// The modifiers of `name` on `target`'s attribute map, as
     /// `native_target_attribute` reads its value.
-     fn native_target_attribute_modifiers(
+    fn native_target_attribute_modifiers(
         &self,
         target: Target,
         name: &str,
@@ -840,7 +821,7 @@ pub trait NativeLivingBodyGameExt6<'__sg>: crate::game::SideGame<'__sg> {
         )
     }
 
-     fn native_target_attribute(
+    fn native_target_attribute(
         &self,
         target: Target,
         name: &str,
@@ -858,7 +839,7 @@ pub trait NativeLivingBodyGameExt6<'__sg>: crate::game::SideGame<'__sg> {
     /// `Damageable#getHealth`). During a player's turn only that player
     /// resolves: the hub is out for their action, and other players'
     /// handles read `None` until it is back.
-     fn living_health(&self, living: LivingRef) -> Option<f32> {
+    fn living_health(&self, living: LivingRef) -> Option<f32> {
         let target = self.native_living_read_target(living)?;
         body_health(self.native_living_body(target)?)
     }
@@ -868,13 +849,13 @@ pub trait NativeLivingBodyGameExt6<'__sg>: crate::game::SideGame<'__sg> {
     /// map; a mob, an armor stand and the dragon their own fields (the
     /// armor stand the fixed 20 the game seeds it with, the dragon its
     /// 200) until live attribute maps cover them.
-     fn living_max_health(&self, living: LivingRef) -> Option<f32> {
+    fn living_max_health(&self, living: LivingRef) -> Option<f32> {
         let target = self.native_living_read_target(living)?;
         body_max_health(self.native_living_body(target)?)
     }
 
     /// Lend the stack in `slot` (`LivingEntity.getItemBySlot`).
-     fn living_equipment(
+    fn living_equipment(
         &self,
         living: LivingRef,
         slot: EquipmentSlot,
@@ -884,7 +865,7 @@ pub trait NativeLivingBodyGameExt6<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// Lend the stack in `hand` (`LivingEntity.getItemInHand`).
-     fn living_hand_item(
+    fn living_hand_item(
         &self,
         living: LivingRef,
         hand: Hand,
@@ -894,7 +875,6 @@ pub trait NativeLivingBodyGameExt6<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeLivingBodyGameExt6<'__sg> for G {}
-
 
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 

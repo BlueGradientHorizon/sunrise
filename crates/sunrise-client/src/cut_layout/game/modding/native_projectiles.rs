@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::join_seq::JoinList;
@@ -24,7 +22,8 @@ mod nested_spawn_tests {
         use sunrise_sim::join_seq::residency::{Change, Journal, Kind, Owner};
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             if park {
-                game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+                game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+                    .unwrap();
             }
             let journal = Journal::default();
             let owner = Owner {
@@ -60,7 +59,8 @@ mod nested_spawn_tests {
                 .projectiles
                 .restore(pass, sunrise_sim::join_seq::RestoreOrder::SpawnsFirst);
             if park {
-                game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
+                game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
+                    .unwrap();
             }
             let mut events = Vec::new();
             journal.drain_into(&mut events);
@@ -75,7 +75,8 @@ mod nested_spawn_tests {
                 .sum();
             assert_eq!(balance, 0, "impact exposure left an unmatched lifted pass");
             if park {
-                game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+                game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+                    .unwrap();
             }
             assert_eq!(
                 game.creatures
@@ -241,9 +242,9 @@ mod pearl_hit_tests {
     #[test]
     #[ignore = "daily"]
     fn a_listening_mod_hears_the_pearls_hit_and_its_target_comes_back() {
-        use sunrise_gameplay_common::game::dragon_common::Dragon;
         use mod_api::{EnderPearlTeleportEvent, Flow, Hooks, ModEntry, ServerHost};
         use std::sync::{Arc, Mutex};
+        use sunrise_gameplay_common::game::dragon_common::Dragon;
         type Heard = Arc<Mutex<Vec<(Option<u32>, [i32; 3])>>>;
         struct Hear(Heard);
         #[mod_api::__subscriptions]

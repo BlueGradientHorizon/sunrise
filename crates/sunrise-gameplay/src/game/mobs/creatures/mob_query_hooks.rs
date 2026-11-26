@@ -12,7 +12,8 @@ impl sunrise_sim::mobs::MobHooks for crate::game::ServerGame<'_> {
             return None;
         }
         let level_ref = self.level(self.common.dim.id())?;
-        let level = sunrise_gameplay_common::game::native_level_signals::ReadLevel::new(self, level_ref);
+        let level =
+            sunrise_gameplay_common::game::native_level_signals::ReadLevel::new(self, level_ref);
         let mut answer = None;
         if let Err(error) = sunrise_level::crash::contain(|| {
             level.native_block_path_type(

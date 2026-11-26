@@ -144,7 +144,8 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
     with_client_game(|game| {
         // The pack's resources as the game loads them: the atlas resolves the uniform, and the
         // renderer the game builds over them takes the shader with it.
-        game.client.gui = crate::game::UiResources::load(&pack(), std::path::Path::new("")).unwrap();
+        game.client.gui =
+            crate::game::UiResources::load(&pack(), std::path::Path::new("")).unwrap();
         assert!(game.client.gui.atlas.lightmap_shader.is_some());
         assert_eq!(game.client.gui.atlas.lightmap_expressions.len(), 1);
         let _event_loop = frame_scene(game);

@@ -7,7 +7,9 @@ use crate::game::client_side::{
     launch_options_client::is_client_start, resource_tables_client::UiResources,
     window_handler::follow_keymap,
 };
-use sunrise_gameplay_common::game::integrated_link::{ProfileResolverFactory, RunComponentHarness, Serve};
+use sunrise_gameplay_common::game::integrated_link::{
+    ProfileResolverFactory, RunComponentHarness, Serve,
+};
 use sunrise_sim::lan::SessionVerifier;
 
 /// The window system ended the event loop with a failure (on Linux, a compositor dropping the
@@ -28,9 +30,7 @@ pub(in crate::game) fn leave_fullscreen_after(
 }
 
 #[cfg(feature = "client")]
-pub fn run_event_loop(
-    mut game: crate::game::ClientGame<'_>,
-) -> Result<()> {
+pub fn run_event_loop(mut game: crate::game::ClientGame<'_>) -> Result<()> {
     // Minecraft.onGameLoadFinished: a start that made it this far is clean.
     if is_client_start(&game.options) && game.options.headless {
         game.client.settings.file.set(
@@ -91,8 +91,7 @@ pub struct Loading {
     /// The bar as drawn, easing toward `progress` (`LoadingOverlay.currentProgress`).
     pub bar: f32,
     pub receiver: Receiver<LoaderMsg>,
-    pub loaded:
-        Option<std::result::Result<Loaded, super::resource_loader::LoaderFailure>>,
+    pub loaded: Option<std::result::Result<Loaded, super::resource_loader::LoaderFailure>>,
     /// The loader's `Done` arrived: its channel closing afterwards is expected.
     pub delivered: bool,
     pub handle: Option<JoinHandle<()>>,
@@ -443,7 +442,9 @@ impl Loading {
             "startedCleanly",
             sunrise_client::options_file::V::Bool(true),
         );
-        game.client.settings.save(&sunrise_gameplay_common::game::options_path());
+        game.client
+            .settings
+            .save(&sunrise_gameplay_common::game::options_path());
         log::info!(
             "Sunrise: startup handoff {} ms (renderer {} ms, start_game {} ms)",
             handoff_at.elapsed().as_millis(),

@@ -1,10 +1,10 @@
 //! Startup shared by the gameplay library and its executable.
-#[cfg(feature = "client")]
-#[path = "sunrise_look.rs"]
-mod sunrise_look;
 #[cfg(not(feature = "client"))]
 #[path = "crash_retention.rs"]
 mod crash_retention;
+#[cfg(feature = "client")]
+#[path = "sunrise_look.rs"]
+mod sunrise_look;
 use crate::{crash, game, logging};
 use sunrise_level::runtime_env::runtime_environment;
 use sunrise_mod_package::selection::{Argument, LaunchArguments};
@@ -100,10 +100,15 @@ pub fn start(
     crash::on_report(sunrise_client::telemetry::keep_crash);
     #[cfg(not(feature = "client"))]
     crash::on_report(|home, report| {
-        crash_retention::keep_crash(home, report, || {
-            let cwd = std::env::current_dir().ok();
-            sunrise_telemetry::payload::System::detect_in(cwd.as_deref())
-        }, game::benchmark_retention::version);
+        crash_retention::keep_crash(
+            home,
+            report,
+            || {
+                let cwd = std::env::current_dir().ok();
+                sunrise_telemetry::payload::System::detect_in(cwd.as_deref())
+            },
+            game::benchmark_retention::version,
+        );
     });
     // Crates above the engine registered their hooks before this (sunrise-official's `main`);
     // none registers after this point.
@@ -151,7 +156,8 @@ pub fn start(
     if sunrise_world::native_load_hooks::install(
         sunrise_world::native_load_hooks::NativeLoadHooks {
             item_ability_default: sunrise_items::item_abilities::vanilla_can_perform,
-            loot_ability: sunrise_gameplay_common::game::api_values::loot_values::dispatch_loot_ability,
+            loot_ability:
+                sunrise_gameplay_common::game::api_values::loot_values::dispatch_loot_ability,
             loot_table_load: |context, id, table| {
                 if !mod_api::__private::listened(mod_api::HookId::LootTableLoad) {
                     return;
@@ -202,7 +208,9 @@ pub fn start(
         // A bad command line is the caller's mistake, not a crash: no report.
         let missing_mods = game::dedicated::is_missing_mods_refusal(error.as_ref());
         let usage = error.is::<game::UsageError>() || missing_mods;
-        if let Some(refusals) = error.downcast_ref::<sunrise_gameplay_common::game::mods::DeclarationFailures>() {
+        if let Some(refusals) =
+            error.downcast_ref::<sunrise_gameplay_common::game::mods::DeclarationFailures>()
+        {
             for line in refusals.lines() {
                 log::error!("Sunrise: {line}");
             }
@@ -235,163 +243,182 @@ pub fn start(
 
 pub(crate) fn install_client_hooks() {
     sunrise_gameplay_common::game::api_values::install_stack_hooks();
-    if !sunrise_sim::native_client_hooks::install(sunrise_sim::native_client_hooks::NativeClientHooks {
-        menu_still_valid: sunrise_gameplay_common::game::api_values::menu_still_valid,
-        menu_still_valid_listens: |menu| {
-            mod_api::__private::menu_listens(mod_api::HookId::MenuStillValid, menu)
+    if !sunrise_sim::native_client_hooks::install(
+        sunrise_sim::native_client_hooks::NativeClientHooks {
+            menu_still_valid: sunrise_gameplay_common::game::api_values::menu_still_valid,
+            menu_still_valid_listens: |menu| {
+                mod_api::__private::menu_listens(mod_api::HookId::MenuStillValid, menu)
+            },
+            living_heal: |context, entity, amount, cancel| {
+                if !mod_api::__private::listened(mod_api::HookId::LivingHeal) {
+                    return;
+                }
+                let reader = sunrise_level::api_context::LoopReader(context);
+                let context = reader.context();
+                mod_api::dispatch_living_heal(&context, entity, amount, cancel);
+            },
+            living_breathe_heard: || mod_api::__private::listened(mod_api::HookId::LivingBreathe),
+            has_mods: || !mod_api::__private::mods().is_empty(),
+            player_name_format: |context, username, displayname| {
+                use sunrise_gameplay_common::game::TryIntoApi;
+                if !mod_api::__private::listened(mod_api::HookId::PlayerNameFormat) {
+                    return;
+                }
+                let reader = sunrise_level::api_context::LoopReader(context);
+                let context = reader.context();
+                let Ok(username) = username.try_into_api() else {
+                    return;
+                };
+                let Ok(mut converted) = displayname.try_into_api() else {
+                    return;
+                };
+                mod_api::dispatch_player_name_format(&context, &username, &mut converted);
+                if let Ok(converted) = sunrise_sim::api_text::to_serialized_engine(&converted) {
+                    *displayname = converted;
+                }
+            },
+            player_tab_list_name_format: |context, player, name, display_name| {
+                use sunrise_gameplay_common::game::TryIntoApi;
+                if !mod_api::__private::listened(mod_api::HookId::PlayerTabListNameFormat) {
+                    return;
+                }
+                let reader = sunrise_level::api_context::LoopReader(context);
+                let context = reader.context();
+                let Ok(mut converted) = display_name.try_into_api() else {
+                    return;
+                };
+                mod_api::dispatch_player_tab_list_name_format(
+                    &context,
+                    player,
+                    name,
+                    &mut converted,
+                );
+                if let Ok(converted) = converted
+                    .as_ref()
+                    .map(sunrise_sim::api_text::to_serialized_engine)
+                    .transpose()
+                {
+                    *display_name = converted;
+                }
+            },
+            living_drown: |context,
+                           entity,
+                           kind,
+                           is_drowning,
+                           damage_amount,
+                           bubble_count,
+                           cancel| {
+                if !mod_api::__private::listened(mod_api::HookId::LivingDrown) {
+                    return;
+                }
+                let reader = sunrise_level::api_context::LoopReader(context);
+                let context = reader.context();
+                mod_api::dispatch_living_drown(
+                    &context,
+                    entity,
+                    kind,
+                    is_drowning,
+                    damage_amount,
+                    bubble_count,
+                    cancel,
+                );
+            },
+            living_fall: |context, entity, kind, distance, multiplier, cancel| {
+                if !mod_api::__private::listened(mod_api::HookId::LivingFall) {
+                    return;
+                }
+                let reader = sunrise_level::api_context::LoopReader(context);
+                let context = reader.context();
+                mod_api::dispatch_living_fall(&context, entity, kind, distance, multiplier, cancel);
+            },
+            living_jump: |context, entity, kind, velocity| {
+                if !mod_api::__private::listened(mod_api::HookId::LivingJump) {
+                    return;
+                }
+                let reader = sunrise_level::api_context::LoopReader(context);
+                let context = reader.context();
+                mod_api::dispatch_living_jump(&context, entity, kind, velocity);
+            },
+            living_jump_power: |context, entity, kind, power| {
+                if !mod_api::__private::listened(mod_api::HookId::LivingJumpPower) {
+                    return;
+                }
+                let reader = sunrise_level::api_context::LoopReader(context);
+                let context = reader.context();
+                mod_api::dispatch_living_jump_power(&context, entity, kind, power);
+            },
+            living_speed: |context, entity, kind, speed| {
+                if !mod_api::__private::listened(mod_api::HookId::LivingSpeed) {
+                    return;
+                }
+                let reader = sunrise_level::api_context::LoopReader(context);
+                let context = reader.context();
+                mod_api::dispatch_living_speed(&context, entity, kind, speed);
+            },
+            living_flying_speed: |context, entity, kind, speed| {
+                if !mod_api::__private::listened(mod_api::HookId::LivingFlyingSpeed) {
+                    return;
+                }
+                let reader = sunrise_level::api_context::LoopReader(context);
+                let context = reader.context();
+                mod_api::dispatch_living_flying_speed(&context, entity, kind, speed);
+            },
+            block_jump_factor: |context, state, factor| {
+                crate::game::block_jump_factor(context, state, factor);
+            },
+            block_speed_factor: |context, state, factor| {
+                crate::game::block_speed_factor(context, state, factor);
+            },
+            is_ladder: |context, entity, pos, state, ladder| {
+                crate::game::is_ladder(context, entity, pos, state, ladder);
+            },
+            makes_open_trapdoor_above_climbable:
+                crate::game::native_trapdoor_ladder::makes_open_trapdoor_above_climbable,
+            friction: sunrise_gameplay_common::game::native_surface::friction,
+            collision_shape: |context, pos, state, query, shape| {
+                crate::game::native_collision_shape::collision_shape(
+                    context, pos, state, query, shape,
+                );
+            },
+            collision_shape_refused: crate::game::native_collision_shape::refused,
+            player_stays_on_ground_surface: |context, entity, staying| {
+                if !mod_api::__private::listened(mod_api::HookId::PlayerStaysOnGroundSurface) {
+                    return;
+                }
+                let reader = sunrise_level::api_context::LoopReader(context);
+                let context = reader.context();
+                mod_api::dispatch_player_stays_on_ground_surface(&context, entity, staying);
+            },
+            ender_entity_teleport: |context, entity, kind, from, target, cancel| {
+                if !mod_api::__private::listened(mod_api::HookId::EnderEntityTeleport) {
+                    return;
+                }
+                let reader = sunrise_level::api_context::LoopReader(context);
+                let context = reader.context();
+                mod_api::dispatch_ender_entity_teleport(
+                    &context, entity, kind, from, target, cancel,
+                );
+            },
+            fluid_flow: |context, fluid, pos, flow| {
+                if !mod_api::__private::listened(mod_api::HookId::FluidFlow) {
+                    return;
+                }
+                let reader = sunrise_level::api_context::LoopReader(context);
+                let context = reader.context();
+                mod_api::dispatch_fluid_flow(&context, fluid, pos, flow);
+            },
+            sound_type: |context, pos, state, entity, cause, sound| {
+                sunrise_gameplay_common::game::native_block_sounds::sound_type(
+                    context, pos, state, entity, cause, sound,
+                );
+            },
+            can_grindstone_repair: crate::game::native_item_menu_parts::can_grindstone_repair,
+            is_combine_repairable: crate::game::native_item_menu_parts::is_combine_repairable,
+            can_fit_inside_container_items:
+                crate::game::native_item_menu_parts::can_fit_inside_container_items,
+            item_name: crate::game::native_item_menu_parts::item_name,
         },
-        living_heal: |context, entity, amount, cancel| {
-            if !mod_api::__private::listened(mod_api::HookId::LivingHeal) {
-                return;
-            }
-            let reader = sunrise_level::api_context::LoopReader(context);
-            let context = reader.context();
-            mod_api::dispatch_living_heal(&context, entity, amount, cancel);
-        },
-        living_breathe_heard: || mod_api::__private::listened(mod_api::HookId::LivingBreathe),
-        has_mods: || !mod_api::__private::mods().is_empty(),
-        player_name_format: |context, username, displayname| {
-            use sunrise_gameplay_common::game::TryIntoApi;
-            if !mod_api::__private::listened(mod_api::HookId::PlayerNameFormat) {
-                return;
-            }
-            let reader = sunrise_level::api_context::LoopReader(context);
-            let context = reader.context();
-            let Ok(username) = username.try_into_api() else {
-                return;
-            };
-            let Ok(mut converted) = displayname.try_into_api() else {
-                return;
-            };
-            mod_api::dispatch_player_name_format(&context, &username, &mut converted);
-            if let Ok(converted) = sunrise_sim::api_text::to_serialized_engine(&converted) {
-                *displayname = converted;
-            }
-        },
-        player_tab_list_name_format: |context, player, name, display_name| {
-            use sunrise_gameplay_common::game::TryIntoApi;
-            if !mod_api::__private::listened(mod_api::HookId::PlayerTabListNameFormat) {
-                return;
-            }
-            let reader = sunrise_level::api_context::LoopReader(context);
-            let context = reader.context();
-            let Ok(mut converted) = display_name.try_into_api() else {
-                return;
-            };
-            mod_api::dispatch_player_tab_list_name_format(&context, player, name, &mut converted);
-            if let Ok(converted) = converted
-                .as_ref()
-                .map(sunrise_sim::api_text::to_serialized_engine)
-                .transpose()
-            {
-                *display_name = converted;
-            }
-        },
-        living_drown: |context, entity, kind, is_drowning, damage_amount, bubble_count, cancel| {
-            if !mod_api::__private::listened(mod_api::HookId::LivingDrown) {
-                return;
-            }
-            let reader = sunrise_level::api_context::LoopReader(context);
-            let context = reader.context();
-            mod_api::dispatch_living_drown(
-                &context,
-                entity,
-                kind,
-                is_drowning,
-                damage_amount,
-                bubble_count,
-                cancel,
-            );
-        },
-        living_fall: |context, entity, kind, distance, multiplier, cancel| {
-            if !mod_api::__private::listened(mod_api::HookId::LivingFall) {
-                return;
-            }
-            let reader = sunrise_level::api_context::LoopReader(context);
-            let context = reader.context();
-            mod_api::dispatch_living_fall(&context, entity, kind, distance, multiplier, cancel);
-        },
-        living_jump: |context, entity, kind, velocity| {
-            if !mod_api::__private::listened(mod_api::HookId::LivingJump) {
-                return;
-            }
-            let reader = sunrise_level::api_context::LoopReader(context);
-            let context = reader.context();
-            mod_api::dispatch_living_jump(&context, entity, kind, velocity);
-        },
-        living_jump_power: |context, entity, kind, power| {
-            if !mod_api::__private::listened(mod_api::HookId::LivingJumpPower) {
-                return;
-            }
-            let reader = sunrise_level::api_context::LoopReader(context);
-            let context = reader.context();
-            mod_api::dispatch_living_jump_power(&context, entity, kind, power);
-        },
-        living_speed: |context, entity, kind, speed| {
-            if !mod_api::__private::listened(mod_api::HookId::LivingSpeed) {
-                return;
-            }
-            let reader = sunrise_level::api_context::LoopReader(context);
-            let context = reader.context();
-            mod_api::dispatch_living_speed(&context, entity, kind, speed);
-        },
-        living_flying_speed: |context, entity, kind, speed| {
-            if !mod_api::__private::listened(mod_api::HookId::LivingFlyingSpeed) {
-                return;
-            }
-            let reader = sunrise_level::api_context::LoopReader(context);
-            let context = reader.context();
-            mod_api::dispatch_living_flying_speed(&context, entity, kind, speed);
-        },
-        block_jump_factor: |context, state, factor| {
-            crate::game::block_jump_factor(context, state, factor);
-        },
-        block_speed_factor: |context, state, factor| {
-            crate::game::block_speed_factor(context, state, factor);
-        },
-        is_ladder: |context, entity, pos, state, ladder| {
-            crate::game::is_ladder(context, entity, pos, state, ladder);
-        },
-        makes_open_trapdoor_above_climbable:
-            crate::game::native_trapdoor_ladder::makes_open_trapdoor_above_climbable,
-        friction: sunrise_gameplay_common::game::native_surface::friction,
-        collision_shape: |context, pos, state, query, shape| {
-            crate::game::native_collision_shape::collision_shape(context, pos, state, query, shape);
-        },
-        collision_shape_refused: crate::game::native_collision_shape::refused,
-        player_stays_on_ground_surface: |context, entity, staying| {
-            if !mod_api::__private::listened(mod_api::HookId::PlayerStaysOnGroundSurface) {
-                return;
-            }
-            let reader = sunrise_level::api_context::LoopReader(context);
-            let context = reader.context();
-            mod_api::dispatch_player_stays_on_ground_surface(&context, entity, staying);
-        },
-        ender_entity_teleport: |context, entity, kind, from, target, cancel| {
-            if !mod_api::__private::listened(mod_api::HookId::EnderEntityTeleport) {
-                return;
-            }
-            let reader = sunrise_level::api_context::LoopReader(context);
-            let context = reader.context();
-            mod_api::dispatch_ender_entity_teleport(&context, entity, kind, from, target, cancel);
-        },
-        fluid_flow: |context, fluid, pos, flow| {
-            if !mod_api::__private::listened(mod_api::HookId::FluidFlow) {
-                return;
-            }
-            let reader = sunrise_level::api_context::LoopReader(context);
-            let context = reader.context();
-            mod_api::dispatch_fluid_flow(&context, fluid, pos, flow);
-        },
-        sound_type: |context, pos, state, entity, cause, sound| {
-            sunrise_gameplay_common::game::native_block_sounds::sound_type(context, pos, state, entity, cause, sound);
-        },
-        can_grindstone_repair: crate::game::native_item_menu_parts::can_grindstone_repair,
-        is_combine_repairable: crate::game::native_item_menu_parts::is_combine_repairable,
-        can_fit_inside_container_items:
-            crate::game::native_item_menu_parts::can_fit_inside_container_items,
-        item_name: crate::game::native_item_menu_parts::item_name,
-    }) {
+    ) {
         log::warn!("Native client hooks already installed; keeping the first callbacks");
     }
 }

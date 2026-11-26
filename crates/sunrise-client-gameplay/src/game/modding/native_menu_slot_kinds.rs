@@ -32,7 +32,9 @@ fn layout_kinds(
 ) -> Vec<MenuSlotKind> {
     use MenuSlotKind::*;
     let mut kinds = vec![Other; count];
-    if content.is_none() && sunrise_gameplay_common::game::remote::inventory::remote_station_kind(name).is_some() {
+    if content.is_none()
+        && sunrise_gameplay_common::game::remote::inventory::remote_station_kind(name).is_some()
+    {
         return kinds;
     }
     for (slot, kind) in kinds.iter_mut().enumerate() {

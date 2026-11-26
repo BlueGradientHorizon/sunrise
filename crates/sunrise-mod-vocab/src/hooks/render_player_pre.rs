@@ -15,7 +15,8 @@ pub trait Hooks {
     /// and other independent layers, including the cape, are unaffected. In the ordered body pass,
     /// the pair wraps this player's living hooks at its slot in level join order, interleaved with
     /// general entity renderer submissions, for local and remote players alike.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::render_player_pre::ClientGame<'_>::native_render_player_pre", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::render_player_pre::ClientGame<'_>::native_render_player_pre",
         receiver = "read",
         dispatch = "flat",
         side = "client",

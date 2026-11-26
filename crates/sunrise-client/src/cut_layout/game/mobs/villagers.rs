@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::mobs::Mob;
@@ -37,9 +35,10 @@ pub(crate) mod off_level_tests {
             m.extra.mount = Some(72);
             game.mobs.push(m);
             let ghost = Mob::new(72, kind, Vec3::ZERO, 0.0);
-            game.persist
-                .off_level
-                .insert(72, sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(ghost));
+            game.persist.off_level.insert(
+                72,
+                sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(ghost),
+            );
             game.tick_creature_entities().unwrap();
             assert!(
                 villager_brain::take_item_scan(game.mob_object_mut(73).unwrap()),

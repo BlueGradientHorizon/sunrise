@@ -1,12 +1,10 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod audience_tests {
 
-use sunrise_gameplay::game::server_side::bossbars::audience_tests::add_real_and_fake;
+    use sunrise_gameplay::game::server_side::bossbars::audience_tests::add_real_and_fake;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn fake_players_are_not_boss_viewers() {
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -21,7 +19,6 @@ use sunrise_gameplay::game::server_side::bossbars::audience_tests::add_real_and_
         });
     }
 }
-
 
 #[cfg(test)]
 #[path = "tests/bossbar_names_tests.rs"]

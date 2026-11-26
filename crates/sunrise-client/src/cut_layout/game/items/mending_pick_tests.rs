@@ -1,7 +1,7 @@
 #![cfg(test)]
-use sunrise_items::items::ItemStack;
 use super::*;
 use sunrise_items::enchant::Enchantments;
+use sunrise_items::items::ItemStack;
 
 fn table(id: &str, slots: &[&str], effect: bool) -> Enchantments {
     let effects = if effect {

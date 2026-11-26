@@ -1,5 +1,4 @@
 use super::{break_prediction::Prediction, general, level_format};
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::Hit, crate::game::client_side::raw_backlog::Received, crate::game::client_side::remote_chunks::ChunkDecoder, crate::game::client_side::remote_chunks::ChunkFormat, crate::game::client_side::remote_chunks::RemoteLight, sunrise_gameplay_common::game::remote::Lerp, sunrise_gameplay_common::game::remote::chat_received::QueuedChat, sunrise_gameplay_common::game::remote::minecarts::CartLerp, sunrise_gameplay_common::game::remote::passengers::PassengerSeat};
 use std::{
     collections::{HashMap, VecDeque},
     sync::Arc,
@@ -25,6 +24,16 @@ use sunrise_protocol::{
 use sunrise_server_files::profiles::ServicesKeySet;
 use sunrise_sim::{first_person_sim::Hand, join_seq::JoinSeq, mobs::MobType};
 use sunrise_world::stepped_interpolation::SteppedInterpolation;
+use {
+    crate::game::client_side::raw_backlog::Received,
+    crate::game::client_side::remote_chunks::ChunkDecoder,
+    crate::game::client_side::remote_chunks::ChunkFormat,
+    crate::game::client_side::remote_chunks::RemoteLight, sunrise_gameplay_common::game::Dim,
+    sunrise_gameplay_common::game::Hit, sunrise_gameplay_common::game::remote::Lerp,
+    sunrise_gameplay_common::game::remote::chat_received::QueuedChat,
+    sunrise_gameplay_common::game::remote::minecarts::CartLerp,
+    sunrise_gameplay_common::game::remote::passengers::PassengerSeat,
+};
 
 /// Streaming needs a generator; a server world never generates.
 pub(in crate::game) struct NoTerrain;
@@ -80,11 +89,7 @@ pub(in crate::game) struct PendingItem {
 /// listed got off. Every tracked entity counts, whatever its type, so a
 /// server's item display or marker on a player hides that player's name tag
 /// as vanilla's `isVehicle` does (#5666).
-pub fn seat_passengers(
-    entities: &mut HashMap<i32, Tracked>,
-    vehicle: u32,
-    passengers: &[i32],
-) {
+pub fn seat_passengers(entities: &mut HashMap<i32, Tracked>, vehicle: u32, passengers: &[i32]) {
     for (id, t) in entities.iter_mut() {
         if passengers.contains(id) {
             t.vehicle = Some(vehicle);
@@ -237,8 +242,7 @@ pub struct Remote {
     pub level_environment: Option<Arc<sunrise_level::environment::Environment>>,
     /// The same over the packs' Polytone stack of that type, what the frame draws (`None` without
     /// pack modifiers, or for a type the packs have no stack of: any but the three vanilla IDs).
-    pub level_pack_environment:
-        Option<Arc<sunrise_level::environment::Environment>>,
+    pub level_pack_environment: Option<Arc<sunrise_level::environment::Environment>>,
     /// The level's synchronized dimension type, which both environments are built from again
     /// when the packs change.
     pub(in crate::game) synced_type: Option<(String, serde_json::Value)>,
@@ -720,7 +724,8 @@ impl crate::game::ClientGame<'_> {
         if self.common.armor_stands.iter().any(|a| a.id == id) {
             return Some(("minecraft:armor_stand".to_owned(), true));
         }
-        self.common.crystals
+        self.common
+            .crystals
             .iter()
             .any(|c| c.id == id)
             .then(|| ("minecraft:end_crystal".to_owned(), false))
@@ -761,7 +766,10 @@ impl crate::game::ClientGame<'_> {
 
     /// The profile name of another player the server sent, by entity id.
     pub(in crate::game) fn remote_player_name(&self, id: u32) -> Option<&str> {
-        sunrise_gameplay_common::game::side_ops::player::SideOps::side_remote_player_name(&self.client, id)
+        sunrise_gameplay_common::game::side_ops::player::SideOps::side_remote_player_name(
+            &self.client,
+            id,
+        )
     }
 }
 

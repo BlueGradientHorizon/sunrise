@@ -11,7 +11,8 @@ pub trait Hooks {
     /// fires earlier, before the integrated server stops, so it is not a counterpart.
     /// NeoForge has no event for this moment. A listener is a pure function of its
     /// `ClientHost` reads and its own state.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::client_stopping::ClientGame<'_>::native_client_stopping", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::client_stopping::ClientGame<'_>::native_client_stopping",
         dispatch = "flat",
         side = "client",
         contract = "listen",

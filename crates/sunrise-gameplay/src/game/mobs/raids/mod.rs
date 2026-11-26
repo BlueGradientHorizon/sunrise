@@ -4,13 +4,13 @@
 //! side of them.
 use super::Dim;
 use std::collections::{HashMap, HashSet};
-use sunrise_gameplay_common::game::creatures::Finalized;
 use sunrise_core::nbt::Tag;
 use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, LevelRandom, RandomSource},
 };
 use sunrise_gameplay::village_siege::{SiegeLevel, VillageSiege};
+use sunrise_gameplay_common::game::creatures::Finalized;
 use sunrise_level::{
     effects::{EffectInstance, OmenTick},
     random_source,
@@ -63,10 +63,7 @@ impl Raiding {
             .filter(|dim| dim.id() == dimension)
             .map(|_| &self.raids)
     }
-    pub fn raids_mut(
-        &mut self,
-        dimension: &str,
-    ) -> Option<&mut Raids> {
+    pub fn raids_mut(&mut self, dimension: &str) -> Option<&mut Raids> {
         self.loaded
             .filter(|dim| dim.id() == dimension)
             .map(|_| &mut self.raids)
@@ -146,8 +143,7 @@ impl RaidLevel for Lvl<'_, '_> {
 pub(in crate::game) struct PatrolCx<'a, 'g, 'h> {
     pub(in crate::game) level: super::natural_spawning::GameLevel<'a, 'g>,
     pub(in crate::game) centers: HashSet<(i32, i32, i32)>,
-    pub(in crate::game) can_spawn:
-        &'h dyn Fn(&crate::game::ServerGame<'_>, [i32; 3]) -> bool,
+    pub(in crate::game) can_spawn: &'h dyn Fn(&crate::game::ServerGame<'_>, [i32; 3]) -> bool,
 }
 impl SpawnLevel for PatrolCx<'_, '_, '_> {
     fn within_world_border(&self, x: i32, z: i32) -> bool {
@@ -252,10 +248,20 @@ impl crate::game::ServerGame<'_> {
     /// `Heightmap.Types.WORLD_SURFACE`: the first free block above the
     /// highest non-air one.
     pub(in crate::game::server_side) fn surface_height(&self, x: i32, z: i32) -> i32 {
-        let top = if self.common.dim == Dim::Nether { 127 } else { 319 };
+        let top = if self.common.dim == Dim::Nether {
+            127
+        } else {
+            319
+        };
         (self.common.world.bottom_y()..=top)
             .rev()
-            .find(|&y| !self.common.res.facts().is_air(self.common.world.block(x, y, z)))
+            .find(|&y| {
+                !self
+                    .common
+                    .res
+                    .facts()
+                    .is_air(self.common.world.block(x, y, z))
+            })
             .map_or(self.common.world.bottom_y(), |y| y + 1)
     }
     /// Every claimed village point of interest (job sites, beds, bells).
@@ -353,7 +359,8 @@ impl crate::game::ServerGame<'_> {
         }
         self.server.raiding.0.omen_loaded = true;
         self.server.raiding.0.omen_position = match self
-            .common.level
+            .common
+            .level
             .player_extra
             .as_ref()
             .and_then(|p| p.get("raid_omen_position"))
@@ -368,7 +375,8 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let extra = self
-            .common.level
+            .common
+            .level
             .player_extra
             .get_or_insert_with(|| sunrise_core::nbt::Tag::Compound(Default::default()));
         if let sunrise_core::nbt::Tag::Compound(map) = extra {
@@ -404,18 +412,25 @@ impl crate::game::ServerGame<'_> {
     ) -> bool {
         let attributes = self.gameplay_attributes();
         let biome = self
-            .common.world
+            .common
+            .world
             .chunks
             .get(&(at[0] >> 4, at[2] >> 4))
             .map(|c| {
-                self.common.res
+                self.common
+                    .res
                     .biomes()
                     .get(c.biome(at[0], at[1], at[2]))
                     .name
                     .clone()
             })
             .unwrap_or_default();
-        attributes.value(key, &self.dimension_type().id, &biome, self.common.world.day_time)
+        attributes.value(
+            key,
+            &self.dimension_type().id,
+            &biome,
+            self.common.world.day_time,
+        )
     }
 
     /// `BadOmenMobEffect` and `RaidOmenMobEffect.applyEffectTick` for the
@@ -460,14 +475,11 @@ impl crate::game::ServerGame<'_> {
     /// `Raids.createOrExtendRaid`: not for spectators, with the `raids` rule
     /// and where raids may start; the raid centres on the occupied village
     /// points of interest within 64 blocks.
-    pub fn create_or_extend_raid(
-        &mut self,
-        at: [i32; 3],
-        amplifier: Option<i32>,
-    ) -> Option<i32> {
+    pub fn create_or_extend_raid(&mut self, at: [i32; 3], amplifier: Option<i32>) -> Option<i32> {
         if self.common.spectator()
             || !self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::RAIDS)
             || !self.gameplay_attribute(sunrise_sim::patrol::CAN_START_RAID, at)
@@ -574,7 +586,14 @@ impl crate::game::ServerGame<'_> {
     /// The bar update the last hurt raider of a raid asked for
     /// (`Raider.hurtServer` runs `updateBossbar` before the damage).
     pub(in crate::game::server_side) fn flush_raid_bar(&mut self, id: i32) {
-        let seen = self.server.raiding.0.bar_hurts.get(&id).copied().unwrap_or(0);
+        let seen = self
+            .server
+            .raiding
+            .0
+            .bar_hurts
+            .get(&id)
+            .copied()
+            .unwrap_or(0);
         let last = self
             .raid_members(id)
             .filter_map(|m| raider::state(m).map(|s| (s.hurt_seq, m.id, s.pre_hurt_health)))
@@ -621,7 +640,8 @@ impl crate::game::ServerGame<'_> {
     /// the wave's leader).
     pub(in crate::game::server_side) fn register_loaded_raiders(&mut self) {
         let pending: Vec<(u32, i32, i32, f32, bool)> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter(|m| m.alive() && !m.removed)
             .filter_map(|m| {
@@ -690,7 +710,8 @@ impl crate::game::ServerGame<'_> {
             let members = |id: i32| infos.get(&id).cloned().unwrap_or_default();
             raids.tick(
                 &lvl,
-                self.common.ui
+                self.common
+                    .ui
                     .rules
                     .bool_at(sunrise_game_data::gamerules::vanilla::RAIDS),
                 &members,
@@ -759,7 +780,10 @@ impl crate::game::ServerGame<'_> {
             if let Some(p) = self.common.player.as_ref()
                 && acting_uuid == Some(uuid)
             {
-                if !self.server.lan_acting_fake && !self.common.spectator() && !p.health.dead_or_dying() {
+                if !self.server.lan_acting_fake
+                    && !self.common.spectator()
+                    && !p.health.dead_or_dying()
+                {
                     reward(self);
                 }
                 continue;
@@ -934,7 +958,8 @@ impl crate::game::ServerGame<'_> {
     ) {
         let now = self.common.world.game_time;
         let golems: HashSet<u32> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter(|m| m.species() == Species::IronGolem)
             .map(|m| m.id)
@@ -957,7 +982,8 @@ impl crate::game::ServerGame<'_> {
             positions.push((m.id, m.position, s.active_raid));
         }
         let banners: Vec<(usize, u32, Vec3)> = self
-            .common.dropped
+            .common
+            .dropped
             .iter()
             .enumerate()
             .filter(|(_, e)| {
@@ -1128,7 +1154,14 @@ impl crate::game::ServerGame<'_> {
     /// `Raid.joinRaid` for a raider already in the world: it counts toward
     /// the bar and takes the raid's current wave.
     pub(in crate::game::server_side) fn join_raid(&mut self, mob: u32, id: i32, health: f32) {
-        let Some(wave) = self.server.raiding.0.raids.get(id).map(|r| r.groups_spawned) else {
+        let Some(wave) = self
+            .server
+            .raiding
+            .0
+            .raids
+            .get(id)
+            .map(|r| r.groups_spawned)
+        else {
             return;
         };
         let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == mob) else {
@@ -1190,12 +1223,16 @@ impl crate::game::ServerGame<'_> {
                         if self.common.res.facts().is_air(state) {
                             continue;
                         }
-                        let bed = *known.entry(state.0).or_insert_with(|| {
-                            self.common.res.facts().get(state).name.ends_with("_bed")
-                                && self.common.pack.assets.registry.state(state).is_some_and(|s| {
-                                    s.properties.get("part").map(String::as_str) == Some("head")
-                                })
-                        });
+                        let bed =
+                            *known.entry(state.0).or_insert_with(|| {
+                                self.common.res.facts().get(state).name.ends_with("_bed")
+                                    && self.common.pack.assets.registry.state(state).is_some_and(
+                                        |s| {
+                                            s.properties.get("part").map(String::as_str)
+                                                == Some("head")
+                                        },
+                                    )
+                            });
                         if bed {
                             beds.push([x, y, z]);
                         }
@@ -1394,10 +1431,11 @@ impl crate::game::ServerGame<'_> {
         from: [f64; 3],
         to: [f64; 3],
     ) {
-        let drops = self
-            .common.res
-            .items()
-            .loot_table(table, false, None, &mut self.common.world.random);
+        let drops =
+            self.common
+                .res
+                .items()
+                .loot_table(table, false, None, &mut self.common.world.random);
         let d = Vec3::new(to[0] - from[0], to[1] - from[1], to[2] - from[2]).normalize();
         for stack in drops {
             self.spawn_item(stack, from, [d.x * 0.3, d.y * 0.3, d.z * 0.3], 10);
@@ -1459,11 +1497,13 @@ impl crate::game::ServerGame<'_> {
             )
         };
         let enemies = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
             && self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MONSTERS);
         let mut random = std::mem::replace(
@@ -1504,10 +1544,7 @@ impl crate::game::ServerGame<'_> {
         self.server.raiding.0.siege = siege;
     }
     /// `ServerLevel.isVillage`: within one section of a village.
-    pub fn is_village(
-        centers: &HashSet<(i32, i32, i32)>,
-        pos: [i32; 3],
-    ) -> bool {
+    pub fn is_village(centers: &HashSet<(i32, i32, i32)>, pos: [i32; 3]) -> bool {
         sunrise_gameplay::village_siege::is_village(centers, pos)
     }
 }
@@ -1599,7 +1636,8 @@ impl crate::game::ServerGame<'_> {
         }
         let observe = |m: &Mob| -> sunrise_game_data::Result<serde_json::Value> {
             let uuid = self
-                .common.persist
+                .common
+                .persist
                 .uuids
                 .get(&m.id)
                 .copied()
@@ -1638,7 +1676,8 @@ impl crate::game::ServerGame<'_> {
                 return Err("raid observation: villager UUID missing/wrong type".into());
             };
             let m = self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == id && m.species() == Species::Villager)
                 .ok_or("raid observation: actor is not a villager")?;

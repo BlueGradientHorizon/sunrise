@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(all(test, feature = "client"))]
 mod tests {
@@ -10,7 +8,10 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn host_sets_only_loaded_cells_with_registered_standalone_models() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
+        use {
+            crate::game::server_side::native_entity_refs::tests::with_client_game,
+            sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+        };
 
         if run_fresh_cases(
             "game::native_block_extra_models::tests::host_sets_only_loaded_cells_with_registered_standalone_models",

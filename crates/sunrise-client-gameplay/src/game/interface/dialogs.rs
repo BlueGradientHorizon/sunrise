@@ -253,11 +253,7 @@ impl ClientGame<'_> {
             })
     }
 
-    pub fn decode_dialog(
-        &self,
-        tag: &Tag,
-        dynamic: Option<&Dynamic>,
-    ) -> Option<Dialog> {
+    pub fn decode_dialog(&self, tag: &Tag, dynamic: Option<&Dynamic>) -> Option<Dialog> {
         let items = self
             .client
             .remote
@@ -1266,11 +1262,7 @@ impl ClientGame<'_> {
     /// A key pressed on a dialog screen: Escape closes what allows it, the
     /// rest goes to the focused input before the screen's shared navigation
     /// (`shortcut`: the press as an edit shortcut).
-    pub fn dialog_key(
-        &mut self,
-        key: KeyCode,
-        shortcut: Option<EditShortcut>,
-    ) -> Result<bool> {
+    pub fn dialog_key(&mut self, key: KeyCode, shortcut: Option<EditShortcut>) -> Result<bool> {
         let escape = key == KeyCode::Escape;
         if self.client.dialogs.0.warning {
             if escape {

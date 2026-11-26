@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod biome_tint_tests {
@@ -17,7 +15,9 @@ mod biome_tint_tests {
     const WATER: u32 = 0xDA_5227;
     const POS: [i32; 3] = [8, 64, 8]; // The whole blend square samples this plains chunk.
 
-    fn with_stock_client_biomes(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
+    fn with_stock_client_biomes(
+        test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
+    ) {
         struct Seasons;
         #[mod_api::__subscriptions]
         impl Hooks for Seasons {

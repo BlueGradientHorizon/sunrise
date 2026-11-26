@@ -2,10 +2,10 @@
 //! `ItemPart::damage_item` on the wear of a player's held tool, and the part the tests of the other wear
 //! paths (the dispenser, the shield, the mace) share. Each installs process-wide parts: run alone with the
 //! prepared resources.
-use sunrise_items::items::ItemStack;
 use super::*;
 use mod_api::{DamageItemEvent, Flow, Hooks, ItemPart, ModEntry, Registrar, RegistrationContext};
 use std::sync::{Arc, Mutex};
+use sunrise_items::items::ItemStack;
 
 /// What the part of an item does to the wear it is asked about.
 #[derive(Clone, Copy)]
@@ -258,8 +258,8 @@ fn a_part_breaks_its_tool_now() {
 #[test]
 #[ignore = "daily"]
 fn a_mob_armour_wear_names_the_mob() {
-    use sunrise_gameplay_common::game::creatures::SpawnSite;
     use mod_api::{EntityRef, EquipmentSlot, LivingRef};
+    use sunrise_gameplay_common::game::creatures::SpawnSite;
     with_wear_part("minecraft:iron_helmet", Rule::Times(1), |game, wear| {
         let zombie = game
             .spawn_mob("minecraft:zombie", [3.5, 64.0, 6.5], true, SpawnSite::Raw)
@@ -280,8 +280,8 @@ fn a_mob_armour_wear_names_the_mob() {
 #[test]
 #[ignore = "daily"]
 fn a_part_breaks_a_mobs_glider_now() {
-    use sunrise_gameplay_common::game::creatures::SpawnSite;
     use sunrise_core::equipment_slot::EquipmentSlot;
+    use sunrise_gameplay_common::game::creatures::SpawnSite;
     with_wear_part("minecraft:elytra", Rule::Break, |game, wear| {
         let zombie = game
             .spawn_mob("minecraft:zombie", [3.5, 64.0, 6.5], true, SpawnSite::Raw)

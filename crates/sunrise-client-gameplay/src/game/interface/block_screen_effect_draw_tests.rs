@@ -1,8 +1,8 @@
 //! Selected block overlay renderers in a real game: what they submit and where those quads land.
 #[allow(unused_imports)]
-use crate::game::native_entity_refs::tests::{fixture_root, run_fresh_cases, with_client_game};
-#[allow(unused_imports)]
 use super::{PackResources, Screen};
+#[allow(unused_imports)]
+use crate::game::native_entity_refs::tests::{fixture_root, run_fresh_cases, with_client_game};
 #[allow(unused_imports)]
 use BlockScreenEffect::{Block, Fire, Water};
 #[allow(unused_imports)]
@@ -224,7 +224,10 @@ fn a_mod_draws_prepends_replaces_and_cancels_overlays() {
                 ASKED.lock().unwrap().drain(..).collect::<Vec<_>>(),
                 [Asked {
                     effect: Block,
-                    state: sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(&stone).unwrap(),
+                    state: sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(
+                        &stone
+                    )
+                    .unwrap(),
                     pos: BlockPos::new(0, 65, 0),
                     partial_tick: 0.25,
                     hide_gui: true,
@@ -281,7 +284,10 @@ fn a_mod_draws_prepends_replaces_and_cancels_overlays() {
                 ASKED.lock().unwrap().drain(..).collect::<Vec<_>>(),
                 [Asked {
                     effect: Fire,
-                    state: sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(&fire).unwrap(),
+                    state: sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(
+                        &fire
+                    )
+                    .unwrap(),
                     pos: BlockPos::new(0, 64, 0),
                     partial_tick: 0.25,
                     hide_gui: false,
@@ -637,7 +643,9 @@ fn a_dead_players_water_overlay_uses_the_last_sample_after_removal() {
         game.client.camera_type = CameraType::FirstPerson;
         game.player = Some(PlayerMotion::new(game.motion, Vec3::new(8.5, 64.0, 8.5)).unwrap());
         let chunk = Chunk::with_layout(0, 0, game.world.layout());
-        game.client.streaming.insert_remote(&mut game.common.world, chunk);
+        game.client
+            .streaming
+            .insert_remote(&mut game.common.world, chunk);
         let water = game
             .pack
             .assets

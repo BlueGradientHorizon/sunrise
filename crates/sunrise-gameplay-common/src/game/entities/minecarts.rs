@@ -15,6 +15,9 @@ pub use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::LegacyRandom,
 };
+#[allow(unused_imports)]
+pub(in crate::game) use sunrise_gameplay_common::minecart_cells::CartCells;
+use sunrise_gameplay_common::minecart_seat::*;
 use sunrise_items::{
     blocks::Fluid,
     items::{ItemStack, Items},
@@ -22,9 +25,6 @@ use sunrise_items::{
 use sunrise_level::{containers::BlockEntity, random_source};
 pub use sunrise_sim::mobs::{Species, riders};
 pub use sunrise_world::registry::BlockStateId;
-#[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay_common::minecart_cells::CartCells;
-use sunrise_gameplay_common::minecart_seat::*;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CartKind {
     Rideable,
@@ -283,11 +283,7 @@ pub const CART_KEY_Y: i32 = sunrise_sim::lan::menu::VEHICLE_KEY_Y;
 /// `OldMinecartBehavior.pushAndPickupEntities`: living entities the cart
 /// offers `startRiding` instead of `Entity.push`. Players click to board;
 /// iron golems always push; a cart that already has a rider is `isVehicle`.
-pub fn pickup_instead_of_push(
-    species: Species,
-    is_passenger: bool,
-    cart_is_vehicle: bool,
-) -> bool {
+pub fn pickup_instead_of_push(species: Species, is_passenger: bool, cart_is_vehicle: bool) -> bool {
     !cart_is_vehicle && !is_passenger && species != Species::IronGolem
 }
 
@@ -486,10 +482,7 @@ pub fn container_keep(signal: i32, loot_pending: bool, in_water: bool) -> f64 {
 impl crate::game::CommonGame<'_> {
     /// `positionRider` for the mobs in minecarts: each sits on the cart's
     /// passenger attachment, less its own vehicle attachment.
-    pub fn seat_cart_mobs(
-        &mut self,
-        riding: &crate::game::passengers_common::Riders,
-    ) {
+    pub fn seat_cart_mobs(&mut self, riding: &crate::game::passengers_common::Riders) {
         for i in 0..self.carts.len() {
             let id = self.carts[i].id;
             let Some(js) = riding.get(&id) else {
@@ -802,10 +795,7 @@ pub fn cart_is_destroyed(creative: bool, damage: f32, ignites_tnt: bool) -> bool
 
 /// `MinecartTNT.tick`'s collision detonation: a cart still moving at a tenth
 /// of a block a tick or more when a block stops it blows up.
-pub fn tnt_ignites_by_collision(
-    horizontal_collision: bool,
-    speed_sqr: f64,
-) -> bool {
+pub fn tnt_ignites_by_collision(horizontal_collision: bool, speed_sqr: f64) -> bool {
     horizontal_collision && speed_sqr >= 0.009_999_999_776_482_582
 }
 
@@ -888,7 +878,6 @@ use crate::game::tables::WorldTablesExt as _;
 
 use crate::game::cart_rails::CartRailsGameExt1 as _;
 
-
 pub trait MinecartRailGameExt<'g>: crate::game::SideGame<'g> {
     /// `getCurrentBlockPosOrRailBelow`.
     fn rail_block(&self, p: Vec3, improved: bool) -> [i32; 3] {
@@ -907,13 +896,7 @@ pub trait MinecartRailGameExt<'g>: crate::game::SideGame<'g> {
 
     /// `OldMinecartBehavior.getPos`: the point on the rail under (x, y, z), on the track the
     /// rail lays for `cart`.
-    fn rail_pos(
-        &self,
-        cart: Option<u32>,
-        x: f64,
-        y: f64,
-        z: f64,
-    ) -> Option<[f64; 3]> {
+    fn rail_pos(&self, cart: Option<u32>, x: f64, y: f64, z: f64) -> Option<[f64; 3]> {
         let [xt, yt, zt] = self.rail_block(Vec3::new(x, y, z), self.minecart_improvements());
         let rail = self.rail(cart, xt, yt, zt)?;
         let (e0, e1) = rail.shape.exits();

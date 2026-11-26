@@ -1,13 +1,16 @@
 //! `ServerPlayer.doTick` runs `super.tick()` (Player.tick, where NeoForge
 //! posts `PlayerTickEvent.Pre`/`Post`) only `if (!isSpectator() ||
 //! !touchingUnloadedChunk())` (#4520).
-use sunrise_sim::lan::guest::SPECTATOR;
-use {crate::game::lan_actions::tick::*};
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
+use crate::game::lan_actions::tick::*;
 use mod_api::HostSide;
 use std::sync::{Arc, Mutex};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_level::{chunk::Chunk, effects::EffectInstance};
+use sunrise_sim::lan::guest::SPECTATOR;
+use {
+    sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+    sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+};
 
 pub(crate) struct Log(pub(crate) Arc<Mutex<Vec<(&'static str, u128)>>>);
 #[mod_api::__subscriptions]
@@ -236,12 +239,12 @@ fn guest_body_projects_spectator_flags_on_init_and_hub_mode_change() {
             });
             let world = &game.common.world;
             let collision = game.collision;
-            game.server
-                .lan
-                .as_mut()
-                .unwrap()
-                .hub
-                .set_game_mode(2, SPECTATOR, world, Some(collision));
+            game.server.lan.as_mut().unwrap().hub.set_game_mode(
+                2,
+                SPECTATOR,
+                world,
+                Some(collision),
+            );
             game.as_guest(2, |g| {
                 let p = g.player.as_ref().unwrap();
                 assert!(p.spectator && p.local_spectator);

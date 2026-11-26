@@ -1,10 +1,10 @@
-use sunrise_gameplay_common::game::Screen;
 use super::*;
 use crate::game::remote::interaction_event_tests::mapping_press_tests::Heard;
 use crate::game::remote::interaction_event_tests::mapping_press_tests::sent;
 use crate::game::remote::interaction_event_tests::mapping_press_tests::with_pressing_game;
 use mod_api::VanillaKeyMappingRef;
 use std::sync::OnceLock;
+use sunrise_gameplay_common::game::Screen;
 
 #[path = "input_burst_tests_client.rs"]
 pub(crate) mod input_burst_tests;

@@ -2,13 +2,13 @@
 //! What needs a renderer (inventory slots, screenshots) is covered by tools/pad_parity_e2e.py.
 
 use crate::game::{Audio, Settings, load_resources};
-use sunrise_gameplay_common::game::{Options, Progress, Screen};
-use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
 use sunrise_client::actions::Action;
 use sunrise_client::gamepad::{Button, PadState};
 use sunrise_client::held::Source;
 use sunrise_command::args::GameMode;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
+use sunrise_gameplay_common::game::{Options, Progress, Screen};
 use sunrise_sim::motion::PlayerMotion;
 use winit::event::MouseButton;
 use winit::keyboard::KeyCode;
@@ -72,7 +72,11 @@ impl sunrise_client_gameplay::game::event_loop::EventLoopCtl for NoEventLoop {
 }
 
 /// Hold `button` through the real press dispatcher, including its action ownership.
-fn pad_press(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, button: Button, action: &str) {
+fn pad_press(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    button: Button,
+    action: &str,
+) {
     assert!(
         game.client
             .settings
@@ -194,7 +198,10 @@ fn bumpers_step_the_hotbar_where_the_wheel_does() {
 fn a_spectators_bumpers_set_the_flying_speed_as_the_wheel_does() {
     use sunrise_protocol::packets::play::{self, Clientbound as C};
     playing(|game| {
-        let _server = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(game);
+        let _server =
+            sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(
+                game,
+            );
         game.client.screen = Screen::Playing;
         with_player(game);
         game.mode = GameMode::Spectator;

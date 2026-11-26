@@ -4,12 +4,14 @@
 //! as `native_entity_refs.rs` finds it, and return `None` (or `false`) for a
 //! stale handle. On a client (API @API:client_entity_refs@) they read the
 //! entities the server shows the window, and nothing moves one.
-use super::entity::{Entity as _, EntityHandle, with_entity, with_entity_mut};
 use super::commands::Target;
-use sunrise_gameplay_common::game::native_entity_motion_values::{corners, on_block_position, turned_view_vector};
+use super::entity::{Entity as _, EntityHandle, with_entity, with_entity_mut};
 use mod_api::{ClipBlock, ClipFluid, ClipHit, EntityRef, LevelWriteError};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::native_entity_motion_values::{
+    corners, on_block_position, turned_view_vector,
+};
 use sunrise_level::collisions::SceneCollisions;
 use sunrise_sim::motion::player_context;
 
@@ -48,10 +50,7 @@ impl crate::game::ServerGame<'_> {
     /// previous tick's). Every list the walk keeps has a previous position.
     /// A frame, painting, crystal, spawner, cloud, fangs or marker never
     /// moves, so zero; the dragon uses its own previous position.
-    pub fn native_entity_known_speed(
-        &self,
-        entity: EntityRef,
-    ) -> Option<Vec3> {
+    pub fn native_entity_known_speed(&self, entity: EntityRef) -> Option<Vec3> {
         let t = self.native_entity_target(entity)?;
         if let Some(g) = self.native_target_guest(t) {
             let [x, y, z] = g.known_movement;
@@ -80,7 +79,8 @@ impl crate::game::ServerGame<'_> {
         match t {
             Target::Boat(_) => true,
             Target::Mob(id) => self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .any(|m| m.id == id && sunrise_sim::mobs::equine::controlled(m)),
             _ => false,
@@ -217,7 +217,10 @@ impl crate::game::ServerGame<'_> {
                     .lan_acting
                     .and_then(|conn| self.command_guest(conn))
                     .map_or(body.shift_key_down, |guest| guest.sneaking),
-                self.common.inventory.get(self.common.selected).and_then(Option::as_ref),
+                self.common
+                    .inventory
+                    .get(self.common.selected)
+                    .and_then(Option::as_ref),
                 &self.common.armor,
                 self.server.lan_acting,
             ),
@@ -316,7 +319,12 @@ impl crate::game::ServerGame<'_> {
                 return Some(corners(c.bounds()));
             }
             Target::Cushion(id) => self.common.cushions.iter().find(|c| c.id == id)?.bounds(),
-            Target::Frame(id) => self.common.item_frames.iter().find(|f| f.id == id)?.bounds(),
+            Target::Frame(id) => self
+                .common
+                .item_frames
+                .iter()
+                .find(|f| f.id == id)?
+                .bounds(),
             Target::Painting(id) => self.common.paintings.iter().find(|p| p.id == id)?.bounds(),
             _ => return None,
         };
@@ -406,16 +414,14 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
-use sunrise_gameplay_common::game::native_entity_motion_values::NativeEntityMotionValuesGameExt1 as _;
-use sunrise_gameplay_common::game::server_side::native_entity_motion::tests::assert_near;
+    use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+    use sunrise_gameplay_common::game::native_entity_motion_values::NativeEntityMotionValuesGameExt1 as _;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+    use sunrise_gameplay_common::game::server_side::native_entity_motion::tests::assert_near;
 
-    use sunrise_gameplay_common::game::entity::Entity as _;
     use mod_api::EntityRef;
     use sunrise_core::geometry::{Aabb, Vec3};
-
-    
+    use sunrise_gameplay_common::game::entity::Entity as _;
 
     /// Unit vectors worked out by hand from `Entity.calculateViewVector`
     /// (`x = -sin(yaw) cos(pitch)`, `y = -sin(pitch)`, `z = cos(yaw) cos(pitch)`),
@@ -800,11 +806,13 @@ use sunrise_gameplay_common::game::server_side::native_entity_motion::tests::ass
                     game.world.set(1, 64, 0, stone).unwrap();
 
                     // The caster's live hook moves between the acting slot and the hub.
-                    game.install_fishing_hook(sunrise_gameplay_common::game::fishing_common::Hook::remote(
-                        900,
-                        Vec3::new(0.95, 65.0, 0.5),
-                        [101, 102, 103, 104],
-                    ));
+                    game.install_fishing_hook(
+                        sunrise_gameplay_common::game::fishing_common::Hook::remote(
+                            900,
+                            Vec3::new(0.95, 65.0, 0.5),
+                            [101, 102, 103, 104],
+                        ),
+                    );
                     let hook = game.entity(900).unwrap();
                     assert_eq!(hook.set_on_ground(game, true), Ok(true));
                     assert_eq!(hook.on_block(game), Some([1, 64, 0]));
@@ -823,10 +831,6 @@ use sunrise_gameplay_common::game::server_side::native_entity_motion::tests::ass
             assert_eq!(guest.motion.as_ref().unwrap().ground.supporting_block, None);
         });
     }
-
-    
-
-    
 }
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

@@ -1,23 +1,21 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 #[cfg(feature = "client")]
 pub(crate) mod tests {
 
-use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
+    use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
 
-use sunrise_client_gameplay::game::client_side::screen_build::{
+    use sunrise_client_gameplay::game::client_side::screen_build::{
         BuildLayout, ContainerLayout, PauseInputs, PauseLayout, ScreenBuildState, ScreenLayout,
     };
 
-use sunrise_client::inventory_effects::EffectsLayout;
+    use sunrise_client::inventory_effects::EffectsLayout;
 
-use crate::game::Screen;
+    use crate::game::Screen;
 
-use sunrise_client::hud::{GuiScale, HudBatch};
+    use sunrise_client::hud::{GuiScale, HudBatch};
 
-/// The chat box is re-made at the build's size when the GUI scale
+    /// The chat box is re-made at the build's size when the GUI scale
     /// changes, with no draw in between (`ChatScreen.resize`), and the Leave
     /// Bed button is laid out once per build. The rectangles are
     /// `ChatScreen.init` and `InBedChatScreen.init` worked by hand for the
@@ -68,7 +66,7 @@ use sunrise_client::hud::{GuiScale, HudBatch};
             assert_eq!(leave_bed(game, 427.0, 240.0), None);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn production_screen_build_geometry() {
         crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
@@ -97,7 +95,8 @@ use sunrise_client::hud::{GuiScale, HudBatch};
             game.build_screen();
             let before = game.client.screen_state.0.build.builds;
             let constructions =
-                sunrise_client_gameplay::game::client_side::container_layout::LAYOUT_CONSTRUCTIONS.with(|count| count.get());
+                sunrise_client_gameplay::game::client_side::container_layout::LAYOUT_CONSTRUCTIONS
+                    .with(|count| count.get());
             let slots = match &game
                 .client
                 .screen_state
@@ -111,7 +110,8 @@ use sunrise_client::hud::{GuiScale, HudBatch};
                 BuildLayout::Container(layout) => layout.slots.as_ptr(),
                 _ => panic!("container"),
             };
-            let positions = sunrise_gameplay_common::game::inventory_slots::SLOT_POSITIONS.with(|count| count.get());
+            let positions = sunrise_gameplay_common::game::inventory_slots::SLOT_POSITIONS
+                .with(|count| count.get());
             game.build_screen();
             assert_eq!(
                 crate::game::inventory_slots::SLOT_POSITIONS.with(|count| count.get()),
@@ -119,7 +119,8 @@ use sunrise_client::hud::{GuiScale, HudBatch};
             );
             assert_eq!(game.client.screen_state.0.build.builds, before);
             assert_eq!(
-                sunrise_client_gameplay::game::client_side::container_layout::LAYOUT_CONSTRUCTIONS.with(|count| count.get()),
+                sunrise_client_gameplay::game::client_side::container_layout::LAYOUT_CONSTRUCTIONS
+                    .with(|count| count.get()),
                 constructions
             );
             let BuildLayout::Container(layout) = &game
@@ -143,7 +144,8 @@ use sunrise_client::hud::{GuiScale, HudBatch};
                     sunrise_client_gameplay::game::client_side::container_layout::LAYOUT_CONSTRUCTIONS.with(|c| c.get()),
                     builds + 1
                 );
-                let positions = sunrise_gameplay_common::game::inventory_slots::SLOT_POSITIONS.with(|c| c.get());
+                let positions = sunrise_gameplay_common::game::inventory_slots::SLOT_POSITIONS
+                    .with(|c| c.get());
                 game.build_screen();
                 assert_eq!(
                     crate::game::inventory_slots::SLOT_POSITIONS.with(|c| c.get()),
@@ -160,10 +162,12 @@ use sunrise_client::hud::{GuiScale, HudBatch};
             check(game);
             game.craft_size = 3;
             check(game);
-            game.open_station_client(sunrise_gameplay_common::game::stations_common::Station::new_kind(
-                sunrise_gameplay_common::game::stations_common::Kind::Merchant,
-                [0, 0, 0],
-            ));
+            game.open_station_client(
+                sunrise_gameplay_common::game::stations_common::Station::new_kind(
+                    sunrise_gameplay_common::game::stations_common::Kind::Merchant,
+                    [0, 0, 0],
+                ),
+            );
             check(game);
             game.clear_station_client();
             game.client.screen = Screen::Creative;
@@ -180,7 +184,7 @@ use sunrise_client::hud::{GuiScale, HudBatch};
             check(game);
         });
     }
-/// The display's change builds twice in one frame (`apply_ui_settings`
+    /// The display's change builds twice in one frame (`apply_ui_settings`
     /// then `observe_screen`): the effects hook still fires once, and the next
     /// frame fires it again. A mod's once-per-frame side effect stays once.
     #[test]
@@ -244,7 +248,7 @@ use sunrise_client::hud::{GuiScale, HudBatch};
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_mods_room_moves_the_window_and_is_asked_once_a_frame() {
         use mod_api::{ClientHost, Hooks, ModEntry, ScreenRoomEvent};
@@ -334,7 +338,7 @@ use sunrise_client::hud::{GuiScale, HudBatch};
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn room_preserves_vanilla_thresholds_without_listeners_and_on_fit_refusal() {
         use mod_api::{ClientHost, Hooks, ModEntry, ScreenRoomEvent};
@@ -368,8 +372,10 @@ use sunrise_client::hud::{GuiScale, HudBatch};
                         for open in [false, true] {
                             game.client.frames += 1;
                             game.level.recipe_book.open[BookType::Crafting.index()] = open;
-                            let batch =
-                                HudBatch::new([width, 240], game.client.settings.gui_scale_inputs());
+                            let batch = HudBatch::new(
+                                [width, 240],
+                                game.client.settings.gui_scale_inputs(),
+                            );
                             let layout = game.container_layout(&batch);
                             let x = if open { open_x } else { closed_x };
                             assert_eq!(layout.origin, (x, 37.0));
@@ -392,7 +398,7 @@ use sunrise_client::hud::{GuiScale, HudBatch};
             });
         }
     }
-/// Each `ScreenView::regions` kind where vanilla 26.3 draws it, from its
+    /// Each `ScreenView::regions` kind where vanilla 26.3 draws it, from its
     /// constants, as the hooks' view of the screen carries it: the effects
     /// beside the inventory, every creative tab, the recipe book's panel and
     /// the tab column it drew, and none for a book drawn over the window. In

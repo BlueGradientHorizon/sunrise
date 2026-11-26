@@ -1,11 +1,9 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
+    use mod_api::{DatapackReadError as E, *};
     use sunrise_gameplay_common::game::native_datapack_refs::NativeDatapackRefsGameExt1;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use mod_api::{DatapackReadError as E, *};
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 
     #[test]
     #[ignore = "daily"]
@@ -76,8 +74,10 @@ use mod_api::{DatapackReadError as E, *};
                     .unwrap();
                     assert_eq!(visits, 1);
                     // Open and park the Nether; parked loaded server dimensions share registryAccess.
-                    game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
-                    game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
+                    game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+                        .unwrap();
+                    game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
+                        .unwrap();
                     let parked = LevelRef::new(level.epoch(), DimensionKey::NETHER);
                     assert_eq!(
                         game.level_datapack_entries(parked, "example:spell"),

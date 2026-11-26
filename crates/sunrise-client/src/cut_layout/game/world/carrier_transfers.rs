@@ -1,39 +1,37 @@
-
-
 #![cfg(test)]
 use sunrise_world::carrier::codec;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_sim::carrier_store::Store;
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_sim::carrier_store::Store;
 
-use sunrise_gameplay::game::server_side::carrier_transfers::TransferError;
+    use sunrise_gameplay::game::server_side::carrier_transfers::TransferError;
 
-use sunrise_gameplay_common::game::server_side::carrier_transfers::tests::copy_dir;
+    use sunrise_gameplay_common::game::server_side::carrier_transfers::tests::copy_dir;
 
-use sunrise_gameplay_common::game::server_side::carrier_transfers::tests::region_files;
+    use sunrise_gameplay_common::game::server_side::carrier_transfers::tests::region_files;
 
-use sunrise_gameplay_common::game::server_side::carrier_transfers::tests::transfer_root;
+    use sunrise_gameplay_common::game::server_side::carrier_transfers::tests::transfer_root;
 
-use sunrise_gameplay_common::game::server_side::carrier_transfers::tests::write_level_dat;
+    use sunrise_gameplay_common::game::server_side::carrier_transfers::tests::write_level_dat;
 
-use super::*;
+    use super::*;
 
-use crate::game::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::with_game;
 
-use crate::game::spill_common;
+    use crate::game::spill_common;
 
-use std::sync::Arc;
+    use std::sync::Arc;
 
-use sunrise_core::geometry::Direction as CoreDirection;
+    use sunrise_core::geometry::Direction as CoreDirection;
 
-use sunrise_core::position::BlockPos;
+    use sunrise_core::position::BlockPos;
 
-use sunrise_gameplay_common::world_biomes;
+    use sunrise_gameplay_common::world_biomes;
 
-/// One transfer's whole life: the chest moves to the carrier, its
+    /// One transfer's whole life: the chest moves to the carrier, its
     /// cell becomes air, the operation commits, and the block has
     /// exactly one owner — the carrier file, decoded back.
     #[test]
@@ -96,7 +94,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-/// While a fence holds a cell, each refusal route refuses exactly at
+    /// While a fence holds a cell, each refusal route refuses exactly at
     /// its one chokepoint, and the moment the fence clears they pass.
     #[test]
     #[ignore = "daily"]
@@ -138,7 +136,7 @@ use sunrise_gameplay_common::world_biomes;
             assert!(!game.refuse_locked_container((4, 64, 4), "minecraft:chest"));
         });
     }
-/// (item 7) An empty selection refuses before any indexing.
+    /// (item 7) An empty selection refuses before any indexing.
     #[test]
     #[ignore = "daily"]
     fn an_empty_assembly_refuses() {
@@ -147,7 +145,7 @@ use sunrise_gameplay_common::world_biomes;
             other => panic!("an empty selection must refuse, got {other:?}"),
         });
     }
-/// (item 7) A destination arithmetic that overflows refuses instead
+    /// (item 7) A destination arithmetic that overflows refuses instead
     /// of wrapping the world.
     #[test]
     #[ignore = "daily"]
@@ -186,7 +184,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-/// (item 7) An unsupported block entity in the selection refuses in
+    /// (item 7) An unsupported block entity in the selection refuses in
     /// preflight — the world keeps the block and its entity.
     #[test]
     #[ignore = "daily"]
@@ -239,7 +237,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-/// The live index capacity is separate from the retained tombstone
+    /// The live index capacity is separate from the retained tombstone
     /// capacity: ten sequential transfers fit an eight-carrier index,
     /// but all ten deletion witnesses survive this world session.
     #[test]
@@ -297,7 +295,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn capacity_refusal_leaves_world_untouched() {
         let root = transfer_root("admission");
@@ -333,7 +331,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn saved_tag_refuses_assembly_and_disassembly_without_mutation() {
         let root = transfer_root("saved-tag");
@@ -413,7 +411,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn assembly_revalidation_refuses_saved_tag_without_mutation() {
         let root = transfer_root("assembly-revalidation-saved-tag");
@@ -473,7 +471,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-/// (item 6) A crash after a finished disassembly: the tombstone
+    /// (item 6) A crash after a finished disassembly: the tombstone
     /// outlives the session, and the next open's recovery-plus-cleanup
     /// resolves it cleanly — the carrier file is gone, the journal
     /// holds no operation, and the world reopens.
@@ -521,7 +519,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-/// (item 2) Sparse, non-collinear selections keep their geometry:
+    /// (item 2) Sparse, non-collinear selections keep their geometry:
     /// the local grid is offset from the selection's minimum corner, so
     /// gaps stay gaps and the input order is irrelevant — the same
     /// selection shuffled produces the byte-identical carrier.
@@ -591,7 +589,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-/// (item 2) A non-default state survives assembly and disassembly
+    /// (item 2) A non-default state survives assembly and disassembly
     /// exactly: oak stairs keep facing=north and half=bottom, a chest
     /// keeps facing — resolved from the saved properties at placement,
     /// never from the block's default state.
@@ -666,7 +664,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-/// (a1) The live order, not the test helper: a real carrier_assemble
+    /// (a1) The live order, not the test helper: a real carrier_assemble
     /// whose flush fails after prepared, then recovery — the cargo (cells,
     /// states, block entities, items) must be in the published carrier
     /// file, and the source cell empty. If the live code ever publishes
@@ -762,7 +760,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-/// A flush that fails after `prepared`: the fences hold, the next
+    /// A flush that fails after `prepared`: the fences hold, the next
     /// transfer refuses, and recovery at a reopen finishes the
     /// operation with the chest's items in exactly one place.
     #[test]
@@ -837,7 +835,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-/// Review item 5's fail-closed: a commit that fails after
+    /// Review item 5's fail-closed: a commit that fails after
     /// `prepared` stops the whole session, not just further transfers.
     /// The game's fatal error is set (what the event loop's error path
     /// turns into its exit), a further edit of the fenced cell refuses,
@@ -910,7 +908,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-/// Assemble then disassemble: at every step the chest has exactly
+    /// Assemble then disassemble: at every step the chest has exactly
     /// one owner — the world, the carrier's images or the carrier file.
     #[test]
     #[ignore = "daily"]
@@ -949,7 +947,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-/// A destination that already holds a block entity refuses, with
+    /// A destination that already holds a block entity refuses, with
     /// the carrier intact.
     #[test]
     #[ignore = "daily"]
@@ -985,7 +983,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-/// A rotation that is not a cube symmetry refuses; a cube rotation
+    /// A rotation that is not a cube symmetry refuses; a cube rotation
     /// without an adapter refuses too; the carrier survives both.
     #[test]
     #[ignore = "daily"]
@@ -1024,7 +1022,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-/// Revalidation itself: images built from the world, the world then
+    /// Revalidation itself: images built from the world, the world then
     /// changed underneath — the mismatch refuses and nothing moved.
     #[test]
     #[ignore = "daily"]
@@ -1067,7 +1065,7 @@ use sunrise_gameplay_common::world_biomes;
             assert_eq!(game.world.block(4, 64, 4), stone);
         });
     }
-/// A Nether transfer that crashed after `prepared`, recovered by a
+    /// A Nether transfer that crashed after `prepared`, recovered by a
     /// world opening in the Overworld with the Nether not parked: the
     /// operation replays in the Nether, the Overworld is untouched and
     /// the player stays where the world opened.
@@ -1088,7 +1086,8 @@ use sunrise_gameplay_common::world_biomes;
             let chest = registry.default_state("minecraft:chest").unwrap();
 
             // The transfer happens in the Nether, opened on demand.
-            game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+                .unwrap();
             assert_eq!(game.dim, crate::game::Dim::Nether);
             game.server.save.0 = std::sync::Arc::new(sunrise_sim::save::SaveDir::new(
                 root.join("dimensions/minecraft/the_nether"),
@@ -1111,11 +1110,16 @@ use sunrise_gameplay_common::world_biomes;
             // The world reopens in the Overworld: recovery enters the
             // Nether itself, replays there and returns.
             game.world.carrier_fences.fail_flush = false;
-            game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
+                .unwrap();
             assert_eq!(game.dim, crate::game::Dim::Overworld);
             // A fresh open holds no parked level: drop the Nether so
             // recovery has to open it from disk, as at world load.
-            game.server.levels.0.parked.remove(&sunrise_gameplay_common::game::Dim::Nether);
+            game.server
+                .levels
+                .0
+                .parked
+                .remove(&sunrise_gameplay_common::game::Dim::Nether);
             assert!(
                 !game
                     .server
@@ -1161,7 +1165,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-/// A journal naming a dimension the world cannot hold refuses the
+    /// A journal naming a dimension the world cannot hold refuses the
     /// load with that name, and no level is touched.
     #[test]
     #[ignore = "daily"]
@@ -1205,7 +1209,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-/// The region writer's per-chunk ordering: an older snapshot,
+    /// The region writer's per-chunk ordering: an older snapshot,
     /// submitted first and completing after the post-state's write,
     /// leaves the post-state on disk. The writer is one thread over an
     /// mpsc channel (batches run in submission order) and
@@ -1264,7 +1268,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-/// Every save route refuses while the #2488 obligation holds —
+    /// Every save route refuses while the #2488 obligation holds —
     /// autosave, save-all, requested parked saves and the shutdown
     /// save all enter through `admit_entity_save` — and admits again
     /// the moment the transfer commits. The transfer runs inside one
@@ -1306,7 +1310,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-/// The supported backup procedure: `save-all` flush, no pending
+    /// The supported backup procedure: `save-all` flush, no pending
     /// operation, copy the world folder, load the copy — the carriers
     /// and chunks come out identical.
     #[test]
@@ -1378,7 +1382,7 @@ use sunrise_gameplay_common::world_biomes;
         });
         let _ = std::fs::remove_dir_all(&root);
     }
-/// A world without transfers creates nothing and fences nothing.
+    /// A world without transfers creates nothing and fences nothing.
     #[test]
     #[ignore = "daily"]
     fn a_world_without_transfers_writes_no_store_files() {

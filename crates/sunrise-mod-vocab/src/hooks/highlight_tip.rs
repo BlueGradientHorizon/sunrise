@@ -11,7 +11,8 @@ pub trait Hooks {
     /// the selected item or its hover name changes, so a tip that changes
     /// every tick doesn't keep the name up. Only the `ItemPart`s attached to
     /// `stack`'s item are asked. Client-side.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::highlight_tip::ClientGame<'_>::native_highlight_tip", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::highlight_tip::ClientGame<'_>::native_highlight_tip",
         receiver = "read",
         dispatch = "flat",
         side = "client",

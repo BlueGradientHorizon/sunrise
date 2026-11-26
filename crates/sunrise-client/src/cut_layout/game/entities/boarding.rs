@@ -1,14 +1,12 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay_common::game::mounts_common::MountsCommonGameExt1;
-use super::*;
+    use super::*;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::mounts_common::MountsCommonGameExt1;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn retained_passengers_occupy_seats_in_boarding_order() {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
@@ -24,9 +22,10 @@ use super::*;
                 let mut m = Mob::new(id, pig.clone(), Vec3::ZERO, 0.0);
                 m.extra.mount = Some(71);
                 m.extra.vehicle_order = order;
-                game.persist
-                    .off_level
-                    .insert(id, sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(m));
+                game.persist.off_level.insert(
+                    id,
+                    sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(m),
+                );
             }
             let mut resident = Mob::new(73, pig, Vec3::ZERO, 0.0);
             resident.extra.mount = Some(71);
@@ -42,7 +41,7 @@ use super::*;
             assert_eq!(game.mob_object(72).unwrap().extra.vehicle_order, 3);
         });
     }
-/// `Entity.addPassenger` appends a player when the first passenger is already one: this
+    /// `Entity.addPassenger` appends a player when the first passenger is already one: this
     /// game's own player boarding after a guest and a pig sits third, not first.
     #[test]
     #[ignore = "daily"]
@@ -86,7 +85,7 @@ use super::*;
             assert_eq!(aboard, vec![12, rider, own]);
         });
     }
-/// `Entity.positionRider` picks the attachment by the passenger's index in `getPassengers`: the
+    /// `Entity.positionRider` picks the attachment by the passenger's index in `getPassengers`: the
     /// own player behind a guest and a pig sits in the third seat of a happy ghast, 1.7 south of it.
     #[test]
     #[ignore = "daily"]

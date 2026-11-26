@@ -61,7 +61,9 @@ impl crate::game::ClientGame<'_> {
             &mut self.common.world,
             gone,
         );
-        self.client.streaming.forget_columns(&mut self.common.world, gone);
+        self.client
+            .streaming
+            .forget_columns(&mut self.common.world, gone);
         if keep_terrain && let Some(lod) = &mut self.client.lod.0 {
             for chunk in &freed {
                 lod.observe(chunk.clone(), self.common.res.facts());
@@ -105,7 +107,8 @@ impl crate::game::ClientGame<'_> {
                     // Viewed worlds hold arbitrary areas, not a ring. Only copy entries
                     // in the new active view when establishing its cache for the first time.
                     let mut gone = self
-                        .common.world
+                        .common
+                        .world
                         .chunks
                         .keys()
                         .copied()
@@ -118,10 +121,11 @@ impl crate::game::ClientGame<'_> {
         }
     }
     pub(in crate::game) fn set_remote_chunk_cache_radius(&mut self, distance: i32) {
-        self.client.streaming.radius = sunrise_gameplay_common::game::streaming_radius::streaming_radius_for(
-            self.client.settings.render_distance,
-            Some(distance),
-        );
+        self.client.streaming.radius =
+            sunrise_gameplay_common::game::streaming_radius::streaming_radius_for(
+                self.client.settings.render_distance,
+                Some(distance),
+            );
         if let Some(r) = self.client.remote.as_mut() {
             let old = ClientChunkRange::new(r.chunk_center, r.view_distance);
             let range = ClientChunkRange::new(r.chunk_center, distance);
@@ -131,7 +135,8 @@ impl crate::game::ClientGame<'_> {
                 // storage and abandons the rest. Their data is freed here, so each tells
                 // its `client_chunk_unload`, unlike a centre move's hidden slots.
                 let mut gone: FxHashSet<Column> = self
-                    .common.world
+                    .common
+                    .world
                     .chunks
                     .resident_keys()
                     .filter(|&key| !range.contains(key))
@@ -152,8 +157,10 @@ impl crate::game::ClientGame<'_> {
         if let Some(renderer) = &mut self.client.renderer.0 {
             renderer.remove_columns(hidden.iter().copied());
         }
-        self.client
-            .streaming
-            .remote_chunk_visibility_changed(&mut self.common.world, &hidden, &shown);
+        self.client.streaming.remote_chunk_visibility_changed(
+            &mut self.common.world,
+            &hidden,
+            &shown,
+        );
     }
 }

@@ -10,7 +10,8 @@ impl crate::game::ClientGame<'_> {
             return Vec::new();
         }
         let Some(layout) = self
-            .common.native_net
+            .common
+            .native_net
             .placement
             .view
             .as_ref()
@@ -31,7 +32,8 @@ impl crate::game::ClientGame<'_> {
             mod_api::RecipeBookLayout::Mod => Vec::new(),
         };
         let mut stacks: Vec<_> = self
-            .common.inventory
+            .common
+            .inventory
             .iter()
             .flatten()
             .filter(|stack| sunrise_sim::menu::place::usable_for_crafting(stack))

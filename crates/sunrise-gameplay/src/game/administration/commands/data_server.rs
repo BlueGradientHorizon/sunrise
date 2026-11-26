@@ -31,7 +31,8 @@ impl crate::game::ServerGame<'_> {
         // passengers the load kept raw (none, when it kept none).
         let kept_passengers = match t {
             Target::Mob(id) | Target::Boat(id) | Target::Cart(id) | Target::Tnt(id) => Some(
-                self.common.persist
+                self.common
+                    .persist
                     .raw
                     .get(&id)
                     .and_then(|raw| raw.get("Passengers"))
@@ -48,7 +49,8 @@ impl crate::game::ServerGame<'_> {
                 Self::normalize_loaded_mob_tags(&mut tag);
                 let uuid = self.uuid_for(id);
                 let kind = self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter()
                     .find(|m| m.id == id)
                     .map(|m| m.kind.id.clone());
@@ -256,7 +258,8 @@ impl crate::game::ServerGame<'_> {
                     entity_nbt::boat_from_nbt(&tag).ok_or_else(stale)?;
                 let uuid = self.uuid_for(id);
                 let i = self
-                    .common.boats
+                    .common
+                    .boats
                     .iter()
                     .position(|b| b.id == id)
                     .ok_or_else(stale)?;
@@ -270,7 +273,8 @@ impl crate::game::ServerGame<'_> {
                     b.no_gravity = entity_nbt::flag(&tag, "NoGravity");
                     b.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
                     b.fire_ticks = crate::game::boats::saved_fire(&tag);
-                    b.ticks_frozen = sunrise_gameplay_common::game::boats_common::saved_ticks_frozen(&tag);
+                    b.ticks_frozen =
+                        sunrise_gameplay_common::game::boats_common::saved_ticks_frozen(&tag);
                     if b.chest {
                         b.items = save::decode_items(
                             tag.get("Items"),
@@ -293,7 +297,8 @@ impl crate::game::ServerGame<'_> {
                 );
                 let uuid = self.uuid_for(id);
                 let index = self
-                    .common.falling
+                    .common
+                    .falling
                     .iter()
                     .position(|f| f.id == id)
                     .ok_or_else(stale)?;
@@ -329,7 +334,8 @@ impl crate::game::ServerGame<'_> {
                     .get("block_state")
                     .and_then(|v| entity_nbt::state_from_nbt(self.common.pack.assets.registry, v));
                 let tnt = self
-                    .common.tnts
+                    .common
+                    .tnts
                     .iter_mut()
                     .find(|tnt| tnt.id == id)
                     .ok_or_else(stale)?;
@@ -356,7 +362,8 @@ impl crate::game::ServerGame<'_> {
                     .ok_or_else(stale)?;
                 let uuid = self.uuid_for(id);
                 let orb = self
-                    .common.orbs
+                    .common
+                    .orbs
                     .iter_mut()
                     .find(|o| o.id == id)
                     .ok_or_else(stale)?;
@@ -388,7 +395,8 @@ impl crate::game::ServerGame<'_> {
             Target::Trident(id) => {
                 let loaded = entity_nbt::trident_from_nbt(&tag).ok_or_else(stale)?;
                 let uuid = self.uuid_for(id);
-                self.common.tridents
+                self.common
+                    .tridents
                     .iter_mut()
                     .find(|trident| trident.id == id)
                     .ok_or_else(stale)?
@@ -400,7 +408,8 @@ impl crate::game::ServerGame<'_> {
                 let loaded =
                     entity_nbt::firework_rocket_from_nbt(&tag, player).ok_or_else(stale)?;
                 let uuid = self.uuid_for(id);
-                self.common.rockets
+                self.common
+                    .rockets
                     .iter_mut()
                     .find(|r| r.id == id)
                     .ok_or_else(stale)?
@@ -410,15 +419,17 @@ impl crate::game::ServerGame<'_> {
             Target::Cart(id) => {
                 let uuid = self.uuid_for(id);
                 let i = self
-                    .common.carts
+                    .common
+                    .carts
                     .iter()
                     .position(|c| c.id == id)
                     .ok_or_else(stale)?;
                 let mut cart = self.common.carts[i].clone();
                 cart.load(&tag).ok_or_else(stale)?;
-                sunrise_gameplay_common::game::minecarts::forget_unreadable_display(&mut cart, |t| {
-                    self.state_from_nbt(t).is_some()
-                });
+                sunrise_gameplay_common::game::minecarts::forget_unreadable_display(
+                    &mut cart,
+                    |t| self.state_from_nbt(t).is_some(),
+                );
                 if !self.common.store_cart_back(i, cart) {
                     return Err(stale());
                 }
@@ -435,7 +446,8 @@ impl crate::game::ServerGame<'_> {
                 let known = entity_nbt::painting_from_nbt(&tag)
                     .and_then(|(_, _, v)| self.common.painting_variants.get(&v?).cloned());
                 let p = self
-                    .common.paintings
+                    .common
+                    .paintings
                     .iter_mut()
                     .find(|p| p.id == id)
                     .ok_or_else(stale)?;
@@ -448,7 +460,8 @@ impl crate::game::ServerGame<'_> {
             Target::Projectile(id) => {
                 let uuid = self.uuid_for(id);
                 let index = self
-                    .common.creatures
+                    .common
+                    .creatures
                     .projectiles
                     .iter()
                     .position(|p| p.id == id)
@@ -471,7 +484,9 @@ impl crate::game::ServerGame<'_> {
                     let thrown_item = self.common.creatures.projectiles[index]
                         .kind
                         .is_throwable_item()
-                        .then(|| entity_nbt::decode_throwable_item_field(&tag, self.common.res.items()));
+                        .then(|| {
+                            entity_nbt::decode_throwable_item_field(&tag, self.common.res.items())
+                        });
                     self.common.creatures.projectiles.update(index, |p| {
                         if let Some(pos) = entity_nbt::position(&tag) {
                             p.position = pos;
@@ -495,7 +510,8 @@ impl crate::game::ServerGame<'_> {
             Target::Bolt(id) => {
                 Self::normalize_loaded_mob_tags(&mut tag);
                 let i = self
-                    .common.bolts
+                    .common
+                    .bolts
                     .iter()
                     .position(|b| b.id == id)
                     .ok_or_else(stale)?;
@@ -579,7 +595,8 @@ impl crate::game::ServerGame<'_> {
                     .lan_trade_conn(id)
                     .and_then(|conn| self.lan_trade_session(conn))
                     .or_else(|| {
-                        self.common.station
+                        self.common
+                            .station
                             .as_ref()
                             .and_then(|s| s.merchant.as_ref())
                             .filter(|m| m.mob == Some(id))
@@ -622,7 +639,12 @@ impl crate::game::ServerGame<'_> {
             Target::Frame(id) => {
                 let uuid = self.uuid_for(id);
                 let f = self.common.item_frames.iter().find(|f| f.id == id)?;
-                entity_nbt::item_frame_to_nbt(f, uuid, self.common.persist.raw.get(&id), self.common.res.items())
+                entity_nbt::item_frame_to_nbt(
+                    f,
+                    uuid,
+                    self.common.persist.raw.get(&id),
+                    self.common.res.items(),
+                )
             }
             Target::Painting(id) => {
                 let uuid = self.uuid_for(id);
@@ -633,7 +655,11 @@ impl crate::game::ServerGame<'_> {
                 let uuid = self.uuid_for(id);
                 let i = self.common.boats.iter().position(|b| b.id == id)?;
                 let b = &self.common.boats[i];
-                let mut tag = b.to_nbt(uuid, self.common.persist.raw.get(&id), self.common.res.items());
+                let mut tag = b.to_nbt(
+                    uuid,
+                    self.common.persist.raw.get(&id),
+                    self.common.res.items(),
+                );
                 // Entity.saveWithoutId: the actual runtime passenger tree.
                 self.put_passengers(&mut tag, id);
                 // AbstractBoat.addAdditionalSaveData: the live or pending leash.
@@ -644,7 +670,11 @@ impl crate::game::ServerGame<'_> {
             Target::Cart(id) => {
                 let uuid = self.uuid_for(id);
                 let c = self.common.carts.iter().find(|c| c.id == id)?;
-                let mut tag = c.to_nbt(uuid, self.common.persist.raw.get(&id), self.common.res.items());
+                let mut tag = c.to_nbt(
+                    uuid,
+                    self.common.persist.raw.get(&id),
+                    self.common.res.items(),
+                );
                 self.put_passengers(&mut tag, id);
                 self.save_portal_cooldown(id, &mut tag);
                 tag
@@ -661,7 +691,8 @@ impl crate::game::ServerGame<'_> {
             }
             Target::Orb(id) => {
                 let uuid = self.uuid_for(id);
-                let tag = entity_nbt::orb_to_nbt(self.common.orbs.iter().find(|o| o.id == id)?, uuid);
+                let tag =
+                    entity_nbt::orb_to_nbt(self.common.orbs.iter().find(|o| o.id == id)?, uuid);
                 // Entity.saveWithoutId: the live fire, air and portal cooldown.
                 let mut tag = crate::game::persist::with_raw_over(
                     tag,
@@ -676,7 +707,8 @@ impl crate::game::ServerGame<'_> {
                 // A homing bullet's `Target` is the entity's, not the raw
                 // compound's, as `save_projectile` writes it.
                 let who = self
-                    .common.creatures
+                    .common
+                    .creatures
                     .projectiles
                     .iter()
                     .find(|p| p.id == id)
@@ -688,7 +720,12 @@ impl crate::game::ServerGame<'_> {
                         _ => None,
                     });
                 let target = who.and_then(|who| self.save_who_uuid(who));
-                let p = self.common.creatures.projectiles.iter().find(|p| p.id == id)?;
+                let p = self
+                    .common
+                    .creatures
+                    .projectiles
+                    .iter()
+                    .find(|p| p.id == id)?;
                 let owner = if p.owner == Some(sunrise_sim::mobs::Who::Player) {
                     player_uuid
                 } else {
@@ -710,8 +747,12 @@ impl crate::game::ServerGame<'_> {
                     raw,
                     self.common.res.items(),
                 )
-                .or_else(|| entity_nbt::fireball_to_nbt(p, uuid, owner, raw, self.common.res.items()))
-                .or_else(|| entity_nbt::throwable_to_nbt(p, uuid, owner, raw, self.common.res.items()))
+                .or_else(|| {
+                    entity_nbt::fireball_to_nbt(p, uuid, owner, raw, self.common.res.items())
+                })
+                .or_else(|| {
+                    entity_nbt::throwable_to_nbt(p, uuid, owner, raw, self.common.res.items())
+                })
                 .or_else(|| entity_nbt::spit_or_bullet_to_nbt(p, uuid, owner, target, raw))?;
                 self.save_projectile_portal_cooldown(p, &mut tag);
                 tag
@@ -724,7 +765,11 @@ impl crate::game::ServerGame<'_> {
                 let d = self.common.dragon.as_ref().filter(|d| d.id == id)?;
                 let raw = self.persist_anon("minecraft:ender_dragon", d.position);
                 let uuid = self.common.persist.uuids.get(&id).copied();
-                let tag = d.to_nbt(uuid.unwrap_or_else(random_uuid), raw, self.common.res.items());
+                let tag = d.to_nbt(
+                    uuid.unwrap_or_else(random_uuid),
+                    raw,
+                    self.common.res.items(),
+                );
                 crate::game::persist::with_raw(tag, self.common.persist.raw.get(&id))
             }
             Target::Tnt(id) => {
@@ -776,7 +821,8 @@ impl crate::game::ServerGame<'_> {
                 let c = self.common.breath_clouds.iter().find(|c| c.id == id)?;
                 let [x, y, z] = c.at;
                 let [yaw, pitch] = self
-                    .common.persist
+                    .common
+                    .persist
                     .raw
                     .get(&id)
                     .map_or([0.0; 2], entity_nbt::loaded_rotation);
@@ -937,7 +983,10 @@ impl crate::game::ServerGame<'_> {
         if let Some(changed) = self.load_comparator_output(pos, &tag) {
             let changed = changed.unwrap_or(false);
             if changed {
-                self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+                self.common
+                    .world
+                    .modified
+                    .insert((pos[0] >> 4, pos[2] >> 4));
             }
             return changed;
         }
@@ -960,8 +1009,12 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         let rolled = self.take_loot_table(key, &tag, &mut new);
-        let after =
-            sunrise_sim::save::block_entity_encode::encode(key, &new, &name, self.common.res.items());
+        let after = sunrise_sim::save::block_entity_encode::encode(
+            key,
+            &new,
+            &name,
+            self.common.res.items(),
+        );
         // The lock is outside the model: a tag that only changes it still
         // changes the block entity.
         let lock_changed = self.common.world.block_lock(key) != tag.get("lock");
@@ -969,7 +1022,8 @@ impl crate::game::ServerGame<'_> {
         let name_changed = self.common.load_block_name(key, &new, &tag);
         let cooldown_changed = if name == "minecraft:hopper" {
             let state = super::super::machines::HopperState::load(&tag);
-            let changed = self.server.hoppers.get(&key).map_or(-1, |s| s.cooldown) != state.cooldown;
+            let changed =
+                self.server.hoppers.get(&key).map_or(-1, |s| s.cooldown) != state.cooldown;
             self.server.hoppers.insert(key, state);
             changed
         } else {
@@ -992,7 +1046,10 @@ impl crate::game::ServerGame<'_> {
             self.mark_block_entity_updated(key);
         }
         self.command_block_loaded(key, was_auto);
-        self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+        self.common
+            .world
+            .modified
+            .insert((pos[0] >> 4, pos[2] >> 4));
         true
     }
     /// The acting player's own UUID: a guest's turn (the window's player on
@@ -1085,7 +1142,8 @@ impl crate::game::ServerGame<'_> {
         // The root of the stack is the first entity spawned.
         let id = before + 1;
         if self
-            .common.resident_entities
+            .common
+            .resident_entities
             .general
             .rows
             .iter()

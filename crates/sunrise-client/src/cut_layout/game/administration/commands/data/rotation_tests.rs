@@ -1,7 +1,10 @@
-use {sunrise_gameplay::game::server_side::commands::data::DataRef, sunrise_gameplay_common::game::commands_common::Target};
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use serde::Deserialize;
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use {
+    sunrise_gameplay::game::server_side::commands::data::DataRef,
+    sunrise_gameplay_common::game::commands_common::Target,
+};
 
 #[derive(Deserialize)]
 struct Witness {
@@ -101,11 +104,12 @@ pub(crate) fn run_a_cloud_and_a_falling_block_save_the_rotation_they_were_loaded
                         "{label}: cloud /data get"
                     );
                     let cloud = game.breath_clouds.last().unwrap();
-                    let saved = sunrise_gameplay::game::server_side::potions_server::potion_cloud_to_nbt(
-                        cloud,
-                        [1, 2, 3, 4],
-                        game.persist_raw(id),
-                    );
+                    let saved =
+                        sunrise_gameplay::game::server_side::potions_server::potion_cloud_to_nbt(
+                            cloud,
+                            [1, 2, 3, 4],
+                            game.persist_raw(id),
+                        );
                     assert_eq!(
                         rotation(&saved),
                         Some(&expected_saved),

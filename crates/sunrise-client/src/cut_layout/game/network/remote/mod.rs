@@ -1,10 +1,9 @@
-
 #[cfg(test)]
 pub(crate) mod block_entity_data_tests;
 #[cfg(test)]
-pub(crate) mod claimed_item_use_tests;
-#[cfg(test)]
 pub(crate) mod chat_audit_tests;
+#[cfg(test)]
+pub(crate) mod claimed_item_use_tests;
 #[cfg(test)]
 pub(crate) mod interaction_event_tests;
 
@@ -30,7 +29,7 @@ pub(crate) mod respawn_motion_tests;
 #[cfg(test)]
 pub(crate) mod tests {
     use sunrise_gameplay_common::game::tables::GameItems;
-pub(crate) mod client_explosion_tests {
+    pub(crate) mod client_explosion_tests {
         include!("client_explosion_tests.rs");
     }
 
@@ -86,11 +85,11 @@ pub(crate) mod client_explosion_tests {
     }
     pub(crate) mod client_handles_tests {
         use sunrise_gameplay_common::game::GameGameExt1;
-include!("client_handles_tests.rs");
+        include!("client_handles_tests.rs");
     }
     pub(crate) mod client_level_environment_tests {
         use sunrise_gameplay_common::game::weather::WeatherGameExt;
-include!("client_level_environment_tests.rs");
+        include!("client_level_environment_tests.rs");
     }
     pub(crate) mod client_level_lifecycle_tests {
         include!("client_level_lifecycle_tests.rs");
@@ -172,7 +171,7 @@ include!("client_level_environment_tests.rs");
     }
     pub(crate) mod predicted_block_notice_tests {
         use sunrise_gameplay_common::game::GameGameExt1;
-include!("predicted_block_notice_tests.rs");
+        include!("predicted_block_notice_tests.rs");
     }
     pub(crate) mod predicted_throw_tests {
         include!("predicted_throw_tests.rs");
@@ -303,7 +302,8 @@ include!("predicted_block_notice_tests.rs");
         sunrise_protocol::connection::ConnWriter,
     ) {
         use sunrise_protocol::connection::{Connection, Pipe};
-        game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+        game.options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
         let (client, server) = Pipe::pair();
         game.connect_local(client, "MenuReadTest").unwrap();
         finish_play_test(game, Connection::local(server), configure)
@@ -389,8 +389,8 @@ include!("predicted_block_notice_tests.rs");
     pub(crate) fn spawn_menu_test(
         game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     ) -> sunrise_protocol::packets::play::SpawnInfo {
-        use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
         use sunrise_client::level_loading::Reason;
+        use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
         use sunrise_protocol::packets::play::SpawnInfo;
         let spawn = SpawnInfo {
             dimension_type: 0,
@@ -412,17 +412,26 @@ include!("predicted_block_notice_tests.rs");
         spawn
     }
 
-    use {sunrise_gameplay_common::game::remote::boat_interact_passes, sunrise_gameplay_common::game::remote::chat_after_event, sunrise_gameplay_common::game::remote::item_frame_interact_passes, sunrise_gameplay_common::game::remote::remote_object_swings};
+    use {
+        sunrise_gameplay_common::game::remote::boat_interact_passes,
+        sunrise_gameplay_common::game::remote::chat_after_event,
+        sunrise_gameplay_common::game::remote::item_frame_interact_passes,
+        sunrise_gameplay_common::game::remote::remote_object_swings,
+    };
 
     #[test]
     #[ignore = "daily"]
     fn block_alias_survival_consumption_and_client_prediction() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::World, crate::settings::Settings, crate::game::load_resources};
         use std::{path::PathBuf, sync::Arc};
         use sunrise_items::items::ItemStack;
         use sunrise_level::chunk::Chunk;
         use sunrise_mod_package::content::{Block, Content, Item};
         use sunrise_sim::mod_content::{ContentMod, build};
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+            sunrise_gameplay_common::game::World,
+        };
         let base = PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES").expect("prepared resources required"),
         );
@@ -478,7 +487,8 @@ include!("predicted_block_notice_tests.rs");
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -554,7 +564,8 @@ include!("predicted_block_notice_tests.rs");
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
         let mut client = sunrise_client_gameplay::game::ClientGame::new(
             &loaded.resources,
             loaded.client_res.unwrap(),
@@ -630,13 +641,17 @@ include!("predicted_block_notice_tests.rs");
     #[test]
     #[ignore = "daily"]
     fn a_servers_client_takes_its_speed_from_the_attributes_not_the_effect() {
-        use {sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
         use sunrise_core::geometry::Vec3;
         use sunrise_protocol::packets::play::{
             AttributeModifier, AttributeSnapshot, Clientbound as C, RemoveMobEffect,
             UpdateAttributes, UpdateMobEffect,
         };
         use sunrise_sim::motion::PlayerMotion;
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options,
+            sunrise_gameplay_common::game::Progress,
+        };
         let root = std::path::PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES").expect("prepared resources required"),
         );
@@ -750,15 +765,14 @@ pub(crate) mod item_use_tick_tests;
 #[cfg(test)]
 pub(crate) mod movement_input_tests;
 #[cfg(test)]
-pub(crate) mod swim_start_tests;
-#[cfg(test)]
 pub(crate) mod placement_prediction_tests;
 #[cfg(test)]
 #[path = "player_tick_tests.rs"]
 pub(crate) mod player_tick_tests;
 #[cfg(test)]
 pub(crate) mod smoke_source_tests;
-
+#[cfg(test)]
+pub(crate) mod swim_start_tests;
 
 pub(crate) mod tables;
 

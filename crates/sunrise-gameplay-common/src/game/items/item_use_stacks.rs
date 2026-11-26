@@ -16,9 +16,8 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait ItemUseStacksGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-
     /// Report an applied destruction, not a hand edit made by a listener.
-     fn player_item_destroyed(&mut self, original: &ItemStack, hand: Option<Hand>) {
+    fn player_item_destroyed(&mut self, original: &ItemStack, hand: Option<Hand>) {
         if original.count == 0
             || &*original.item == "minecraft:air"
             || !mod_api::__private::listened(mod_api::HookId::PlayerDestroyItem)
@@ -31,7 +30,7 @@ pub trait ItemUseStacksGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// Consume from a player slot after the caller's creative-mode gate.
     /// Notify before a use remainder replaces the now-empty stack.
-     fn consume_player_slot(&mut self, slot: usize, amount: u32) {
+    fn consume_player_slot(&mut self, slot: usize, amount: u32) {
         let original = mod_api::__private::listened(mod_api::HookId::PlayerDestroyItem)
             .then(|| self.stack_in(slot).cloned())
             .flatten();
@@ -56,7 +55,7 @@ pub trait ItemUseStacksGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         }
     }
 
-     fn consume_held(&mut self) {
+    fn consume_held(&mut self) {
         if !self.creative {
             self.consume_player_slot(self.held_slot(), 1);
         }
@@ -66,7 +65,7 @@ pub trait ItemUseStacksGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `SolidBucketItem.useOn`'s `BucketItem.getEmptySuccessItem`: a placed
     /// powder snow bucket leaves an empty bucket in that hand, unless the player
     /// has infinite materials. The client predicts the same as the server does.
-     fn consume_placed(&mut self, placed: &ItemStack) {
+    fn consume_placed(&mut self, placed: &ItemStack) {
         if self.creative {
             return;
         }
@@ -81,7 +80,6 @@ pub trait ItemUseStacksGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> ItemUseStacksGameExt1<'__sg> for G {}
-
 
 use crate::game::side_ops::items::ItemsSideGameExt as _;
 

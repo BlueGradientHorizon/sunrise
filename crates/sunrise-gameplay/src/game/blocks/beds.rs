@@ -35,11 +35,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `setBlockAndUpdate(head, state.setValue(OCCUPIED, occupied))`, when
     /// the block at `head` is still a bed and not already so.
-    pub fn set_bed_occupied(
-        &mut self,
-        head: [i32; 3],
-        occupied: bool,
-    ) {
+    pub fn set_bed_occupied(&mut self, head: [i32; 3], occupied: bool) {
         let registry = &self.common.pack.assets.registry;
         let Some(mut state) = registry
             .state(self.common.world.block(head[0], head[1], head[2]))
@@ -101,7 +97,11 @@ impl crate::game::ServerGame<'_> {
             let bed = self.common.world.block(head[0], head[1], head[2]);
             let straw = &*self.common.res.facts().get(bed).name == "minecraft:straw_bed";
             if straw
-                && self.common.dimension_type_of(dim).straw_bed_rule.destroy_on_leave
+                && self
+                    .common
+                    .dimension_type_of(dim)
+                    .straw_bed_rule
+                    .destroy_on_leave
                 && let Err(e) = self.destroy_straw_bed(head)
             {
                 log::warn!("could not break the straw bed at {head:?}: {e}");

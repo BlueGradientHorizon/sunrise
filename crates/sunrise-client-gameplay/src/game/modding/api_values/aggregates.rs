@@ -1,13 +1,16 @@
-
-
 #[cfg(test)]
 mod tests {
-    use {crate::game::api_values::aggregates::*, sunrise_gameplay_common::game::api_values::aggregates::{BlockStateError, TemplateSnapshot, block_state}};
     use crate::game::client_side::api_values_client::aggregates::scene_blocks;
-    use sunrise_gameplay_common::game::native_structure_values::TemplateBlock;
     use mod_api::{Compound, Identifier, SceneBlockEntity, Tag};
-    use sunrise_world::registry::{BlockRegistry, BlockStateId};
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::native_structure_values::TemplateBlock;
+    use sunrise_world::registry::{BlockRegistry, BlockStateId};
+    use {
+        crate::game::api_values::aggregates::*,
+        sunrise_gameplay_common::game::api_values::aggregates::{
+            BlockStateError, TemplateSnapshot, block_state,
+        },
+    };
 
     #[test]
     fn aggregates_preserve_properties_reorder_and_refuse_whole_values() {

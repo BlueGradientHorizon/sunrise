@@ -22,13 +22,11 @@ pub mod entry;
 #[cfg(not(feature = "system-allocator"))]
 #[global_allocator]
 static ALLOCATOR: sunrise_threads::GameAllocator = sunrise_threads::GAME_ALLOCATOR;
-pub mod game_facade;
 mod cut_layout;
+pub mod game_facade;
 pub use cut_layout::game;
 pub use sunrise_sim::orb_limits;
 #[cfg(test)]
 mod test_game_dir;
-
-
 
 pub use sunrise_level::{crash, logging, spans};

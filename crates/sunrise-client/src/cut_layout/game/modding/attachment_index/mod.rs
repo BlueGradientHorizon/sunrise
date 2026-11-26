@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use mod_api::AttachmentHolder;
 use mod_api::ChunkRef;

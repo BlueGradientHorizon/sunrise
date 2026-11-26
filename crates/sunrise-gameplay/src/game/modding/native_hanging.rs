@@ -31,16 +31,15 @@ impl crate::game::ServerGame<'_> {
             }
             _ => return false,
         };
-        self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+        self.common
+            .world
+            .modified
+            .insert((pos[0] >> 4, pos[2] >> 4));
         true
     }
 
     /// `ItemFrame.setRotation`: `rotation % 8`, then the comparators reading the frame.
-    pub fn entity_set_item_frame_rotation(
-        &mut self,
-        entity: EntityRef,
-        rotation: u8,
-    ) -> bool {
+    pub fn entity_set_item_frame_rotation(&mut self, entity: EntityRef, rotation: u8) -> bool {
         let Some(Target::Frame(id)) = self.native_entity_target(entity) else {
             return false;
         };
@@ -49,7 +48,10 @@ impl crate::game::ServerGame<'_> {
         };
         frame.rotation = (rotation % 8) as i8;
         let pos = frame.pos;
-        self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+        self.common
+            .world
+            .modified
+            .insert((pos[0] >> 4, pos[2] >> 4));
         self.frame_output_changed(pos);
         true
     }

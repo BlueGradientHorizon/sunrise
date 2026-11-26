@@ -39,7 +39,8 @@ impl crate::game::ServerGame<'_> {
                 .map(|player| player.entity())
                 .or_else(|| {
                     let target = self
-                        .common.persist
+                        .common
+                        .persist
                         .uuids
                         .iter()
                         .find_map(|(&id, found)| (*found == words).then_some(id))?;
@@ -51,7 +52,8 @@ impl crate::game::ServerGame<'_> {
             let Some(kind) = self.native_entity_target(target.entity()) else {
                 return false;
             };
-            self.common.mobs
+            self.common
+                .mobs
                 .iter()
                 .find(|state| state.id == id)
                 .is_some_and(|state| self.native_mob_valid_target(state, kind))
@@ -118,11 +120,7 @@ impl crate::game::ServerGame<'_> {
     /// `Mob.asValidTarget` and the modeled `canAttack` overrides: the game's
     /// own state as the target's facts, through the one rule set
     /// [`Mob::valid_target`] (#1175) a goal tick's view shares.
-    pub fn native_mob_valid_target(
-        &self,
-        mob: &Mob,
-        target: Target,
-    ) -> bool {
+    pub fn native_mob_valid_target(&self, mob: &Mob, target: Target) -> bool {
         if mob.species() == Species::Warden {
             return self.warden_valid_target(self.mob_team_of(mob), target);
         }
@@ -333,11 +331,7 @@ impl crate::game::ServerGame<'_> {
     /// Invalid targets are refused (false, mob unchanged); vanilla instead
     /// stores `asValidTarget(target)`, clearing the target when it is invalid.
     /// False also means a stale handle, client, or an unavailable mob/player.
-    pub fn mob_set_target(
-        &mut self,
-        mob: MobRef,
-        target: Option<LivingRef>,
-    ) -> bool {
+    pub fn mob_set_target(&mut self, mob: MobRef, target: Option<LivingRef>) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return self.native_dragon_set_target(mob.entity(), target);
         };
@@ -391,15 +385,14 @@ impl crate::game::ServerGame<'_> {
         }
         let mut new_target = original_target;
         let mut cancel = false;
-        sunrise_gameplay_common::game::native_hooks::NativeHookHost { host: self }.native_living_change_target(
-            mod_api::__private::LivingChangeTargetCall {
+        sunrise_gameplay_common::game::native_hooks::NativeHookHost { host: self }
+            .native_living_change_target(mod_api::__private::LivingChangeTargetCall {
                 mob,
                 original_target,
                 new_target: &mut new_target,
                 is_brain,
                 cancel: &mut cancel,
-            },
-        );
+            });
         (!cancel).then_some(new_target)
     }
 
@@ -476,9 +469,13 @@ impl crate::game::ServerGame<'_> {
         let Some(who) = self.native_mob_bind_target(id, target) else {
             return false;
         };
-        self.common.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-            sunrise_sim::mobs::ai::set_brain_target(m, who, target.map(|t| t.entity().id()))
-        })
+        self.common
+            .mobs
+            .iter_mut()
+            .find(|m| m.id == id)
+            .is_some_and(|m| {
+                sunrise_sim::mobs::ai::set_brain_target(m, who, target.map(|t| t.entity().id()))
+            })
     }
 
     /// The mob flag a handle names: a mob's, or the dragon's own.
@@ -513,7 +510,8 @@ impl crate::game::ServerGame<'_> {
     ) -> bool {
         let slot = match self.native_entity_target(mob.entity()) {
             Some(Target::Mob(id)) => {
-                self.common.mobs
+                self.common
+                    .mobs
                     .iter_mut()
                     .find(|m| m.id == id)
                     .map(|mob| match flag {
@@ -559,7 +557,12 @@ impl crate::game::ServerGame<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        let Some(mob) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+        let Some(mob) = self
+            .common
+            .mobs
+            .iter_mut()
+            .find(|m| m.id == id && !m.removed)
+        else {
             return false;
         };
         if !mob.is_tamable_animal() {
@@ -591,7 +594,8 @@ impl crate::game::ServerGame<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
-        self.common.mobs
+        self.common
+            .mobs
             .iter()
             .find(|m| m.id == id)
             .map(mobs::ai::requires_custom_persistence)
@@ -615,7 +619,8 @@ impl crate::game::ServerGame<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.common.mobs
+        self.common
+            .mobs
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .map(|m| m.no_ai = no_ai)
@@ -631,7 +636,8 @@ impl crate::game::ServerGame<'_> {
             return None;
         };
         Some(
-            self.common.mobs
+            self.common
+                .mobs
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .ai
@@ -647,7 +653,8 @@ impl crate::game::ServerGame<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.common.mobs
+        self.common
+            .mobs
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .map(|m| m.ai.no_action_time = ticks)
@@ -690,7 +697,8 @@ impl crate::game::ServerGame<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.common.mobs
+        self.common
+            .mobs
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .map(|m| m.look_at(at))
@@ -708,7 +716,8 @@ impl crate::game::ServerGame<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.common.mobs
+        self.common
+            .mobs
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .map(|m| m.ai.jump = true)
@@ -721,16 +730,12 @@ impl crate::game::ServerGame<'_> {
     /// while keeping `pos` as the center, `clear_restriction`'s shape. The
     /// area is saved with the mob (`home_pos`, `home_radius`). False for a
     /// stale or unavailable mob, a client, and the dragon.
-    pub fn mob_restrict_to(
-        &mut self,
-        mob: MobRef,
-        at: [i32; 3],
-        radius: i32,
-    ) -> bool {
+    pub fn mob_restrict_to(&mut self, mob: MobRef, at: [i32; 3], radius: i32) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.common.mobs
+        self.common
+            .mobs
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .map(|m| m.ai.restore_home(at, radius))
@@ -746,7 +751,8 @@ impl crate::game::ServerGame<'_> {
             return None;
         };
         Some(
-            self.common.mobs
+            self.common
+                .mobs
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .ai
@@ -761,7 +767,8 @@ impl crate::game::ServerGame<'_> {
             return None;
         };
         Some(
-            self.common.mobs
+            self.common
+                .mobs
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .ai
@@ -777,7 +784,8 @@ impl crate::game::ServerGame<'_> {
             return None;
         };
         Some(
-            self.common.mobs
+            self.common
+                .mobs
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .ai
@@ -793,7 +801,8 @@ impl crate::game::ServerGame<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.common.mobs
+        self.common
+            .mobs
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .map(|m| m.ai.clear_home())
@@ -804,16 +813,13 @@ impl crate::game::ServerGame<'_> {
     /// the home area; a mob without a restriction is within everywhere, as
     /// in vanilla. None for a stale or unavailable mob, a client, and the
     /// dragon.
-    pub fn mob_is_within_restriction(
-        &self,
-        mob: MobRef,
-        at: [i32; 3],
-    ) -> Option<bool> {
+    pub fn mob_is_within_restriction(&self, mob: MobRef, at: [i32; 3]) -> Option<bool> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         Some(
-            self.common.mobs
+            self.common
+                .mobs
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .ai
@@ -828,7 +834,8 @@ impl crate::game::ServerGame<'_> {
             return None;
         };
         Some(
-            self.common.mobs
+            self.common
+                .mobs
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .extra
@@ -843,7 +850,8 @@ impl crate::game::ServerGame<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.common.mobs
+        self.common
+            .mobs
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .map(|m| m.extra.left_handed = left_handed)
@@ -858,7 +866,8 @@ impl crate::game::ServerGame<'_> {
             return None;
         };
         Some(
-            self.common.mobs
+            self.common
+                .mobs
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .can_pick_up_loot(),
@@ -869,15 +878,12 @@ impl crate::game::ServerGame<'_> {
     /// (saved with it as `CanPickUpLoot`; clients are not told, as in
     /// vanilla). An allay and a sulfur cube decide for themselves. False
     /// for anything but a mob.
-    pub fn mob_set_can_pick_up_loot(
-        &mut self,
-        mob: MobRef,
-        can_pick_up: bool,
-    ) -> bool {
+    pub fn mob_set_can_pick_up_loot(&mut self, mob: MobRef, can_pick_up: bool) -> bool {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.common.mobs
+        self.common
+            .mobs
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .map(|m| m.extra.pick_up_loot = can_pick_up)

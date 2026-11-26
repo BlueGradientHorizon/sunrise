@@ -242,7 +242,8 @@ impl ServerGame<'_> {
                 continue;
             }
             if let Some(driver) = self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == vehicle as u32)
                 .and_then(|m| m.extra.rider)
@@ -257,7 +258,8 @@ impl ServerGame<'_> {
         for row in &self.common.resident_entities.general.rows {
             if let Some(vehicle) = row.mount
                 && !self
-                    .common.persist
+                    .common
+                    .persist
                     .removals
                     .contains(&super::commands::Target::General(row.id))
             {
@@ -268,7 +270,8 @@ impl ServerGame<'_> {
         for b in &self.common.bolts {
             if let Some(vehicle) = b.mount
                 && !self
-                    .common.persist
+                    .common
+                    .persist
                     .removals
                     .contains(&super::commands::Target::Bolt(b.id))
             {
@@ -289,12 +292,7 @@ impl ServerGame<'_> {
 
     /// Boats, minecarts, armor stands, item frames, paintings and the
     /// entities kept unsimulated, as guests track them.
-    pub fn lan_object_states(
-        &mut self,
-        out: &mut States,
-        drain_minecart_steps: bool,
-        after: u32,
-    ) {
+    pub fn lan_object_states(&mut self, out: &mut States, drain_minecart_steps: bool, after: u32) {
         let Some(host) = self.server.lan.as_ref() else {
             return;
         };
@@ -754,7 +752,12 @@ impl ServerGame<'_> {
                         Value::Id(t.map_or(0, |s| s.0 as i32)),
                     )
                 };
-                let air = self.common.pack.assets.registry.default_state("minecraft:air");
+                let air = self
+                    .common
+                    .pack
+                    .assets
+                    .registry
+                    .default_state("minecraft:air");
                 let shown = tag.get("block_state").and_then(|t| self.state_from_nbt(t));
                 (vec![state(shown.or(air))], vec![state(air)])
             }
@@ -805,7 +808,11 @@ impl ServerGame<'_> {
         for e in states.as_mut_slice().iter_mut().filter(|e| !e.bare) {
             e.uuid = ints_uuid(self.uuid_for(e.id as u32));
             if !self.common.persist.sync_body_position.is_empty() {
-                e.sync_position |= self.common.persist.sync_body_position.contains(&(e.id as u32));
+                e.sync_position |= self
+                    .common
+                    .persist
+                    .sync_body_position
+                    .contains(&(e.id as u32));
             }
             if let Some(bits) = self.common.persist.forced_meta.get(&(e.id as u32)) {
                 e.forced_meta = *bits;
@@ -826,11 +833,16 @@ impl ServerGame<'_> {
             p.needs_sync = false;
             p.sync_velocity = false;
         });
-        self.common.falling.for_each_mut(|f| f.sync_velocity = false);
+        self.common
+            .falling
+            .for_each_mut(|f| f.sync_velocity = false);
         for d in &mut self.common.dropped {
             d.needs_sync = false;
         }
-        self.common.tridents.iter_mut().for_each(|t| t.needs_sync = false);
+        self.common
+            .tridents
+            .iter_mut()
+            .for_each(|t| t.needs_sync = false);
     }
 
     /// Gives the entities Sunrise keeps without an id one (`Entity.id`, from
@@ -855,9 +867,11 @@ impl ServerGame<'_> {
         assign_resident_ids!(self.common.crystals, c, next, None);
         assign_resident_ids!(self.common.bolts, b, next, Some(&b.attachment_lifetime));
         assign_resident_ids!(self.common.ominous_spawners, o, next, None);
-        crate::game::server_side::potions_server::thrown_ids(&mut self.common.potions).for_each(|id| {
-            assign_entity_id(next, id);
-        });
+        crate::game::server_side::potions_server::thrown_ids(&mut self.common.potions).for_each(
+            |id| {
+                assign_entity_id(next, id);
+            },
+        );
         self.common.end.eye_ids().for_each(|id| {
             assign_entity_id(next, id);
         });
@@ -996,7 +1010,13 @@ impl ServerGame<'_> {
                 e.meta.push((8, serializer::BLOCK_POS, Value::Pos(start)));
             }
         }
-        for p in self.common.creatures.projectiles.iter().filter(|p| p.id > after) {
+        for p in self
+            .common
+            .creatures
+            .projectiles
+            .iter()
+            .filter(|p| p.id > after)
+        {
             use sunrise_sim::projectiles::ProjectileKind as K;
             // A spectral arrow is its own entity type.
             let kind = p.entity_type();
@@ -1122,8 +1142,11 @@ impl ServerGame<'_> {
         }
         // Thrown potions and bottles: ThrowableItemProjectile.DATA_ITEM_STACK
         // (the potion's colour), which a plain bottle's type already has.
-        for (id, kind, stack, position, velocity) in
-            self.common.potions.thrown_tracked().filter(|(id, ..)| *id > after)
+        for (id, kind, stack, position, velocity) in self
+            .common
+            .potions
+            .thrown_tracked()
+            .filter(|(id, ..)| *id > after)
         {
             let e = add_state(out, id, kind, at(position), 0.0, false);
             e.velocity = at(velocity);
@@ -1136,7 +1159,12 @@ impl ServerGame<'_> {
             }
         }
         // EyeOfEnder: its item is the plain eye (DATA_ITEM_STACK's default).
-        for (id, position, velocity) in self.common.end.eyes_tracked().filter(|(id, ..)| *id > after) {
+        for (id, position, velocity) in self
+            .common
+            .end
+            .eyes_tracked()
+            .filter(|(id, ..)| *id > after)
+        {
             let e = add_state(out, id, "minecraft:eye_of_ender", position, 0.0, false);
             e.velocity = velocity;
         }
@@ -1298,17 +1326,6 @@ mod tests {
     use super::*;
 
     // NBT constructors assign ids. Reinstall unbound owners to exercise delayed tracking.
-    
-
-    
-
-    
-
-    
-
-    
-
-    
 
     #[test]
     fn summoned_ids_are_unique_and_survive_the_tracking_pass() {

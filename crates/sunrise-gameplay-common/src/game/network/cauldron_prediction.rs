@@ -29,9 +29,7 @@ pub fn publish_registrations<'a>(
 
 /// Only selection keys are synchronized; the server never exports or predicts
 /// a callback. An empty snapshot also clears entries after a reload.
-pub fn registration_packet(
-    table: &crate::game::cauldron_interactions::Table,
-) -> Clientbound {
+pub fn registration_packet(table: &crate::game::cauldron_interactions::Table) -> Clientbound {
     let mut body = Writer::new();
     table.for_each_mod_entry(|block, item, tag| {
         body.string(block);

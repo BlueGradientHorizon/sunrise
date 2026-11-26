@@ -5,8 +5,8 @@
 //! else keep their own loops (`pandas.rs`, `piglins.rs`, `villagers.rs`,
 //! `allays.rs`, `sulfur_cubes.rs`).
 
-use sunrise_gameplay_common::game::equip_answers::EquipAnswersGameExt1;
 use sunrise_gameplay::mob_looting::LootingLevel;
+use sunrise_gameplay_common::game::equip_answers::EquipAnswersGameExt1;
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
 use sunrise_sim::mobs::finalize;
@@ -121,6 +121,5 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
-
 
 use sunrise_gameplay_common::game::native_hooks::enchantments::EnchantmentsGameExt1 as _;

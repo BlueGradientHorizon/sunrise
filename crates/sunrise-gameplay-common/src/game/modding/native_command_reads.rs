@@ -1,11 +1,9 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use sunrise_sim::advancements::{Advancement, Criterion, Display, Frame, Rewards};
+    use sunrise_sim::advancements::{Advancement, Criterion, Display, Frame, Rewards};
 
-pub fn mine_stone() -> Advancement {
+    pub fn mine_stone() -> Advancement {
         let criterion = |name: &str| Criterion {
             name: name.into(),
             trigger: "minecraft:inventory_changed".into(),

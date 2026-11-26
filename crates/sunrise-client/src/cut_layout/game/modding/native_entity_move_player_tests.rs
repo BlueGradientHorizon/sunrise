@@ -3,11 +3,11 @@
 //! hub sends the guest back where it was — the correction the ruling asks
 //! for. Built on the real hub: a hosted guest, a `MovePlayerPos` packet in
 //! its inbox, the hub's own collide path.
-use sunrise_gameplay::game::game_tests::tests::server_game;
 use mod_api::{EntityMoveEvent, Flow, Hooks, LoopContext, MoveCause};
 use std::sync::atomic::AtomicI32;
 use std::sync::{Arc, Mutex};
 use sunrise_core::position::ChunkPos;
+use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_protocol::packets::play::{Clientbound as C, Serverbound as S};
 use sunrise_sim::lan::guest::InboxItem;

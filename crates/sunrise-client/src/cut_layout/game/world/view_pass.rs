@@ -1,59 +1,57 @@
-
-
 #![cfg(test)]
 use sunrise_gameplay_common::game::Dim;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1;
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
-use sunrise_gameplay_common::game::server_side::view_pass::tests::decode_ordered;
-use sunrise_gameplay_common::game::server_side::view_pass::tests::{Got, Sent};
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1;
+    use sunrise_gameplay_common::game::server_side::view_pass::tests::decode_ordered;
+    use sunrise_gameplay_common::game::server_side::view_pass::tests::{Got, Sent};
+    use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 
-use sunrise_gameplay_common::game::server_side::view_pass::tests::every;
+    use sunrise_gameplay_common::game::server_side::view_pass::tests::every;
 
-use sunrise_gameplay_common::game::server_side::view_pass::tests::respawns;
+    use sunrise_gameplay_common::game::server_side::view_pass::tests::respawns;
 
-use sunrise_gameplay_common::game::server_side::view_pass::tests::sent;
+    use sunrise_gameplay_common::game::server_side::view_pass::tests::sent;
 
-use sunrise_gameplay_common::game::server_side::view_pass::tests::square;
+    use sunrise_gameplay_common::game::server_side::view_pass::tests::square;
 
-use sunrise_gameplay_common::game::server_side::view_pass::tests::tracked;
+    use sunrise_gameplay_common::game::server_side::view_pass::tests::tracked;
 
-use sunrise_gameplay::game::server_side::view_pass::tests::clocks_after;
+    use sunrise_gameplay::game::server_side::view_pass::tests::clocks_after;
 
-use sunrise_gameplay::game::server_side::view_pass::tests::host_a_viewer;
+    use sunrise_gameplay::game::server_side::view_pass::tests::host_a_viewer;
 
-use sunrise_gameplay::game::server_side::view_pass::tests::host_with_viewer;
+    use sunrise_gameplay::game::server_side::view_pass::tests::host_with_viewer;
 
-use sunrise_gameplay::game::server_side::view_pass::tests::summon_in_the_nether;
+    use sunrise_gameplay::game::server_side::view_pass::tests::summon_in_the_nether;
 
-use sunrise_gameplay::game::server_side::view_pass::tests::travel;
+    use sunrise_gameplay::game::server_side::view_pass::tests::travel;
 
-use sunrise_gameplay::game::server_side::view_pass::tests::viewer;
+    use sunrise_gameplay::game::server_side::view_pass::tests::viewer;
 
-use super::*;
+    use super::*;
 
-use std::time::{Duration, Instant};
+    use std::time::{Duration, Instant};
 
-use sunrise_protocol::{
+    use sunrise_protocol::{
         buf::Reader,
         packets::play::Clientbound as C,
         viewed_levels::{CHANNEL, Level::Index, Message, REVISION_3, ScopedPacket},
     };
 
-/// A server game on a scratch world, as `levels.rs`'s tests open one.
+    /// A server game on a scratch world, as `levels.rs`'s tests open one.
     pub(crate) fn open_game<'a>(
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
         root: &std::path::Path,
         home: &std::path::Path,
     ) -> sunrise_gameplay::game::ServerGame<'a> {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
-        use crate::settings::Settings;
         use crate::game::load_resources;
+        use crate::settings::Settings;
+        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
         let settings = Settings::default();
         let loaded = load_resources(
             sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),
@@ -73,7 +71,8 @@ use sunrise_protocol::{
         options.resources = root.to_path_buf();
         options.game_dir = Some(home.to_path_buf());
         options.player_name = Some("Viewer".into());
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             resources,
             loaded.pack,
@@ -92,14 +91,16 @@ use sunrise_protocol::{
                 Some(3716),
                 true,
                 None,
-                std::sync::Arc::new(sunrise_gameplay_common::game::api_values::game_rule_registry()),
+                std::sync::Arc::new(
+                    sunrise_gameplay_common::game::api_values::game_rule_registry(),
+                ),
             )
             .unwrap(),
         )
         .unwrap();
         game
     }
-/// A game on a scratch world in `SUNRISE_HOME`'s `name`, its viewer, and a `Loaded` Nether
+    /// A game on a scratch world in `SUNRISE_HOME`'s `name`, its viewer, and a `Loaded` Nether
     /// area at (40, 40), far from where anything else streams, ticked through `tick_server` until
     /// its 9 chunks were sent: what the viewer was sent until then.
     fn stream_the_nether<'a>(
@@ -113,7 +114,7 @@ use sunrise_protocol::{
         use sunrise_sim::lan::viewed_levels::areas::ChunkAreaMode;
         stream_the_nether_in(resources, name, ChunkAreaMode::Loaded)
     }
-/// [`stream_the_nether`] with an area of `mode`: a `Ticking` one ticks the Nether.
+    /// [`stream_the_nether`] with an area of `mode`: a `Ticking` one ticks the Nether.
     fn stream_the_nether_in<'a>(
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
         name: &str,
@@ -156,7 +157,7 @@ use sunrise_protocol::{
         all.chunks.sort_unstable();
         (game, rx, all)
     }
-/// The view pass generates, postprocesses and sends a `Loaded` area's chunks in a level nobody
+    /// The view pass generates, postprocesses and sends a `Loaded` area's chunks in a level nobody
     /// is in, keeps them loaded across ticks (`lan_update_streaming`'s rebuild keeps the area), never ticks
     /// the level, and sends its game time, the server's, every 20 ticks.
     #[test]
@@ -190,7 +191,7 @@ use sunrise_protocol::{
             "the server's clock: {times:?}"
         );
     }
-/// The last area of a level nobody is in, withdrawn: the level keeps its view passes, with
+    /// The last area of a level nobody is in, withdrawn: the level keeps its view passes, with
     /// no ticket and no loading square, until its chunks are forgotten 52 ticks later and it is
     /// closed on the client; then the passes stop.
     #[test]
@@ -234,7 +235,7 @@ use sunrise_protocol::{
         assert!(!hub.viewed.active());
         assert!(!game.needs_view_pass(Dim::Nether), "no more passes");
     }
-/// An entity in a viewed `Ticking` Nether area reaches the viewer as a wrapped `AddEntity`,
+    /// An entity in a viewed `Ticking` Nether area reaches the viewer as a wrapped `AddEntity`,
     /// then its fall onto the bedrock roof (y 128) as wrapped moves, and once killed its death
     /// event (3) and, its death animation over, its removal.
     #[test]
@@ -280,7 +281,7 @@ use sunrise_protocol::{
             "not the player's own"
         );
     }
-/// An entity in a viewed `Loaded` Nether area is added, wrapped, and stands still in the air:
+    /// An entity in a viewed `Loaded` Nether area is added, wrapped, and stands still in the air:
     /// nothing ticks there, and a position sync, if any, gives the same place.
     #[test]
     #[ignore = "daily"]
@@ -301,10 +302,9 @@ use sunrise_protocol::{
             t.moves
         );
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_saved_block_entity_republishes_its_group_before_a_loaded_only_column_is_sent() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases};
         use mod_api::{
             Block, BlockEntityEvent, BlockEntityOnLoadEvent, BlockEntityPart, BlockEntitySideScope,
             BlockPart, BlockUpdateFlags, BlocksEvent, Compound, Hooks, LevelSide, ModEntry, Mods,
@@ -317,6 +317,10 @@ use sunrise_protocol::{
                 viewed_levels::areas::{ChunkArea, ChunkAreaMode},
             },
             raw_payloads::{Side, Transport},
+        };
+        use {
+            sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+            sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
         };
 
         const NAME: &str = "game::server_side::view_pass::tests::a_saved_block_entity_republishes_its_group_before_a_loaded_only_column_is_sent";
@@ -375,7 +379,8 @@ use sunrise_protocol::{
         mod_platform::__private::install(mods.clone());
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         let content =
-            sunrise_gameplay_common::game::mods::content_root(&fixture_root(), &Default::default()).unwrap();
+            sunrise_gameplay_common::game::mods::content_root(&fixture_root(), &Default::default())
+                .unwrap();
         let root = content.prepared();
         let home = tempfile::tempdir().unwrap();
         for reopen in [false, true] {
@@ -511,7 +516,7 @@ use sunrise_protocol::{
             }
         }
     }
-/// A travel into the viewed Nether: a Respawn keeping all data, and none of the Nether's
+    /// A travel into the viewed Nether: a Respawn keeping all data, and none of the Nether's
     /// chunks sent again, plain or wrapped: they are the player's own now. The Overworld's chunks
     /// are a view of level 0 instead of being forgotten: no plain forget, no `open`; nothing
     /// covers them, so 52 ticks on they are forgotten wrapped and the level is closed.
@@ -585,7 +590,7 @@ use sunrise_protocol::{
         assert!(close > last_forget, "closed once forgotten");
         assert!(viewer(&game).viewed.view(Dim::Overworld.id()).is_none());
     }
-/// A travel into a level the client does not view drops its views: the Nether is forgotten
+    /// A travel into a level the client does not view drops its views: the Nether is forgotten
     /// without `close` and, its area still asking for it, opened again after the Respawn and its
     /// chunks sent again; the Overworld left is not kept.
     #[test]
@@ -632,7 +637,7 @@ use sunrise_protocol::{
                 .any(|g| matches!(g, Got::Close(_) | Got::Open(0)))
         );
     }
-/// The server's clocks reach a viewer of a level nobody is in when they change, not only at
+    /// The server's clocks reach a viewer of a level nobody is in when they change, not only at
     /// `open`: `time set`, `time add` and the day stopping each send the clocks, wrapped.
     #[test]
     #[ignore = "daily"]
@@ -665,7 +670,7 @@ use sunrise_protocol::{
         let told = clocks_after(&mut game, &rx, "gamerule advance_time false");
         assert!(told[0].iter().any(|&(_, rate)| rate == 0.0), "{told:?}");
     }
-/// A mod's sound in the Nether, a level nobody is in, reaches the viewer whose client holds
+    /// A mod's sound in the Nether, a level nobody is in, reaches the viewer whose client holds
     /// its chunk, wrapped, through `tick_server` (#3983).
     #[test]
     #[ignore = "daily"]
@@ -696,7 +701,7 @@ use sunrise_protocol::{
         assert_eq!((sound.x, sound.y, sound.z), (5188, 560, 5202));
         assert_eq!((sound.source, sound.volume, sound.pitch), (4, 1.0, 0.75));
     }
-/// A mod's sound bound to a pig in the viewed Nether reaches the viewer whose view tracks the
+    /// A mod's sound bound to a pig in the viewed Nether reaches the viewer whose view tracks the
     /// pig, wrapped, bound to the same entity, through `tick_server` (#3983).
     #[test]
     #[ignore = "daily"]

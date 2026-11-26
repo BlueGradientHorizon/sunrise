@@ -2,7 +2,9 @@ use crate::game::ClientGame;
 use mod_api::{Identifier, SoundSource};
 use std::borrow::Cow;
 use sunrise_gameplay_common::game::level_sounds_common::{HeardSound, LevelSound, listened};
-use sunrise_gameplay_common::game::native_hooks::{level_sound_playable, level_sounds::GameHooks as _};
+use sunrise_gameplay_common::game::native_hooks::{
+    level_sound_playable, level_sounds::GameHooks as _,
+};
 
 impl ClientGame<'_> {
     /// `ClientLevel.playSeededSound`: ask this client's mods before playback.

@@ -1,21 +1,22 @@
-
-
 #![cfg(test)]
-use mod_api::{Billboard, DisplayKind, DisplayRef, EntityRef, ItemDisplayContext, TextAlignment, Transformation};
+use mod_api::{
+    Billboard, DisplayKind, DisplayRef, EntityRef, ItemDisplayContext, TextAlignment,
+    Transformation,
+};
 use sunrise_core::nbt::Tag;
-use sunrise_protocol::entity_data::Value;
-use sunrise_sim::text_display_data::{display_data, text_display_data};
 use sunrise_game_data::scoreboard::comp_text;
 use sunrise_game_data::scoreboard::tag_to_json;
 use sunrise_items::items::ItemStack;
+use sunrise_protocol::entity_data::Value;
+use sunrise_sim::text_display_data::{display_data, text_display_data};
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
-    use sunrise_gameplay_common::game::commands_common::OtherEntity;
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::WorldEpoch;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::commands_common::OtherEntity;
 
     fn push(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32, kind: &str) -> DisplayRef {
         game.options.dedicated = Some(Vec::new());

@@ -191,9 +191,10 @@ impl crate::game::ServerGame<'_> {
             datapack_registries,
             ..
         } = self.stage_world_tables(stack, true, root)?;
-        let items = tables
-            .as_ref()
-            .map_or_else(|| self.common.res.shared_items(), |tables| tables.items.clone());
+        let items = tables.as_ref().map_or_else(
+            || self.common.res.shared_items(),
+            |tables| tables.items.clone(),
+        );
         let parts = self.prepare_parts(&items)?;
         let wire_tags = sunrise_sim::lan::data::WorldTags::new(items.clone(), &health.damage);
         let overlay = pack_files(&tables);
@@ -316,7 +317,9 @@ impl crate::game::ServerGame<'_> {
                 .collect(),
         );
         let inventory = sunrise_mod_package::enabled::EnabledMods::read(root)?;
-        let conditions = self.common.registered_load_conditions(&inventory, stack, root, &files)?;
+        let conditions = self
+            .common
+            .registered_load_conditions(&inventory, stack, root, &files)?;
         let overlay = sunrise_world::loot::PackOverlay {
             conditions: &conditions,
             files: &files,
@@ -378,7 +381,8 @@ impl crate::game::ServerGame<'_> {
                     &read_errors,
                     &self.common.ui.registries,
                     |id| {
-                        self.common.ui
+                        self.common
+                            .ui
                             .registries
                             .ids("minecraft:sound_event")
                             .binary_search_by(|sound| sound.as_str().cmp(id))
@@ -420,7 +424,12 @@ impl crate::game::ServerGame<'_> {
         // hold its files so it is read once.
         let _recipe_files = sunrise_world::json_folder::read(&root.join("data/minecraft/recipe"));
         let sources = if reload {
-            lan::sync::prepare_server_sources(root, &self.common.res.core.item_data, &items, &overlay)
+            lan::sync::prepare_server_sources(
+                root,
+                &self.common.res.core.item_data,
+                &items,
+                &overlay,
+            )
         } else {
             lan::sync::load_sources(
                 root,
@@ -480,7 +489,8 @@ impl crate::game::ServerGame<'_> {
             received.as_deref()
         };
         let registries = WorldRegistries::new(
-            self.common.ui
+            self.common
+                .ui
                 .registries
                 .by_registry
                 .iter()
@@ -541,7 +551,8 @@ impl crate::game::ServerGame<'_> {
                 "minecraft:item" => items.items.contains_key(id),
                 "minecraft:villager_profession" => stations.professions.resolve(id).is_some(),
                 "minecraft:worldgen/biome" => self
-                    .common.world_biomes
+                    .common
+                    .world_biomes
                     .as_ref()
                     .unwrap_or_else(|| self.common.res.biomes())
                     .contains(id),
@@ -564,7 +575,8 @@ impl crate::game::ServerGame<'_> {
             .with_builtins(builtin)
             .with_biome_keys(mod_api::__private::BiomeKeys::new(
                 next_biome_keys_session(),
-                self.common.world_biomes
+                self.common
+                    .world_biomes
                     .as_ref()
                     .unwrap_or_else(|| self.common.res.biomes())
                     .registry_order(),
@@ -578,7 +590,8 @@ impl crate::game::ServerGame<'_> {
             loot.apply_native_table_loads(&context)?;
         }
         let serializers = self
-            .common.mods
+            .common
+            .mods
             .loot_modifier_serializers
             .get_or_init(global_loot_modifiers::Serializers::capture);
         let (modifiers, loot_modifier_manager) = serializers.prepare(

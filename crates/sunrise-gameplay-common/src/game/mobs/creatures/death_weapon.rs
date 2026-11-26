@@ -34,9 +34,7 @@ impl crate::game::CommonGame<'_> {
         Self::set_projectile_weapon(attack, weapon);
     }
     /// Classify a projectile's vanilla `DamageSource.getDirectEntity()` family.
-    pub fn projectile_direct_entity(
-        kind: &ProjectileKind,
-    ) -> sunrise_sim::health::DirectEntity {
+    pub fn projectile_direct_entity(kind: &ProjectileKind) -> sunrise_sim::health::DirectEntity {
         match kind {
             ProjectileKind::Arrow { .. } | ProjectileKind::Trident => {
                 sunrise_sim::health::DirectEntity::Arrow

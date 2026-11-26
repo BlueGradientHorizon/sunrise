@@ -1,5 +1,3 @@
-
-
 #[cfg(test)]
 pub(in crate::game) mod rope_hold_tests {
     use crate::game::client_side::leads_client::rope_hold_angles;

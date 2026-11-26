@@ -1,17 +1,18 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use {crate::game::native_hooks::farmland_trample::*};
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-    use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
+    use crate::game::native_hooks::farmland_trample::*;
     use mod_api::*;
     use std::sync::{Arc, Mutex};
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::{Empty, play, play::Serverbound as S};
     use sunrise_sim::{lan::guest::InboxItem, motion::PlayerMotion};
+    use {
+        sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+        sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+    };
 
     pub(crate) const FIELD: [i32; 3] = [1, 63, 1];
     pub(crate) const LISTENER_WRITE: [i32; 3] = [3, 63, 3];
@@ -272,8 +273,11 @@ pub(crate) mod tests {
                 } else {
                     game.options.dedicated = Some(Vec::new());
                 }
-                let (common, server) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
-                server.streaming.insert_remote(&mut common.world, Chunk::empty(0, 0));
+                let (common, server) =
+                    sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
+                server
+                    .streaming
+                    .insert_remote(&mut common.world, Chunk::empty(0, 0));
                 let reg = game.pack.assets.registry;
                 let [farmland, dirt, wheat, air] = [
                     "minecraft:farmland",

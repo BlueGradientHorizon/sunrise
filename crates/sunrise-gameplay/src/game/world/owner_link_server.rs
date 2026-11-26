@@ -1,10 +1,10 @@
+use serde_json::json;
+use std::sync::Arc;
 use sunrise_gameplay_common::game::blockctl::BlockctlGameExt1;
 use sunrise_gameplay_common::game::{
     lan_common::LanSettings,
     owner_link::{ControlRequest, OwnerRequest, Snapshot},
 };
-use serde_json::json;
-use std::sync::Arc;
 
 impl crate::game::ServerGame<'_> {
     /// Answers one request of the window, on the server thread.

@@ -1,16 +1,16 @@
 //! `Explosion.getIndirectSourceEntity` for a blast a mob caused: a mob-owned
 //! primed TNT spares vehicles without `mobGriefing`, and a mob's own blast
 //! hands its kind and UUID to the TNT it primes.
-use sunrise_core::geometry::Vec3;
-use sunrise_game_data::text::Text;
-use sunrise_sim::mobs::Who;
 use super::*;
-use sunrise_gameplay_common::game::boats_common::Boat;
-use sunrise_gameplay::game::game_tests::tests::server_game;
+use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_game_data::gamerules::Value;
-use sunrise_sim::mobs::{Mob, MobEvent, Species};
+use sunrise_game_data::text::Text;
+use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_gameplay::game::server_side::explosion::BlockInteraction;
+use sunrise_gameplay_common::game::boats_common::Boat;
+use sunrise_sim::mobs::Who;
+use sunrise_sim::mobs::{Mob, MobEvent, Species};
 
 /// Blasts a boat 7.7 blocks away with `owner` as the indirect source, and
 /// returns what the boat took: its damage and its push.

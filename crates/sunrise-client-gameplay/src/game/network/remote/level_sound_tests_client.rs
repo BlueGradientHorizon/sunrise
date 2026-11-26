@@ -1,6 +1,6 @@
-use crate::game::client_side::native_client_session::tests::logged_client;
 use super::super::native_entity_refs::tests::with_client_game;
 use super::*;
+use crate::game::client_side::native_client_session::tests::logged_client;
 #[derive(Debug, PartialEq)]
 pub(in crate::game) struct Request {
     pub sound: String,

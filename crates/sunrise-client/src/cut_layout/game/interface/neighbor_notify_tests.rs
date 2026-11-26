@@ -1,8 +1,8 @@
 //! `neighbor_notify` reaches mods from the server's neighbour updates.
-use sunrise_gameplay_common::game::GameGameExt1;
 use mod_api::{Flow, Hooks, LevelHost, NeighborNotifyEvent, Registrar};
 use std::sync::Mutex;
 use sunrise_core::{geometry::Direction, position::BlockPos};
+use sunrise_gameplay_common::game::GameGameExt1;
 
 static HEARD: Mutex<Vec<(i32, i32, i32, Option<Direction>)>> = Mutex::new(Vec::new());
 

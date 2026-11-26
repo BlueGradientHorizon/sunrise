@@ -1,5 +1,3 @@
-
-
 #[cfg(test)]
 #[path = "enchant_tests_client.rs"]
 pub(crate) mod enchant_tests;

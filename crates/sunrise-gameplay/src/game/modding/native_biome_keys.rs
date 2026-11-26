@@ -20,9 +20,14 @@ impl ServerGame<'_> {
             return;
         }
         let keys = self.biome_key_snapshot();
-        self.common.res.behaviours().mod_biome_keys().publish(keys.clone());
+        self.common
+            .res
+            .behaviours()
+            .mod_biome_keys()
+            .publish(keys.clone());
         for terrain in self
-            .common.end
+            .common
+            .end
             .locator()
             .iter()
             .chain(self.server.levels.0.parked_terrains())

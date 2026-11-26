@@ -49,7 +49,12 @@ impl crate::game::ClientGame<'_> {
     /// `LoomScreen.containerChanged`: the error flag, whether the pattern
     /// buttons show (only when an input changed), and the scroller reset.
     pub(in crate::game::client_side) fn loom_screen_changed(&mut self) {
-        let Some(s) = self.common.station.as_mut().filter(|s| s.kind == Kind::Loom) else {
+        let Some(s) = self
+            .common
+            .station
+            .as_mut()
+            .filter(|s| s.kind == Kind::Loom)
+        else {
             return;
         };
         let inputs = [
@@ -90,7 +95,8 @@ impl crate::game::ClientGame<'_> {
     /// A left click inside the loom's pattern grid or scroller.
     pub(in crate::game::client_side) fn loom_click(&mut self, local: (f32, f32)) -> bool {
         let Some(start_row) = self
-            .common.station
+            .common
+            .station
             .as_ref()
             .filter(|_| self.client.station_loom.display)
             .map(|_| self.client.station_loom.start_row)
@@ -115,7 +121,8 @@ impl crate::game::ClientGame<'_> {
     /// The pattern buttons a controller can focus (GUI origin relative).
     pub(in crate::game::client_side) fn loom_targets(&self) -> Vec<[f32; 4]> {
         let Some(loom) = self
-            .common.station
+            .common
+            .station
             .as_ref()
             .map(|_| &self.client.station_loom)
             .filter(|l| l.display)
@@ -146,8 +153,10 @@ impl crate::game::ClientGame<'_> {
         else {
             return false;
         };
-        let (_, oy) =
-            self.inventory_origin(&HudBatch::new(size, self.client.settings.gui_scale_inputs()));
+        let (_, oy) = self.inventory_origin(&HudBatch::new(
+            size,
+            self.client.settings.gui_scale_inputs(),
+        ));
         let cursor_y = self.client.cursor.1;
         if self.common.station.is_none() {
             return false;

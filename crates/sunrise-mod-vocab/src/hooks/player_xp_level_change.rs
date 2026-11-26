@@ -7,7 +7,8 @@ pub trait Hooks {
     /// Change `levels`, or set `cancel` to leave the level unchanged. The
     /// player's state is swapped in, so `host.players().acting_player()`, `PlayerRef::tell`
     /// and the item helpers reach them. Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::player_xp_level_change::ServerGame<'_>::native_player_xp_level_change", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::player_xp_level_change::ServerGame<'_>::native_player_xp_level_change",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

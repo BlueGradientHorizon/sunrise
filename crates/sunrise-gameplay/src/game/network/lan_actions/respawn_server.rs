@@ -45,7 +45,8 @@ impl crate::game::ServerGame<'_> {
             combat.and_then(|c| c.kill_credit(now)).and_then(|id| {
                 if self.server.lan_acting.is_none()
                     && self
-                        .common.player
+                        .common
+                        .player
                         .as_ref()
                         .is_some_and(|p| p.entity_id as u32 == id)
                 {
@@ -85,7 +86,8 @@ impl crate::game::ServerGame<'_> {
         let source = attacker.and_then(|id| {
             if self.server.lan_acting.is_none()
                 && self
-                    .common.player
+                    .common
+                    .player
                     .as_ref()
                     .is_some_and(|p| p.entity_id as u32 == id)
             {
@@ -103,7 +105,8 @@ impl crate::game::ServerGame<'_> {
                         ..Default::default()
                     })
                     .or_else(|| {
-                        self.common.mobs
+                        self.common
+                            .mobs
                             .iter()
                             .find(|m| m.id == id)
                             .map(|m| self.mob_entity(m))
@@ -258,7 +261,8 @@ impl crate::game::ServerGame<'_> {
             };
             let last_death = Some((g.dimension.clone(), at.map(|v| v.floor() as i32)));
             let reward = xp.death_reward(
-                self.common.ui
+                self.common
+                    .ui
                     .rules
                     .bool_at(sunrise_game_data::gamerules::vanilla::KEEP_INVENTORY)
                     || spectator,
@@ -310,7 +314,8 @@ impl crate::game::ServerGame<'_> {
             // the dying player's death screen and to everyone the team lets
             // see it; without it, the death screen gets an empty one.
             let message = if self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::SHOW_DEATH_MESSAGES)
             {
@@ -471,7 +476,8 @@ impl crate::game::ServerGame<'_> {
                 ..Default::default()
             }),
             None => self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == id)
                 .map(|m| self.mob_entity(m)),
@@ -504,7 +510,8 @@ impl crate::game::ServerGame<'_> {
         {
             return Some(kind.clone());
         }
-        self.common.dragon
+        self.common
+            .dragon
             .as_ref()
             .filter(|d| d.id == id)
             .map(|_| "minecraft:ender_dragon".into())
@@ -535,7 +542,8 @@ impl crate::game::ServerGame<'_> {
             play.level_up_sound = Default::default();
         }
         let keep_inventory_rule = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::KEEP_INVENTORY);
         let motion = self.common.motion;
@@ -638,8 +646,13 @@ impl crate::game::ServerGame<'_> {
             next_entity: &mut self.server.next_entity,
             spawn: world_spawn,
             spawn_angle: self.common.level.world_spawn_angle,
-            spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&self.common.level).id(),
-            sea_level: self.common.end.locator().map_or(63, |terrain| terrain.sea_level()),
+            spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&self.common.level)
+                .id(),
+            sea_level: self
+                .common
+                .end
+                .locator()
+                .map_or(63, |terrain| terrain.sea_level()),
             difficulty: i32::from(self.common.ui.difficulty),
             difficulty_locked: self.common.level.difficulty_locked,
             clock_rate,
@@ -671,7 +684,10 @@ impl crate::game::ServerGame<'_> {
         }
         if !was_death {
             self.as_guest(conn, |g| {
-                g.trigger_changed_dimension(sunrise_gameplay_common::game::Dim::End, sunrise_gameplay_common::game::Dim::Overworld)
+                g.trigger_changed_dimension(
+                    sunrise_gameplay_common::game::Dim::End,
+                    sunrise_gameplay_common::game::Dim::Overworld,
+                )
             });
         } else {
             if let Some(config) = self
@@ -737,8 +753,12 @@ impl crate::game::ServerGame<'_> {
                 && to != from
                 && let Some(host) = self.server.lan.as_mut()
             {
-                host.hub
-                    .set_game_mode(conn, to.id(), &self.common.world, Some(self.common.collision));
+                host.hub.set_game_mode(
+                    conn,
+                    to.id(),
+                    &self.common.world,
+                    Some(self.common.collision),
+                );
             }
         }
     }

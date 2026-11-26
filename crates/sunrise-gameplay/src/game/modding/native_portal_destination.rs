@@ -4,11 +4,15 @@
 //! is `ChunksNotLoaded` (vanilla loads them), and nothing is read from the save. The search is
 //! the one dimension travel runs, over a side of it (`PortalSide`).
 use crate::game::ServerGame;
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::end_state::END_SPAWN, crate::game::nether_portal::Plan, crate::game::nether_portal::PortalSide, crate::game::nether_portal::end_portal_rotation};
 use mod_api::{LevelRef, PortalAngle, PortalError, PortalExit, PortalRotation, PortalShape};
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_level::containers::BlockEntity;
 use sunrise_world::level::portal_travel::FoundRectangle;
+use {
+    crate::game::nether_portal::Plan, crate::game::nether_portal::PortalSide,
+    crate::game::nether_portal::end_portal_rotation, sunrise_gameplay_common::game::Dim,
+    sunrise_gameplay_common::game::end_state::END_SPAWN,
+};
 
 /// How far `largest_rectangle_around` reads from a block: the portal's limit in both directions.
 const RECTANGLE: i32 = 21;
@@ -118,7 +122,8 @@ impl ServerGame<'_> {
             self.portal_side(Dim::End)
                 .ok_or(PortalError::ChunksNotLoaded)?;
             // Facing west, whatever the entity faced.
-            let [yaw, pitch] = end_portal_rotation(true, [0.0; 2], self.common.level.world_spawn_angle);
+            let [yaw, pitch] =
+                end_portal_rotation(true, [0.0; 2], self.common.level.world_spawn_angle);
             return Ok(Probe::Fixed(
                 Dim::End,
                 Vec3::new(f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5),
@@ -137,7 +142,8 @@ impl ServerGame<'_> {
             .ok_or(PortalError::ChunksNotLoaded)?;
         let y = self.common.motion_top_in(side.world, level, x, z);
         // Turned by the world spawn's angle.
-        let [yaw, pitch] = end_portal_rotation(false, [0.0; 2], self.common.level.world_spawn_angle);
+        let [yaw, pitch] =
+            end_portal_rotation(false, [0.0; 2], self.common.level.world_spawn_angle);
         Ok(Probe::Fixed(
             level,
             Vec3::new(f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5),
@@ -192,7 +198,8 @@ impl ServerGame<'_> {
         let (at, yaw_turn) = self.arrival_in(&side, plan, exit);
         let corner = exit.min_corner;
         let x_axis = self
-            .common.res
+            .common
+            .res
             .behaviours()
             .portal_axis(side.world.block(corner.x, corner.y, corner.z))
             .unwrap_or(true);

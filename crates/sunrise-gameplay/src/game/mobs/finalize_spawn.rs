@@ -30,9 +30,9 @@ impl FinalizeGame<'_, '_> {
     fn biome_name(&self, pos: [i32; 3]) -> Option<String> {
         // `LevelReader.getBiome`: the noise cell the biome zoom picks, perhaps in a neighbouring chunk.
         let game: &crate::game::ServerGame<'_> = &*self.game;
-        let biome = game
-            .world
-            .biome_at(game.server.streaming.biome_zoom, pos[0], pos[1], pos[2])?;
+        let biome =
+            game.world
+                .biome_at(game.server.streaming.biome_zoom, pos[0], pos[1], pos[2])?;
         Some(world_biomes!(game).get(biome).name.clone())
     }
 }
@@ -110,7 +110,8 @@ impl ServerGame<'_> {
     /// The first free chicken a jockey can take: alive, unhindered, inside
     /// the bounds.
     pub(in crate::game::server_side) fn finalize_free_chicken(&self, bounds: Aabb) -> Option<u32> {
-        self.common.mobs
+        self.common
+            .mobs
             .iter()
             .find(|c| {
                 c.species() == Species::Chicken
@@ -153,9 +154,15 @@ impl ServerGame<'_> {
         // finalization that follows reads none.
         let (outcome, _) = self.finalize_spawn_event(mob, reason, None, &mut None);
         match outcome {
-            sunrise_gameplay_common::game::creatures::Finalized::Cancelled => finalize::SpawnEvent::Cancelled,
-            sunrise_gameplay_common::game::creatures::Finalized::Skipped => finalize::SpawnEvent::Skip,
-            sunrise_gameplay_common::game::creatures::Finalized::Done => finalize::SpawnEvent::Finalize,
+            sunrise_gameplay_common::game::creatures::Finalized::Cancelled => {
+                finalize::SpawnEvent::Cancelled
+            }
+            sunrise_gameplay_common::game::creatures::Finalized::Skipped => {
+                finalize::SpawnEvent::Skip
+            }
+            sunrise_gameplay_common::game::creatures::Finalized::Done => {
+                finalize::SpawnEvent::Finalize
+            }
         }
     }
     /// The game's own finalization of a mob, with no event: the same

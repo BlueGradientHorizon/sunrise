@@ -1,11 +1,11 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::block_entity_anims_common::PLAYER;
 use crate::game::client_side::block_entity_anims_common_client::AnimTick;
 use sunrise_client::{
     block_entity_anim::{BellEntity, ConduitTarget, Ticker},
     skins,
 };
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_gameplay_common::game::block_entity_anims_common::PLAYER;
 use sunrise_level::containers::BlockEntity;
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
@@ -15,8 +15,11 @@ impl ClientGame<'_> {
     /// is in flight (or when it cannot be got) the profile's default skin
     /// stands in. A head with no profile answers None: `SKIN_BY_TYPE`.
     pub(in crate::game::client_side) fn skull_skin_at(&self, pos: [i32; 3]) -> Option<String> {
-        let Some(BlockEntity::Skull(skull)) =
-            self.common.world.block_entities.get(&(pos[0], pos[1], pos[2]))
+        let Some(BlockEntity::Skull(skull)) = self
+            .common
+            .world
+            .block_entities
+            .get(&(pos[0], pos[1], pos[2]))
         else {
             return None;
         };
@@ -135,8 +138,11 @@ impl ClientGame<'_> {
     }
     /// Client conduit target resolution from `BlockEntity::Conduit(uuid)` + remote UUID table.
     fn client_conduit_target(&self, pos: [i32; 3]) -> Option<ConduitTarget> {
-        let Some(BlockEntity::Conduit(Some(uuid))) =
-            self.common.world.block_entities.get(&(pos[0], pos[1], pos[2]))
+        let Some(BlockEntity::Conduit(Some(uuid))) = self
+            .common
+            .world
+            .block_entities
+            .get(&(pos[0], pos[1], pos[2]))
         else {
             return None;
         };
@@ -148,7 +154,8 @@ impl ClientGame<'_> {
             .and_then(|r| r.level_uuids.get(&u).copied())
             .map(|id| id as u32)
             .or_else(|| {
-                self.common.persist
+                self.common
+                    .persist
                     .uuids
                     .iter()
                     .find(|&(_, v)| v == uuid)
@@ -227,7 +234,8 @@ impl ClientGame<'_> {
                 }
                 Ticker::Conduit => {
                     let frames = anim.frames.get_or_insert_with(|| {
-                        self.common.res
+                        self.common
+                            .res
                             .items()
                             .block_tags
                             .get("minecraft:conduit_effect_block")

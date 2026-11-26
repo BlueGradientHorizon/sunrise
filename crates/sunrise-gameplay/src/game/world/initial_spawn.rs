@@ -137,12 +137,15 @@ impl ServerGame<'_> {
                 let y = self
                     .spawn_columns()
                     .height(HeightmapType::MotionBlockingNoLeaves, x, z);
-                if self.common.world.block(x, y, z) != self.common.world.air && !self.collision_empty([x, y, z]) {
+                if self.common.world.block(x, y, z) != self.common.world.air
+                    && !self.collision_empty([x, y, z])
+                {
                     continue;
                 }
                 self.set_block_clients([x, y, z], chest)?;
                 let seed = self.common.world.random.next_long();
-                self.common.world
+                self.common
+                    .world
                     .block_entities
                     .insert((x, y, z), BlockEntity::Chest(Vec::new()));
                 self.load_block_entity_nbt(
@@ -185,7 +188,8 @@ impl ServerGame<'_> {
             binding: self.common.collision,
             subject: None,
         };
-        self.common.collision
+        self.common
+            .collision
             .collision_shape_with_context(
                 &mut scene,
                 self.common.world.block(pos[0], pos[1], pos[2]),
@@ -259,12 +263,14 @@ impl ServerGame<'_> {
             return finder;
         }
         let mut radius = self
-            .common.ui
+            .common
+            .ui
             .rules
             .int_at(sunrise_game_data::gamerules::vanilla::RESPAWN_RADIUS)
             .max(0);
         let to_border = self
-            .common.border
+            .common
+            .border
             .distance(f64::from(suggestion[0]), f64::from(suggestion[2]))
             .floor() as i32;
         if to_border < radius {

@@ -4,10 +4,7 @@ use sunrise_items::items::Items;
 
 /// Validate registry membership once while retaining the registry's shared item identity.
 /// Counts and damage are API values, not attempted inventory writes.
-pub fn stack(
-    value: &ApiStack,
-    items: &Items,
-) -> Result<EngineStack, StackWriteError> {
+pub fn stack(value: &ApiStack, items: &Items) -> Result<EngineStack, StackWriteError> {
     let name = mod_api::__private::item_key_id(value.item()).ok_or(StackWriteError::UnknownItem)?;
     let (name, _) = items
         .items

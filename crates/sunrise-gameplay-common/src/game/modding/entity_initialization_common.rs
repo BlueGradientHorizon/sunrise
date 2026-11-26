@@ -14,7 +14,6 @@ pub struct EntityInitialization {
 }
 
 impl crate::game::CommonGame<'_> {
-
     pub fn forget_entity_initialization(&mut self, holder: Holder) {
         if let Holder::Entity(id) = holder
             && let Some(mob) = self.mobs.iter_mut().find(|mob| mob.id == id)
@@ -27,7 +26,7 @@ impl crate::game::CommonGame<'_> {
 
 pub trait EntityInitializationCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Tell the listeners about a new entity of type `kind`, unless it was already told.
-     fn initialize_entity(&mut self, holder: Holder, kind: &str) {
+    fn initialize_entity(&mut self, holder: Holder, kind: &str) {
         if !mod_api::__private::listened(mod_api::HookId::EntityConstructing) {
             return;
         }
@@ -46,16 +45,16 @@ pub trait EntityInitializationCommonGameExt1<'__sg>: crate::game::SideGame<'__sg
     }
 
     /// `initialize_entity` for a holder whose attachments are about to be read.
-     fn initialize_entity_on_access(&mut self, holder: Holder) {
+    fn initialize_entity_on_access(&mut self, holder: Holder) {
         if !mod_api::__private::listened(mod_api::HookId::EntityConstructing) {
             return;
         }
         match holder {
             Holder::Entity(id) => {
-                let Some(kind) = self
-                    .entity(id)
-                    .and_then(|entity| self.entity_kind(entity)?.id(<Self::State as crate::game::Side>::as_host(self)))
-                else {
+                let Some(kind) = self.entity(id).and_then(|entity| {
+                    self.entity_kind(entity)?
+                        .id(<Self::State as crate::game::Side>::as_host(self))
+                }) else {
                     return;
                 };
                 self.initialize_entity(holder, &kind);
@@ -66,7 +65,6 @@ pub trait EntityInitializationCommonGameExt1<'__sg>: crate::game::SideGame<'__sg
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> EntityInitializationCommonGameExt1<'__sg> for G {}
-
 
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 

@@ -1,8 +1,10 @@
 //! Server-side jukebox simulation, record insertion/ejection, ticking, and tests.
 use crate::game::ServerGame;
-#[allow(unused_imports)]
-use sunrise_gameplay_common::game::jukebox_common::{jukebox_playable, jukebox_signals, song_of_record};
 use sunrise_core::{position::BlockPos, random::RandomSource};
+#[allow(unused_imports)]
+use sunrise_gameplay_common::game::jukebox_common::{
+    jukebox_playable, jukebox_signals, song_of_record,
+};
 use sunrise_world::level::flags as level_flags;
 use {
     sunrise_items::items::ItemStack, sunrise_level::containers::BlockEntity,
@@ -32,12 +34,7 @@ impl ServerGame<'_> {
     }
 
     /// The state change alone (`level.setBlock` with flag 2); `notify` adds `block_change`.
-    pub fn set_has_record_notify(
-        &mut self,
-        pos: [i32; 3],
-        has: bool,
-        notify: bool,
-    ) -> bool {
+    pub fn set_has_record_notify(&mut self, pos: [i32; 3], has: bool, notify: bool) -> bool {
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
         let registry = self.common.pack.assets.registry;
         let Some(mut s) = registry.state(state).cloned() else {
@@ -82,21 +79,28 @@ impl ServerGame<'_> {
             b.update_neighbors_at(level, ticks, p, block);
         });
         self.container_changed((pos[0], pos[1], pos[2]));
-        self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+        self.common
+            .world
+            .modified
+            .insert((pos[0] >> 4, pos[2] >> 4));
     }
 
     /// `JukeboxBlockEntity.setTheItem` from a container (hopper/dropper).
     pub(in crate::game) fn jukebox_inserted(&mut self, pos: [i32; 3]) {
         let Some(song) = self
-            .common.jukebox(pos)
+            .common
+            .jukebox(pos)
             .filter(|j| !j.playing)
             .and_then(|j| j.record())
             .and_then(|record| song_of_record(record, self.items()))
         else {
             return;
         };
-        if let Some(BlockEntity::Jukebox(j)) =
-            self.common.world.block_entities.get_mut(&(pos[0], pos[1], pos[2]))
+        if let Some(BlockEntity::Jukebox(j)) = self
+            .common
+            .world
+            .block_entities
+            .get_mut(&(pos[0], pos[1], pos[2]))
         {
             j.playing = true;
             j.song_clock_present = true;
@@ -110,7 +114,11 @@ impl ServerGame<'_> {
 
     /// `JukeboxBlockEntity.setTheItem(EMPTY)` from a container.
     pub(in crate::game) fn jukebox_taken(&mut self, pos: [i32; 3]) {
-        if self.common.jukebox(pos).is_some_and(|j| j.record().is_some()) {
+        if self
+            .common
+            .jukebox(pos)
+            .is_some_and(|j| j.record().is_some())
+        {
             return;
         }
         self.jukebox_stopped(pos);
@@ -119,8 +127,11 @@ impl ServerGame<'_> {
     /// Stop song and clear `has_record`.
     pub(in crate::game) fn jukebox_stopped(&mut self, pos: [i32; 3]) {
         let mut was_playing = false;
-        if let Some(BlockEntity::Jukebox(j)) =
-            self.common.world.block_entities.get_mut(&(pos[0], pos[1], pos[2]))
+        if let Some(BlockEntity::Jukebox(j)) = self
+            .common
+            .world
+            .block_entities
+            .get_mut(&(pos[0], pos[1], pos[2]))
         {
             was_playing = j.playing;
             j.playing = false;
@@ -140,8 +151,11 @@ impl ServerGame<'_> {
     pub fn jukebox_set_item(&mut self, pos: [i32; 3], stack: Option<ItemStack>) {
         let song = stack.as_ref().and_then(|s| song_of_record(s, self.items()));
         let has_record = stack.is_some();
-        let Some(BlockEntity::Jukebox(j)) =
-            self.common.world.block_entities.get_mut(&(pos[0], pos[1], pos[2]))
+        let Some(BlockEntity::Jukebox(j)) = self
+            .common
+            .world
+            .block_entities
+            .get_mut(&(pos[0], pos[1], pos[2]))
         else {
             return;
         };
@@ -173,7 +187,8 @@ impl ServerGame<'_> {
             return None;
         }
         let has_record = |state| {
-            self.common.pack
+            self.common
+                .pack
                 .assets
                 .registry
                 .state(state)
@@ -191,7 +206,8 @@ impl ServerGame<'_> {
             return Some(Answer::TryWithEmptyHand);
         }
         let current = self.common.world.block(pos[0], pos[1], pos[2]);
-        if &*self.common.res.facts().get(current).name != "minecraft:jukebox" || has_record(current) {
+        if &*self.common.res.facts().get(current).name != "minecraft:jukebox" || has_record(current)
+        {
             return Some(Answer::TryWithEmptyHand);
         }
         let Some(stack) = held else {
@@ -307,7 +323,9 @@ impl ServerGame<'_> {
             self.jukebox_changed(pos);
             return;
         }
-        if loaded && let Some(BlockEntity::Jukebox(j)) = self.common.world.block_entities.get_mut(&key) {
+        if loaded
+            && let Some(BlockEntity::Jukebox(j)) = self.common.world.block_entities.get_mut(&key)
+        {
             j.loaded_clock = false;
         }
         if ticks % 20 == 0 {

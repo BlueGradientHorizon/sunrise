@@ -92,7 +92,8 @@ impl ServerGame<'_> {
     pub(in crate::game) fn tick_campfire(&mut self, pos: Pos) -> Result<()> {
         let state = self.common.world.block(pos.0, pos.1, pos.2);
         let lit = self
-            .common.pack
+            .common
+            .pack
             .assets
             .registry
             .state(state)
@@ -149,9 +150,11 @@ impl ServerGame<'_> {
     /// integer position.
     pub(in crate::game::server_side) fn campfire_drop(&mut self, pos: Pos, stack: ItemStack) {
         let at = BlockPos::new(pos.0, pos.1, pos.2);
-        for piece in
-            sunrise_world::level::removal::drop_item_stack(&mut self.common.world.random, at, stack.count)
-        {
+        for piece in sunrise_world::level::removal::drop_item_stack(
+            &mut self.common.world.random,
+            at,
+            stack.count,
+        ) {
             self.spawn_item(
                 ItemStack {
                     count: piece.count,

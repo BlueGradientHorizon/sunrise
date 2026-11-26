@@ -26,7 +26,8 @@ pub trait Hooks {
     /// part made through the `Host` to the player's inventory, cursor or the
     /// menu's storage counts), refused and undone. When no part listens, the
     /// click is refused.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::recipe_book_place::ServerGame<'_>::native_recipe_book_place", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::recipe_book_place::ServerGame<'_>::native_recipe_book_place",
         dispatch = "api_carrier",
         side = "server",
         contract = "listen",

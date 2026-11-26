@@ -1,6 +1,8 @@
 #[test]
 fn hand_pose_rejects_invalid_components() {
-    let identity = sunrise_gameplay_common::game::native_hooks::hand_pose_matrix([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]);
+    let identity = sunrise_gameplay_common::game::native_hooks::hand_pose_matrix([
+        0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+    ]);
     assert_eq!(identity, glam::Mat4::IDENTITY);
     assert_eq!(
         super::hand_pose_matrix([
@@ -14,8 +16,10 @@ fn hand_pose_rejects_invalid_components() {
         ]),
         identity
     );
-    let point = sunrise_gameplay_common::game::native_hooks::hand_pose_matrix([1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 2.0])
-        .transform_point3(glam::Vec3::X);
+    let point = sunrise_gameplay_common::game::native_hooks::hand_pose_matrix([
+        1.0, 2.0, 3.0, 0.0, 0.0, 0.0, 2.0,
+    ])
+    .transform_point3(glam::Vec3::X);
     assert_eq!(point, glam::Vec3::new(3.0, 2.0, 3.0));
 }
 
@@ -59,8 +63,8 @@ fn shader_params_that_arent_finite_read_as_zero() {
 /// start a minute away at most.
 #[test]
 fn a_local_sound_is_checked() {
-    use sunrise_gameplay_common::game::native_hooks::local_sound_ok;
     use mod_api::{SoundPlay, SoundSource};
+    use sunrise_gameplay_common::game::native_hooks::local_sound_ok;
     let at = |id| SoundPlay::at(id, SoundSource::Hostile, [0.5, 64.0, 0.5]);
     assert!(local_sound_ok(
         &at("ironfall:boom_far").with_volume(8.0),
@@ -89,8 +93,8 @@ fn a_local_sound_is_checked() {
 /// every range play, and a value past one, NaN or an infinity plays nothing.
 #[test]
 fn a_local_sounds_effects_are_checked() {
-    use sunrise_gameplay_common::game::native_hooks::local_sound_ok;
     use mod_api::{SoundEffects, SoundPlay, SoundSource};
+    use sunrise_gameplay_common::game::native_hooks::local_sound_ok;
     let with = |set: fn(&mut SoundEffects)| {
         let mut effects = SoundEffects::NONE;
         set(&mut effects);

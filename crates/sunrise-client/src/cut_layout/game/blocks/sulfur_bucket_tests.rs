@@ -2,18 +2,20 @@
 //! empty bucket picks up an adult, unprimed sulfur cube, and the held stack
 //! becomes `ItemUtils.createFilledResult(held, player, sulfur_cube_bucket)`
 //! (tools/test_sulfur_bucket_parity.py measures the same on vanilla 26.3).
-use crate::settings::Settings;
-use sunrise_gameplay_common::game::{InteractTarget, Options, Progress, Resources};
-use sunrise_core::geometry::Vec3;
-use sunrise_items::items::ItemStack;
-use sunrise_sim::motion::PlayerMotion;
 use super::*;
+use crate::settings::Settings;
 use std::sync::Arc;
+use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::game::{InteractTarget, Options, Progress, Resources};
+use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::Mob;
+use sunrise_sim::motion::PlayerMotion;
 
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::game::ServerGame<'_> {
+fn game(
+    resources: &mut Option<std::sync::Arc<Resources>>,
+) -> sunrise_gameplay::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -34,7 +36,8 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         res,
@@ -54,7 +57,11 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::
 }
 
 /// A fresh mob of `kind` in front of the player, alone; returns its id.
-fn mob(game: &mut sunrise_gameplay::game::ServerGame<'_>, kind: &str, edit: impl FnOnce(&mut Mob)) -> u32 {
+fn mob(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    kind: &str,
+    edit: impl FnOnce(&mut Mob),
+) -> u32 {
     game.mobs.clear();
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     let mut m = Mob::new(42, kind, Vec3::new(0.5, 64.0, 2.5), 0.0);

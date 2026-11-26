@@ -8,10 +8,7 @@ pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// each live slot check. `context` gives the player, the menu's block position and a scoped
     /// read of its container slots.
     #[inline(never)]
-     fn native_menu_slot_rules(
-        &self,
-        call: mod_api::__private::MenuSlotRulesCall<'_>,
-    ) {
+    fn native_menu_slot_rules(&self, call: mod_api::__private::MenuSlotRulesCall<'_>) {
         crate::game::native_hooks::fire::FireHooks::fire_menu_slot_rules(self, call);
     }
 }

@@ -94,7 +94,8 @@ impl crate::game::ServerGame<'_> {
         if let Some((_, _, Some(variant))) = sunrise_sim::entity_nbt::painting_from_nbt(&raw)
             && *candidate.variant != *variant
             && let Some(v) = self
-                .common.painting_variants
+                .common
+                .painting_variants
                 .get(&sunrise_world::datafix::dynamic::namespaced(&variant))
                 .cloned()
         {
@@ -123,7 +124,10 @@ impl crate::game::ServerGame<'_> {
         let ctx = self.player_context(None);
         self.post_game_event("minecraft:entity_place", at, ctx);
         self.common.paintings.push(candidate);
-        self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+        self.common
+            .world
+            .modified
+            .insert((pos[0] >> 4, pos[2] >> 4));
         if !self.common.creative {
             self.consume_held();
         }
@@ -182,7 +186,8 @@ impl crate::game::ServerGame<'_> {
     /// `Painting.dropItem`: break sound, then item unless drops off or creative.
     pub(in crate::game) fn drop_painting(&mut self, p: Painting, at: [f64; 3], creative: bool) {
         if !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS)
         {
@@ -212,7 +217,10 @@ impl crate::game::ServerGame<'_> {
         index: usize,
         by_player: bool,
     ) -> Option<(Painting, [f64; 3])> {
-        let (id, pos) = (self.common.paintings[index].id, self.common.paintings[index].pos);
+        let (id, pos) = (
+            self.common.paintings[index].id,
+            self.common.paintings[index].pos,
+        );
         if self.hanging_break_cancelled("minecraft:painting", pos, by_player) {
             return None;
         }
@@ -225,7 +233,10 @@ impl crate::game::ServerGame<'_> {
             (lo[1] + hi[1]) / 2.0,
             (lo[2] + hi[2]) / 2.0,
         ];
-        self.common.world.modified.insert((p.pos[0] >> 4, p.pos[2] >> 4));
+        self.common
+            .world
+            .modified
+            .insert((p.pos[0] >> 4, p.pos[2] >> 4));
         Some((p, at))
     }
     /// BlockAttachedEntity.tick: check survival every 100 ticks.
@@ -327,4 +338,3 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
-

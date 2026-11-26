@@ -3,12 +3,12 @@
 //! `hurtServer` (take the item out, then break the frame) and
 //! `ItemFrameRenderer` (the frame model and the item at a 45 degree step).
 use super::{Hit, InteractTarget};
-use sunrise_gameplay_common::game::frames_common::center;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
+use sunrise_gameplay_common::game::frames_common::center;
 use sunrise_gameplay_common::painting_variants::frame_coexists;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::entities::ItemFrame;
@@ -72,9 +72,10 @@ impl crate::game::ServerGame<'_> {
     /// of type `kind` at `pos` (`native_hanging_place`): true when one
     /// cancelled it. A game's own player is not asked.
     pub(in crate::game) fn hanging_place_cancelled(&mut self, kind: &str, pos: [i32; 3]) -> bool {
-        let (Some(uuid), Some(name)) =
-            (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-        else {
+        let (Some(uuid), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) else {
             return false;
         };
         let mut cancel = false;
@@ -147,8 +148,12 @@ impl crate::game::ServerGame<'_> {
         // `entity_data` merged over the frame (`TypedEntityData.loadInto`), before
         // `survives` runs on the configured frame.
         let kind = frame.kind();
-        let own =
-            sunrise_sim::entity_nbt::item_frame_to_nbt(&frame, [0; 4], None, self.common.res.items());
+        let own = sunrise_sim::entity_nbt::item_frame_to_nbt(
+            &frame,
+            [0; 4],
+            None,
+            self.common.res.items(),
+        );
         let configured = sunrise_sim::block_entity_item::stack_configured_entity(stack, kind, &own);
         if let Some(mut loaded) =
             sunrise_sim::entity_nbt::item_frame_from_nbt(&configured, frame.id)
@@ -170,7 +175,10 @@ impl crate::game::ServerGame<'_> {
         // added; ItemStack.useOn then counts the use.
         let ctx = self.player_context(None);
         self.post_game_event("minecraft:entity_place", center(&frame), ctx);
-        self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+        self.common
+            .world
+            .modified
+            .insert((pos[0] >> 4, pos[2] >> 4));
         // The unmodelled rest of the loaded data (`data`, `Tags`...) stays with the frame.
         let mut raw = configured;
         if let sunrise_core::nbt::Tag::Compound(map) = &mut raw {
@@ -186,13 +194,14 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ItemFrame.interact` for the frame under the crosshair, or the one a
     /// guest's interact packet named.
-    pub fn interact_frame(
-        &mut self,
-        target: Option<InteractTarget>,
-    ) -> bool {
+    pub fn interact_frame(&mut self, target: Option<InteractTarget>) -> bool {
         let Some((i, d)) = (match target {
-            Some(t) => sunrise_gameplay_common::game::item_actions::named_entity(&self.common.item_frames, t.id, |f| f.id)
-                .map(|i| (i, 0.0)),
+            Some(t) => sunrise_gameplay_common::game::item_actions::named_entity(
+                &self.common.item_frames,
+                t.id,
+                |f| f.id,
+            )
+            .map(|i| (i, 0.0)),
             None => self.frame_hit(),
         }) else {
             return false;
@@ -217,7 +226,12 @@ impl crate::game::ServerGame<'_> {
             }
             self.common.item_frames[i].set_item(Some(held));
             action = "put";
-            self.server_play_sound(&sound(&self.common.item_frames[i], "add_item"), at, 1.0, 1.0);
+            self.server_play_sound(
+                &sound(&self.common.item_frames[i], "add_item"),
+                at,
+                1.0,
+                1.0,
+            );
         } else {
             let s = sound(&self.common.item_frames[i], "rotate_item");
             self.server_play_sound(&s, at, 1.0, 1.0);
@@ -235,9 +249,10 @@ impl crate::game::ServerGame<'_> {
         if action == "put" && !self.common.creative {
             self.consume_held();
         }
-        if let (Some(player), Some(name)) =
-            (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-        {
+        if let (Some(player), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             let frame = self.common.item_frames.iter().find(|f| f.id == entity_id);
             let item = frame
                 .and_then(|f| f.item.as_ref())
@@ -273,7 +288,10 @@ impl crate::game::ServerGame<'_> {
             return true;
         }
         // `isInvulnerableToBase`: a refused hit goes on to onAttack, as a fixed frame's does.
-        if self.native_player_hit_invulnerable(self.common.item_frames[i].id, self.common.item_frames[i].kind()) {
+        if self.native_player_hit_invulnerable(
+            self.common.item_frames[i].id,
+            self.common.item_frames[i].kind(),
+        ) {
             self.server.attack_ticks = 0;
             return true;
         }
@@ -299,16 +317,19 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         let bypasses = self
-            .common.health_resources
+            .common
+            .health_resources
             .damage
             .id(damage_type)
             .is_some_and(|k| {
-                self.common.health_resources
+                self.common
+                    .health_resources
                     .damage
                     .in_tag(k, "minecraft:bypasses_invulnerability")
             });
         let mob_blocked = !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
             && matches!(source, Some(super::commands::Target::Mob(_)));
@@ -335,12 +356,20 @@ impl crate::game::ServerGame<'_> {
         let with_frame = force_break || self.common.item_frames[i].item.is_none();
         let entity_id = self.common.item_frames[i].id;
         if with_frame {
-            let (kind, pos) = (self.common.item_frames[i].kind(), self.common.item_frames[i].pos);
+            let (kind, pos) = (
+                self.common.item_frames[i].kind(),
+                self.common.item_frames[i].pos,
+            );
             if self.hanging_break_cancelled(kind, pos, by_player) {
                 return;
             }
             // The listener had the game in its hands: find the frame again by id.
-            match self.common.item_frames.iter().position(|f| f.id == entity_id) {
+            match self
+                .common
+                .item_frames
+                .iter()
+                .position(|f| f.id == entity_id)
+            {
                 Some(now) if force_break || self.common.item_frames[now].item.is_none() => i = now,
                 _ => return,
             }
@@ -373,7 +402,8 @@ impl crate::game::ServerGame<'_> {
         // this id, wherever it is now.
         if !with_frame
             && let Some(frame) = self
-                .common.item_frames
+                .common
+                .item_frames
                 .iter_mut()
                 .find(|frame| frame.id == entity_id)
         {
@@ -405,10 +435,15 @@ impl crate::game::ServerGame<'_> {
             // ItemFrame.hurtServer plays this after the event.
             self.server_play_sound(&sound(&f, "remove_item"), at, 1.0, 1.0);
         }
-        self.common.world.modified.insert((f.pos[0] >> 4, f.pos[2] >> 4));
+        self.common
+            .world
+            .modified
+            .insert((f.pos[0] >> 4, f.pos[2] >> 4));
         if by_player
-            && let (Some(player), Some(name)) =
-                (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
+            && let (Some(player), Some(name)) = (
+                self.server.lan_acting_uuid,
+                self.server.lan_acting_name.clone(),
+            )
         {
             self.native_player_item_frame_change(
                 player,
@@ -438,7 +473,8 @@ impl crate::game::ServerGame<'_> {
         // something caused the break (`removeFramedMap` runs only for a null
         // `causedBy` then).
         if self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS)
             || !by_player
@@ -446,7 +482,8 @@ impl crate::game::ServerGame<'_> {
             self.remove_framed_map(f);
         }
         if !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS)
             || (by_player && creative)
@@ -535,7 +572,8 @@ impl crate::game::ServerGame<'_> {
         // Found again by id after the listener: gone, or empty before and
         // filled now, nothing breaks.
         let Some(index) = self
-            .common.item_frames
+            .common
+            .item_frames
             .iter()
             .position(|f| f.id == id && !(was_empty && f.item.is_some()))
         else {
@@ -548,7 +586,10 @@ impl crate::game::ServerGame<'_> {
         // ItemFrame.dropItem(level, causedBy): BLOCK_CHANGE after the drops.
         let ctx = self.who_context(None, None);
         self.post_game_event("minecraft:block_change", center(&f), ctx);
-        self.common.world.modified.insert((f.pos[0] >> 4, f.pos[2] >> 4));
+        self.common
+            .world
+            .modified
+            .insert((f.pos[0] >> 4, f.pos[2] >> 4));
         if f.item.is_some() {
             self.frame_output_changed(f.pos);
         }
@@ -594,7 +635,8 @@ impl crate::game::ServerGame<'_> {
                 {
                     // Found again by id after the listener: gone, nothing is
                     // removed; empty before and filled now, it stays.
-                    let Some(now) = self.common.item_frames.iter().position(|g| g.id == f.id) else {
+                    let Some(now) = self.common.item_frames.iter().position(|g| g.id == f.id)
+                    else {
                         continue;
                     };
                     if f.item.is_none() && self.common.item_frames[now].item.is_some() {
@@ -629,7 +671,6 @@ use sunrise_gameplay_common::game::GameGameExt1 as _;
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
-
 
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 

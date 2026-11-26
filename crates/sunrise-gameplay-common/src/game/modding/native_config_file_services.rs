@@ -129,10 +129,7 @@ fn stat_of(meta: &Metadata) -> ConfigStat {
     })
 }
 
-pub fn read(
-    root: &FileRoot,
-    file: &ConfigPath,
-) -> Result<Vec<u8>, ConfigFileError> {
+pub fn read(root: &FileRoot, file: &ConfigPath) -> Result<Vec<u8>, ConfigFileError> {
     let (directory, name) = resolve(root, file, false)?;
     let meta = directory.symlink_metadata(&name).map_err(io)?;
     if !meta.is_file() {
@@ -191,11 +188,7 @@ fn is_write_temp(name: &str) -> bool {
 /// Written beside the file, then renamed over it. The temporary name starts
 /// with the file's own, so it stays the mod's own; `list` leaves it out, so a
 /// scan never meets a half-written file, nor one a crash left behind.
-pub fn write(
-    root: &FileRoot,
-    file: &ConfigPath,
-    bytes: &[u8],
-) -> Result<(), ConfigFileError> {
+pub fn write(root: &FileRoot, file: &ConfigPath, bytes: &[u8]) -> Result<(), ConfigFileError> {
     static WRITES: AtomicU64 = AtomicU64::new(0);
     if bytes.len() as u64 > root.cap() {
         return Err(ConfigFileError::TooLarge);
@@ -294,10 +287,7 @@ pub fn list(
         .collect())
 }
 
-pub fn stat(
-    root: &FileRoot,
-    path: &ConfigPath,
-) -> Result<Option<ConfigStat>, ConfigFileError> {
+pub fn stat(root: &FileRoot, path: &ConfigPath) -> Result<Option<ConfigStat>, ConfigFileError> {
     match resolve(root, path, false).and_then(|(dir, name)| dir.symlink_metadata(name).map_err(io))
     {
         Ok(meta) if meta.file_type().is_symlink() => Err(ConfigFileError::Symlink),

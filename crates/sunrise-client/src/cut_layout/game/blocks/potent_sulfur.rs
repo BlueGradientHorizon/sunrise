@@ -1,12 +1,10 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Aabb;
 use sunrise_sim::mobs::Mob;
 #[cfg(test)]
 pub(crate) mod pass_tests {
+    use super::*;
     use sunrise_core::random::RandomSource;
-use super::*;
     use sunrise_core::{geometry::Vec3, random::LegacyRandom};
     use sunrise_gameplay_common::game::potent_sulfur_common::PassMobs;
     use sunrise_gameplay_common::potent_sulfur::nearby_living_area;
@@ -158,7 +156,11 @@ use super::*;
             check(game, "some removed");
             // A geyser's own write leaves the boxes as they were.
             game.mobs[3].velocity.y += 0.2;
-            game.server.pass_mobs.as_mut().unwrap().wrote(&game.common.mobs);
+            game.server
+                .pass_mobs
+                .as_mut()
+                .unwrap()
+                .wrote(&game.common.mobs);
             check(game, "a push");
         });
     }

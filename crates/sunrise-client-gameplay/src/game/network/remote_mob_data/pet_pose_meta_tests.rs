@@ -3,8 +3,8 @@
 //! the other players' clients draw, and the order they never learn stays
 //! behind on the host.
 use super::apply;
-use sunrise_gameplay_common::game::lan_mob_metadata::mob_meta;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::lan_mob_metadata::mob_meta;
 use sunrise_protocol::entity_data::Value;
 use sunrise_protocol::registry::Builtin;
 use sunrise_sim::mobs::{Mob, MobTypes, tame};

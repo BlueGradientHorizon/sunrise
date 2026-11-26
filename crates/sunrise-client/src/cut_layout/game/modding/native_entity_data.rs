@@ -1,19 +1,21 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5;
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use super::super::native_entity_refs::tests::with_game;
     use mod_api::{EntityRef, MobCategory};
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::{JavaString, Tag};
     use sunrise_game_data::text::Text;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5;
     use sunrise_sim::{entities::ArmorStand, mobs::Mob};
 
-    fn push_mob(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32, kind: &str) -> EntityRef {
+    fn push_mob(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        id: u32,
+        kind: &str,
+    ) -> EntityRef {
         let kind = game.res.mob_types().get(kind).unwrap().clone();
         game.mobs
             .push(Mob::new(id, kind, Vec3::new(0.5, 70.0, 0.5), 0.0));
@@ -107,7 +109,8 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
             assert!(!saved.contains_key(&"CustomName".into()));
 
             // The dragon keeps no name: refused, and a stale handle too.
-            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon =
+                sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 14;
             game.dragon.replace(dragon);
             let dragon = game.entity(14).unwrap();
@@ -149,7 +152,8 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
             game.armor_stands.push(ArmorStand::new(27, Vec3::ZERO, 0.0));
             let stand = game.entity(27).unwrap();
             assert_eq!(stand.classification(game), Some(MobCategory::Misc));
-            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon =
+                sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 28;
             game.dragon.replace(dragon);
             let dragon = game.entity(28).unwrap();

@@ -1,6 +1,5 @@
 //! A falling block's parts hear each tick it ends in the air (`falling_tick`), and not the
 //! tick it lands.
-use {sunrise_gameplay_common::game::FallingBlock, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{
     BlockPart, FallingTickEvent, Hooks, ModEntry, Registrar, RegistrationContext, ServerHost,
 };
@@ -8,6 +7,10 @@ use mod_platform::__private::part_tests::{falling_tick_game_thread, falling_tick
 use std::sync::{Arc, Mutex};
 use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_level::chunk::Chunk;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay_common::game::FallingBlock,
+};
 
 #[test]
 #[ignore = "daily"]

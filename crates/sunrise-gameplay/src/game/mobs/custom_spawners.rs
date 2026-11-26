@@ -31,7 +31,8 @@ impl ServerGame<'_> {
         self.level_spawners();
         let dim = self.common.dim;
         let spawn_enemies = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MONSTERS)
             && self.common.ui.difficulty != 0;

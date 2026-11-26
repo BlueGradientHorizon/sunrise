@@ -195,11 +195,7 @@ impl crate::game::ServerGame<'_> {
 
     // ---- evaluation ---------------------------------------------------------------
 
-    pub fn provider_int(
-        &mut self,
-        v: &Value,
-        c: &ComputeContext,
-    ) -> Result<i32, Arith> {
+    pub fn provider_int(&mut self, v: &Value, c: &ComputeContext) -> Result<i32, Arith> {
         let providers = self.active_providers().clone();
         let mut random = self.common.world.random.clone();
         let result = Evaluation::new(&providers, &mut random).int(
@@ -213,11 +209,7 @@ impl crate::game::ServerGame<'_> {
         result
     }
 
-    pub fn provider_float(
-        &mut self,
-        v: &Value,
-        c: &ComputeContext,
-    ) -> Result<f32, Arith> {
+    pub fn provider_float(&mut self, v: &Value, c: &ComputeContext) -> Result<f32, Arith> {
         let providers = self.active_providers().clone();
         let mut random = self.common.world.random.clone();
         let result = Evaluation::new(&providers, &mut random).float(

@@ -5,14 +5,17 @@ use sunrise_items::items::ItemStack;
 use sunrise_level::containers::{BlockEntity, is_chest_block};
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay_common::game::storage_common::{chest_connected_pos, is_shulker_box};
+pub(in crate::game) use sunrise_gameplay_common::game::storage_common::{
+    chest_connected_pos, is_shulker_box,
+};
 
 #[cfg(feature = "client")]
 impl ClientGame<'_> {
     /// The custom name of the open container, or its default title
     /// (a double chest is named by whichever half has a name).
     pub(in crate::game) fn container_title(&self, default: String) -> String {
-        self.common.container_parts()
+        self.common
+            .container_parts()
             .iter()
             .find_map(|(key, _)| self.common.block_name_plain(*key))
             .unwrap_or(default)
@@ -22,7 +25,14 @@ impl ClientGame<'_> {
         (300..400).contains(&slot)
             && is_shulker_box(&stack.item)
             && self.common.container.is_some_and(|k| {
-                is_shulker_box(&self.common.res.facts().get(self.common.world.block(k.0, k.1, k.2)).name)
+                is_shulker_box(
+                    &self
+                        .common
+                        .res
+                        .facts()
+                        .get(self.common.world.block(k.0, k.1, k.2))
+                        .name,
+                )
             })
     }
 }
@@ -35,7 +45,8 @@ impl ClientGame<'_> {
         for (pos, size) in self.common.container_parts() {
             if n < size {
                 return self
-                    .common.world
+                    .common
+                    .world
                     .block_entities
                     .get(&pos)
                     .and_then(|e| e.slots().get(n))
@@ -59,7 +70,8 @@ impl ClientGame<'_> {
             n -= size;
         }
         match target.and_then(|(pos, i)| {
-            self.common.world
+            self.common
+                .world
                 .block_entities
                 .get_mut(&pos)
                 .and_then(|e| e.slot_mut(i))
@@ -76,7 +88,8 @@ impl ClientGame<'_> {
     pub(in crate::game::client_side) fn container_block(&self) -> Option<std::sync::Arc<str>> {
         let k = self.common.container?;
         Some(
-            self.common.res
+            self.common
+                .res
                 .facts()
                 .get(self.common.world.block(k.0, k.1, k.2))
                 .name

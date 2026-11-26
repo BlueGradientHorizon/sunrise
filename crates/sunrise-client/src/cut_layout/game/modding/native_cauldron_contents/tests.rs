@@ -1,11 +1,17 @@
-use {crate::game::native_cauldron_contents::*, sunrise_gameplay_common::game::native_cauldron_contents::{cauldron_contents}};
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use mod_api::{Hooks, Host};
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
+use {
+    crate::game::native_cauldron_contents::*,
+    sunrise_gameplay_common::game::native_cauldron_contents::cauldron_contents,
+};
 
 #[test]
 #[ignore = "daily"]
 fn registered_contents_and_rebuilt_tables_are_read_through_public_host() {
-    use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
+    use {
+        sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+    };
     if run_fresh_cases(
         "game::native_cauldron_contents::tests::registered_contents_and_rebuilt_tables_are_read_through_public_host",
         "SUNRISE_CAULDRON_READ_CHILD",
@@ -79,17 +85,19 @@ fn registered_contents_and_rebuilt_tables_are_read_through_public_host() {
                 Some(1)
             );
             assert_eq!(host.cauldron_level(state("minecraft:stone")), None);
-            sunrise_gameplay::game::server_side::machines::cauldron_contents::without_built_table(|| {
-                assert_eq!(
-                    host.cauldron_content_for_block(block("minecraft:water_cauldron")),
-                    None
-                );
-                assert_eq!(
-                    host.cauldron_content_for_fluid(fluid("minecraft:water")),
-                    None
-                );
-                assert_eq!(host.cauldron_level(state("minecraft:lava_cauldron")), None);
-            });
+            sunrise_gameplay::game::server_side::machines::cauldron_contents::without_built_table(
+                || {
+                    assert_eq!(
+                        host.cauldron_content_for_block(block("minecraft:water_cauldron")),
+                        None
+                    );
+                    assert_eq!(
+                        host.cauldron_content_for_fluid(fluid("minecraft:water")),
+                        None
+                    );
+                    assert_eq!(host.cauldron_level(state("minecraft:lava_cauldron")), None);
+                },
+            );
             let honey = host
                 .cauldron_content_for_block(block("test:honey_cauldron"))
                 .unwrap();
@@ -111,7 +119,9 @@ fn registered_contents_and_rebuilt_tables_are_read_through_public_host() {
             let old = cauldron_contents::current();
             cauldron_contents::install(cauldron_contents::CauldronContents::default());
             assert_eq!(host.cauldron_content_for_fluid(fluid("test:honey")), None);
-            sunrise_gameplay_common::game::mods::register_cauldron_fluid_contents(game.pack.assets.registry);
+            sunrise_gameplay_common::game::mods::register_cauldron_fluid_contents(
+                game.pack.assets.registry,
+            );
             assert_eq!(
                 host.cauldron_content_for_fluid(fluid("test:honey"))
                     .unwrap()

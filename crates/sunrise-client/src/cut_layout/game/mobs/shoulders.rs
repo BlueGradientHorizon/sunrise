@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
@@ -7,8 +5,8 @@ use sunrise_sim::mobs::Species;
 #[cfg(test)]
 mod mod_parrot_tests {
     use super::*;
-    use sunrise_gameplay::game::shoulders::shoulder_variants;
     use std::sync::Arc;
+    use sunrise_gameplay::game::shoulders::shoulder_variants;
     use sunrise_sim::mobs::Mob;
     use sunrise_sim::motion::PlayerMotion;
 

@@ -62,7 +62,8 @@ pub(in crate::game::client_side) fn read_shader_options(
 
 /// Saves the values chosen on the Shader Options page; none chosen removes the file.
 pub(in crate::game::client_side) fn write_shader_options(options: &ShaderOptions) {
-    let file = crate::game::ClientGame::shader_packs_dir().join(sunrise_shaders::chosen_file(&options.pack));
+    let file = crate::game::ClientGame::shader_packs_dir()
+        .join(sunrise_shaders::chosen_file(&options.pack));
     let saved = if options.chosen.is_empty() {
         std::fs::remove_file(&file).or_else(|e| match e.kind() {
             std::io::ErrorKind::NotFound => Ok(()),
@@ -291,9 +292,7 @@ pub struct PackIds {
 
 #[cfg(any(test, feature = "test-support"))]
 impl PackIds {
-    pub fn with_entity_ids<'a>(
-        ids: impl IntoIterator<Item = (&'a str, i32)>,
-    ) -> Self {
+    pub fn with_entity_ids<'a>(ids: impl IntoIterator<Item = (&'a str, i32)>) -> Self {
         Self {
             entities: ids
                 .into_iter()
@@ -499,8 +498,11 @@ impl crate::game::ClientGame<'_> {
                             &Properties::parse(text.as_deref().unwrap_or_default(), &macros),
                             "item",
                         );
-                        let block_items =
-                            block_item_ids(self.common.res.facts(), self.common.pack.assets.registry, &ids);
+                        let block_items = block_item_ids(
+                            self.common.res.facts(),
+                            self.common.pack.assets.registry,
+                            &ids,
+                        );
                         self.client.pack_ids = Some(PackIds {
                             block_items,
                             item_file: text.is_some(),
@@ -557,7 +559,8 @@ impl crate::game::ClientGame<'_> {
         let at = camera.floor().as_ivec3();
         let light = self.common.world.light(at.x, at.y, at.z);
         let biome = self
-            .common.world
+            .common
+            .world
             .chunks
             .get(&(at.x >> 4, at.z >> 4))
             .map(|c| c.biome(at.x, at.y, at.z));
@@ -582,7 +585,9 @@ impl crate::game::ClientGame<'_> {
                 CameraFluid::Lava => 2,
                 CameraFluid::PowderSnow => 3,
             },
-            blindness: f32::from(u8::from(self.common.potions.effects.get("blindness").is_some())),
+            blindness: f32::from(u8::from(
+                self.common.potions.effects.get("blindness").is_some(),
+            )),
             eye_light: [i32::from(light & 15), i32::from(light >> 4)],
             hide_gui: self.client.chat_ui.hide_gui,
             brightness: self.client.settings.gamma as f32,
@@ -600,7 +605,11 @@ impl crate::game::ClientGame<'_> {
             held_items,
             held_light,
             right_handed: !self.client.settings.main_hand_left,
-            on_ground: self.common.player.as_ref().is_some_and(|p| p.ground.on_ground),
+            on_ground: self
+                .common
+                .player
+                .as_ref()
+                .is_some_and(|p| p.ground.on_ground),
             min_y: self.common.world.shape.min_y,
             height: self.common.world.shape.height,
             logical_height: self.common.world.shape.logical_height,
@@ -647,7 +656,10 @@ impl crate::game::ClientGame<'_> {
             }
             None => (
                 true,
-                CameraFogEffects::from_effects(&self.common.potions.effects, self.client.darkness_blend),
+                CameraFogEffects::from_effects(
+                    &self.common.potions.effects,
+                    self.client.darkness_blend,
+                ),
                 self.night_vision_intensity(partial),
                 self.client.ambience.moodiness,
             ),
@@ -784,7 +796,9 @@ impl crate::game::ClientGame<'_> {
         }
         if self.client.settings.sunrise.shader_pack == name {
             self.client.settings.sunrise.shader_pack.clear();
-            self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+            self.client
+                .settings
+                .save(&sunrise_gameplay_common::game::options_path());
         }
         self.client_system_message(Text::colored(
             format!("Shader pack {name} could not be loaded and was turned off"),
@@ -794,7 +808,8 @@ impl crate::game::ClientGame<'_> {
 
     /// Whether the game's vignette draws: the option, unless the loaded pack turns it off.
     pub(in crate::game::client_side) fn vignette_shown(&self) -> bool {
-        self.client.settings.vignette && self.client.pack_ids.as_ref().is_none_or(|ids| ids.vignette)
+        self.client.settings.vignette
+            && self.client.pack_ids.as_ref().is_none_or(|ids| ids.vignette)
     }
 
     /// `currentRenderedItemId` of a held `item`, [`rendered_item_id`]'s; 0 without a pack.
@@ -817,7 +832,11 @@ impl crate::game::ClientGame<'_> {
         let Some(ids) = &self.client.pack_ids else {
             return ([0; 2], [0; 2]);
         };
-        let hands = [self.common.selected, sunrise_gameplay_common::game::held_items::OFFHAND_SLOT].map(|slot| {
+        let hands = [
+            self.common.selected,
+            sunrise_gameplay_common::game::held_items::OFFHAND_SLOT,
+        ]
+        .map(|slot| {
             let item = self.common.stack_in(slot).map(|s| &*s.item);
             let id = item.and_then(|i| ids.items.get(i).copied());
             (
@@ -894,7 +913,8 @@ impl crate::game::ClientGame<'_> {
             });
         self.push_span(start, "BLOCK_ENTITIES", id);
         let emission = self
-            .common.res
+            .common
+            .res
             .facts()
             .get(sunrise_world::registry::BlockStateId(state))
             .emission;
@@ -1069,7 +1089,7 @@ pub(in crate::game::client_side) fn terrain_state_ids(
 
 #[cfg(test)]
 pub(in crate::game) mod terrain_source_tests {
-    use {crate::game::client_side::shader_packs::*};
+    use crate::game::client_side::shader_packs::*;
 
     #[test]
     fn terrain_source_cpu_state_filters_fluid_owners_and_pack_reload() {

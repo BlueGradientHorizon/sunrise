@@ -1,10 +1,13 @@
 //! A block's parts decide where a player whose respawn point it is stands up
 //! (`respawn_position`).
-use sunrise_gameplay::game::respawn_anchor::RespawnConfig;
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::respawn_anchor::RespawnConfig;
 use sunrise_level::chunk::Chunk;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay_common::game::Dim,
+};
 
 #[test]
 #[ignore = "daily"]

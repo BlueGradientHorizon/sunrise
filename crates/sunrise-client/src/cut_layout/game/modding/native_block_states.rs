@@ -1,10 +1,15 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use {crate::game::native_block_states::*, sunrise_gameplay_common::game::native_block_states::{Arc, BlockRegistry, BlockStateId, FluidState, ItemStack, Registries, StateConstraint, StateMatchError, block, block_registries, description_id, match_state_properties, parse, serialize}};
     use mod_api::{FluidDefinition, FluidStateError, FluidTypeProperties};
+    use {
+        crate::game::native_block_states::*,
+        sunrise_gameplay_common::game::native_block_states::{
+            Arc, BlockRegistry, BlockStateId, FluidState, ItemStack, Registries, StateConstraint,
+            StateMatchError, block, block_registries, description_id, match_state_properties,
+            parse, serialize,
+        },
+    };
 
     /// Air, a stair with two properties (its default `facing=north,half=bottom`)
     /// and wheat with an integer `age`, as `parse` reads them.
@@ -27,8 +32,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn item_and_block_registry_facts_use_the_loaded_tables() {
-        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         use mod_api::Host;
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             let host: &dyn Host = game;
             let remainder = host
@@ -90,9 +95,12 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn item_block_maps_a_mod_items_back_to_its_block() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
         use mod_api::{self, Hooks, Host};
         use std::sync::Arc;
+        use {
+            sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+            sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+        };
 
         const CHILD: &str = "SUNRISE_ITEM_BLOCK_MOD_CHILD";
         if run_fresh_cases(
@@ -666,30 +674,37 @@ mod tests {
         ]);
         sunrise_gameplay_common::game::api_values::resolve_block_definitions(registry).unwrap();
         assert_eq!(
-            sunrise_gameplay_common::game::api_values::default_state(part_tests::block_key("oak_stairs")).unwrap(),
+            sunrise_gameplay_common::game::api_values::default_state(part_tests::block_key(
+                "oak_stairs"
+            ))
+            .unwrap(),
             BlockStateId(1)
         );
         assert_eq!(
-            sunrise_gameplay_common::game::api_values::default_state(part_tests::block_key("minecraft:wheat"))
-                .unwrap(),
+            sunrise_gameplay_common::game::api_values::default_state(part_tests::block_key(
+                "minecraft:wheat"
+            ))
+            .unwrap(),
             BlockStateId(5)
         );
         // A valid key has no mapping on a different owning thread. Raw unknown slots are
         // refused by the generated host boundary, not revalidated by typed operations.
         let key = part_tests::block_key("minecraft:wheat");
         assert!(
-            std::thread::spawn(move || sunrise_gameplay_common::game::api_values::default_state(key))
-                .join()
-                .unwrap()
-                .is_none()
+            std::thread::spawn(
+                move || sunrise_gameplay_common::game::api_values::default_state(key)
+            )
+            .join()
+            .unwrap()
+            .is_none()
         );
     }
 }
 
 #[cfg(test)]
 mod facts_tests {
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use mod_api::HostBlockStates;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
 
     #[test]
     #[ignore = "daily"]
@@ -859,7 +874,10 @@ mod facts_tests {
 
 #[cfg(test)]
 mod crafting_remainder_tests {
-    use {crate::game::native_block_states::*, sunrise_gameplay_common::game::native_block_states::{Arc, ItemStack}};
+    use {
+        crate::game::native_block_states::*,
+        sunrise_gameplay_common::game::native_block_states::{Arc, ItemStack},
+    };
     static CALLS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
     struct Worn;
     #[mod_api::sunrise_part]

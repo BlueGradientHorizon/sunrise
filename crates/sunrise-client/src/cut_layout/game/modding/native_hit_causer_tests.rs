@@ -6,7 +6,6 @@
 //! a lethal hit's Post waits for the death. A victim that caused its own hit is read as the
 //! victim.
 use super::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game};
-use sunrise_gameplay::game::server_side::native_living_refs::tests::summon_mob;
 use mod_api::{
     AttachmentType, Flow, HitHost, Holder, Hooks, LivingDamagePostEvent, LivingIncomingDamageEvent,
     LivingView,
@@ -14,6 +13,7 @@ use mod_api::{
 use std::sync::{Arc, Mutex};
 use sunrise_command::args::GameMode;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::server_side::native_living_refs::tests::summon_mob;
 use sunrise_sim::mobs::{Damage, DamageKind, Who};
 use sunrise_sim::motion::PlayerMotion;
 use sunrise_sim::projectiles::{Hit, Projectile, ProjectileKind};
@@ -138,7 +138,9 @@ fn with_probe(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Mu
     });
 }
 
-fn with_guest_probe(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Mutex<Vec<Seen>>)) {
+fn with_guest_probe(
+    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Mutex<Vec<Seen>>),
+) {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "probe",
@@ -170,11 +172,17 @@ fn blast(
     player: bool,
     guest: Option<u32>,
 ) {
-    game.server.combat.0.blast_owner = Some((owner, sunrise_game_data::text::Text::literal("owner")));
+    game.server.combat.0.blast_owner =
+        Some((owner, sunrise_game_data::text::Text::literal("owner")));
     game.server.combat.0.blast_owner_player = player;
     game.server.combat.0.blast_guest = guest;
-    game.server_explode(at, 3.0, sunrise_gameplay::game::server_side::explosion::BlockInteraction::Keep, false)
-        .unwrap();
+    game.server_explode(
+        at,
+        3.0,
+        sunrise_gameplay::game::server_side::explosion::BlockInteraction::Keep,
+        false,
+    )
+    .unwrap();
     game.server.combat.0.blast_owner = None;
     game.server.combat.0.blast_owner_player = false;
     game.server.combat.0.blast_guest = None;

@@ -34,7 +34,8 @@ impl crate::game::ClientGame<'_> {
         self.clip_ray(origin, direction, self.common.block_reach)
     }
     pub(in crate::game) fn client_bucket_liquid_user_entity_id(&self) -> Option<u32> {
-        (self.client.remote.is_some() || self.common.player.is_some()).then(|| self.own_entity_id() as u32)
+        (self.client.remote.is_some() || self.common.player.is_some())
+            .then(|| self.own_entity_id() as u32)
     }
     pub(in crate::game) fn client_projectile_player_uuid(&mut self) -> Option<u128> {
         self.client.remote.as_ref().map(|r| r.profile())

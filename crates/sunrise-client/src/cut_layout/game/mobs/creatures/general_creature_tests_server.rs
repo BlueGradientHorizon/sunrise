@@ -4,8 +4,8 @@ use sunrise_sim::projectiles::ProjectileKind;
 #[test]
 #[ignore = "daily"]
 fn conversion_transfers_tags_and_team() {
-    use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_sim::{
         mobs::{Mob, conversion::Params},
         save::uuid_text,
@@ -48,10 +48,16 @@ fn conversion_transfers_tags_and_team() {
 #[test]
 #[ignore = "daily"]
 fn ender_pearl_clears_impulse_before_next_fall() {
-    use sunrise_sim::{mobs::Who, projectiles::{Hit, Projectile}};
     use sunrise_core::geometry::Vec3;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_sim::motion::{MotionWorld, PlayerMotion};
+    use sunrise_sim::{
+        mobs::Who,
+        projectiles::{Hit, Projectile},
+    };
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
@@ -70,7 +76,8 @@ fn ender_pearl_clears_impulse_before_next_fall() {
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
@@ -213,7 +220,15 @@ fn wolf_owner_rejoining_receives_the_kill_statistic() {
             assert_eq!(game.resolve_player_credit(credit), Some(Some(12)));
             let victim = game.mobs[1].clone();
             game.mob_die(&victim);
-            let stats = &game.server.lan.as_ref().unwrap().play.get(&12).unwrap().stats;
+            let stats = &game
+                .server
+                .lan
+                .as_ref()
+                .unwrap()
+                .play
+                .get(&12)
+                .unwrap()
+                .stats;
             assert_eq!(stats.get("custom", "minecraft:mob_kills"), 1);
             game.server
                 .lan
@@ -227,9 +242,10 @@ fn wolf_owner_rejoining_receives_the_kill_statistic() {
                 });
             let mut second = victim.clone();
             second.id = 102;
-            game.server
-                .last_hurt_by_player
-                .insert(102, sunrise_gameplay_common::game::combat_common::PlayerCredit(12));
+            game.server.last_hurt_by_player.insert(
+                102,
+                sunrise_gameplay_common::game::combat_common::PlayerCredit(12),
+            );
             game.as_guest(12, |game| game.mob_die(&second)).unwrap();
             let host = game.server.lan.as_ref().unwrap();
             assert_eq!(host.play[&12].stats.get("custom", "minecraft:mob_kills"), 2);

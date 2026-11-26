@@ -1,14 +1,14 @@
-
-
 #![cfg(test)]
-use sunrise_protocol::packets::play;
-use sunrise_sim::mobs::equine;
+use sunrise_client_gameplay::game::client_side::remote_vehicles::{
+    client_moves, mount_move, riding_jump,
+};
 use sunrise_core::geometry::Vec3;
+use sunrise_protocol::packets::play;
 use sunrise_protocol::packets::play::Serverbound as S;
 use sunrise_sim::mobs::Mob;
+use sunrise_sim::mobs::equine;
 use sunrise_sim::sprint::Keys;
 use sunrise_world::stepped_interpolation::PosRot;
-use sunrise_client_gameplay::game::client_side::remote_vehicles::{client_moves, mount_move, riding_jump};
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(crate) mod tests {
@@ -17,7 +17,10 @@ pub(crate) mod tests {
         for kind in ["minecraft:block_display", "minecraft:interaction"] {
             let at = glam::DVec3::new(10.5, -59.5, 0.5);
             let before = glam::DVec3::new(10.0, -59.0, 0.5);
-            let (seat, previous) = sunrise_client_gameplay::game::client_side::remote_vehicles::generic_player_seat(at, before, 1.0);
+            let (seat, previous) =
+                sunrise_client_gameplay::game::client_side::remote_vehicles::generic_player_seat(
+                    at, before, 1.0,
+                );
             assert_eq!(
                 seat,
                 sunrise_core::geometry::Vec3::new(10.5, -60.1, 0.5),
@@ -28,7 +31,10 @@ pub(crate) mod tests {
                 sunrise_core::geometry::Vec3::new(10.0, -59.6, 0.5),
                 "{kind}"
             );
-            let (scaled, _) = sunrise_client_gameplay::game::client_side::remote_vehicles::generic_player_seat(at, before, 2.0);
+            let (scaled, _) =
+                sunrise_client_gameplay::game::client_side::remote_vehicles::generic_player_seat(
+                    at, before, 2.0,
+                );
             assert_eq!(scaled.y, -60.7, "{kind}");
         }
     }
@@ -59,7 +65,8 @@ pub(crate) mod tests {
             m.set_saddle(Some(ItemStack::new("minecraft:saddle", 1)));
             game.mobs.clear();
             game.mobs.push(m);
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:carrot_on_a_stick", 1));
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:carrot_on_a_stick", 1));
             game.riding = Some(7);
             game.client.remote.as_mut().unwrap().first_passenger = true;
             assert!(game.driven_mount().is_some());
@@ -437,36 +444,39 @@ pub(crate) mod tests {
             || {
                 use sunrise_items::items::ItemStack;
                 use sunrise_sim::{mobs::camel, motion::PlayerMotion};
-                sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(|game| {
-                    let (client, _server) = sunrise_protocol::connection::Pipe::pair();
-                    game.connect_local(client, "CamelRider").unwrap();
-                    let remote = game.client.remote.as_mut().unwrap();
-                    remote.joined = true;
-                    remote.entity_id = 42;
-                    game.world.game_time = 1_000;
-                    let at = Vec3::new(4.5, 80.0, 4.5);
-                    let mut player = PlayerMotion::new(game.motion, at).unwrap();
-                    player.entity_id = 42;
-                    player.applied_input = [0.0, 0.98];
-                    player.set_sprinting(true).unwrap();
-                    game.player = Some(player);
-                    let root = sunrise_gameplay::game::native_entity_refs::tests::fixture_root();
-                    let types = MobTypes::load(&root).unwrap();
-                    let kind = std::sync::Arc::new(types.types["minecraft:camel"].clone());
-                    let mut mount = Mob::new(7, kind, at, 0.0);
-                    mount.set_saddle(Some(ItemStack::new("minecraft:saddle", 1)));
-                    camel::finish_load(&mut mount, game.world.game_time);
-                    assert!(!camel::refuse_to_move(&mount));
-                    assert_eq!(mount.extra.anim_ticks, 0);
-                    let expected = mount.movement_speed() as f32 + 0.1_f32;
-                    game.mobs.push(mount);
-                    game.apply_remote_passengers(7, &[42]);
-                    assert!(game.mobs[0].rider.is_none(), "before the first driven tick");
-                    assert!(game.remote_ride(Keys::default()));
-                    assert_eq!(game.mobs[0].ai.speed.to_bits(), expected.to_bits());
-                    assert_eq!(game.mobs[0].ai.zza, 0.98, "the last walking input");
-                    assert!(game.player.as_ref().unwrap().sprinting);
-                });
+                sunrise_client_gameplay::game::native_entity_refs::tests::with_client_game(
+                    |game| {
+                        let (client, _server) = sunrise_protocol::connection::Pipe::pair();
+                        game.connect_local(client, "CamelRider").unwrap();
+                        let remote = game.client.remote.as_mut().unwrap();
+                        remote.joined = true;
+                        remote.entity_id = 42;
+                        game.world.game_time = 1_000;
+                        let at = Vec3::new(4.5, 80.0, 4.5);
+                        let mut player = PlayerMotion::new(game.motion, at).unwrap();
+                        player.entity_id = 42;
+                        player.applied_input = [0.0, 0.98];
+                        player.set_sprinting(true).unwrap();
+                        game.player = Some(player);
+                        let root =
+                            sunrise_gameplay::game::native_entity_refs::tests::fixture_root();
+                        let types = MobTypes::load(&root).unwrap();
+                        let kind = std::sync::Arc::new(types.types["minecraft:camel"].clone());
+                        let mut mount = Mob::new(7, kind, at, 0.0);
+                        mount.set_saddle(Some(ItemStack::new("minecraft:saddle", 1)));
+                        camel::finish_load(&mut mount, game.world.game_time);
+                        assert!(!camel::refuse_to_move(&mount));
+                        assert_eq!(mount.extra.anim_ticks, 0);
+                        let expected = mount.movement_speed() as f32 + 0.1_f32;
+                        game.mobs.push(mount);
+                        game.apply_remote_passengers(7, &[42]);
+                        assert!(game.mobs[0].rider.is_none(), "before the first driven tick");
+                        assert!(game.remote_ride(Keys::default()));
+                        assert_eq!(game.mobs[0].ai.speed.to_bits(), expected.to_bits());
+                        assert_eq!(game.mobs[0].ai.zza, 0.98, "the last walking input");
+                        assert!(game.player.as_ref().unwrap().sprinting);
+                    },
+                );
             },
         );
     }
@@ -537,9 +547,13 @@ mod plugin_seat_tests {
     #[test]
     #[ignore = "daily"]
     fn local_rider_uses_attachments_and_follows_a_moving_seat_chain() {
-        use {sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::{mobs::Mob, motion::PlayerMotion, sprint::Keys};
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options,
+            sunrise_gameplay_common::game::Progress,
+        };
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -557,7 +571,8 @@ mod plugin_seat_tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
         let mut game = sunrise_client_gameplay::game::ClientGame::new(
             &loaded.resources,
             loaded.client_res.unwrap(),

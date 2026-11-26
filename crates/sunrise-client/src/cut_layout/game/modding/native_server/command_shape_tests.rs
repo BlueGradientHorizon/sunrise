@@ -1,7 +1,6 @@
 //! A mod's command as a player's client and the server see it: bounded numbers on the wire and
 //! refused out of range, and a usage merged into a vanilla command.
 
-use {sunrise_gameplay_common::game::in_own_process, sunrise_gameplay_common::game::lan_actions::GuestCommand, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
 use std::sync::{Arc, Mutex};
 use sunrise_game_data::text;
 use sunrise_protocol::{
@@ -10,6 +9,11 @@ use sunrise_protocol::{
     packets::play::{Clientbound, Commands},
 };
 use sunrise_sim::lan::{Out, PlayerSender};
+use {
+    sunrise_gameplay::game::native_guest_turn_tests::with_guests,
+    sunrise_gameplay_common::game::in_own_process,
+    sunrise_gameplay_common::game::lan_actions::GuestCommand,
+};
 
 /// What the executors received, in order: the usage's first word and its argument.
 type Calls = Arc<Mutex<Vec<(String, Option<mod_api::CommandArgumentValue>)>>>;
@@ -46,7 +50,11 @@ impl mod_api::Hooks for ShapedCommands {
 /// A server with the shaped commands and its two guests, guest 12 (level 2) receiving its packets
 /// on the returned channel from the tree it is sent when the commands register.
 fn with_shaped_commands(
-    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Calls, std::sync::mpsc::Receiver<Out>),
+    test: impl FnOnce(
+        &mut sunrise_gameplay::game::ServerGame<'_>,
+        &Calls,
+        std::sync::mpsc::Receiver<Out>,
+    ),
 ) {
     let calls = Calls::default();
     mod_platform::testing::with_mods(

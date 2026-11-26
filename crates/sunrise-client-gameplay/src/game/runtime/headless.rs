@@ -6,8 +6,8 @@
 //! (the client tick, nothing drawn) through the same `RedrawRequested` path a window's game
 //! takes. Input comes only from the control socket (`sunrise-ctl`), as synthetic window events.
 
-use crate::game::ClientGame;
 use super::event_loop::EventLoopCtl;
+use crate::game::ClientGame;
 use std::{
     cell::Cell,
     time::{Duration, Instant},

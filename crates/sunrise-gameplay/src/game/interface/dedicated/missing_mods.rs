@@ -113,8 +113,6 @@ mod tests {
         assert!(parse("[missing_mods]\nallow = \"yes\"\n").is_err());
         assert!(parse("[missing_mods]\nopen = true\n").is_err());
     }
-
-    
 }
 
 use sunrise_gameplay_common::game::native_hooks::mod_mismatch::GameHooks as _;

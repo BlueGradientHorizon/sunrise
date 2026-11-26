@@ -33,7 +33,12 @@ fn a_special_dropped_item_outlines_only_its_committed_world_vertices() {
                 const ID: u32 = 1_900_000_101;
                 let (client, _server) = Pipe::pair();
                 game.connect_local(client, "SpecialOutlineTest").unwrap();
-                game.client.remote.as_mut().unwrap().glowing.insert(ID as i32);
+                game.client
+                    .remote
+                    .as_mut()
+                    .unwrap()
+                    .glowing
+                    .insert(ID as i32);
                 install_special_stick(game);
                 game.client.gui.atlas.sprites.insert(
                     "block/stone".into(),

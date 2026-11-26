@@ -21,7 +21,8 @@ impl ServerGame<'_> {
     }
     /// Opening an ender chest shows the player's ender inventory in its place.
     pub fn open_ender_chest(&mut self, key: (i32, i32, i32)) {
-        self.common.world
+        self.common
+            .world
             .block_entities
             .insert(key, BlockEntity::Chest(self.server.ender_items.clone()));
         self.common.container = Some(key);
@@ -42,7 +43,8 @@ impl ServerGame<'_> {
         }
         let key = (pos[0], pos[1], pos[2]);
         let name = self
-            .common.res
+            .common
+            .res
             .facts()
             .get(self.common.world.block(pos[0], pos[1], pos[2]))
             .name
@@ -70,7 +72,8 @@ impl ServerGame<'_> {
         // has a loot table to unpack (it clears while it rolls, on first open).
         // ServerPlayer.openMenu sends the refused spectator a red action bar.
         if self
-            .common.world
+            .common
+            .world
             .chunks
             .get(&(key.0 >> 4, key.2 >> 4))
             .and_then(|c| c.saved.as_ref())
@@ -85,7 +88,10 @@ impl ServerGame<'_> {
         let Some(entity) = BlockEntity::for_block(&name) else {
             return;
         };
-        self.common.world.block_entities.get_or_insert_with(key, || entity);
+        self.common
+            .world
+            .block_entities
+            .get_or_insert_with(key, || entity);
         self.common.container = Some(key);
         self.server.open_container_slots = Some((key, self.common.open_container_size()));
         self.server_set_acting_use(false);
@@ -101,7 +107,8 @@ impl ServerGame<'_> {
             return;
         };
         if self
-            .common.container
+            .common
+            .container
             .is_none_or(|k| k.1 == super::minecarts::CART_KEY_Y)
         {
             return;
@@ -110,9 +117,13 @@ impl ServerGame<'_> {
         // part, and a part that went away (`getBlockEntity(pos) != this`) ends
         // it. A double chest whose other half broke would otherwise show a
         // shorter container.
-        if self.server.open_container_slots.is_some_and(|(open, slots)| {
-            self.common.container == Some(open) && self.common.open_container_size() < slots
-        }) {
+        if self
+            .server
+            .open_container_slots
+            .is_some_and(|(open, slots)| {
+                self.common.container == Some(open) && self.common.open_container_size() < slots
+            })
+        {
             self.close_container_server();
             return;
         }
@@ -148,14 +159,15 @@ impl ServerGame<'_> {
     /// cannot unlock refuses the menu with `sendChestLockedNotifications` -
     /// the action bar names the container and one chest-locked sound plays.
     /// True when the open is refused.
-    pub fn refuse_locked_container(
-        &mut self,
-        key: (i32, i32, i32),
-        name: &str,
-    ) -> bool {
+    pub fn refuse_locked_container(&mut self, key: (i32, i32, i32), name: &str) -> bool {
         // A carrier transfer fence holds this cell: its block entity's
         // container does not open while the operation runs.
-        if self.common.world.carrier_fences.locks_cell(&[key.0, key.1, key.2]) {
+        if self
+            .common
+            .world
+            .carrier_fences
+            .locks_cell(&[key.0, key.1, key.2])
+        {
             return true;
         }
         let Some(default_key) = sunrise_level::containers::default_name_key(name) else {
@@ -230,7 +242,8 @@ impl ServerGame<'_> {
             n if is_chest_block(n) => {
                 self.chest_blocked_at(key)
                     || self
-                        .common.chest_partner(key)
+                        .common
+                        .chest_partner(key)
                         .is_some_and(|(other, _)| self.chest_blocked_at(other))
             }
             "minecraft:ender_chest" => self.conductor_above(key),
@@ -279,7 +292,8 @@ impl ServerGame<'_> {
             at[2] = f64::from(key.2 + other.2) / 2.0 + 0.5;
         } else if name == "minecraft:barrel"
             && let Some(state) = self
-                .common.pack
+                .common
+                .pack
                 .assets
                 .registry
                 .state(self.common.world.block(key.0, key.1, key.2))

@@ -2,8 +2,8 @@
 //! its clients through `ClientboundSetEntityDataPacket`, and a client's own tick reads
 //! `isNoGravity`. A host sent it only for falling blocks (#5028): a dropped item or a mob with
 //! the flag fell on its clients until the next position sync.
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::entity_data::{Value, serializer};
 use sunrise_sim::lan::entity::States;
@@ -11,7 +11,10 @@ use sunrise_sim::{entities::ItemEntity, mobs::Mob};
 
 /// What the host's tracking pass holds for `id` at 5: the value it sends, and whether false
 /// is its default (so a flag taken away goes out too).
-fn no_gravity_entry(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32) -> (Option<Value>, bool) {
+fn no_gravity_entry(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    id: u32,
+) -> (Option<Value>, bool) {
     let mut states = States::default();
     game.lan_entities(&mut states, false, 0, None);
     let e = states

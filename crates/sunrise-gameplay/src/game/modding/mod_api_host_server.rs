@@ -1,5 +1,5 @@
-use crate::game::ServerGame;
 use super::mod_api_host::world_attachments;
+use crate::game::ServerGame;
 use mod_api::AttachmentAccess;
 use sunrise_mod_runtime::attachments::{ATTACHMENTS_KEY, attachment_compound};
 
@@ -73,14 +73,16 @@ impl ServerGame<'_> {
     pub fn prune_entity_attachments(&mut self) {
         let alive = self.retained_entity_ids();
         let gone: Vec<u32> = self
-            .common.persist
+            .common
+            .persist
             .uuids
             .keys()
             .copied()
             .filter(|id| self.common.entity_attachments.contains_key(id) && !alive.contains(id))
             .collect();
         for id in gone {
-            self.common.forget_entity_initialization(mod_api::Holder::Entity(id));
+            self.common
+                .forget_entity_initialization(mod_api::Holder::Entity(id));
             self.common.entity_attachments.remove(&id);
         }
     }
@@ -152,7 +154,12 @@ impl ServerGame<'_> {
             .ok_or(AttachmentError::MissingHolder)?;
         let holder =
             mod_api::AttachmentHolder::Entity(mod_api::EntityRef::new(level.epoch(), id.get()));
-        let index = self.common.attachment_indexes.entry(self.common.dim).or_default().clone();
+        let index = self
+            .common
+            .attachment_indexes
+            .entry(self.common.dim)
+            .or_default()
+            .clone();
         let mut map = self.common.entity_attachments.remove(&id.get()).unwrap();
         self.with_resident_slot(&self.common.dim.key(), id, |slot| {
             if !slot.is_bound() {
@@ -220,14 +227,16 @@ impl ServerGame<'_> {
             }
             self.initialize_entity_on_access(holder);
             attachment_compound(
-                self.common.persist
+                self.common
+                    .persist
                     .raw
                     .get(&id)
                     .and_then(|tag| tag.get(ATTACHMENTS_KEY)),
             )?;
             if access == AttachmentAccess::Store
                 && self
-                    .common.persist
+                    .common
+                    .persist
                     .removals
                     .contains(&super::commands::Target::Painting(id))
             {

@@ -1,15 +1,13 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_client_gameplay::game::client_side::client_attack_targets::tests::finish_login;
+    use sunrise_client_gameplay::game::client_side::client_attack_targets::tests::finish_login;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 
-use sunrise_client_gameplay::game::client_side::client_attack_targets::tests::sent_attacks;
+    use sunrise_client_gameplay::game::client_side::client_attack_targets::tests::sent_attacks;
 
-use super::*;
+    use super::*;
 
     #[derive(Default)]
     struct AttackBatch {
@@ -33,14 +31,17 @@ use super::*;
         }
     }
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn client_attack_batch_keeps_order_deduplication_and_server_constraints() {
-        use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
         use sunrise_core::geometry::Vec3;
         use sunrise_level::chunk::Chunk;
         use sunrise_protocol::packets::play::{self, Clientbound as C};
         use sunrise_sim::motion::PlayerMotion;
+        use {
+            crate::game::server_side::native_entity_refs::tests::with_client_game,
+            sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client,
+        };
         let state = std::sync::Arc::new(AttackBatch::default());
         let mods = vec![mod_api::ModEntry::new(
             "attack_batch_test",

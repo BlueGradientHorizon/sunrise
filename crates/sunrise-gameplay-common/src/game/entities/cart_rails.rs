@@ -7,7 +7,7 @@ use sunrise_world::{level::classes::Class, registry::BlockStateId};
 
 pub trait CartRailsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The candidate selected by `getCurrentBlockPosOrRailBelow` only needs the tag.
-     fn tagged_rail(&self, state: BlockStateId) -> bool {
+    fn tagged_rail(&self, state: BlockStateId) -> bool {
         let name = self.res.facts().get(state).name.as_ref();
         self.items()
             .block_tags
@@ -16,14 +16,14 @@ pub trait CartRailsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `BaseRailBlock.isRail`: the rail tag and the base rail block class.
-     fn is_rail(&self, state: BlockStateId) -> bool {
+    fn is_rail(&self, state: BlockStateId) -> bool {
         self.tagged_rail(state) && self.res.behaviours().data(state).is(Class::BaseRail)
     }
 
     /// The rail at (x, y, z) as `cart` (none when the rail is read for itself) sees it: a block
     /// in `#minecraft:rails` built on `BaseRailBlock` (`BaseRailBlock.isRail`), with the shape
     /// its parts answer (`IBaseRailBlockExtension.getRailDirection`).
-     fn rail(&self, cart: Option<u32>, x: i32, y: i32, z: i32) -> Option<Rail> {
+    fn rail(&self, cart: Option<u32>, x: i32, y: i32, z: i32) -> Option<Rail> {
         let state = self.world.block(x, y, z);
         if !self.is_rail(state) {
             return None;
@@ -56,7 +56,6 @@ pub trait CartRailsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> CartRailsGameExt1<'__sg> for G {}
-
 
 pub fn dispatch_cart_rail_direction(
     side: mod_api::LevelSide<'_>,

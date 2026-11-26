@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use mod_api::TooltipElement;
 use sunrise_client::hud::HudBatch;
@@ -8,11 +6,11 @@ use sunrise_items::items::ItemStack;
 #[cfg(feature = "client")]
 pub(crate) mod tests {
 
-use sunrise_client_gameplay::game::native_hooks::TryIntoEngine;
-use sunrise_gameplay_common::game::TryIntoApi;
-use super::*;
+    use super::*;
+    use sunrise_client_gameplay::game::native_hooks::TryIntoEngine;
+    use sunrise_gameplay_common::game::TryIntoApi;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn rendered_image_callback_receives_whole_box() {
         use mod_api::{
@@ -105,7 +103,8 @@ use super::*;
             mod_platform::__private::part_tests::install_parts_fixture(&mods).unwrap();
             with_test_factories(factories, || {
                 crate::game::native_entity_refs::tests::with_client_game(|game| {
-                    let draw = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, stack: &ItemStack| {
+                    let draw = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                                stack: &ItemStack| {
                         TEXT_DRAWN.store(false, Ordering::Relaxed);
                         IMAGE_DRAWN.store(false, Ordering::Relaxed);
                         game.draw_stack_tooltip(
@@ -141,15 +140,24 @@ use super::*;
                             )
                             .unwrap();
                         stack.set_damage(251);
-                        assert!(stack.try_into_engine(sunrise_gameplay_common::game::tables::GameItems::items(game)).is_err());
-                        draw(game, &sunrise_gameplay_common::game::api_values::stack_value(&stack).unwrap());
+                        assert!(
+                            stack
+                                .try_into_engine(
+                                    sunrise_gameplay_common::game::tables::GameItems::items(game)
+                                )
+                                .is_err()
+                        );
+                        draw(
+                            game,
+                            &sunrise_gameplay_common::game::api_values::stack_value(&stack)
+                                .unwrap(),
+                        );
                     }
                 });
             });
         });
     }
 }
-
 
 #[cfg(feature = "client")]
 #[cfg(test)]

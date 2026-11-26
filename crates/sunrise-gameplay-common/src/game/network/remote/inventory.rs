@@ -273,9 +273,7 @@ pub fn inventory_screen_slot_with_type<'m>(
 }
 
 /// The workstation screen of a menu type a server opens.
-pub fn remote_station_kind(
-    menu: &str,
-) -> Option<crate::game::stations_common::Kind> {
+pub fn remote_station_kind(menu: &str) -> Option<crate::game::stations_common::Kind> {
     use crate::game::stations_common::Kind;
     Some(match menu {
         "minecraft:loom" => Kind::Loom,

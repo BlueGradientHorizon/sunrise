@@ -1,10 +1,10 @@
 //! Tests verifying that registered local coordinate commands preserve exact saved positions.
 
-use {crate::game::server_side::commands::*};
-use sunrise_gameplay_common::game::commands_common::Target;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use crate::game::server_side::commands::*;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::commands_common::Target;
 
 fn pos_bits(tag: &Tag) -> [u64; 3] {
     let Some(Tag::List(pos)) = tag.get("Pos") else {

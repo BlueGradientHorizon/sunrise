@@ -257,7 +257,8 @@ fn prepare_breaker(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
         .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, 4.5)).unwrap());
     game.set_mode(GameMode::Survival);
-    game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:diamond_pickaxe", 1));
+    game.common.inventory[game.common.selected] =
+        Some(ItemStack::new("minecraft:diamond_pickaxe", 1));
 }
 
 fn break_stone(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
@@ -305,7 +306,10 @@ fn real_integrated_stone_break_updates_counter_score_and_dirty_award() {
             assert_eq!(
                 game.score
                     .board
-                    .score(sunrise_gameplay_common::game::chat_common::PLAYER_NAME, "mined")
+                    .score(
+                        sunrise_gameplay_common::game::chat_common::PLAYER_NAME,
+                        "mined"
+                    )
                     .unwrap()
                     .value,
                 2
@@ -363,7 +367,10 @@ fn real_integrated_stone_break_updates_counter_score_and_dirty_award() {
             assert_eq!(
                 game.score
                     .board
-                    .score(sunrise_gameplay_common::game::chat_common::PLAYER_NAME, "steps")
+                    .score(
+                        sunrise_gameplay_common::game::chat_common::PLAYER_NAME,
+                        "steps"
+                    )
                     .unwrap()
                     .value,
                 3

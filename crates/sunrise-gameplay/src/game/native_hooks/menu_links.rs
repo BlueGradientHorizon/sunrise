@@ -1,5 +1,3 @@
-
-
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn native_menu_links(
         &mut self,

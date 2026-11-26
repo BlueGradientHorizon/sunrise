@@ -508,8 +508,8 @@ impl ServerGame<'_> {
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
     use super::super::lan::LanSettings;
-    use crate::game::native_entity_refs::tests::with_game;
     use super::*;
+    use crate::game::native_entity_refs::tests::with_game;
     use mod_api::{TeamColor, prelude::ScoreboardServerHost, text::TextStyle};
     use std::sync::{
         Arc,
@@ -617,5 +617,3 @@ use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
-
-

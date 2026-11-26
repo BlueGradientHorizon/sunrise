@@ -1,9 +1,12 @@
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::{Mob, enderman::stared_at};
+use {
+    sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+    sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+};
 
 /// Keeps enderman `self.0` calm, and logs who stared at whom.
 struct Calm(u32, Arc<Mutex<Vec<(u32, u128)>>>);

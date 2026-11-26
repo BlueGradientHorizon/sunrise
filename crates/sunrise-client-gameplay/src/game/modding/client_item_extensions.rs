@@ -15,11 +15,10 @@ use sunrise_client::mobs::Part;
 use sunrise_client::mobs::Polygon;
 use sunrise_level::fast_hash::FxHashMap;
 
-pub static DEFAULT_TOOLTIP_FONT_ID: LazyLock<mod_api::Identifier> =
-    LazyLock::new(|| {
-        mod_api::Identifier::from_parts("minecraft", "default")
-            .expect("minecraft:default is a valid identifier")
-    });
+pub static DEFAULT_TOOLTIP_FONT_ID: LazyLock<mod_api::Identifier> = LazyLock::new(|| {
+    mod_api::Identifier::from_parts("minecraft", "default")
+        .expect("minecraft:default is a valid identifier")
+});
 
 pub(in crate::game) struct ItemExtensionsPart {
     pub attached: mod_api::Attached<dyn ClientItemExtensions>,

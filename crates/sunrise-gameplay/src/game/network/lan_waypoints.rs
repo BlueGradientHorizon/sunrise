@@ -105,7 +105,8 @@ impl crate::game::ServerGame<'_> {
             .map(|g| self.waypoint_player(g))
             .collect();
         let locator_bar = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::LOCATOR_BAR);
         if let Some(host) = self.server.lan.as_mut()
@@ -147,7 +148,8 @@ impl crate::game::ServerGame<'_> {
         host.waypoint_dead
             .retain(|uuid| players.iter().any(|(_, _, p)| p.uuid == *uuid));
         let locator_bar = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::LOCATOR_BAR);
         let mut levels: Vec<String> = host.waypoints.keys().cloned().collect();

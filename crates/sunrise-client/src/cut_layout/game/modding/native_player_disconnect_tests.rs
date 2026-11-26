@@ -1,9 +1,9 @@
 //! `player_disconnect` against real LAN guests: the reason reaches the right one only.
 
-use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use mod_api::{Text, prelude::*};
 use std::sync::{Arc, mpsc::Receiver};
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use sunrise_protocol::text::translatable;
 use sunrise_sim::lan::{Out, PlayerSender};
 

@@ -2,8 +2,8 @@
 //! command replies (the team-formatted name with `show_entity` hover and UUID
 //! insertion, with click events removed from the name and its siblings) and
 //! `Nameable.getPlainTextName` for the selector's `name=`.
-use crate::game::ServerGame;
 use super::Target;
+use crate::game::ServerGame;
 use sunrise_game_data::text::Text;
 
 impl ServerGame<'_> {
@@ -16,7 +16,8 @@ impl ServerGame<'_> {
                 .command_guest(conn)
                 .map_or_else(String::new, |g| g.name.clone()),
             Target::Mob(id) => self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == id)
                 .map_or_else(String::new, |m| m.command_name().plain()),
@@ -50,7 +51,9 @@ impl ServerGame<'_> {
                 let team = holder
                     .as_deref()
                     .and_then(|holder| self.common.score.board.players_team(holder));
-                sunrise_gameplay_common::game::CommonGame::decorate_entity_display_name_with_uuid(&kind, uuid, team, name)
+                sunrise_gameplay_common::game::CommonGame::decorate_entity_display_name_with_uuid(
+                    &kind, uuid, team, name,
+                )
             }
         }
     }

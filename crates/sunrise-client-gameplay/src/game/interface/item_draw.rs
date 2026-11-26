@@ -561,7 +561,8 @@ impl crate::game::ClientGame<'_> {
             // getUseItemRemainingTicks: the duration the use started with,
             // as LivingEntityUseItemEvent.Start and .Tick left it (`game/items/item_use.rs`).
             owner.use_item_remaining_ticks = self.common.use_duration - ticks as i32;
-            owner.crossbow_charge_duration = sunrise_gameplay_common::game::CommonGame::charge_ticks(stack).max(1) as i32;
+            owner.crossbow_charge_duration =
+                sunrise_gameplay_common::game::CommonGame::charge_ticks(stack).max(1) as i32;
         }
         owner.fishing_cast_with_this_item = stack
             .zip(self.cast_rod())
@@ -691,13 +692,7 @@ impl crate::game::ClientGame<'_> {
         state
     }
     /// `GuiGraphics.renderItem(player, level, stack, x, y, 0)`.
-    pub fn draw_item_model(
-        &self,
-        batch: &mut HudBatch,
-        stack: &ItemStack,
-        x: f32,
-        y: f32,
-    ) {
+    pub fn draw_item_model(&self, batch: &mut HudBatch, stack: &ItemStack, x: f32, y: f32) {
         let owner = self.player_owner(Some(stack));
         self.draw_item_model_with_owner(batch, stack, x, y, Some(&owner));
     }

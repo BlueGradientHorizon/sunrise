@@ -79,7 +79,9 @@ fn third_guest(game: &mut sunrise_gameplay::game::ServerGame<'_>, position: [f64
 }
 
 /// Runs `test` with the probe listening and three guests, guest 14 standing apart at `FAR`.
-fn with_probe(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &dyn Fn() -> Vec<Heard>)) {
+fn with_probe(
+    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &dyn Fn() -> Vec<Heard>),
+) {
     let heard = Arc::new(Mutex::new(Vec::new()));
     let mods = vec![ModEntry::new("spectating", Box::new(Probe(heard.clone())))];
     mod_platform::testing::with_mods(mods.into(), || {

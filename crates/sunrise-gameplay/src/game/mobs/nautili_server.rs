@@ -11,7 +11,8 @@ impl ServerGame<'_> {
             return false;
         }
         let taming: Vec<String> = self
-            .common.res
+            .common
+            .res
             .items()
             .item_tags
             .get("minecraft:nautilus_taming_items")
@@ -45,7 +46,11 @@ impl ServerGame<'_> {
             if !tame && food {
                 // tryToTame: one time in three.
                 self.use_nautilus_food(item);
-                let rolled = self.common.mobs[index].random.next_int_bound(3).unwrap_or(1) == 0;
+                let rolled = self.common.mobs[index]
+                    .random
+                    .next_int_bound(3)
+                    .unwrap_or(1)
+                    == 0;
                 let acting = self.acting_player_uuid();
                 let (tamer, tamer_entity_id) = (self.native_acting_id(), self.own_entity_id());
                 let tamed = rolled && !self.animal_tame_cancelled(index, tamer, tamer_entity_id);
@@ -57,7 +62,11 @@ impl ServerGame<'_> {
                     m.nav_stop();
                 }
                 if tamed {
-                    self.set_event_ai_target(self.common.mobs[index].id, None, self.server.lan_acting);
+                    self.set_event_ai_target(
+                        self.common.mobs[index].id,
+                        None,
+                        self.server.lan_acting,
+                    );
                 }
                 let sound = nautilus::eat_sound(&self.common.mobs[index]);
                 // TamableAnimal.spawnTamingParticles (entity event 7 or 6).
@@ -77,7 +86,8 @@ impl ServerGame<'_> {
                 // TamableAnimal.feed: heals 2 x the food's nutrition, 1 for an
                 // item with no food component.
                 let nutrition = self
-                    .common.res
+                    .common
+                    .res
                     .items()
                     .get(item)
                     .and_then(|i| i.food.as_ref())
@@ -147,7 +157,8 @@ impl ServerGame<'_> {
         false
     }
     pub(in crate::game::server_side) fn item_tagged(&self, tag: &str, item: &str) -> bool {
-        self.common.res
+        self.common
+            .res
             .items()
             .item_tags
             .get(tag)
@@ -157,9 +168,11 @@ impl ServerGame<'_> {
     /// click on a nautilus, used or not, makes it persistent before its own
     /// handling runs.
     pub(in crate::game::server_side) fn nautilus_clicked(&mut self, id: Option<i32>) {
-        let Some(index) =
-            id.and_then(|id| sunrise_gameplay_common::game::item_actions::named_entity(&self.common.mobs, id, |m| m.id))
-        else {
+        let Some(index) = id.and_then(|id| {
+            sunrise_gameplay_common::game::item_actions::named_entity(&self.common.mobs, id, |m| {
+                m.id
+            })
+        }) else {
             return;
         };
         if nautilus::is_nautilus(self.common.mobs[index].species()) {

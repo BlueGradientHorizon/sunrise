@@ -15,11 +15,11 @@
 //! LOGS: none. READS-BY: `Game::tick_world`. ENDS-WHEN: every kind ticks
 //! from the join-order walk.
 
-use crate::game::ServerGame;
 use super::super::native_ticks::TickRound;
+use crate::game::ServerGame;
+use mod_api::EntityRef;
 use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_gameplay_common::game::general::{GeneralTypeCatalog, general_type_catalog};
-use mod_api::EntityRef;
 use sunrise_sim::join_seq::JoinSeq;
 
 struct GeneralTickPass<'a> {
@@ -207,7 +207,8 @@ impl ServerGame<'_> {
             self.position_general_row(index);
         }
         if self
-            .common.resident_entities
+            .common
+            .resident_entities
             .general
             .riders
             .mob_vehicles
@@ -287,11 +288,7 @@ fn general_tick_subscribed(catalog: &GeneralTypeCatalog) -> Vec<bool> {
 /// removal — `entity_remove` leaves it in the list until the sweep — or
 /// rewrite its mount. The row's identity is its place: nothing in the pass
 /// reorders the storage, so an index read now is the row it names.
-fn general_row_live(
-    game: &crate::game::ServerGame<'_>,
-    index: usize,
-    mount: Option<u32>,
-) -> bool {
+fn general_row_live(game: &crate::game::ServerGame<'_>, index: usize, mount: Option<u32>) -> bool {
     game.resident_entities
         .general
         .rows

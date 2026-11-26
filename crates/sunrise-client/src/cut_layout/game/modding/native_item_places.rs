@@ -1,70 +1,67 @@
-
-
 #![cfg(test)]
 
 #[cfg(test)]
 pub(crate) mod tests {
-use sunrise_gameplay_common::game::server_side::native_item_places::tests::Bin;
-use mod_api::HostTransaction as _;
-use sunrise_gameplay_common::game::{
-    native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
-    native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _,
-    native_server::NativeServerGameExt1 as _,
-    tables::GameItems as _,
-};
+    use mod_api::HostTransaction as _;
+    use sunrise_gameplay_common::game::server_side::native_item_places::tests::Bin;
+    use sunrise_gameplay_common::game::{
+        native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
+        native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _,
+        native_server::NativeServerGameExt1 as _, tables::GameItems as _,
+    };
 
-use sunrise_gameplay_common::game::TryIntoApi;
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
-use sunrise_gameplay_common::game::in_own_process;
+    use sunrise_gameplay_common::game::TryIntoApi;
+    use sunrise_gameplay_common::game::in_own_process;
+    use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 
-use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;
+    use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;
 
-use sunrise_gameplay_common::game::server_side::native_item_places::tests::offers;
+    use sunrise_gameplay_common::game::server_side::native_item_places::tests::offers;
 
-use sunrise_gameplay::game::server_side::native_item_places::tests::hopper_slot;
+    use sunrise_gameplay::game::server_side::native_item_places::tests::hopper_slot;
 
-use sunrise_gameplay::game::server_side::native_item_places::tests::hopper_with;
+    use sunrise_gameplay::game::server_side::native_item_places::tests::hopper_with;
 
-use sunrise_gameplay::game::server_side::native_item_places::tests::inventories;
+    use sunrise_gameplay::game::server_side::native_item_places::tests::inventories;
 
-use sunrise_gameplay::game::server_side::native_item_places::tests::menu_of;
+    use sunrise_gameplay::game::server_side::native_item_places::tests::menu_of;
 
-use sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan;
+    use sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan;
 
-use sunrise_gameplay::game::server_side::native_item_places::tests::pig;
+    use sunrise_gameplay::game::server_side::native_item_places::tests::pig;
 
-use sunrise_gameplay::game::server_side::native_item_places::tests::saved_mob_attribute;
+    use sunrise_gameplay::game::server_side::native_item_places::tests::saved_mob_attribute;
 
-use sunrise_gameplay::game::server_side::native_item_places::tests::trade;
+    use sunrise_gameplay::game::server_side::native_item_places::tests::trade;
 
-use sunrise_gameplay::game::server_side::native_item_places::tests::traders;
+    use sunrise_gameplay::game::server_side::native_item_places::tests::traders;
 
-use sunrise_gameplay::game::server_side::native_item_places::tests::with_cauldron;
+    use sunrise_gameplay::game::server_side::native_item_places::tests::with_cauldron;
 
-use sunrise_gameplay::game::server_side::native_item_places::tests::write;
+    use sunrise_gameplay::game::server_side::native_item_places::tests::write;
 
-use sunrise_gameplay::game::server_side::native_item_places::tests::zombie;
+    use sunrise_gameplay::game::server_side::native_item_places::tests::zombie;
 
-use sunrise_level::containers::BlockEntity;
+    use sunrise_level::containers::BlockEntity;
 
-use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::with_game;
 
-use mod_api::ServerHost;
+    use mod_api::ServerHost;
 
-use mod_api::{
+    use mod_api::{
         CraftedByError, ENTITY_AUTOMATION, ENTITY_ITEMS, ItemPlace, ItemPlaceEditError,
         ItemResource, MenuRef, TransactionError,
     };
 
-use std::sync::{Arc, atomic::AtomicI32, mpsc};
+    use std::sync::{Arc, atomic::AtomicI32, mpsc};
 
-use sunrise_core::geometry::Direction;
+    use sunrise_core::geometry::Direction;
 
-use sunrise_items::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
-use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
+    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn whole_stack_component_edit_preserves_slot_and_refuses_invalid_components() {
         use mod_api::{StackWriteError, Tag};
@@ -160,7 +157,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             assert_eq!(game.dropped.len(), dropped_before);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn whole_stack_component_edit_rolls_back_with_its_transaction() {
         use mod_api::{Hand, Tag};
@@ -254,7 +251,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             assert_eq!(inventory(game), before);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_bucket_fills_and_empties_whole_through_its_place_and_splits_off_its_stack() {
         use mod_api::{BlockUpdateFlags, FLUIDS, ITEM_FLUIDS, resource_util::move_resources};
@@ -290,19 +287,21 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             game.server.lan.as_mut().unwrap().hub.guests.push(player);
             let slot = |slot| ItemPlace::PlayerSlot { player: 123, slot };
             // Up to a bucket from the cauldron at `at` into the bucket in `slot`, or back.
-            let moved =
-                |game: &mut sunrise_gameplay::game::ServerGame<'_>, at, slot: &ItemPlace, into_bucket| {
-                    let host: &mut dyn ServerHost = game;
-                    let block = level.capability(host, &FLUIDS, at, None).unwrap();
-                    let bucket = slot.capability(host, &ITEM_FLUIDS).unwrap();
-                    let (from, to) = match into_bucket {
-                        true => (&block, &bucket),
-                        false => (&bucket, &block),
-                    };
-                    host.transaction(|host, tx| {
-                        move_resources(host, from, to, |_| true, 1000, Some(tx))
-                    })
+            let moved = |game: &mut sunrise_gameplay::game::ServerGame<'_>,
+                         at,
+                         slot: &ItemPlace,
+                         into_bucket| {
+                let host: &mut dyn ServerHost = game;
+                let block = level.capability(host, &FLUIDS, at, None).unwrap();
+                let bucket = slot.capability(host, &ITEM_FLUIDS).unwrap();
+                let (from, to) = match into_bucket {
+                    true => (&block, &bucket),
+                    false => (&bucket, &block),
                 };
+                host.transaction(|host, tx| {
+                    move_resources(host, from, to, |_| true, 1000, Some(tx))
+                })
+            };
             let inventory = |game: &sunrise_gameplay::game::ServerGame<'_>| {
                 game.server.lan.as_ref().unwrap().hub.guests[0]
                     .inventory
@@ -343,7 +342,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             assert_eq!(inventory(game)[5], lava);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_guests_place_is_written_as_theirs_and_an_abort_puts_it_back() {
         with_game(|game| {
@@ -393,7 +392,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             assert_eq!(game.inventory, host_before);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn an_armour_slot_holds_one() {
         with_game(|game| {
@@ -414,7 +413,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             assert_eq!(wrote, Ok(1));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn worn_component_edit_is_quiet_and_reaches_tracking() {
         use mod_api::{EquipmentSlot, Tag};
@@ -489,7 +488,9 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             })
             .unwrap();
             assert!(game.server.pending_sounds.is_empty());
-            assert!(sunrise_gameplay::game::server_side::dispense_fixture::stop_recording().is_empty());
+            assert!(
+                sunrise_gameplay::game::server_side::dispense_fixture::stop_recording().is_empty()
+            );
 
             let tracked = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
                 game.server.level_pass.packets_drained = true;
@@ -569,7 +570,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn virtual_wrappers_refuse_a_whole_stack_edit() {
         super::super::native_guest_turn_tests::with_guests(|game| {
@@ -619,7 +620,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             assert_eq!(guest.carried.as_ref(), Some(&cursor_stack));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn player_cursor_whole_stack_edit_validates_and_rolls_back() {
         use mod_api::{MenuReplace, StackWriteError, Tag};
@@ -832,7 +833,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn player_cursor_edit_syncs_set_cursor_item_once() {
         use mod_api::{MenuReplace, Tag};
@@ -878,7 +879,12 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             // Sync initial inventory + cursor; subsequent tick sync sends no SetCursorItem.
             game.server.lan.as_mut().unwrap().hub.send_inventory(0);
             let _ = cursor_packets(&rx);
-            game.server.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .sync_guest_after_tick(1);
             assert!(cursor_packets(&rx).is_empty());
 
             let direct_instrument = Tag::compound([
@@ -931,7 +937,12 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 })
             })
             .unwrap();
-            game.server.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .sync_guest_after_tick(1);
             let updates = cursor_packets(&rx);
             let [Some(parked)] = updates.as_slice() else {
                 panic!("expected one carried stack update, got {updates:?}");
@@ -993,7 +1004,12 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                     rest: Vec::new(),
                 })
             );
-            game.server.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .sync_guest_after_tick(1);
             assert!(cursor_packets(&rx).is_empty());
 
             // A resident component whose registry reference cannot be represented for
@@ -1090,11 +1106,16 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 .unwrap()
                 .hub
                 .sync_containers(&game.common.world);
-            game.server.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .sync_guest_after_tick(1);
             assert!(cursor_packets(&rx).is_empty());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn cursor_edit_interleaved_with_stale_component_hash_click_still_syncs() {
         use mod_api::{BlockUpdateFlags, Tag};
@@ -1217,7 +1238,12 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 .hub
                 .stack(&Some(renamed_paper.clone()));
             assert_eq!(cursor_updates(&rx), vec![renamed_net]);
-            game.server.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .sync_guest_after_tick(1);
             assert!(cursor_updates(&rx).is_empty());
 
             // A follow-up click with the exact current component hash agrees silently.
@@ -1236,7 +1262,12 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 }),
             );
             assert!(cursor_updates(&rx).is_empty());
-            game.server.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .sync_guest_after_tick(1);
             assert!(cursor_updates(&rx).is_empty());
 
             // Crafting-table path: open table (syncing renamed_paper), then change carried's
@@ -1293,7 +1324,12 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 })
                 .collect();
             assert_eq!(corrected_cursor, vec![table_net]);
-            game.server.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .sync_guest_after_tick(1);
             assert!(cursor_updates(&rx).is_empty());
 
             // A crafting click with the exact component hash agrees and sends no resync.
@@ -1325,11 +1361,16 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 .filter(|packet| matches!(packet, C::SetCursorItem(_) | C::ContainerSetContent(_)))
                 .collect();
             assert!(resyncs.is_empty());
-            game.server.lan.as_mut().unwrap().hub.sync_guest_after_tick(1);
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .sync_guest_after_tick(1);
             assert!(cursor_updates(&rx).is_empty());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn component_edit_preserves_live_nested_data_and_applies_a_removal() {
         use mod_api::Tag;
@@ -1410,7 +1451,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             assert_eq!(map.map_post_processing, Some(1));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn editing_a_raid_banners_name_preserves_its_other_components() {
         use mod_api::Tag;
@@ -1507,7 +1548,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             assert!(banner(game).same_item_same_components(&fresh));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn nested_equipment_rollback_restores_the_live_modifiers_not_the_quiet_stack() {
         use mod_api::{EquipmentSlot, Tag};
@@ -1597,7 +1638,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             }
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn equipment_rollback_undoes_a_rebuild_after_a_quiet_edit() {
         use mod_api::{EquipmentSlot, Tag};
@@ -1656,7 +1697,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn equipment_rollback_keeps_a_later_permanent_modifier_with_the_same_id() {
         use mod_api::{
@@ -1720,7 +1761,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_same_id_gear_refresh_only_keeps_its_overwrite_on_commit() {
         use mod_api::{
@@ -1803,7 +1844,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             });
         }
     }
-/// A living entity's [`ENTITY_ITEMS`] is its equipment (#932): seven slots by
+    /// A living entity's [`ENTITY_ITEMS`] is its equipment (#932): seven slots by
     /// `EquipmentSlot`'s ordinal, the armour ones taking only what their `equippable`
     /// names for that kind, the writes transactional — an abort puts the equipment back
     /// and stays quiet, a commit is `set_equipment`'s write.
@@ -1874,7 +1915,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             );
         });
     }
-/// A committed equipment write through the handler is `set_equipment`'s: the same
+    /// A committed equipment write through the handler is `set_equipment`'s: the same
     /// stacks, and the same attribute map (#941's live map reads the worn armour).
     #[test]
     #[ignore = "daily"]
@@ -1884,7 +1925,8 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             zombie(game);
             game.common.mobs.push(sunrise_sim::mobs::Mob::new(
                 31,
-                game.common.res
+                game.common
+                    .res
                     .mob_types()
                     .get("minecraft:zombie")
                     .unwrap()
@@ -1935,7 +1977,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn player_slot_extract_matches_resident_damage_without_max_damage() {
         sunrise_gameplay_common::game::in_own_process(
@@ -1997,7 +2039,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             },
         );
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_creative_players_selected_stack_takes_what_fits_and_keeps_it() {
         with_game(|game| {
@@ -2027,7 +2069,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_kept_handler_reaches_nothing_once_its_cart_is_removed() {
         use sunrise_gameplay_common::game::commands_common::Target;
@@ -2051,7 +2093,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             assert_eq!(wrote, Ok(0));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn bound_armour_comes_off_only_in_creative() {
         with_game(|game| {
@@ -2088,10 +2130,13 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                     .update(0, |guest| guest.game_mode = value);
             }
             assert_eq!(take(game), Ok(1));
-            assert_eq!(game.server.lan.as_ref().unwrap().hub.guests[0].armor[0], None);
+            assert_eq!(
+                game.server.lan.as_ref().unwrap().hub.guests[0].armor[0],
+                None
+            );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn an_equippable_whose_entity_tag_holds_the_player_fits_its_slot() {
         use mod_api::{ComponentId, Tag};
@@ -2128,7 +2173,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             assert_eq!(items.capacity(host, 39, Some(&helmet)), 1);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_kept_handler_reaches_nothing_once_its_world_closes() {
         use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
@@ -2152,7 +2197,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             assert_eq!(wrote, Ok(0));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn crafted_by_processes_a_held_map_and_defers_the_stat_and_new_map_until_commit() {
         use sunrise_gameplay_common::game::maps::MapData;
@@ -2268,13 +2313,16 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn crafted_by_map_reservations_follow_nested_commit_and_abort() {
-        use sunrise_sim::menu::Menu;
-        use {sunrise_gameplay_common::game::maps::MapData, sunrise_gameplay_common::game::maps::map_id};
         use sunrise_core::nbt::Tag;
+        use sunrise_sim::menu::Menu;
         use sunrise_sim::save::read_dat;
+        use {
+            sunrise_gameplay_common::game::maps::MapData,
+            sunrise_gameplay_common::game::maps::map_id,
+        };
 
         super::super::native_guest_turn_tests::with_guests(|game| {
             let save = tempfile::tempdir().unwrap();
@@ -2379,18 +2427,23 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             assert!(!maps_dir.join(format!("{}.dat", source + 3)).exists());
         });
     }
-pub(crate) fn with_crafted_by_handler_map(
+    pub(crate) fn with_crafted_by_handler_map(
         accepts_replacement: bool,
         on_insert: Option<sunrise_sim::lan::PlayerSender>,
-        test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, ItemPlace, i32, mod_api::ItemStack),
+        test: impl FnOnce(
+            &mut sunrise_gameplay::game::ServerGame<'_>,
+            ItemPlace,
+            i32,
+            mod_api::ItemStack,
+        ),
     ) {
-        use sunrise_gameplay_common::game::maps::MapData;
         use mod_api::__private::game::Fields;
         use mod_api::{
             AttachedItems, AttachmentType, Holder, MenuReplace, MenuSlotPlace, ResourceHandler,
             StackList, TransactionContext,
         };
         use sunrise_core::nbt::{JavaString, Tag};
+        use sunrise_gameplay_common::game::maps::MapData;
 
         static MAP_SLOT: AttachmentType<StackList<ItemResource>> = AttachmentType {
             namespace: "crafted_map_fixture",
@@ -2558,7 +2611,7 @@ pub(crate) fn with_crafted_by_handler_map(
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn crafted_by_replaces_the_map_in_a_handler_backed_slot() {
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
@@ -2601,7 +2654,7 @@ pub(crate) fn with_crafted_by_handler_map(
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn crafted_by_refused_handler_write_drops_the_map_and_stat() {
         if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
@@ -2634,11 +2687,11 @@ pub(crate) fn with_crafted_by_handler_map(
             assert_eq!(crafted, 0);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn crafted_by_packet_refusal_returns_commit_refused_and_drops_map_and_stat() {
-        use sunrise_gameplay_common::game::maps::MapData;
         use std::sync::{atomic::AtomicUsize, mpsc};
+        use sunrise_gameplay_common::game::maps::MapData;
         use sunrise_sim::lan::{PlayerSender, conn::transaction_packets::Scope};
 
         const CASE: &str = "SUNRISE_CRAFTED_BY_PACKET_REFUSAL_CASE";
@@ -2738,7 +2791,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert!(receive.try_recv().is_err());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_chest_menus_slots_write_the_chest_and_the_inventory_and_an_abort_puts_them_back() {
         use mod_api::BlockUpdateFlags;
@@ -2827,7 +2880,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert_eq!(held(game).0, None);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_chests_menu_over_the_furnace_set_in_its_place_reaches_none_of_its_slots() {
         use mod_api::BlockUpdateFlags;
@@ -2892,7 +2945,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert!(f.items.iter().all(Option::is_none));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn an_armour_slot_and_the_craft_result_take_only_what_the_inventory_menu_lets_them() {
         with_game(|game| {
@@ -2920,7 +2973,7 @@ pub(crate) fn with_crafted_by_handler_map(
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_crafting_grid_write_makes_its_result_at_the_commit() {
         with_game(|game| {
@@ -2961,7 +3014,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert_eq!(result(game), None);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_mods_chest_menu_is_written_by_slot_and_a_replaced_menu_writes_nothing() {
         with_game(|game| {
@@ -2997,7 +3050,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert_eq!(write(game, &fresh, "minecraft:diamond", 1, true), 1);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_furnace_menus_fuel_slot_takes_one_bucket_as_its_slot_does() {
         use mod_api::BlockUpdateFlags;
@@ -3048,7 +3101,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert_eq!(menu.slot_holds(host, 39, &bucket), None);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_stale_menus_cursor_reaches_nothing_of_the_next_ones() {
         with_game(|game| {
@@ -3071,7 +3124,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert_eq!(write(game, &fresh, "minecraft:stick", -1, true), 1);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_grid_written_in_and_around_an_aborted_child_makes_its_result_from_what_stays() {
         with_game(|game| {
@@ -3109,7 +3162,7 @@ pub(crate) fn with_crafted_by_handler_map(
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_players_items_go_where_inventory_add_puts_them_and_an_abort_puts_them_back() {
         with_game(|game| {
@@ -3150,7 +3203,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert_eq!(head, Ok(0));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_trade_between_two_players_moves_both_offers() {
         with_game(|game| {
@@ -3165,7 +3218,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert_eq!(after[1][1], Some(ItemStack::new("minecraft:diamond", 3)));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_trade_into_a_full_inventory_moves_nothing() {
         with_game(|game| {
@@ -3178,7 +3231,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert_eq!(inventories(game), before);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_stale_offer_moves_nothing() {
         with_game(|game| {
@@ -3203,11 +3256,11 @@ pub(crate) fn with_crafted_by_handler_map(
             assert_eq!(inventories(game), before);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn scoped_boat_slots_use_the_open_menu_and_refuse_a_removed_owner() {
-        use sunrise_gameplay_common::game::boats_common::Boat;
         use sunrise_core::geometry::Vec3;
+        use sunrise_gameplay_common::game::boats_common::Boat;
         with_game(|game| {
             let mut boat = Boat::new(600, "oak".into(), Vec3::new(1.0, 65.0, 2.0), 0.0);
             boat.chest = true;
@@ -3221,7 +3274,11 @@ pub(crate) fn with_crafted_by_handler_map(
                 }),
                 Some(27)
             );
-            let key = (i32::MAX - 15, sunrise_gameplay_common::game::minecarts::CART_KEY_Y, 600);
+            let key = (
+                i32::MAX - 15,
+                sunrise_gameplay_common::game::minecarts::CART_KEY_Y,
+                600,
+            );
             game.world
                 .block_entities
                 .insert(key, BlockEntity::Chest(vec![None; 27]));
@@ -3244,7 +3301,7 @@ pub(crate) fn with_crafted_by_handler_map(
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_chest_minecarts_items_are_its_slots() {
         use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
@@ -3288,12 +3345,12 @@ pub(crate) fn with_crafted_by_handler_map(
             assert!(plain.capability(host, &ENTITY_ITEMS, ()).is_none());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn reading_and_writing_vehicle_slots_unpack_pending_loot() {
+        use sunrise_core::{geometry::Vec3, nbt::Tag};
         use sunrise_gameplay_common::game::boats_common::Boat;
         use sunrise_gameplay_common::game::minecarts::{CART_KEY_Y, CartKind, Minecart};
-        use sunrise_core::{geometry::Vec3, nbt::Tag};
         use sunrise_sim::save::PendingContainerLoot;
         with_game(|game| {
             game.load_server_loot();
@@ -3408,7 +3465,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert!(write_raw.and_then(|tag| tag.get("LootTableSeed")).is_none());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn player_cursor_read_ignores_guest_liveness() {
         with_game(|game| {
@@ -3467,11 +3524,11 @@ pub(crate) fn with_crafted_by_handler_map(
             assert_eq!(cursor.with_stack(game, |_| ()), None);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn cart_slot_edits_prefer_the_menu_and_refuse_a_removed_owner() {
-        use sunrise_gameplay_common::game::minecarts::{CART_KEY_Y, CartKind, Minecart};
         use sunrise_core::geometry::Vec3;
+        use sunrise_gameplay_common::game::minecarts::{CART_KEY_Y, CartKind, Minecart};
         with_game(|game| {
             let mut cart = Minecart::new(600, CartKind::Chest, Vec3::new(1.0, 65.0, 2.0));
             cart.items[0] = Some(ItemStack::new("minecraft:stone", 4));
@@ -3516,7 +3573,7 @@ pub(crate) fn with_crafted_by_handler_map(
             );
         });
     }
-/// Runs `test` with a mod answering `ENTITY_AUTOMATION` for pigs with `bin`.
+    /// Runs `test` with a mod answering `ENTITY_AUTOMATION` for pigs with `bin`.
     pub(crate) fn with_bin_pigs(
         bin: &Bin,
         test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
@@ -3537,7 +3594,7 @@ pub(crate) fn with_crafted_by_handler_map(
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_platform::testing::with_mods(mods, || with_game(test));
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_hopper_pushes_into_a_mod_entity_below_it_through_the_side_it_faces() {
         let bin = Bin::default();
@@ -3559,7 +3616,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert!(sides.iter().all(|side| *side == Some(Direction::Up)));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_hopper_pushes_into_a_block_with_no_block_entity_whose_provider_voids_the_items() {
         use mod_api::{self, Hooks, ModEntry, Mods, Registrar};
@@ -3648,7 +3705,7 @@ pub(crate) fn with_crafted_by_handler_map(
             })
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_hopper_pulls_from_a_mod_entity_above_it_through_its_bottom() {
         let bin = Bin::default();
@@ -3670,7 +3727,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert!(sides.iter().all(|side| *side == Some(Direction::Down)));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_hopper_still_fills_a_chest_minecart_and_a_player_is_not_reached() {
         use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
@@ -3704,7 +3761,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert!(bin.held.lock().unwrap().is_none());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_dropper_puts_into_a_mod_entity_in_front_of_it() {
         use sunrise_level::chunk::Chunk;
@@ -3747,7 +3804,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert!(sides.iter().all(|side| *side == Some(Direction::Up)));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_crafter_puts_into_a_mod_entity_and_dispenses_only_what_it_refuses() {
         use mod_api::BlockUpdateFlags;
@@ -3815,7 +3872,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert!(sides.iter().all(|side| *side == Some(Direction::Up)));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_mod_without_an_automation_provider_leaves_hoppers_on_the_vanilla_path() {
         use mod_api::{
@@ -3850,7 +3907,7 @@ pub(crate) fn with_crafted_by_handler_map(
             });
         });
     }
-/// #932, review: an armor stand's equipment through the same handler —
+    /// #932, review: an armor stand's equipment through the same handler —
     /// a hopper dressing a stand — journaled like a mob's, an abort putting
     /// #932, review: an armor stand's equipment through the same handler —
     /// a hopper dressing a stand — journaled like a mob's, an abort putting
@@ -3955,7 +4012,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert_eq!(stand_slot(game, 0), None);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_scratch_stack_lives_in_its_transaction_and_keeps_its_item() {
         use mod_api::{
@@ -4099,7 +4156,7 @@ pub(crate) fn with_crafted_by_handler_map(
             assert_eq!(game.live_scratch_count(), 0);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_scratch_stack_merges_into_its_parent_and_ends_with_the_outermost() {
         use mod_api::ScratchError;
@@ -4254,7 +4311,7 @@ pub(crate) fn with_crafted_by_handler_map(
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_strict_slot_refuses_what_the_plain_slot_spreads() {
         use mod_api::BlockUpdateFlags;
@@ -4307,7 +4364,7 @@ pub(crate) fn with_crafted_by_handler_map(
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn one_by_one_shows_one_bucket_of_sixteen_and_fills_one() {
         use mod_api::{FLUIDS, ITEM_FLUIDS, resource_util::move_resources};

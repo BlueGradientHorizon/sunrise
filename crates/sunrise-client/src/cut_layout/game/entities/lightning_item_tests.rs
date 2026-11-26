@@ -1,7 +1,7 @@
 #![cfg(test)]
-use sunrise_gameplay_common::game::lightning_common::Bolt;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::lightning_common::Bolt;
 use sunrise_items::items::ItemStack;
 
 #[test]

@@ -1,4 +1,3 @@
-use {sunrise_gameplay_common::game::in_own_process, sunrise_gameplay_common::game::lan_actions::GuestCommand, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
@@ -8,6 +7,11 @@ use sunrise_protocol::{
     buf::Reader, ids::play::clientbound::SYSTEM_CHAT, packets::play::Clientbound,
 };
 use sunrise_sim::lan::{Out, PlayerSender};
+use {
+    sunrise_gameplay::game::native_guest_turn_tests::with_guests,
+    sunrise_gameplay_common::game::in_own_process,
+    sunrise_gameplay_common::game::lan_actions::GuestCommand,
+};
 
 pub(crate) struct FailingCommand(pub(crate) Arc<AtomicUsize>);
 
@@ -182,7 +186,12 @@ fn executor_failure_respects_source_silence_and_stores_zero() {
                                 else {
                                     unreachable!()
                                 };
-                                Some(sunrise_gameplay_common::game::remote::remote_text(&chat.content).plain())
+                                Some(
+                                    sunrise_gameplay_common::game::remote::remote_text(
+                                        &chat.content,
+                                    )
+                                    .plain(),
+                                )
                             })
                             .collect();
                         assert_eq!(received, [text::Text::tr("command.failed", &[]).plain()]);

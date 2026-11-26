@@ -17,7 +17,9 @@ impl ClientGame<'_> {
         self.native_music(&mut music, &mut volume);
         let mut layers = Vec::new();
         self.native_music_layers(&mut layers);
-        self.client.music_layers.tick(&layers, &mut self.client.audio.0);
+        self.client
+            .music_layers
+            .tick(&layers, &mut self.client.audio.0);
         // Options.musicFrequency's listener: MusicManager.setMinutesBetweenSongs.
         let frequency = MusicFrequency::parse(&self.client.settings.file.name("musicFrequency"));
         if frequency != self.client.music.frequency {
@@ -185,8 +187,11 @@ impl ClientGame<'_> {
         let (vehicle, carts) = self.start_cart_sounds();
         let mobs = self.start_mob_sounds();
         let ridden = self.start_riding_sound();
-        let (player_position, player_speed_sqr, player_fall_flying) =
-            self.common.player.as_ref().map_or(([0.0; 3], 0.0, false), |p| {
+        let (player_position, player_speed_sqr, player_fall_flying) = self
+            .common
+            .player
+            .as_ref()
+            .map_or(([0.0; 3], 0.0, false), |p| {
                 let at = p.position;
                 (
                     [at.x, at.y, at.z],
@@ -239,12 +244,15 @@ impl ClientGame<'_> {
         // reconfiguration clears it again. Use the render camera's probe
         // while the level is present, not the local player's eyes.
         let in_world = self.client.title.0.is_none()
-            && (self.common.player.is_some() || self.client.remote.as_ref().is_some_and(|r| r.has_level()));
+            && (self.common.player.is_some()
+                || self.client.remote.as_ref().is_some_and(|r| r.has_level()));
         let (background, probe_volume) = if in_world {
             let biome = self.biome_at(self.client.view.position);
-            self.client_res()
-                .music()
-                .at(self.common.dim.id(), biome, world_biomes!(self).pack_file(biome))
+            self.client_res().music().at(
+                self.common.dim.id(),
+                biome,
+                world_biomes!(self).pack_file(biome),
+            )
         } else {
             (BackgroundMusic::default(), 1.0)
         };
@@ -272,7 +280,8 @@ impl ClientGame<'_> {
             p[1].floor() as i32,
             p[2].floor() as i32,
         );
-        self.common.world
+        self.common
+            .world
             .chunks
             .get(&(x >> 4, z >> 4))
             .map_or("minecraft:plains", |c| {
@@ -282,11 +291,19 @@ impl ClientGame<'_> {
     /// `isEyeInFluid(WATER)`: the eye inside the water of its block column.
     pub(in crate::game::client_side) fn eye_in_water(&self, x: f64, eye_y: f64, z: f64) -> bool {
         let (bx, by, bz) = (x.floor() as i32, eye_y.floor() as i32, z.floor() as i32);
-        let f = self.common.res.facts().get(self.common.world.block(bx, by, bz));
+        let f = self
+            .common
+            .res
+            .facts()
+            .get(self.common.world.block(bx, by, bz));
         if f.fluid != Fluid::Water {
             return false;
         }
-        let above = self.common.res.facts().get(self.common.world.block(bx, by + 1, bz));
+        let above = self
+            .common
+            .res
+            .facts()
+            .get(self.common.world.block(bx, by + 1, bz));
         let height = if above.fluid == Fluid::Water {
             1.0
         } else {

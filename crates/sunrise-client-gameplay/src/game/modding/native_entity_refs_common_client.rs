@@ -1,5 +1,10 @@
-use {crate::game::client_side::remote_client::Remote, crate::game::client_side::remote_client::general::RemoteGeneral, crate::game::client_side::text_displays::Shows, sunrise_gameplay_common::game::commands_common::Target};
 use mod_api::{EntityRef, LevelRef};
+use {
+    crate::game::client_side::remote_client::Remote,
+    crate::game::client_side::remote_client::general::RemoteGeneral,
+    crate::game::client_side::text_displays::Shows,
+    sunrise_gameplay_common::game::commands_common::Target,
+};
 
 impl crate::game::ClientGame<'_> {
     /// The logged-in window and network id for an entity handle in its current world.
@@ -48,7 +53,8 @@ impl crate::game::ClientGame<'_> {
         }
         // The server tracks the dragon alone; its parts are the client's own copies of it.
         if self.common.dragon.as_ref().is_some_and(|d| {
-            sunrise_gameplay_common::game::dragon_common::dragon_part_index(d.id, entity.id()).is_some()
+            sunrise_gameplay_common::game::dragon_common::dragon_part_index(d.id, entity.id())
+                .is_some()
         }) {
             return Some(Target::DragonPart(entity.id()));
         }
@@ -94,7 +100,13 @@ impl crate::game::ClientGame<'_> {
         if self.common.falling.iter().any(|e| e.id == uid) {
             return Some(Target::Falling(uid));
         }
-        if self.common.creatures.projectiles.iter().any(|e| e.id == uid) {
+        if self
+            .common
+            .creatures
+            .projectiles
+            .iter()
+            .any(|e| e.id == uid)
+        {
             return Some(Target::Projectile(uid));
         }
         if self.common.rockets.iter().any(|e| e.id == uid) {

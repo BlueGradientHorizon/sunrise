@@ -1,5 +1,3 @@
-
-
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "claimed_item_use_tests_client.rs"]
@@ -43,10 +41,10 @@ pub(crate) mod riptide_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
     pub(crate) use crate::game::remote::tests::connect_menu_test;
     pub(crate) use crate::game::remote::tests::connect_play_test;
     pub(crate) use crate::game::remote::tests::spawn_menu_test;
+    use sunrise_gameplay_common::game::GameGameExt1;
 
     pub(crate) mod client_explosion_tests {
         include!("client_explosion_tests_client.rs");
@@ -86,7 +84,7 @@ pub(crate) mod tests {
 
     pub(crate) mod client_level_lifecycle_tests {
         use sunrise_gameplay_common::game::tables::WorldTablesExt;
-include!("client_level_lifecycle_tests_client.rs");
+        include!("client_level_lifecycle_tests_client.rs");
     }
 
     pub(crate) mod client_menu_tests {
@@ -136,9 +134,9 @@ include!("client_level_lifecycle_tests_client.rs");
     #[test]
     #[ignore = "daily"]
     fn declared_gate_uses_its_class_for_blasts_and_predicted_use() {
-        use sunrise_gameplay::game::native_guest_turn_tests::with_guests_at;
         use std::sync::Arc;
         use sunrise_core::position::BlockPos;
+        use sunrise_gameplay::game::native_guest_turn_tests::with_guests_at;
         use sunrise_level::chunk::Chunk;
         use sunrise_mod_package::{
             content::{Block, Content, GateSound},
@@ -199,7 +197,12 @@ include!("client_level_lifecycle_tests_client.rs");
             point: [3.5, 64.875, 4.5],
             inside: false,
         };
-        fn open(game: &sunrise_gameplay_common::game::CommonGame<'_>, x: i32, y: i32, z: i32) -> bool {
+        fn open(
+            game: &sunrise_gameplay_common::game::CommonGame<'_>,
+            x: i32,
+            y: i32,
+            z: i32,
+        ) -> bool {
             let b = game.res.behaviours();
             b.table.bool(game.world.block(x, y, z), b.props.open)
         }

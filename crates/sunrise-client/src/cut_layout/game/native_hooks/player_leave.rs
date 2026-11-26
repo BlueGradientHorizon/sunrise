@@ -1,11 +1,10 @@
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod player_leave_tests {
-    use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
     use mod_api::{Hooks, PlayerBedLeaveEvent, PlayerLoggedOutEvent, Registrar, ServerHost};
     use std::sync::{Arc, Mutex};
     use sunrise_core::nbt::{Compound, Tag};
+    use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
     use sunrise_mod_runtime::attachments::{
         AttachmentCodec, AttachmentError, AttachmentType, Holder,
     };

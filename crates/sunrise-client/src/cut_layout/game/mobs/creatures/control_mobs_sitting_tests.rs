@@ -1,7 +1,7 @@
 //! The `mobs` command's `sitting` is `TamableAnimal.isInSittingPose`, the bit of
 //! `DATA_FLAGS_ID` a server's client gets, not the saved order to sit only the server holds.
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 
 fn reported_sitting(game: &sunrise_gameplay::game::ServerGame<'_>) -> serde_json::Value {
     game.control_mobs_at(4.0, Vec3::new(8.0, 65.0, 8.0))["near"][0]["sitting"].clone()

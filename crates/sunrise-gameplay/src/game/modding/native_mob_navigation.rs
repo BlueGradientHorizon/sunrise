@@ -76,7 +76,8 @@ impl crate::game::ServerGame<'_> {
         #[cfg(test)]
         crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         let moved = mobs[index].nav_move_to(&self.mob_world_base(&[]), at, speed);
-        self.common.mobs
+        self.common
+            .mobs
             .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         moved
     }
@@ -114,7 +115,8 @@ impl crate::game::ServerGame<'_> {
         #[cfg(test)]
         crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         let followed = mobs[index].nav_move_to_supplied(&self.mob_world_base(&[]), &nodes, speed);
-        self.common.mobs
+        self.common
+            .mobs
             .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
         supplied_path_refusal(followed)
     }
@@ -138,7 +140,15 @@ impl crate::game::ServerGame<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
-        Some(self.common.mobs.iter().find(|m| m.id == id)?.ai.nav.is_done())
+        Some(
+            self.common
+                .mobs
+                .iter()
+                .find(|m| m.id == id)?
+                .ai
+                .nav
+                .is_done(),
+        )
     }
 
     /// `PathNavigation.getSpeedModifier`: the multiplier the current path
@@ -149,7 +159,15 @@ impl crate::game::ServerGame<'_> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
-        Some(self.common.mobs.iter().find(|m| m.id == id)?.ai.nav.speed_modifier)
+        Some(
+            self.common
+                .mobs
+                .iter()
+                .find(|m| m.id == id)?
+                .ai
+                .nav
+                .speed_modifier,
+        )
     }
 
     /// The live supported navigation's `can_open_doors` flag; unavailable mobs refuse.
@@ -166,7 +184,12 @@ impl crate::game::ServerGame<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        let Some(mob) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+        let Some(mob) = self
+            .common
+            .mobs
+            .iter_mut()
+            .find(|m| m.id == id && !m.removed)
+        else {
             return false;
         };
         if !navigation_flags_supported(mob) {
@@ -190,7 +213,12 @@ impl crate::game::ServerGame<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        let Some(mob) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+        let Some(mob) = self
+            .common
+            .mobs
+            .iter_mut()
+            .find(|m| m.id == id && !m.removed)
+        else {
             return false;
         };
         if !navigation_flags_supported(mob) {
@@ -214,7 +242,12 @@ impl crate::game::ServerGame<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        let Some(mob) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+        let Some(mob) = self
+            .common
+            .mobs
+            .iter_mut()
+            .find(|m| m.id == id && !m.removed)
+        else {
             return false;
         };
         if !navigation_flags_supported(mob) {
@@ -237,7 +270,8 @@ impl crate::game::ServerGame<'_> {
             return None;
         };
         Some(
-            self.common.mobs
+            self.common
+                .mobs
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .malus(kind),
@@ -261,7 +295,8 @@ impl crate::game::ServerGame<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.common.mobs
+        self.common
+            .mobs
             .iter_mut()
             .find(|m| m.id == id && !m.removed)
             .map(|m| m.set_malus(kind, malus))
@@ -280,7 +315,8 @@ impl crate::game::ServerGame<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
-        self.common.mobs
+        self.common
+            .mobs
             .iter_mut()
             .find(|m| m.id == id)
             .map(|m| m.ai.nav.speed_modifier = speed)

@@ -1,5 +1,3 @@
-
-
 #[cfg(test)]
 #[path = "fishing_tests/block_hit.rs"]
 pub(crate) mod incoming_block_hit_tests;

@@ -1,9 +1,9 @@
 //! `ItemPart::empty_contents` on a dispenser and a player's pour: an item with the Part is
 //! emptied as a bucket, the Part placing the contents itself through the host.
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use mod_api::*;
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Direction;
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 
@@ -171,8 +171,9 @@ fn a_part_that_changes_the_dispensers_slots_is_refused_and_undone() {
             game.level_set_block(level, DISPENSER, dispenser.unwrap(), BlockUpdateFlags::NONE);
         assert_eq!(placed, Ok(true));
         let at = (DISPENSER[0], DISPENSER[1], DISPENSER[2]);
-        let slots =
-            |game: &sunrise_gameplay::game::ServerGame<'_>| game.world.block_entities[&at].slots().to_vec();
+        let slots = |game: &sunrise_gameplay::game::ServerGame<'_>| {
+            game.world.block_entities[&at].slots().to_vec()
+        };
         game.world.block_entities.get_mut(&at).unwrap().slots_mut()[0] =
             Some(ItemStack::new("minecraft:stick", 1));
         let before = slots(game);

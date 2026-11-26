@@ -1,9 +1,12 @@
 //! Exercise the server's attack entry points with real enchantment data.
 use super::*;
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, ItemStack, Vec3, entity, hit}};
 use sunrise_sim::{
     mobs::{Damage, Mob, MobEvent, Who, finalize as f},
     projectiles::{Hit, Projectile, ProjectileKind},
+};
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{Arc, ItemStack, Vec3, entity, hit},
 };
 
 #[allow(unused_imports)]
@@ -198,7 +201,16 @@ fn a_still_guardian_spikes_the_player_who_hit_it() {
         g.mobs.push(guardian);
         let before: Vec<_> = [11, 22]
             .into_iter()
-            .map(|conn| g.server.lan.as_ref().unwrap().hub.guest(conn).unwrap().health)
+            .map(|conn| {
+                g.server
+                    .lan
+                    .as_ref()
+                    .unwrap()
+                    .hub
+                    .guest(conn)
+                    .unwrap()
+                    .health
+            })
             .collect();
         g.as_guest(11, |g| {
             g.player.as_mut().unwrap().health.advance_clock();
@@ -223,7 +235,14 @@ fn a_still_guardian_spikes_the_player_who_hit_it() {
         .unwrap();
         for (conn, expected) in [(11, before[0] - 2.0), (22, before[1])] {
             assert_eq!(
-                g.server.lan.as_ref().unwrap().hub.guest(conn).unwrap().health,
+                g.server
+                    .lan
+                    .as_ref()
+                    .unwrap()
+                    .hub
+                    .guest(conn)
+                    .unwrap()
+                    .health,
                 expected,
                 "only the original attacking guest takes thorns: connection {conn}"
             );

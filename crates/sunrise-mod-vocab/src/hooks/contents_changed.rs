@@ -23,7 +23,8 @@ pub trait Hooks {
     /// notice. Replaces the Create port positional `contents_changed` mixin for depot, package
     /// and schematic storage; there is no matching NeoForge bus event.
     /// Each Part runs in the existing storage journal. A panic discards that Part's tentative writes (including successful nested transactions), not the backing change that raised the notice or another Part's writes.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::contents_changed::ServerGame<'_>::native_contents_changed", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::contents_changed::ServerGame<'_>::native_contents_changed",
         dispatch = "flat",
         side = "server",
         version = 5,

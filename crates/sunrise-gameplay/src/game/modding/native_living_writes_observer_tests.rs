@@ -1,17 +1,17 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
-use mod_api::client::first_person::Hand;
+    use mod_api::client::first_person::Hand;
 
-use mod_api::{
+    use mod_api::{
         EntityRef, Flow, Hooks, HostSide, Identifier, ItemPart, LivingEntityUseItemFinishEvent,
         LivingEntityUseItemStartEvent, LivingEntityUseItemStopEvent, LivingEntityUseItemTickEvent,
         LivingRef, OnUseTickEvent, Registrar, ReleaseUsingEvent, WorldEpoch,
     };
 
-use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex};
 
-/// What a mod heard of item uses, and what it does back.
+    /// What a mod heard of item uses, and what it does back.
     #[derive(Default)]
     pub(in crate::game) struct Uses {
         pub(in crate::game) stops: Vec<(Option<i32>, Hand, i32)>,
@@ -34,10 +34,10 @@ use std::sync::{Arc, Mutex};
         pub(in crate::game) release_on_stop: Option<LivingRef>,
         pub(in crate::game) released_again: Vec<bool>,
     }
-pub(in crate::game) type Shared = Arc<Mutex<Uses>>;
-#[derive(Clone)]
+    pub(in crate::game) type Shared = Arc<Mutex<Uses>>;
+    #[derive(Clone)]
     pub(in crate::game) struct UsePart(pub(in crate::game) Shared);
-#[mod_api::sunrise_part]
+    #[mod_api::sunrise_part]
     impl ItemPart for UsePart {
         fn on_use_tick(&self, host: HostSide, _: &mut OnUseTickEvent<'_>) {
             self.0.lock().unwrap().effects += 1;
@@ -59,8 +59,8 @@ pub(in crate::game) type Shared = Arc<Mutex<Uses>>;
             uses.releases.push((event.entity, event.time_left));
         }
     }
-pub(in crate::game) struct UseMod(pub(in crate::game) Shared);
-#[mod_api::__subscriptions]
+    pub(in crate::game) struct UseMod(pub(in crate::game) Shared);
+    #[mod_api::__subscriptions]
     impl Hooks for UseMod {
         fn register(&self, r: &mut dyn Registrar, _: &mod_api::RegistrationContext) {
             for id in [

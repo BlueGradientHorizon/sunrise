@@ -1,5 +1,8 @@
 use crate::game::server_side::lan::LanSettings;
-use std::sync::{Arc, atomic::{AtomicI32, AtomicUsize}};
+use std::sync::{
+    Arc,
+    atomic::{AtomicI32, AtomicUsize},
+};
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 use sunrise_protocol::packets::configuration::ClientInformation;
@@ -70,10 +73,7 @@ pub fn with_guests_at(
 }
 
 /// Add a fixture menu to both the hub's protocol registry and the mod API's menu keys.
-pub fn register_test_menu(
-    game: &mut crate::game::ServerGame<'_>,
-    id: &str,
-) -> mod_api::MenuKey {
+pub fn register_test_menu(game: &mut crate::game::ServerGame<'_>, id: &str) -> mod_api::MenuKey {
     use sunrise_protocol::registry::Ids;
     use sunrise_sim::lan::data::SyncData;
 
@@ -97,7 +97,6 @@ pub fn register_test_menu(
         .unwrap()
 }
 
-
 /// The UUIDs of the players in the level, checked against the full reader.
 pub fn level_uuids(game: &crate::game::ServerGame<'_>) -> Vec<u128> {
     let uuids: Vec<u128> = game.level_player_uuids(game.dim.id()).collect();
@@ -116,10 +115,7 @@ pub fn place_host(game: &mut crate::game::ServerGame<'_>) {
 }
 
 /// Put the follow-up blow outside the victim's damage cooldown.
-pub fn expire_guest_damage_cooldown(
-    game: &mut crate::game::ServerGame<'_>,
-    conn: u32,
-) {
+pub fn expire_guest_damage_cooldown(game: &mut crate::game::ServerGame<'_>, conn: u32) {
     game.as_guest(conn, |game| {
         let health = &mut game.player.as_mut().unwrap().health;
         while health.hurt.cooldown > 0 {
@@ -131,9 +127,7 @@ pub fn expire_guest_damage_cooldown(
 
 /// An armor stand summoned at (1.5, 70, 1.5) in the level in place, which `with_guests` puts
 /// its two players beside, at (3, 64, 5).
-pub fn summon_stand(
-    game: &mut crate::game::ServerGame<'_>,
-) -> mod_api::EntityRef {
+pub fn summon_stand(game: &mut crate::game::ServerGame<'_>) -> mod_api::EntityRef {
     game.options.dedicated = Some(Vec::new());
     game.world
         .chunks
@@ -155,20 +149,14 @@ pub fn summon_stand(
 }
 
 /// Whether anything the server sent the acting player since `before` is a chat line.
-pub fn told_since(
-    game: &crate::game::ServerGame<'_>,
-    before: usize,
-) -> bool {
+pub fn told_since(game: &crate::game::ServerGame<'_>, before: usize) -> bool {
     use sunrise_protocol::packets::play::Clientbound as C;
     game.server.guest_packets[before..]
         .iter()
         .any(|p| matches!(p, C::SystemChat(_)))
 }
 
-pub fn with_command_guests(
-    name: &str,
-    body: impl FnOnce(&mut crate::game::ServerGame<'_>),
-) {
+pub fn with_command_guests(name: &str, body: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
     sunrise_gameplay_common::game::in_own_process(
         &format!("game::server_side::native_guest_turn_tests::{name}"),
         || {

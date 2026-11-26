@@ -1,10 +1,10 @@
 //! The wither's nether star: `WitherBoss.dropCustomDeathLoot` spawns it and
 //! then calls `ItemEntity.setExtendedLifetime` (`age = -6000`), so the age
 //! discard (`age >= 6000`) takes it at tick 12000 instead of 6000.
-use sunrise_gameplay_common::game::GameGameExt1;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::entities::ItemEntity;
@@ -133,8 +133,8 @@ fn a_stars_negative_age_survives_item_nbt() {
 #[test]
 #[ignore = "daily"]
 fn loot_stack_edits_leave_custom_drop_age_attached() {
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use std::sync::Mutex;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
 
     #[derive(Clone, Copy)]
     enum Edit {

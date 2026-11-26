@@ -1,15 +1,10 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use serde_json::Value;
-use sunrise_sim::advancements::{self as adv, Frame};
+    use serde_json::Value;
+    use sunrise_sim::advancements::{self as adv, Frame};
 
-pub fn announced(
-        title: Value,
-        description: Value,
-    ) -> adv::Advancement {
+    pub fn announced(title: Value, description: Value) -> adv::Advancement {
         adv::Advancement {
             id: "quests:board".into(),
             parent: None,

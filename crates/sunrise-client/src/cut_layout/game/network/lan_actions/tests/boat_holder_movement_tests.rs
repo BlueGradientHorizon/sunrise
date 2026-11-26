@@ -1,5 +1,9 @@
 #![cfg(test)]
-use {crate::game::lan_actions::*, sunrise_items::items::ItemStack, sunrise_gameplay_common::game::lan_actions::{S, movement, packets, play, tick}};
+use {
+    crate::game::lan_actions::*,
+    sunrise_gameplay_common::game::lan_actions::{S, movement, packets, play, tick},
+    sunrise_items::items::ItemStack,
+};
 
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::lan_actions_server::boat_holder_movement_tests::scene;
@@ -28,7 +32,11 @@ pub(in crate::game) fn snapshot(g: &sunrise_gameplay::game::ServerGame<'_>) -> S
         hand: p.inventory[0].clone(),
     }
 }
-pub(in crate::game) fn group(g: &mut sunrise_gameplay::game::ServerGame<'_>, packets: Vec<S>, token: i32) {
+pub(in crate::game) fn group(
+    g: &mut sunrise_gameplay::game::ServerGame<'_>,
+    packets: Vec<S>,
+    token: i32,
+) {
     g.server.lan.as_mut().unwrap().hub.guests.update(0, |p| {
         for packet in packets {
             p.inbox
@@ -37,7 +45,11 @@ pub(in crate::game) fn group(g: &mut sunrise_gameplay::game::ServerGame<'_>, pac
     });
     // Real Hub queue/collision/event dispatch, before the receipt marker.
     g.tick_lan_packets();
-    assert!(g.server.lan.as_ref().unwrap().hub.guests[0].inbox.is_empty());
+    assert!(
+        g.server.lan.as_ref().unwrap().hub.guests[0]
+            .inbox
+            .is_empty()
+    );
     let before = snapshot(g);
     assert!(before.hand.is_none(), "original lead was consumed");
     assert!(before.using.is_none());

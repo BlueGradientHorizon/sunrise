@@ -1,6 +1,9 @@
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::load_resources};
 use crate::settings::Settings;
 use sunrise_sim::mobs::MobEvent;
+use {
+    crate::game::load_resources, sunrise_gameplay_common::game::Options,
+    sunrise_gameplay_common::game::Progress,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -24,7 +27,8 @@ fn local_mob_events_play_without_entering_the_shared_capture() {
     options.resources = root.clone();
     options.game_dir =
         Some(std::env::temp_dir().join(format!("sunrise-h069-unit-{}", std::process::id())));
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
@@ -76,7 +80,11 @@ fn local_mob_events_play_without_entering_the_shared_capture() {
         )];
         game.handle_client_mob_events(&mut events);
         assert_eq!(
-            game.client.audio.0.heard.get("minecraft:entity.breeze.whirl"),
+            game.client
+                .audio
+                .0
+                .heard
+                .get("minecraft:entity.breeze.whirl"),
             Some(&1)
         );
         assert!(game.client.audio.0.capture.as_ref().unwrap().is_empty());

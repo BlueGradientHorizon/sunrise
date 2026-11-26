@@ -289,9 +289,7 @@ fn number_properties(integer: bool, min: Option<i64>, max: Option<i64>) -> Value
 
 /// The parser and properties a mod's argument type goes to clients as, from its declared kind.
 /// `None` for a kind this build cannot read.
-pub fn custom_parser(
-    kind: mod_api::CommandArgumentKind,
-) -> Option<(&'static str, Value)> {
+pub fn custom_parser(kind: mod_api::CommandArgumentKind) -> Option<(&'static str, Value)> {
     use mod_api::CommandArgumentKind as Kind;
     Some(match kind {
         Kind::Word => ("brigadier:string", json!({"type": "word"})),
@@ -375,9 +373,7 @@ pub fn dimension_value(
 }
 
 /// An `nbt` argument's compound, from the SNBT the dispatcher accepted.
-pub fn nbt_value(
-    text: &str,
-) -> Result<mod_api::CommandArgumentValue, CommandError> {
+pub fn nbt_value(text: &str) -> Result<mod_api::CommandArgumentValue, CommandError> {
     let mut reader = Reader::new(text);
     snbt::parse_compound_argument(&mut reader).map(mod_api::CommandArgumentValue::Nbt)
 }

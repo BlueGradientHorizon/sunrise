@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_client::hud::HudBatch;
 #[cfg(feature = "client")]
@@ -11,10 +9,10 @@ pub(crate) mod check_mod_menu_tests;
 #[cfg(test)]
 pub(crate) mod screen_room_tests {
     use super::*;
-    use sunrise_client::recipe_book_screen::Screen as Layout;
-    use sunrise_client::recipe_book_screen::Call;
-    use sunrise_client::recipe_book_screen::Search;
     use sunrise_client::recipe_book_screen as screen;
+    use sunrise_client::recipe_book_screen::Call;
+    use sunrise_client::recipe_book_screen::Screen as Layout;
+    use sunrise_client::recipe_book_screen::Search;
     use sunrise_gameplay_common::game::Screen;
     use sunrise_sim::recipe_book::BookType;
     #[test]
@@ -46,7 +44,10 @@ pub(crate) mod screen_room_tests {
                 let (x, y) = game.book_origin(&batch);
                 assert_eq!((x, y), (110.0, 37.0));
                 assert_eq!(game.tab_pos(x, y, 0), (80.0, 40.0));
-                assert_eq!(sunrise_client_gameplay::game::ClientGame::button_pos(x, y, 0), (121.0, 68.0));
+                assert_eq!(
+                    sunrise_client_gameplay::game::ClientGame::button_pos(x, y, 0),
+                    (121.0, 68.0)
+                );
                 assert_eq!(game.inventory_origin(&batch), (259.0, 37.0));
                 let search = Search::default();
                 let tabs = [screen::TabView {

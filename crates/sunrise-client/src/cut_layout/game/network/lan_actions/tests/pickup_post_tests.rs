@@ -1,10 +1,10 @@
 //! `item_picked_up_post` on whole and partial pickups through the game's own pickup
 //! paths, the host's player (`tick_dropped_items`) and a LAN guest (`guest_pickups`),
 //! with literal counts.
-use sunrise_gameplay::game::native_entity_refs::tests::collect_all_entities;
 use mod_api::{Hooks, ItemPickedUpEvent, ItemPickedUpPostEvent, ModEntry, ServerHost, TriState};
 use mod_platform::testing::with_mods;
 use std::sync::{Arc, Mutex};
+use sunrise_gameplay::game::native_entity_refs::tests::collect_all_entities;
 use sunrise_items::items::ItemStack;
 
 #[derive(Default)]

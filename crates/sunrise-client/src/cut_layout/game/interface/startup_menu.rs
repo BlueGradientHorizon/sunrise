@@ -1,6 +1,10 @@
-
-
 #![cfg(test)]
+use std::path::PathBuf;
+use std::sync::mpsc::Receiver;
+use std::thread::JoinHandle;
+use std::time::Duration;
+use std::time::Instant;
+use sunrise_client::hud::HudBatch;
 use sunrise_client::options_ui::Event;
 use sunrise_client::options_ui::Page;
 use sunrise_client::settings::Settings;
@@ -11,19 +15,13 @@ use sunrise_client_gameplay::game::client_side::resource_loader::PendingWorldEnt
 use sunrise_client_gameplay::game::client_side::startup_menu::StartupMenu;
 use sunrise_gameplay_common::game::launch_options::Options;
 use sunrise_gameplay_common::game::resource_load::Progress;
-use std::path::PathBuf;
-use std::sync::mpsc::Receiver;
-use std::thread::JoinHandle;
-use std::time::Duration;
-use std::time::Instant;
-use sunrise_client::hud::HudBatch;
 use winit::event::WindowEvent;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use std::sync::Arc;
-use sunrise_client::hud::HudAtlas;
-use sunrise_client_gameplay::game::client_side::resource_tables_client::UiResources;
+    use std::sync::Arc;
+    use sunrise_client::hud::HudAtlas;
+    use sunrise_client_gameplay::game::client_side::resource_tables_client::UiResources;
 
     pub fn gui(root: &std::path::Path) -> UiResources {
         let atlas = if root.exists() {
@@ -49,11 +47,11 @@ use sunrise_client_gameplay::game::client_side::resource_tables_client::UiResour
         )
     }
 
-use super::*;
-use sunrise_client_gameplay::game::packs;
-use sunrise_gameplay_common::game::mods;
+    use super::*;
+    use sunrise_client_gameplay::game::packs;
+    use sunrise_gameplay_common::game::mods;
 
-fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
+    fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
         Loading {
             serve_integrated: sunrise_gameplay::game::server_side::integrated::serve,
             run_component_harness:
@@ -85,7 +83,7 @@ fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
             error: None,
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn live_gui_scale_uses_the_current_owner() {
         let (_, receiver) = std::sync::mpsc::channel();
@@ -116,7 +114,7 @@ fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
         assert_eq!(view(&first), (4.0, 240.0, 180.0));
         assert_eq!(first.menu.cursor, (100.0, 50.0));
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn resource_pack_drops_import_from_startup_and_game_options() {
         if super::super::native_entity_refs::tests::run_fresh_cases(
@@ -245,7 +243,7 @@ fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
         });
         std::env::set_current_dir(previous_dir).unwrap();
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn startup_pack_recovery_only_clears_the_failed_selection_revision() {
         use sunrise_client::options_file::V;
@@ -269,7 +267,9 @@ fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
             .settings
             .file
             .set("incompatibleResourcePacks", V::List(vec![OBSOLETE.into()]));
-        loading.settings.save(&sunrise_gameplay_common::game::options_path());
+        loading
+            .settings
+            .save(&sunrise_gameplay_common::game::options_path());
         let revision = loading.menu.pack_selection_revision;
         if superseded {
             // OptionsUi applies the new selection before emitting Event::Packs.
@@ -359,7 +359,7 @@ fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
         );
         assert_eq!(saved_pack_options().list("resourcePacks"), [REPLACEMENT]);
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn startup_client_pack_recovery_preserves_pending_world_pack_edits() {
         if super::super::native_entity_refs::tests::run_fresh_cases(
@@ -426,7 +426,7 @@ fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
             if ids.as_slice() == ["vanilla", "file/example"]))
         );
     }
-#[test]
+    #[test]
     fn the_world_renderer_waits_for_the_first_title_frame() {
         let (_send, receiver) = std::sync::mpsc::channel();
         let mut loading = loading(receiver);
@@ -442,7 +442,7 @@ fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
         loading.ui_at = Instant::now().checked_sub(Duration::from_secs(2));
         assert!(loading.ready_for_handoff());
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn menu_is_usable_while_the_core_worker_is_blocked() {
         // Publishing the empty root's language must not replace another game's language.
@@ -507,7 +507,7 @@ fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
             matches!(loading.take_worker_result(), Some(Err(error)) if error.to_string() == "core failure")
         );
     }
-#[test]
+    #[test]
     fn a_failed_generation_keeps_its_error_after_the_loader_ends() {
         let (sender, receiver) = std::sync::mpsc::channel();
         let worker = std::thread::spawn(move || {
@@ -531,7 +531,7 @@ fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
         loading.poll_menu_resources().unwrap();
         assert!(loading.loaded.is_none());
     }
-#[test]
+    #[test]
     fn native_declaration_failures_survive_the_graphical_loader() {
         use mod_api::__private::{DeclarationKind, DeclarationRefusal};
         let report = mods::DeclarationFailures::new(vec![
@@ -564,7 +564,7 @@ fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
         assert!(matches!(lines.as_slice(), [first, second]
             if first.contains("maker:Bad Key") && second.contains("foreign:wrench")));
     }
-#[test]
+    #[test]
     fn a_panicking_loader_reports_its_panic() {
         let (sender, receiver) = std::sync::mpsc::channel::<LoaderMsg>();
         let worker = std::thread::spawn(move || {
@@ -581,7 +581,7 @@ fn loading(receiver: Receiver<LoaderMsg>) -> Loading {
             "resource loader stopped before finishing: atlas has no fonts"
         );
     }
-#[test]
+    #[test]
     fn disconnected_core_worker_is_reported_instead_of_waiting_forever() {
         let (sender, receiver) = std::sync::mpsc::channel();
         drop(sender);

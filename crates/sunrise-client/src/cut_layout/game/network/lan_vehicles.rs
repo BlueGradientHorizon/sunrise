@@ -1,15 +1,16 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod controller_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_core::position::ChunkPos;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::{configuration::ClientInformation, play};
     use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     fn guest(conn: u32, uuid: u128) -> Guest {
         guest_with_packets(conn, uuid).0
@@ -71,7 +72,8 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
         options.game_dir = Some(
             std::env::temp_dir().join(format!("sunrise-boat-driver-unit-{}", std::process::id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -328,7 +330,8 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
         options.game_dir = Some(
             std::env::temp_dir().join(format!("sunrise-horse-fall-unit-{}", std::process::id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,

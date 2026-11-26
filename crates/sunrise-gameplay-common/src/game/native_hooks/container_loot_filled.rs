@@ -18,7 +18,7 @@ fn trim_placement_stacks(drops: &mut [ItemStack], items: &sunrise_items::items::
 }
 
 pub trait ContainerLootFilledGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-     fn container_fill_hook(
+    fn container_fill_hook(
         &mut self,
         table: &str,
         target: LootTarget,

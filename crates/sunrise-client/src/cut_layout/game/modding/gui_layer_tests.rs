@@ -1,8 +1,5 @@
 //! HUD slots in a real client: placement, scoped wrapping and replacement, and layer cancellation.
-use sunrise_gameplay_common::game::{Screen, execution_role::ExecutionRole};
-use super::{
-    native_entity_refs::tests::{run_fresh_cases, with_client_game},
-};
+use super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use mod_api::{
     ClientHost, Flow, GuiLayerPlacement, GuiLayerPostEvent, GuiLayerPreEvent, Hooks, ModEntry,
     PlayerHeartTypeEvent, RegisterGuiLayersEvent, RegistrationContext, RenderGuiPostEvent,
@@ -12,6 +9,7 @@ use mod_api::{
 use std::sync::{Arc, Mutex};
 use sunrise_client::{gui_layers::VanillaGuiLayer, hud::HudBatch};
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::{Screen, execution_role::ExecutionRole};
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::{MotionWorld, PlayerMotion, WATER, dry_side};
 
@@ -281,7 +279,9 @@ fn health_extraction_runs_only_in_the_vanilla_layer_body() {
             )]
             .into(),
         );
-        sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
+        sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(
+            ExecutionRole::Client,
+        );
         game.client.title.0 = None;
         game.client.screen = Screen::Playing;
         game.client.chat_ui.hide_gui = false;
@@ -459,7 +459,9 @@ fn mod_layers_draw_in_their_place_and_hide_like_vanilla_layers() {
             ]
             .into(),
         );
-        sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
+        sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(
+            ExecutionRole::Client,
+        );
         let mut batch = HudBatch::new([320, 240], game.client.settings.gui_scale_inputs());
 
         // Simulate the HUD paint sites with the crosshair skipped (third person).
@@ -595,7 +597,9 @@ fn a_gui_wrapper_panic_is_contained_but_delegated_engine_paint_is_fatal() {
                 ]
                 .into(),
             );
-            sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
+            sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(
+                ExecutionRole::Client,
+            );
             let mut batch = HudBatch::scratch([320, 240]);
             let white = rgba(255, 255, 255, 255);
             let green = rgba(0, 255, 0, 255);
@@ -888,7 +892,9 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
     // Install before the game fixture snapshots registrations and resolves the stick's Part.
     mod_platform::__private::install(entries.into());
     with_client_game(|game| {
-        sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
+        sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(
+            ExecutionRole::Client,
+        );
         enter_test_world(game);
         game.client.settings.main_hand_left = false;
         game.selected = 0;
@@ -1173,7 +1179,9 @@ fn f1_hides_vanilla_paint_without_skipping_the_hud_walk() {
             mod_platform::__private::install(
                 vec![ModEntry::new("observer", Box::new(Observer))].into(),
             );
-            sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
+            sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(
+                ExecutionRole::Client,
+            );
             let size = [640, 480];
             let screen_events = ["screen pre", "screen background", "screen post"];
             let saves = tempfile::tempdir().unwrap();
@@ -1549,8 +1557,10 @@ fn panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_own
                     });
                 let y =
                     [(whole, "render_gui_pre"), (layer, "gui_layer_pre")].map(|(entry, hook)| {
-                        let sunrise_client_gameplay::game::toast_manager::Toast::Diagnostic { toast, .. } =
-                            &mut entry.toast
+                        let sunrise_client_gameplay::game::toast_manager::Toast::Diagnostic {
+                            toast,
+                            ..
+                        } = &mut entry.toast
                         else {
                             panic!("expected panic toast")
                         };
@@ -1621,11 +1631,16 @@ fn a_panicking_hud_painter_shows_its_error_toast_under_f1() {
             mod_platform::__private::install(
                 vec![ModEntry::new(OWNER, Box::new(BrokenHud))].into(),
             );
-            sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
+            sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(
+                ExecutionRole::Client,
+            );
             enter_test_world(game);
             game.toggle_hide_gui();
             assert!(game.client.chat_ui.player_hides_gui && game.client.chat_ui.hide_gui);
-            use {sunrise_client_gameplay::game::toast_manager::SystemToastId, sunrise_client_gameplay::game::toast_manager::Toast};
+            use {
+                sunrise_client_gameplay::game::toast_manager::SystemToastId,
+                sunrise_client_gameplay::game::toast_manager::Toast,
+            };
             game.add_system_toast(
                 Some(SystemToastId::PackLoadFailure),
                 SystemToast::new(Text::tr("resourcePack.load_fail", &[]), None),

@@ -2,8 +2,8 @@
 //! mod block declared through `native_block_entity_fluids`, and a cauldron, read through a
 //! side, filled and drained in millibuckets. They act where the world is simulated, never on a
 //! client's copy, and only on the level in place.
-use crate::game::ServerGame;
 use super::cauldron_contents::{self, CauldronContent, CauldronContents, EMPTY_CAULDRON};
+use crate::game::ServerGame;
 use mod_api::{BlockSide, FluidStack, TransactionContext};
 use std::sync::Arc;
 use sunrise_core::geometry::Direction;
@@ -229,14 +229,23 @@ impl ServerGame<'_> {
     }
     /// The saved tanks of the mod block entity at `pos`, `n` of them.
     pub fn tank_state(&self, pos: [i32; 3], n: usize) -> Option<Vec<Tank>> {
-        match self.common.world.block_entities.get(&(pos[0], pos[1], pos[2]))? {
+        match self
+            .common
+            .world
+            .block_entities
+            .get(&(pos[0], pos[1], pos[2]))?
+        {
             BlockEntity::Mod(m) => Some(read_tanks(&m.nbt, n)),
             _ => None,
         }
     }
     /// Read one tank directly from the authoritative NBT without copying its list.
     fn tank_entry(&self, pos: [i32; 3], index: usize) -> Option<(Option<&JavaString>, i32)> {
-        let BlockEntity::Mod(entity) = self.common.world.block_entities.get(&(pos[0], pos[1], pos[2]))?
+        let BlockEntity::Mod(entity) = self
+            .common
+            .world
+            .block_entities
+            .get(&(pos[0], pos[1], pos[2]))?
         else {
             return None;
         };
@@ -457,9 +466,9 @@ impl ServerGame<'_> {
 
 #[cfg(test)]
 mod tests {
-use sunrise_gameplay_common::game::server_side::machines::native_fluids::tests::tanks;
+    use sunrise_gameplay_common::game::server_side::machines::native_fluids::tests::tanks;
 
-/// Vanilla's table, with an empty cauldron, water at `level` and lava on it: what the
+    /// Vanilla's table, with an empty cauldron, water at `level` and lava on it: what the
     /// cauldron holds as (water level, lava) for the assertions.
     pub fn vanilla_cauldrons() -> (
         CauldronFluids,
@@ -489,8 +498,8 @@ use sunrise_gameplay_common::game::server_side::machines::native_fluids::tests::
             level,
         )
     }
-#[cfg(test)]
-impl mod_api::ResourceHandler<mod_api::FluidResource> for WaterTank {
+    #[cfg(test)]
+    impl mod_api::ResourceHandler<mod_api::FluidResource> for WaterTank {
         fn size(&self, _: &mut dyn ServerHost) -> usize {
             self.reached.len()
         }
@@ -589,8 +598,6 @@ impl mod_api::ResourceHandler<mod_api::FluidResource> for WaterTank {
     use super::*;
     use mod_api::HostTransaction;
     use mod_api::ServerHost;
-
-    
 
     #[test]
     fn a_cauldron_takes_and_gives_water_by_whole_thirds_and_lava_only_whole() {
@@ -695,8 +702,6 @@ impl mod_api::ResourceHandler<mod_api::FluidResource> for WaterTank {
         });
     }
 
-    
-
     #[test]
     fn a_cauldron_takes_water_and_lava_whatever_their_components_and_a_mod_tank_none_with_them() {
         use super::{FluidAt, FluidStack, game_holds};
@@ -762,12 +767,6 @@ impl mod_api::ResourceHandler<mod_api::FluidResource> for WaterTank {
         }
     }
 
-    
-
-    
-
-    
-
     #[test]
     fn tank_state_round_trips_through_nbt_and_missing_entries_read_empty() {
         let mut nbt = Compound::new();
@@ -818,7 +817,6 @@ impl mod_api::ResourceHandler<mod_api::FluidResource> for WaterTank {
         );
     }
 }
-
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 

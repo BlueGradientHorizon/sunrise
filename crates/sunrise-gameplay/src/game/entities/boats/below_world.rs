@@ -18,7 +18,10 @@ impl ServerGame<'_> {
     /// `Entity.checkBelowWorld` for the boat at `i`: true when it fell out of
     /// the world and is gone.
     pub fn boat_below_world(&mut self, i: usize) -> bool {
-        if !below_world(self.common.boats[i].position.y, self.common.world.shape.min_y) {
+        if !below_world(
+            self.common.boats[i].position.y,
+            self.common.world.shape.min_y,
+        ) {
             return false;
         }
         self.kill_vehicle_object(crate::game::commands::Target::Boat(self.common.boats[i].id));
@@ -36,7 +39,10 @@ impl ServerGame<'_> {
         kind: &str,
     ) -> Option<usize> {
         let i = cart_at(&self.common.carts, id, slot)?;
-        if !below_world(self.common.carts[i].position.y, self.common.world.shape.min_y) {
+        if !below_world(
+            self.common.carts[i].position.y,
+            self.common.world.shape.min_y,
+        ) {
             return Some(i);
         }
         self.kill_vehicle_object(crate::game::commands::Target::Cart(id));
@@ -59,11 +65,6 @@ mod tests {
         assert!(!below_world(-64.0, 0));
         assert!(below_world(-64.5, 0));
     }
-
-    
-
-    
 }
-
 
 use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;

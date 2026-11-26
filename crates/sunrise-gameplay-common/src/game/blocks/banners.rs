@@ -9,11 +9,7 @@ use sunrise_sim::banner::{self, BannerLayer};
 /// with the base colour of its block (`BannerBlockEntity.getBaseColor` is
 /// `AbstractBannerBlock.getColor`) and its custom name; none when the block
 /// entity is not a banner.
-pub fn map_banner(
-    pos: [i32; 3],
-    entity: Option<&BlockEntity>,
-    block: &str,
-) -> Option<MapBanner> {
+pub fn map_banner(pos: [i32; 3], entity: Option<&BlockEntity>, block: &str) -> Option<MapBanner> {
     let Some(BlockEntity::Banner(banner)) = entity else {
         return None;
     };
@@ -29,10 +25,7 @@ pub fn map_banner(
 }
 
 /// Texture names and tints of banner layers (`Sheets.getBannerSprite`).
-pub fn layer_textures(
-    banners: &banner::Banners,
-    layers: &[BannerLayer],
-) -> Vec<(String, u32)> {
+pub fn layer_textures(banners: &banner::Banners, layers: &[BannerLayer]) -> Vec<(String, u32)> {
     layers
         .iter()
         .map(|l| {

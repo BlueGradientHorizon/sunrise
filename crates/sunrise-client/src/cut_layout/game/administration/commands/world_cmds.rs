@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 #[path = "attribute_missing_tests.rs"]
@@ -12,20 +10,18 @@ pub(crate) mod registered_damage_tests;
 #[cfg(test)]
 pub(crate) mod datapack_damage_tests {
 
-use sunrise_gameplay::game::server_side::commands::world_cmds::datapack_damage_tests::with_pack;
+    use sunrise_gameplay::game::server_side::commands::world_cmds::datapack_damage_tests::with_pack;
 
-use sunrise_gameplay::game::server_side::commands_server::world_cmds::datapack_damage_tests::pig;
+    use sunrise_gameplay::game::server_side::commands_server::world_cmds::datapack_damage_tests::pig;
 
-use sunrise_gameplay_common::game::commands_common::Target;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::commands_common::Target;
 
-use sunrise_core::geometry::Vec3;
+    use sunrise_core::geometry::Vec3;
 
+    pub(crate) use crate::game::server_side::commands_server::world_cmds::datapack_damage_tests::run_a_datapack_explosion_type_removes_a_crystal_quietly_and_hurts_the_dragon;
 
-
-pub(crate) use crate::game::server_side::commands_server::world_cmds::datapack_damage_tests::run_a_datapack_explosion_type_removes_a_crystal_quietly_and_hurts_the_dragon;
-
-/// #2647: a damage type a world's datapack declares is in the world's frozen
+    /// #2647: a damage type a world's datapack declares is in the world's frozen
     /// registry, and `/damage` with it hurts a mob, as `DamageCommand.damage`
     /// does with the `Holder` it resolved there. Every hurt path reads the
     /// world's registry, not the startup catalog, which holds no pack.
@@ -34,7 +30,7 @@ pub(crate) use crate::game::server_side::commands_server::world_cmds::datapack_d
     fn a_datapack_damage_type_hurts_a_mob() {
         run_a_datapack_damage_type_hurts_a_mob();
     }
-pub(crate) fn run_a_datapack_damage_type_hurts_a_mob() {
+    pub(crate) fn run_a_datapack_damage_type_hurts_a_mob() {
         with_game(|game| {
             with_pack(game);
             pig(game, 1, Vec3::new(0.5, 64.0, 0.5));
@@ -45,7 +41,7 @@ pub(crate) fn run_a_datapack_damage_type_hurts_a_mob() {
             assert_eq!(game.mobs[0].health, 9.0);
         });
     }
-/// A datapack type's tags in the world's registry decide as vanilla's do:
+    /// A datapack type's tags in the world's registry decide as vanilla's do:
     /// `#bypasses_cooldown` lets an equal repeat hit land inside the hurt
     /// cooldown, which the untagged type's is refused; `#no_anger` records no
     /// attacker on the mob.
@@ -54,7 +50,7 @@ pub(crate) fn run_a_datapack_damage_type_hurts_a_mob() {
     fn a_datapack_types_tags_reach_the_mob_hurt_path() {
         run_a_datapack_types_tags_reach_the_mob_hurt_path();
     }
-pub(crate) fn run_a_datapack_types_tags_reach_the_mob_hurt_path() {
+    pub(crate) fn run_a_datapack_types_tags_reach_the_mob_hurt_path() {
         with_game(|game| {
             with_pack(game);
             pig(game, 1, Vec3::new(0.5, 64.0, 0.5));
@@ -88,7 +84,7 @@ pub(crate) fn run_a_datapack_types_tags_reach_the_mob_hurt_path() {
             assert!(last_hurt_by(game, 3).is_some(), "the untagged type does");
         });
     }
-/// A datapack type in `#is_explosion` takes the End crystal away without
+    /// A datapack type in `#is_explosion` takes the End crystal away without
     /// the crystal's own blast, so a pig beside it is untouched; the untagged
     /// type sets the blast off. With no player behind it, it still hurts the
     /// dragon.
@@ -99,14 +95,16 @@ pub(crate) fn run_a_datapack_types_tags_reach_the_mob_hurt_path() {
     }
 }
 
-
 #[cfg(test)]
 pub(crate) mod vehicle_damage_command_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_level::chunk::Chunk;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
     pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -129,7 +127,8 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
             std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                 .join(format!("h050-{:?}", std::thread::current().id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -275,15 +274,18 @@ pub(crate) mod effect_attribute_tests;
 
 #[cfg(test)]
 pub(crate) mod attribute_modifier_command_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Tag;
     use sunrise_core::position::ChunkPos;
     use sunrise_game_data::nbt_value::text;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -309,7 +311,8 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
                 std::thread::current().id()
             )),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,

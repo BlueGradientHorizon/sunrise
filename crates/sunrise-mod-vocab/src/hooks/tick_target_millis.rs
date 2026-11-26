@@ -9,7 +9,8 @@ pub trait Hooks {
     /// number above zero keeps vanilla's. Only the window's clock changes: a server still ticks
     /// at its own rate. Client-side. Beyond NeoForge: there is no counterpart. Diverges from
     /// upstream: new hook.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::tick_target_millis::ClientGame<'_>::native_tick_target_millis", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::tick_target_millis::ClientGame<'_>::native_tick_target_millis",
         receiver = "read",
         dispatch = "flat",
         side = "client",

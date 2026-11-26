@@ -111,11 +111,7 @@ pub fn entity_pitch(pitch: f32) -> f32 {
 }
 
 /// `PositionMoveRotation.calculateAbsolute` and `TeleportCommand.performTeleport`.
-pub fn teleport_velocity(
-    velocity: Vec3,
-    relative: [bool; 3],
-    fall_flying: bool,
-) -> Vec3 {
+pub fn teleport_velocity(velocity: Vec3, relative: [bool; 3], fall_flying: bool) -> Vec3 {
     Vec3::new(
         if relative[0] { velocity.x } else { 0.0 },
         if relative[1] && fall_flying {
@@ -154,9 +150,7 @@ sunrise_mod_runtime::impl_attachment_lifetime!(OtherEntity);
 
 impl OtherEntity {
     /// Physical query bounds, not display rendering/culling dimensions.
-    pub fn display_marker_or_interaction_bounds(
-        &self,
-    ) -> Option<sunrise_core::geometry::Aabb> {
+    pub fn display_marker_or_interaction_bounds(&self) -> Option<sunrise_core::geometry::Aabb> {
         let dimensions = self.vanilla_dimensions()?;
         let vanilla = if let Some(settings) = self.interaction {
             let mut interaction = crate::game::interactions_common::RemoteInteraction::new([
@@ -310,10 +304,7 @@ pub fn wrap_degrees(angle: f32) -> f32 {
 }
 
 /// Format the clickable context line under a syntax error, if the error has one.
-pub fn format_syntax_failure_context(
-    e: &CommandError,
-    command: &str,
-) -> Option<Text> {
+pub fn format_syntax_failure_context(e: &CommandError, command: &str) -> Option<Text> {
     let window = e.context_window()?;
     let suggest = Style {
         click: Some(text::ClickEvent::SuggestCommand(format!("/{command}"))),
@@ -344,7 +335,6 @@ pub fn num(n: impl std::fmt::Display) -> Text {
 }
 
 impl crate::game::CommonGame<'_> {
-
     /// `EntityType.getDimensions().eyeHeight()` from `entity-types.json`, cached once.
     pub fn type_eye_height(&self, ty: &str) -> f64 {
         static EYE_HEIGHTS: std::sync::OnceLock<std::collections::HashMap<String, f64>> =
@@ -454,7 +444,7 @@ impl crate::game::CommonGame<'_> {
 
 pub trait CommandsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `ItemStack.getDisplayName`: hover name in brackets, coloured and carrying show_item hover.
-     fn stack_display_name(&self, s: &ItemStack) -> Text {
+    fn stack_display_name(&self, s: &ItemStack) -> Text {
         let item = &*s.item;
         let empty = item == "minecraft:air" || s.count == 0;
         let custom = s.data().and_then(|data| data.custom_name.as_ref());
@@ -486,7 +476,7 @@ pub trait CommandsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `ItemStack.getMaxStackSize`: the `max_stack_size` component, else the item's.
-     fn stack_max_size(&self, s: &ItemStack) -> u32 {
+    fn stack_max_size(&self, s: &ItemStack) -> u32 {
         if let Some(Tag::Int(n)) = s.data().and_then(|d| d.other("minecraft:max_stack_size")) {
             return (*n).clamp(1, 99) as u32;
         }
@@ -494,7 +484,6 @@ pub trait CommandsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> CommandsCommonGameExt1<'__sg> for G {}
-
 
 /// Whether `uuid` is the player in place (`Target::Player`): during a guest's turn that is the guest, not the
 /// level's own player (the world owner), whom `Level.getEntity(UUID)` finds only while they are in the level.
@@ -662,7 +651,6 @@ impl Component {
 }
 
 impl crate::game::CommonGame<'_> {
-
     pub fn decorate_entity_display_name_with_uuid(
         kind: &str,
         uuid: Option<[i32; 4]>,
@@ -729,12 +717,15 @@ impl crate::game::CommonGame<'_> {
 
 pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// The guest `conn` of the server’s LAN hub.
-     fn command_guest<'__loan>(&'__loan self, conn: u32) -> Option<&Guest> where '__sg: '__loan {
+    fn command_guest<'__loan>(&'__loan self, conn: u32) -> Option<&Guest>
+    where
+        '__sg: '__loan,
+    {
         crate::game::side_ops::player::SideOps::side_command_guest(self.side_state(), conn)
     }
 
     /// `Entity.getYRot` and `getXRot`: the entity's angles, not the direction its model faces.
-     fn target_rotation(&self, t: Target) -> [f32; 2] {
+    fn target_rotation(&self, t: Target) -> [f32; 2] {
         use crate::game::entity::Entity;
         use sunrise_sim::entity_nbt::loaded_rotation;
         let saved_rotation = |id| self.persist.raw.get(&id).map_or([0.0; 2], loaded_rotation);
@@ -851,8 +842,11 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
                 .unwrap_or([0.0; 2])
             }
             Target::Other(id) => {
-                crate::game::side_ops::player::SideOps::side_other_entity_rotation(self.side_state(), id)
-                    .unwrap_or([0.0; 2])
+                crate::game::side_ops::player::SideOps::side_other_entity_rotation(
+                    self.side_state(),
+                    id,
+                )
+                .unwrap_or([0.0; 2])
             }
             Target::General(id) => self
                 .resident_entities
@@ -861,7 +855,8 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
                 .map(|row| row.rotation)
                 .or_else(|| {
                     crate::game::side_ops::mobs_rest::SideOps::side_remote_general_rotation(
-                        self.side_state(), id,
+                        self.side_state(),
+                        id,
                     )
                 })
                 .unwrap_or([0.0; 2]),
@@ -874,7 +869,7 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// only mobs (displays, armor stands, items...). The map is keyed by id,
     /// so a killed entity and a later summon of the same UUID can both be
     /// in it; the one the level still holds is the entity.
-     fn target_with_uuid(&self, uuid: [i32; 4]) -> Option<Target> {
+    fn target_with_uuid(&self, uuid: [i32; 4]) -> Option<Target> {
         if is_player_in_place(
             uuid,
             crate::game::Side::lan_acting_uuid(self.side_state()),
@@ -895,7 +890,7 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `Level.getEntity`: the entity of the level in place with a network
     /// id, players aside.
-     fn level_entity(&self, id: i32) -> Option<Target> {
+    fn level_entity(&self, id: i32) -> Option<Target> {
         let id = id as u32;
         match <Self::State as crate::game::side_ops::world::SideOps>::side_server_resident_entity(
             self, id,
@@ -913,25 +908,29 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
             }
             // A client's own copy of a row its server shows it.
             _ => crate::game::side_ops::mobs_rest::SideOps::side_remote_general_type_slot(
-                self.side_state(), id,
+                self.side_state(),
+                id,
             )
             .map(|_| Target::General(id)),
         }
     }
 
-     fn entity_tag_matches(&self, tag: &str, ty: &str) -> bool {
+    fn entity_tag_matches(&self, tag: &str, ty: &str) -> bool {
         let tag = sunrise_command::args::normalized(tag);
         self.items().entity_type_tags.contains(&tag, ty)
     }
 
     /// The name of the player the game acts for: a guest's own while their
     /// command or action runs (`Player.getName`).
-     fn acting_player_name<'__loan>(&'__loan self) -> &str where '__sg: '__loan {
+    fn acting_player_name<'__loan>(&'__loan self) -> &str
+    where
+        '__sg: '__loan,
+    {
         crate::game::Side::lan_acting_name(self.side_state()).unwrap_or(PLAYER_NAME)
     }
 
     /// Entity.getDisplayName.
-     fn target_name(&self, t: Target) -> Text {
+    fn target_name(&self, t: Target) -> Text {
         match t {
             Target::Player => {
                 let name = self.acting_player_name();
@@ -955,7 +954,10 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `PlayerList.getPlayers` but the player in place: the guests who
     /// joined the world.
-     fn command_players<'__loan>(&'__loan self) -> impl Iterator<Item = &Guest> where '__sg: '__loan {
+    fn command_players<'__loan>(&'__loan self) -> impl Iterator<Item = &Guest>
+    where
+        '__sg: '__loan,
+    {
         let acting = crate::game::Side::lan_acting(self.side_state());
         crate::game::side_ops::lan::SideOps::side_command_players(self.side_state())
             .filter(move |g| Some(g.conn) != acting && self.native_command_player_available(g))
@@ -963,14 +965,14 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
 
     /// Native console calls cannot reach an outer turn's displaced player.
     /// Ordinary command resolution is unchanged, including nested turns.
-     fn native_command_player_available(&self, guest: &Guest) -> bool {
+    fn native_command_player_available(&self, guest: &Guest) -> bool {
         !crate::game::Side::native_command_filter(self.side_state())
             || self.entity(guest.entity_id as u32).is_some()
     }
 
     /// `EntitySelector.findEntities` with a UUID: the player with it, else
     /// the entity.
-     fn target_by_uuid(&self, uuid: u128) -> Option<Target> {
+    fn target_by_uuid(&self, uuid: u128) -> Option<Target> {
         let own = crate::game::Side::lan_acting_uuid(self.side_state()).or_else(|| {
             self.level.player_uuid.map(|[a, b, c, d]| {
                 (u128::from(a as u32) << 96)
@@ -980,7 +982,8 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
             })
         });
         if self.player.is_some() && own == Some(uuid) {
-            return (!crate::game::Side::lan_acting_fake(self.side_state())).then_some(Target::Player);
+            return (!crate::game::Side::lan_acting_fake(self.side_state()))
+                .then_some(Target::Player);
         }
         if let Some(g) = self.command_players().find(|g| g.uuid == uuid) {
             return Some(Target::Guest(g.conn));
@@ -989,7 +992,7 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
         self.target_with_uuid(words)
     }
 
-     fn target_type(&self, t: Target) -> String {
+    fn target_type(&self, t: Target) -> String {
         match t {
             Target::Player | Target::Guest(_) => "minecraft:player".into(),
             Target::Mob(id) => self
@@ -1029,10 +1032,11 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
                 .iter()
                 .find(|c| c.id == id)
                 .map_or_else(|| "minecraft:minecart".into(), |c| c.kind.id().into()),
-            Target::Other(id) => {
-                crate::game::side_ops::player::SideOps::side_other_entity_kind(self.side_state(), id)
-                    .map_or_else(String::new, str::to_owned)
-            }
+            Target::Other(id) => crate::game::side_ops::player::SideOps::side_other_entity_kind(
+                self.side_state(),
+                id,
+            )
+            .map_or_else(String::new, str::to_owned),
             Target::Crystal(_) => "minecraft:end_crystal".into(),
             // `EnderDragonPart` takes its parent's type.
             Target::Dragon(_) | Target::DragonPart(_) => "minecraft:ender_dragon".into(),
@@ -1052,7 +1056,7 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `Entity.getName`: the decoded `CustomName` with click actions removed,
     /// else the entity's type name, free of team formatting, hover or insertion.
-     fn target_base_name(&self, t: Target) -> Text {
+    fn target_base_name(&self, t: Target) -> Text {
         match t {
             Target::Player => Text::literal(self.acting_player_name()),
             Target::Guest(conn) => self
@@ -1112,7 +1116,7 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `Entity.getDisplayName` for the mob `id`.
-     fn mob_command_name(&self, id: u32) -> Text {
+    fn mob_command_name(&self, id: u32) -> Text {
         let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
             return Text::translate("entity.", &[]);
         };
@@ -1120,7 +1124,7 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `Entity.getDisplayName` for any non-player, non-mob target.
-     fn entity_display_name(&self, t: Target) -> Text {
+    fn entity_display_name(&self, t: Target) -> Text {
         let name = self.target_base_name(t);
         let Some(id) = crate::game::commands_common::target_id(t) else {
             return name;
@@ -1130,10 +1134,6 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> CommandsCommonGameExt2<'__sg> for G {}
-
-
-
-
 
 use crate::game::tables::GameItems as _;
 

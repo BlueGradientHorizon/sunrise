@@ -1,9 +1,9 @@
 //! A mod's write to a player in another level reaches their inventory at once. A give drops
 //! overflow in the player's level; a raw throw or block break still needs that level in place.
-use sunrise_gameplay_common::game::Dim;
 use super::native_entity_refs::tests::run_fresh_cases;
 use super::native_guest_turn_tests::with_guests;
 use mod_api::{HostTransaction, ItemPlace, ServerHost};
+use sunrise_gameplay_common::game::Dim;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::lan::playerdata;
 
@@ -21,7 +21,9 @@ pub(crate) fn dropped(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> [usi
 
 /// Guests 12 (the world's owner) and 13 in the Nether with full inventories but for slot 8;
 /// the Overworld in place, as for an Overworld hook. A diamond to give.
-pub(crate) fn in_the_nether(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> mod_api::ItemStack {
+pub(crate) fn in_the_nether(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+) -> mod_api::ItemStack {
     game.level.player_uuid = Some(playerdata::uuid_ints(12));
     // A level is open while a player is in it.
     game.enter_level(Dim::Nether).unwrap();

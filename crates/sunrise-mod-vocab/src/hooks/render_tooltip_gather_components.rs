@@ -19,7 +19,8 @@ pub trait Hooks {
     /// Asked each frame the tooltip shows, never for one the stack hides. An input
     /// conversion refusal skips Gather and preserves the unwrapped engine tooltip.
     /// Text is used in memory without serialized component limits. Client-side.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::render_tooltip_gather_components::ClientGame<'_>::native_render_tooltip_gather_components", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::render_tooltip_gather_components::ClientGame<'_>::native_render_tooltip_gather_components",
         receiver = "read",
         dispatch = "flat",
         side = "client",

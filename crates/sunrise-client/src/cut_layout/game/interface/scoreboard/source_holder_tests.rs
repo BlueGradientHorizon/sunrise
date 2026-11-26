@@ -1,9 +1,9 @@
 //! A scoreboard command's source: a bare name finds the online player it
 //! names (with their team's formatting), and `/trigger` completes the
 //! objectives unlocked for the player asking, not for the host.
-use sunrise_gameplay::game::lan::LanSettings;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_core::vanilla_bytes::Writer;
+use sunrise_gameplay::game::lan::LanSettings;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::{buf::Reader, ids, packets::configuration::ClientInformation};
 use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};

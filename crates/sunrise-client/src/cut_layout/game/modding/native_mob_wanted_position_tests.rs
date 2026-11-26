@@ -1,7 +1,7 @@
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{EntityRef, MobRef, WantedPositionError, WorldEpoch};
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::Mob;
 
@@ -127,13 +127,15 @@ fn wanted_position_names_invalid_inputs_and_refuses_unavailable_mobs() {
         assert_eq!(mob.wanted_position(game), None);
         game.mobs
             .restore(taken, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
-        let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+        let mut dragon =
+            sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
         dragon.id = 15;
         game.dragon.replace(dragon);
         let dragon = game.mob(game.entity(15).unwrap()).unwrap();
         assert_eq!(dragon.set_wanted_position(game, [0.0; 3], 1.0), Ok(false));
         assert_eq!(dragon.wanted_position(game), None);
-        game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+        game.options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
         assert_eq!(mob.set_wanted_position(game, [0.0; 3], 1.0), Ok(false));
         assert_eq!(mob.wanted_position(game), None);
         assert_eq!(mob.speed_modifier(game), None);

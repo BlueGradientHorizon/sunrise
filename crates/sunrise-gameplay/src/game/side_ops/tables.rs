@@ -1,4 +1,3 @@
-
 #[allow(unused_variables)]
 impl SideOps for crate::game::server_side::ServerState {
     type Game<'g> = crate::game::ServerGame<'g>;
@@ -76,11 +75,11 @@ impl SideOps for crate::game::server_side::ServerState {
         }
     }
 }
-use sunrise_gameplay_common::game::side_ops::tables::SideOps;
-use sunrise_gameplay_common::game::cauldron_interactions;
+use std::sync::Arc;
 use sunrise_gameplay_common::game::Resources;
 use sunrise_gameplay_common::game::WorldTables;
-use std::sync::Arc;
+use sunrise_gameplay_common::game::cauldron_interactions;
+use sunrise_gameplay_common::game::side_ops::tables::SideOps;
 use sunrise_items::enchant::Enchantments;
 use sunrise_items::items::Items;
 use sunrise_protocol::registry::Ids;

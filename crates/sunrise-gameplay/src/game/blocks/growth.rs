@@ -1,14 +1,12 @@
-
-
 #[cfg(test)]
 #[cfg(feature = "client")]
 pub(crate) mod tests {
 
-use crate::game::growth_features::{build_live_features, install_live_features};
+    use crate::game::growth_features::{build_live_features, install_live_features};
 
-use std::sync::Arc;
+    use std::sync::Arc;
 
-/// The live features follow the world being opened: a world with a data
+    /// The live features follow the world being opened: a world with a data
     /// pack's feature sees it, the next world without one does not (it used to
     /// keep the first world's registry for the whole process), and re-opening
     /// the same packs reuses the registry built for them.

@@ -1,6 +1,6 @@
 //! Server-side mod entity-selector filtering (`@allies`, NeoForge's `EntitySelectorManager`).
-use crate::game::ServerGame;
 use super::commands::Target;
+use crate::game::ServerGame;
 use sunrise_command::args::Selector;
 
 impl ServerGame<'_> {

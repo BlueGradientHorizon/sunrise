@@ -1,7 +1,3 @@
-use mod_api::ScreenOpening;
-use sunrise_client::hud::HudBatch;
-use sunrise_gameplay_common::game::Screen;
-use winit::keyboard::KeyCode;
 #[allow(unused_imports)]
 pub(crate) use super::*;
 #[allow(unused_imports)]
@@ -26,6 +22,7 @@ pub(crate) use crate::game::native_hooks::base::screen_open_tests::take;
 pub(crate) use crate::game::native_hooks::base::screen_open_tests::with_game_of;
 #[allow(unused_imports)]
 pub(crate) use crate::game::native_hooks::base::screen_open_tests::*;
+use mod_api::ScreenOpening;
 #[allow(unused_imports)]
 pub(crate) use mod_api::{
     ClientHost, Flow, Hooks, InteractionKeyMappingTriggeredEvent, KeyMappingPreEvent, ModEntry,
@@ -35,6 +32,9 @@ pub(crate) use mod_api::{
 pub(crate) use mod_platform::testing::with_mods;
 #[allow(unused_imports)]
 pub(crate) use std::sync::{Arc, Mutex};
+use sunrise_client::hud::HudBatch;
+use sunrise_gameplay_common::game::Screen;
+use winit::keyboard::KeyCode;
 
 /// A cancelled press of a mapping is dropped while playing, and only then asked; the
 /// release of the same key is asked too but never canceled, so nothing stays held.
@@ -388,10 +388,15 @@ fn replacing_a_title_screen_opens_the_mods_screen_over_the_title() {
         ];
         for back in back {
             *answer.lock().unwrap() = Some(ScreenOpening::ModScreen);
-            game.client.title.0.as_mut().unwrap().set_mode(Mode::Select {
-                worlds: Vec::new(),
-                selected: None,
-            });
+            game.client
+                .title
+                .0
+                .as_mut()
+                .unwrap()
+                .set_mode(Mode::Select {
+                    worlds: Vec::new(),
+                    selected: None,
+                });
             game.settle_title_mode();
             assert_eq!(game.client.screen, Screen::Mod);
             assert_eq!(game.mod_screen(), Some("screens"));
@@ -447,7 +452,10 @@ fn replacing_opening_opens_another_vanilla_screen_where_it_can() {
         game.set_screen(Screen::Playing);
         assert_eq!(game.client.screen, Screen::Playing);
         game.show_title(game.new_title(saves));
-        assert_eq!(game.client.title.0.as_ref().unwrap().mode.id(), "multiplayer");
+        assert_eq!(
+            game.client.title.0.as_ref().unwrap().mode.id(),
+            "multiplayer"
+        );
         // The replacement fires nothing again.
         assert_eq!(
             take(log),

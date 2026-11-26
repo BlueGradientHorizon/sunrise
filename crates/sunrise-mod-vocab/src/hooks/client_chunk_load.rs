@@ -21,7 +21,8 @@ resident is told again, without an unload between. A biome packet
 (`ChunksBiomes`) tells nothing. `dimension` is the client level's dimension, as
 the server named it. An integrated world's own chunks have the server's
 `chunk_load` instead, and that hook is not called on the client."##]
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::client_chunk_load::ClientGame<'_>::native_client_chunk_load", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::client_chunk_load::ClientGame<'_>::native_client_chunk_load",
         dispatch = "flat",
         side = "client",
         contract = "listen",

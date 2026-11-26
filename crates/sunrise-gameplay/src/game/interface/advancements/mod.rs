@@ -4,7 +4,6 @@
 use super::{Dim, chat_common::PLAYER_NAME, stats::Stats};
 use crate::game::server_side::lan_actions_server::DisplacedPlayer;
 pub mod icons;
-use sunrise_gameplay_common::game::advancements_common::{TagSources, text_of};
 use mod_api::{GameMode, ProgressType};
 use serde_json::Value;
 #[cfg(test)]
@@ -16,6 +15,7 @@ use std::{
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::RandomSource;
 use sunrise_game_data::text::{self, Style, Text};
+use sunrise_gameplay_common::game::advancements_common::{TagSources, text_of};
 use sunrise_items::items::ItemStack;
 use sunrise_level::effects::PlayerEffects;
 use sunrise_protocol::packets::play::Clientbound as C;
@@ -63,9 +63,7 @@ pub(in crate::game) struct PlayerEntityState<'a> {
 }
 
 /// The game's world for predicates.
-pub struct View<'a, 'g>(
-    pub &'a crate::game::ServerGame<'g>,
-);
+pub struct View<'a, 'g>(pub &'a crate::game::ServerGame<'g>);
 impl adv::World for View<'_, '_> {
     fn predicate(&self, id: &str) -> Option<&Value> {
         self.0.server.fns.0.store.predicates.get(id)
@@ -238,7 +236,8 @@ impl crate::game::ServerGame<'_> {
     pub fn advancement_tree(&mut self) -> Arc<Tree> {
         if self.common.adv.remote_tree.is_none() && self.common.adv.tree.list.is_empty() {
             let overlay = self.pack_files();
-            self.common.adv.tree = Tree::shared(&self.common.options.resources.join("data"), &overlay);
+            self.common.adv.tree =
+                Tree::shared(&self.common.options.resources.join("data"), &overlay);
             self.inventory_index();
         }
         self.common.adv.tree.clone()
@@ -292,7 +291,10 @@ impl crate::game::ServerGame<'_> {
     pub fn save_advancements(&self) {
         if !self.common.adv.loaded
             || self.no_player_here()
-            || self.server.crash_save.holds_interrupted(self.server.lan_acting)
+            || self
+                .server
+                .crash_save
+                .holds_interrupted(self.server.lan_acting)
         {
             return;
         }
@@ -300,7 +302,8 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         let json = self
-            .common.adv
+            .common
+            .adv
             .progress
             .to_json(&self.common.adv.tree, sunrise_world::DATA_VERSION);
         if let Ok(text) = serde_json::to_string_pretty(&json) {
@@ -309,15 +312,13 @@ impl crate::game::ServerGame<'_> {
     }
     /// The player as predicates see it.
     /// The predicate view of a command target.
-    pub fn entity_view_of(
-        &self,
-        t: super::commands::Target,
-    ) -> EntityView {
+    pub fn entity_view_of(&self, t: super::commands::Target) -> EntityView {
         use super::commands::Target;
         match t {
             Target::Player => self.player_entity(),
             Target::Mob(id) => self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == id)
                 .map(|m| self.mob_entity(m))
@@ -332,7 +333,8 @@ impl crate::game::ServerGame<'_> {
                     sneaking: g.sneaking,
                     input_sneak: g.input & 32 != 0,
                     team: self
-                        .common.score
+                        .common
+                        .score
                         .board
                         .players_team(&g.name)
                         .map(|t| t.name.clone()),
@@ -356,12 +358,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// A `ContextAwarePredicate` for `this` at `origin`.
-    pub fn conditions_hold(
-        &self,
-        v: &Value,
-        this: Option<&EntityView>,
-        origin: [f64; 3],
-    ) -> bool {
+    pub fn conditions_hold(&self, v: &Value, this: Option<&EntityView>, origin: [f64; 3]) -> bool {
         self.conditions_hold_in(
             v,
             &adv::Entities {
@@ -432,7 +429,8 @@ impl crate::game::ServerGame<'_> {
     ) -> EntityView {
         let mut view = self.entity_view_asked(t, predicate);
         view.scores = self.holder_name(t).map(|holder| {
-            self.common.score
+            self.common
+                .score
                 .board
                 .holder_scores(&holder)
                 .into_iter()
@@ -532,7 +530,8 @@ impl crate::game::ServerGame<'_> {
             armor: &record.armor,
             effects: &record.effects,
             riding: frame.riding.filter(|_| here),
-            look: (here && self.common.adv.tree.may_look(trigger)).then_some((frame.yaw, frame.pitch)),
+            look: (here && self.common.adv.tree.may_look(trigger))
+                .then_some((frame.yaw, frame.pitch)),
         });
         view.player_facts = self.player_facts_from(
             self.common.adv.tree.player_facts_asked(trigger),
@@ -610,12 +609,14 @@ impl crate::game::ServerGame<'_> {
             eq[2 + i] = a.as_ref().map(item_view);
         }
         let vehicle = state.riding.and_then(|id| {
-            self.common.mobs
+            self.common
+                .mobs
                 .iter()
                 .find(|m| m.id == id)
                 .map(|m| Box::new(self.mob_entity(m)))
                 .or_else(|| {
-                    self.common.boats
+                    self.common
+                        .boats
                         .iter()
                         .find(|b| b.id == id)
                         .map(|b| Box::new(self.boat_entity(b)))
@@ -645,7 +646,8 @@ impl crate::game::ServerGame<'_> {
                 .collect(),
             gamemode: Some(state.mode.name().to_owned()),
             team: self
-                .common.score
+                .common
+                .score
                 .board
                 .players_team(state.name)
                 .map(|t| t.name.clone()),
@@ -665,7 +667,11 @@ impl crate::game::ServerGame<'_> {
     }
     /// The player as a passenger of the vehicle `id` (`Entity.getPassengers`).
     pub(in crate::game::server_side) fn rider_entity(&self, id: u32) -> Option<EntityView> {
-        let p = self.common.player.as_ref().filter(|_| self.common.riding == Some(id))?;
+        let p = self
+            .common
+            .player
+            .as_ref()
+            .filter(|_| self.common.riding == Some(id))?;
         Some(EntityView {
             kind: "minecraft:player".into(),
             position: [p.position.x, p.position.y, p.position.z],
@@ -684,7 +690,8 @@ impl crate::game::ServerGame<'_> {
             position: [b.position.x, b.position.y, b.position.z],
             on_ground: b.ground.on_ground,
             passengers: self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .filter(|m| m.extra.mount == Some(b.id))
                 .map(|m| self.mob_entity(m))
@@ -739,14 +746,21 @@ impl crate::game::ServerGame<'_> {
         }
 
         let passengers: Vec<EntityView> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter(|r| r.extra.mount == Some(m.id))
             .map(|r| self.mob_entity(r))
             .chain(self.rider_entity(m.id))
             .collect();
         let nbt = self.common.adv.tree.tests_nbt().then(|| {
-            let uuid = self.common.persist.uuids.get(&m.id).copied().unwrap_or_default();
+            let uuid = self
+                .common
+                .persist
+                .uuids
+                .get(&m.id)
+                .copied()
+                .unwrap_or_default();
             let raw = self.common.persist.raw.get(&m.id);
             let registry = Some(self.common.pack.assets.registry);
             let mut tag = sunrise_sim::entity_nbt::mob_to_nbt(
@@ -807,11 +821,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `SimpleCriterionTrigger.trigger`: test each open criterion of the
     /// trigger and award what it completes.
-    pub fn trigger(
-        &mut self,
-        name: &str,
-        test: impl Fn(&Value, &dyn adv::World) -> bool,
-    ) {
+    pub fn trigger(&mut self, name: &str, test: impl Fn(&Value, &dyn adv::World) -> bool) {
         if self.server.lan_acting_fake || self.no_player_here() {
             return;
         }
@@ -839,7 +849,8 @@ impl crate::game::ServerGame<'_> {
             for &(ai, ci) in list {
                 let a = &tree.list[ai];
                 let c = &a.criteria[ci];
-                if self.common.adv.progress.has(&a.id, &c.name) || self.common.adv.progress.done(a) {
+                if self.common.adv.progress.has(&a.id, &c.name) || self.common.adv.progress.done(a)
+                {
                     continue;
                 }
                 if test(&c.conditions, &view) {
@@ -1006,9 +1017,10 @@ impl crate::game::ServerGame<'_> {
         let mut allowed = Vec::with_capacity(unlocked.len());
         let mut refused = Vec::new();
         let mut taken_back = 0;
-        if let (Some(player), Some(name)) =
-            (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-        {
+        if let (Some(player), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             for recipe in unlocked {
                 let mut cancel = false;
                 self.native_player_recipe_discovered(player, &name, recipe, &mut cancel);
@@ -1020,7 +1032,8 @@ impl crate::game::ServerGame<'_> {
             }
             if !refused.is_empty() {
                 let removed = self
-                    .common.level
+                    .common
+                    .level
                     .recipe_book
                     .remove_recipes(&server_world_stations!(self).recipe_index, &refused);
                 taken_back = removed.len();
@@ -1115,9 +1128,10 @@ impl crate::game::ServerGame<'_> {
         if self.server.lan_acting_fake {
             return;
         }
-        if let (Some(player), Some(name)) =
-            (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-        {
+        if let (Some(player), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             self.native_player_advancement_done(player, &name, &a.id);
         }
         if self.defer_merchant_reward(a) {
@@ -1132,7 +1146,8 @@ impl crate::game::ServerGame<'_> {
         if let Some(d) = &a.display
             && d.announce
             && self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::SHOW_ADVANCEMENT_MESSAGES)
         {
@@ -1148,7 +1163,8 @@ impl crate::game::ServerGame<'_> {
                 // Player.getDisplayName.
                 Some(_) => {
                     let player = self.target_name(super::commands::Target::Player);
-                    self.common.adv
+                    self.common
+                        .adv
                         .announced
                         .push(Text::translate(key, &[player, name]));
                 }
@@ -1188,7 +1204,8 @@ impl crate::game::ServerGame<'_> {
             .cloned()
             .collect();
         let (_, unlocked) = self
-            .common.level
+            .common
+            .level
             .recipe_book
             .add_recipes(&server_world_stations!(self).recipe_index, &rewards);
         for table in &a.rewards.loot {
@@ -1196,7 +1213,8 @@ impl crate::game::ServerGame<'_> {
             // THIS_ENTITY and their position the ORIGIN.
             let player = self.killer_loot_entity(None);
             let origin = self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .map(|p| [p.position.x, p.position.y, p.position.z]);
             let items = self
@@ -1246,7 +1264,8 @@ impl crate::game::ServerGame<'_> {
         }
         let mut h = std::collections::hash_map::DefaultHasher::new();
         for s in self
-            .common.inventory
+            .common
+            .inventory
             .iter()
             .chain(self.common.armor.iter())
             .chain(std::iter::once(&self.common.offhand))
@@ -1264,12 +1283,17 @@ impl crate::game::ServerGame<'_> {
         if !self.no_player_here()
             && mod_api::__private::listened(mod_api::HookId::PlayerInventoryChanged)
         {
-            let stacks = inventory_slots(&self.common.inventory, &self.common.armor, &self.common.offhand);
+            let stacks = inventory_slots(
+                &self.common.inventory,
+                &self.common.armor,
+                &self.common.offhand,
+            );
             let player = self.native_acting_id();
             self.native_player_inventory_changed(player, &stacks);
         }
         let stacks: Vec<ItemView> = self
-            .common.inventory
+            .common
+            .inventory
             .iter()
             .chain(self.common.armor.iter())
             .chain(std::iter::once(&self.common.offhand))
@@ -1278,7 +1302,8 @@ impl crate::game::ServerGame<'_> {
             .collect();
         // InventoryChangeTrigger slots: occupied, full and empty counts.
         let all: Vec<&Option<ItemStack>> = self
-            .common.inventory
+            .common
+            .inventory
             .iter()
             .chain(self.common.armor.iter())
             .chain(std::iter::once(&self.common.offhand))
@@ -1289,7 +1314,8 @@ impl crate::game::ServerGame<'_> {
             .iter()
             .filter_map(|s| s.as_ref())
             .filter(|s| {
-                self.common.res
+                self.common
+                    .res
                     .items()
                     .get(&s.item)
                     .is_some_and(|i| s.count >= i.max_stack)
@@ -1376,7 +1402,8 @@ impl crate::game::ServerGame<'_> {
         // ServerPlayer.onEffectAdded and onEffectsRemoved keep the start of a
         // levitation; tick fires LEVITATION while there is one.
         let levitating = self
-            .common.potions
+            .common
+            .potions
             .effects
             .list
             .iter()
@@ -1384,7 +1411,8 @@ impl crate::game::ServerGame<'_> {
         match (levitating, self.common.adv.levitation) {
             (true, None) => {
                 let at = self
-                    .common.player
+                    .common
+                    .player
                     .as_ref()
                     .map(|p| [p.position.x, p.position.y, p.position.z]);
                 self.common.adv.levitation = at.map(|at| (at, self.common.ticks));
@@ -1515,7 +1543,8 @@ impl crate::game::ServerGame<'_> {
         let falling = p.fall_distance > 0.0;
         let dead = p.health.dead_or_dying();
         let lava = self
-            .common.riding
+            .common
+            .riding
             .and_then(|id| self.common.mobs.iter().find(|m| m.id == id))
             .is_some_and(|m| m.fluids.in_lava);
         match (falling, self.common.adv.marks.fall) {
@@ -1556,7 +1585,9 @@ impl crate::game::ServerGame<'_> {
         // `onEffectAdded`, `onEffectUpdated` (an `update` that changed the
         // duration, amplifier or flags too) and `onEffectsRemoved`.
         let changes = self.common.potions.effects.changes;
-        if effects != self.common.adv.marks.effects || changes != self.common.adv.marks.effect_changes {
+        if effects != self.common.adv.marks.effects
+            || changes != self.common.adv.marks.effect_changes
+        {
             self.common.adv.marks.effects = effects;
             self.common.adv.marks.effect_changes = changes;
             self.trigger_effects_changed(None);
@@ -1564,7 +1595,8 @@ impl crate::game::ServerGame<'_> {
     }
     /// The (effect, amplifier) pairs `marks.effects` compares.
     pub(in crate::game::server_side) fn effects_seen(&self) -> Vec<(&'static str, i32)> {
-        self.common.potions
+        self.common
+            .potions
             .effects
             .list
             .iter()
@@ -1700,7 +1732,8 @@ impl crate::game::ServerGame<'_> {
         {
             Some(sunrise_core::nbt::Tag::Int(value)) => i64::from(*value),
             _ => i64::from(
-                self.common.res
+                self.common
+                    .res
                     .items()
                     .get(&stack.item)
                     .map_or(0, |i| i.max_damage),
@@ -1870,10 +1903,7 @@ impl crate::game::ServerGame<'_> {
         );
     }
     /// `EntityHurtPlayerTrigger`: the player and the damage it took.
-    pub fn trigger_entity_hurt_player(
-        &mut self,
-        damage: &adv::DamageView,
-    ) {
+    pub fn trigger_entity_hurt_player(&mut self, damage: &adv::DamageView) {
         let me = self.player_entity_for("minecraft:entity_hurt_player");
         let damage = damage.clone();
         self.trigger("minecraft:entity_hurt_player", move |c, w| {
@@ -2307,8 +2337,12 @@ impl crate::game::ServerGame<'_> {
     /// `Entity.startRiding`'s `sendEventAndTriggers`: `START_RIDING_TRIGGER`
     /// for every `ServerPlayer` in `entityToRide.getIndirectPassengersStream()`.
     pub(in crate::game::server_side) fn trigger_started_riding(&mut self, vehicle: u32) {
-        let mounts: Vec<(u32, Option<u32>)> =
-            self.common.mobs.iter().map(|m| (m.id, m.extra.mount)).collect();
+        let mounts: Vec<(u32, Option<u32>)> = self
+            .common
+            .mobs
+            .iter()
+            .map(|m| (m.id, m.extra.mount))
+            .collect();
         let aboard = super::boarding::passenger_vehicles(vehicle, &mounts);
         self.for_each_player(|g| {
             if g.riding.is_some_and(|v| aboard.contains(&v)) {
@@ -2502,11 +2536,7 @@ pub(in crate::game::server_side) fn decorate_name(d: &adv::Display) -> Text {
 impl crate::game::ServerGame<'_> {
     /// `AdvancementCommands.Action.GRANT` on one advancement (or one of
     /// its criteria): false when nothing changed.
-    pub fn grant_advancement(
-        &mut self,
-        index: usize,
-        criterion: Option<&str>,
-    ) -> bool {
+    pub fn grant_advancement(&mut self, index: usize, criterion: Option<&str>) -> bool {
         if self.server.lan_acting_fake {
             return false;
         }
@@ -2535,11 +2565,7 @@ impl crate::game::ServerGame<'_> {
         changed || criterion.is_none()
     }
     /// `AdvancementCommands.Action.REVOKE`.
-    pub fn revoke_advancement(
-        &mut self,
-        index: usize,
-        criterion: Option<&str>,
-    ) -> bool {
+    pub fn revoke_advancement(&mut self, index: usize, criterion: Option<&str>) -> bool {
         if self.server.lan_acting_fake {
             return false;
         }
@@ -2573,17 +2599,9 @@ impl crate::game::ServerGame<'_> {
 }
 #[cfg(test)]
 pub(in crate::game) mod tests {
-use sunrise_gameplay_common::game::server_side::advancements::tests::announced;
-
-
+    use sunrise_gameplay_common::game::server_side::advancements::tests::announced;
 
     use super::*;
-
-    
-
-    
-
-    
 
     #[test]
     fn looking_at_triggers_are_the_ones_that_ask() {
@@ -2653,11 +2671,6 @@ use sunrise_gameplay_common::game::server_side::advancements::tests::announced;
         assert!(!tree.may_test_nbt("minecraft:tame_animal"));
     }
 
-    
-
-    
-    
-
     #[test]
     fn titles_keep_their_siblings_and_styles() {
         let title = text_of(&serde_json::json!({
@@ -2678,7 +2691,6 @@ use sunrise_gameplay_common::game::server_side::advancements::tests::announced;
         );
     }
 
-    
     /// The chat hover: the JSON a client receives, and the spans drawn here.
     pub(in crate::game::server_side) fn hover(a: &adv::Advancement) -> (Value, Text) {
         let local = decorate_name(a.display.as_ref().unwrap());
@@ -2738,8 +2750,6 @@ use sunrise_gameplay_common::game::server_side::advancements::tests::announced;
             })
         );
     }
-
-
 }
 
 /// A player's 41 slots in `Inventory` numbering, for
@@ -2767,7 +2777,6 @@ use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
 
-
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
@@ -2779,7 +2788,6 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::enchantments::EnchantmentsGameExt1 as _;
-
 
 use sunrise_gameplay_common::game::scoreboard_common::CommonGameExt1 as _;
 

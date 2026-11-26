@@ -79,7 +79,11 @@ fn a_merged_age_reaches_the_same_live_orb() {
             (true, modified)
         );
         assert_eq!(game.persist.uuids.get(&id), Some(&[9, 0, 0, 1]));
-        let tag = game.command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Orb(id)).unwrap();
+        let tag = game
+            .command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Orb(
+                id,
+            ))
+            .unwrap();
         assert_eq!(tag.get("UUID"), Some(&Tag::IntArray(vec![9, 0, 0, 1])));
         assert_eq!(game.orbs[0].id, id);
     });

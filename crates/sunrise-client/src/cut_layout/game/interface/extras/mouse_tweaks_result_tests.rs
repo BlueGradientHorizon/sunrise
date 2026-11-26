@@ -2,11 +2,11 @@
 //! result out itself (`CraftingMenu.slotsChanged` runs on a `ServerLevel` only), so the result
 //! slot holds what the server's ContainerSetSlot put there. The wheel down over it takes one
 //! craft to the inventory, and a predicted take empties the slot until the server answers.
+use super::*;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
+use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::menu::Input;
-use super::*;
-use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
-use crate::game::server_side::native_entity_refs::tests::with_client_game;
 
 /// A guest with one oak log in its 2x2 grid and the server's result, four planks.
 fn with_guest_grid(run: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {

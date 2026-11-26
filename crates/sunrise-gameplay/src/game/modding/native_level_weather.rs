@@ -4,8 +4,8 @@
 //! the command, they act on the level in place; a parked level, a stale handle or a client
 //! returns false. The players see the change on the next host sync.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::level_control_hooks::LevelControl;
 use mod_api::LevelRef;
+use sunrise_gameplay_common::game::level_control_hooks::LevelControl;
 
 impl ServerGame<'_> {
     /// `ServerLevel.setWeatherParameters(clear, time, raining, thundering)` in the level in

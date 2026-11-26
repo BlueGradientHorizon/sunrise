@@ -1,4 +1,3 @@
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use mod_api::prelude::NetworkClientHost;
 use mod_api::{ContainerClickRequest, PacketBuildError};
 use sunrise_core::nbt::{Compound, Tag};
@@ -8,6 +7,10 @@ use sunrise_protocol::{
     item::{Component, Hashed, NoNames, Stack},
     packets::play::{ContainerClick, Serverbound},
     registry::Builtin,
+};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
 };
 
 #[test]

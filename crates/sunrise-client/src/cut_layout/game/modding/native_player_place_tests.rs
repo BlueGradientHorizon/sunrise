@@ -1,11 +1,14 @@
 //! `player.place_block` against real LAN guests, through the public player handle, with a
 //! literal test for each refusal.
 
-use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use mod_api::{EntityRef, PlayerWorldRefusal as Refusal, WorldEpoch};
+use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 
 /// The API's value for a block state of the world.
-fn api_state<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(game: &G, name: &str) -> mod_api::BlockState {
+fn api_state<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+    game: &G,
+    name: &str,
+) -> mod_api::BlockState {
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
     game.pack
         .assets
@@ -132,7 +135,8 @@ fn a_level_not_in_place_is_other_level() {
         let b = game.player(13).unwrap();
         let overworld = game.level("minecraft:overworld").unwrap();
         let stone = api_state(game, "minecraft:stone");
-        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+            .unwrap();
         assert_eq!(
             b.place_block(game, overworld, [2, 70, 2], stone, true),
             Err(Refusal::OtherLevel)

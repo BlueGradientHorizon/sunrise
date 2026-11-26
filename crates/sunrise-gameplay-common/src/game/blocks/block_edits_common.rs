@@ -13,11 +13,7 @@ pub type Tracked = ((i32, i32, i32), u32, u32);
 
 impl crate::game::CommonGame<'_> {
     /// Each column's height on `h` as `edit_height` reads it, none where its chunk is not loaded.
-    pub fn loaded_column_heights(
-        &self,
-        columns: &[(i32, i32)],
-        h: Heightmap,
-    ) -> Vec<Option<i32>> {
+    pub fn loaded_column_heights(&self, columns: &[(i32, i32)], h: Heightmap) -> Vec<Option<i32>> {
         loaded_heights(&self.world, columns, |x, z| self.edit_height(h, x, z))
     }
 

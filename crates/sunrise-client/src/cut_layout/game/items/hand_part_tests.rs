@@ -61,7 +61,9 @@ impl Hooks for Parts {
 }
 
 /// Runs `body` on a game whose stick has the part.
-pub(crate) fn with_stick_part(body: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
+pub(crate) fn with_stick_part(
+    body: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
+) {
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new("hands", Box::new(Parts))].into();
     mod_platform::testing::with_mods(mods.clone(), || {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
@@ -71,10 +73,7 @@ pub(crate) fn with_stick_part(body: impl FnOnce(&mut sunrise_client_gameplay::ga
 
 /// Puts `main` in slot 0, selects it, and ticks until the attack strength is
 /// full and the hand is up.
-pub(crate) fn settle(
-    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
-    main: ItemStack,
-) {
+pub(crate) fn settle(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, main: ItemStack) {
     game.inventory[0] = Some(main);
     game.selected = 0;
     for _ in 0..20 {
@@ -90,7 +89,10 @@ pub(crate) fn dip(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> V
     (0..6)
         .map(|_| {
             game.tick_hand();
-            let shown = game.client.visible_hands[0].1.as_ref().map_or(0, |s| s.count);
+            let shown = game.client.visible_hands[0]
+                .1
+                .as_ref()
+                .map_or(0, |s| s.count);
             (game.client.heights.main, shown)
         })
         .collect()

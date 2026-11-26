@@ -3,8 +3,8 @@
 //! the result and remainders into the container in front or as items, the
 //! crafting animation ticks, and the menu with its toggleable slots.
 use super::*;
-use sunrise_gameplay_common::game::machine_containers::{Kind, View};
 use serde_json::Value;
+use sunrise_gameplay_common::game::machine_containers::{Kind, View};
 #[allow(unused_imports)]
 use sunrise_level::containers::Crafter;
 #[allow(unused_imports)]
@@ -87,11 +87,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `CrafterBlock.dispenseFrom` (the scheduled tick after a redstone pulse).
-    pub fn crafter_dispense(
-        &mut self,
-        pos: BlockPos,
-        state: BlockStateId,
-    ) -> Result<()> {
+    pub fn crafter_dispense(&mut self, pos: BlockPos, state: BlockStateId) -> Result<()> {
         let key = (pos.x, pos.y, pos.z);
         let Some(crafter) = self.common.crafter_at(key) else {
             return Ok(());
@@ -132,11 +128,11 @@ impl crate::game::ServerGame<'_> {
         Menu::map_crafted(Some(&maps), &mut result);
         self.register_made_maps(maps);
         // The remainders come from the grid as it was before anything moved.
-        let remainders = self
-            .recipes()
-            .remainders(&self.common.loop_context, &recipe, &grid, 3, &|s| {
-                self.crafting_remainder(s)
-            });
+        let remainders =
+            self.recipes()
+                .remainders(&self.common.loop_context, &recipe, &grid, 3, &|s| {
+                    self.crafting_remainder(s)
+                });
         self.crafter_eject(key, facing, result, &recipe);
         for rest in remainders.into_iter().flatten() {
             self.crafter_eject(key, facing, rest, &recipe);
@@ -326,7 +322,11 @@ pub(in crate::game) mod tests {
             .insert(key, BlockEntity::Crafter(crafter));
         crate::game::server_side::native_item_places::tests::open_to_lan(&mut game);
         let (mut player, _output) =
-            sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest(1, 2123, [2.5, 4.0, 3.5]);
+            sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest(
+                1,
+                2123,
+                [2.5, 4.0, 3.5],
+            );
         player.menu = Some(sunrise_sim::lan::menu::Menu {
             window: 1,
             kind: 0,
@@ -400,11 +400,11 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_crafter_fills_the_cart_in_front_of_it() {
-        use sunrise_gameplay_common::game::boats_common::Boat;
         use crate::game::game_tests::tests::server_game;
-        use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
         use std::sync::Arc;
         use sunrise_core::geometry::Vec3;
+        use sunrise_gameplay_common::game::boats_common::Boat;
+        use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
         // One game for the three vehicles: loading the resources is the slow part.
         let mut resources = None;
         let mut game = server_game(&mut resources);

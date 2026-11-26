@@ -10,7 +10,8 @@ impl ClientGame<'_> {
         let mut bites = Vec::new();
         let mut sneezes = Vec::new();
         for m in self
-            .common.mobs
+            .common
+            .mobs
             .iter_mut()
             .filter(|m| m.species() == Species::Panda)
         {

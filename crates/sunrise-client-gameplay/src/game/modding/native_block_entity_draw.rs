@@ -1248,11 +1248,19 @@ impl crate::game::ClientGame<'_> {
         &self,
         camera: DVec3,
     ) -> Vec<([i32; 3], u32)> {
-        self.common.world
+        self.common
+            .world
             .block_entities
             .mods_near(camera.x, camera.z, self.view_distances().furthest)
             .map(|p| ([p.0, p.1, p.2], self.common.world.block(p.0, p.1, p.2).0))
-            .filter(|&(_, state)| !self.common.res.facts().get(BlockStateId(state)).block_entity)
+            .filter(|&(_, state)| {
+                !self
+                    .common
+                    .res
+                    .facts()
+                    .get(BlockStateId(state))
+                    .block_entity
+            })
             .collect()
     }
     /// The mod block entities' view distances: the parts are asked once for each mod block
@@ -1325,8 +1333,11 @@ impl crate::game::ClientGame<'_> {
             if (corner + 0.5).distance_squared(camera) >= distance * distance {
                 continue;
             }
-            let Some(BlockEntity::Mod(entity)) =
-                self.common.world.block_entities.get(&(pos[0], pos[1], pos[2]))
+            let Some(BlockEntity::Mod(entity)) = self
+                .common
+                .world
+                .block_entities
+                .get(&(pos[0], pos[1], pos[2]))
             else {
                 continue;
             };
@@ -1732,23 +1743,17 @@ impl crate::game::ClientGame<'_> {
     /// Block state `state` as one model: what `native_draw_block` draws, the blockstate file's
     /// parts for its properties at seed 42, each tinted face holding the block's default tint
     /// (no position) in its colour. Resolved once per state in this generation.
-    pub fn native_block_state_model(
-        &self,
-        id: BlockStateId,
-    ) -> Result<ModelRef, ModelError> {
+    pub fn native_block_state_model(&self, id: BlockStateId) -> Result<ModelRef, ModelError> {
         let slot = self
             .client
             .standalone_geometry
             .state_slot(id.0, || {
                 use sunrise_client::models::catalog::BakedFace;
                 // An unknown state resolves to no faces, which `state_slot` refuses.
-                let Ok(models) = self
-                    .client
-                    .client_pack
-                    .render
-                    .model_catalog
-                    .collect_seeded(id, sunrise_gameplay_common::game::CommonGame::BLOCK_MODEL_SEED)
-                else {
+                let Ok(models) = self.client.client_pack.render.model_catalog.collect_seeded(
+                    id,
+                    sunrise_gameplay_common::game::CommonGame::BLOCK_MODEL_SEED,
+                ) else {
                     return Vec::new();
                 };
                 let default_tint = self.default_block_tint(id);
@@ -1777,10 +1782,7 @@ impl crate::game::ClientGame<'_> {
 
     /// The baked faces a slot draws through the terrain materials: a standalone model's, or a
     /// block state's from `native_block_state_model`.
-    pub fn model_faces(
-        &self,
-        slot: u32,
-    ) -> Option<&[sunrise_client::models::catalog::BakedFace]> {
+    pub fn model_faces(&self, slot: u32) -> Option<&[sunrise_client::models::catalog::BakedFace]> {
         let catalog = &self.client.client_pack.render.model_catalog;
         match catalog.model_by_slot(slot) {
             Some(model) => Some(&model.faces),
@@ -1868,7 +1870,8 @@ impl crate::game::ClientGame<'_> {
         if let Some(part) = self.client_res().client_mob_models().layer_any(key) {
             return Some(model_layers::from_part(part));
         }
-        let models = sunrise_client::mobs::EntityModelDocument::load(&self.common.vanilla_root()).ok()?;
+        let models =
+            sunrise_client::mobs::EntityModelDocument::load(&self.common.vanilla_root()).ok()?;
         models
             .model(layer)
             .map(|part| model_layers::from_part(&part))
@@ -1925,7 +1928,8 @@ impl crate::game::ClientGame<'_> {
         state: BlockStateId,
         key: &str,
     ) -> Option<&str> {
-        self.common.pack
+        self.common
+            .pack
             .assets
             .registry
             .state(state)?
@@ -1939,7 +1943,12 @@ impl crate::game::ClientGame<'_> {
         &self,
         state: BlockStateId,
     ) -> Option<&str> {
-        self.common.pack.assets.registry.state(state).map(|s| &*s.name)
+        self.common
+            .pack
+            .assets
+            .registry
+            .state(state)
+            .map(|s| &*s.name)
     }
 }
 
@@ -1987,7 +1996,7 @@ pub mod tests {
     use super::*;
     use sunrise_level::containers::{ModBlockEntity, ModBlockEntityFields};
 
-pub fn sprite() -> Rect {
+    pub fn sprite() -> Rect {
         Rect {
             u0: 0.5,
             v0: 0.25,
@@ -1997,7 +2006,7 @@ pub fn sprite() -> Rect {
             h: 16,
         }
     }
-pub fn marker(pos: f32) -> Vertex {
+    pub fn marker(pos: f32) -> Vertex {
         Vertex {
             pos: [pos, 0.0, 0.0],
             uv: [0.0, 0.0],
@@ -2008,17 +2017,17 @@ pub fn marker(pos: f32) -> Vertex {
             glint_uv: [0.0, 0.0],
         }
     }
-pub fn rows(m: Mat4) -> [f32; 12] {
+    pub fn rows(m: Mat4) -> [f32; 12] {
         let c = m.to_cols_array();
         [
             c[0], c[4], c[8], c[12], c[1], c[5], c[9], c[13], c[2], c[6], c[10], c[14],
         ]
     }
-#[cfg(test)]
-/// A frustum that sees nothing.
+    #[cfg(test)]
+    /// A frustum that sees nothing.
     struct Blind;
-#[cfg(test)]
-impl Cull for Blind {
+    #[cfg(test)]
+    impl Cull for Blind {
         fn intersects(&self, _: Vec3, _: Vec3) -> bool {
             false
         }
@@ -2026,16 +2035,16 @@ impl Cull for Blind {
             false
         }
     }
-pub fn machine() -> ModRevision {
+    pub fn machine() -> ModRevision {
         ModBlockEntity::new("mymod:machine".into(), Default::default()).revision()
     }
-pub fn vertex(x: f32) -> Vertex {
+    pub fn vertex(x: f32) -> Vertex {
         Vertex {
             pos: [x, 0.0, 0.0],
             ..bytemuck::Zeroable::zeroed()
         }
     }
-pub const LIGHT_QUAD: [[f32; 3]; 4] = [
+    pub const LIGHT_QUAD: [[f32; 3]; 4] = [
         [0.0, 1.0, 0.5],
         [0.0, 0.0, 0.5],
         [1.0, 0.0, 0.5],
@@ -2065,10 +2074,8 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
         }
     }
 
-    
-
     #[cfg(test)]
-/// A quad standing still has its light baked into its colour, as before; one drawn under
+    /// A quad standing still has its light baked into its colour, as before; one drawn under
     /// `spin` keeps its plain tint and its outward normal (`w = 127`, the shader shades it), and
     /// once turned its normal points where the face does: up turned a quarter about +x faces +z.
     #[test]
@@ -2098,7 +2105,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn non_finite_quad_submission_leaves_geometry_unchanged() {
         let mut surface = draw();
         let corners = [
@@ -2122,7 +2129,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn prepared_faces_transform_and_preserve_tint_and_emission() {
         use crate::game::client_side::minecarts_client::{PreparedModelFace, emit_model_faces};
         let mut quad = bake_flat_face(
@@ -2180,10 +2187,8 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
         assert_eq!(out.len(), 8);
     }
 
-    
-
     #[cfg(test)]
-#[test]
+    #[test]
     fn prepared_route_stays_cpu_for_either_shader_pack() {
         assert!(super::prepared_route(false, false, Some(4), 4));
         assert!(!super::prepared_route(true, false, Some(4), 4), "iris pack");
@@ -2196,7 +2201,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn prepared_models_stay_ordered_and_cpu_inside_the_block_span() {
         use crate::game::client_side::minecarts_client::{PreparedModelFace, emit_model_faces};
         let mut quad = bake_flat_face(
@@ -2269,7 +2274,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn prepared_model_entity_pixels() {
         use mod_api::__private::game::Fields;
@@ -2347,7 +2352,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_full_instance_buffer_bakes_the_tail_after_the_cut() {
         use crate::game::client_side::minecarts_client::PreparedModelFace;
@@ -2461,7 +2466,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn prepared_instance_matches_cpu_pixels() {
         use glam::DVec3;
@@ -2573,8 +2578,11 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
             );
             fail_next_prepared_upload();
             assert!(
-                instance_pixels(game.client.standalone_geometry.prepared_upload().1, uploaded)
-                    .is_err(),
+                instance_pixels(
+                    game.client.standalone_geometry.prepared_upload().1,
+                    uploaded
+                )
+                .is_err(),
                 "a forced upload failure must not draw"
             );
             assert!(
@@ -2589,7 +2597,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn resolved_model_draws_and_resource_replacement_invalidates_it() {
         use crate::game::host::draw::GameBlockEntityDrawContext;
@@ -2782,10 +2790,8 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
         });
     }
 
-    
-
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn model_tint_alpha_agrees_on_keep_deferred_and_batch() {
         use crate::game::host::draw::{GameBlockEntityDrawContext, GameWorldDrawContext};
@@ -2951,7 +2957,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-/// Under a `shaders/` pack, a batch copy and the per-copy `model()` route draw the same
+    /// Under a `shaders/` pack, a batch copy and the per-copy `model()` route draw the same
     /// vertices in a block-entity run, so our probe pack (one flat colour per program) paints
     /// both with `gbuffers_block`. Without a pack the batch marks no run and bakes the same.
     #[test]
@@ -3081,7 +3087,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-/// Each mod block is asked once, whatever its number of states; vanilla blocks never are;
+    /// Each mod block is asked once, whatever its number of states; vanilla blocks never are;
     /// an answer that isn't finite and above 0 keeps the default; the gather reaches the
     /// furthest.
     #[test]
@@ -3114,7 +3120,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-/// `BlockEntityDrawContext::text` lays the font's glyphs out under the pose, a quad per
+    /// `BlockEntityDrawContext::text` lays the font's glyphs out under the pose, a quad per
     /// glyph from left to right, in the frame's light and the opaque colour it was given, with
     /// the text's styles: bold widens it and doubles its glyphs, and an outline (black too)
     /// rings each glyph with eight copies behind the text.
@@ -3217,7 +3223,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn fractional_text_advance_rounds_up_for_drawing_and_measurement() {
         use crate::game::host::draw::GameBlockEntityDrawContext;
@@ -3247,7 +3253,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn animation_clock_survives_pause_freeze_resume_and_time_updates() {
         use std::time::Duration;
@@ -3299,7 +3305,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn atlas_reset_discards_queued_text_uploads() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
@@ -3319,7 +3325,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-/// A face a mod builds with `CubeFace::new` and `with_uv` draws in its sprite through
+    /// A face a mod builds with `CubeFace::new` and `with_uv` draws in its sprite through
     /// `BlockEntityDrawContext::cube`, its UVs cut from the sprite; an unknown sprite's face
     /// is left out and the call says so.
     #[test]
@@ -3366,7 +3372,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn the_pose_stack_turns_about_its_pivot_and_pops_back() {
         let mut d = draw();
         d.push();
@@ -3386,7 +3392,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-/// An arm a block east of the frame's origin, turned a quarter about z,
+    /// An arm a block east of the frame's origin, turned a quarter about z,
     /// with a hand a block below its pivot: `translateAndRotate` turns each
     /// part about its own pivot, then moves it, and a child goes with its
     /// parent. Expected corners are worked out by hand from JOML's
@@ -3451,10 +3457,8 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
         assert!(drawn(&model).is_empty());
     }
 
-    
-
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_quad_lands_in_its_sprite_lit_and_shaded() {
         let mut d = draw();
         // An upward face: full brightness under vanilla's level lights is
@@ -3481,7 +3485,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-/// A quad (what `cube` and `model_part` emit) drawn after `unlit(true)` has no shading
+    /// A quad (what `cube` and `model_part` emit) drawn after `unlit(true)` has no shading
     /// normal, its plain tint and full bright light, even under `level_light`; after
     /// `unlit(false)` a bottom face is shaded (vanilla's 0.4) and lit by the draw's light again.
     #[test]
@@ -3522,7 +3526,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-/// A model drawn under `unlit` is drawn on the CPU (no prepared copy), with no shading
+    /// A model drawn under `unlit` is drawn on the CPU (no prepared copy), with no shading
     /// normal, its plain colour and full bright light, and nothing for `level_light` to relight.
     #[test]
     fn an_unlit_model_skips_its_prepared_copy_shading_and_light() {
@@ -3561,7 +3565,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-/// `unlit` lasts to the end of one block entity's draw: the next one kept in the frame,
+    /// `unlit` lasts to the end of one block entity's draw: the next one kept in the frame,
     /// drawn through the same scratch draw, is lit again.
     #[test]
     fn unlit_ends_with_the_block_entity_that_turned_it_on() {
@@ -3599,7 +3603,7 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-/// An item drawn under `unlit` comes out the same in the dark (block 0, sky 0) as at
+    /// An item drawn under `unlit` comes out the same in the dark (block 0, sky 0) as at
     /// full light (15/15), while a lit item's light follows the setting.
     #[test]
     #[ignore = "daily"]
@@ -3640,11 +3644,8 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
         });
     }
 
-    
-    
-
     #[cfg(test)]
-#[test]
+    #[test]
     fn infinite_bounds_and_frames_without_a_frustum_are_never_culled() {
         let origin = Vec3::new(1.0e6, 0.0, 0.0);
         let infinite = [f32::NEG_INFINITY, 0.0, 0.0, f32::INFINITY, 1.0, 1.0];
@@ -3654,18 +3655,14 @@ pub const LIGHT_QUAD: [[f32; 3]; 4] = [
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_tint_keeps_its_channels_in_vertex_order() {
         // The vertex colour is RGBA8 read little-endian: red in the low byte.
         assert_eq!(shaded(0x10_20_30, 1.0), 0xFF_30_20_10);
     }
 
-    
-
-    
-
     #[cfg(test)]
-const KEY: KeptKey = KeptKey {
+    const KEY: KeptKey = KeptKey {
         dim: Dim::Overworld,
         state: 7,
         light: 0xF0F0,
@@ -3673,7 +3670,7 @@ const KEY: KeptKey = KeptKey {
     };
 
     #[cfg(test)]
-/// A part drawn after `spin` turns about its pivot by the animation clock
+    /// A part drawn after `spin` turns about its pivot by the animation clock
     /// (90 degrees a tick about +y takes +x to -z, by the right
     /// hand), its normal with it; what is drawn after `still` and before the
     /// spin stays; all of it is moved by the origin.
@@ -3715,10 +3712,8 @@ const KEY: KeptKey = KeptKey {
         assert!(close(out[1].pos, [11.0, 0.5, 0.5]), "{:?}", out[1].pos);
     }
 
-    
-
     #[cfg(test)]
-#[test]
+    #[test]
     fn kept_spun_model_follows_level_light_without_losing_emission_or_resubmitting() {
         use std::cell::{Cell, RefCell};
 
@@ -3810,7 +3805,7 @@ const KEY: KeptKey = KeptKey {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn entity_level_light_samples_the_same_cell_at_two_camera_distances() {
         const DELTA: f32 = 1.0 / 1_048_576.0; // 2^-20, exact in both f32 and f64.
         let origin = DVec3::new(10.5 - f64::from(DELTA), 64.25, 20.0);
@@ -3858,7 +3853,7 @@ const KEY: KeptKey = KeptKey {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_huge_translation_samples_only_when_the_absolute_cell_fits() {
         for (anchor_x, cell, expected) in [(10, None, 0x3070), (-1, Some(i32::MAX), 0x2040)] {
             let pos = [anchor_x, 64, 20];
@@ -3894,7 +3889,7 @@ const KEY: KeptKey = KeptKey {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn kept_geometry_is_drawn_again_until_what_it_was_drawn_with_changes() {
         let mut kept = KeptGeometry::default();
         let pos = [1, 2, 3];
@@ -3970,7 +3965,7 @@ const KEY: KeptKey = KeptKey {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn kept_geometry_out_of_view_for_its_ticks_is_swept() {
         let mut kept = KeptGeometry::default();
         let (seen, gone) = ([0, 0, 0], [5, 0, 0]);
@@ -4010,7 +4005,7 @@ const KEY: KeptKey = KeptKey {
     }
 
     #[cfg(test)]
-/// Ordinary (non-global) native block entities go through the same eye-section filter as
+    /// Ordinary (non-global) native block entities go through the same eye-section filter as
     /// built-in chests: from Y=111 looking down at render distance 2, Y=60 is excluded (fresh
     /// and cached), the inclusive edge Y=64 submits geometry, and global renderers at Y=60 stay.
     #[test]

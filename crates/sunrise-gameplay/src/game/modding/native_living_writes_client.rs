@@ -1,12 +1,10 @@
-
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use crate::game::native_entity_refs::tests::with_game;
     use super::super::observer_tests::tests::{Shared, UseMod};
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+    use crate::game::native_entity_refs::tests::with_game;
     use mod_api::{LivingRef, ModEntry, Mods};
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
     /// Runs `test` on a game whose acting player stands at the origin, the use
     /// button down, under a mod that fills the returned record.

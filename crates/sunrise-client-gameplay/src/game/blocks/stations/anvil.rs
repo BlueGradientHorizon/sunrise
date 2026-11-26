@@ -66,4 +66,3 @@ mod tests {
 }
 
 // The previews in a server session read the server's enchantments (#8688).
-

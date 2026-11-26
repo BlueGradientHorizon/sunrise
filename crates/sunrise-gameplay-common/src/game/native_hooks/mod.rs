@@ -77,21 +77,6 @@ pub use sunrise_game_data::suggestion::Suggestion;
 pub use sunrise_sim::mobs::Damage;
 pub use sunrise_world::level::BonemealCheck;
 pub use {
-    sunrise_game_data::text::Text,
-    sunrise_items::items::ItemStack, sunrise_level::biome::BiomeColors,
-    sunrise_level::biome::SpawnEntry, sunrise_level::block_entities::Pos,
-    sunrise_level::containers::BlockEntity, sunrise_level::containers::MOD_MENUS,
-    sunrise_level::containers::ModBlockEntityFields, sunrise_level::fast_hash::FxHashMap,
-    sunrise_level::particle_options::ParticleOptions,
-    sunrise_level::particle_options::ParticleType, sunrise_mod_package::mod_list,
-    sunrise_sim::crafting::Ingredient, sunrise_sim::crafting::recipe_result,
-    sunrise_sim::first_person_sim::Hand, sunrise_sim::health::Attack,
-    sunrise_sim::health::DamageContainer, sunrise_sim::health::DamageHooks,
-    sunrise_sim::health::DamageLevel, sunrise_sim::health::HurtSource,
-    sunrise_sim::health::Hurting, sunrise_sim::health::Knock, sunrise_sim::health::ShieldBlock,
-    sunrise_sim::health::Victim, sunrise_sim::mobs::Who,
-};
-pub use {
     sunrise_core::{
         nbt::{Compound, Tag},
         use_animation::UseAnimation,
@@ -101,6 +86,20 @@ pub use {
         level::{LevelAccess, PlacementContext, Ticks},
         registry::{BlockRegistry, BlockStateId},
     },
+};
+pub use {
+    sunrise_game_data::text::Text, sunrise_items::items::ItemStack,
+    sunrise_level::biome::BiomeColors, sunrise_level::biome::SpawnEntry,
+    sunrise_level::block_entities::Pos, sunrise_level::containers::BlockEntity,
+    sunrise_level::containers::MOD_MENUS, sunrise_level::containers::ModBlockEntityFields,
+    sunrise_level::fast_hash::FxHashMap, sunrise_level::particle_options::ParticleOptions,
+    sunrise_level::particle_options::ParticleType, sunrise_mod_package::mod_list,
+    sunrise_sim::crafting::Ingredient, sunrise_sim::crafting::recipe_result,
+    sunrise_sim::first_person_sim::Hand, sunrise_sim::health::Attack,
+    sunrise_sim::health::DamageContainer, sunrise_sim::health::DamageHooks,
+    sunrise_sim::health::DamageLevel, sunrise_sim::health::HurtSource,
+    sunrise_sim::health::Hurting, sunrise_sim::health::Knock, sunrise_sim::health::ShieldBlock,
+    sunrise_sim::health::Victim, sunrise_sim::mobs::Who,
 };
 
 pub mod add_attribute_tooltips;
@@ -116,7 +115,7 @@ pub mod animate_tick;
 /// The hook points. Each does nothing in Sunrise.
 pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Shared click metadata borrows the already-converted API snapshot for this call.
-     fn block_click<'a>(
+    fn block_click<'a>(
         &mut self,
         hit: &super::Hit,
         hand: mod_api::Hand,
@@ -141,7 +140,7 @@ pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The living entity an effect decision names: `Some(id)` a mob's
     /// `Entity.getId`, `None` the acting player. `None` when no native
     /// world runs, and the decision falls back to vanilla's.
-     fn effect_living_ref(&self, entity: Option<i32>) -> Option<LivingRef> {
+    fn effect_living_ref(&self, entity: Option<i32>) -> Option<LivingRef> {
         let epoch = self.native_lifecycle.epoch()?;
         let id = match entity {
             Some(id) => id as u32,
@@ -154,12 +153,7 @@ pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `Some(successful)` when a mod canceled it, the answer `growCrop`
     /// gives in vanilla's place. The caller keeps what the mods did to
     /// `stack`.
-     fn bonemeal(
-        &mut self,
-        pos: BlockPos,
-        by_player: bool,
-        stack: &mut ItemStack,
-    ) -> BonemealAsk {
+    fn bonemeal(&mut self, pos: BlockPos, by_player: bool, stack: &mut ItemStack) -> BonemealAsk {
         if !mod_api::__private::listened(mod_api::HookId::Bonemeal) {
             return BonemealAsk {
                 crop: None,
@@ -201,18 +195,18 @@ pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
     /// The acting player as the hook points name one: the guest whose turn
     /// it is, else the host.
-     fn native_acting_id(&mut self) -> u128 {
+    fn native_acting_id(&mut self) -> u128 {
         self.side_acting_id()
     }
     /// The player clicking, as the block-use hooks name them: the acting
     /// player's UUID and entity id on a server, this client's own player on
     /// a client.
-     fn native_clicker(&mut self) -> (u128, i32) {
+    fn native_clicker(&mut self) -> (u128, i32) {
         self.side_clicker()
     }
     /// `PlayerInteractEvent.RightClickBlock` for a click on `hit` with
     /// `hand` holding `stack`: what the mods let it use.
-     fn right_click_block(
+    fn right_click_block(
         &mut self,
         hit: &super::Hit,
         hand: Hand,

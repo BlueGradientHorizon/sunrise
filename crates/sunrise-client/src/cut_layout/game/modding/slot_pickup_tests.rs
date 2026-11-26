@@ -3,7 +3,6 @@
 //! server (a LAN guest's click) and in the client's prediction alike, with the slots a client
 //! predicted otherwise sent back; a drag and a creative clone never ask it. The fixtures need
 //! prepared resources.
-use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use mod_api::{
     BlockEntityPart, BlockPart, Hooks, MenuContainer, MenuPart, MenuQuickMoveEvent,
     MenuSlotRulesEvent, ModEntry, Mods, Registrar,
@@ -12,6 +11,7 @@ use std::{
     cell::{Cell, RefCell},
     sync::{Arc, mpsc},
 };
+use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{
     chunk::Chunk,
@@ -322,7 +322,9 @@ fn click(
         Input::QuickCraft => 5,
         Input::PickupAll => 6,
     };
-    let menu = game.server.lan.as_ref().unwrap().hub.guests[0].menu.as_ref();
+    let menu = game.server.lan.as_ref().unwrap().hub.guests[0]
+        .menu
+        .as_ref();
     let (container, state) = menu.map(|m| (m.window, m.state)).unwrap();
     rx.try_iter().for_each(drop);
     game.lan_guest_packet(

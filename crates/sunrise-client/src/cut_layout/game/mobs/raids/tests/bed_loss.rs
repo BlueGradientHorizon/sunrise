@@ -1,8 +1,8 @@
 //! Real Game raid creation/wave dispatch with a loaded claimed-bed precondition.
-use sunrise_gameplay_common::game::GameGameExt1;
 use crate::game::{Options, Progress, Settings, load_resources};
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::{mobs::Mob, raid::Status};
 
@@ -26,7 +26,8 @@ fn admitted_raid_loses_removed_loaded_bed_without_erasing_memory() {
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,

@@ -67,7 +67,8 @@ impl crate::game::ClientGame<'_> {
         if container != 0 && menu == "inventory" {
             return;
         }
-        let Some(internal) = sunrise_gameplay_common::game::inventory_screen_slot(&menu, slot) else {
+        let Some(internal) = sunrise_gameplay_common::game::inventory_screen_slot(&menu, slot)
+        else {
             return;
         };
         if container == 0
@@ -105,9 +106,14 @@ impl crate::game::ClientGame<'_> {
         if internal < 36 {
             self.remote_hand_slot_set(internal, changed);
         } else if internal == 504 {
-            self.remote_hand_slot_set(sunrise_gameplay_common::game::held_items::OFFHAND_SLOT, changed);
+            self.remote_hand_slot_set(
+                sunrise_gameplay_common::game::held_items::OFFHAND_SLOT,
+                changed,
+            );
         }
-        if internal >= sunrise_gameplay_common::game::stations_common::INPUT && self.common.station.is_some() {
+        if internal >= sunrise_gameplay_common::game::stations_common::INPUT
+            && self.common.station.is_some()
+        {
             self.remote_station_slot_changed(internal);
         }
     }

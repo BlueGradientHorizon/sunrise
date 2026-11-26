@@ -1,11 +1,5 @@
-use sunrise_client_gameplay::game::native_hooks::explosion_resistance::ExplosionResistanceGameExt1;
-use sunrise_gameplay_common::game::GameGameExt1;
-use mod_api::ExplosionStart;
-use sunrise_core::geometry::Vec3;
-use sunrise_core::position::BlockPos;
-use sunrise_core::random::LegacyRandom;
 use super::*;
-use sunrise_gameplay::game::server_side::explosion::BlockInteraction;
+use mod_api::ExplosionStart;
 use mod_api::{
     BlockPart, BreakBlockEvent, CanDropFromExplosionEvent, CanEntityDestroyEvent, ExpDropEvent,
     ExplosionResistanceEvent, Flow, Hooks, LevelHost, OnBlockExplodedEvent, Registrar, ServerHost,
@@ -14,6 +8,12 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicI32, Ordering},
 };
+use sunrise_client_gameplay::game::native_hooks::explosion_resistance::ExplosionResistanceGameExt1;
+use sunrise_core::geometry::Vec3;
+use sunrise_core::position::BlockPos;
+use sunrise_core::random::LegacyRandom;
+use sunrise_gameplay::game::server_side::explosion::BlockInteraction;
+use sunrise_gameplay_common::game::GameGameExt1;
 
 #[derive(Clone)]
 struct Xp(Arc<AtomicI32>);

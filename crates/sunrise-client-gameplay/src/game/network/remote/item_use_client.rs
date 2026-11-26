@@ -1,4 +1,3 @@
-
 use sunrise_items::items::ItemStack;
 use sunrise_sim::first_person_sim::Hand;
 
@@ -24,7 +23,8 @@ impl crate::game::ClientGame<'_> {
         // Server priming sends TNT_PRIMED and can refuse priming; leave ignition
         // effects and item consumption to the server.
         let sneaking = self.remote_shift_down();
-        let hands_full = self.common.stack_in(self.common.selected).is_some() || self.common.offhand.is_some();
+        let hands_full =
+            self.common.stack_in(self.common.selected).is_some() || self.common.offhand.is_some();
         if !(sneaking && hands_full) && &*name == "minecraft:tnt" {
             return true;
         }
@@ -48,8 +48,10 @@ impl crate::game::ClientGame<'_> {
             } else {
                 "minecraft:item.flintandsteel.use"
             };
-            let pitch =
-                sunrise_items::items::fire_starter_pitch(is_fire_charge, &mut self.common.world.random);
+            let pitch = sunrise_items::items::fire_starter_pitch(
+                is_fire_charge,
+                &mut self.common.world.random,
+            );
             self.client.audio.0.play(sound, Some(at), 1.0, pitch);
             if is_fire_charge && !self.common.creative {
                 self.with_hand(hand, ItemUseStacksGameExt1::consume_held);
@@ -66,8 +68,10 @@ impl crate::game::ClientGame<'_> {
             let state = self.with_level(|b, level, ticks| b.fire_state_for(level, ticks, pos));
             self.predict_blocks(&[(pos, state)], seq);
             let sound = sunrise_items::items::fire_starter_sound(is_fire_charge);
-            let pitch =
-                sunrise_items::items::fire_starter_pitch(is_fire_charge, &mut self.common.world.random);
+            let pitch = sunrise_items::items::fire_starter_pitch(
+                is_fire_charge,
+                &mut self.common.world.random,
+            );
             let target_at = [
                 f64::from(target[0]) + 0.5,
                 f64::from(target[1]) + 0.5,

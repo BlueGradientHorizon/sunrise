@@ -21,8 +21,8 @@
 //! (`Shulker.onPeekAmountChange`). A mob keeps its answer, and other copies keep theirs on
 //! their tracking row (`remote::Tracked`); the copy's box follows it.
 
-use crate::game::ServerGame;
 use super::entity::{Entity as _, with_entity, with_entity_mut};
+use crate::game::ServerGame;
 use mod_api::Pose;
 
 impl ServerGame<'_> {
@@ -82,7 +82,9 @@ impl ServerGame<'_> {
             }
             let vanilla = sunrise_gameplay_common::game::dragon_common::Crystal::DIMENSIONS;
             if let Some(answer) = self.ask_entity_size(id, Pose::Standing, vanilla, previous) {
-                self.common.crystals.update(i, |c| c.size_answer = Some(answer));
+                self.common
+                    .crystals
+                    .update(i, |c| c.size_answer = Some(answer));
             }
         }
     }
@@ -128,10 +130,13 @@ impl ServerGame<'_> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use sunrise_gameplay_common::game::{collision_source::CollisionSourceGameExt1 as _, entity_sizes_common::EntitySizesCommonGameExt1 as _};
     use crate::game::native_entity_refs::tests::with_game;
     use mod_api::{EntitySizeEvent, Hooks, Host, Pose};
     use std::sync::{Arc, Mutex};
+    use sunrise_gameplay_common::game::{
+        collision_source::CollisionSourceGameExt1 as _,
+        entity_sizes_common::EntitySizesCommonGameExt1 as _,
+    };
 
     pub(in crate::game) type Calls = Arc<Mutex<Vec<(Pose, [f32; 3], [f32; 3])>>>;
 
@@ -536,7 +541,11 @@ pub(in crate::game) mod tests {
     pub(in crate::game) fn with_loopback_client(
         test: impl FnOnce(&mut crate::game::ClientGame<'_>, &Mutex<Seen>),
     ) {
-        use {crate::game::native_client_session::tests::finish_login, crate::game::native_client_session::tests::logged_client, crate::game::native_entity_refs::tests::with_client_game};
+        use {
+            crate::game::native_client_session::tests::finish_login,
+            crate::game::native_client_session::tests::logged_client,
+            crate::game::native_entity_refs::tests::with_client_game,
+        };
         let seen = Arc::new(Mutex::new(Seen::default()));
         let mods = vec![mod_api::ModEntry::new("log", Box::new(Log(seen.clone())))].into();
         mod_platform::testing::with_mods(mods, || {
@@ -863,9 +872,9 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn server_entities_ask_and_their_boxes_take_the_answer() {
+        use sunrise_core::geometry::Vec3;
         use sunrise_gameplay_common::game::collision_source::Mover;
         use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
-        use sunrise_core::geometry::Vec3;
         use sunrise_sim::entities::ArmorStand;
         use sunrise_sim::projectiles::{Projectile, ProjectileKind};
         if in_fresh_process("server_entities_ask_and_their_boxes_take_the_answer") {
@@ -894,20 +903,23 @@ pub(in crate::game) mod tests {
                 (9005, "minecraft:leash_knot"),
                 (9006, "minecraft:block_display"),
             ] {
-                game.server.others.0.push(crate::game::commands::OtherEntity {
-                    size_answer: None,
-                    attachment_lifetime: Default::default(),
-                    knot_check: None,
-                    eye: None,
-                    join: Default::default(),
-                    id,
-                    kind: kind.into(),
-                    position: Vec3::new(6.5, 70.0, 2.5),
-                    yaw: 0.0,
-                    pitch: 0.0,
-                    item_transformation: None,
-                    interaction: None,
-                });
+                game.server
+                    .others
+                    .0
+                    .push(crate::game::commands::OtherEntity {
+                        size_answer: None,
+                        attachment_lifetime: Default::default(),
+                        knot_check: None,
+                        eye: None,
+                        join: Default::default(),
+                        id,
+                        kind: kind.into(),
+                        position: Vec3::new(6.5, 70.0, 2.5),
+                        yaw: 0.0,
+                        pitch: 0.0,
+                        item_transformation: None,
+                        interaction: None,
+                    });
             }
             game.native_entity_sizes();
             // EntityType.ITEM: 0.25 by 0.25, eyes 0.2125; MINECART: 0.98 by 0.7, eyes 0.595;
@@ -984,35 +996,37 @@ pub(in crate::game) mod tests {
                 )
                 .unwrap();
             let health = game.mobs.iter().find(|m| m.id == pig).unwrap().health;
-            game.common.falling.push(sunrise_gameplay_common::game::FallingBlock {
-                size_answer: None,
-                attachment_lifetime: Default::default(),
-                rotation: [0.0; 2],
-                join: Default::default(),
-                id: 9101,
-                blocks_building: true,
-                state: game
-                    .pack
-                    .assets
-                    .registry
-                    .default_state("minecraft:anvil")
-                    .unwrap(),
-                start_pos: sunrise_core::position::BlockPos::containing(at),
-                position: at,
-                previous: at,
-                velocity: Vec3::ZERO,
-                age: 1,
-                no_gravity: false,
-                portal: Default::default(),
-                drop_item: true,
-                fall_distance: 2.0,
-                ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
-                fire_ticks: 0,
-                sync_velocity: false,
-                stuck: Vec3::ZERO,
-                damage: sunrise_sim::falling_block::Damage::anvil(),
-                saved: None,
-            });
+            game.common
+                .falling
+                .push(sunrise_gameplay_common::game::FallingBlock {
+                    size_answer: None,
+                    attachment_lifetime: Default::default(),
+                    rotation: [0.0; 2],
+                    join: Default::default(),
+                    id: 9101,
+                    blocks_building: true,
+                    state: game
+                        .pack
+                        .assets
+                        .registry
+                        .default_state("minecraft:anvil")
+                        .unwrap(),
+                    start_pos: sunrise_core::position::BlockPos::containing(at),
+                    position: at,
+                    previous: at,
+                    velocity: Vec3::ZERO,
+                    age: 1,
+                    no_gravity: false,
+                    portal: Default::default(),
+                    drop_item: true,
+                    fall_distance: 2.0,
+                    ground: sunrise_world::ground_support::GroundState::from_ground_flag(true),
+                    fire_ticks: 0,
+                    sync_velocity: false,
+                    stuck: Vec3::ZERO,
+                    damage: sunrise_sim::falling_block::Damage::anvil(),
+                    saved: None,
+                });
             game.native_entity_sizes();
             let mut anvil = game.falling[0].clone();
             game.falling.remove(0);
@@ -1077,8 +1091,8 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn without_a_listener_the_server_asks_nothing() {
-        use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
         use sunrise_core::geometry::Vec3;
+        use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
         if in_fresh_process("without_a_listener_the_server_asks_nothing") {
             return;
         }
@@ -1095,6 +1109,5 @@ pub(in crate::game) mod tests {
         });
     }
 }
-
 
 use sunrise_gameplay_common::game::entity_sizes_common::EntitySizesCommonGameExt1 as _;

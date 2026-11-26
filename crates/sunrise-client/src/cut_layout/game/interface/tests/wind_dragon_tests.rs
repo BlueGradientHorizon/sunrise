@@ -1,9 +1,9 @@
-use sunrise_gameplay_common::game::GameGameExt1;
-use {sunrise_gameplay_common::game::creatures::SpawnSite, sunrise_gameplay::game::wind::Source};
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::spawn_rules::Reason;
+use {sunrise_gameplay::game::wind::Source, sunrise_gameplay_common::game::creatures::SpawnSite};
 
 fn end_game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,

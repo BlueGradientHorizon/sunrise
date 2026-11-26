@@ -1,9 +1,9 @@
 //! Client local and creative menu pickup route for `item_stacked_on_other`.
 use super::*;
+use std::rc::Rc;
 use sunrise_gameplay_common::game::stacked_on_other::{
     Pickup, local_pickup_id, stacked_listened_for_side, stacked_listens_for_side,
 };
-use std::rc::Rc;
 use sunrise_sim::menu::{Env, Input};
 
 impl crate::game::ClientGame<'_> {

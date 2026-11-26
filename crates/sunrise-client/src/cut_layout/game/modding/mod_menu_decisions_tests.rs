@@ -2,7 +2,6 @@
 //! `menu_clicked` runs as a decided action (`decided_action`), while `menu_button`,
 //! `menu_quick_move` and `menu_slot_take` lend live resident storage through `BlockEntityScope`.
 //! The fixtures need prepared resources.
-use {sunrise_gameplay::game::native_guest_turn_tests::register_test_menu, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
 use mod_api::{
     BlockEntityPart, Flow, Hooks, HostBlockStates, HostTransaction, ITEMS, ItemPlace, ItemResource,
     MenuButtonEvent, MenuClickedEvent, MenuQuickMoveEvent, MenuSlotTakeEvent, ModEntry, Mods,
@@ -16,6 +15,10 @@ use sunrise_items::items::ItemStack;
 use sunrise_level::containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer};
 use sunrise_protocol::packets::play::{ContainerButtonClick, ContainerClick, Serverbound};
 use sunrise_sim::lan::menu::Slots;
+use {
+    sunrise_gameplay::game::native_guest_turn_tests::register_test_menu,
+    sunrise_gameplay::game::native_guest_turn_tests::with_guests,
+};
 
 #[path = "mod_menu_decisions_tests/container_layout.rs"]
 mod container_layout;
@@ -1033,8 +1036,10 @@ fn a_panicking_live_quick_move_rolls_back_and_disables_only_its_callback() {
             crate::game::server_side::native_entity_refs::tests::with_client_game(|client| {
                 client.add_hook_panic_toasts();
                 assert_eq!(client.client.toast_manager.queued.len(), 1);
-                let Some(sunrise_client_gameplay::game::toast_manager::Toast::Diagnostic { toast, .. }) =
-                    client.client.toast_manager.queued.front()
+                let Some(sunrise_client_gameplay::game::toast_manager::Toast::Diagnostic {
+                    toast,
+                    ..
+                }) = client.client.toast_manager.queued.front()
                 else {
                     panic!("expected one shared hook error toast");
                 };
@@ -1351,7 +1356,9 @@ fn a_stale_quick_move_restores_the_original_source_and_menu_without_fallback() {
     with_publication_mods(|| {
         with_live_depot_guests(|game| {
             game.build_registries();
-            let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(game, false);
+            let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(
+                game, false,
+            );
             for (handled, reopen) in [(true, false), (false, false), (true, true)] {
                 let window = open_live_depot(game);
                 let holder = game.world.block_entities.identity(POS).unwrap();
@@ -2193,7 +2200,9 @@ fn a_block_menu_click_commits_only_the_replacement_or_a_fresh_default() {
                         .unwrap();
                     assert_eq!(menu.mod_type.unwrap().id, DEPOT_MENU);
                     let window = menu.window;
-                    let content = |game: &sunrise_gameplay::game::ServerGame<'_>, pos, slot: usize| {
+                    let content = |game: &sunrise_gameplay::game::ServerGame<'_>,
+                                   pos,
+                                   slot: usize| {
                         let Some(BlockEntity::Mod(entity)) = game.world.block_entities.get(&pos)
                         else {
                             panic!("missing {pos:?}")

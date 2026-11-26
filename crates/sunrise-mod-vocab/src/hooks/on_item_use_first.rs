@@ -6,7 +6,8 @@ pub trait Hooks {
     /// `use_item_on_block` (`ItemBeforeBlock`) let it through and before the
     /// block's own `useItemOn`. An answer ends the click: neither the block
     /// nor the item's `useOn` runs. `Pass` goes on to the block.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::on_item_use_first::ServerGame<'_>::native_on_item_use_first", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::on_item_use_first::ServerGame<'_>::native_on_item_use_first",
         dispatch = "flat",
         side = "server",
         contract = "replace",

@@ -1,6 +1,6 @@
 use super::*;
-use sunrise_gameplay_common::game::{lan_menu_data::ClickReply, stacked_on_other::Pickup};
 use std::cell::RefCell;
+use sunrise_gameplay_common::game::{lan_menu_data::ClickReply, stacked_on_other::Pickup};
 use sunrise_sim::menu::StackedOutcome;
 
 impl crate::game::ServerGame<'_> {

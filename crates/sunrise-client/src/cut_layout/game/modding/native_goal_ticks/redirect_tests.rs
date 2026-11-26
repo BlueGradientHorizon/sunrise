@@ -1,12 +1,12 @@
 //! A target listener can choose a different real guest within a mob tick.
+use super::*;
 use mod_api::EntityRef;
 use mod_api::LivingRef;
-use sunrise_sim::mobs::Mob;
-use sunrise_sim::mobs::Who;
-use super::*;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_sim::mobs::Mob;
+use sunrise_sim::mobs::Who;
 use sunrise_sim::mobs::{
     MobEvent, TargetChange,
     player_selection::{PlayerSelection, TickPlayer},
@@ -37,7 +37,10 @@ fn redirect_to_another_guest_switches_view_and_tags_subsequent_events() {
     .into();
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
-            use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
+            use {
+                sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+                sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+            };
 
             open_to_lan(game);
             for conn in [12, 13] {

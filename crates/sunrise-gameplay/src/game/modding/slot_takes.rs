@@ -2,9 +2,9 @@
 //! block-backed menu lends sequential live access (`BlockEntityScope`) to its resident backing
 //! entity; a blockless owned menu lends a scope with no view, whose `host()` and
 //! `transaction(...)` still reach its transient slots through `ItemPlace::MenuSlot`.
-use sunrise_gameplay_common::game::transactions::After;
 use crate::game::server_side::native_hooks_server::block_entity_tick::ResidentBlockEntityAccess;
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
+use sunrise_gameplay_common::game::transactions::After;
 use sunrise_level::block_entities::Pos;
 use sunrise_sim::menu::SlotTake;
 

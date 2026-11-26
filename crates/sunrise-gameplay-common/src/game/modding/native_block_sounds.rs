@@ -1,8 +1,8 @@
 //! The `sound_type` Part method (`IBlockExtension.getSoundType`). The client library asks through
 //! `native_client_hooks`; only a state whose block has a subscribing part is converted, and only
 //! then is its own sound type kept to fall back on.
-use super::api_values::{TryIntoApi, block_state};
 use super::GameLevel;
+use super::api_values::{TryIntoApi, block_state};
 use mod_api::{BlockSoundCause, BlockSoundType};
 use std::sync::Arc;
 use sunrise_core::{identifier::Identifier, position::BlockPos};

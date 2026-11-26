@@ -101,12 +101,7 @@ impl ClientGame<'_> {
         }
     }
     /// [`Self::add_pickup`] with the collector's first target given.
-    pub fn add_pickup_toward(
-        &mut self,
-        taken: Taken,
-        collector: Collector,
-        target: [f64; 3],
-    ) {
+    pub fn add_pickup_toward(&mut self, taken: Taken, collector: Collector, target: [f64; 3]) {
         let kind = match taken {
             Taken::Item(_) => "item",
             Taken::Orb(_) => "orb",

@@ -1,12 +1,13 @@
 use super::chat_common::OVERWORLD_CLOCK;
-use sunrise_gameplay_common::game::clocks::HubClockSnapshot;
 use sunrise_gameplay::world_clock::WorldClock;
+use sunrise_gameplay_common::game::clocks::HubClockSnapshot;
 
 impl crate::game::ServerGame<'_> {
     /// Advance every world clock (`ServerClockManager.tick`) when `advance_time` allows it.
     pub fn advance_clock(&mut self) {
         if !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::ADVANCE_TIME)
         {
@@ -48,7 +49,8 @@ impl crate::game::ServerGame<'_> {
         let active = self.common.active_clock().to_owned();
         let overworld = self.common.command_clock_time(OVERWORLD_CLOCK);
         let advancing = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::ADVANCE_TIME);
         // A paused clock, or `advance_time` off, is a rate of 0 to the guests, as for the Overworld's.
@@ -67,7 +69,8 @@ impl crate::game::ServerGame<'_> {
             guest_rate(&self.common.ui.end_clock),
         ))
         .chain(
-            self.common.ui
+            self.common
+                .ui
                 .command_clocks
                 .iter()
                 .map(|(name, (total, state))| (name.clone(), *total, guest_rate(state))),
@@ -88,7 +91,8 @@ impl crate::game::ServerGame<'_> {
     /// `ServerClockInstance.packNetworkState`: overworld clock rate sent to clients.
     pub(in crate::game) fn network_clock_rate(&self) -> f32 {
         if self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::ADVANCE_TIME)
             && !self.common.ui.clock.paused

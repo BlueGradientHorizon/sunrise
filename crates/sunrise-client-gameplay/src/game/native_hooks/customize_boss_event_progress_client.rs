@@ -1,7 +1,7 @@
 #[cfg(any())]
 #[cfg(any(test, feature = "test-support"))]
 pub mod customize_boss_event_progress_tests {
-use sunrise_gameplay_common::game::native_hooks::customize_boss_event_progress::customize_boss_event_progress_tests::backgrounds;
+    use sunrise_gameplay_common::game::native_hooks::customize_boss_event_progress::customize_boss_event_progress_tests::backgrounds;
 
     use crate::game::native_entity_refs::tests::run_fresh_cases;
 use mod_api::{
@@ -35,7 +35,7 @@ use sunrise_gameplay_common::game::native_hooks::customize_boss_event_progress::
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn an_unconvertible_boss_bar_keeps_vanilla_draws_without_dispatch() {
         if run_fresh_cases(

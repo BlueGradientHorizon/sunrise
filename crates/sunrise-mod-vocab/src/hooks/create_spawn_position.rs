@@ -3,7 +3,8 @@
 pub trait Hooks {
     /// Before a new server level selects its initial world spawn
     /// (NeoForge's `LevelEvent.CreateSpawnPosition`).
-    #[hook(target = "sunrise_gameplay::game::native_hooks::create_spawn_position::ServerGame<'_>::native_create_spawn_position", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::create_spawn_position::ServerGame<'_>::native_create_spawn_position",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

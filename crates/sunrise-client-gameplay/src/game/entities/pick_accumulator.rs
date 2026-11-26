@@ -9,18 +9,12 @@ pub(in crate::game) trait PickDispatchExt: Sized {
 }
 impl PickDispatchExt for PickAccumulator {
     /// Reuses the caller's candidate buffer when `CanRiderInteract` is subscribed.
-     fn recording(
-        max_distance_sq: f64,
-        mut candidates: Vec<PickCandidate>,
-    ) -> Self {
+    fn recording(max_distance_sq: f64, mut candidates: Vec<PickCandidate>) -> Self {
         candidates.clear();
         Self::recording_with(max_distance_sq, candidates)
     }
 
-     fn dispatch(
-        &mut self,
-        game: &mut crate::game::ClientGame<'_>,
-    ) -> Vec<PickCandidate> {
+    fn dispatch(&mut self, game: &mut crate::game::ClientGame<'_>) -> Vec<PickCandidate> {
         let candidates = self.take_candidates();
         let camera = game.pick_camera_id();
         for &candidate in &candidates {
@@ -58,7 +52,8 @@ impl ClientGame<'_> {
                 Some(remote.entity_id as u32)
             }
         } else {
-            self.common.player
+            self.common
+                .player
                 .as_ref()
                 .map(|_| self.own_entity_id() as u32)
                 .filter(|&id| id != 0)

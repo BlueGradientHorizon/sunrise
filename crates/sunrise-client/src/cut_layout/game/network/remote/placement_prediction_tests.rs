@@ -1,13 +1,23 @@
-use sunrise_gameplay_common::game::GameGameExt1;
-use std::sync::Arc;
-use sunrise_gameplay_common::game::remote::dry_level::{DryLevel, DryLevelGameExt2 as _};
-use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{BlockEntity, BlockStateId, Builtin, C, Chunk, Hit, Holder, ItemStack, S, Tag, Vec3, block_entity_data, dry_level, play}};
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
-use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
-use {sunrise_client_gameplay::game::native_connection_groups::ReceivedGroup, sunrise_gameplay::game::native_entity_refs::tests::with_game_role, crate::game::server_side::native_entity_refs::tests::with_game_role_client};
 use mod_api::{
     BlockPart, BlockState, CanSurviveEvent, CanSustainPlantEvent, FenceGateInWallEvent, Hooks,
     LevelSide, MayPlaceOnEvent, Registrar, StateForPlacementEvent,
+};
+use std::sync::Arc;
+use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
+use sunrise_gameplay_common::game::remote::dry_level::{DryLevel, DryLevelGameExt2 as _};
+use {
+    crate::game::remote::*,
+    sunrise_gameplay_common::game::remote::{
+        BlockEntity, BlockStateId, Builtin, C, Chunk, Hit, Holder, ItemStack, S, Tag, Vec3,
+        block_entity_data, dry_level, play,
+    },
+};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_game_role_client,
+    sunrise_client_gameplay::game::native_connection_groups::ReceivedGroup,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_role,
 };
 
 /// Every answer below is a client's: the hooks are asked by its placement prediction.
@@ -216,10 +226,14 @@ impl Hooks for PlacementStorageMod {
 #[test]
 #[ignore = "daily"]
 fn placement_and_prediction_choose_from_their_local_item_providers() {
-    use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases};
     use mod_api::{Direction, LevelHost};
     use sunrise_core::position::BlockPos;
     use sunrise_world::level::{PlaceContext, PlaceOutcome, PlacementSource};
+    use {
+        sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+        sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+        sunrise_gameplay_common::game::execution_role::ExecutionRole,
+    };
 
     if run_fresh_cases(
         "game::remote::placement_prediction_tests::placement_and_prediction_choose_from_their_local_item_providers",

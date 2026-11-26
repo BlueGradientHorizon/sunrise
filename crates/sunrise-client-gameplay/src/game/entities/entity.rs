@@ -1,21 +1,19 @@
-
-
 #[cfg(test)]
 pub(crate) mod join_order_tests {
 
-use sunrise_gameplay_common::game::server_side::entity_server::join_order_tests::{Lists, at};
+    use sunrise_gameplay_common::game::server_side::entity_server::join_order_tests::{Lists, at};
 
-use crate::game::client_side::entity_client::{DrawExtras, DrawFamily, DrawRun, draw_runs};
+    use crate::game::client_side::entity_client::{DrawExtras, DrawFamily, DrawRun, draw_runs};
 
-use sunrise_gameplay_common::game::entity::EntityLists;
+    use sunrise_gameplay_common::game::entity::EntityLists;
 
-use sunrise_gameplay_common::game::creatures::render_fixture::mob;
+    use sunrise_gameplay_common::game::creatures::render_fixture::mob;
 
-use sunrise_sim::join_seq::{JoinList, JoinSeq};
+    use sunrise_sim::join_seq::{JoinList, JoinSeq};
 
-use sunrise_sim::mobs::Species;
+    use sunrise_sim::mobs::Species;
 
-fn runs(
+    fn runs(
         lists: &Lists,
         local_player: Option<JoinSeq>,
     ) -> Vec<(DrawFamily, std::ops::Range<usize>)> {
@@ -30,7 +28,7 @@ fn runs(
         );
         runs.into_iter().map(|r| (r.family, r.range)).collect()
     }
-/// The ordered draw takes the families' entities in join order, not family by family, and
+    /// The ordered draw takes the families' entities in join order, not family by family, and
     /// each run names the list range its family draws.
     #[test]
     fn draw_runs_interleave_families_in_join_order() {
@@ -65,7 +63,7 @@ fn runs(
             ]
         );
     }
-/// Entities of one family that joined back to back are one run.
+    /// Entities of one family that joined back to back are one run.
     #[test]
     fn draw_runs_join_a_family_that_joined_back_to_back() {
         let mut lists = Lists::default();
@@ -82,7 +80,7 @@ fn runs(
             ]
         );
     }
-/// Entities of an undrawn family do not split a run.
+    /// Entities of an undrawn family do not split a run.
     #[test]
     fn an_undrawn_family_splits_no_run() {
         use sunrise_sim::projectiles::{Projectile, ProjectileKind};
@@ -112,10 +110,13 @@ fn runs(
 
 #[cfg(test)]
 pub(in crate::game) mod render_bounds_tests {
-    use sunrise_core::geometry::Vec3;
-    use sunrise_gameplay_common::game::{boats_common::Boat, minecarts::{CartKind, Minecart}};
-    use sunrise_sim::entities::ArmorStand;
     use crate::game::client_side::entity_client::RenderEntityBounds;
+    use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::{
+        boats_common::Boat,
+        minecarts::{CartKind, Minecart},
+    };
+    use sunrise_sim::entities::ArmorStand;
     use sunrise_sim::entities::ItemFrame;
 
     #[test]
@@ -186,11 +187,7 @@ pub(in crate::game) mod render_bounds_tests {
 
     #[test]
     fn minecart_bounds_follow_custom_display_offset() {
-        let mut cart = Minecart::new(
-            4,
-            CartKind::Chest,
-            Vec3::new(0.0, 10.0, 0.0),
-        );
+        let mut cart = Minecart::new(4, CartKind::Chest, Vec3::new(0.0, 10.0, 0.0));
         cart.custom_offset = Some(32);
         let bounds = cart.render_bounds(1.0);
         assert!(bounds.min_position().y <= 9.5);

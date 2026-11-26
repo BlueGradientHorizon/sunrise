@@ -20,7 +20,8 @@ pub trait Hooks {
     /// of an entity that isn't living, nor for a table rolled any other way.
     /// The draws a mod makes from the level's random stay in order with the
     /// roll's. Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::enchanted_entity_loot::ServerGame<'_>::native_enchanted_entity_loot", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::enchanted_entity_loot::ServerGame<'_>::native_enchanted_entity_loot",
         dispatch = "flat",
         side = "server",
         contract = "listen",

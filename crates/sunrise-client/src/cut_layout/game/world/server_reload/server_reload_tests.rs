@@ -1,19 +1,22 @@
-use sunrise_client_gameplay::game::native_hooks::tags_updated::GameHooks;
-use mod_api::FileToIdConverter;
-use mod_api::{Identifier, ServerReloadContext};
-use mod_api::__private::reload::ReloadStageError;
 use super::*;
-use {sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::world_loading::WorldRequest};
+use mod_api::__private::reload::ReloadStageError;
+use mod_api::FileToIdConverter;
 use mod_api::{
     self, AddServerReloadListenersEvent, Hooks, ListenerKey, ModEntry, ReloadResourceError,
     ServerReloadListener,
 };
+use mod_api::{Identifier, ServerReloadContext};
 use std::{
     path::Path,
     sync::{
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
+};
+use sunrise_client_gameplay::game::native_hooks::tags_updated::GameHooks;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay::game::world_loading::WorldRequest,
 };
 
 struct DataListener {
@@ -1367,7 +1370,12 @@ fn data_maps_updated_fires_for_each_registry_on_first_open_and_every_reload() {
         #[cfg(feature = "client")]
         crate::game::server_side::native_entity_refs::tests::with_client_game(|client| {
             assert_eq!(
-                sunrise_gameplay_common::game::tables::WorldTablesExt::data_map_value(client, "minecraft:item", "minecraft:coal", "probe:fuel"),
+                sunrise_gameplay_common::game::tables::WorldTablesExt::data_map_value(
+                    client,
+                    "minecraft:item",
+                    "minecraft:coal",
+                    "probe:fuel"
+                ),
                 Err(DataMapError::Unavailable)
             );
         });

@@ -28,7 +28,8 @@ pub trait Hooks {
     /// are rolled back. A criterion a listener granted stays granted: criteria are
     /// granted at once, not through the transaction. Mod effects that this
     /// tick's air update causes (drowning, drying out) are not part of the call.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::living_breathe::ServerGame<'_>::native_living_breathe", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::living_breathe::ServerGame<'_>::native_living_breathe",
         dispatch = "flat",
         side = "server",
         contract = "listen",

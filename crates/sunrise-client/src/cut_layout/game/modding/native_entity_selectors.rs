@@ -1,10 +1,8 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay_common::game::native_entity_selectors::SelectorToken;
+    use sunrise_gameplay_common::game::native_entity_selectors::SelectorToken;
 
     #[test]
     #[ignore = "daily"]

@@ -1,7 +1,7 @@
 //! Part state (#781) on real block entities: one value each, kept with its block entity
 //! through ticks, transactions, replacement, saving and unloading.
-use sunrise_gameplay_common::game::GameGameExt1;
 use std::{panic::AssertUnwindSafe, sync::Arc};
+use sunrise_gameplay_common::game::GameGameExt1;
 
 use mod_api::{
     AttachmentType, BlockEntityPart, BlockEntityPartState, BlockEntityRef, BlockEntityTickEvent,
@@ -109,7 +109,8 @@ fn with_state_mod(name: &str, test: impl FnOnce(&mut sunrise_gameplay::game::Ser
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_api::__private::mark_game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
         super::native_entity_refs::tests::with_game_at(root.prepared().to_owned(), |game| {
             game.options.dedicated = Some(Vec::new());
             game.native_level_opened(Dim::Overworld);
@@ -122,7 +123,10 @@ fn with_state_mod(name: &str, test: impl FnOnce(&mut sunrise_gameplay::game::Ser
 }
 
 /// A fresh press at `pos` in the level the game is in, and its handle.
-fn press(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: (i32, i32, i32)) -> BlockEntityRef {
+fn press(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    pos: (i32, i32, i32),
+) -> BlockEntityRef {
     let block = game
         .pack
         .assets
@@ -148,7 +152,10 @@ fn press_with_item_slot(
     press(game, pos)
 }
 
-fn stored(game: &mut sunrise_gameplay::game::ServerGame<'_>, entity: BlockEntityRef) -> Option<i32> {
+fn stored(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    entity: BlockEntityRef,
+) -> Option<i32> {
     Press::state_existing(game, entity).unwrap()
 }
 
@@ -187,8 +194,10 @@ fn part_state_is_per_block_entity_through_ticks_transactions_and_replacement() {
         let level = game.level(game.dim.id()).unwrap();
         let dedicated = game.options.dedicated.take();
         let role = game.options.execution_role;
-        game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
-        let client_view = sunrise_gameplay_common::game::native_level_signals::ReadLevel::new(game, level);
+        game.options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+        let client_view =
+            sunrise_gameplay_common::game::native_level_signals::ReadLevel::new(game, level);
         assert_eq!(Press::state_in(&client_view, a), Ok(0));
         assert_eq!(Press::state_existing_in(&client_view, a), Ok(None));
         game.options.dedicated = dedicated;
@@ -742,7 +751,9 @@ fn part_state_counts_ticks_across_chunk_reload() {
             mod_api::__private::mark_game_thread();
             let base =
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-            let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+            let root =
+                sunrise_gameplay_common::game::mods::content_root(&base, &Default::default())
+                    .unwrap();
             super::native_entity_refs::tests::with_game_at(root.prepared().to_owned(), |game| {
                 game.options.dedicated = Some(Vec::new());
                 let (key, pos) = ((80, 80), (1283, 100, 1283));

@@ -1,5 +1,17 @@
-use {crate::game::ServerGame, sunrise_gameplay_common::game::transactions::decision::ActionTarget, sunrise_gameplay_common::game::transactions::decision::Admission, sunrise_gameplay_common::game::transactions::decision::GameHost, sunrise_gameplay_common::game::transactions::decision::InvalidReason, sunrise_gameplay_common::game::transactions::decision::Journal, sunrise_gameplay_common::game::transactions::decision::MenuId, sunrise_gameplay_common::game::transactions::decision::Outcome, sunrise_gameplay_common::game::transactions::decision::OwnerStamp, sunrise_gameplay_common::game::transactions::decision::StaleReason, sunrise_gameplay_common::game::transactions::decision::engine::KeptOwner, sunrise_gameplay_common::game::transactions::decision::engine::Target};
 use sunrise_sim::menu::{Menu as EngineMenu, MutationStamp, Snapshot};
+use {
+    crate::game::ServerGame, sunrise_gameplay_common::game::transactions::decision::ActionTarget,
+    sunrise_gameplay_common::game::transactions::decision::Admission,
+    sunrise_gameplay_common::game::transactions::decision::GameHost,
+    sunrise_gameplay_common::game::transactions::decision::InvalidReason,
+    sunrise_gameplay_common::game::transactions::decision::Journal,
+    sunrise_gameplay_common::game::transactions::decision::MenuId,
+    sunrise_gameplay_common::game::transactions::decision::Outcome,
+    sunrise_gameplay_common::game::transactions::decision::OwnerStamp,
+    sunrise_gameplay_common::game::transactions::decision::StaleReason,
+    sunrise_gameplay_common::game::transactions::decision::engine::KeptOwner,
+    sunrise_gameplay_common::game::transactions::decision::engine::Target,
+};
 
 #[derive(Clone, Copy)]
 pub struct ServerDecisionTarget(Target);
@@ -43,10 +55,7 @@ impl ServerDecisionTarget {
         self.0.owner_id()
     }
 
-    pub fn read<'a>(
-        &self,
-        game: &'a ServerGame<'_>,
-    ) -> Option<(OwnerStamp, &'a EngineMenu)> {
+    pub fn read<'a>(&self, game: &'a ServerGame<'_>) -> Option<(OwnerStamp, &'a EngineMenu)> {
         let menus = game.server.lan.as_ref()?.menus.get(&self.0.conn)?;
         let inventory = &menus.crafting.inventory;
         Some((inventory.stamp(), inventory.as_deref()?))

@@ -15,10 +15,13 @@ use sunrise_sim::{
 };
 
 pub struct PlacementWorld<'a, 'r, S: crate::game::SideGame<'r>>(
-    pub &'a S, pub std::marker::PhantomData<fn(&'r ()) -> &'r ()>,
+    pub &'a S,
+    pub std::marker::PhantomData<fn(&'r ()) -> &'r ()>,
 );
 
-impl<'__carrier, S: crate::game::SideGame<'__carrier>> sunrise_sim::cushion::World for PlacementWorld<'_, '__carrier, S> {
+impl<'__carrier, S: crate::game::SideGame<'__carrier>> sunrise_sim::cushion::World
+    for PlacementWorld<'_, '__carrier, S>
+{
     fn outline_bounds(&self, p: [i32; 3]) -> Option<Aabb> {
         let boxes = self.0.outline_boxes(p);
         let mut shape = *boxes.first()?;
@@ -70,10 +73,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// `BlockBehaviour.Properties.isSuffocating` of a state.
-    pub fn state_suffocating(
-        &self,
-        state: sunrise_world::registry::BlockStateId,
-    ) -> bool {
+    pub fn state_suffocating(&self, state: sunrise_world::registry::BlockStateId) -> bool {
         let facts = self.res.facts().get(state);
         let name = facts.name.as_ref();
         match name {
@@ -323,9 +323,8 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait EntityCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-
     /// Play an entity-bound sound following the acting player on the active side.
-     fn play_player_bound_sound(
+    fn play_player_bound_sound(
         &mut self,
         event: &str,
         source: usize,
@@ -337,7 +336,7 @@ pub trait EntityCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `CushionItem.useOn` up to its `FAIL`s.
-     fn cushion_spawn(&self, hit: &Hit) -> Option<(Vec3, Aabb)> {
+    fn cushion_spawn(&self, hit: &Hit) -> Option<(Vec3, Aabb)> {
         let mut adjusted = *hit;
         let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
         if self.items().block_in_tag(
@@ -384,11 +383,12 @@ pub trait EntityCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             [position.x - 0.5, position.y, position.z - 0.5],
             [position.x + 0.5, position.y + 0.25, position.z + 0.5],
         ));
-        sunrise_sim::cushion::can_place(&PlacementWorld(self, std::marker::PhantomData), bounds).then_some((position, bounds))
+        sunrise_sim::cushion::can_place(&PlacementWorld(self, std::marker::PhantomData), bounds)
+            .then_some((position, bounds))
     }
 
     /// Step on the retained block before the simulating body's inside scan.
-     fn body_step_on(
+    fn body_step_on(
         &mut self,
         entity: (u32, &str),
         footprint: (Vec3, Aabb),
@@ -398,7 +398,7 @@ pub trait EntityCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         self.side_body_step_on(entity, footprint, ground, velocity)
     }
 
-     fn tick_item_with_block_contacts(
+    fn tick_item_with_block_contacts(
         &mut self,
         item: &mut ItemEntity,
         escape_speed: Option<f32>,
@@ -503,7 +503,6 @@ pub trait EntityCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> EntityCommonGameExt1<'__sg> for G {}
-
 
 use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
 

@@ -2,23 +2,26 @@
 //! and `look-at entity ID` wait for the next tick or frame pick (client_pick.rs) instead of
 //! picking themselves, so a `client_pick` listener runs only in those calls. `attack ID`
 //! reports what the pick its click was taken with held.
-use std::time::Instant;
+use super::*;
+use mod_api::{ClientHost, ClientPickEvent, CrosshairTarget, Hooks};
 use serde_json::Value;
+use serde_json::json;
+use std::sync::{Arc, Mutex, mpsc};
+use std::time::Instant;
 use sunrise_client_gameplay::game::EventLoopCtl;
 use sunrise_client_gameplay::game::client_side::agent::Handled;
-use sunrise_gameplay_common::game::Screen;
-use winit::event::MouseButton;
-use super::*;
-use serde_json::json;
 use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
-use mod_api::{ClientHost, ClientPickEvent, CrosshairTarget, Hooks};
-use std::sync::{Arc, Mutex, mpsc};
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::Screen;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::connection::Connection;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_sim::motion::PlayerMotion;
+use winit::event::MouseButton;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+};
 
 /// A subscribed `client_pick` listener: counts its calls, and can replace the result.
 #[derive(Default)]
@@ -74,13 +77,19 @@ fn finish_login(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, server
 
 /// A guest at (0.5, 1, 0.5) looking west (yaw 90), its stored pick taken that way, with a pig
 /// (entity 31) 1.5 blocks east of it, behind its back. The listener's count starts at zero.
-fn with_pig_behind(run: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &Mutex<Listener>)) {
+fn with_pig_behind(
+    run: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &Mutex<Listener>),
+) {
     with_pig_and_server(|game, listener, _| run(game, listener));
 }
 
 /// [`with_pig_behind`], with the server's end of the connection.
 fn with_pig_and_server(
-    run: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &Mutex<Listener>, &mut Connection),
+    run: impl FnOnce(
+        &mut sunrise_client_gameplay::game::ClientGame<'_>,
+        &Mutex<Listener>,
+        &mut Connection,
+    ),
 ) {
     let listener = Arc::new(Mutex::new(Listener::default()));
     let mods = vec![mod_api::ModEntry::new(
@@ -171,7 +180,10 @@ fn tick(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
 
 /// What the client's attack clicks sent since the last call: `attack ID` and `punch` (the
 /// swing).
-fn clicks_sent(game: &sunrise_client_gameplay::game::ClientGame<'_>, server: &mut Connection) -> Vec<String> {
+fn clicks_sent(
+    game: &sunrise_client_gameplay::game::ClientGame<'_>,
+    server: &mut Connection,
+) -> Vec<String> {
     use sunrise_protocol::packets::{configuration::Ping, play::Serverbound as S};
     // A fence: everything before it was sent before this call.
     game.send(S::Pong(Ping { id: i32::MIN }));
@@ -214,7 +226,10 @@ fn add_second_pig(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
 }
 
 /// The listener makes every later pick pig 32.
-fn pick_second_pig(game: &sunrise_client_gameplay::game::ClientGame<'_>, listener: &Mutex<Listener>) {
+fn pick_second_pig(
+    game: &sunrise_client_gameplay::game::ClientGame<'_>,
+    listener: &Mutex<Listener>,
+) {
     listener.lock().unwrap().result = Some(Some(CrosshairTarget::Entity {
         entity: game.entity(32).unwrap(),
         point: [1.55, 1.45, 1.5],
@@ -460,7 +475,10 @@ fn player_click(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) {
 
 /// A tick whose keybinds run, then `clicks` player clicks, then the control poll's agent step
 /// (where `attack ID` queues its click, behind them).
-fn tick_with_player_clicks(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, clicks: usize) {
+fn tick_with_player_clicks(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    clicks: usize,
+) {
     game.ticks += 1;
     game.remote_handle_input();
     for _ in 0..clicks {

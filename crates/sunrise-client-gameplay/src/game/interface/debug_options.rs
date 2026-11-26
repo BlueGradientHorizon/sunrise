@@ -192,7 +192,12 @@ impl crate::game::ClientGame<'_> {
         });
         let max =
             sunrise_client::window::calculate_scale(size, 0, self.client.settings.force_unicode);
-        let current = self.client.settings.file.int("debugGuiScale").clamp(-1, max);
+        let current = self
+            .client
+            .settings
+            .file
+            .int("debugGuiScale")
+            .clamp(-1, max);
         let next = match (back, current) {
             (false, c) if c >= max => -1,
             (false, c) => c + 1,
@@ -200,7 +205,9 @@ impl crate::game::ClientGame<'_> {
             (true, c) => c - 1,
         };
         self.client.settings.file.set("debugGuiScale", V::Int(next));
-        self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+        self.client
+            .settings
+            .save(&sunrise_gameplay_common::game::options_path());
     }
     pub(in crate::game::client_side) fn draw_debug_options(&mut self, batch: &mut HudBatch) {
         let Some(s) = self.client.debug_options.as_ref() else {
@@ -276,7 +283,9 @@ impl crate::game::ClientGame<'_> {
                         let hover = inside && ui::hovered(self.client.cursor, x, cy, BUTTON, 16.0);
                         ui::button(batch, atlas, x, cy, BUTTON, 16.0, &label, !selected, hover);
                     }
-                    if !allowed && inside && ui::hovered(self.client.cursor, cx, y, xs[0] - cx, ITEM)
+                    if !allowed
+                        && inside
+                        && ui::hovered(self.client.cursor, cx, y, xs[0] - cx, ITEM)
                     {
                         tooltip = Some(Text::translate("debug.options.notAllowed.tooltip", &[]));
                     }
@@ -325,7 +334,11 @@ impl crate::game::ClientGame<'_> {
             Text::translate("gui.done", &[]),
         ];
         let active = [
-            !self.client.debug_entries.0.is_using_profile(Profile::Default),
+            !self
+                .client
+                .debug_entries
+                .0
+                .is_using_profile(Profile::Default),
             !self
                 .client
                 .debug_entries
@@ -455,8 +468,9 @@ impl crate::game::ClientGame<'_> {
             || self.pad_step_scroll()
             || (HEADER..h - FOOTER).contains(&self.client.cursor.1);
         if scroll && let Some(s) = &mut self.client.debug_options {
-            let content =
-                content_height(rows(&self.client.registered_debug_entries.0, &s.search.value).len());
+            let content = content_height(
+                rows(&self.client.registered_debug_entries.0, &s.search.value).len(),
+            );
             s.scroll
                 .wheel(delta, ITEM / 2.0, HEADER, h - FOOTER, content);
             return true;
@@ -470,8 +484,9 @@ impl crate::game::ClientGame<'_> {
         if let Some(s) = &mut self.client.debug_options
             && s.scroll.held()
         {
-            let content =
-                content_height(rows(&self.client.registered_debug_entries.0, &s.search.value).len());
+            let content = content_height(
+                rows(&self.client.registered_debug_entries.0, &s.search.value).len(),
+            );
             s.scroll.drag(y, HEADER, h - FOOTER, content);
             return true;
         }
@@ -642,14 +657,4 @@ pub(in crate::game) mod tests {
             );
         }
     }
-
-    
-
-    
-
-    
-
-    
-
-    
 }

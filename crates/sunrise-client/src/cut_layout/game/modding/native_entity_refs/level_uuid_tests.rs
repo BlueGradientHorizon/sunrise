@@ -2,9 +2,9 @@
 //! entity of another, parked, level through that level's UUID index, and the handle it gets
 //! reads and removes the entity once its level is in place.
 use super::tests::{run_fresh_cases, with_game};
-use sunrise_gameplay_common::game::Dim;
 use mod_api::{EntityRef, EntityUuid, Hooks, HostSide, LevelRef, LevelTickPreEvent, ModEntry};
 use std::sync::{Arc, Mutex};
+use sunrise_gameplay_common::game::Dim;
 
 const FIRST: EntityUuid = EntityUuid((7 << 96) | 1);
 const SECOND: EntityUuid = EntityUuid((7 << 96) | 2);

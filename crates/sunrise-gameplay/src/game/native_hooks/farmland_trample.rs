@@ -1,5 +1,3 @@
-
-
 /// The hook point. It does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
     /// A player or mob that fell onto farmland is about to turn it to its base block

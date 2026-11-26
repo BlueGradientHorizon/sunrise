@@ -59,7 +59,9 @@ impl crate::game::ClientGame<'_> {
     }
     pub(in crate::game) fn craft_recipe(&self) -> Option<(String, ItemStack)> {
         let n = self.common.craft_size;
-        let grid: Vec<Option<ItemStack>> = (0..n * n).map(|i| self.common.craft_grid[i].clone()).collect();
+        let grid: Vec<Option<ItemStack>> = (0..n * n)
+            .map(|i| self.common.craft_grid[i].clone())
+            .collect();
         let scale = |id: i32| self.common.maps.data.get(&id).map(|m| m.scale);
         self.recipes()
             .find_with(&self.common.loop_context, &grid, n, &scale)
@@ -69,16 +71,14 @@ impl crate::game::ClientGame<'_> {
         if self.common.is_logical_server() {
             &self.stations().recipe_index
         } else {
-            self.common.recipe_tables
+            self.common
+                .recipe_tables
                 .synced_index
                 .as_ref()
                 .unwrap_or(&self.stations().recipe_index)
         }
     }
-    pub fn falling_block_face_sprite(
-        &self,
-        state: BlockStateId,
-    ) -> Option<(String, u32)> {
+    pub fn falling_block_face_sprite(&self, state: BlockStateId) -> Option<(String, u32)> {
         let pack = &self.client.client_pack;
         let models = pack
             .render
@@ -106,7 +106,8 @@ impl crate::game::ClientGame<'_> {
     /// The biome colours used by the mesher and client tint queries. On a
     /// world without its own table, a colour refresh updates the pack's table.
     pub(in crate::game::client_side) fn mesh_biomes(&self) -> &Arc<Biomes> {
-        self.common.world_biomes
+        self.common
+            .world_biomes
             .as_ref()
             .unwrap_or(&self.client.client_pack.context.chunk.biomes)
     }
@@ -116,7 +117,8 @@ impl crate::game::ClientGame<'_> {
         self.common.recipe_tables.synced.as_ref()
     }
     pub(in crate::game) fn client_recipes(&self) -> &Recipes {
-        self.synced_recipes().unwrap_or_else(|| self.common.res.recipes())
+        self.synced_recipes()
+            .unwrap_or_else(|| self.common.res.recipes())
     }
     pub fn worker_context(&self) -> Arc<WorkerContext> {
         self.client

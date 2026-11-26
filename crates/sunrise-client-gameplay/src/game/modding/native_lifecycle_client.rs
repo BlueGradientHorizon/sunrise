@@ -10,7 +10,9 @@ impl ClientGame<'_> {
         }
         self.common.attachment_indexes.clear();
         self.common.passages.retire_world();
-        self.common.native_lifecycle.begin_open(Authority::RemoteClient);
+        self.common
+            .native_lifecycle
+            .begin_open(Authority::RemoteClient);
     }
 
     pub(in crate::game) fn client_lifecycle_world_ready(&mut self) {

@@ -14,9 +14,7 @@ use sunrise_sim::{
 };
 
 /// The sounds played since capture began, as (event, volume, pitch).
-pub(crate) fn played(
-    game: &mut sunrise_gameplay::game::ServerGame<'_>,
-) -> Vec<(String, f32, f32)> {
+pub(crate) fn played(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> Vec<(String, f32, f32)> {
     std::mem::take(&mut game.server.pending_sounds)
         .into_iter()
         .map(|s| {

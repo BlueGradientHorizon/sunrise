@@ -1,9 +1,9 @@
-use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use mod_api::{
     CriterionContext, CriterionTest, CriterionTestError, Identifier, TriggerCriterionError,
 };
 use serde_json::json;
 use std::sync::Arc;
+use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use sunrise_items::items::ItemStack as EngineStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::advancements as a;

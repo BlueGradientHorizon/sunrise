@@ -1,23 +1,18 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use mod_api::{Hooks, Identifier, ModEntry, TagMembers, TagsUpdateCause, TagsUpdatedEvent};
+    use mod_api::{Hooks, Identifier, ModEntry, TagMembers, TagsUpdateCause, TagsUpdatedEvent};
 
-use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex};
 
-use sunrise_protocol::packets::{
+    use sunrise_protocol::packets::{
         configuration::{RegistryTags, TagEntry, UpdateTags},
         play::{self, Clientbound as C},
     };
 
-use sunrise_protocol::registry::Builtin;
+    use sunrise_protocol::registry::Builtin;
 
-pub fn update(
-        builtin: &Builtin,
-        tags: &[(&str, &str, &[&str])],
-    ) -> UpdateTags {
+    pub fn update(builtin: &Builtin, tags: &[(&str, &str, &[&str])]) -> UpdateTags {
         let mut registries = std::collections::BTreeMap::<_, Vec<_>>::new();
         for &(registry, tag, members) in tags {
             let names = builtin.get(registry).unwrap();
@@ -36,7 +31,7 @@ pub fn update(
                 .collect(),
         }
     }
-pub fn login() -> C {
+    pub fn login() -> C {
         C::Login(play::Login {
             player_id: 7,
             hardcore: false,
@@ -63,10 +58,7 @@ pub fn login() -> C {
             enforces_secure_chat: false,
         })
     }
-pub fn power_update(
-        builtin: &Builtin,
-        tags: &[(&str, &[&str])],
-    ) -> UpdateTags {
+    pub fn power_update(builtin: &Builtin, tags: &[(&str, &[&str])]) -> UpdateTags {
         let blocks = builtin.get("minecraft:block").unwrap();
         UpdateTags {
             registries: vec![RegistryTags {

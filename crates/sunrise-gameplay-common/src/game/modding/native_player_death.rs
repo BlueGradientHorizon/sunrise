@@ -16,17 +16,13 @@ use sunrise_core::position::BlockPos;
 pub trait NativePlayerDeathGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The dimension and block of the player's last death
     /// (`Player.getLastDeathLocation`).
-     fn player_last_death_location(
-        &self,
-        player: PlayerRef,
-    ) -> Option<GlobalPos> {
+    fn player_last_death_location(&self, player: PlayerRef) -> Option<GlobalPos> {
         let (dimension, [x, y, z]) = self.native_player_last_death_record(player)?;
         let dimension = Identifier::parse(&dimension).ok()?;
         Some(GlobalPos::new(dimension, BlockPos::new(x, y, z)))
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativePlayerDeathGameExt1<'__sg> for G {}
-
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
@@ -70,16 +66,6 @@ pub mod tests {
         guest.placed = true;
         guest
     }
-
-    
-
-    
-
-    
-
-    
-
-    
 }
 
 use crate::game::native_server::NativeServerGameExt1 as _;

@@ -147,7 +147,8 @@ impl crate::game::ClientGame<'_> {
         } else {
             winit::event::MouseButton::Left
         };
-        if !self.client.physical_buttons.contains(&button) || drag.press != self.client.physical_presses
+        if !self.client.physical_buttons.contains(&button)
+            || drag.press != self.client.physical_presses
         {
             return false;
         }
@@ -255,7 +256,8 @@ impl crate::game::ClientGame<'_> {
         let player = || (0..9).rev().chain((9..36).rev());
         match slot {
             s if (100..109).contains(&s)
-                || sunrise_gameplay_common::game::inventory_slots::container_slot_index(s).is_some() =>
+                || sunrise_gameplay_common::game::inventory_slots::container_slot_index(s)
+                    .is_some() =>
             {
                 player().collect()
             }

@@ -18,10 +18,13 @@ pub struct ReadLevel<'v, 'g, G: crate::game::SideGame<'g> + ?Sized> {
 }
 impl<'v, 'g, G: crate::game::SideGame<'g> + ?Sized> ReadLevel<'v, 'g, G> {
     pub fn new(game: &'v G, level: mod_api::LevelRef) -> Self {
-        Self { game, level, resource: std::marker::PhantomData }
+        Self {
+            game,
+            level,
+            resource: std::marker::PhantomData,
+        }
     }
 }
-
 
 super::native_tags::impl_tags!(ReadLevel<'_, 'g, G>, level, level.game.native_tag_items(); generics('g, G: crate::game::SideGame<'g> + ?Sized));
 
@@ -211,7 +214,9 @@ impl<'g, G: crate::game::SideGame<'g> + ?Sized> ReadLevel<'_, 'g, G> {
 
 impl<'g, G: crate::game::SideGame<'g> + ?Sized> LevelHost for ReadLevel<'_, 'g, G> {
     fn block_states(&self) -> mod_api::BlockStates<'_> {
-        mod_api::BlockStates::of(<G::State as crate::game::Side>::as_block_states_backend(self.game))
+        mod_api::BlockStates::of(<G::State as crate::game::Side>::as_block_states_backend(
+            self.game,
+        ))
     }
     fn block_face_sturdy(
         &self,
@@ -394,4 +399,3 @@ use crate::game::tables::GameItems as _;
 use crate::game::tables::WorldTablesExt as _;
 
 use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-

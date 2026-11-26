@@ -10,8 +10,8 @@ impl ServerGame<'_> {
         under_water: bool,
         callback: &Callback,
     ) -> sunrise_sim::cauldron::Outcome {
-        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         use mod_api::{CauldronDecision, CauldronUse};
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         use sunrise_sim::cauldron::Outcome;
         let Some(guard) = callback.guard.as_ref() else {
             log::warn!(
@@ -22,7 +22,8 @@ impl ServerGame<'_> {
         };
         let input = (|| -> std::result::Result<CauldronUse, String> {
             let held = self
-                .common.held()
+                .common
+                .held()
                 .cloned()
                 .ok_or_else(|| "missing held stack".to_owned())?;
             let before = self.common.world.block(pos[0], pos[1], pos[2]);
@@ -32,7 +33,8 @@ impl ServerGame<'_> {
                 .to_api(before)
                 .map_err(|err| format!("block state {before:?} unavailable: {err:?}"))?;
             let epoch = self
-                .common.native_lifecycle
+                .common
+                .native_lifecycle
                 .epoch()
                 .ok_or_else(|| "no active world epoch".to_owned())?;
             let player_id = self.native_acting_id();

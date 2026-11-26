@@ -12,7 +12,8 @@ pub trait Hooks {
     /// (`MenuScreenFrame::data` on the client). The first mod to set `data`
     /// wins, so answer only for your blocks. The player's state is not
     /// swapped in.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::menu_extra_data::ServerGame<'_>::native_menu_extra_data", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::menu_extra_data::ServerGame<'_>::native_menu_extra_data",
         dispatch = "flat",
         side = "server",
         version = 2,

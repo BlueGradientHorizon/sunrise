@@ -26,7 +26,8 @@ impl ServerGame<'_> {
                         .mod_container_viewers
                         .retain(|(_, at), _| *at != from);
                     if self
-                        .common.world
+                        .common
+                        .world
                         .block_entities
                         .carried(&to)
                         .map(|c| &c.entity)
@@ -38,7 +39,8 @@ impl ServerGame<'_> {
                         self.jukebox_removed([from.0, from.1, from.2]);
                     }
                     if self
-                        .common.container
+                        .common
+                        .container
                         .is_some_and(|at| at == from || Some(at) == partner)
                     {
                         self.side_close_container();
@@ -75,7 +77,8 @@ impl ServerGame<'_> {
                 }
                 PositionChange::Land { at } => {
                     if self.common.world.block_entities.get(&at).is_none() {
-                        self.common.world
+                        self.common
+                            .world
                             .set_block_entity_extras(at, BlockEntityExtras::default());
                         self.common.world.block_names.remove(&at);
                         self.server.hoppers.remove(&at);

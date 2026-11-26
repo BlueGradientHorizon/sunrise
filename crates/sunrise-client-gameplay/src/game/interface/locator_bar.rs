@@ -83,8 +83,9 @@ impl ClientGame<'_> {
             let &id = remote.level_uuids.get(&uuid)?;
             let entity = self.live_entity_camera_subject(remote, id)?;
             // TickRateManager.isEntityFrozen: players and entities carrying them keep moving.
-            let frozen =
-                !self.common.clock.runs_normally() && !entity.is_player && !entity.has_player_passenger;
+            let frozen = !self.common.clock.runs_normally()
+                && !entity.is_player
+                && !entity.has_player_passenger;
             (
                 entity.camera.position,
                 entity.camera.previous,
@@ -105,11 +106,7 @@ impl ClientGame<'_> {
     }
     /// `LocatorBar.extractRenderState`: distance and self-exclusion from the camera entity,
     /// angles and projection from the last frame's render camera.
-    pub fn locator_bar_draws(
-        &self,
-        gui_width: i32,
-        gui_height: i32,
-    ) -> Vec<GuiDraw> {
+    pub fn locator_bar_draws(&self, gui_width: i32, gui_height: i32) -> Vec<GuiDraw> {
         let Some((camera_pos, yaw, pitch, fov)) = self.client.locator_camera else {
             return Vec::new();
         };

@@ -4,15 +4,15 @@
 //! `discard()` when the support goes away (no `entity_die` game event).
 use super::super::*;
 use crate::game::load_resources;
-use sunrise_gameplay_common::game::Hit;
 use crate::settings::Settings;
-use sunrise_gameplay_common::game::Progress;
-use sunrise_gameplay_common::game::Options;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;
 use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::Hit;
+use sunrise_gameplay_common::game::Options;
+use sunrise_gameplay_common::game::Progress;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::Who;
@@ -43,7 +43,8 @@ fn game<'a>(
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         res,
@@ -96,11 +97,13 @@ fn named_stack() -> ItemStack {
 }
 
 fn capture() {
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
 
 fn events() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| events.borrow_mut().take().unwrap())
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|events| events.borrow_mut().take().unwrap())
 }
 
 /// `CushionItem.useOn` builds the entity with `EntityType.createDefaultStackConfig`,

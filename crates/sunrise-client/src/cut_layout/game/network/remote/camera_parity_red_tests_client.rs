@@ -1,4 +1,3 @@
-use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 use crate::game::remote::tests::camera_parity_red_tests::add_entity;
 use crate::game::remote::tests::camera_parity_red_tests::add_entity_with_data;
 use crate::game::remote::tests::camera_parity_red_tests::hex_f32;
@@ -7,14 +6,14 @@ use crate::game::remote::tests::camera_parity_red_tests::make_chunk;
 use crate::game::remote::tests::camera_parity_red_tests::parity_witness;
 use crate::game::remote::tests::camera_parity_red_tests::sync_interaction_size;
 use crate::game::remote::tests::camera_parity_red_tests::vec3_bits_expected;
-use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
 use std::sync::Arc;
-use sunrise_gameplay_common::world_biomes;
 use sunrise_client::{
     debug_entries::Status, debug_overlay::Displayer, level_loading::Reason,
     options_file::V as OptV, screen_effects::Blend,
 };
+use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::world_biomes;
 use sunrise_items::items::ItemStack;
 use sunrise_level::camera_math::CameraType;
 use sunrise_level::{effects::EffectInstance, environment::Sky};
@@ -26,6 +25,10 @@ use sunrise_protocol::{
     packets::play::{self, Clientbound as C, SpawnInfo},
 };
 use sunrise_sim::motion::PlayerMotion;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle,
+};
 
 pub(in crate::game) fn run_any_tracked_entity_resolves_as_camera_26_3() {
     let witness = parity_witness();
@@ -1336,24 +1339,25 @@ pub(in crate::game) fn run_particle_camera_before_first_frame_and_after_reset_26
     let after = &w["after_first_frame"];
     let after_reset = &w["after_camera_reset_before_next_frame"];
 
-    let accepted =
-        |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, pos: [f64; 3]| -> bool {
-            game.client.particles.0.clear();
-            game.client
-                .particles
-                .0
-                .add(&ParticleOptions::simple(ParticleType::Flame), pos, [0.0; 3]);
-            // ParticleEngine::add queues into `pending` (vanilla `particlesToAdd`) until the next tick.
-            let level = ParticleLevel {
-                world: &game.common.world,
-                facts: game.common.res.facts(),
-                collision: game.common.collision,
-                player: None,
-                cached_chunk: std::cell::Cell::new(None),
-            };
-            game.client.particles.0.tick(&level);
-            game.client.particles.0.len() == 1
+    let accepted = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                    pos: [f64; 3]|
+     -> bool {
+        game.client.particles.0.clear();
+        game.client
+            .particles
+            .0
+            .add(&ParticleOptions::simple(ParticleType::Flame), pos, [0.0; 3]);
+        // ParticleEngine::add queues into `pending` (vanilla `particlesToAdd`) until the next tick.
+        let level = ParticleLevel {
+            world: &game.common.world,
+            facts: game.common.res.facts(),
+            collision: game.common.collision,
+            player: None,
+            cached_chunk: std::cell::Cell::new(None),
         };
+        game.client.particles.0.tick(&level);
+        game.client.particles.0.len() == 1
+    };
 
     with_client_game(|game| {
         let _server = setup_remote_overworld(game, 1, [0.5, 64.0, 0.5], true);

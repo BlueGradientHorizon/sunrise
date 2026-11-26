@@ -2,7 +2,6 @@
 //! answering it calls that part inside the pick (after the block's own effects, before its
 //! fluid's, the next pick and the rain), with the level's random itself: the part's draws and
 //! `add_particle`'s limiter roll move one stream in call order.
-use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use mod_api::{
     AnimateTickEvent, BlockPart, BlockPos, ClientHost, Hooks, ModEntry, ParticleOptions, Registrar,
     RegistrationContext,
@@ -11,6 +10,10 @@ use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client,
+};
 
 /// One call the part heard: its position and block, its draw before and after its particle,
 /// and whether the particle was submitted.
@@ -61,7 +64,9 @@ impl Hooks for Register {
 
 /// A client game with the hearts part installed, in loaded empty chunks around a player at
 /// `(8.5, 65, 8.5)`.
-pub(crate) fn with_hearts(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &Calls)) {
+pub(crate) fn with_hearts(
+    test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &Calls),
+) {
     let calls = Calls::default();
     let mods = vec![ModEntry::new("hearts", Box::new(Register(calls.clone())))];
     mod_platform::testing::with_mods(mods.into(), || {

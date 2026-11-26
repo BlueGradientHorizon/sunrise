@@ -610,19 +610,16 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-     fn handle_mob_events(&mut self, mut events: Vec<MobEvent>) -> Result<()> {
+    fn handle_mob_events(&mut self, mut events: Vec<MobEvent>) -> Result<()> {
         self.handle_mob_events_reusable(&mut events)
     }
 
-     fn handle_mob_events_reusable(
-        &mut self,
-        events: &mut Vec<MobEvent>,
-    ) -> Result<()> {
+    fn handle_mob_events_reusable(&mut self, events: &mut Vec<MobEvent>) -> Result<()> {
         self.side_handle_mob_events_reusable(events)
     }
 
     /// `Level.isRainingAt` for arrows.
-     fn arrow_rain(&self) -> impl Fn(BlockPos) -> bool + '_ {
+    fn arrow_rain(&self) -> impl Fn(BlockPos) -> bool + '_ {
         move |p: BlockPos| self.raining_at(p)
     }
 
@@ -630,7 +627,7 @@ pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// the golden dandelion check (`canUseGoldenDandelion`, which a tadpole
     /// calls with `isBaby` true). A panda that is scared or on its back and an
     /// armadillo in its shell answer in their own `mobInteract` first.
-     fn age_lock_takes(&self, m: &Mob, item: &str) -> bool {
+    fn age_lock_takes(&self, m: &Mob, item: &str) -> bool {
         let species = m.species();
         let baby = if species == Species::Tadpole {
             true
@@ -656,10 +653,7 @@ pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
     /// The mob a normal interaction can reach: a packet's exact validated ID,
     /// or the crosshair's mob before its blocking shape.
-     fn mob_interaction_target(
-        &self,
-        target: Option<InteractTarget>,
-    ) -> Option<usize> {
+    fn mob_interaction_target(&self, target: Option<InteractTarget>) -> Option<usize> {
         let (index, distance, _) = (match target {
             // The id the packet named, under the filters the crosshair pick
             // applies (`mob_hit`): a mob in its death animation is not clicked

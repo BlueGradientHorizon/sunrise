@@ -1,4 +1,3 @@
-
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::boats_common::Boat;
 #[cfg(test)]
@@ -11,13 +10,13 @@ pub(crate) mod paddle_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use super::*;
+    use super::*;
 
-use crate::game::boats_common::{
+    use crate::game::boats_common::{
         Status, powder_snow_stuck, registered_boat, saved_ticks_frozen,
     };
 
-/// A boat the client takes over while it eases toward the server's position goes on
+    /// A boat the client takes over while it eases toward the server's position goes on
     /// easing there and reports that spot (the handler is the entity's, not the driver's).
     #[test]
     #[ignore = "daily"]
@@ -33,7 +32,7 @@ use crate::game::boats_common::{
             assert!(b.lerp.is_none());
         });
     }
-/// The boat this client drives eases to a server teleport over three ticks
+    /// The boat this client drives eases to a server teleport over three ticks
     /// (LinearInterpolationHandler), and until it gets there it reports the spot it is
     /// going to (getClientPositionAndRotation).
     #[test]
@@ -62,7 +61,7 @@ use crate::game::boats_common::{
             assert!(b.lerp.is_none());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn destruction_and_underwater_ejection_snap_rejected_passenger_descendants() {
         for broken in [false, true] {
@@ -76,9 +75,10 @@ use crate::game::boats_common::{
                     sunrise_sim::mobs::Mob::new(72, kind.clone(), Vec3::new(5.0, 190.0, 6.0), 0.0);
                 rider.extra.mount = Some(71);
                 rider.extra.passenger = true;
-                game.persist
-                    .off_level
-                    .insert(72, sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(rider));
+                game.persist.off_level.insert(
+                    72,
+                    sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(rider),
+                );
                 let mut child = sunrise_sim::mobs::Mob::new(73, kind, Vec3::ZERO, 0.0);
                 child.extra.mount = Some(72);
                 child.age = 19;
@@ -117,10 +117,10 @@ use crate::game::boats_common::{
 
 #[cfg(test)]
 pub(crate) mod cobweb_tests {
-    use sunrise_gameplay_common::game::boats_common::{Boat, BoatsCommonGameExt1};
-    use sunrise_gameplay::game::game_tests::tests::server_game;
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay::game::game_tests::tests::server_game;
+    use sunrise_gameplay_common::game::boats_common::{Boat, BoatsCommonGameExt1};
     use sunrise_level::chunk::Chunk;
 
     /// `AbstractBoat.tick`'s `applyEffectsFromBlocks` calls `WebBlock.entityInside`, which

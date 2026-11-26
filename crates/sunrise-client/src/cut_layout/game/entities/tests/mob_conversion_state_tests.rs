@@ -2,14 +2,14 @@
 //! old mob's name, silence, no-AI flag and effects to the new one, and the
 //! caller's `AfterConversion` step runs on it (`Pig.thunderHit`,
 //! `MushroomCow.shear`).
-use sunrise_items::items::ItemStack;
 use super::super::*;
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
+use sunrise_gameplay_common::game::InteractTarget;
+use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::{MobEvent, Species};
 use sunrise_sim::motion::PlayerMotion;
-use sunrise_gameplay_common::game::InteractTarget;
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,

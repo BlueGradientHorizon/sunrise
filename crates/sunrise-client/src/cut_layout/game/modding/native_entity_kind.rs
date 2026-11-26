@@ -1,13 +1,15 @@
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
     use super::*;
-    use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use mod_api::EntityRef;
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::entities::ArmorStand;
     use sunrise_sim::mobs::Mob;
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -20,7 +22,10 @@ mod tests {
         ) -> (mod_api::PushReaction, bool) {
             let entity = game.entity(id).unwrap();
             (
-                entity.piston_push_reaction(game.as_host()).unwrap().unwrap(),
+                entity
+                    .piston_push_reaction(game.as_host())
+                    .unwrap()
+                    .unwrap(),
                 entity.is_hanging(game.as_host()).unwrap().unwrap(),
             )
         }

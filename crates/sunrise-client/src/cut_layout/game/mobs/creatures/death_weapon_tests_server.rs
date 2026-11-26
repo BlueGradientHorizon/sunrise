@@ -1,5 +1,9 @@
-use sunrise_gameplay_common::game::TryIntoApi;
+use super::*;
+pub(crate) use crate::game::creatures::death_weapon::tests::WeaponProbe;
+pub(crate) use crate::game::creatures::death_weapon::tests::isolated;
+use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::TryIntoApi;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::Damage;
 use sunrise_sim::mobs::DamageKind;
@@ -7,10 +11,6 @@ use sunrise_sim::mobs::Mob;
 use sunrise_sim::mobs::Who;
 use sunrise_sim::projectiles::Projectile;
 use sunrise_sim::projectiles::ProjectileKind;
-use super::*;
-pub(crate) use crate::game::creatures::death_weapon::tests::WeaponProbe;
-pub(crate) use crate::game::creatures::death_weapon::tests::isolated;
-use std::sync::{Arc, Mutex};
 
 #[test]
 #[ignore = "daily"]
@@ -103,13 +103,7 @@ fn death_weapon_e_fall_has_no_weapon() {
     });
 }
 
-pub(crate) fn weapon_case(
-    item: &str,
-    enchantment: &str,
-    level: u32,
-    projectile: bool,
-    swap: bool,
-) {
+pub(crate) fn weapon_case(item: &str, enchantment: &str, level: u32, projectile: bool, swap: bool) {
     if isolated() {
         return;
     }

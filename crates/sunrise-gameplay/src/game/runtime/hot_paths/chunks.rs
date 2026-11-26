@@ -67,8 +67,12 @@ impl crate::game::ServerGame<'_> {
             for _ in 0..ROUNDS {
                 saved.clear();
                 for chunk in self.with_entities(&chunks) {
-                    let root =
-                        save::encode(&chunk, registry, world_biomes!(self), self.common.res.items());
+                    let root = save::encode(
+                        &chunk,
+                        registry,
+                        world_biomes!(self),
+                        self.common.res.items(),
+                    );
                     let stored = nbt::write_named(&root, Limits::default())
                         .map_err(|error| error.to_string())
                         .and_then(|bytes| {

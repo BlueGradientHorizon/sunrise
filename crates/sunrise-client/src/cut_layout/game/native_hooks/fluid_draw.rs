@@ -1,6 +1,9 @@
 #![cfg(test)]
-use {crate::game::native_hooks::*, sunrise_gameplay_common::game::native_hooks::{FluidStack, Text, fluid_tooltip, mod_api}};
 use sunrise_client::hud::rgba;
+use {
+    crate::game::native_hooks::*,
+    sunrise_gameplay_common::game::native_hooks::{FluidStack, Text, fluid_tooltip, mod_api},
+};
 
 #[cfg(test)]
 mod tests {

@@ -3,7 +3,6 @@
 //! view, `set_target`, and the no-mod-goals fast path.
 //!
 //! The `zombie` fixture is shared with the behavior tests (#824).
-use sunrise_gameplay_common::game::creatures;
 use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
 use mod_api::{
     EntityPart, EntityRef, Goal, GoalContext, GoalFlags, GoalRegistrar, Hooks, LivingRef, ModEntry,
@@ -11,6 +10,7 @@ use mod_api::{
 };
 use std::sync::Mutex;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_gameplay_common::game::creatures;
 use sunrise_sim::mobs::{self, Mob, goals::Cx};
 
 /// The mods of these tests, installed with their parts, as a game's open does:
@@ -18,7 +18,11 @@ use sunrise_sim::mobs::{self, Mob, goals::Cx};
 /// `resolve_parts` for the game's own table.
 fn install_game_mods() {
     mod_platform::__private::install(vec![ModEntry::new("test", Box::new(Mod))].into());
-    sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new("test", Box::new(Mod))]).unwrap();
+    sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new(
+        "test",
+        Box::new(Mod),
+    )])
+    .unwrap();
 }
 
 /// What one test goal did, by mob id.
@@ -127,11 +131,7 @@ impl mobs::goals::Goal for Vanilla {
 }
 
 /// A zombie in the game's list, as `Mob::new` builds it.
-pub(crate) fn zombie(
-    game: &mut sunrise_gameplay::game::ServerGame<'_>,
-    id: u32,
-    at: [f64; 3],
-) {
+pub(crate) fn zombie(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32, at: [f64; 3]) {
     let kind = game
         .res
         .mob_types()
@@ -383,8 +383,11 @@ fn set_target_follows_the_write_rules() {
     }
     EVENTS.lock().unwrap().clear();
     mod_platform::__private::install(vec![ModEntry::new("targets", Box::new(TargetMod))].into());
-    sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new("targets", Box::new(TargetMod))])
-        .unwrap();
+    sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new(
+        "targets",
+        Box::new(TargetMod),
+    )])
+    .unwrap();
     with_game(|game| {
         zombie(game, 40, [3.5, 65.0, 3.5]);
         zombie(game, 41, [13.5, 65.0, 13.5]);
@@ -497,8 +500,11 @@ fn the_host_answers_without_panicking() {
     }
     EVENTS.lock().unwrap().clear();
     mod_platform::__private::install(vec![ModEntry::new("reader", Box::new(ReaderMod))].into());
-    sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new("reader", Box::new(ReaderMod))])
-        .unwrap();
+    sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new(
+        "reader",
+        Box::new(ReaderMod),
+    )])
+    .unwrap();
     with_game(|game| {
         zombie(game, 70, [3.5, 65.0, 3.5]);
         zombie(game, 71, [13.5, 65.0, 13.5]);
@@ -696,7 +702,11 @@ fn a_goal_jump_goes_through_the_jump_control_input() {
         }
     }
     mod_platform::__private::install(vec![ModEntry::new("jumps", Box::new(JumpMod))].into());
-    sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new("jumps", Box::new(JumpMod))]).unwrap();
+    sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new(
+        "jumps",
+        Box::new(JumpMod),
+    )])
+    .unwrap();
     with_game(|game| {
         zombie(game, 82, [3.5, 65.0, 3.5]);
         game.mobs[0].ai.goals.clear();
@@ -756,8 +766,11 @@ fn set_target_refuses_what_the_write_handle_refuses() {
     }
     ANSWERS.lock().unwrap().clear();
     mod_platform::__private::install(vec![ModEntry::new("golems", Box::new(TargetMod))].into());
-    sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new("golems", Box::new(TargetMod))])
-        .unwrap();
+    sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new(
+        "golems",
+        Box::new(TargetMod),
+    )])
+    .unwrap();
     with_game(|game| {
         mob_of(game, 90, "minecraft:iron_golem", [3.5, 65.0, 3.5]);
         mob_of(game, 91, "minecraft:zombie", [13.5, 65.0, 13.5]);
@@ -870,7 +883,11 @@ fn move_and_look_inputs_pass_the_navigation_boundary() {
     }
     RESULTS.lock().unwrap().clear();
     mod_platform::__private::install(vec![ModEntry::new("moves", Box::new(MoveMod))].into());
-    sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new("moves", Box::new(MoveMod))]).unwrap();
+    sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new(
+        "moves",
+        Box::new(MoveMod),
+    )])
+    .unwrap();
     with_game(|game| {
         zombie(game, 83, [3.5, 65.0, 3.5]);
         game.mobs[0].ai.goals.clear();
@@ -932,8 +949,11 @@ fn the_player_the_tick_sees_resolves_by_its_captured_identity() {
     }
     READS.lock().unwrap().clear();
     mod_platform::__private::install(vec![ModEntry::new("players", Box::new(PlayerMod))].into());
-    sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new("players", Box::new(PlayerMod))])
-        .unwrap();
+    sunrise_gameplay_common::game::api_values::install_parts(&[ModEntry::new(
+        "players",
+        Box::new(PlayerMod),
+    )])
+    .unwrap();
     with_game(|game| {
         zombie(game, 84, [3.5, 65.0, 3.5]);
         game.mobs[0].ai.goals.clear();

@@ -1,47 +1,45 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_passages::tests::RemoveOnSecondSent;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_passages::tests::RemoveOnSecondSent;
 
-use sunrise_gameplay_common::game::native_passages::tests::doorway;
+    use sunrise_gameplay_common::game::native_passages::tests::doorway;
 
-use sunrise_gameplay_common::game::native_passages::tests::doorway_form;
+    use sunrise_gameplay_common::game::native_passages::tests::doorway_form;
 
-use sunrise_gameplay_common::game::native_passages::tests::packets;
+    use sunrise_gameplay_common::game::native_passages::tests::packets;
 
-use sunrise_gameplay_common::game::native_passages::tests::passage_messages;
+    use sunrise_gameplay_common::game::native_passages::tests::passage_messages;
 
-use sunrise_gameplay::game::native_passages::tests::listen;
+    use sunrise_gameplay::game::native_passages::tests::listen;
 
-use sunrise_gameplay_common::game::native_passages::{HeldRefusal, check};
+    use sunrise_gameplay_common::game::native_passages::{HeldRefusal, check};
 
-use sunrise_protocol::passage_sync::PassageForm;
+    use sunrise_protocol::passage_sync::PassageForm;
 
-use mod_api::PassageRegistrationError as Refused;
+    use mod_api::PassageRegistrationError as Refused;
 
-use crate::game::Dim;
+    use crate::game::Dim;
 
-use crate::game::native_entity_refs::tests::{with_client_game, with_game};
+    use crate::game::native_entity_refs::tests::{with_client_game, with_game};
 
-use crate::game::native_guest_turn_tests::with_guests;
+    use crate::game::native_guest_turn_tests::with_guests;
 
-use mod_api::{DimensionKey, LevelRef, Passage, PassageId, PassageTurn, Vec3, WorldEpoch};
+    use mod_api::{DimensionKey, LevelRef, Passage, PassageId, PassageTurn, Vec3, WorldEpoch};
 
-use std::sync::{Arc, mpsc};
+    use std::sync::{Arc, mpsc};
 
-use sunrise_level::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
 
-use sunrise_protocol::packets::play::Clientbound;
+    use sunrise_protocol::packets::play::Clientbound;
 
-use sunrise_protocol::passage_sync::Message;
+    use sunrise_protocol::passage_sync::Message;
 
-use sunrise_protocol::passage_sync::encode;
+    use sunrise_protocol::passage_sync::encode;
 
-/// Passages are numbered from 1 in order; a chunk takes 8 and a level 256, and the next
+    /// Passages are numbered from 1 in order; a chunk takes 8 and a level 256, and the next
     /// is refused with nothing registered; a removal frees its place once. A stale handle
     /// and a client register nothing.
     #[test]
@@ -103,7 +101,7 @@ use sunrise_protocol::passage_sync::encode;
         });
         // Client refusal is enforced at compile time (`ClientGame` lacks server passage writes).
     }
-/// A level's passages and their untold changes go when it closes: reopened, it starts
+    /// A level's passages and their untold changes go when it closes: reopened, it starts
     /// with no passage and its whole caps, and numbering goes on (1 is not given again).
     /// A failed open retires everything, the window's copy too.
     #[test]
@@ -129,7 +127,7 @@ use sunrise_protocol::passage_sync::encode;
             assert!(game.passages.dirty.is_empty() && game.passages.held.is_empty());
         });
     }
-/// A destination in another level is registered only while that level is open: one that
+    /// A destination in another level is registered only while that level is open: one that
     /// is not open, and the passage's own level, are refused `UnknownLevel`, with nothing
     /// registered.
     #[test]
@@ -159,7 +157,7 @@ use sunrise_protocol::passage_sync::encode;
             );
         });
     }
-/// A passage into another level is registered but not sent: neither at the tick's end
+    /// A passage into another level is registered but not sent: neither at the tick's end
     /// nor after its chunk. The client hears only of the passage within the level.
     #[test]
     #[ignore = "daily"]
@@ -203,7 +201,7 @@ use sunrise_protocol::passage_sync::encode;
             );
         });
     }
-/// In the real order of a server tick: a registration with no client holding the
+    /// In the real order of a server tick: a registration with no client holding the
     /// chunk is told to nobody; the hub then sends the chunk and the passage follows it, to
     /// the Sunrise client only. A removal reaches it at the next tick's end.
     #[test]
@@ -267,7 +265,7 @@ use sunrise_protocol::passage_sync::encode;
             );
         });
     }
-/// A passage registered and removed before the tick's end is never told and leaves no
+    /// A passage registered and removed before the tick's end is never told and leaves no
     /// trace, however often; the changes kept stay within the live passages and the told
     /// ones removed.
     #[test]
@@ -314,7 +312,7 @@ use sunrise_protocol::passage_sync::encode;
             }
         });
     }
-/// The LAN closes and opens again with a passage live: the new hub records the chunks
+    /// The LAN closes and opens again with a passage live: the new hub records the chunks
     /// it sends from its start, so a Sunrise guest that joins it is sent the passage with
     /// the chunk the first tick sends, before that tick's `flush_passages`.
     #[test]
@@ -415,7 +413,7 @@ use sunrise_protocol::passage_sync::encode;
             );
         });
     }
-/// A Sunrise arrival held for a hand-over is sent its chunks, so it is told their
+    /// A Sunrise arrival held for a hand-over is sent its chunks, so it is told their
     /// passages too; a held vanilla client is not.
     #[test]
     #[ignore = "daily"]
@@ -440,7 +438,7 @@ use sunrise_protocol::passage_sync::encode;
             assert!(passage_messages(&packets(&receivers[1])).is_empty());
         });
     }
-/// Two chunk sends in one tick: the first gives a new passage to guest 12 with its
+    /// Two chunk sends in one tick: the first gives a new passage to guest 12 with its
     /// chunk, and the mod removes it at the second, before the tick's end told it to the
     /// rest. The removal still reaches 12, which ends with no passage, and 13 is told
     /// only the removal.
@@ -516,7 +514,7 @@ use sunrise_protocol::passage_sync::encode;
             });
         });
     }
-/// The window keeps what its server sent for a chunk it holds, by number, until the
+    /// The window keeps what its server sent for a chunk it holds, by number, until the
     /// server removes it or the window forgets the chunk. It refuses by name a passage the
     /// server could not have registered, one for a chunk it does not hold, and a 257th,
     /// across packets; a number sent again replaces its passage.
@@ -527,7 +525,8 @@ use sunrise_protocol::passage_sync::encode;
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-            let send = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, message: Message| {
+            let send = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                        message: Message| {
                 game.remote_passage_sync(&encode(&message).unwrap())
             };
             let bad = PassageForm {
@@ -578,21 +577,25 @@ use sunrise_protocol::passage_sync::encode;
     }
 }
 
-
 #[cfg(test)]
 mod cross_tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use {sunrise_gameplay_common::game::native_passages::tests::doorway, sunrise_gameplay::game::native_passages::tests::listen, sunrise_gameplay_common::game::native_passages::tests::packets, sunrise_gameplay_common::game::native_passages::tests::passage_messages};
-    use sunrise_gameplay_common::game::Dim;
-    use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
     use mod_api::{DimensionKey, Passage, PassageCrossRefusal as Refusal, PassageId, Vec3};
     use std::sync::{Arc, mpsc};
+    use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
+    use sunrise_gameplay_common::game::Dim;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::configuration::CustomPayload;
     use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S, relative};
     use sunrise_protocol::passage_sync::{CROSS_CHANNEL, Cross, Message, encode_cross};
     use sunrise_sim::lan::guest::InboxItem;
     use sunrise_sim::lan::hub::passage_cross::refusal_code;
+    use {
+        sunrise_gameplay::game::native_passages::tests::listen,
+        sunrise_gameplay_common::game::native_passages::tests::doorway,
+        sunrise_gameplay_common::game::native_passages::tests::packets,
+        sunrise_gameplay_common::game::native_passages::tests::passage_messages,
+    };
 
     /// The doorway comes out 24 blocks east, turned a clockwise quarter.
     fn near_doorway() -> Passage {
@@ -627,17 +630,23 @@ use {sunrise_gameplay_common::game::native_passages::tests::doorway, sunrise_gam
         }
         let dimension = game.dim.id().to_owned();
         let mut receivers = listen(game, ["sunrise", "sunrise"]);
-        game.server.lan.as_mut().unwrap().hub.guests.update_all(|g| {
-            g.dimension = dimension.clone();
-            g.loaded = true;
-            g.load_timeout = 0;
-            g.center = Some((0, 0));
-            g.sent_chunks.extend([(0, 0), (1, 0)]);
-            g.position = at;
-            g.previous_position = at;
-            g.first_good = at;
-            g.on_ground = true;
-        });
+        game.server
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .update_all(|g| {
+                g.dimension = dimension.clone();
+                g.loaded = true;
+                g.load_timeout = 0;
+                g.center = Some((0, 0));
+                g.sent_chunks.extend([(0, 0), (1, 0)]);
+                g.position = at;
+                g.previous_position = at;
+                g.first_good = at;
+                g.on_ground = true;
+            });
         let level = game.level(game.dim.id()).unwrap();
         let id = game.level_register_passage(level, near_doorway()).unwrap();
         assert_eq!(id, PassageId::from_raw(1));
@@ -681,7 +690,9 @@ use {sunrise_gameplay_common::game::native_passages::tests::doorway, sunrise_gam
             .collect()
     }
 
-    fn guest<'a>(game: &'a sunrise_gameplay::game::ServerGame<'_>) -> &'a sunrise_sim::lan::guest::Guest {
+    fn guest<'a>(
+        game: &'a sunrise_gameplay::game::ServerGame<'_>,
+    ) -> &'a sunrise_sim::lan::guest::Guest {
         &game.server.lan.as_ref().unwrap().hub.guests[0]
     }
 
@@ -831,21 +842,23 @@ use {sunrise_gameplay_common::game::native_passages::tests::doorway, sunrise_gam
                 game.level_register_passage(level, away),
                 Ok(PassageId::from_raw(2))
             );
-            let refused =
-                |game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u64, why: Refusal, at: [f64; 3]| {
-                    let sent = packets(&rx);
-                    let reason = refusal_code(why);
-                    assert_eq!(
-                        refusals(&sent),
-                        [Message::Refused { id, reason }],
-                        "{why:?}"
-                    );
-                    let back = position_packets(&sent);
-                    assert_eq!(back.len(), 1, "{why:?}");
-                    assert_eq!((back[0].position, back[0].relatives), (at, 0), "{why:?}");
-                    assert_eq!(guest(game).position, at, "{why:?}");
-                    back[0].teleport
-                };
+            let refused = |game: &mut sunrise_gameplay::game::ServerGame<'_>,
+                           id: u64,
+                           why: Refusal,
+                           at: [f64; 3]| {
+                let sent = packets(&rx);
+                let reason = refusal_code(why);
+                assert_eq!(
+                    refusals(&sent),
+                    [Message::Refused { id, reason }],
+                    "{why:?}"
+                );
+                let back = position_packets(&sent);
+                assert_eq!(back.len(), 1, "{why:?}");
+                assert_eq!((back[0].position, back[0].relatives), (at, 0), "{why:?}");
+                assert_eq!(guest(game).position, at, "{why:?}");
+                back[0].teleport
+            };
             let here = [0.5, 65.0, 8.25];
             tick(game, vec![cross(9, here)]);
             refused(game, 9, Refusal::UnknownPassage, here);

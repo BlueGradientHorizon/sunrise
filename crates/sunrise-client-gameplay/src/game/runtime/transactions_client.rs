@@ -1,8 +1,8 @@
 use crate::game::ClientGame;
+use mod_api::TransactionLifecycle;
 use sunrise_gameplay_common::game::transactions::{
     After, ClosingPhase, JournaledPlayer, Kept, KeptPlayer, Level, Pos, StorageSettlement, entities,
 };
-use mod_api::TransactionLifecycle;
 use sunrise_level::block_entities::BlockEntityIdentity;
 
 impl ClientGame<'_> {
@@ -19,7 +19,8 @@ impl ClientGame<'_> {
             level.scratch_kept.remove(&id);
             self.common.transactions.scratch.remove(&id)
         });
-        self.common.transactions
+        self.common
+            .transactions
             .attachment_query_scopes
             .leave(level.parent_attachment_query_scope);
         let closing = if self.common.transactions.is_empty() {
@@ -84,7 +85,8 @@ impl ClientGame<'_> {
     }
 
     pub(in crate::game::client_side) fn client_tx_roll_back(&mut self, mut level: Level) {
-        self.common.scratch_roll_back(std::mem::take(&mut level.scratch_kept));
+        self.common
+            .scratch_roll_back(std::mem::take(&mut level.scratch_kept));
         level.after.clear();
         level.captured_packets.clear();
         let removed = std::mem::take(&mut level.removed_block_entities);
@@ -97,7 +99,8 @@ impl ClientGame<'_> {
                 continue;
             }
             if let Some(target) = self
-                .common.world
+                .common
+                .world
                 .block_entities
                 .get_mut(&pos)
                 .and_then(|entity| entity.slots_mut().get_mut(slot))
@@ -106,10 +109,14 @@ impl ClientGame<'_> {
             }
         }
         for (pos, block) in level.blocks {
-            self.common.world.set_stored(pos.0, pos.1, pos.2, block.state);
+            self.common
+                .world
+                .set_stored(pos.0, pos.1, pos.2, block.state);
         }
         for ((x, y, z), group) in level.connection_groups {
-            self.common.world.set_connection_group_stored(x, y, z, group);
+            self.common
+                .world
+                .set_connection_group_stored(x, y, z, group);
         }
         for (owner, kept) in level.players {
             if matches!(owner, JournaledPlayer::Local(_)) {
@@ -186,7 +193,8 @@ impl ClientGame<'_> {
     }
 
     pub(in crate::game) fn client_tx_journal_menus(&mut self, _player: mod_api::PlayerRef) {
-        self.common.transactions.player_writes = self.common.transactions.player_writes.wrapping_add(1);
+        self.common.transactions.player_writes =
+            self.common.transactions.player_writes.wrapping_add(1);
         self.common.transactions.writes = self.common.transactions.writes.wrapping_add(1);
     }
 }

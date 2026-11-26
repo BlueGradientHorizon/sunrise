@@ -1,3 +1,4 @@
+use super::*;
 use std::sync::Arc;
 use sunrise_client::hud::HudBatch;
 use sunrise_client_gameplay::game::native_hooks::book_screen::lifecycle_tests_shared::BookMod;
@@ -12,10 +13,11 @@ use sunrise_client_gameplay::game::native_hooks::book_screen::lifecycle_tests_sh
 use sunrise_client_gameplay::game::native_hooks::book_screen::lifecycle_tests_shared::geometry;
 use sunrise_client_gameplay::game::native_hooks::book_screen::lifecycle_tests_shared::receive;
 use sunrise_client_gameplay::game::native_hooks::book_screen::lifecycle_tests_shared::with_bound_menu_type;
-use super::*;
-use sunrise_sim::recipe_book::{BookFlags, settings_sync::Message};
+use sunrise_client_gameplay::game::native_hooks::{
+    OpenNativeMenu, OpenNativeScreen, seed_native_menu,
+};
 use sunrise_gameplay_common::game::Screen;
-use sunrise_client_gameplay::game::native_hooks::{OpenNativeMenu, OpenNativeScreen, seed_native_menu};
+use sunrise_sim::recipe_book::{BookFlags, settings_sync::Message};
 
 /// Slot moves and hides keep the catalogue and nonce. An in-place open of
 /// the same numeric window discards both, as well as the old layout.
@@ -355,15 +357,17 @@ fn a_missing_recipe_book_factory_keeps_the_current_window() {
                             "bound:menu".into(),
                         ]),
                     );
-                let open =
-                    |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, container, menu, title: &str| {
-                        game.handle_packet(Clientbound::OpenScreen(OpenScreen {
+                let open = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
                             container,
                             menu,
-                            title: sunrise_core::nbt::Tag::String(title.into()),
-                        }))
-                        .unwrap();
-                    };
+                            title: &str| {
+                    game.handle_packet(Clientbound::OpenScreen(OpenScreen {
+                        container,
+                        menu,
+                        title: sunrise_core::nbt::Tag::String(title.into()),
+                    }))
+                    .unwrap();
+                };
                 open(game, 4, 0, "Chest");
                 game.remote_menu_state(4, 15);
                 let key = game.container.expect("chest backing");
@@ -479,12 +483,15 @@ fn a_moved_slot_takes_its_place_for_drawing_and_input_from_the_next_frame() {
             assert!(!pad.contains(&[560.0, 295.0, 16.0, 16.0]));
 
             // Repeating the position, or the declared one, rebuilds nothing.
-            let builds = sunrise_client_gameplay::game::client_side::container_layout::LAYOUT_CONSTRUCTIONS.with(|c| c.get());
+            let builds =
+                sunrise_client_gameplay::game::client_side::container_layout::LAYOUT_CONSTRUCTIONS
+                    .with(|c| c.get());
             assert!(game.set_screen_slot(MENU, 0, Some([48.0, 60.0])).is_ok());
             assert!(game.set_screen_slot(MENU, 1, Some([26.0, 18.0])).is_ok());
             game.build_screen();
             assert_eq!(
-                sunrise_client_gameplay::game::client_side::container_layout::LAYOUT_CONSTRUCTIONS.with(|c| c.get()),
+                sunrise_client_gameplay::game::client_side::container_layout::LAYOUT_CONSTRUCTIONS
+                    .with(|c| c.get()),
                 builds
             );
             assert_eq!(
@@ -595,7 +602,8 @@ fn a_reopened_window_uses_only_its_new_screen_instance() {
                         "minecraft:menu".into(),
                         Ids::from_names(vec![REOPENED_MENU.into()]),
                     );
-                    let open = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, marker: i32| {
+                    let open = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                                marker: i32| {
                         game.handle_packet(C::CustomPayload(CustomPayload {
                             channel: CHANNEL.into(),
                             data: menu_extra::encode(&menu_extra::Message {

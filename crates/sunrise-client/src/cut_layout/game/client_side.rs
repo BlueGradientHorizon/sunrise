@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 pub(crate) use super::server_side::native_entity_refs;
 
@@ -8,8 +7,16 @@ pub(crate) use super::server_side::native_entity_refs;
 pub(crate) mod beacon_cull_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
+#[path = "runtime/core_tests_client.rs"]
+pub(crate) mod core_tests_client;
+#[cfg(feature = "client")]
+#[cfg(test)]
 #[path = "entities/crosshair_pick_tests.rs"]
 pub(crate) mod crosshair_pick_tests;
+#[cfg(feature = "client")]
+#[cfg(test)]
+#[path = "modding/disabled_block_tests_client.rs"]
+pub(crate) mod disabled_block_tests_client;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "interface/dragon_boss_bar_name_tests.rs"]
@@ -32,6 +39,10 @@ pub(crate) mod hand_part_tests;
 pub(crate) mod highlight_tip_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
+#[path = "modding/initial_client_models_tests_client.rs"]
+pub(crate) mod initial_client_models_tests_client;
+#[cfg(feature = "client")]
+#[cfg(test)]
 #[path = "modding/mod_menu_decisions_tests.rs"]
 pub(crate) mod mod_menu_decisions_tests;
 #[cfg(feature = "client")]
@@ -48,8 +59,16 @@ pub(crate) mod mod_recipe_property_tests;
 pub(crate) mod native_general_renderers_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
+#[path = "modding/native_guest_turn_tests_client.rs"]
+pub(crate) mod native_guest_turn_tests_client;
+#[cfg(feature = "client")]
+#[cfg(test)]
 #[path = "modding/native_key_mappings_tests.rs"]
 pub(crate) mod native_key_mappings_tests;
+#[cfg(feature = "client")]
+#[cfg(test)]
+#[path = "modding/native_level_sound_except_tests_client.rs"]
+pub(crate) mod native_level_sound_except_tests_client;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "modding/native_scene_live_tests.rs"]
@@ -68,12 +87,19 @@ pub(crate) mod options_close_tests;
 pub(crate) mod polytone_frame_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
+#[path = "items/projectile_spawned_tests_client.rs"]
+pub(crate) mod projectile_spawned_tests_client;
+#[cfg(feature = "client")]
+#[cfg(test)]
 #[path = "interface/recipe_properties_tests.rs"]
 pub(crate) mod recipe_properties_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "interface/screen_render_phase_tests.rs"]
 pub(crate) mod screen_render_phase_tests;
+#[cfg(feature = "client")]
+#[path = "world/server_packs.rs"]
+pub(crate) mod server_packs;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "interface/tests/sign_chain_tests.rs"]
@@ -84,36 +110,12 @@ pub(crate) mod sign_chain_tests;
 pub(crate) mod spawner_client_tick_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
-#[path = "blocks/sulfur_bucket_tests.rs"]
-pub(crate) mod sulfur_bucket_tests;
-#[cfg(feature = "client")]
-#[cfg(test)]
-#[path = "runtime/core_tests_client.rs"]
-pub(crate) mod core_tests_client;
-#[cfg(feature = "client")]
-#[cfg(test)]
-#[path = "modding/disabled_block_tests_client.rs"]
-pub(crate) mod disabled_block_tests_client;
-#[cfg(feature = "client")]
-#[cfg(test)]
-#[path = "modding/initial_client_models_tests_client.rs"]
-pub(crate) mod initial_client_models_tests_client;
-#[cfg(feature = "client")]
-#[cfg(test)]
-#[path = "modding/native_guest_turn_tests_client.rs"]
-pub(crate) mod native_guest_turn_tests_client;
-#[cfg(feature = "client")]
-#[cfg(test)]
-#[path = "modding/native_level_sound_except_tests_client.rs"]
-pub(crate) mod native_level_sound_except_tests_client;
-#[cfg(feature = "client")]
-#[cfg(test)]
-#[path = "items/projectile_spawned_tests_client.rs"]
-pub(crate) mod projectile_spawned_tests_client;
-#[cfg(feature = "client")]
-#[cfg(test)]
 #[path = "modding/stacked_on_other_tests_client.rs"]
 pub(crate) mod stacked_on_other_tests_client;
+#[cfg(feature = "client")]
+#[cfg(test)]
+#[path = "blocks/sulfur_bucket_tests.rs"]
+pub(crate) mod sulfur_bucket_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "entities/vehicle_removal_tests_client.rs"]
@@ -122,9 +124,6 @@ pub(crate) mod vehicle_removal_tests_client;
 #[cfg(test)]
 #[path = "blocks/world_fluids_tests_client.rs"]
 pub(crate) mod world_fluids_tests_client;
-#[cfg(feature = "client")]
-#[path = "world/server_packs.rs"]
-pub(crate) mod server_packs;
 
 #[path = "world/packs/mod.rs"]
 pub(crate) mod packs;

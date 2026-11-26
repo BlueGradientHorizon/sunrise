@@ -1,5 +1,5 @@
-use sunrise_gameplay::game::commands::items::Slot;
 use crate::game::server_side::commands::terrain_cmds::loot_slot_tests::with_game;
+use sunrise_gameplay::game::commands::items::Slot;
 
 #[test]
 #[ignore = "daily"]

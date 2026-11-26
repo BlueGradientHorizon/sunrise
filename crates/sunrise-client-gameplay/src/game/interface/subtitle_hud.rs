@@ -52,12 +52,12 @@ impl ClientGame<'_> {
             height: batch.height as i32,
         };
         let atlas = &self.client.gui.atlas;
-        let draws = self
-            .client
-            .subtitles
-            .overlay
-            .borrow_mut()
-            .extract(&frame, &atlas.font, now_ms());
+        let draws =
+            self.client
+                .subtitles
+                .overlay
+                .borrow_mut()
+                .extract(&frame, &atlas.font, now_ms());
         hud_layout::paint(batch, atlas, &draws);
     }
 }

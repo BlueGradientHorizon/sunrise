@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 pub(in crate::game) mod item_picked_up_tests;
 #[cfg(any(test, feature = "test-support"))]

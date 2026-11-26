@@ -1,6 +1,6 @@
 use super::Remote;
-use sunrise_gameplay_common::game::{api_values::TryIntoApi, remote::client_has_level};
 use std::sync::Arc;
+use sunrise_gameplay_common::game::{api_values::TryIntoApi, remote::client_has_level};
 
 impl Remote {
     pub fn set_menu_title(&mut self, title: Option<sunrise_game_data::text::Text>) {

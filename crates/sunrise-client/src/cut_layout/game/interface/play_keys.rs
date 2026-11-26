@@ -1,11 +1,12 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod pause_close_tests {
-    use {sunrise_gameplay_common::game::Screen, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use sunrise_protocol::packets::play::Serverbound as S;
     use winit::keyboard::KeyCode;
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_gameplay_common::game::Screen,
+    };
 
     /// On a server, Escape out of the inventory closes its menu with a
     /// ServerboundContainerClosePacket; Escape out of the pause menu sends
@@ -36,7 +37,6 @@ pub(crate) mod pause_close_tests {
 
 #[cfg(test)]
 pub(crate) mod creative_close_tests {
-    use {sunrise_gameplay_common::game::Screen, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use mod_api::{ClientHost, Hooks, ModEntry, ScreenOpening, ScreenOpeningEvent};
     use std::sync::{
         Arc,
@@ -44,6 +44,10 @@ pub(crate) mod creative_close_tests {
     };
     use sunrise_protocol::packets::play::Serverbound as S;
     use winit::keyboard::KeyCode;
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_gameplay_common::game::Screen,
+    };
 
     /// Keeps the open screen while `veto` is set.
     struct Veto(Arc<AtomicBool>);

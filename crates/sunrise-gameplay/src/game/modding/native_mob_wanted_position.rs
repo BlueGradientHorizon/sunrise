@@ -18,7 +18,12 @@ impl crate::game::ServerGame<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return Ok(false);
         };
-        let Some(mob) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+        let Some(mob) = self
+            .common
+            .mobs
+            .iter_mut()
+            .find(|m| m.id == id && !m.removed)
+        else {
             return Ok(false);
         };
         mob.ai.mov.set_wanted(at[0], at[1], at[2], speed);
@@ -30,7 +35,8 @@ impl crate::game::ServerGame<'_> {
             return None;
         };
         Some(
-            self.common.mobs
+            self.common
+                .mobs
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .ai
@@ -44,7 +50,8 @@ impl crate::game::ServerGame<'_> {
             return None;
         };
         Some(
-            self.common.mobs
+            self.common
+                .mobs
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .ai

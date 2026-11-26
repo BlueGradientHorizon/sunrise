@@ -1,12 +1,12 @@
 //! The old `ServerPlayer` retained across `restoreFrom`, independently of its replacement.
 use super::Dim;
-use sunrise_gameplay_common::game::player_state::OriginalAttachmentSlot;
 use mod_api::{
     ActiveEffect, AttachmentError, AttachmentForm, AttachmentStore, AttachmentValue, Attachments,
     Holder, InventoryView, LevelRef, OriginalPlayerAccess, PlayerExperience,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_core::nbt::Compound;
+use sunrise_gameplay_common::game::player_state::OriginalAttachmentSlot;
 use sunrise_items::equipment::Equipment;
 use sunrise_items::items::ItemStack;
 

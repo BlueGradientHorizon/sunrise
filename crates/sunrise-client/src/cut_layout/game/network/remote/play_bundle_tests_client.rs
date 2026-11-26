@@ -1,7 +1,7 @@
+use crate::game::client_side::viewed_worlds::tests::column;
 use crate::game::remote::tests::play_bundle_tests::connect_probe;
 use crate::game::remote::tests::play_bundle_tests::wait_for_bundle;
 use crate::game::remote::tests::play_bundle_tests::with_probe;
-use crate::game::client_side::viewed_worlds::tests::column;
 use sunrise_protocol::{
     connection_groups::{self, Cell, Entry, Section},
     packets::{

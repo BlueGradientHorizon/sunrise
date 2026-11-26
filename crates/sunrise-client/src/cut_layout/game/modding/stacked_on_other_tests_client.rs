@@ -5,18 +5,18 @@ use sunrise_sim::menu::Input;
 
 pub(crate) mod item_part_tests {
     use super::*;
+    use mod_api::item::menu::StackedOnOtherDirection;
     use sunrise_gameplay::game::stacked_on_other_tests::item_part_tests::GlobalAndPartMod;
     use sunrise_gameplay::game::stacked_on_other_tests::item_part_tests::PartScript;
     use sunrise_gameplay::game::stacked_on_other_tests::item_part_tests::observations;
     use sunrise_gameplay::game::stacked_on_other_tests::item_part_tests::set_part_script;
     use sunrise_gameplay::game::stacked_on_other_tests::item_part_tests::trace;
-    use mod_api::item::menu::StackedOnOtherDirection;
 
     #[test]
     #[ignore = "daily"]
     fn item_part_client_prediction_reconciliation_and_creative_pickups() {
-        use sunrise_gameplay_common::game::Screen;
         use sunrise_client::creative::Creative;
+        use sunrise_gameplay_common::game::Screen;
         use sunrise_protocol::{
             item::Stack,
             packets::play::{self, Clientbound as C, Serverbound as S},

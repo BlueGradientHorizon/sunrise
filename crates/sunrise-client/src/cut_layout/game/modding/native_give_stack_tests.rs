@@ -2,10 +2,14 @@
 
 #![cfg(test)]
 
-use sunrise_gameplay_common::game::tables::GameItems;
-use {sunrise_gameplay_common::game::api_values::TryIntoApi, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
 use mod_api::{Host, ItemStack, PlayerDataRefusal, prelude::*};
 use sunrise_core::nbt::parse_snbt;
+use sunrise_gameplay_common::game::tables::GameItems;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_guest_turn_tests::with_guests,
+    sunrise_gameplay_common::game::api_values::TryIntoApi,
+};
 
 fn api_item(game: &sunrise_gameplay::game::ServerGame<'_>, snbt: &str) -> Option<ItemStack> {
     let host: &dyn Host = game;
@@ -199,6 +203,5 @@ fn a_dead_player_is_given_nothing() {
         assert_eq!(game.dropped.len(), before);
     });
 }
-
 
 use sunrise_gameplay_common::game::native_give_stack::NativeGiveStackGameExt1;

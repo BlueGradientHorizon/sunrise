@@ -4,10 +4,7 @@ use sunrise_items::items::ItemStack;
 use sunrise_level::particle_options::ParticleOptions;
 
 impl ClientGame<'_> {
-    pub fn item_particle_options(
-        &self,
-        stack: &ItemStack,
-    ) -> Option<ParticleOptions> {
+    pub fn item_particle_options(&self, stack: &ItemStack) -> Option<ParticleOptions> {
         Some(self.item_particle(stack))
     }
 }

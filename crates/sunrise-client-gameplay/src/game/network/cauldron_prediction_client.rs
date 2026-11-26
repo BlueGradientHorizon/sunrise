@@ -1,8 +1,8 @@
 //! Client-side vanilla cauldron prediction.
 use super::Hit;
 use std::sync::Arc;
-use sunrise_gameplay_common::game::remote::DryUse;
 use sunrise_client::actions::Action as Mapping;
+use sunrise_gameplay_common::game::remote::DryUse;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::cauldron::{
     self, Outcome,

@@ -1,32 +1,34 @@
-
-
 #[cfg(test)]
 mod language_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay::game::server_side::dedicated::{
+    use sunrise_gameplay::game::server_side::dedicated::{
         FORWARDING_REMOVED, capture_log, log, log_from, overload_warning, panic_message,
         refuse_forwarding_secret,
     };
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 
-use std::{
+    use std::{
         fs,
         io::{self, BufRead, BufReader, Read, Write},
         process::{Command, Stdio},
         time::{SystemTime, UNIX_EPOCH},
     };
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn dedicated_checkpoints_continue_only_after_record_refusals() {
-        use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::with_game_role};
         use mod_api::{Authority, Hooks, ModEntry, ServerHost, WorldLifecycleEvent, WorldPhase};
         use std::sync::{Arc, Mutex};
         use sunrise_core::nbt::{DISK_WRITE_NESTING_GUARD, Tag};
         use sunrise_sim::save::{LevelShape, SaveDir};
+        use {
+            sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+            sunrise_gameplay::game::native_entity_refs::tests::with_game_role,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole,
+        };
 
         struct CloseEvents(Arc<Mutex<Vec<(WorldPhase, String)>>>);
         #[mod_api::__subscriptions]
@@ -115,7 +117,7 @@ use std::{
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn broadcast_console_destination_follows_role_not_launch_marker() {
         use sunrise_gameplay_common::game::execution_role::ExecutionRole;
@@ -137,7 +139,7 @@ use std::{
             assert_eq!(lines, expected, "{role:?}");
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn console_name_lookup_skips_fake_players() {
         sunrise_gameplay::game::native_guest_turn_tests::with_guests(|game| {
@@ -153,7 +155,7 @@ use std::{
             assert_eq!(game.online_player("ROBOT").unwrap().id, 12);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn console_and_management_ip_ban_sets_skip_fake_players() {
         sunrise_gameplay::game::native_guest_turn_tests::with_guests(|game| {
@@ -173,7 +175,7 @@ use std::{
             assert_eq!(game.ip_ban_players("127.0.0.1"), [13]);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_missing_level_file_keeps_the_existing_world_generator() {
         use sunrise_java_properties::Properties;
@@ -192,8 +194,11 @@ use std::{
         fs::rename(dir.join("level.dat"), dir.join("level.dat_old")).unwrap();
         let mut properties = Properties::default();
         properties.put("level-seed", "54321".into());
-        let props =
-            sunrise_server_files::properties::ServerProperties::new(properties, &mut sunrise_server_files::properties::SystemEntropy::default()).unwrap();
+        let props = sunrise_server_files::properties::ServerProperties::new(
+            properties,
+            &mut sunrise_server_files::properties::SystemEntropy::default(),
+        )
+        .unwrap();
         let resources = std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap().into();
         sunrise_gameplay::game::native_entity_refs::tests::with_game_role(
             resources,
@@ -210,16 +215,15 @@ use std::{
     }
 }
 
-
 #[cfg(test)]
 mod console_source_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
     use crate::game::load_resources;
-    use sunrise_client_render::settings::Settings;
     use std::sync::Arc;
+    use sunrise_client_render::settings::Settings;
     use sunrise_core::position::ChunkPos;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_level::chunk::Chunk;
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 
     /// Runs `command` as the console does and returns whether it worked and every message it printed.
     fn console(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> (bool, String) {
@@ -259,7 +263,8 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,

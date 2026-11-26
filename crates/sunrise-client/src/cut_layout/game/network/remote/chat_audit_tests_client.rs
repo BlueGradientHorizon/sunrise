@@ -1,4 +1,3 @@
-use {sunrise_protocol::packets::play::Clientbound as C, sunrise_protocol::packets::play, sunrise_protocol::secure_chat};
 use crate::game::remote::chat_audit_tests::ALICE;
 use crate::game::remote::chat_audit_tests::BOB;
 use crate::game::remote::chat_audit_tests::add_signed_sender;
@@ -9,6 +8,10 @@ use crate::game::remote::chat_audit_tests::tracker_offset;
 use crate::game::remote::chat_audit_tests::with_delayed_chat;
 use sunrise_client::chat::{ChatAbilities, ChatOptions, ChatVisibility};
 use sunrise_protocol::rsa::RsaPrivateKey;
+use {
+    sunrise_protocol::packets::play, sunrise_protocol::packets::play::Clientbound as C,
+    sunrise_protocol::secure_chat,
+};
 
 #[test]
 #[ignore = "daily"]

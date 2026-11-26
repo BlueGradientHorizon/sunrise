@@ -54,12 +54,14 @@ impl crate::game::ServerGame<'_> {
         id: u32,
     ) -> Option<[f64; 3]> {
         let at = |v: Vec3| [v.x, v.y, v.z];
-        self.common.boats
+        self.common
+            .boats
             .iter()
             .find(|b| b.id == id)
             .map(|b| at(b.position))
             .or_else(|| {
-                self.common.carts
+                self.common
+                    .carts
                     .iter()
                     .find(|c| c.id == id)
                     .map(|c| at(c.position))
@@ -268,12 +270,14 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         let at = self
-            .common.boats
+            .common
+            .boats
             .iter()
             .find(|b| b.id == vehicle)
             .map(|b| b.position)
             .or_else(|| {
-                self.common.mobs
+                self.common
+                    .mobs
                     .iter()
                     .find(|m| m.id == vehicle && equine::moved_by_client(m))
                     .map(|m| m.position)
@@ -309,18 +313,21 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let at = self
-            .common.boats
+            .common
+            .boats
             .iter()
             .position(|b| b.id == vehicle)
             .map(|i| (self.common.boats[i].position, self.player_boat_seat(i)))
             .or_else(|| {
-                self.common.carts
+                self.common
+                    .carts
                     .iter()
                     .find(|c| c.id == vehicle)
                     .map(|c| (c.position, c.position.add_vector(Vec3::new(0.0, SEAT, 0.0))))
             })
             .or_else(|| {
-                self.common.cushions
+                self.common
+                    .cushions
                     .iter()
                     .find(|c| c.id == vehicle)
                     .map(|c| (c.position, c.seat()))
@@ -360,11 +367,7 @@ impl crate::game::ServerGame<'_> {
     /// saddled horse its rider drives goes where the client says, unless it
     /// moved too quickly or wrongly; then it stays, and the client is told
     /// where it is.
-    pub fn guest_move_vehicle(
-        &mut self,
-        conn: u32,
-        p: &play::MoveVehicleRequest,
-    ) {
+    pub fn guest_move_vehicle(&mut self, conn: u32, p: &play::MoveVehicleRequest) {
         let Some(host) = self.server.lan.as_mut() else {
             return;
         };
@@ -411,7 +414,8 @@ impl crate::game::ServerGame<'_> {
         // on the client is put back.
         let boat = vehicle.and_then(|v| self.common.boats.iter().position(|b| b.id == v));
         let mount = vehicle.and_then(|v| {
-            self.common.mobs
+            self.common
+                .mobs
                 .iter()
                 .position(|m| m.id == v && equine::moved_by_client(m))
         });
@@ -516,10 +520,15 @@ impl crate::game::ServerGame<'_> {
         // (`absSnapTo` restores only the position).
         if let Some(i) = mount {
             self.common.mobs[i].fall_distance =
-                self.common.vehicle_fall_reset(self.common.mobs[i].fall_distance, old, resolved);
+                self.common
+                    .vehicle_fall_reset(self.common.mobs[i].fall_distance, old, resolved);
         } else if let Some(i) = boat {
-            let reset = self.common.vehicle_fall_reset(self.common.boats[i].fall_distance, old, resolved);
-            self.common.boats.update(i, |boat| boat.fall_distance = reset);
+            let reset =
+                self.common
+                    .vehicle_fall_reset(self.common.boats[i].fall_distance, old, resolved);
+            self.common
+                .boats
+                .update(i, |boat| boat.fall_distance = reset);
         }
         // An overridden decision is put back from wherever the vehicle starts:
         // the free-old-box exemption is the distance test's (review round 1),
@@ -549,18 +558,24 @@ impl crate::game::ServerGame<'_> {
             corner(true),
             &self.server.lan.as_ref().unwrap().hub.encoder,
         );
-        self.server.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
-            // `ServerChunkCache.move` after `absSnapTo` of the accepted move.
-            g.release_tickets();
-            g.vehicle_good = Some([target.x, target.y, target.z]);
-            let rested = std::mem::replace(
-                &mut g.vehicle_rests,
-                wanted.y < 0.0 && resolved.y != wanted.y,
-            );
-            g.vehicle_floating =
-                wanted.y >= -0.03125 && !rested && !allow_flight && !no_gravity && no_blocks;
-            g.vehicle_gravity = gravity;
-        });
+        self.server
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .update(gi, |g| {
+                // `ServerChunkCache.move` after `absSnapTo` of the accepted move.
+                g.release_tickets();
+                g.vehicle_good = Some([target.x, target.y, target.z]);
+                let rested = std::mem::replace(
+                    &mut g.vehicle_rests,
+                    wanted.y < 0.0 && resolved.y != wanted.y,
+                );
+                g.vehicle_floating =
+                    wanted.y >= -0.03125 && !rested && !allow_flight && !no_gravity && no_blocks;
+                g.vehicle_gravity = gravity;
+            });
         if let Some(i) = mount {
             use sunrise_sim::mobs::living::MovementAction;
 
@@ -658,7 +673,11 @@ impl crate::game::ServerGame<'_> {
         use super::entity::Entity as _;
         let mut probe = self.common.boats[i].clone();
         let in_water = probe
-            .push_by_fluid(&self.common.world, &self.common.res.motion().fluids, &self.common.loop_context)
+            .push_by_fluid(
+                &self.common.world,
+                &self.common.res.motion().fluids,
+                &self.common.loop_context,
+            )
             .0
             > 0.0;
         // The long move reset ran before collision validation.

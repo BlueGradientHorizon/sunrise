@@ -204,7 +204,12 @@ impl ClientGame<'_> {
             p.auto_spin_attack_dmg = 8.0;
             p.auto_spin_attack_item = spin_stack;
         }
-        if self.common.player.as_ref().is_some_and(|p| p.ground.on_ground) {
+        if self
+            .common
+            .player
+            .as_ref()
+            .is_some_and(|p| p.ground.on_ground)
+        {
             let _ = self.move_local_player(
                 sunrise_world::entity_move::MoverType::SelfMovement,
                 Vec3::new(0.0, f64::from(1.1999999f32), 0.0),

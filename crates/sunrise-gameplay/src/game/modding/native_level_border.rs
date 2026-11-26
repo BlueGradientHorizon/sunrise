@@ -4,8 +4,8 @@
 //! level, so a write through any level the server has opened moves it everywhere. The players
 //! are told on the next host sync, as for the command.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::level_control_hooks::LevelControl;
 use mod_api::LevelRef;
+use sunrise_gameplay_common::game::level_control_hooks::LevelControl;
 use sunrise_level::worldborder::{MAX_CENTER, MAX_SIZE};
 
 impl ServerGame<'_> {
@@ -50,7 +50,10 @@ impl ServerGame<'_> {
         {
             return false;
         }
-        if ticks == 0 && self.common.border.remaining_ticks() == 0 && self.common.border.size() == size {
+        if ticks == 0
+            && self.common.border.remaining_ticks() == 0
+            && self.common.border.size() == size
+        {
             return true;
         }
         self.common.border.lerp_to(size, ticks);

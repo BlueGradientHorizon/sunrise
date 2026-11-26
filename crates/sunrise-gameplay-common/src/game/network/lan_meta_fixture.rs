@@ -74,4 +74,3 @@ pub fn profession_hub(name: &str, vanilla_professions: bool) -> sunrise_sim::lan
         ),
     )
 }
-

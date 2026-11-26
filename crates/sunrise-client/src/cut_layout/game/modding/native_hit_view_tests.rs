@@ -2,7 +2,6 @@
 //! (`LivingIncomingDamageEvent.getEntity`, `DamageSource.getEntity`), at the three damage moments,
 //! from their live bodies, and reads their attachments without writing them.
 use super::native_entity_refs::tests::{bind_local_player, run_fresh_cases, with_game};
-use sunrise_gameplay::game::server_side::native_living_refs::tests::summon_mob;
 use mod_api::{
     ActiveEffect, AttachmentError, AttachmentType, EffectKey, Flow, Hand, HitHost, Holder, Hooks,
     LivingDamagePostEvent, LivingDamagePreEvent, LivingIncomingDamageEvent, LivingView,
@@ -10,6 +9,7 @@ use mod_api::{
 use std::sync::{Arc, Mutex};
 use sunrise_command::args::GameMode;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::server_side::native_living_refs::tests::summon_mob;
 use sunrise_sim::mobs::{Damage, DamageKind, Who};
 use sunrise_sim::motion::PlayerMotion;
 

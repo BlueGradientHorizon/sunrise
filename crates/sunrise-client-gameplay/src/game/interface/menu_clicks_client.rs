@@ -73,7 +73,8 @@ impl crate::game::ClientGame<'_> {
     ) -> bool {
         use sunrise_sim::menu::{Env, Kind, Menu};
         if !self
-            .common.station
+            .common
+            .station
             .as_ref()
             .is_some_and(|s| s.kind == stations::Kind::Anvil)
             || self.common.is_logical_server()
@@ -237,7 +238,8 @@ impl crate::game::ClientGame<'_> {
         }
         let shown = self.creative_display_stack(slot);
         let catalog = self
-            .common.server_items
+            .common
+            .server_items
             .as_deref()
             .unwrap_or_else(|| self.common.res.items());
         let max = |s: &ItemStack| catalog.get(&s.item).map_or(64, |i| i.max_stack);
@@ -271,7 +273,8 @@ impl crate::game::ClientGame<'_> {
         &mut self,
         menu: &mut sunrise_sim::menu::Menu,
     ) -> bool {
-        if !menu.anvil_created() || self.common.is_logical_server() || self.client.remote.is_none() {
+        if !menu.anvil_created() || self.common.is_logical_server() || self.client.remote.is_none()
+        {
             return false;
         }
         if !mod_api::__private::listened(mod_api::HookId::AnvilUpdate) {
@@ -301,10 +304,7 @@ impl crate::game::ClientGame<'_> {
         self.slot_at(&batch, self.client.cursor.0, self.client.cursor.1)
     }
     /// Several clicks on one menu instance (a quick craft drag is three).
-    pub fn menu_ops(
-        &mut self,
-        ops: &[(Option<usize>, i32, sunrise_sim::menu::Input)],
-    ) -> bool {
+    pub fn menu_ops(&mut self, ops: &[(Option<usize>, i32, sunrise_sim::menu::Input)]) -> bool {
         use sunrise_sim::menu::Input;
         // BundleMouseActions.onSlotClicked: a Shift click or a swap clears the bundle's selection.
         for &(slot, _, input) in ops {
@@ -326,7 +326,8 @@ impl crate::game::ClientGame<'_> {
             return done;
         }
         let ops = ops.to_vec();
-        let creative_remote = self.client.remote.is_some() && self.client.screen == Screen::Creative;
+        let creative_remote =
+            self.client.remote.is_some() && self.client.screen == Screen::Creative;
         let done = self.menu_session_with_game(move |game, menu, env, to_menu| {
             let mut clicks = Vec::new();
             for &(slot, button, input) in &ops {
@@ -441,15 +442,18 @@ impl crate::game::ClientGame<'_> {
         let mut plain_map = None;
         let crafter_open = matches!(self.container_kind(), Some(BlockEntity::Crafter(_)));
         let loom_open = self
-            .common.station
+            .common
+            .station
             .as_ref()
             .is_some_and(|s| s.kind == stations::Kind::Loom);
         let merchant_open = self
-            .common.station
+            .common
+            .station
             .as_ref()
             .is_some_and(|s| s.kind == stations::Kind::Merchant);
         let stonecutter_open = self
-            .common.station
+            .common
+            .station
             .as_ref()
             .is_some_and(|s| s.kind == stations::Kind::Stonecutter);
         let station_kind = self.common.station.as_ref().map(|s| s.kind);
@@ -658,7 +662,8 @@ impl crate::game::ClientGame<'_> {
             )
         });
         let stone = self
-            .common.station
+            .common
+            .station
             .as_ref()
             .map(|s| (s.selected.map_or(-1, |i| i as i32), s.stone.clone()));
         let crafter_data = match self.common.container_kind() {
@@ -667,7 +672,8 @@ impl crate::game::ClientGame<'_> {
         };
         // The merchant's session, lent to the menu for this click.
         let session = self
-            .common.station
+            .common
+            .station
             .as_ref()
             .and_then(|s| s.merchant.as_ref())
             .map(|m| m.session.clone());
@@ -789,7 +795,11 @@ impl crate::game::ClientGame<'_> {
         }
         // On a client the clicks only predict: the server drops, crafts and makes maps itself.
         if let Some(s) = menu.merchant.take()
-            && let Some(m) = self.common.station.as_mut().and_then(|s| s.merchant.as_mut())
+            && let Some(m) = self
+                .common
+                .station
+                .as_mut()
+                .and_then(|s| s.merchant.as_mut())
         {
             m.session = s;
         }

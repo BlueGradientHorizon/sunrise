@@ -1,9 +1,13 @@
 //! A status replacement must use the shared retained HUD callback boundary.
 
 use super::{AIR_LEVEL, log, take};
-use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use mod_api::{Hooks, ModEntry, RegisterGuiLayersEvent, RegistrationContext};
 use std::sync::Mutex;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay_common::game::execution_role::ExecutionRole,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -82,7 +86,9 @@ fn a_panicking_hidden_status_replacement_leaves_other_rows() {
             ]
             .into(),
         );
-        sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(ExecutionRole::Client);
+        sunrise_client_gameplay::game::client_side::mods_client::register_gui_layers(
+            ExecutionRole::Client,
+        );
         game.client.title.0 = None;
         game.client.screen = sunrise_gameplay_common::game::Screen::Playing;
         game.client.chat_ui.hide_gui = true;
@@ -102,7 +108,11 @@ fn a_panicking_hidden_status_replacement_leaves_other_rows() {
                 // The shared queue retains the failure under F1.
                 let [
                     sunrise_client_gameplay::game::toast_manager::VisibleToast {
-                        toast: sunrise_client_gameplay::game::toast_manager::Toast::Diagnostic { toast, .. },
+                        toast:
+                            sunrise_client_gameplay::game::toast_manager::Toast::Diagnostic {
+                                toast,
+                                ..
+                            },
                         ..
                     },
                 ] = game.client.toast_manager.visible.as_slice()

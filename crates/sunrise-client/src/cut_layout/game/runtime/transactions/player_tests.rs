@@ -1,10 +1,13 @@
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
 use mod_api::{AttachmentAccess, AttachmentHolder, Host, PlayerRef, ServerHost};
 use std::sync::{Arc, Mutex};
 use sunrise_core::nbt::{Compound, Tag};
 use sunrise_items::items::ItemStack;
 use sunrise_mod_runtime::attachments::{
     AttachmentCodec, AttachmentError, AttachmentType, Holder, index::AttachmentIndex,
+};
+use {
+    sunrise_gameplay::game::native_guest_turn_tests::with_guests,
+    sunrise_gameplay_common::game::Dim,
 };
 
 const VALUE: AttachmentType<i32> = AttachmentType {
@@ -45,7 +48,11 @@ fn rows(index: &Arc<Mutex<AttachmentIndex<AttachmentHolder>>>, name: &str) -> Ve
     values
 }
 
-fn write_player_storage(game: &mut sunrise_gameplay::game::ServerGame<'_>, player: PlayerRef, count: u32) {
+fn write_player_storage(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    player: PlayerRef,
+    count: u32,
+) {
     let host: &dyn Host = game;
     let stack = host
         .item_from_snbt(&format!(r#"{{id:"minecraft:stone",count:{count}}}"#))

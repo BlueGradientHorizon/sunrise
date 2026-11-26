@@ -1,11 +1,11 @@
 //! Client synchronization notices for mod block entities.
 use super::BlockEntity;
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
-use sunrise_gameplay_common::game::native_hooks::block_entity_read::ResidentReadBlockEntity;
 use mod_api::{
     BlockEntityClientReadAccess, BlockEntityClientReadScope, BlockEntityDataSource,
     BlockEntityReadView, BlockEntityRef, ClientHost,
 };
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
+use sunrise_gameplay_common::game::native_hooks::block_entity_read::ResidentReadBlockEntity;
 
 struct ClientDataReadAccess<'g, 'w> {
     game: &'g crate::game::ClientGame<'w>,

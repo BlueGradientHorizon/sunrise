@@ -1,8 +1,8 @@
+use crate::audio::Audio;
+use crate::game::load_resources;
+use crate::settings::Settings;
 use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
-use crate::audio::Audio;
-use crate::settings::Settings;
-use crate::game::load_resources;
 
 #[test]
 #[ignore = "daily"]
@@ -21,7 +21,9 @@ fn a_client_start_joins_the_world_rest_worker_before_it_resolves_the_renderers()
     });
 }
 
-pub(crate) fn with_loading_client(run: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
+pub(crate) fn with_loading_client(
+    run: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
+) {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let mut gui = None;
@@ -67,6 +69,10 @@ pub(crate) fn with_loading_client(run: impl FnOnce(&mut sunrise_client_gameplay:
     )
     .unwrap();
     game.rest_loader = loaded.rest_loader;
-    assert!(sunrise_client_gameplay::game::client_side::launch_options_client::is_client_start(&game.options));
+    assert!(
+        sunrise_client_gameplay::game::client_side::launch_options_client::is_client_start(
+            &game.options
+        )
+    );
     run(&mut game);
 }

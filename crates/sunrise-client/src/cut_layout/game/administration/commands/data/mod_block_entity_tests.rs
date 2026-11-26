@@ -1,13 +1,10 @@
 //! Actual command execution with prepared resources. Canonical membership is
 //! installed only in a fresh process; no native mod bundle or trait hooks are used.
-#[cfg(test)]
-use sunrise_sim::save;
+use super::*;
+use std::{path::PathBuf, sync::Arc};
 use sunrise_core::nbt::Tag;
 use sunrise_core::nbt::parse_snbt;
-use super::*;
 use sunrise_gameplay::game::commands::data::DataRef;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
-use std::{path::PathBuf, sync::Arc};
 use sunrise_level::{
     chunk::Chunk,
     containers::{BlockEntity, ModBlockEntity, ModRevision},
@@ -15,6 +12,12 @@ use sunrise_level::{
 };
 use sunrise_mod_package::content::{Block, Content};
 use sunrise_sim::mod_content::{ContentMod, build};
+#[cfg(test)]
+use sunrise_sim::save;
+use {
+    crate::game::load_resources, crate::settings::Settings, sunrise_gameplay_common::game::Options,
+    sunrise_gameplay_common::game::Progress,
+};
 
 const KEY: (i32, i32, i32) = (2, 64, 2);
 const POS: [i32; 3] = [2, 64, 2];
@@ -143,7 +146,8 @@ fn actual_data_commands_preserve_same_mod_entity_runtime_state() {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,

@@ -1,8 +1,11 @@
 //! Test pending children through real splitting and breeding with a native listener.
 
 use super::pending_birth_tests::{YAWS, find, near};
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{BabyEntitySpawnEvent, Flow, Hooks, MobSplitEvent, ServerHost};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 #[path = "pending_birth_matrix_tests/fixture.rs"]
 pub(crate) mod fixture;

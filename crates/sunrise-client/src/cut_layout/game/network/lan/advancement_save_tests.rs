@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 pub(in crate::game) mod connected_advancement_save_tests {
 
@@ -34,8 +33,11 @@ pub(in crate::game) mod connected_advancement_save_tests {
     }
 
     fn connected_advancement_save() {
-        use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::server_side::stats};
         use std::sync::{Arc, Mutex};
+        use {
+            sunrise_gameplay::game::server_side::stats,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole,
+        };
         let mut game_resources = None;
         let mut game = sunrise_gameplay::game::game_tests::tests::server_game(&mut game_resources);
         game.options.execution_role = ExecutionRole::DedicatedServer;
@@ -53,20 +55,23 @@ pub(in crate::game) mod connected_advancement_save_tests {
             Some(Default::default()),
         ));
         use sunrise_server_files::user_lists::{BanList, IpBanList, OpList, WhiteList};
-        game.server.server_lists.0 = Some(Arc::new(Mutex::new(sunrise_gameplay::game::server_side::dedicated::Lists {
-            ops: OpList::new(dir.join("ops.json")),
-            white: WhiteList::new(dir.join("whitelist.json")),
-            bans: BanList::new(dir.join("banned-players.json")),
-            ip_bans: IpBanList::new(dir.join("banned-ips.json")),
-            use_whitelist: false,
-            enforce_whitelist: false,
-            op_level: 4,
-            player_idle_timeout: 0,
-            stop: false,
-            autosave: true,
-        })));
+        game.server.server_lists.0 = Some(Arc::new(Mutex::new(
+            sunrise_gameplay::game::server_side::dedicated::Lists {
+                ops: OpList::new(dir.join("ops.json")),
+                white: WhiteList::new(dir.join("whitelist.json")),
+                bans: BanList::new(dir.join("banned-players.json")),
+                ip_bans: IpBanList::new(dir.join("banned-ips.json")),
+                use_whitelist: false,
+                enforce_whitelist: false,
+                op_level: 4,
+                player_idle_timeout: 0,
+                stop: false,
+                autosave: true,
+            },
+        )));
         game.set_allow_commands(true);
-        let _rx = sunrise_gameplay::game::server_side::lan::world_spawn_sync_tests::host_for(&mut game);
+        let _rx =
+            sunrise_gameplay::game::server_side::lan::world_spawn_sync_tests::host_for(&mut game);
         let host = game.server.lan.as_mut().unwrap();
         host.hub.guests.update(0, |g| g.name = "Bob".into());
         host.owner = None;
@@ -203,8 +208,11 @@ pub(in crate::game) mod connected_advancement_preservation_tests {
     #[test]
     #[ignore = "daily"]
     fn empty_progress_missing_play_and_disconnect_wrapper_stay_distinct() {
-        use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::server_side::stats};
         use std::sync::{Arc, Mutex};
+        use {
+            sunrise_gameplay::game::server_side::stats,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole,
+        };
         let mut game_resources = None;
         let mut game = sunrise_gameplay::game::game_tests::tests::server_game(&mut game_resources);
         game.options.execution_role = ExecutionRole::DedicatedServer;
@@ -223,20 +231,23 @@ pub(in crate::game) mod connected_advancement_preservation_tests {
             Some(Default::default()),
         ));
         use sunrise_server_files::user_lists::{BanList, IpBanList, OpList, WhiteList};
-        game.server.server_lists.0 = Some(Arc::new(Mutex::new(sunrise_gameplay::game::server_side::dedicated::Lists {
-            ops: OpList::new(dir.join("ops.json")),
-            white: WhiteList::new(dir.join("whitelist.json")),
-            bans: BanList::new(dir.join("banned-players.json")),
-            ip_bans: IpBanList::new(dir.join("banned-ips.json")),
-            use_whitelist: false,
-            enforce_whitelist: false,
-            op_level: 4,
-            player_idle_timeout: 0,
-            stop: false,
-            autosave: true,
-        })));
+        game.server.server_lists.0 = Some(Arc::new(Mutex::new(
+            sunrise_gameplay::game::server_side::dedicated::Lists {
+                ops: OpList::new(dir.join("ops.json")),
+                white: WhiteList::new(dir.join("whitelist.json")),
+                bans: BanList::new(dir.join("banned-players.json")),
+                ip_bans: IpBanList::new(dir.join("banned-ips.json")),
+                use_whitelist: false,
+                enforce_whitelist: false,
+                op_level: 4,
+                player_idle_timeout: 0,
+                stop: false,
+                autosave: true,
+            },
+        )));
         game.set_allow_commands(true);
-        let _rx = sunrise_gameplay::game::server_side::lan::world_spawn_sync_tests::host_for(&mut game);
+        let _rx =
+            sunrise_gameplay::game::server_side::lan::world_spawn_sync_tests::host_for(&mut game);
         let host = game.server.lan.as_mut().unwrap();
         host.hub.guests.update(0, |g| g.name = "Bob".into());
         host.owner = None;

@@ -1,21 +1,19 @@
-
-
 #![cfg(test)]
 use sunrise_core::position::BlockPos;
 use sunrise_level::particle_options::ParticleType;
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(crate) mod shriek_capture_tests {
-    use sunrise_core::random::RandomSource;
-use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
+    use super::*;
     use crate::game::load_resources;
     use crate::settings::Settings;
-    use sunrise_client_lib::audio::Audio;
     use std::sync::Arc;
+    use sunrise_client_lib::audio::Audio;
+    use sunrise_core::random::RandomSource;
     use sunrise_core::{position::ChunkPos, random::LegacyRandom};
     use sunrise_level::chunk::Chunk;
     use sunrise_world::level::LevelEvent;
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 
     #[test]
     #[ignore = "daily"]
@@ -39,7 +37,8 @@ use super::*;
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -131,7 +130,8 @@ use super::*;
         .unwrap();
         let mut client_options = Options::parse(std::iter::empty()).unwrap().unwrap();
         client_options.resources = root.clone();
-        client_options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+        client_options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
         let mut client = sunrise_client_gameplay::game::ClientGame::new(
             &client_loaded.resources,
             client_loaded.client_res.unwrap(),

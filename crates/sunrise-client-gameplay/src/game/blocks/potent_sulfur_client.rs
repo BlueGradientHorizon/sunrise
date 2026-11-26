@@ -1,7 +1,9 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::potent_sulfur_common::{GEYSER_CONTINUOUS_ACTIVE, GEYSER_ERUPTION_ACTIVE};
 use sunrise_client::{particles::ParticleLevel, potent_sulfur::unobstructed_block_count};
 use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::potent_sulfur_common::{
+    GEYSER_CONTINUOUS_ACTIVE, GEYSER_ERUPTION_ACTIVE,
+};
 use sunrise_gameplay_common::potent_sulfur::{
     Geyser, PARTICLE_FREQUENCY_TICKS, SOUND_FREQUENCY_TICKS, launch_area,
 };

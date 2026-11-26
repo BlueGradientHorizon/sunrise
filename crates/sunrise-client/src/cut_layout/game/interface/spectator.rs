@@ -1,17 +1,18 @@
-
-
 #![cfg(test)]
 use sunrise_client::spectator_menu::Outcome;
-use sunrise_level::profile_lookup::SPECTATOR;
 use sunrise_game_data::scoreboard::comp_text;
 use sunrise_game_data::text::Text;
+use sunrise_level::profile_lookup::SPECTATOR;
 use sunrise_protocol::packets::play::Serverbound as S;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use {sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use sunrise_client::spectator_menu::Item;
     use sunrise_protocol::packets::{Empty, play, play::Clientbound as C};
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_gameplay_common::game::in_own_process,
+    };
 
     #[test]
     #[ignore = "daily"]

@@ -32,20 +32,28 @@ impl crate::game::ServerGame<'_> {
                 Some(self.stored_no_physics(id))
             }
             Target::Projectile(id) => {
-                let p = self.common.creatures.projectiles.iter().find(|p| p.id == id)?;
+                let p = self
+                    .common
+                    .creatures
+                    .projectiles
+                    .iter()
+                    .find(|p| p.id == id)?;
                 match (&p.kind, &p.arrow) {
                     (ProjectileKind::ShulkerBullet { .. }, _) => Some(self.stored_no_physics(id)),
                     (_, Some(arrow)) => Some(arrow.no_physics),
                     _ => None,
                 }
             }
-            Target::Trident(id) => Some(self.common.tridents.iter().find(|t| t.id == id)?.no_physics),
+            Target::Trident(id) => {
+                Some(self.common.tridents.iter().find(|t| t.id == id)?.no_physics)
+            }
             Target::Stand(id) => {
                 let stand = self.common.armor_stands.iter().find(|s| s.id == id)?;
                 Some(stand.no_physics.unwrap_or(stand.marker || stand.no_gravity))
             }
             Target::Other(id) => Some(
-                self.common.persist
+                self.common
+                    .persist
                     .raw
                     .get(&id)
                     .is_some_and(|tag| sunrise_sim::entity_nbt::flag(tag, "NoPhysics")),
@@ -58,7 +66,12 @@ impl crate::game::ServerGame<'_> {
     /// a mod wrote, or the kind's constructor default (`true` for the dragon,
     /// an area-effect cloud, an ominous item spawner and a shulker bullet).
     fn stored_no_physics(&self, id: u32) -> bool {
-        self.common.persist.no_physics.get(&id).copied().unwrap_or(true)
+        self.common
+            .persist
+            .no_physics
+            .get(&id)
+            .copied()
+            .unwrap_or(true)
     }
 
     /// `Entity.noPhysics` for a native server mod: the value
@@ -96,7 +109,13 @@ impl crate::game::ServerGame<'_> {
                 true
             }
             Some(Target::Projectile(id)) => {
-                let Some(index) = self.common.creatures.projectiles.iter().position(|p| p.id == id) else {
+                let Some(index) = self
+                    .common
+                    .creatures
+                    .projectiles
+                    .iter()
+                    .position(|p| p.id == id)
+                else {
                     return false;
                 };
                 if matches!(
@@ -106,21 +125,23 @@ impl crate::game::ServerGame<'_> {
                     self.common.persist.no_physics.insert(id, no_physics);
                     return true;
                 }
-                self.common.creatures
+                self.common
+                    .creatures
                     .projectiles
                     .update(index, |p| p.set_no_physics(no_physics))
             }
-            Some(Target::Trident(id)) => {
-                self.common.tridents
-                    .iter_mut()
-                    .find(|t| t.id == id)
-                    .is_some_and(|t| {
-                        t.set_no_physics(no_physics);
-                        true
-                    })
-            }
+            Some(Target::Trident(id)) => self
+                .common
+                .tridents
+                .iter_mut()
+                .find(|t| t.id == id)
+                .is_some_and(|t| {
+                    t.set_no_physics(no_physics);
+                    true
+                }),
             Some(Target::Stand(id)) => self
-                .common.armor_stands
+                .common
+                .armor_stands
                 .iter_mut()
                 .find(|s| s.id == id)
                 .is_some_and(|s| {
@@ -294,7 +315,8 @@ mod tests {
             let bullet = game.entity(bullet_id).unwrap();
             assert_eq!(bullet.no_physics(game), Some(true));
 
-            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon =
+                sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = game.take_entity_id();
             let dragon_id = dragon.id;
             game.dragon.replace(dragon);
@@ -319,8 +341,8 @@ mod tests {
     fn no_physics_write_holds_and_covers_the_four_constant_kinds() {
         use super::super::native_entity_refs::tests::with_game;
         use crate::game::commands::OtherEntity;
-        use sunrise_gameplay_common::game::entity::Entity as _;
         use sunrise_core::geometry::Vec3;
+        use sunrise_gameplay_common::game::entity::Entity as _;
         use sunrise_items::items::ItemStack;
         use sunrise_sim::entities::ArmorStand;
         use sunrise_sim::mobs::Mob;
@@ -477,7 +499,8 @@ mod tests {
             assert!(bullet.set_no_physics(game, true));
             assert_eq!(bullet.no_physics(game), Some(true));
 
-            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon =
+                sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = game.take_entity_id();
             let dragon_id = dragon.id;
             game.dragon.replace(dragon);
@@ -496,8 +519,8 @@ mod tests {
     #[ignore = "daily"]
     fn a_mod_cleared_no_physics_shulker_bullet_is_pushed_by_a_shulker_lid() {
         use super::super::native_entity_refs::tests::with_game;
-        use sunrise_gameplay_common::game::piston_push::Lid;
         use sunrise_core::geometry::{Aabb, Vec3};
+        use sunrise_gameplay_common::game::piston_push::Lid;
         use sunrise_sim::mobs::Mob;
         use sunrise_sim::projectiles::Projectile;
 
@@ -748,8 +771,8 @@ mod tests {
     #[ignore = "daily"]
     fn no_physics_entry_is_cleared_when_the_dragons_flame_is_removed() {
         use super::super::native_entity_refs::tests::with_game;
-        use sunrise_gameplay_common::game::dragon_common::{Breath, Dragon};
         use sunrise_core::geometry::Vec3;
+        use sunrise_gameplay_common::game::dragon_common::{Breath, Dragon};
 
         with_game(|game| {
             let mut dragon = Dragon::new(Vec3::ZERO, 0.0, 0);

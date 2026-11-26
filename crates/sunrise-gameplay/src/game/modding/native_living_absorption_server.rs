@@ -1,7 +1,7 @@
 //! Server-side absorption read and write for native mods (`LivingEntity.getAbsorptionAmount`
 //! and `setAbsorptionAmount`).
-use crate::game::ServerGame;
 use super::commands::Target;
+use crate::game::ServerGame;
 use mod_api::LivingRef;
 
 impl ServerGame<'_> {
@@ -35,7 +35,12 @@ impl ServerGame<'_> {
                 .is_some(),
             Some(Target::Mob(id)) => {
                 self.journal_mob_health(id);
-                let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+                let Some(m) = self
+                    .common
+                    .mobs
+                    .iter_mut()
+                    .find(|m| m.id == id && !m.removed)
+                else {
                     return false;
                 };
                 let max = sunrise_sim::mobs::armor::max_absorption(m);

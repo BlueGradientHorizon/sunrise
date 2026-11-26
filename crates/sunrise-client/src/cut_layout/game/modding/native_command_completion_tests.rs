@@ -3,11 +3,10 @@
 //! test, and a registered argument type is asked with the sender, so a provider that completes a
 //! mod's own registry offers only what that sender may use (#4307).
 
-use {sunrise_gameplay_common::game::native_server::CommandArguments, sunrise_gameplay_common::game::native_server::command_tree, sunrise_gameplay_common::game::native_server::register_dispatcher};
-use sunrise_gameplay::game::lan::LanSettings;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_command::{MOD_COMMAND, Registries};
 use sunrise_core::vanilla_bytes::Writer;
+use sunrise_gameplay::game::lan::LanSettings;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::{
     buf::{Codec, Reader},
@@ -15,6 +14,11 @@ use sunrise_protocol::{
     packets::{configuration::ClientInformation, play},
 };
 use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
+use {
+    sunrise_gameplay_common::game::native_server::CommandArguments,
+    sunrise_gameplay_common::game::native_server::command_tree,
+    sunrise_gameplay_common::game::native_server::register_dispatcher,
+};
 
 /// The warps the test mod publishes, with the level each one is for: `spawn` for everyone,
 /// `secret` for an owner.
@@ -615,7 +619,10 @@ fn a_plain_players_tree_and_completions_leave_out_the_paths_they_may_not_run() {
         host.hub.ops.insert(uuid, 4);
         host.hub.resend_commands();
     }
-    assert_eq!(game.server.lan.as_ref().unwrap().hub.guests[0].permission, 4);
+    assert_eq!(
+        game.server.lan.as_ref().unwrap().hub.guests[0].permission,
+        4
+    );
     assert_eq!(children(&last_tree(&rx), "warp"), ["admin", "go"]);
     assert_eq!(suggestions(&mut game, &rx, "warp "), ["admin", "go"]);
     assert_eq!(suggestions(&mut game, &rx, "warp go "), ["secret", "spawn"]);

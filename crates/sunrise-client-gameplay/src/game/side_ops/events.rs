@@ -1,4 +1,3 @@
-
 #[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
@@ -7,12 +6,7 @@ impl SideOps for crate::game::client_side::ClientState {
     fn side_process_level_events(game: &mut Self::Game<'_>) -> Result<()> {
         game.client_process_level_events()
     }
-    fn side_level_event_at(
-        game: &mut Self::Game<'_>,
-        id: i32,
-        pos: [i32; 3],
-        data: i32,
-    ) {
+    fn side_level_event_at(game: &mut Self::Game<'_>, id: i32, pos: [i32; 3], data: i32) {
         {
             game.client_level_event_at(id, pos, data);
         }
@@ -55,12 +49,7 @@ impl SideOps for crate::game::client_side::ClientState {
             game.client_tick_bell(pos, tags);
         }
     }
-    fn side_award_stat(
-        game: &mut Self::Game<'_>,
-        category: &str,
-        item: &str,
-        amount: i32,
-    ) {
+    fn side_award_stat(game: &mut Self::Game<'_>, category: &str, item: &str, amount: i32) {
         {
             game.client_award_stat(category, item, amount);
         }
@@ -109,8 +98,8 @@ impl SideOps for crate::game::client_side::ClientState {
         }
     }
 }
-use sunrise_gameplay_common::game::side_ops::events::SideOps;
 use sunrise_gameplay_common::game::Result;
+use sunrise_gameplay_common::game::side_ops::events::SideOps;
 use sunrise_gameplay_common::game::transactions;
 use sunrise_level::block_entities::BlockEntityIdentity;
 use sunrise_level::sculk::Context as SculkContext;

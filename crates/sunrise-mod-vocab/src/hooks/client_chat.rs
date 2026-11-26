@@ -4,7 +4,8 @@ pub trait Hooks {
     /// NeoForge's `ClientChatEvent`: a client is about to send `message`.
     /// `original_message` is immutable; change `message` or set `cancel` to
     /// prevent sending.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::client_chat::ClientGame<'_>::native_client_chat", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::client_chat::ClientGame<'_>::native_client_chat",
         dispatch = "flat",
         side = "client",
         contract = "cancel",

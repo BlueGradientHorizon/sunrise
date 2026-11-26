@@ -1,10 +1,5 @@
 //! Production gameplay triggers, with one isolated game process per group of scenarios.
-use sunrise_gameplay_common::game::tables::GameItems;
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::game::container_loot_level::fill_with_random;
-use sunrise_gameplay_common::game::container_loot_level::LootTarget;
 use super::*;
-use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
 use mod_api::LevelRandomHost as _;
 use std::sync::{Arc, Mutex};
 use sunrise_core::{
@@ -13,9 +8,17 @@ use sunrise_core::{
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::container_loot_level::LootTarget;
+use sunrise_gameplay_common::game::container_loot_level::fill_with_random;
+use sunrise_gameplay_common::game::tables::GameItems;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::save::PendingContainerLoot;
 use sunrise_world::loot::{LootData, PackOverlay};
+use {
+    sunrise_gameplay_common::game::minecarts::CartKind,
+    sunrise_gameplay_common::game::minecarts::Minecart,
+};
 
 const POS: (i32, i32, i32) = (8, 64, 8);
 const TABLE: &str = "test:first_access";
@@ -55,7 +58,8 @@ fn level_container_reads_preserve_snapshot_and_unpack_comparator_once() {
             });
             pending_seed(game, POS, &[37]);
             game.with_level(|_, level, ticks| {
-                let mut host = sunrise_gameplay_common::game::mod_api_host::LevelTicks::new(level, ticks);
+                let mut host =
+                    sunrise_gameplay_common::game::mod_api_host::LevelTicks::new(level, ticks);
                 assert_eq!(host.container_signal(at.pos), Some(1));
                 assert_eq!(host.container_signal([32, 64, 8]), None);
             });
@@ -187,7 +191,12 @@ fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     });
 }
 
-fn place(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: (i32, i32, i32), table: &str, seed: i64) {
+fn place(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    pos: (i32, i32, i32),
+    table: &str,
+    seed: i64,
+) {
     assert!(game.run_command(&format!(
         "setblock {} {} {} minecraft:chest{{LootTable:\"{table}\",LootTableSeed:{seed}L}}",
         pos.0, pos.1, pos.2
@@ -197,7 +206,11 @@ fn place(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: (i32, i32, i32)
 fn pending(game: &sunrise_gameplay::game::ServerGame<'_>, pos: (i32, i32, i32)) {
     pending_seed(game, pos, &[37, 91]);
 }
-fn pending_seed(game: &sunrise_gameplay::game::ServerGame<'_>, pos: (i32, i32, i32), seeds: &[i64]) {
+fn pending_seed(
+    game: &sunrise_gameplay::game::ServerGame<'_>,
+    pos: (i32, i32, i32),
+    seeds: &[i64],
+) {
     let pending = game.world.chunks[&(pos.0 >> 4, pos.2 >> 4)]
         .saved
         .as_ref()
@@ -894,8 +907,9 @@ fn explicit_seed_is_position_independent() {
         g.world
             .chunks
             .insert((6, -1), Arc::new(sunrise_level::chunk::Chunk::empty(6, -1)));
-        let snapshot =
-            |g: &sunrise_gameplay::game::ServerGame<'_>, pos| g.world.block_entities[&pos].slots().to_vec();
+        let snapshot = |g: &sunrise_gameplay::game::ServerGame<'_>, pos| {
+            g.world.block_entities[&pos].slots().to_vec()
+        };
         let mut level_results = Vec::new();
         for seed in [1, 2, 1] {
             g.run_command("setblock 8 64 8 minecraft:air");
@@ -1444,7 +1458,6 @@ fn seeds_and_fill_listeners() {
         ),
     ]);
 }
-
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 

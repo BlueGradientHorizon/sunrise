@@ -1,10 +1,10 @@
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::*;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_level::chunk::Chunk;
 
 pub(crate) type Notices = Arc<Mutex<Vec<(BlockPos, BlockPos)>>>;
@@ -15,10 +15,7 @@ impl BlockPart for Counter {
         self.0.lock().unwrap().push((event.pos, event.neighbor));
     }
 }
-pub(crate) struct Weak(
-    pub(crate) Arc<AtomicBool>,
-    pub(crate) Arc<AtomicUsize>,
-);
+pub(crate) struct Weak(pub(crate) Arc<AtomicBool>, pub(crate) Arc<AtomicUsize>);
 #[mod_api::sunrise_part]
 impl BlockPart for Weak {
     fn weak_changes(&self, _: &dyn LevelHost, event: &mut WeakChangesEvent) {

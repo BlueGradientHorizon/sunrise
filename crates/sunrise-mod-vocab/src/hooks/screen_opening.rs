@@ -12,7 +12,8 @@ pub trait Hooks {
     /// A server's container close that leaves no screen fires no Opening and
     /// can't be cancelled; `screen_closing` still gets the screen it closes.
     /// One that opens the title or the death screen fires Opening for it.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::screen_opening::ClientGame<'_>::native_screen_opening", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::screen_opening::ClientGame<'_>::native_screen_opening",
         receiver = "read",
         dispatch = "flat",
         side = "client",

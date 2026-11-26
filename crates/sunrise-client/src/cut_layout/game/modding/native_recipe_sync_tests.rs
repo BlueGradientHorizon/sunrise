@@ -1,5 +1,5 @@
-use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use std::sync::{Arc, Mutex};
+use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use sunrise_sim::lan::recipes::ContentPart;
 
 struct MachineTypes;
@@ -43,9 +43,14 @@ fn datapack_sync_selects_once_per_join_and_reload_for_each_recipient() {
                 let mut receivers = Vec::new();
                 for conn in [12, 13] {
                     let (tx, rx) = std::sync::mpsc::channel();
-                    game.server.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
-                        g.sender = sunrise_sim::lan::PlayerSender::new(tx, Arc::default());
-                    });
+                    game.server
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .update_guest(conn, |g| {
+                            g.sender = sunrise_sim::lan::PlayerSender::new(tx, Arc::default());
+                        });
                     receivers.push(rx);
                 }
                 let host = game.server.lan.as_mut().unwrap();
@@ -196,11 +201,16 @@ fn datapack_sync_decision_precedes_join_recipe_packets() {
                         .lock()
                         .unwrap()
                         .insert(u128::from(conn), sender.clone());
-                    game.server.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
-                        g.sender = sender;
-                        g.brand = "sunrise".into();
-                        g.placed = false;
-                    });
+                    game.server
+                        .lan
+                        .as_mut()
+                        .unwrap()
+                        .hub
+                        .update_guest(conn, |g| {
+                            g.sender = sender;
+                            g.brand = "sunrise".into();
+                            g.placed = false;
+                        });
                     receivers.push(rx);
                 }
                 // Drive the production join path through Hub::place_new_player,

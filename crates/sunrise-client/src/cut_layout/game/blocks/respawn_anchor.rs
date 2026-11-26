@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay::game::respawn_anchor::RespawnConfig;
@@ -7,8 +5,8 @@ use sunrise_gameplay::game::respawn_anchor::look_at_yaw;
 use sunrise_gameplay_common::game::Dim;
 #[cfg(test)]
 pub(crate) mod connected_spawnpoint_rotation_tests {
-    use sunrise_gameplay::game::lan::LanSettings;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
+    use sunrise_gameplay::game::lan::LanSettings;
     use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::{
         configuration::ClientInformation,
@@ -344,16 +342,17 @@ pub(crate) mod pitch_preservation_controls {
                 game.world.set(x, 99, z, stone).unwrap();
             }
         }
-        let state =
-            |game: &sunrise_gameplay::game::ServerGame<'_>, name: &str, properties: &[(&str, &str)]| {
-                let registry = game.pack.assets.registry;
-                let id = registry.default_state(name).unwrap();
-                let mut value = registry.state(id).unwrap().clone();
-                for (key, value_) in properties {
-                    value.properties.insert((*key).into(), (*value_).into());
-                }
-                registry.resolve(&value).unwrap()
-            };
+        let state = |game: &sunrise_gameplay::game::ServerGame<'_>,
+                     name: &str,
+                     properties: &[(&str, &str)]| {
+            let registry = game.pack.assets.registry;
+            let id = registry.default_state(name).unwrap();
+            let mut value = registry.state(id).unwrap().clone();
+            for (key, value_) in properties {
+                value.properties.insert((*key).into(), (*value_).into());
+            }
+            registry.resolve(&value).unwrap()
+        };
         let head = state(
             &game,
             "minecraft:red_bed",

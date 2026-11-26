@@ -31,7 +31,9 @@ impl ServerGame<'_> {
         if self.common.spectator() {
             return;
         }
-        let range = self.common.interaction_range("minecraft:block_interaction_range", 4.5, 5.0);
+        let range = self
+            .common
+            .interaction_range("minecraft:block_interaction_range", 4.5, 5.0);
         self.change_mod_container_openers(pos, open, Some(Who::Player), range, bound);
     }
 
@@ -195,7 +197,8 @@ impl ServerGame<'_> {
                 ));
             }
             let golems = self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .filter(|m| {
                     m.species() == Species::CopperGolem

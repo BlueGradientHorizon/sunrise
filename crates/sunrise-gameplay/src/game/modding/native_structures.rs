@@ -2,12 +2,12 @@
 //! `StructureTemplateManager.get`, and what `StructureTemplate.placeInWorld`
 //! would place) without placing them: a builder reads a template once, then
 //! places its blocks one at a time.
+use sunrise_core::position::BlockPos;
+use sunrise_core::random::{LegacyRandom, RandomSource, position_seed};
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_gameplay_common::game::native_structure_values::{
     TemplateBlock, TemplateSnapshot, engine_mirror, engine_rotation, template_id,
 };
-use sunrise_core::position::BlockPos;
-use sunrise_core::random::{LegacyRandom, RandomSource, position_seed};
 use sunrise_world::worldgen::structure::{Mirror, Rotation, StateTransforms, StructureTemplate};
 
 use mod_api::{StructureMirror, StructureRotation, StructureTemplateSnapshot};

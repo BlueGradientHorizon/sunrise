@@ -1,13 +1,11 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use mod_api::RidePlayerRefusal as Refusal;
+    use mod_api::RidePlayerRefusal as Refusal;
     use mod_api::{EntityMountEvent, Flow, Hooks, ServerHost};
     use std::sync::{Arc, Mutex};
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_sim::lan::entity::Riding;
     use sunrise_sim::mobs::{Mob, riders};
 
@@ -47,7 +45,9 @@ use mod_api::RidePlayerRefusal as Refusal;
                     game.options.dedicated = Some(Vec::new());
                     let pig = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                     game.mobs.push(Mob::new(80, pig, Vec3::ZERO, 0.0));
-                    let player = sunrise_gameplay::game::native_player_death::tests::add_guest(game).entity();
+                    let player =
+                        sunrise_gameplay::game::native_player_death::tests::add_guest(game)
+                            .entity();
                     let pig = game.entity(80).unwrap();
                     assert_eq!(game.entity_ride_player(pig, player, false), Ok(()));
                     heard.lock().unwrap().clear();
@@ -186,7 +186,8 @@ use mod_api::RidePlayerRefusal as Refusal;
             for id in [80, 81] {
                 game.mobs.push(Mob::new(id, pig.clone(), Vec3::ZERO, 0.0));
             }
-            let player = sunrise_gameplay::game::native_player_death::tests::add_guest(game).entity();
+            let player =
+                sunrise_gameplay::game::native_player_death::tests::add_guest(game).entity();
             let (first, second) = (game.entity(80).unwrap(), game.entity(81).unwrap());
             let mut riding = Riding::default();
             // Nothing rides a player: no one is told anything.

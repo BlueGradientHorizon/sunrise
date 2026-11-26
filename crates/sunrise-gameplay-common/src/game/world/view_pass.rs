@@ -1,17 +1,15 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use super::*;
+    use super::*;
 
-use sunrise_protocol::{
+    use sunrise_protocol::{
         buf::Reader,
         packets::play::Clientbound as C,
         viewed_levels::{CHANNEL, Level::Index, Message, REVISION_3, ScopedPacket},
     };
 
-/// What a client was sent of the Nether (level 2) on `sunrise:levels`.
+    /// What a client was sent of the Nether (level 2) on `sunrise:levels`.
     #[derive(Default)]
     pub struct Sent {
         pub opened: bool,
@@ -23,7 +21,7 @@ use sunrise_protocol::{
         pub others: Vec<C>,
         pub sounds: Vec<sunrise_protocol::packets::play::Sound>,
     }
-pub fn sent(rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>) -> Sent {
+    pub fn sent(rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>) -> Sent {
         let mut sent = Sent::default();
         let bodies = rx.try_iter().flat_map(|o| match o {
             sunrise_sim::lan::Out::Packet(body) => vec![body],
@@ -67,13 +65,13 @@ pub fn sent(rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>) -> Sent {
         }
         sent
     }
-/// The chunks of a radius-1 square at (40, 40).
+    /// The chunks of a radius-1 square at (40, 40).
     pub fn square() -> Vec<(i32, i32)> {
         (39..=41)
             .flat_map(|x| (39..=41).map(move |z| (x, z)))
             .collect()
     }
-/// What the viewer was sent of entity `id` in the Nether's runs: where `AddEntity` put it and
+    /// What the viewer was sent of entity `id` in the Nether's runs: where `AddEntity` put it and
     /// where each move after took it (the client's `VecDeltaCodec`), and whether it was removed.
     #[derive(Debug, Default)]
     pub struct Tracked {
@@ -84,7 +82,7 @@ pub fn sent(rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>) -> Sent {
         pub removed: bool,
     }
 
-pub fn tracked(packets: &[C], id: i32) -> Tracked {
+    pub fn tracked(packets: &[C], id: i32) -> Tracked {
         use sunrise_protocol::packets::play;
         let mut t = Tracked::default();
         let mut base = [0.0; 3];
@@ -112,7 +110,7 @@ pub fn tracked(packets: &[C], id: i32) -> Tracked {
         }
         t
     }
-/// A packet a client was sent: a plain one, or what `sunrise:levels` carried.
+    /// A packet a client was sent: a plain one, or what `sunrise:levels` carried.
     #[derive(Debug)]
     pub enum Got {
         Plain(C),
@@ -121,7 +119,7 @@ pub fn tracked(packets: &[C], id: i32) -> Tracked {
         Groups(i32, sunrise_protocol::connection_groups::Section),
         Close(i32),
     }
-/// Everything the viewer was sent since the last call, in order, each packet decoded.
+    /// Everything the viewer was sent since the last call, in order, each packet decoded.
     pub fn every(rx: &std::sync::mpsc::Receiver<sunrise_sim::lan::Out>) -> Vec<Got> {
         let bodies = rx.try_iter().flat_map(|o| match o {
             sunrise_sim::lan::Out::Packet(body) => vec![body],
@@ -130,7 +128,7 @@ pub fn tracked(packets: &[C], id: i32) -> Tracked {
         });
         decode_ordered(bodies)
     }
-pub fn decode_ordered(bodies: impl IntoIterator<Item = Vec<u8>>) -> Vec<Got> {
+    pub fn decode_ordered(bodies: impl IntoIterator<Item = Vec<u8>>) -> Vec<Got> {
         let mut got = Vec::new();
         for body in bodies {
             let mut r = Reader::new(&body);
@@ -166,7 +164,7 @@ pub fn decode_ordered(bodies: impl IntoIterator<Item = Vec<u8>>) -> Vec<Got> {
         }
         got
     }
-/// The Respawns the viewer was sent: their level and what they keep.
+    /// The Respawns the viewer was sent: their level and what they keep.
     pub fn respawns(got: &[Got]) -> Vec<(String, i8)> {
         (got.iter())
             .filter_map(|g| match g {

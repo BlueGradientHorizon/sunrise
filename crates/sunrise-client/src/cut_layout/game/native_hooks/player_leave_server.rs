@@ -1,20 +1,22 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod player_leave_tests {
-use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;
+    use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;
 
     use crate::game::native_hooks::player_leave::player_leave_tests::FLAG;
     use crate::game::native_hooks::player_leave::player_leave_tests::Heard;
     use crate::game::native_hooks::player_leave::player_leave_tests::Leave;
     use crate::game::native_hooks::player_leave::player_leave_tests::SAVED;
     use crate::game::native_hooks::player_leave::player_leave_tests::VALUE;
-    use {sunrise_gameplay_common::game::Dim, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
     use mod_api::ModEntry;
     use std::sync::{Arc, Mutex};
     use sunrise_mod_runtime::attachments::Holder;
     use sunrise_sim::lan::{NetEvent, playerdata};
+    use {
+        sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+        sunrise_gameplay::game::native_guest_turn_tests::with_guests,
+        sunrise_gameplay_common::game::Dim,
+    };
 
     /// Two guests, 12 then 13, a listener on both hooks, and guest 12's connection closing as
     /// the hub hears it (`NetEvent::Left`, `Hub::remove_guest`). `prepare` sets the guests up

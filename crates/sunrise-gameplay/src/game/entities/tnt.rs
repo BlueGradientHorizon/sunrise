@@ -2,13 +2,13 @@
 //! power 4, `TntRenderer` swell and white flash, and `TntBlock.useItemOn`
 //! (flint and steel / fire charge).
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::tnt_common::PrimedTnt;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
 use sunrise_game_data::{Result, text::Text};
+use sunrise_gameplay_common::game::tnt_common::PrimedTnt;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::lan::playerdata::uuid_ints;
 use sunrise_sim::mobs::Who;
@@ -28,7 +28,8 @@ impl ServerGame<'_> {
         // redstone, fire and an unstable block breaking alike.
         !cancel
             && self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
     }
@@ -42,7 +43,13 @@ impl ServerGame<'_> {
         // Refused: the level queued the fuse sound and the game event right
         // after the prime; they are dropped as they come up.
         self.server.tnt_refused = Some(pos);
-        let Some(tnt) = self.common.pack.assets.registry.default_state("minecraft:tnt") else {
+        let Some(tnt) = self
+            .common
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:tnt")
+        else {
             return;
         };
         if self.common.world.block(pos.x, pos.y, pos.z) == self.common.world.air {
@@ -68,7 +75,10 @@ impl ServerGame<'_> {
         self.server.next_entity += 1;
         // Entity: the UUID is the first two draws of the TNT's own random.
         let uuid = sunrise_sim::save::insecure_uuid(&mut sunrise_level::random_source::entity());
-        self.common.persist.uuids.insert(self.server.next_entity, uuid);
+        self.common
+            .persist
+            .uuids
+            .insert(self.server.next_entity, uuid);
         self.common.tnts.push(PrimedTnt {
             size_answer: None,
             attachment_lifetime: Default::default(),
@@ -180,12 +190,14 @@ impl ServerGame<'_> {
         let Some(i) = super::native_ticks::place(&self.common.tnts, i, |t| t.id == id) else {
             return Ok(());
         };
-        let response = self.common.tnts[i].move_restitution(self.common.body_motion(&game_side!(self)), movement);
+        let response = self.common.tnts[i]
+            .move_restitution(self.common.body_motion(&game_side!(self)), movement);
         let mut velocity = self.finish_body_restitution((id, "minecraft:tnt"), position, response);
         let Some(i) = super::native_ticks::place(&self.common.tnts, i, |t| t.id == id) else {
             return Ok(());
         };
-        self.common.body_motion(&game_side!(self))
+        self.common
+            .body_motion(&game_side!(self))
             .apply_block_speed(position, &mut velocity);
         let ground = self.common.tnts[i].ground;
         let writes = self.body_step_on(
@@ -246,7 +258,8 @@ impl ServerGame<'_> {
             }
             // PrimedTnt.tick: with `tnt_explodes` off it goes away without exploding.
             if !self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
             {
@@ -343,7 +356,8 @@ impl ServerGame<'_> {
     /// blast names as its source: its owner, as `set_blast_owner` sets it.
     pub(in crate::game::server_side) fn set_tnt_blast_owner(&mut self, id: u32) {
         let (owner, guest) = self
-            .common.tnts
+            .common
+            .tnts
             .iter()
             .find(|t| t.id == id)
             .map_or((None, None), |t| (t.owner, t.guest));
@@ -365,7 +379,8 @@ impl ServerGame<'_> {
             || match guest {
                 Some(_) => self.player_attacker(guest),
                 None => self
-                    .common.player
+                    .common
+                    .player
                     .as_ref()
                     .map(|p| (p.entity_id as u32, self.player_display_name())),
             },
@@ -422,7 +437,8 @@ impl ServerGame<'_> {
         }
         let pos = BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]);
         if !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
         {
@@ -513,7 +529,7 @@ pub mod tests {
     use super::*;
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn saved_block_state_follows_the_model_instead_of_raw_input() {
         use {
             sunrise_core::nbt::Tag,
@@ -592,7 +608,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_tnt_lit_by_a_skeletons_arrow_names_the_skeleton_as_its_cause() {
         let name = || Text::translate("entity.minecraft.skeleton", &[]);
         let by_mob = tnt_blast_owner(Some(Who::Mob(7)), || None, |id| (id == 7).then(name));
@@ -606,17 +622,18 @@ pub mod tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_rider_sits_on_top_of_the_tnt_less_its_own_attachment() {
         // 64 + 0.98F (the box's top, `EntityAttachment.PASSENGER` at its
         // height) - 0.14 (a rider's vehicle attachment).
-        let seat = sunrise_gameplay_common::game::tnt_common::tnt_seat(Vec3::new(1.5, 64.0, -2.5), 0.14);
+        let seat =
+            sunrise_gameplay_common::game::tnt_common::tnt_seat(Vec3::new(1.5, 64.0, -2.5), 0.14);
         assert_eq!((seat.x, seat.z), (1.5, -2.5));
         assert!((seat.y - (64.0 + f64::from(0.98_f32) - 0.14)).abs() < 1e-9);
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_piston_slime_bounce_launches_primed_tnt() {
         use sunrise_core::geometry::Direction;
         use sunrise_world::piston_push::bounce_velocity;
@@ -648,9 +665,7 @@ pub mod tests {
         assert!(!tnt.ground.on_ground);
     }
 
-    pub fn particle_count(
-        game: &crate::game::ServerGame<'_>,
-    ) -> usize {
+    pub fn particle_count(game: &crate::game::ServerGame<'_>) -> usize {
         game.server.pending_explosions.len()
             + game
                 .server
@@ -660,10 +675,7 @@ pub mod tests {
                 .count()
     }
 
-    pub fn sound_count(
-        game: &crate::game::ServerGame<'_>,
-        event: &str,
-    ) -> u32 {
+    pub fn sound_count(game: &crate::game::ServerGame<'_>, event: &str) -> u32 {
         let sounds = game
             .server
             .pending_sounds
@@ -682,39 +694,7 @@ pub mod tests {
         sounds + level_events
     }
 
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    pub fn set_silent(
-        game: &mut crate::game::ServerGame<'_>,
-        id: u32,
-        silent: bool,
-    ) {
+    pub fn set_silent(game: &mut crate::game::ServerGame<'_>, id: u32, silent: bool) {
         game.remember_tags(
             id,
             &sunrise_core::nbt::Tag::Compound(
@@ -727,23 +707,11 @@ pub mod tests {
             ),
         );
     }
-
-    
-
-    
-
-    
-
-    
-    
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
-
-
-
 
 use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
 

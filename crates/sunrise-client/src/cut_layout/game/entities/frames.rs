@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::InteractTarget;
@@ -7,8 +5,8 @@ use sunrise_items::items::ItemStack;
 use sunrise_sim::entities::ItemFrame;
 #[cfg(test)]
 pub(crate) mod map_limit_tests {
-    use sunrise_gameplay_common::game::maps::{Decoration, Key, MapData};
     use super::*;
+    use sunrise_gameplay_common::game::maps::{Decoration, Key, MapData};
 
     fn frame(id: u32) -> ItemFrame {
         ItemFrame {
@@ -115,10 +113,12 @@ pub(crate) mod game_event_tests {
     }
     /// The events posted since [`reset`].
     fn posted() -> Vec<(&'static str, [f64; 3], Option<Who>)> {
-        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| e.borrow().clone().unwrap_or_default())
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+            .with(|e| e.borrow().clone().unwrap_or_default())
     }
     fn reset() {
-        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+            .with(|e| *e.borrow_mut() = Some(Vec::new()));
     }
 
     /// `ItemFrame.interact`: putting an item in and turning it each post

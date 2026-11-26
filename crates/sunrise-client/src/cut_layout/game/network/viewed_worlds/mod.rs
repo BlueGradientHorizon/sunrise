@@ -1,10 +1,11 @@
-
-
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(crate) mod tests {
     use sunrise_client_gameplay::game::client_side::viewed_worlds::routing::RouteError;
-    use {sunrise_client_gameplay::game::client_side::viewed_worlds::sounds::ViewedPlay, sunrise_client_gameplay::game::client_side::viewed_worlds::sounds::ViewedSound};
+    use {
+        sunrise_client_gameplay::game::client_side::viewed_worlds::sounds::ViewedPlay,
+        sunrise_client_gameplay::game::client_side::viewed_worlds::sounds::ViewedSound,
+    };
 
     use mod_api::SoundSource;
     use std::sync::{Arc, Mutex};
@@ -46,7 +47,11 @@ pub(crate) mod tests {
     pub(crate) fn client_with_pipe(
         resources: &mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
     ) -> (sunrise_client_gameplay::game::ClientGame<'_>, Pipe) {
-        use {sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::execution_role, crate::game::load_resources};
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options,
+            sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role,
+        };
         let root = std::path::PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES")
                 .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -765,7 +770,10 @@ pub(crate) mod tests {
             seed: 9,
         });
         let payload = run(1, &[anvil, bound]);
-        let checks = || sunrise_client_gameplay::game::client_side::viewed_worlds::sounds::LISTENED_CHECKS.with(std::cell::Cell::get);
+        let checks = || {
+            sunrise_client_gameplay::game::client_side::viewed_worlds::sounds::LISTENED_CHECKS
+                .with(std::cell::Cell::get)
+        };
         let before = checks();
         let (routed, allocations) =
             sunrise_threads::allocation_count::measure(|| game.route_viewed_levels(data(&payload)));
@@ -773,7 +781,12 @@ pub(crate) mod tests {
         assert_eq!(allocations, 0);
         assert_eq!(checks() - before, 1);
         assert_eq!(
-            game.client.audio.0.capture.take().map(|played| played.len()),
+            game.client
+                .audio
+                .0
+                .capture
+                .take()
+                .map(|played| played.len()),
             Some(0)
         );
     }

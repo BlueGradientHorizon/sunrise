@@ -1,18 +1,16 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
-use sunrise_gameplay::game::server_side::boat_leads::Held;
-use sunrise_sim::mobs::leash::{Holder, Pending};
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay::game::server_side::boat_leads::Held;
 use sunrise_gameplay_common::game::boats_common::Boat;
+use sunrise_sim::mobs::leash::{Holder, Pending};
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use super::*;
+    use super::*;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn command_view_uses_live_and_pending_boat_leashes_not_raw_tags() {
         use sunrise_gameplay_common::game::commands_common::Target;
@@ -50,7 +48,7 @@ use super::*;
             assert!(read(game).get("leash").is_none());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn non_guest_holder_branches_keep_their_existing_velocity_sources() {
         let mut resources = None;

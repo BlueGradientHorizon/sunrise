@@ -1,4 +1,3 @@
-use {sunrise_gameplay_common::game::api_values::TryIntoApi, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{BlockUpdateFlags, Flow, Hooks, ItemResource, ServerHost};
 use std::sync::{Arc, Mutex};
 use sunrise_core::{
@@ -8,6 +7,10 @@ use sunrise_core::{
 };
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay_common::game::api_values::TryIntoApi,
+};
 
 const POS: [i32; 3] = [2, 64, 2];
 
@@ -375,8 +378,10 @@ fn sided_composter_transactions_preserve_literal_chance_and_defer_all_effects() 
                 // after a first aborted insertion and a different seed in the level stream.
                 game.world.random.set_seed(0);
                 unrelated_world.set_seed(0);
-                game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
-                game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
+                game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+                    .unwrap();
+                game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
+                    .unwrap();
                 assert!(game.level("minecraft:the_nether").is_some());
                 game.native_chunk_unload("minecraft:the_nether", [0, 0]);
 

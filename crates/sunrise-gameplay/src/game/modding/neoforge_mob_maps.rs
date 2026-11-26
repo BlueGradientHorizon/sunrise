@@ -1,10 +1,10 @@
 //! Build a complete immutable builtin generation alongside its common-store values.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::native_data_maps_common::Loaded;
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 use sunrise_core::{identifier::Identifier, nbt::Tag};
+use sunrise_gameplay_common::game::native_data_maps_common::Loaded;
 use sunrise_sim::neoforge_mob_maps::{self as builtin, BuiltinMap, Kind, MAPS, NeoForgeMobMaps};
 
 type Tags = HashMap<String, HashSet<String>>;
@@ -175,7 +175,8 @@ impl ServerGame<'_> {
         }
         let snapshot = self.mob_map_snapshot();
         for terrain in self
-            .common.end
+            .common
+            .end
             .locator()
             .iter()
             .chain(self.server.levels.0.parked_terrains())

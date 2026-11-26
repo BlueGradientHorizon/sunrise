@@ -1,6 +1,9 @@
-use {sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
 use sunrise_sim::mobs::Mob;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 static VALUE: mod_api::AttachmentType<u32> = mod_api::AttachmentType {
     namespace: "bench",
     name: "tick_state",
@@ -31,9 +34,10 @@ fn attachment_instruction_count() {
         }
         for z in (0..40).step_by(2) {
             for x in 0..20 {
-                game.world
-                    .block_entities
-                    .insert((x, 201, z), sunrise_gameplay_common::game::BlockEntity::Chest(vec![None; 5]));
+                game.world.block_entities.insert(
+                    (x, 201, z),
+                    sunrise_gameplay_common::game::BlockEntity::Chest(vec![None; 5]),
+                );
                 holders.push(mod_api::Holder::BlockEntity([x, 201, z]));
             }
         }

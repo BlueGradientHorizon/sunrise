@@ -1,6 +1,3 @@
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
-use sunrise_core::geometry::Vec3;
-use sunrise_sim::projectiles::Projectile;
 use super::*;
 use mod_api::{
     Flow, HearsProjectileImpactsEvent, Hooks, HostTransaction, ProjectileImpactEvent, ServerHost,
@@ -9,11 +6,14 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::join_seq::residency::{
     Change, Journal, Kind, Owner,
     table::{EntityLookup, EntityTable, SourceEntity},
 };
+use sunrise_sim::projectiles::Projectile;
 
 struct PanicAfterAdmission {
     admitted: Arc<AtomicBool>,
@@ -204,7 +204,10 @@ fn shoot_listener_panic_after_admission_preserves_owned_rows() {
 #[test]
 #[ignore = "daily"]
 fn normal_dispatch_returns_the_owned_pass_for_explicit_restore() {
-    for dimension in [sunrise_gameplay_common::game::Dim::Overworld, sunrise_gameplay_common::game::Dim::Nether] {
+    for dimension in [
+        sunrise_gameplay_common::game::Dim::Overworld,
+        sunrise_gameplay_common::game::Dim::Nether,
+    ] {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             game.enter_level(dimension).unwrap();
             let journal = Journal::default();
@@ -282,6 +285,5 @@ fn normal_dispatch_returns_the_owned_pass_for_explicit_restore() {
         });
     }
 }
-
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

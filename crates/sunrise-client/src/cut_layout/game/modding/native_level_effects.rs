@@ -1,17 +1,15 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
-use sunrise_gameplay_common::game::Dim;
     use super::super::{
         native_entity_refs::tests::run_fresh_cases, native_guest_turn_tests::with_guests,
     };
     use mod_api::LevelRef;
     use mod_api::{__private::particle_named_key, ParticleOptions, WorldEpoch};
     use std::sync::{Arc, mpsc};
+    use sunrise_gameplay_common::game::Dim;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
     use sunrise_protocol::{
         buf::Reader,
         entity_data::Particle,
@@ -77,7 +75,8 @@ use sunrise_gameplay_common::game::Dim;
                 .unwrap();
             let heart = heart();
             let level = game.level("minecraft:overworld").unwrap();
-            let send = |game: &mut sunrise_gameplay::game::ServerGame<'_>, positions: &[[f64; 3]]| {
+            let send = |game: &mut sunrise_gameplay::game::ServerGame<'_>,
+                        positions: &[[f64; 3]]| {
                 send_at(game, level, &heart, positions)
             };
             let particle = |pos| {

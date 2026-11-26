@@ -5,11 +5,11 @@
 //! The hub's stream is replaced by a known `LegacyRandom`, and a copy of it says which draw each
 //! seed must be.
 
-use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use mod_api::{HostTransaction, LevelRef, ServerHost, SoundSource, WorldEpoch};
 use std::sync::{Arc, mpsc};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::{LegacyRandom, RandomSource};
+use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use sunrise_protocol::{buf::Reader, packets::play::Clientbound as C};
 use sunrise_sim::lan::{Out, PlayerSender};
 use sunrise_sim::mobs::Mob;

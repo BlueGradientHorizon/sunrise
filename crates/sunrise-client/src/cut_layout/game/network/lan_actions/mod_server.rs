@@ -1,18 +1,16 @@
-
-
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use sunrise_gameplay::game::lan_actions::stop_menu::StopMenu;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 
     #[test]
     #[ignore = "daily"]
     fn block_menu_click_keeps_spent_action_on_cancellation() {
-        use sunrise_gameplay_common::game::lan_actions::MenuOpen;
         use mod_api::BlockUpdateFlags;
         use std::sync::Arc;
         use sunrise_core::nbt::Tag;
+        use sunrise_gameplay_common::game::lan_actions::MenuOpen;
         use sunrise_level::chunk::Chunk;
         use sunrise_sim::lan::guest::GuestKind;
         super::super::native_guest_turn_tests::with_guests(|game| {
@@ -47,7 +45,11 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
                     guest.kind = GuestKind::Fake;
                 });
             assert_eq!(game.lan_open_container(12, pos), MenuOpen::Refused);
-            assert!(game.server.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
+            assert!(
+                game.server.lan.as_ref().unwrap().hub.guests[0]
+                    .menu
+                    .is_none()
+            );
             game.server
                 .lan
                 .as_mut()
@@ -65,7 +67,11 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
                 .into(),
                 || {
                     assert_eq!(game.lan_open_container(12, pos), MenuOpen::Cancelled);
-                    assert!(game.server.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
+                    assert!(
+                        game.server.lan.as_ref().unwrap().hub.guests[0]
+                            .menu
+                            .is_none()
+                    );
                 },
             );
             let lock = Tag::compound([(
@@ -75,21 +81,28 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
             assert_eq!(game.lan_open_container(13, pos), MenuOpen::Opened);
             game.world.set_block_lock(pos, &lock);
             assert_eq!(game.lan_open_container(12, pos), MenuOpen::Refused);
-            assert!(game.server.lan.as_ref().unwrap().hub.guests[0].menu.is_none());
+            assert!(
+                game.server.lan.as_ref().unwrap().hub.guests[0]
+                    .menu
+                    .is_none()
+            );
             assert_eq!(game.server.lid_openers.get(&pos), Some(&1));
             game.guest_close_all(13);
             assert!(!game.server.lid_openers.contains_key(&pos));
             game.world
                 .set_block_lock(pos, &Tag::Compound(Default::default()));
             assert_eq!(game.lan_open_container(12, pos), MenuOpen::Opened);
-            assert!(game.server.lan.as_ref().unwrap().hub.guests[0].menu.is_some());
+            assert!(
+                game.server.lan.as_ref().unwrap().hub.guests[0]
+                    .menu
+                    .is_some()
+            );
         });
     }
 
     #[test]
     #[ignore = "daily"]
     fn block_parts_pick_and_use_on_the_server_and_for_a_guest() {
-        use {sunrise_gameplay::game::server_side::lan::LanSettings, crate::game::server_side::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_game};
         use mod_api::InteractionResult as Answer;
         use mod_api::{
             self, BlockPart, CloneItemStackEvent, Hooks, Host, ItemPart, ItemStack, Registrar,
@@ -102,6 +115,11 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
         use sunrise_level::chunk::Chunk;
         use sunrise_protocol::packets::{configuration::ClientInformation, play};
         use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
+        use {
+            crate::game::server_side::native_entity_refs::tests::run_fresh_cases,
+            crate::game::server_side::native_entity_refs::tests::with_game,
+            sunrise_gameplay::game::server_side::lan::LanSettings,
+        };
 
         if run_fresh_cases(
             "game::server_side::lan_actions_server::tests::block_parts_pick_and_use_on_the_server_and_for_a_guest",
@@ -181,8 +199,11 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
                     assert!(player.set_food_level(host, level));
                 }
                 self.empty_clicks.lock().unwrap().push((
-                    sunrise_gameplay_common::game::api_values::TryIntoEngine::try_into_engine(&event.state, &())
-                        .unwrap(),
+                    sunrise_gameplay_common::game::api_values::TryIntoEngine::try_into_engine(
+                        &event.state,
+                        &(),
+                    )
+                    .unwrap(),
                     event.click.player,
                 ));
                 *self.empty_answer.lock().unwrap()
@@ -357,7 +378,13 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
                         user.empty_clicks.lock().unwrap().len() - empty_before,
                         usize::from(answer == Answer::TryWithEmptyHand),
                     );
-                    assert_eq!(game.common.inventory[game.common.selected].as_ref().unwrap().count, 1);
+                    assert_eq!(
+                        game.common.inventory[game.common.selected]
+                            .as_ref()
+                            .unwrap()
+                            .count,
+                        1
+                    );
                     assert_eq!(game.swings_started - before, swings);
                     assert_eq!(user.item_uses.load(SeqCst), item_uses);
                     assert_eq!(game.world.block(0, 64, 4) != lever, powered);
@@ -397,14 +424,15 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
                     (Some(Answer::Pass), cauldron, "minecraft:water_bucket", 4),
                 ] {
                     game.world.set(5, 64, 4, cauldron).unwrap();
-                    game.common.inventory[game.common.selected] = Some(sunrise_items::items::ItemStack::new(
-                        "minecraft:water_bucket",
-                        1,
-                    ));
+                    game.common.inventory[game.common.selected] = Some(
+                        sunrise_items::items::ItemStack::new("minecraft:water_bucket", 1),
+                    );
                     *user.answer.lock().unwrap() = answer;
                     assert!(game.use_hand(Some(&cauldron_hit)).unwrap());
                     assert_eq!(game.world.block(5, 64, 4), expected);
-                    let held = game.common.inventory[game.common.selected].as_ref().unwrap();
+                    let held = game.common.inventory[game.common.selected]
+                        .as_ref()
+                        .unwrap();
                     assert_eq!((&*held.item, held.count), (bucket, 1));
                     assert_eq!(user.item_uses.load(SeqCst), item_calls);
                 }
@@ -858,11 +886,14 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
 
 #[cfg(test)]
 pub(crate) mod respawn_world_point_tests {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::Settings, crate::game::load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
     use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
+    use {
+        crate::game::Settings, crate::game::load_resources, sunrise_gameplay_common::game::Options,
+        sunrise_gameplay_common::game::Progress,
+    };
 
     /// PlayerList.respawn sends world respawn data, independently of the personal landing.
     #[test]
@@ -885,7 +916,8 @@ pub(crate) mod respawn_world_point_tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -1005,17 +1037,20 @@ pub(crate) mod respawn_world_point_tests {
 #[cfg(any())]
 pub(crate) mod guest_close_listener_tests {
     use super::*;
+    use std::sync::{Arc, atomic::AtomicI32, mpsc};
+    use sunrise_core::position::ChunkPos;
     use sunrise_gameplay_common::game::lan_actions::guest_close_listener_tests::close;
     use sunrise_gameplay_common::game::lan_actions::guest_close_listener_tests::open;
     use sunrise_gameplay_common::game::lan_actions::guest_close_listener_tests::reset_listener;
     use sunrise_gameplay_common::game::lan_actions::guest_close_listener_tests::selected;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::Settings, crate::game::load_resources};
-    use std::sync::{Arc, atomic::AtomicI32, mpsc};
-    use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::configuration::ClientInformation;
     use sunrise_protocol::packets::play;
     use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
+    use {
+        crate::game::Settings, crate::game::load_resources, sunrise_gameplay_common::game::Options,
+        sunrise_gameplay_common::game::Progress,
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -1039,7 +1074,8 @@ pub(crate) mod guest_close_listener_tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -1282,8 +1318,6 @@ pub(crate) mod boat_holder_movement_tests;
 pub(crate) mod crack_feedback_tests;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
-
-
 
 #[path = "tick_server.rs"]
 pub(crate) mod tick;

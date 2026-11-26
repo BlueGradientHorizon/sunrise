@@ -64,12 +64,7 @@ impl crate::game::ServerGame<'_> {
     /// `send_to_self`. True when a swing started. Mobs and players; false
     /// for armor stands and the dragon, and for a player other than the
     /// acting one while another player acts.
-    pub fn living_swing(
-        &mut self,
-        living: LivingRef,
-        hand: Hand,
-        send_to_self: bool,
-    ) -> bool {
+    pub fn living_swing(&mut self, living: LivingRef, hand: Hand, send_to_self: bool) -> bool {
         match self.native_living_target(living) {
             Some(Target::Mob(id)) => self
                 .common
@@ -87,12 +82,14 @@ impl crate::game::ServerGame<'_> {
                     game.swing_hand(hand, SwingAnimation::DEFAULT);
                     started = game.swings_started != before;
                     let current = game.swing.current;
-                    if let (true, true, Some(c), Some(id)) =
-                        (started, send_to_self, current, game.server.lan_acting_entity)
-                    {
-                        game.server
-                            .guest_packets
-                            .push(sunrise_gameplay_common::game::lan_actions::swing_packet(
+                    if let (true, true, Some(c), Some(id)) = (
+                        started,
+                        send_to_self,
+                        current,
+                        game.server.lan_acting_entity,
+                    ) {
+                        game.server.guest_packets.push(
+                            sunrise_gameplay_common::game::lan_actions::swing_packet(
                                 id as i32,
                                 c.hand,
                                 c.animation,
@@ -114,11 +111,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `LivingEntity.setArrowCount`: players around see the arrows (vanilla
     /// does not limit the count). False for armor stands and the dragon.
-    pub fn living_set_arrow_count(
-        &mut self,
-        living: LivingRef,
-        count: i32,
-    ) -> bool {
+    pub fn living_set_arrow_count(&mut self, living: LivingRef, count: i32) -> bool {
         self.native_living_stuck(living)
             .map(|s| s.arrows = count)
             .is_some()
@@ -130,11 +123,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `LivingEntity.setStingerCount`: players around see the stingers. False
     /// for armor stands and the dragon.
-    pub fn living_set_stinger_count(
-        &mut self,
-        living: LivingRef,
-        count: i32,
-    ) -> bool {
+    pub fn living_set_stinger_count(&mut self, living: LivingRef, count: i32) -> bool {
         self.native_living_stuck(living)
             .map(|s| s.stingers = count)
             .is_some()
@@ -142,22 +131,14 @@ impl crate::game::ServerGame<'_> {
     /// `LivingEntity.removeArrowTime`: the ticks until the next arrow falls
     /// out of a player or a mob; at 0 or less it restarts at
     /// `20 * (30 - arrows)`. False for armor stands and the dragon.
-    pub fn living_set_arrow_removal_ticks(
-        &mut self,
-        living: LivingRef,
-        ticks: i32,
-    ) -> bool {
+    pub fn living_set_arrow_removal_ticks(&mut self, living: LivingRef, ticks: i32) -> bool {
         self.native_living_stuck(living)
             .map(|s| s.remove_arrow_time = ticks)
             .is_some()
     }
     /// `LivingEntity.removeStingerTime`, as `set_arrow_removal_ticks` for the
     /// stingers.
-    pub fn living_set_stinger_removal_ticks(
-        &mut self,
-        living: LivingRef,
-        ticks: i32,
-    ) -> bool {
+    pub fn living_set_stinger_removal_ticks(&mut self, living: LivingRef, ticks: i32) -> bool {
         self.native_living_stuck(living)
             .map(|s| s.remove_stinger_time = ticks)
             .is_some()
@@ -192,11 +173,7 @@ impl crate::game::ServerGame<'_> {
     /// `ticks` are left; what reads the counter (a spear's stabs, a bow's draw)
     /// follows it. False when the entity uses nothing, and for armor stands and
     /// the dragon.
-    pub fn living_set_item_use_remaining(
-        &mut self,
-        living: LivingRef,
-        ticks: i32,
-    ) -> bool {
+    pub fn living_set_item_use_remaining(&mut self, living: LivingRef, ticks: i32) -> bool {
         match self.native_living_target(living) {
             Some(Target::Mob(id)) => self.mob_set_item_use_remaining(id, ticks),
             Some(Target::Player) => sunrise_gameplay_common::game::item_use_common::set_remaining(
@@ -227,11 +204,7 @@ impl crate::game::ServerGame<'_> {
     /// `release_using_item` or a goal ends it. False for a piglin with
     /// something in its off hand and a drinking witch, whose counter is their
     /// own timer.
-    pub fn living_start_using_item(
-        &mut self,
-        living: LivingRef,
-        hand: Hand,
-    ) -> bool {
+    pub fn living_start_using_item(&mut self, living: LivingRef, hand: Hand) -> bool {
         match self.native_living_target(living) {
             Some(Target::Mob(id)) => self.start_mob_using_item(id, hand),
             Some(Target::Player | Target::Guest(_)) => self
@@ -265,12 +238,7 @@ impl crate::game::ServerGame<'_> {
     /// players around see the spin (living flag 4). A `ticks` of 0 or less ends
     /// the spin and clears its damage. False for the other kinds, a dead
     /// player and a non-finite `damage`.
-    pub fn living_set_riptiding(
-        &mut self,
-        living: LivingRef,
-        ticks: i32,
-        damage: f32,
-    ) -> bool {
+    pub fn living_set_riptiding(&mut self, living: LivingRef, ticks: i32, damage: f32) -> bool {
         if !damage.is_finite() {
             return false;
         }
@@ -306,20 +274,12 @@ impl crate::game::ServerGame<'_> {
     /// `Waypoint.Icon.style` of the waypoint a handle names, as
     /// `/waypoint modify <entity> style` sets it: a player's reaches the
     /// players it transmits to. False for the dragon.
-    pub fn living_set_waypoint_style(
-        &mut self,
-        living: LivingRef,
-        style: &Identifier,
-    ) -> bool {
+    pub fn living_set_waypoint_style(&mut self, living: LivingRef, style: &Identifier) -> bool {
         self.native_edit_waypoint_icon(living, |icon| icon.style = style.to_string())
     }
     /// `Waypoint.Icon.color` of the waypoint a handle names: the RGB colour,
     /// or none to show a player in their team's colour. False for the dragon.
-    pub fn living_set_waypoint_color(
-        &mut self,
-        living: LivingRef,
-        rgb: Option<u32>,
-    ) -> bool {
+    pub fn living_set_waypoint_color(&mut self, living: LivingRef, rgb: Option<u32>) -> bool {
         self.native_edit_waypoint_icon(living, |icon| {
             icon.color = rgb.map(|rgb| (rgb & 0xFF_FFFF) as i32);
         })
@@ -336,9 +296,9 @@ mod use_fixture_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use super::observer_tests::tests::Uses;
     use super::super::native_entity_refs::tests::with_game;
     use super::Stuck;
+    use super::observer_tests::tests::Uses;
     use mod_api::client::first_person::Hand;
     use mod_api::{
         EntityRef, Flow, Hooks, HostSide, Identifier, ItemPart, LivingEntityUseItemFinishEvent,
@@ -499,7 +459,8 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn a_tick_replaces_the_remaining_counter_rather_than_the_original_duration() {
         with_uses(|game, uses, player| {
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:shield", 1));
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:shield", 1));
             assert!(game.living_start_using_item(player, Hand::Main));
             for _ in 0..10 {
                 game.tick_using_server();
@@ -756,6 +717,4 @@ use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
-
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
-

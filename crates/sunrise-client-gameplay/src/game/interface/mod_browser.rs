@@ -187,7 +187,9 @@ impl ClientGame<'_> {
             self.client.chat_ui.options.layout_changed();
         }
         if installed {
-            self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+            self.client
+                .settings
+                .save(&sunrise_gameplay_common::game::options_path());
             self.start_mods();
             self.switch_mods();
             // A mod with blocks, items or worldgen waits for a restart: the

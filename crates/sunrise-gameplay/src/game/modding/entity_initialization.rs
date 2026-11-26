@@ -15,7 +15,8 @@ impl ServerGame<'_> {
     pub(in crate::game) fn server_bind_constructed_entity_attachments(&mut self, id: u32) {
         if self.native_authoritative()
             && self
-                .common.entity_attachments
+                .common
+                .entity_attachments
                 .get(&id)
                 .is_some_and(|map| map.has_index_entries())
             && let Err(error) = self.bind_resident_entity_attachments(id)
@@ -25,14 +26,14 @@ impl ServerGame<'_> {
     }
 
     /// Forget destroyed objects in this level before its UUID metadata is pruned.
-    pub fn prune_entity_initializations(
-        &mut self,
-        retained: &HashSet<u32>,
-    ) {
-        self.common.entity_initialization
+    pub fn prune_entity_initializations(&mut self, retained: &HashSet<u32>) {
+        self.common
+            .entity_initialization
             .initialized
             .retain(|holder| match holder {
-                Holder::Entity(id) => !self.common.persist.uuids.contains_key(id) || retained.contains(id),
+                Holder::Entity(id) => {
+                    !self.common.persist.uuids.contains_key(id) || retained.contains(id)
+                }
                 _ => true,
             });
     }
@@ -40,7 +41,8 @@ impl ServerGame<'_> {
     /// A LAN guest's player, its file just read for connection `conn`.
     pub fn initialize_server_player(&mut self, uuid: u128, conn: u32) {
         if self.common.entity_initialization.players.insert(uuid, conn) != Some(conn) {
-            self.common.forget_entity_initialization(Holder::Player(uuid));
+            self.common
+                .forget_entity_initialization(Holder::Player(uuid));
         }
         self.initialize_guest_player_under_data(uuid, conn);
     }
@@ -52,7 +54,8 @@ impl ServerGame<'_> {
         uuid: u128,
         conn: u32,
     ) {
-        self.common.forget_entity_initialization(Holder::Player(uuid));
+        self.common
+            .forget_entity_initialization(Holder::Player(uuid));
         self.initialize_guest_player_under_data(uuid, conn);
     }
 
@@ -95,7 +98,8 @@ pub struct TransferredEntityState {
     /// arrival moves that keeping to the new id.
     pub(in crate::game) journaled: Option<u32>,
     /// Filled by an abort that comes before the arrival: the contents the arrival puts back.
-    pub(in crate::game) rollback: Option<sunrise_gameplay_common::game::transactions::ArrivalRollback>,
+    pub(in crate::game) rollback:
+        Option<sunrise_gameplay_common::game::transactions::ArrivalRollback>,
     /// The id the entity had before it travelled, which a kill credit may still name.
     pub(in crate::game) source: u32,
 }
@@ -119,10 +123,7 @@ impl ServerGame<'_> {
     /// Inside a transaction the take is journaled: the map's writes in the action roll back
     /// wherever the map is, and the source level's index keeps its rows until the root closes
     /// (`defer_departure`). Travel itself is not undone, so the map stays with the entity.
-    pub fn take_transferred_entity_state(
-        &mut self,
-        id: u32,
-    ) -> TransferredEntityState {
+    pub fn take_transferred_entity_state(&mut self, id: u32) -> TransferredEntityState {
         let journaled = (!self.common.transactions.is_empty()).then(|| {
             self.journal_attachments(Holder::Entity(id));
             id
@@ -147,7 +148,8 @@ impl ServerGame<'_> {
             rollback,
             source: id,
             initialized: self
-                .common.entity_initialization
+                .common
+                .entity_initialization
                 .initialized
                 .remove(&Holder::Entity(id)),
         }
@@ -155,11 +157,7 @@ impl ServerGame<'_> {
 
     /// Install before `remember_uuid`: the destination is the same logical entity,
     /// so neither construction nor the saved overlay may replace its runtime values.
-    pub fn adopt_transferred_entity_state(
-        &mut self,
-        id: u32,
-        state: TransferredEntityState,
-    ) {
+    pub fn adopt_transferred_entity_state(&mut self, id: u32, state: TransferredEntityState) {
         self.common.journal_arrival(id);
         let level = self.common.dim;
         self.common.entity_attachments.move_collider(id, level);
@@ -187,7 +185,8 @@ impl ServerGame<'_> {
         }
         self.common.entity_attachments.insert(id, map);
         if state.initialized {
-            self.common.entity_initialization
+            self.common
+                .entity_initialization
                 .initialized
                 .insert(Holder::Entity(id));
         }

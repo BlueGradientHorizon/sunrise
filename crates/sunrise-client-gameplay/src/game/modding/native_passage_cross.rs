@@ -89,7 +89,8 @@ impl ClientGame<'_> {
             return Err(Error::Riding);
         }
         let p = *self
-            .common.passages
+            .common
+            .passages
             .held
             .get(&passage)
             .ok_or(Error::UnknownPassage)?;

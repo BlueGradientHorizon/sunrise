@@ -1,19 +1,19 @@
-use sunrise_client::chat::ChatScreen;
-use sunrise_client::chat::Commands;
-use sunrise_client::screen_draw::Measure;
-use winit::keyboard::KeyCode;
 use super::*;
-use sunrise_gameplay_common::game::Screen;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 use crate::game::{Audio, Settings, load_resources};
 use mod_api::{self, ChatSuggestionAppliedEvent, ClientHost, Hooks};
 use std::{
     path::PathBuf,
     sync::{Arc, Mutex},
 };
+use sunrise_client::chat::ChatScreen;
+use sunrise_client::chat::Commands;
 use sunrise_client::chat::{ChatAbilities, ChatVisibility};
+use sunrise_client::screen_draw::Measure;
 #[cfg(test)]
 use sunrise_client_gameplay::game::client_side::chat::chat_tree;
+use sunrise_gameplay_common::game::Screen;
+use winit::keyboard::KeyCode;
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 
 /// Exercise the actual Game keyboard/mouse handlers and generated mod dispatch.
 #[test]

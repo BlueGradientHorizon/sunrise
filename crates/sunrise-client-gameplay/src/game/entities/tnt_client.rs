@@ -1,7 +1,7 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::tnt_common::PrimedTnt;
 use sunrise_client::mesher::Vertex;
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::tnt_common::PrimedTnt;
 
 impl ClientGame<'_> {
     /// `TntRenderer`: swelling over the last 10 ticks and flashing white every 5 ticks.
@@ -38,7 +38,10 @@ impl ClientGame<'_> {
             ) {
                 continue;
             }
-            self.mark_motion(out.len(), sunrise_gameplay_common::game::MOTION_OBJECT | u64::from(t.id));
+            self.mark_motion(
+                out.len(),
+                sunrise_gameplay_common::game::MOTION_OBJECT | u64::from(t.id),
+            );
             let fuse = t.fuse as f32 - alpha as f32 + 1.0;
             if let Some(resolved) = super::native_entity_renderers::tnt_renderer() {
                 let partial = alpha as f32;
@@ -157,10 +160,13 @@ impl ClientGame<'_> {
         }
     }
     /// The sprites of the TNT block's six faces (up, down, north, south, west, east).
-    pub fn tnt_face_sprites(
-        &self,
-    ) -> Option<[Option<sunrise_client_render::hud::Rect>; 6]> {
-        let state = self.common.pack.assets.registry.default_state("minecraft:tnt")?;
+    pub fn tnt_face_sprites(&self) -> Option<[Option<sunrise_client_render::hud::Rect>; 6]> {
+        let state = self
+            .common
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:tnt")?;
         let Ok(models) = self
             .client
             .client_pack
@@ -199,7 +205,7 @@ mod physics_tests {
     use super::PrimedTnt;
     use sunrise_core::{geometry::Vec3, position::BlockPos};
     #[cfg(test)]
-/// `Entity.collectColliders` (#7080): the world border's wall stops primed
+    /// `Entity.collectColliders` (#7080): the world border's wall stops primed
     /// TNT. A border of size 10 around (20, 20) has its east wall at x = 25;
     /// the TNT starts at x = 24 on the test scene's flat ground, 1.5 east.
     #[test]
@@ -273,7 +279,7 @@ mod physics_tests {
     }
 
     #[cfg(test)]
-/// `Entity.move`'s last step, `getBlockSpeedFactor`: primed TNT sliding
+    /// `Entity.move`'s last step, `getBlockSpeedFactor`: primed TNT sliding
     /// over soul sand or honey keeps 40% of the horizontal speed it keeps over
     /// stone. Skips quietly without the vanilla data (CI has none).
     #[test]
@@ -301,7 +307,8 @@ mod physics_tests {
             ("minecraft:soul_sand", 3.875),
             ("minecraft:honey_block", 3.9375),
         ] {
-            let mut world = sunrise_client_render::assets::test_scene_world(&assets, &render, 3).unwrap();
+            let mut world =
+                sunrise_client_render::assets::test_scene_world(&assets, &render, 3).unwrap();
             let id = assets.registry.default_state(block).unwrap();
             for x in 18..=23 {
                 for z in 19..=21 {
@@ -358,7 +365,7 @@ mod physics_tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn primed_tnt_follows_water_currents_after_moving() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../.local/sunrise-client")
@@ -375,7 +382,8 @@ mod physics_tests {
         let facts = sunrise_items::blocks::BlockFacts::load(&root, assets.registry).unwrap();
         let fluids = sunrise_sim::motion::FluidResources::new(&assets, &facts).unwrap();
         let collision = sunrise_level::collisions::load(&root, assets.registry).unwrap();
-        let mut world = sunrise_client_render::assets::test_scene_world(&assets, &render, 3).unwrap();
+        let mut world =
+            sunrise_client_render::assets::test_scene_world(&assets, &render, 3).unwrap();
         let stone = assets.registry.default_state("minecraft:stone").unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         let mut state = assets.registry.state(water).unwrap().clone();
@@ -516,7 +524,7 @@ mod physics_tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_soul_sand_bubble_column_lifts_primed_tnt() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../.local/sunrise-client")
@@ -533,7 +541,8 @@ mod physics_tests {
         let facts = sunrise_items::blocks::BlockFacts::load(&root, assets.registry).unwrap();
         let fluids = sunrise_sim::motion::FluidResources::new(&assets, &facts).unwrap();
         let collision = sunrise_level::collisions::load(&root, assets.registry).unwrap();
-        let mut world = sunrise_client_render::assets::test_scene_world(&assets, &render, 3).unwrap();
+        let mut world =
+            sunrise_client_render::assets::test_scene_world(&assets, &render, 3).unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         let soul_sand = assets
             .registry
@@ -631,7 +640,7 @@ mod physics_tests {
     }
 
     #[cfg(test)]
-/// `Entity.onAboveBubbleColumn` sends the surface particles only from the top of
+    /// `Entity.onAboveBubbleColumn` sends the surface particles only from the top of
     /// a column: `tick` names the column block it is at the top of, and none while
     /// the column has water above it.
     #[test]
@@ -651,7 +660,8 @@ mod physics_tests {
         let facts = sunrise_items::blocks::BlockFacts::load(&root, assets.registry).unwrap();
         let fluids = sunrise_sim::motion::FluidResources::new(&assets, &facts).unwrap();
         let collision = sunrise_level::collisions::load(&root, assets.registry).unwrap();
-        let mut world = sunrise_client_render::assets::test_scene_world(&assets, &render, 3).unwrap();
+        let mut world =
+            sunrise_client_render::assets::test_scene_world(&assets, &render, 3).unwrap();
         let water = assets.registry.default_state("minecraft:water").unwrap();
         let soul_sand = assets
             .registry

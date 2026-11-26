@@ -9,7 +9,10 @@ use sunrise_game_data::text::Text;
 
 impl crate::game::ClientGame<'_> {
     pub(in crate::game::client_side) fn open_gamemode_switcher(&mut self) {
-        self.client.gamemode_switcher = Some(GameModeSwitcher::new(self.common.mode, self.common.previous_mode));
+        self.client.gamemode_switcher = Some(GameModeSwitcher::new(
+            self.common.mode,
+            self.common.previous_mode,
+        ));
         self.set_screen(Screen::GameModeSwitcher);
         self.clear_device_keys();
         self.set_mapping_held("key.attack", false);
@@ -62,7 +65,11 @@ impl crate::game::ClientGame<'_> {
         sunrise_client::widgets::begin_screen(|| {
             sunrise_client::widgets::ScreenInfo::new("gamemode_switcher", "")
         });
-        switcher.hover(w, h, (self.client.cursor.0 as i32, self.client.cursor.1 as i32));
+        switcher.hover(
+            w,
+            h,
+            (self.client.cursor.0 as i32, self.client.cursor.1 as i32),
+        );
         let selected = switcher.selected;
         let atlas = &self.client.gui.atlas;
         batch.sprite_region(

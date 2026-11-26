@@ -1,27 +1,25 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 #[cfg(any())]
 pub(crate) mod customize_boss_event_progress_tests {
 
-use sunrise_client_gameplay::game::client_side::native_hooks_client::customize_boss_event_progress::customize_boss_event_progress_tests::add_bars;
+    use sunrise_client_gameplay::game::client_side::native_hooks_client::customize_boss_event_progress::customize_boss_event_progress_tests::add_bars;
 
-use sunrise_gameplay_common::game::native_hooks::customize_boss_event_progress::customize_boss_event_progress_tests::backgrounds;
+    use sunrise_gameplay_common::game::native_hooks::customize_boss_event_progress::customize_boss_event_progress_tests::backgrounds;
 
-use sunrise_gameplay_common::game::native_hooks::customize_boss_event_progress::customize_boss_event_progress_tests::{Rearrange, Seen};
+    use sunrise_gameplay_common::game::native_hooks::customize_boss_event_progress::customize_boss_event_progress_tests::{Rearrange, Seen};
 
-use mod_api::{
+    use mod_api::{
         BossBarColor, ClientHost, CustomizeBossEventProgressEvent, Flow, Hooks, ModEntry,
     };
 
-use mod_platform::testing::with_mods;
+    use mod_platform::testing::with_mods;
 
-use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex};
 
-pub(crate) use crate::game::client_side::native_hooks_client::customize_boss_event_progress::customize_boss_event_progress_tests::add_bars;
+    pub(crate) use crate::game::client_side::native_hooks_client::customize_boss_event_progress::customize_boss_event_progress_tests::add_bars;
 
-/// `CustomizeGuiOverlayEvent.BossEventProgress`: with no mod the bars sit 19 pixels apart from
+    /// `CustomizeGuiOverlayEvent.BossEventProgress`: with no mod the bars sit 19 pixels apart from
     /// y = 12; a mod hears each bar at vanilla's place, and hides one, spaces the next and moves
     /// another without touching the rest.
     #[test]

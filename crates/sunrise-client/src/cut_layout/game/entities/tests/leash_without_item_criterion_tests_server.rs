@@ -1,7 +1,7 @@
 use super::*;
-use sunrise_gameplay_common::game::InteractTarget;
-use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_gameplay::game::game_tests::tests::server_game;
+use sunrise_gameplay_common::game::InteractTarget;
 use sunrise_sim::motion::PlayerMotion;
 
 #[test]
@@ -11,7 +11,11 @@ fn actual_holder_detach_does_not_reaward_the_held_lead_criterion() {
     let mut game = server_game(&mut resources);
     game.options.dedicated = None;
     game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 100.0, 4.5)).unwrap());
-    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player(&mut game, 1, (413u128 << 96) | 1);
+    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player(
+        &mut game,
+        1,
+        (413u128 << 96) | 1,
+    );
     game.level.health = 20.0;
     game.creative = false;
     // A world of its own under the temporary folder, never the cwd.

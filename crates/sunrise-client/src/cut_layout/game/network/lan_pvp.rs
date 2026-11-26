@@ -1,12 +1,9 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Aabb;
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::mobs::Who;
 #[cfg(test)]
 pub(crate) mod arrow_hit_sound_tests {
-    use {sunrise_gameplay::game::server_side::lan_pvp::Victim, sunrise_sim::mobs::Who};
     use std::fmt::Write as _;
     use std::path::PathBuf;
     use std::sync::{Arc, atomic::AtomicUsize, mpsc};
@@ -19,6 +16,7 @@ pub(crate) mod arrow_hit_sound_tests {
         motion::PlayerMotion,
         projectiles::{Hit, Projectile, ProjectileKind},
     };
+    use {sunrise_gameplay::game::server_side::lan_pvp::Victim, sunrise_sim::mobs::Who};
 
     fn load_witness() -> Witness {
         let value = std::env::var_os("SUNRISE_ARROW_HIT_DING_WITNESS").unwrap_or_else(|| {

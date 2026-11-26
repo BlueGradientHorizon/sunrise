@@ -109,14 +109,24 @@ impl crate::game::ClientGame<'_> {
         let v = Vec3::new(velocity[0], velocity[1], velocity[2]);
         // `falling` and `tnts` are searched from the back: AddEntity calls this right after
         // appending the block or TNT, so a spawn doesn't walk the whole list.
-        if let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, id as u32) {
+        if let Some(m) = self
+            .common
+            .mob_index
+            .get_mut(&mut self.common.mobs, id as u32)
+        {
             // Squid.aiStep derives its body pitch and roll from network motion.
             m.velocity = v;
         } else if let Some(d) = self.common.dropped.iter_mut().find(|d| d.id == id as u32) {
             d.velocity = v;
         } else if let Some(i) = self.common.falling.iter().rposition(|f| f.id == id as u32) {
             self.common.falling.update(i, |f| f.velocity = v);
-        } else if let Some(t) = self.common.tnts.iter_mut().rev().find(|t| t.id == id as u32) {
+        } else if let Some(t) = self
+            .common
+            .tnts
+            .iter_mut()
+            .rev()
+            .find(|t| t.id == id as u32)
+        {
             t.velocity = v;
         } else if let Some(o) = self.common.orbs.iter_mut().find(|o| o.id == id as u32) {
             o.velocity = v;
@@ -127,7 +137,8 @@ impl crate::game::ClientGame<'_> {
             // (`tick_remote_boat_bubbles` drops it again on a boat nobody here drives).
             self.common.boats.update(i, |b| b.velocity = v);
         } else if let Some(i) = self
-            .common.creatures
+            .common
+            .creatures
             .projectiles
             .iter()
             .position(|p| p.id == id as u32)
@@ -185,12 +196,18 @@ impl crate::game::ClientGame<'_> {
         // tick_remote_dragon eases to the server's moves through `lerps`. Its
         // copy in the mob list draws nothing: given the move, it kept the
         // dragon where it spawned (#2083).
-        let dragon = self.common.dragon.as_ref().is_some_and(|d| d.id as i32 == id);
+        let dragon = self
+            .common
+            .dragon
+            .as_ref()
+            .is_some_and(|d| d.id as i32 == id);
         let driven = self.driven_mount().is_some_and(|m| m.id as i32 == id)
-            || u32::try_from(id)
-                .is_ok_and(|id| self.controls_boat(id) && self.common.boats.iter().any(|b| b.id == id));
+            || u32::try_from(id).is_ok_and(|id| {
+                self.controls_boat(id) && self.common.boats.iter().any(|b| b.id == id)
+            });
         let mob = self
-            .common.mob_index
+            .common
+            .mob_index
             .get_mut(&mut self.common.mobs, id as u32)
             .filter(|_| !dragon);
         let tracked = self
@@ -247,7 +264,8 @@ impl crate::game::ClientGame<'_> {
                     return;
                 }
                 let entity_type_tags = &self
-                    .common.server_items
+                    .common
+                    .server_items
                     .as_deref()
                     .unwrap_or_else(|| self.common.res.items())
                     .entity_type_tags;
@@ -312,7 +330,12 @@ impl crate::game::ClientGame<'_> {
                     return;
                 }
                 // Armor stands use the same stepped handler in `tick_remote_entities`.
-                if let Some(a) = self.common.armor_stands.iter_mut().find(|a| a.id == id as u32) {
+                if let Some(a) = self
+                    .common
+                    .armor_stands
+                    .iter_mut()
+                    .find(|a| a.id == id as u32)
+                {
                     let entity = PosRot {
                         position: [a.position.x, a.position.y, a.position.z],
                         yaw: a.yaw,
@@ -365,7 +388,8 @@ impl crate::game::ClientGame<'_> {
             // instead, they only moved when an update came, every 10 to 20
             // ticks.
             if let Some(i) = self
-                .common.creatures
+                .common
+                .creatures
                 .projectiles
                 .iter()
                 .position(|p| p.id == id as u32)
@@ -441,7 +465,13 @@ impl crate::game::ClientGame<'_> {
                 self.common.falling.update(i, |f| f.position = at);
                 return;
             }
-            if let Some(t) = self.common.tnts.iter_mut().rev().find(|t| t.id == id as u32) {
+            if let Some(t) = self
+                .common
+                .tnts
+                .iter_mut()
+                .rev()
+                .find(|t| t.id == id as u32)
+            {
                 t.position = at;
                 t.ground.on_ground = on_ground;
                 return;

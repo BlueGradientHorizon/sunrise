@@ -1,11 +1,9 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
 
     #[test]
     #[ignore = "daily"]

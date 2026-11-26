@@ -1,12 +1,10 @@
-
-
 #![cfg(test)]
 use mod_api::Identifier;
 use mod_api::PackType;
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_resources::NativeResourceReads as _;
     use super::*;
+    use sunrise_gameplay_common::game::native_resources::NativeResourceReads as _;
 
     fn id(value: &str) -> Identifier {
         Identifier::parse(value).unwrap()
@@ -190,43 +188,47 @@ mod tests {
                         .is_empty()
                 );
             }),
-            "client" => crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
-                let mut index = files("assets");
-                let model = "assets/demo/models/gem.json".to_owned();
-                let copies = vec![
-                    Resource::bytes(b"low".to_vec()),
-                    Resource::bytes(b"high".to_vec()),
-                ];
-                index.insert(model.clone(), copies[1].clone());
-                game.pack.source =
-                    ResourceSource::indexed_with_layers(index, BTreeMap::from([(model, copies)]));
-                assert_eq!(
-                    game.resource_stack(PackType::ClientResources, &id("demo:models/gem.json")),
-                    [b"low".to_vec(), b"high".to_vec()]
-                );
-                // A top copy above the limit is left out of the stack, which then ends with the
-                // lower pack's copy, while `resource` reads nothing.
-                let big = "assets/demo/models/big.json".to_owned();
-                let oversized = usize::try_from(mod_api::MAX_RESOURCE_BYTES + 1).unwrap();
-                let copies = vec![
-                    Resource::bytes(b"low".to_vec()),
-                    Resource::bytes(vec![b' '; oversized]),
-                ];
-                let mut index = files("assets");
-                index.insert(big.clone(), copies[1].clone());
-                game.pack.source =
-                    ResourceSource::indexed_with_layers(index, BTreeMap::from([(big, copies)]));
-                let big = id("demo:models/big.json");
-                assert_eq!(
-                    game.resource_stack(PackType::ClientResources, &big),
-                    [b"low".to_vec()]
-                );
-                assert_eq!(game.resource(PackType::ClientResources, &big), None);
-                assert_eq!(
-                    game.list_resources(PackType::ClientResources, "machines", ".json"),
-                    listed
-                );
-            }),
+            "client" => {
+                crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
+                    let mut index = files("assets");
+                    let model = "assets/demo/models/gem.json".to_owned();
+                    let copies = vec![
+                        Resource::bytes(b"low".to_vec()),
+                        Resource::bytes(b"high".to_vec()),
+                    ];
+                    index.insert(model.clone(), copies[1].clone());
+                    game.pack.source = ResourceSource::indexed_with_layers(
+                        index,
+                        BTreeMap::from([(model, copies)]),
+                    );
+                    assert_eq!(
+                        game.resource_stack(PackType::ClientResources, &id("demo:models/gem.json")),
+                        [b"low".to_vec(), b"high".to_vec()]
+                    );
+                    // A top copy above the limit is left out of the stack, which then ends with the
+                    // lower pack's copy, while `resource` reads nothing.
+                    let big = "assets/demo/models/big.json".to_owned();
+                    let oversized = usize::try_from(mod_api::MAX_RESOURCE_BYTES + 1).unwrap();
+                    let copies = vec![
+                        Resource::bytes(b"low".to_vec()),
+                        Resource::bytes(vec![b' '; oversized]),
+                    ];
+                    let mut index = files("assets");
+                    index.insert(big.clone(), copies[1].clone());
+                    game.pack.source =
+                        ResourceSource::indexed_with_layers(index, BTreeMap::from([(big, copies)]));
+                    let big = id("demo:models/big.json");
+                    assert_eq!(
+                        game.resource_stack(PackType::ClientResources, &big),
+                        [b"low".to_vec()]
+                    );
+                    assert_eq!(game.resource(PackType::ClientResources, &big), None);
+                    assert_eq!(
+                        game.list_resources(PackType::ClientResources, "machines", ".json"),
+                        listed
+                    );
+                })
+            }
             case => unreachable!("{case}"),
         }
     }

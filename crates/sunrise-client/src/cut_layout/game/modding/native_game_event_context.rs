@@ -1,14 +1,12 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::{EntityRef, GameEventContext};
     use std::sync::Arc;
     use sunrise_game_data::who::EventSource;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_items::items::ItemStack;
     use sunrise_level::chunk::Chunk;
 
@@ -24,9 +22,9 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
     #[test]
     #[ignore = "daily"]
     fn contextual_game_event_keeps_guest_cause_until_emission() {
+        use std::sync::Mutex;
         use sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan;
         use sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest;
-        use std::sync::Mutex;
         struct Heard(Arc<Mutex<Vec<Option<u32>>>>);
         #[mod_api::__subscriptions]
         impl mod_api::Hooks for Heard {

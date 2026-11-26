@@ -1,9 +1,7 @@
 //! `StructureBlockEditScreen`: the structure block's name, position, size,
 //! mode and options, with its buttons laid out as vanilla's.
-use super::{
-    block_editor::{
-        Editor, Item, Outcome, Pos, cycle, footer_action, on_off, valid_character_for_name,
-    },
+use super::block_editor::{
+    Editor, Item, Outcome, Pos, cycle, footer_action, on_off, valid_character_for_name,
 };
 use sunrise_client::{
     gizmos::{Gizmos, InvisibleBlock},
@@ -482,7 +480,8 @@ impl crate::game::ClientGame<'_> {
 
     /// `LocalPlayer.openStructureBlock`.
     pub(in crate::game::client_side) fn open_structure_block(&mut self, pos: Pos) {
-        let Some(BlockEntity::StructureBlock(b)) = self.common.world.block_entities.get(&pos) else {
+        let Some(BlockEntity::StructureBlock(b)) = self.common.world.block_entities.get(&pos)
+        else {
             return;
         };
         let editor = StructureEditor::new(b);

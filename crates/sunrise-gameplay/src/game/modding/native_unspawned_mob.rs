@@ -37,8 +37,7 @@ static NEXT_LEND: AtomicU64 = AtomicU64::new(1);
 #[derive(Default)]
 pub struct LentMobs {
     lends: Vec<Lent>,
-    pub pending:
-        Rc<RefCell<PendingChildren<super::native_pending_children::PendingMob>>>,
+    pub pending: Rc<RefCell<PendingChildren<super::native_pending_children::PendingMob>>>,
     /// The hook whose listeners the innermost pending action is dispatching to, if any.
     pub(in crate::game) hook: Rc<std::cell::Cell<Option<mod_api::HookId>>>,
 }
@@ -642,11 +641,11 @@ pub mod tests {
     use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::id;
 
     use super::super::commands::Target;
-    use sunrise_gameplay_common::game::creatures::SpawnSite;
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::{FinalizeSpawnEvent, Flow, Host};
     use std::sync::{Arc, Mutex};
+    use sunrise_gameplay_common::game::creatures::SpawnSite;
     use sunrise_sim::mobs::finalize::{self, Attr};
     use sunrise_sim::mobs::spawn_rules::Reason;
 
@@ -745,4 +744,3 @@ pub mod tests {
         assert_eq!(spawn_group(&unknown), None);
     }
 }
-

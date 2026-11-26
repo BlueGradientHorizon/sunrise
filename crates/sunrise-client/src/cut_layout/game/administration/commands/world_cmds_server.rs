@@ -1,11 +1,9 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod allay_owner_damage_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game_at;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game_at;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_sim::mobs::{Damage, Mob};
 
     #[test]
@@ -81,28 +79,28 @@ pub(crate) mod registered_damage_tests;
 #[cfg(test)]
 pub(crate) mod datapack_damage_tests {
 
-use sunrise_gameplay::game::server_side::commands::world_cmds::datapack_damage_tests::with_pack;
+    use sunrise_gameplay::game::server_side::commands::world_cmds::datapack_damage_tests::with_pack;
 
-use sunrise_gameplay::game::server_side::commands_server::world_cmds::datapack_damage_tests::pig;
+    use sunrise_gameplay::game::server_side::commands_server::world_cmds::datapack_damage_tests::pig;
 
-use sunrise_gameplay_common::game::commands_common::Target;
+    use sunrise_gameplay_common::game::commands_common::Target;
 
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 
-use sunrise_core::geometry::Vec3;
+    use sunrise_core::geometry::Vec3;
 
-pub(crate) fn run_a_datapack_explosion_type_removes_a_crystal_quietly_and_hurts_the_dragon()
-     {
+    pub(crate) fn run_a_datapack_explosion_type_removes_a_crystal_quietly_and_hurts_the_dragon() {
         with_game(|game| {
             with_pack(game);
             let crystal = |game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32| {
                 game.server.next_entity = game.server.next_entity.max(id);
-                game.crystals.push(sunrise_gameplay_common::game::dragon_common::Crystal::new(
-                    id,
-                    Vec3::new(0.5, 64.0, 0.5),
-                    false,
-                    0,
-                ));
+                game.crystals
+                    .push(sunrise_gameplay_common::game::dragon_common::Crystal::new(
+                        id,
+                        Vec3::new(0.5, 64.0, 0.5),
+                        false,
+                        0,
+                    ));
             };
             pig(game, 1, Vec3::new(2.5, 64.0, 0.5));
             crystal(game, 50);
@@ -118,7 +116,10 @@ pub(crate) fn run_a_datapack_explosion_type_removes_a_crystal_quietly_and_hurts_
             );
 
             let dragon = game
-                .spawn_dragon_spawned([0.5, 80.0, 0.5], sunrise_gameplay_common::game::creatures::SpawnSite::Plain)
+                .spawn_dragon_spawned(
+                    [0.5, 80.0, 0.5],
+                    sunrise_gameplay_common::game::creatures::SpawnSite::Plain,
+                )
                 .unwrap();
             let before = game.dragon.as_ref().unwrap().health;
             assert!(game.hurt_target(
@@ -134,13 +135,12 @@ pub(crate) fn run_a_datapack_explosion_type_removes_a_crystal_quietly_and_hurts_
     }
 }
 
-
 #[cfg(test)]
 pub(crate) mod vehicle_damage_command_tests {
-    use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
-use crate::game::server_side::commands::world_cmds::vehicle_damage_command_tests::attribute_chat_count;
+    use crate::game::server_side::commands::world_cmds::vehicle_damage_command_tests::attribute_chat_count;
     use crate::game::server_side::commands::world_cmds::vehicle_damage_command_tests::with_game;
     use std::sync::Arc;
+    use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
 
     pub(crate) fn attribute_guests(
         game: &mut sunrise_gameplay::game::ServerGame<'_>,
@@ -221,8 +221,8 @@ use crate::game::server_side::commands::world_cmds::vehicle_damage_command_tests
     #[test]
     #[ignore = "daily"]
     fn direct_guest_attributes_adopt_the_target_and_restore_the_issuer() {
-        use sunrise_gameplay_common::game::commands_common::Target;
         use sunrise_core::geometry::Vec3;
+        use sunrise_gameplay_common::game::commands_common::Target;
         use sunrise_sim::motion::PlayerMotion;
         with_game(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::new(4.5, 100.0, 4.5)).unwrap());

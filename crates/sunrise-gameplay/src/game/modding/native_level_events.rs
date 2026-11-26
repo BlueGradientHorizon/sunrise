@@ -6,10 +6,10 @@
 //! level, a stale handle or a client returns false. Reaching a parked level, as `play_sound` and the
 //! reads do through `native_level_world`, is a follow-up.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::mod_api_host::level_event_data_ok;
 use mod_api::{
     BlockKey, EntityRef, ExplodeError, ExplosionInteraction, ExplosionSettings, LevelRef,
 };
+use sunrise_gameplay_common::game::mod_api_host::level_event_data_ok;
 use sunrise_world::{level::BlockEventData, registry::BlockStateId};
 
 /// A position inside the world's horizontal and vertical bounds.
@@ -40,12 +40,14 @@ impl ServerGame<'_> {
         if !level_event_data_ok(id, data, self.common.res.facts().states.len()) {
             return false;
         }
-        self.emit_level_effect(sunrise_gameplay_common::game::journal_level_effects::PendingWrite::Event {
-            level: super::Dim::from_id(level.dimension_id()),
-            id,
-            pos,
-            data,
-        });
+        self.emit_level_effect(
+            sunrise_gameplay_common::game::journal_level_effects::PendingWrite::Event {
+                level: super::Dim::from_id(level.dimension_id()),
+                id,
+                pos,
+                data,
+            },
+        );
         true
     }
     /// Plays the break effect of `state` at `pos` (`Level.levelEvent(2001, pos,
@@ -115,7 +117,10 @@ impl ServerGame<'_> {
         a: i32,
         b: i32,
     ) -> bool {
-        let Some(block) = sunrise_gameplay_common::game::api_values::behavior_block(block, self.common.res.behaviours()) else {
+        let Some(block) = sunrise_gameplay_common::game::api_values::behavior_block(
+            block,
+            self.common.res.behaviours(),
+        ) else {
             return false;
         };
         if !self.level_in_place(level) || !self.common.world.shape.contains_y(pos[1]) {

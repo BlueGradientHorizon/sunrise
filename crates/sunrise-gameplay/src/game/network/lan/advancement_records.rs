@@ -31,11 +31,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `PlayerAdvancements.save` and `ServerStatsCounter.save` of a network player.
-    pub fn save_guest_records(
-        &self,
-        host: &LanHost,
-        guest: &sunrise_sim::lan::guest::Guest,
-    ) {
+    pub fn save_guest_records(&self, host: &LanHost, guest: &sunrise_sim::lan::guest::Guest) {
         if !guest.joined()
             || self.server.crash_save.excludes(guest.conn)
             || guest.released

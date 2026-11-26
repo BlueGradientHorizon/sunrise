@@ -265,8 +265,17 @@ impl crate::game::ServerGame<'_> {
         attack.direct_type = direct.map(|target| self.target_type(target));
         match direct {
             Some(Target::Projectile(id)) => {
-                if let Some(shot) = self.common.creatures.projectiles.iter().find(|shot| shot.id == id) {
-                    sunrise_gameplay_common::game::CommonGame::set_projectile_attack(&mut attack, shot);
+                if let Some(shot) = self
+                    .common
+                    .creatures
+                    .projectiles
+                    .iter()
+                    .find(|shot| shot.id == id)
+                {
+                    sunrise_gameplay_common::game::CommonGame::set_projectile_attack(
+                        &mut attack,
+                        shot,
+                    );
                 }
             }
             Some(Target::Trident(id)) => {
@@ -274,7 +283,10 @@ impl crate::game::ServerGame<'_> {
                     attack.projectile = Some(id as i32);
                     attack.projectile_kind = DirectEntity::Arrow;
                     attack.projectile_type = Some("minecraft:trident");
-                    sunrise_gameplay_common::game::CommonGame::set_projectile_weapon(&mut attack, Some(&shot.stack));
+                    sunrise_gameplay_common::game::CommonGame::set_projectile_weapon(
+                        &mut attack,
+                        Some(&shot.stack),
+                    );
                 }
             }
             _ => {}
@@ -299,12 +311,12 @@ impl crate::game::ServerGame<'_> {
                 | Target::Dragon(_)
                 | Target::Stand(_),
             ) => DirectEntity::Living,
-            Some(Target::Projectile(id)) => projectiles
-                .iter()
-                .find(|shot| shot.id == id)
-                .map_or(DirectEntity::Projectile, |shot| {
+            Some(Target::Projectile(id)) => projectiles.iter().find(|shot| shot.id == id).map_or(
+                DirectEntity::Projectile,
+                |shot| {
                     sunrise_gameplay_common::game::CommonGame::projectile_direct_entity(&shot.kind)
-                }),
+                },
+            ),
             Some(Target::Trident(_)) => DirectEntity::Arrow,
             Some(Target::Rocket(_) | Target::Hook(_)) => DirectEntity::Projectile,
             _ => DirectEntity::Other,
@@ -596,7 +608,8 @@ impl crate::game::ServerGame<'_> {
                         self.write_attribute(target, attribute, AttributeWrite::ResetBase)
                             .ok_or_else(|| no_attribute(&name, &description))?;
                         let v = self
-                            .common.player
+                            .common
+                            .player
                             .as_mut()
                             .and_then(|p| p.attributes.value(Some(key), ValueKind::Base).ok())
                             .unwrap_or(0.0);
@@ -773,7 +786,8 @@ impl crate::game::ServerGame<'_> {
                     "attribute.base.reset" => {
                         self.write_attribute(target, attribute, AttributeWrite::ResetBase);
                         let v = self
-                            .common.mobs
+                            .common
+                            .mobs
                             .iter()
                             .find(|m| m.id == mob_id)
                             .map_or(0.0, |m| finalize::base_value(m, attr));
@@ -874,7 +888,8 @@ impl crate::game::ServerGame<'_> {
         };
         sunrise_sim::mobs::sulfur_cube::ARCHETYPE_ATTRIBUTES.contains(&attribute)
             && self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .any(|m| m.id == id && m.species() == sunrise_sim::mobs::Species::SulfurCube)
     }
@@ -1192,7 +1207,8 @@ impl crate::game::ServerGame<'_> {
         }
         // A callback can remove or remount the rider. Do not overwrite its decision.
         if self
-            .common.mob_object(rider)
+            .common
+            .mob_object(rider)
             .is_none_or(|mob| mob.removed != removing_rider || mob.extra.mount != Some(v))
         {
             return;
@@ -1228,7 +1244,8 @@ impl crate::game::ServerGame<'_> {
         } else {
             match cart.filter(|cart| cart.id == v) {
                 Some(cart) => self
-                    .common.mob_object(rider)
+                    .common
+                    .mob_object(rider)
                     .and_then(|rider| self.cart_dismount_point_from(cart, rider)),
                 None => self.mob_dismount_point(v, rider),
             }
@@ -1260,22 +1277,30 @@ impl crate::game::ServerGame<'_> {
             ));
         }
         let removed_y = self
-            .common.persist
+            .common
+            .persist
             .removed_vehicles
             .get(&v)
             .map(|vehicle| vehicle.position().y)
             .or_else(|| {
-                self.common.persist
+                self.common
+                    .persist
                     .removals
                     .iter()
                     .chain(self.common.persist.destroying_vehicles.iter())
                     .find_map(|target| match *target {
-                        Target::Boat(id) if id == v => {
-                            self.common.boats.iter().find(|b| b.id == v).map(|b| b.position.y)
-                        }
-                        Target::Cart(id) if id == v => {
-                            self.common.carts.iter().find(|c| c.id == v).map(|c| c.position.y)
-                        }
+                        Target::Boat(id) if id == v => self
+                            .common
+                            .boats
+                            .iter()
+                            .find(|b| b.id == v)
+                            .map(|b| b.position.y),
+                        Target::Cart(id) if id == v => self
+                            .common
+                            .carts
+                            .iter()
+                            .find(|c| c.id == v)
+                            .map(|c| c.position.y),
                         _ => None,
                     })
             });
@@ -1306,7 +1331,12 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn spread_spawn_y(&self, p: [f64; 2], max_y: i32) -> i32 {
         let (x, z) = (p[0].floor() as i32, p[1].floor() as i32);
         let air = |y: i32| {
-            let name: &str = &self.common.res.facts().get(self.common.world.block(x, y, z)).name;
+            let name: &str = &self
+                .common
+                .res
+                .facts()
+                .get(self.common.world.block(x, y, z))
+                .name;
             matches!(
                 name,
                 "minecraft:air" | "minecraft:cave_air" | "minecraft:void_air"
@@ -1331,15 +1361,23 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn spread_safe(&self, p: [f64; 2], max_y: i32) -> bool {
         let y = self.spread_spawn_y(p, max_y) - 1;
         let (x, z) = (p[0].floor() as i32, p[1].floor() as i32);
-        let name = self.common.res.facts().get(self.common.world.block(x, y, z)).name.clone();
+        let name = self
+            .common
+            .res
+            .facts()
+            .get(self.common.world.block(x, y, z))
+            .name
+            .clone();
         let liquid = matches!(&*name, "minecraft:water" | "minecraft:lava");
         let teleportable = self
-            .common.res
+            .common
+            .res
             .items()
             .block_tags
             .get("entities_can_teleport_to")
             .or_else(|| {
-                self.common.res
+                self.common
+                    .res
                     .items()
                     .block_tags
                     .get("minecraft:entities_can_teleport_to")
@@ -1471,16 +1509,6 @@ pub mod datapack_damage_tests {
 
     #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::commands_server::world_cmds::datapack_damage_tests::pig;
-
-    
-
-    
-
-    
-
-    
-
-    
 
     #[allow(unused_imports)]
 #[cfg(any())]

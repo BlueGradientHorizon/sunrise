@@ -334,10 +334,7 @@ impl GuestMenus {
 /// The menu `conn` has open, whichever way the game keeps it: a block's
 /// container, a trade, a crafting table, a workstation, a lectern or a
 /// mount's inventory. Not the player's own inventory menu.
-pub fn open_menu_of(
-    host: &LanHost,
-    conn: u32,
-) -> Option<(i32, &str, Option<[i32; 3]>)> {
+pub fn open_menu_of(host: &LanHost, conn: u32) -> Option<(i32, &str, Option<[i32; 3]>)> {
     let g = host.hub.guest(conn)?;
     let play = host.play.get(&conn);
     let menus = host.menus.get(&conn);
@@ -560,6 +557,7 @@ pub mod tests {
 
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
+    use crate::game::server_side::native_item_places::tests::open_to_lan;
     use mod_api::{HostTransaction, ItemPlace, ItemResource, ServerHost, TransactionError};
     use std::sync::{Arc, mpsc};
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
@@ -568,9 +566,6 @@ pub mod tests {
         packets::play::{self, Clientbound as C, Serverbound as S},
     };
     use sunrise_sim::lan::{Out, PlayerSender};
-    use {
-        crate::game::server_side::native_item_places::tests::open_to_lan,
-    };
 
     /// Guest 1 (UUID 123) on a world open to LAN, and what their client is sent.
     pub fn watched_guest(game: &mut crate::game::ServerGame<'_>) -> mpsc::Receiver<Out> {
@@ -630,10 +625,7 @@ pub mod tests {
     }
 }
 
-
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
-
 
 use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;
 

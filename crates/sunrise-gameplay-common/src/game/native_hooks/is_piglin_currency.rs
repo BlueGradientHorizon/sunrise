@@ -5,11 +5,7 @@ pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// `currency` arrives with vanilla's answer (a gold ingot); the parts of the
     /// stack's item may set it. Both sides.
     #[inline(never)]
-     fn native_is_piglin_currency(
-        &self,
-        stack: &ItemStack,
-        currency: &mut bool,
-    ) {
+    fn native_is_piglin_currency(&self, stack: &ItemStack, currency: &mut bool) {
         crate::game::native_hooks::fire::FireHooks::fire_is_piglin_currency(self, stack, currency);
     }
 }

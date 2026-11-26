@@ -1,26 +1,24 @@
-
-
 #![cfg(test)]
 use sunrise_core::nbt::Tag;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use super::*;
+    use super::*;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 
-macro_rules! pending {
-    ($list:expr) => {{
-        let mut owner = $list.pop().unwrap();
-        owner.id = 0;
-        $list.push(owner);
-    }};
-}
+    macro_rules! pending {
+        ($list:expr) => {{
+            let mut owner = $list.pop().unwrap();
+            owner.id = 0;
+            $list.push(owner);
+        }};
+    }
 
-use crate::game::native_entity_refs::tests::collect_entities_in;
+    use crate::game::native_entity_refs::tests::collect_entities_in;
 
-use mod_api::ServerHost;
+    use mod_api::ServerHost;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn saved_display_and_utility_entities_join_once_and_are_queryable() {
         use mod_api::{EntityJoinLevelEvent, Flow, Hooks};
@@ -154,7 +152,7 @@ use mod_api::ServerHost;
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn pending_ids_keep_counter_order_and_assign_zero_only_once() {
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -216,7 +214,7 @@ use mod_api::ServerHost;
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn native_roots_keep_the_loaded_id_and_do_not_allocate_twice() {
         use sunrise_level::chunk::Chunk;
@@ -283,7 +281,7 @@ use mod_api::ServerHost;
             });
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn portal_ids_follow_only_the_existing_moving_entity_filters() {
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -327,7 +325,7 @@ use mod_api::ServerHost;
             assert_eq!(game.server.next_entity, base + 3);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn pending_assignment_refuses_a_bound_zero_owner_before_consuming_an_id() {
         use std::sync::{Arc, Mutex};
@@ -379,7 +377,7 @@ use mod_api::ServerHost;
             });
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn joins_follow_insertion_order_and_canceled_entities_never_leave() {
         use mod_api::{self, EntityJoinLevelEvent, EntityLeaveLevelEvent, Flow, Hooks};
@@ -459,12 +457,13 @@ use mod_api::ServerHost;
                     Some(&(base + 3, "minecraft:sheep".into(), true))
                 );
 
-                game.crystals.push(sunrise_gameplay_common::game::dragon_common::Crystal::new(
-                    base + 4,
-                    Vec3::ZERO,
-                    true,
-                    0,
-                ));
+                game.crystals
+                    .push(sunrise_gameplay_common::game::dragon_common::Crystal::new(
+                        base + 4,
+                        Vec3::ZERO,
+                        true,
+                        0,
+                    ));
                 game.cushions.push(sunrise_sim::entities::Cushion {
                     attachment_lifetime: Default::default(),
                     join: Default::default(),
@@ -506,7 +505,8 @@ use mod_api::ServerHost;
                     check_interval: 0,
                     ticks: 0,
                 });
-                let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+                let mut dragon =
+                    sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
                 dragon.id = base + 8;
                 dragon.join = sunrise_sim::join_seq::JoinSeq::next();
                 game.dragon.replace(dragon);
@@ -525,28 +525,29 @@ use mod_api::ServerHost;
                     ]
                 );
                 drop(seen);
-                game.tnts.push(sunrise_gameplay_common::game::tnt_common::PrimedTnt {
-                    size_answer: None,
-                    attachment_lifetime: Default::default(),
-                    rotation: [0.0, 0.0],
-                    join: Default::default(),
-                    id: 0,
-                    position: Vec3::ZERO,
-                    previous: Vec3::ZERO,
-                    velocity: Vec3::ZERO,
-                    fuse: 80,
-                    ticks: 0,
-                    ground: Default::default(),
-                    in_water: false,
-                    stuck: Vec3::ZERO,
-                    fall_distance: 0.0,
-                    owner: None,
-                    guest: None,
-                    no_gravity: false,
-                    power: 4.0,
-                    used_portal: false,
-                    block_state: None,
-                });
+                game.tnts
+                    .push(sunrise_gameplay_common::game::tnt_common::PrimedTnt {
+                        size_answer: None,
+                        attachment_lifetime: Default::default(),
+                        rotation: [0.0, 0.0],
+                        join: Default::default(),
+                        id: 0,
+                        position: Vec3::ZERO,
+                        previous: Vec3::ZERO,
+                        velocity: Vec3::ZERO,
+                        fuse: 80,
+                        ticks: 0,
+                        ground: Default::default(),
+                        in_water: false,
+                        stuck: Vec3::ZERO,
+                        fall_distance: 0.0,
+                        owner: None,
+                        guest: None,
+                        no_gravity: false,
+                        power: 4.0,
+                        used_portal: false,
+                        block_state: None,
+                    });
                 game.native_joins_flush(false, 0);
                 game.native_joins_flush(false, 0);
                 assert_eq!(game.tnts.last().unwrap().id, base + 9);

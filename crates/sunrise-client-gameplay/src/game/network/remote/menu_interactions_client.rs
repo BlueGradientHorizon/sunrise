@@ -15,7 +15,11 @@ impl crate::game::ClientGame<'_> {
             (false, true) => {
                 r.inventory_carried = self.common.carried.take();
                 r.inventory_state_id = std::mem::take(&mut r.state_id);
-                for (saved, active) in r.inventory_craft_grid.iter_mut().zip(&mut self.common.craft_grid) {
+                for (saved, active) in r
+                    .inventory_craft_grid
+                    .iter_mut()
+                    .zip(&mut self.common.craft_grid)
+                {
                     *saved = active.take();
                 }
                 r.inventory_craft_result = r.craft_result.take();
@@ -24,7 +28,11 @@ impl crate::game::ClientGame<'_> {
                 self.common.carried = r.inventory_carried.take();
                 r.state_id = std::mem::take(&mut r.inventory_state_id);
                 self.common.craft_grid.fill(None);
-                for (saved, active) in r.inventory_craft_grid.iter_mut().zip(&mut self.common.craft_grid) {
+                for (saved, active) in r
+                    .inventory_craft_grid
+                    .iter_mut()
+                    .zip(&mut self.common.craft_grid)
+                {
                     *active = saved.take();
                 }
                 r.craft_result = r.inventory_craft_result.take();
@@ -73,7 +81,9 @@ impl crate::game::ClientGame<'_> {
     }
     pub(in crate::game::client_side) fn creative_drop_features(&self) -> Option<&Arc<[String]>> {
         // Screen::Inventory covers the non-creative AbstractContainerScreens.
-        (self.common.creative && self.client.remote.is_some() && self.client.screen != Screen::Inventory)
+        (self.common.creative
+            && self.client.remote.is_some()
+            && self.client.screen != Screen::Inventory)
             .then(|| self.enabled_feature_ids())
     }
     /// The creative screen calls `Player.drop` before `handleCreativeModeItemDrop`;
@@ -220,7 +230,8 @@ impl crate::game::ClientGame<'_> {
         let mut prepared = None;
         let mut threw = false;
         if self
-            .common.station
+            .common
+            .station
             .as_ref()
             .is_some_and(|s| s.kind == crate::game::stations::Kind::Anvil)
         {
@@ -326,7 +337,12 @@ impl crate::game::ClientGame<'_> {
                 Some(offer)
             })
             .collect();
-        if let Some(m) = self.common.station.as_mut().and_then(|s| s.merchant.as_mut()) {
+        if let Some(m) = self
+            .common
+            .station
+            .as_mut()
+            .and_then(|s| s.merchant.as_mut())
+        {
             m.session.offers = offers;
             m.session.level = p.level;
             m.session.xp = p.xp;
@@ -377,7 +393,8 @@ impl crate::game::ClientGame<'_> {
         }
         let entity = p.entity as u32;
         let Some(species) = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .find(|m| m.id == entity)
             .map(sunrise_sim::mobs::Mob::species)
@@ -460,7 +477,9 @@ impl crate::game::ClientGame<'_> {
             self.remote_open_lectern(target.unwrap_or_default());
             return;
         }
-        if let Some(kind) = sunrise_gameplay_common::game::remote::inventory::remote_station_kind(&menu) {
+        if let Some(kind) =
+            sunrise_gameplay_common::game::remote::inventory::remote_station_kind(&menu)
+        {
             let title = menu_title(&p.title);
             let pos = target.map_or([0, 0, 0], |t| [t.0, t.1, t.2]);
             self.remote_open_station(p.container, menu, kind, title, pos);
@@ -548,7 +567,12 @@ impl crate::game::ClientGame<'_> {
             // an ender chest's or a double chest's slots are no one block's,
             // so they go under a key no block has.
             let holds = |k: &(i32, i32, i32)| {
-                let name = &self.common.res.facts().get(self.common.world.block(k.0, k.1, k.2)).name;
+                let name = &self
+                    .common
+                    .res
+                    .facts()
+                    .get(self.common.world.block(k.0, k.1, k.2))
+                    .name;
                 BlockEntity::for_block(name).is_some_and(|e| {
                     e.id() == entity.id() && e.slots().len() == entity.slots().len()
                 })
@@ -582,7 +606,8 @@ impl crate::game::ClientGame<'_> {
         let mut sent: Vec<Predicted> = Vec::new();
         let mut prepared = None;
         if self
-            .common.station
+            .common
+            .station
             .as_ref()
             .is_some_and(|s| s.kind == crate::game::stations::Kind::Anvil)
         {
@@ -740,8 +765,8 @@ impl crate::game::ClientGame<'_> {
                     return (Err(None), false);
                 }
 
-                if let Some(frozen) =
-                    found.filter(|f| sunrise_gameplay_common::game::stacked_listens_for_side(false, f))
+                if let Some(frozen) = found
+                    .filter(|f| sunrise_gameplay_common::game::stacked_listens_for_side(false, f))
                 {
                     let (carried, resolved_slot, primary) =
                         (frozen.carried.clone(), frozen.slot, frozen.primary);

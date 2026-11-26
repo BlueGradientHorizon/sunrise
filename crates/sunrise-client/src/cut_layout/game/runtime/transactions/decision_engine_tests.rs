@@ -1,10 +1,23 @@
 //! Real menu storage and Game journal integration, before hook-route migration.
 //! These exercise Menu::click, not the synthetic MenuState planner. They do not
 //! assert public hook dispatch.
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_guest_turn_tests::with_guests, sunrise_gameplay::game::server_side::decision_engine_server::EnginePlan, sunrise_gameplay::game::server_side::decision_engine_server::ServerDecisionTarget as Target, sunrise_gameplay_common::game::transactions::decision::Admission, sunrise_gameplay_common::game::transactions::decision::GameHost, sunrise_gameplay_common::game::transactions::decision::Identity, sunrise_gameplay_common::game::transactions::decision::Outcome, sunrise_gameplay_common::game::transactions::decision::Reply, sunrise_gameplay_common::game::transactions::decision::Side, sunrise_gameplay_common::game::transactions::decision::StaleReason, sunrise_gameplay_common::game::transactions::decision::run};
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::menu::{Input, Kind, Menu as EngineMenu};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_guest_turn_tests::with_guests,
+    sunrise_gameplay::game::server_side::decision_engine_server::EnginePlan,
+    sunrise_gameplay::game::server_side::decision_engine_server::ServerDecisionTarget as Target,
+    sunrise_gameplay_common::game::transactions::decision::Admission,
+    sunrise_gameplay_common::game::transactions::decision::GameHost,
+    sunrise_gameplay_common::game::transactions::decision::Identity,
+    sunrise_gameplay_common::game::transactions::decision::Outcome,
+    sunrise_gameplay_common::game::transactions::decision::Reply,
+    sunrise_gameplay_common::game::transactions::decision::Side,
+    sunrise_gameplay_common::game::transactions::decision::StaleReason,
+    sunrise_gameplay_common::game::transactions::decision::run,
+};
 
 fn fixture(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> (Target, Identity) {
     let mut menu = Box::new(EngineMenu::new(Kind::Inventory));

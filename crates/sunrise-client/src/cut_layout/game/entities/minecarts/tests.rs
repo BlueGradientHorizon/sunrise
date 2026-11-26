@@ -178,10 +178,15 @@ fn cart_index_finds_the_mobs_a_scan_finds() {
 #[test]
 fn mob_walking_into_a_cart_pushes_it_by_a_twentieth() {
     // Issue #6776: a villager at x=0.13 next to a cart at x=0.5 east-west.
-    let (xa, za) =
-        sunrise_gameplay_common::game::minecarts::cart_push_from(Vec3::new(0.13, 0.0, 0.0), Vec3::new(0.5, 0.0, 0.0)).unwrap();
+    let (xa, za) = sunrise_gameplay_common::game::minecarts::cart_push_from(
+        Vec3::new(0.13, 0.0, 0.0),
+        Vec3::new(0.5, 0.0, 0.0),
+    )
+    .unwrap();
     assert!((xa + 0.05).abs() < 1e-6 && za == 0.0, "{xa} {za}");
-    assert!(sunrise_gameplay_common::game::minecarts::cart_push_from(Vec3::ZERO, Vec3::ZERO).is_none());
+    assert!(
+        sunrise_gameplay_common::game::minecarts::cart_push_from(Vec3::ZERO, Vec3::ZERO).is_none()
+    );
 }
 /// Issue #6431: a blast too weak to push a cart past 40 damage still
 /// primes a TNT cart.
@@ -203,8 +208,16 @@ fn a_tnt_cart_detonates_only_when_a_collision_stops_a_moving_one() {
     assert!(!tnt_ignites_by_collision(true, 0.009), "a nudge");
     assert!(!tnt_ignites_by_collision(false, 0.36), "nothing in the way");
 }
-use {crate::game::minecarts::*, sunrise_gameplay_common::game::minecarts::{Arc, BlockStateId, CartKind, Minecart, SEAT, Species, Vec3, can_ride_cart, cart_is_destroyed, cart_push_from, cart_seat, container_keep, default_display_offset, display_offset, forget_unreadable_display, offered_pickup, pickup_instead_of_push, push_along, shown_unless_air, takes_push_from_cart, tnt_ignites_by_collision}};
 use sunrise_gameplay::game::server_side::minecarts_server::CartIndex;
+use {
+    crate::game::minecarts::*,
+    sunrise_gameplay_common::game::minecarts::{
+        Arc, BlockStateId, CartKind, Minecart, SEAT, Species, Vec3, can_ride_cart,
+        cart_is_destroyed, cart_push_from, cart_seat, container_keep, default_display_offset,
+        display_offset, forget_unreadable_display, offered_pickup, pickup_instead_of_push,
+        push_along, shown_unless_air, takes_push_from_cart, tnt_ignites_by_collision,
+    },
+};
 
 /// Issue #8624: chest and hopper carts keep 0.995 of their speed when
 /// empty (0.98 when full), not the plain cart's 0.96, so powered rails

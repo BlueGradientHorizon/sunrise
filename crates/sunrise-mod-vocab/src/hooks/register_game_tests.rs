@@ -18,7 +18,8 @@ Definitions retain resolved callbacks only for their world snapshot. Unknown fun
 `minecraft:always_pass` remains built in. Data-pack test definitions override code-registered defaults. Registration refuses duplicates, invalid names and the vanilla
 namespace. A panic or phase refusal discards both the listener's functions and its definitions,
 leaving their keys available to later listeners. This adds no sequence engine and no per-tick registry lookup."#]
-    #[hook(target = "sunrise_gameplay::game::native_hooks::register_game_tests::ServerGame<'_>::native_register_game_tests", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::register_game_tests::ServerGame<'_>::native_register_game_tests",
         receiver = "read",
         dispatch = "flat",
         side = "server",

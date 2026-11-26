@@ -1,7 +1,9 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::native_collider_state::{Placement, PlacementKey, origin_bits, stack_in_graph};
 use mod_api::EntityRef;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::native_collider_state::{
+    Placement, PlacementKey, origin_bits, stack_in_graph,
+};
 use sunrise_protocol::collider_sync::{self, Message};
 use sunrise_sim::colliders::ColliderState;
 

@@ -1,11 +1,11 @@
 use super::view_vector;
 use mod_api::{BlockEntityRef, Compound};
-use sunrise_gameplay_common::game::creatures::world_view::MobWorldSideParams;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, OnceLock};
 use sunrise_client::actions::Action;
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::creatures::world_view::MobWorldSideParams;
 use sunrise_gameplay_common::game::side_ops::{
     modapi_modding::ModapiModdingSideGameExt as _, world::WorldSideGameExt as _,
 };
@@ -19,8 +19,7 @@ static EMPTY_LID_OPENERS: OnceLock<HashMap<(i32, i32, i32), i32>> = OnceLock::ne
 
 impl SideLevel for crate::game::ClientGame<'_> {
     fn is_raining_at(&self, world: &World, pos: BlockPos) -> bool {
-        client_game_side!(self, self.side_game_side_meta())
-            .is_raining_at(world, pos)
+        client_game_side!(self, self.side_game_side_meta()).is_raining_at(world, pos)
     }
 
     fn enabled_features(&self) -> &std::sync::Arc<[String]> {
@@ -44,8 +43,7 @@ impl SideLevel for crate::game::ClientGame<'_> {
     }
 
     fn block_entity(&self, world: &World, pos: BlockPos) -> Option<BlockEntityRef> {
-        client_game_side!(self, self.side_game_side_meta())
-            .block_entity(world, pos)
+        client_game_side!(self, self.side_game_side_meta()).block_entity(world, pos)
     }
 
     fn block_entity_data(
@@ -72,12 +70,14 @@ impl crate::game::ClientGame<'_> {
             ),
         );
         let gold_tag = self
-            .common.res
+            .common
+            .res
             .items()
             .item_tags
             .get("minecraft:piglin_safe_armor");
         let gold_armor = self
-            .common.armor
+            .common
+            .armor
             .iter()
             .rev()
             .flatten()
@@ -133,8 +133,20 @@ impl crate::game::ClientGame<'_> {
             yaw: self.common.yaw,
             sprinting: p.sprinting,
             riding: self.common.riding.is_some(),
-            hero: self.common.potions.effects.get("hero_of_the_village").is_some(),
-            effects: self.common.potions.effects.list.iter().map(|e| e.id).collect(),
+            hero: self
+                .common
+                .potions
+                .effects
+                .get("hero_of_the_village")
+                .is_some(),
+            effects: self
+                .common
+                .potions
+                .effects
+                .list
+                .iter()
+                .map(|e| e.id)
+                .collect(),
             uuid: self.common.level.player_uuid.unwrap_or([0; 4]),
             allies: Arc::new(HashSet::new()),
             remote: true,
@@ -146,7 +158,9 @@ impl crate::game::ClientGame<'_> {
         })
     }
 
-    pub(in crate::game) fn client_mob_side(&self) -> sunrise_gameplay_common::game::native_surface::GameSide<'_> {
+    pub(in crate::game) fn client_mob_side(
+        &self,
+    ) -> sunrise_gameplay_common::game::native_surface::GameSide<'_> {
         use sunrise_items::equipment::{BODY, SADDLE};
         let level = self.common.native_lifecycle.epoch().and_then(|epoch| {
             let key = self.common.dim.key();
@@ -200,7 +214,8 @@ impl crate::game::ClientGame<'_> {
         side: &'s dyn sunrise_sim::motion::SideLevel,
     ) -> MobWorld<'s> {
         let at = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map_or([0.0; 3], |p| [p.position.x, p.position.y, p.position.z]);
         self.mob_world_base_with(

@@ -9,7 +9,9 @@ use sunrise_protocol::{
 };
 use sunrise_sim::motion::PlayerMotion;
 
-fn with_client(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, LivingRef, i32)) {
+fn with_client(
+    test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, LivingRef, i32),
+) {
     with_client_game(|game| {
         let (client, _server) = Pipe::pair();
         game.connect_local(client, "BlendLifecycleTest").unwrap();
@@ -29,7 +31,12 @@ fn with_client(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<
     });
 }
 
-fn update(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, effect: i32, duration: i32, flags: i8) {
+fn update(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    effect: i32,
+    duration: i32,
+    flags: i8,
+) {
     game.handle_packet(C::UpdateMobEffect(play::UpdateMobEffect {
         id: 7,
         effect,
@@ -45,7 +52,11 @@ fn remove(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, effect: i32)
         .unwrap();
 }
 
-fn assert_blend(game: &sunrise_client_gameplay::game::ClientGame<'_>, living: LivingRef, expected: [f32; 6]) {
+fn assert_blend(
+    game: &sunrise_client_gameplay::game::ClientGame<'_>,
+    living: LivingRef,
+    expected: [f32; 6],
+) {
     // Vanilla Mth.lerp does not clamp partial ticks, even outside a frame.
     for (partial, expected) in [-1.0, 0.0, 0.25, 0.5, 1.0, 2.0].into_iter().zip(expected) {
         assert_eq!(

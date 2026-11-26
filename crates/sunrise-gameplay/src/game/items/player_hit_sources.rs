@@ -22,12 +22,7 @@ impl ServerGame<'_> {
     ) {
         self.hurt_player_from(amount, Some(from), kind, Some(cause), false);
     }
-    pub fn mob_hits_player(
-        &mut self,
-        amount: f32,
-        from: [f64; 3],
-        damage_type: &str,
-    ) -> bool {
+    pub fn mob_hits_player(&mut self, amount: f32, from: [f64; 3], damage_type: &str) -> bool {
         self.hurt_player_from(amount, Some(from), damage_type, None, false)
     }
     /// [`mob_hits_player`](Self::mob_hits_player) whose hit was a creative

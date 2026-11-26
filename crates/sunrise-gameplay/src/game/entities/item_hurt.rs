@@ -22,9 +22,8 @@ impl crate::game::ServerGame<'_> {
         let entity_id = |target| match target {
             Some(Target::Player) => self.own_entity_id(),
             Some(Target::Guest(conn)) => self.command_guest(conn).map_or(0, |g| g.entity_id),
-            Some(target) => {
-                sunrise_gameplay_common::game::commands_common::target_id(target).map_or(0, |id| id as i32)
-            }
+            Some(target) => sunrise_gameplay_common::game::commands_common::target_id(target)
+                .map_or(0, |id| id as i32),
             None => 0,
         };
         let causing_id = entity_id(causing);
@@ -106,7 +105,8 @@ impl crate::game::ServerGame<'_> {
             sunrise_sim::health::Hurting::Entity(id as i32, "minecraft:item", source),
             vanilla,
         ) || !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
             && matches!(causing, Some(Target::Mob(_)))

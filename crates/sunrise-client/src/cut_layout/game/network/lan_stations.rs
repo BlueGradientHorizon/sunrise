@@ -1,14 +1,11 @@
-
-
 #![cfg(test)]
-use sunrise_protocol::packets::play;
 use sunrise_gameplay_common::game::stations_common::Kind as StationKind;
 use sunrise_gameplay_common::game::stations_common::Station;
 use sunrise_items::items::ItemStack;
+use sunrise_protocol::packets::play;
 #[cfg(test)]
 pub(crate) mod anvil_tests {
     use super::*;
-    use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
     use mod_api::item::menu::AnvilCraftInputs;
     use mod_api::{
         AnvilCraftPostEvent, AnvilCraftPreEvent, AnvilUpdateEvent, Flow, Hooks, HostSide, ModEntry,
@@ -18,6 +15,7 @@ pub(crate) mod anvil_tests {
         Arc,
         atomic::{AtomicI32, AtomicUsize, Ordering},
     };
+    use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 
     struct Observe(Arc<AtomicUsize>, Arc<AtomicI32>);
 

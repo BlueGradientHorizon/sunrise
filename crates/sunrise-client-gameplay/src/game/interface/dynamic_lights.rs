@@ -1,9 +1,9 @@
 //! Sunrise Extras' dynamic lights (`sunrise_client::dynamic_light`): the light sources near the
 //! camera this frame. Nothing is gathered while the extra is off.
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::held_items::OFFHAND_SLOT;
 use glam::DVec3;
 use sunrise_client::dynamic_light::{self, BURNING, Luminance, Source};
+use sunrise_gameplay_common::game::held_items::OFFHAND_SLOT;
 
 /// The brighter hand (the second wins ties), or fire if it outshines both. Item names
 /// borrow the entity's stack; even sources outside the selected MAX need no allocation.
@@ -28,9 +28,9 @@ fn brighter<'a>(
 impl ClientGame<'_> {
     /// How brightly each item glows, built on first use.
     pub(in crate::game::client_side) fn luminance(&self) -> &Luminance {
-        self.client
-            .luminance
-            .get_or_init(|| Luminance::new(self.common.res.facts(), self.common.pack.assets.registry))
+        self.client.luminance.get_or_init(|| {
+            Luminance::new(self.common.res.facts(), self.common.pack.assets.registry)
+        })
     }
     /// The player's, mobs' and dropped items' sources in their original order, with borrowed
     /// item names (none for fire). Nothing, including luminance, is visited while disabled.
@@ -45,28 +45,35 @@ impl ClientGame<'_> {
             .dynamic_lights
             .then(|| self.luminance());
         lum.into_iter().flat_map(move |lum| {
-            let player = self.common.player.as_ref().filter(|p| !p.spectator).map(move |p| {
-                let feet = self
-                    .common.previous_position
-                    .lerp(p.position, self.common.clock.camera_fraction());
-                let (level, item) = brighter(
-                    lum,
-                    [
-                        self.common.stack_in(self.common.selected).map(|s| &*s.item),
-                        self.common.stack_in(OFFHAND_SLOT).map(|s| &*s.item),
-                    ],
-                    p.is_on_fire(),
-                );
-                (
-                    Source {
-                        at: DVec3::new(feet.x, feet.y + 1.2, feet.z),
-                        level,
-                    },
-                    item,
-                )
-            });
+            let player = self
+                .common
+                .player
+                .as_ref()
+                .filter(|p| !p.spectator)
+                .map(move |p| {
+                    let feet = self
+                        .common
+                        .previous_position
+                        .lerp(p.position, self.common.clock.camera_fraction());
+                    let (level, item) = brighter(
+                        lum,
+                        [
+                            self.common.stack_in(self.common.selected).map(|s| &*s.item),
+                            self.common.stack_in(OFFHAND_SLOT).map(|s| &*s.item),
+                        ],
+                        p.is_on_fire(),
+                    );
+                    (
+                        Source {
+                            at: DVec3::new(feet.x, feet.y + 1.2, feet.z),
+                            level,
+                        },
+                        item,
+                    )
+                });
             let mobs = self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .filter(|m| !m.removed)
                 .filter_map(move |m| {

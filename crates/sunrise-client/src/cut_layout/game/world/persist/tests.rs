@@ -1,4 +1,3 @@
-use sunrise_gameplay_common::game::GameGameExt1;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -6,24 +5,32 @@ use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
 use sunrise_game_data::scoreboard::Scoreboard;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_level::chunk::Chunk;
 use sunrise_mod_runtime::attachments::ATTACHMENTS_KEY;
 // Test module extracted without changing its logical path.
 use super::*;
 
+use sunrise_gameplay::game::persist::{
+    EntitySnapshot, ORB_LIVE, add_passengers, drop_unleashable_leash, join_saved_team, mark_fresh,
+    parent_vehicle_root, read_attachments, root_vehicle_tag, take_fresh, vehicle_tree,
+    with_raw_over, write_attachments,
+};
 use sunrise_gameplay_common::world_biomes;
-use sunrise_sim::save::ChunkExtras;
-use sunrise_sim::save::text;
 #[cfg(test)]
 use sunrise_sim::entity_nbt;
-use sunrise_gameplay::game::persist::{EntitySnapshot, ORB_LIVE, add_passengers, drop_unleashable_leash, join_saved_team, mark_fresh, parent_vehicle_root, read_attachments, root_vehicle_tag, take_fresh, vehicle_tree, with_raw_over, write_attachments};
+use sunrise_sim::save::ChunkExtras;
+use sunrise_sim::save::text;
 
 include!("position_load_tests.rs");
 
 mod transient_entities {
     use super::*;
-    use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use mod_api::EntityRef;
+    use {
+        sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    };
 
     fn with_server(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         mod_platform::testing::with_mods(Default::default(), || {
@@ -147,7 +154,8 @@ mod transient_entities {
             bind_local_player(game, 100, 25);
             let player = game.entity(100).unwrap();
             assert_eq!(player.set_persistent(game, false), Ok(false));
-            game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+            game.options.execution_role =
+                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
             assert_eq!(display.set_persistent(game, false), Ok(false));
             game.options.execution_role =
                 sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
@@ -326,9 +334,9 @@ fn comparator_and_hopper_live_state_survives_chunk_reload() {
 }
 
 pub(crate) fn run_comparator_and_hopper_live_state_survives_chunk_reload() {
-    use sunrise_gameplay_common::game::{Options, Progress};
-    use crate::settings::Settings;
     use crate::game::load_resources;
+    use crate::settings::Settings;
+    use sunrise_gameplay_common::game::{Options, Progress};
     use sunrise_items::items::ItemStack;
     use sunrise_level::containers::BlockEntity;
     use sunrise_sim::save;
@@ -360,7 +368,8 @@ pub(crate) fn run_comparator_and_hopper_live_state_survives_chunk_reload() {
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
     options.headless = true;
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
@@ -656,7 +665,9 @@ fn deferred_zombie_finalization_keeps_unknown_profession_through_save_and_cure()
             restored.position,
             0.0,
         );
-        sunrise_gameplay::game::server_side::zombie_villagers::convert_to_villager(&restored, &mut cured, false);
+        sunrise_gameplay::game::server_side::zombie_villagers::convert_to_villager(
+            &restored, &mut cured, false,
+        );
         assert_eq!(cured.extra.profession.id(), "example:engineer");
     });
 }
@@ -838,9 +849,9 @@ fn saved_attachments_read_over_a_constructed_map_but_not_a_live_one() {
 #[test]
 #[ignore = "daily"]
 fn an_older_save_loads_its_entities_attachments_back_onto_them() {
-    use sunrise_gameplay_common::game::{Options, Progress};
-    use crate::settings::Settings;
     use crate::game::load_resources;
+    use crate::settings::Settings;
+    use sunrise_gameplay_common::game::{Options, Progress};
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -858,7 +869,8 @@ fn an_older_save_loads_its_entities_attachments_back_onto_them() {
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
@@ -984,9 +996,9 @@ fn an_older_save_loads_its_entities_attachments_back_onto_them() {
 #[test]
 #[ignore = "daily"]
 fn a_lingering_cloud_leaves_with_its_chunk() {
-    use sunrise_gameplay_common::game::{Options, Progress};
-    use crate::settings::Settings;
     use crate::game::load_resources;
+    use crate::settings::Settings;
+    use sunrise_gameplay_common::game::{Options, Progress};
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -1004,7 +1016,8 @@ fn a_lingering_cloud_leaves_with_its_chunk() {
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
@@ -1117,7 +1130,10 @@ fn a_fresh_add_is_told_apart_from_a_load_and_unmarked() {
 #[test]
 #[ignore = "daily"]
 fn anger_at_a_mob_not_saved_yet_names_it() {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -1135,7 +1151,8 @@ fn anger_at_a_mob_not_saved_yet_names_it() {
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
@@ -1254,7 +1271,9 @@ fn an_orb_saves_its_live_portal_cooldown() {
         assert_eq!(game.orbs[0].fire_ticks, 39, "the reload keeps the fire");
         assert_eq!(game.orbs[0].air, 299, "and the air");
         let read = game
-            .command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Orb(game.orbs[0].id))
+            .command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Orb(
+                game.orbs[0].id,
+            ))
             .unwrap();
         assert_eq!(read.get("PortalCooldown"), Some(&Tag::Int(19)));
         assert_eq!(read.get("Fire"), Some(&Tag::Short(39)));
@@ -1285,14 +1304,15 @@ fn an_orb_saves_its_live_portal_cooldown() {
             "an unrelated edit preserves the live fire and air"
         );
         let read = game
-            .command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Orb(game.orbs[0].id))
+            .command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Orb(
+                game.orbs[0].id,
+            ))
             .unwrap();
         assert_eq!(read.get("Invulnerable"), Some(&Tag::Byte(1)));
         assert_eq!(read.get("Fire"), Some(&Tag::Short(40)));
         assert_eq!(read.get("Air"), Some(&Tag::Short(275)));
     });
 }
-
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 

@@ -1,14 +1,12 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
-use sunrise_gameplay_common::game::Dim;
     use super::super::native_guest_turn_tests::{place_host, with_guests};
-    use sunrise_gameplay::game::server_side::native_level_players::ControlFlow;
     use mod_api::{ChunkRef, LevelReadError, LevelRef, PlayerRef, WorldEpoch};
+    use sunrise_gameplay::game::server_side::native_level_players::ControlFlow;
+    use sunrise_gameplay_common::game::Dim;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
 
     /// Open the Nether and go back, so it is a parked level of the server.
     fn park_the_nether(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
@@ -42,7 +40,9 @@ use sunrise_gameplay_common::game::Dim;
     fn level_players_name_host_and_guests_once_during_turns() {
         with_guests(|game| {
             park_the_nether(game);
-            let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(game, false);
+            let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(
+                game, false,
+            );
             place_host(game);
             let level = game.level(game.dim.id()).unwrap();
             assert_eq!(
@@ -103,7 +103,9 @@ use sunrise_gameplay_common::game::Dim;
     #[ignore = "daily"]
     fn level_players_leave_out_fake_players() {
         with_guests(|game| {
-            let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(game, false);
+            let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(
+                game, false,
+            );
             place_host(game);
             game.server.next_entity = 100;
             let level = game.level(game.dim.id()).unwrap();
@@ -136,7 +138,9 @@ use sunrise_gameplay_common::game::Dim;
     #[ignore = "daily"]
     fn entity_trackers_are_the_guests_that_hold_the_entity() {
         with_guests(|game| {
-            let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(game, false);
+            let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(
+                game, false,
+            );
             place_host(game);
             game.server.next_entity = 100;
             let level = game.level(game.dim.id()).unwrap();
@@ -211,7 +215,9 @@ use sunrise_gameplay_common::game::Dim;
     fn chunk_watchers_follow_sent_chunks_inside_the_view() {
         with_guests(|game| {
             park_the_nether(game);
-            let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(game, false);
+            let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(
+                game, false,
+            );
             let level = game.level(game.dim.id()).unwrap();
             let chunk = ChunkRef::new(level, [0, 0]);
             assert_eq!(

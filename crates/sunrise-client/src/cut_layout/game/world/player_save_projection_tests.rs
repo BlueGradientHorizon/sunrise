@@ -1,9 +1,9 @@
-use sunrise_core::geometry::Vec3;
-use sunrise_gameplay_common::game::Dim;
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
+use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;
+use sunrise_gameplay_common::game::Dim;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_sim::{
@@ -190,11 +190,14 @@ fn actual_player_save_tracks_mutable_body_and_keeps_guest_context() {
         guest.motion = Some(Box::new(body));
         game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         let guest_tag = game
-            .for_player(sunrise_gameplay_common::game::commands_common::Target::Guest(2), |g| {
-                assert_eq!(g.player.as_ref().unwrap().impulse.reset_grace_time, 7);
-                assert!(!g.player.as_ref().unwrap().spawn_extra_particles_on_fall);
-                g.player_nbt().unwrap()
-            })
+            .for_player(
+                sunrise_gameplay_common::game::commands_common::Target::Guest(2),
+                |g| {
+                    assert_eq!(g.player.as_ref().unwrap().impulse.reset_grace_time, 7);
+                    assert!(!g.player.as_ref().unwrap().spawn_extra_particles_on_fall);
+                    g.player_nbt().unwrap()
+                },
+            )
             .expect("actual as_guest context");
         assert_eq!(
             guest_tag.get("UUID"),

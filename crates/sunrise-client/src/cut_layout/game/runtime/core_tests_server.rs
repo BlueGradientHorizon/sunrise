@@ -1,10 +1,10 @@
-use std::sync::Arc;
-use sunrise_items::items::ItemStack;
 use super::*;
 use mod_api::ServerHost;
-use sunrise_gameplay_common::game::Hit;
-use sunrise_sim::first_person_sim::Hand;
+use std::sync::Arc;
 use sunrise_gameplay_common::game::GuestUse;
+use sunrise_gameplay_common::game::Hit;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::first_person_sim::Hand;
 
 #[test]
 #[ignore = "daily"]
@@ -169,10 +169,12 @@ fn reload_resolves_parts_against_reloaded_tags() {
             Some(true)
         );
         let stone = game.block_state_default(stone_key).unwrap();
-        assert!(sunrise_gameplay_common::game::api_values::block_state::block_listens(
-            mod_api::HookId::AnalogOutput,
-            stone
-        ));
+        assert!(
+            sunrise_gameplay_common::game::api_values::block_state::block_listens(
+                mod_api::HookId::AnalogOutput,
+                stone
+            )
+        );
         game.server.session_lock.0 = None;
         let _ = std::fs::remove_dir_all(dir);
     });

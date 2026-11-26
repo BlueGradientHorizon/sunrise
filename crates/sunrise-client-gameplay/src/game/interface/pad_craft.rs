@@ -324,7 +324,12 @@ impl ClientGame<'_> {
         button: gamepad::Button,
     ) -> bool {
         button == gamepad::Button::South
-            && self.client.pad.0.edges.is_held(gamepad::Button::LeftTrigger)
+            && self
+                .client
+                .pad
+                .0
+                .edges
+                .is_held(gamepad::Button::LeftTrigger)
             && self.client.screen == super::Screen::Inventory
             && self.client.title.0.is_none()
             && !self.prompt_open()
@@ -401,7 +406,12 @@ impl ClientGame<'_> {
             craft.stop();
         }
         if !self.client.pad.0.edges.is_held(gamepad::Button::South)
-            || !self.client.pad.0.edges.is_held(gamepad::Button::LeftTrigger)
+            || !self
+                .client
+                .pad
+                .0
+                .edges
+                .is_held(gamepad::Button::LeftTrigger)
         {
             craft.let_go();
         }

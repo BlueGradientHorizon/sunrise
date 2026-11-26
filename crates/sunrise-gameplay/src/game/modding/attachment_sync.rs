@@ -21,13 +21,18 @@ impl ServerGame<'_> {
         let changes = match holder {
             // Read in place: a chunk lent to a mod is copied and saved.
             Holder::Chunk([x, z]) => self
-                .common.world
+                .common
+                .world
                 .chunks
                 .get(&(x, z))
                 .and_then(|chunk| chunk.saved.as_ref())
                 .map(|extras| extras.attachments.synced()),
             // Read in place: lending the map would give the entity one.
-            Holder::Entity(id) => self.common.entity_attachments.get(&id).map(|map| map.synced()),
+            Holder::Entity(id) => self
+                .common
+                .entity_attachments
+                .get(&id)
+                .map(|map| map.synced()),
             _ => self
                 .attachment_map_quiet(holder, mod_api::AttachmentAccess::Existing)
                 .ok()
@@ -37,7 +42,8 @@ impl ServerGame<'_> {
         let mut holders = vec![(holder, changes)];
         if let Holder::Chunk([x, z]) = holder {
             holders.extend(
-                self.common.world
+                self.common
+                    .world
                     .block_entities
                     .chunk_attachments(x, z)
                     .into_iter()

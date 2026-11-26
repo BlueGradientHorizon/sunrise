@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use crate::settings::Settings;
 
@@ -10,21 +8,21 @@ use crate::game::load_resources;
 #[cfg(test)]
 pub(crate) mod loot_mine_component_tests {
 
-use sunrise_gameplay_common::game::server_side::commands::terrain_cmds::loot_mine_component_tests::decorations;
+    use sunrise_gameplay_common::game::server_side::commands::terrain_cmds::loot_mine_component_tests::decorations;
 
-use sunrise_gameplay::game::server_side::commands::terrain_cmds::loot_mine_component_tests::slot;
+    use sunrise_gameplay::game::server_side::commands::terrain_cmds::loot_mine_component_tests::slot;
 
-use super::*;
+    use super::*;
 
-use crate::game::{Options, Progress, Settings, load_resources};
+    use crate::game::{Options, Progress, Settings, load_resources};
 
-use std::sync::Arc;
+    use std::sync::Arc;
 
-use sunrise_core::nbt::{Compound, Tag};
+    use sunrise_core::nbt::{Compound, Tag};
 
-use sunrise_level::{chunk::Chunk, containers::BlockEntity};
+    use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn loot_mine_copies_actual_empty_and_right_pot_components_into_the_chest() {
         let root = std::path::PathBuf::from(
@@ -46,7 +44,8 @@ use sunrise_level::{chunk::Chunk, containers::BlockEntity};
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -207,11 +206,14 @@ use sunrise_level::{chunk::Chunk, containers::BlockEntity};
     }
 }
 
-
 #[cfg(test)]
 pub(crate) mod loot_position_tests {
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::{Settings, load_resources}};
+    use {
+        crate::game::{Settings, load_resources},
+        sunrise_gameplay_common::game::Options,
+        sunrise_gameplay_common::game::Progress,
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -233,7 +235,8 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -256,7 +259,9 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
         assert!(game.run_command("forceload add 0 0"));
         assert!(game.run_command("setblock 4 200 4 chest"));
         let slot = |game: &mut sunrise_gameplay::game::ServerGame<'_>, i| {
-            game.slot_get(&sunrise_gameplay::game::server_side::commands::items::Slot::Block([4, 200, 4], i))
+            game.slot_get(
+                &sunrise_gameplay::game::server_side::commands::items::Slot::Block([4, 200, 4], i),
+            )
         };
         let reset = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
             assert!(game.run_command("item replace block 4 200 4 container.0 with diamond 3"));
@@ -317,9 +322,9 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
 #[cfg(test)]
 pub(crate) mod loot_kill_target_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
     use std::sync::Arc;
     use sunrise_level::{chunk::Chunk, containers::BlockEntity};
+    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
     #[test]
     #[ignore = "daily"]
     fn loot_kill_uses_actual_sheep_state_without_killing_the_target() {
@@ -345,7 +350,8 @@ pub(crate) mod loot_kill_target_tests {
         options.game_dir = Some(
             std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap()).join("h036-game"),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,

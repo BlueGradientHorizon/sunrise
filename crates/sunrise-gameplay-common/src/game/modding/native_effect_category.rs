@@ -1,10 +1,7 @@
 //! Registered effect metadata reads.
 
 impl crate::game::CommonGame<'_> {
-    pub fn effect_category(
-        &self,
-        key: mod_api::EffectKey,
-    ) -> Option<mod_api::EffectCategory> {
+    pub fn effect_category(&self, key: mod_api::EffectKey) -> Option<mod_api::EffectCategory> {
         let index = mod_api::__private::effect_index(key)?;
         let definition = sunrise_game_data::potions::effect_by_index(index)?;
         Some(match definition.category {

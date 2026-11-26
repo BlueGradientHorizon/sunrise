@@ -1,6 +1,6 @@
 //! `server_max_players` / `server_set_max_players`: the live login limit and each refusal.
-use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use mod_api::PlayerLimitRefusal;
+use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 
 /// A limit is read, set live and read back; `i32::MAX` is the highest taken and zero is taken.
 #[test]

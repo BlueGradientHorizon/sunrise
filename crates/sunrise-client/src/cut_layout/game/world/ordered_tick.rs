@@ -1,21 +1,16 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-/// Hears every entity tick, naming `named` to `entity_tick_each`.
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    /// Hears every entity tick, naming `named` to `entity_tick_each`.
     struct Displays {
         named: &'static [&'static str],
         heard: Heard,
     }
 
-
-
-
-/// A listener's calls, in order: the phase and the entities told.
+    /// A listener's calls, in order: the phase and the entities told.
     type Heard = std::sync::Arc<std::sync::Mutex<Vec<(&'static str, Vec<u32>)>>>;
-#[mod_api::__subscriptions]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for Displays {
         fn entity_tick_listened(
             &self,
@@ -47,16 +42,15 @@ use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
         }
     }
 
+    use std::sync::Arc;
 
-use std::sync::Arc;
+    use sunrise_core::position::ChunkPos;
 
-use sunrise_core::position::ChunkPos;
+    use sunrise_level::chunk::Chunk;
 
-use sunrise_level::chunk::Chunk;
+    use sunrise_sim::join_seq::{JoinList, JoinSeq, Joined as _};
 
-use sunrise_sim::join_seq::{JoinList, JoinSeq, Joined as _};
-
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn dispatch_ticks_both_owners_of_each_located_kind() {
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -92,7 +86,7 @@ use sunrise_sim::join_seq::{JoinList, JoinSeq, Joined as _};
             assert_eq!(game.orbs.iter().map(|o| o.age).collect::<Vec<_>>(), [1, 1]);
         });
     }
-/// Two text displays, which the server keeps without simulating them, through a level's
+    /// Two text displays, which the server keeps without simulating them, through a level's
     /// entity phase: their ids and what the listener heard.
     fn display_ticks(named: &'static [&'static str]) -> (Vec<u32>, Vec<(&'static str, Vec<u32>)>) {
         let heard = Heard::default();
@@ -131,7 +125,7 @@ use sunrise_sim::join_seq::{JoinList, JoinSeq, Joined as _};
         let heard = std::mem::take(&mut *heard.lock().unwrap());
         (ids, heard)
     }
-/// Displays of a type a mod named are told one by one at their place in the join order, each
+    /// Displays of a type a mod named are told one by one at their place in the join order, each
     /// Pre right before its Post.
     #[test]
     #[ignore = "daily"]
@@ -148,7 +142,7 @@ use sunrise_sim::join_seq::{JoinList, JoinSeq, Joined as _};
             ]
         );
     }
-/// With no display type named, the displays are told once as a family; the walk itself
+    /// With no display type named, the displays are told once as a family; the walk itself
     /// offers none of them.
     #[test]
     #[ignore = "daily"]

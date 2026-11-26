@@ -6,8 +6,7 @@ use sunrise_level::potent_sulfur_level::{SulfurLevel, find_noxious_gas_source_bl
 use sunrise_world::registry::BlockStateId;
 
 /// `SoundEvents.GEYSER_ERUPTION_ACTIVE`.
-pub const GEYSER_ERUPTION_ACTIVE: &str =
-    "minecraft:block.potent_sulfur.geyser_eruption_active";
+pub const GEYSER_ERUPTION_ACTIVE: &str = "minecraft:block.potent_sulfur.geyser_eruption_active";
 /// `SoundEvents.GEYSER_CONTINUOUS_ACTIVE`.
 pub const GEYSER_CONTINUOUS_ACTIVE: &str =
     "minecraft:block.potent_sulfur.geyser_continuous_eruption_active";

@@ -1,9 +1,9 @@
 //! Shared API value conversion hooks callable from both server and client roles.
-use crate::game::native_hooks::anvil_update::GameHooks as _;
 use super::api_values::{TryIntoApi, TryIntoEngine};
+use crate::game::native_hooks::anvil_update::GameHooks as _;
 
 pub trait ApiValuesCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-     fn api_anvil_update(
+    fn api_anvil_update(
         &mut self,
         player: u128,
         entity: i32,
@@ -62,7 +62,6 @@ pub trait ApiValuesCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> ApiValuesCommonGameExt1<'__sg> for G {}
-
 
 /// The saved block entity's payload, with its world identity and position removed.
 pub(in crate::game) fn block_entity_payload(

@@ -40,7 +40,9 @@ impl crate::game::ClientGame<'_> {
                 "skipMultiplayerWarning",
                 sunrise_client::options_file::V::Bool(title.skip_multiplayer_warning),
             );
-            self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+            self.client
+                .settings
+                .save(&sunrise_gameplay_common::game::options_path());
         }
     }
     /// `options-get` and `options-set`; None for other commands.
@@ -243,10 +245,11 @@ impl crate::game::ClientGame<'_> {
             self.client.cursor,
         );
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
-        self.client
-            .chat_ui
-            .options
-            .draw_overlays(batch, &self.client.gui.atlas, self.client.cursor);
+        self.client.chat_ui.options.draw_overlays(
+            batch,
+            &self.client.gui.atlas,
+            self.client.cursor,
+        );
         self.show_calibration((batch.width, batch.height));
     }
     fn controller_settings_context(&self) -> sunrise_client::controller_ui::Context {
@@ -460,16 +463,15 @@ impl crate::game::ClientGame<'_> {
             .bind_mouse(&mut self.client.settings, button);
         self.handle_option_events(events)
     }
-    pub fn handle_option_events(
-        &mut self,
-        events: Vec<Event>,
-    ) -> Result<()> {
+    pub fn handle_option_events(&mut self, events: Vec<Event>) -> Result<()> {
         for e in events {
             match e {
                 Event::ButtonClick => self.client.audio.0.play_button_click(),
                 Event::DebugEntriesChanged => self.client.debug_entries.0.invalidate(),
                 Event::Changed => {
-                    self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+                    self.client
+                        .settings
+                        .save(&sunrise_gameplay_common::game::options_path());
                     self.client.settings.keys.sync_action_bindings();
                     self.apply_settings();
                     self.switch_mods();
@@ -502,18 +504,24 @@ impl crate::game::ClientGame<'_> {
                 Event::PlayMusicTrack(event, track) => self.play_music_track(&event, &track),
                 Event::Close if self.client.chat_ui.options.resource_error.is_some() => {}
                 Event::Close => {
-                    self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+                    self.client
+                        .settings
+                        .save(&sunrise_gameplay_common::game::options_path());
                     self.leave_options();
                 }
                 Event::Language(code) => {
                     self.load_language(&code);
                 }
                 Event::Packs(_) => {
-                    self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+                    self.client
+                        .settings
+                        .save(&sunrise_gameplay_common::game::options_path());
                     self.reload_packs();
                 }
                 Event::ReloadTextures => {
-                    self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+                    self.client
+                        .settings
+                        .save(&sunrise_gameplay_common::game::options_path());
                     self.apply_settings();
                     self.reload_packs();
                 }
@@ -564,7 +572,8 @@ impl crate::game::ClientGame<'_> {
                     super::packs::open_folder(&dir);
                 }
                 Event::OpenModFolder => {
-                    let dir = sunrise_gameplay_common::game::game_dir().join(sunrise_mod_package::mod_list::DIR);
+                    let dir = sunrise_gameplay_common::game::game_dir()
+                        .join(sunrise_mod_package::mod_list::DIR);
                     let _ = std::fs::create_dir_all(&dir);
                     super::packs::open_folder(&dir);
                 }
@@ -576,15 +585,19 @@ impl crate::game::ClientGame<'_> {
                 }
                 Event::BrowseMods => {
                     let ui = &mut self.client.chat_ui.options.mod_browser;
-                    self.client.mod_jobs.0.browse(ui, sunrise_gameplay_common::game::game_dir());
+                    self.client
+                        .mod_jobs
+                        .0
+                        .browse(ui, sunrise_gameplay_common::game::game_dir());
                 }
                 Event::InstallMod(id) => {
                     if self.common.player.is_none() {
                         let ui = &mut self.client.chat_ui.options.mod_browser;
-                        self.client
-                            .mod_jobs
-                            .0
-                            .install(ui, sunrise_gameplay_common::game::game_dir(), id);
+                        self.client.mod_jobs.0.install(
+                            ui,
+                            sunrise_gameplay_common::game::game_dir(),
+                            id,
+                        );
                     }
                 }
                 // The website, through ConfirmLinkScreen as other links.
@@ -596,13 +609,18 @@ impl crate::game::ClientGame<'_> {
                     );
                     if key != self.client.settings.sunrise.shader_pack {
                         self.client.settings.sunrise.shader_pack = key;
-                        self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+                        self.client
+                            .settings
+                            .save(&sunrise_gameplay_common::game::options_path());
                     }
                     self.client.settings.shader_packs =
                         sunrise_client::shader_pack_list::scan(&Self::shader_packs_dir());
                 }
                 // Saved; the next frame's `shader_pack_inputs` loads the pick.
-                Event::ShaderPack => self.client.settings.save(&sunrise_gameplay_common::game::options_path()),
+                Event::ShaderPack => self
+                    .client
+                    .settings
+                    .save(&sunrise_gameplay_common::game::options_path()),
                 Event::OpenShaderOptions => self.open_shader_options(),
                 Event::ShaderOptions => self.save_shader_options(),
                 Event::NativePackOptions(i) => {
@@ -732,7 +750,8 @@ impl crate::game::ClientGame<'_> {
             let _ = r.set_gpu_culling(gpu_culling);
             r.update_output(
                 &s.sunrise,
-                &sunrise_gameplay_common::game::options_path().with_file_name(sunrise_client::graphics::HDR_MARKER),
+                &sunrise_gameplay_common::game::options_path()
+                    .with_file_name(sunrise_client::graphics::HDR_MARKER),
             );
         }
         let mut volumes = s.volumes.map(|gain| gain as f32);
@@ -806,19 +825,25 @@ impl crate::game::ClientGame<'_> {
         if self.client.chat_ui.options.calibration_window.is_some() {
             return;
         }
-        let Some(w) = &self.client.window.0 else { return };
+        let Some(w) = &self.client.window.0 else {
+            return;
+        };
         if let Some(now) = self.client.fullscreen.observe(w.fullscreen().is_some())
             && self.client.settings.fullscreen != now
         {
             self.client.settings.fullscreen = now;
-            self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+            self.client
+                .settings
+                .save(&sunrise_gameplay_common::game::options_path());
             self.notify_window_resize();
         }
     }
     /// F11 (key.fullscreen): Window.toggleFullScreen, remembered in options.txt.
     pub(in crate::game::client_side) fn toggle_fullscreen(&mut self) {
         self.client.settings.fullscreen = !self.client.settings.fullscreen;
-        self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+        self.client
+            .settings
+            .save(&sunrise_gameplay_common::game::options_path());
         self.apply_ui_settings();
     }
     /// The Extras page's shader pack key: turns the picked pack off, or asks for the last
@@ -847,7 +872,9 @@ impl crate::game::ClientGame<'_> {
             }
             TogglePlan::HintClearLast => {
                 self.client.settings.extras.last_shader_pack.clear();
-                self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+                self.client
+                    .settings
+                    .save(&sunrise_gameplay_common::game::options_path());
                 self.client_system_message(Text::tr("sunrise.shaders.noPack", &[]));
             }
             TogglePlan::HintModOff(name) => {
@@ -855,12 +882,16 @@ impl crate::game::ClientGame<'_> {
             }
             TogglePlan::Off(name) => {
                 self.client.settings.set_shader_pick("");
-                self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+                self.client
+                    .settings
+                    .save(&sunrise_gameplay_common::game::options_path());
                 self.client_system_message(Text::tr("sunrise.shaders.suspended", &[&name]));
             }
             TogglePlan::On(name) => {
                 self.client.settings.set_shader_pick(&name);
-                self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+                self.client
+                    .settings
+                    .save(&sunrise_gameplay_common::game::options_path());
                 self.client_system_message(Text::tr("sunrise.shaders.resumed", &[&name]));
             }
         }
@@ -895,7 +926,8 @@ impl crate::game::ClientGame<'_> {
                 .duration_since(self.client.started)
                 .as_millis() as i64,
             has_level: self.client.title.0.is_none(),
-            has_screen: self.client.title.0.is_some() || self.client.screen != super::Screen::Playing,
+            has_screen: self.client.title.0.is_some()
+                || self.client.screen != super::Screen::Playing,
             has_overlay: false,
         };
         let limit = framerate_limit(self.client.settings.max_fps as i32, context);

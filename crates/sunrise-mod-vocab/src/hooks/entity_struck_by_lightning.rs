@@ -9,7 +9,8 @@ pub trait Hooks {
     /// (pig, villager, mooshroom, creeper, copper golem). It still counts
     /// as struck for Channeling's advancement. Not asked for a visual-only
     /// bolt, which hits nothing. Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::entity_struck_by_lightning::ServerGame<'_>::native_entity_struck_by_lightning", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::entity_struck_by_lightning::ServerGame<'_>::native_entity_struck_by_lightning",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

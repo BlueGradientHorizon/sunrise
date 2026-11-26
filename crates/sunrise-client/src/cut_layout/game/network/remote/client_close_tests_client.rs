@@ -1,9 +1,17 @@
-use {sunrise_protocol::packets::play::Clientbound as C, sunrise_items::items::ItemStack, sunrise_protocol::packets::play::Serverbound as S, sunrise_gameplay_common::game::Screen, sunrise_core::nbt::Tag, sunrise_protocol::packets::play};
 use crate::game::remote::tests::client_close_tests::chest;
 use crate::game::remote::tests::client_close_tests::close;
 use crate::game::remote::tests::client_close_tests::deliver;
 use crate::game::remote::tests::client_close_tests::isolated;
-use {crate::game::server_side::native_entity_refs::tests::with_client_game, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::sent};
+use {
+    crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in,
+    crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::sent,
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+};
+use {
+    sunrise_core::nbt::Tag, sunrise_gameplay_common::game::Screen, sunrise_items::items::ItemStack,
+    sunrise_protocol::packets::play, sunrise_protocol::packets::play::Clientbound as C,
+    sunrise_protocol::packets::play::Serverbound as S,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -423,7 +431,9 @@ fn server_close_restores_inventory_under_chat_without_echo() {
                         game.client.chat_ui.chat_screen.as_ref().unwrap().value(),
                         "draft from a container"
                     );
-                    game.close_chat(sunrise_client_gameplay::game::client_side::chat::ChatExit::Intentional);
+                    game.close_chat(
+                        sunrise_client_gameplay::game::client_side::chat::ChatExit::Intentional,
+                    );
                     assert!(
                         !sent(&mut reader)
                             .iter()

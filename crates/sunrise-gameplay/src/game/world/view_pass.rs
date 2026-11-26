@@ -72,7 +72,11 @@ impl crate::game::ServerGame<'_> {
         let states = self.view_pass_states();
         let spawn = self.world_spawn_position();
         let clock_rate = self.network_clock_rate();
-        let sea_level = self.common.end.locator().map_or(63, |terrain| terrain.sea_level());
+        let sea_level = self
+            .common
+            .end
+            .locator()
+            .map_or(63, |terrain| terrain.sea_level());
         let Some(host) = self.server.lan.as_mut() else {
             return;
         };
@@ -83,7 +87,8 @@ impl crate::game::ServerGame<'_> {
             next_entity: &mut self.server.next_entity,
             spawn,
             spawn_angle: self.common.level.world_spawn_angle,
-            spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&self.common.level).id(),
+            spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&self.common.level)
+                .id(),
             difficulty: i32::from(self.common.ui.difficulty),
             difficulty_locked: self.common.level.difficulty_locked,
             clock_rate,
@@ -101,7 +106,12 @@ impl crate::game::ServerGame<'_> {
     /// level, so no player rides one.
     fn view_pass_states(&mut self) -> sunrise_sim::lan::entity::States {
         let mut states = sunrise_sim::lan::entity::States::default();
-        if !self.server.lan.as_ref().is_some_and(|h| h.hub.viewed_here()) {
+        if !self
+            .server
+            .lan
+            .as_ref()
+            .is_some_and(|h| h.hub.viewed_here())
+        {
             return states;
         }
         self.lan_assign_ids();
@@ -123,7 +133,7 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-use sunrise_gameplay_common::game::server_side::view_pass::tests::sent;
+    use sunrise_gameplay_common::game::server_side::view_pass::tests::sent;
 
     use super::*;
     use std::time::{Duration, Instant};
@@ -132,8 +142,6 @@ use sunrise_gameplay_common::game::server_side::view_pass::tests::sent;
         packets::play::Clientbound as C,
         viewed_levels::{CHANNEL, Level::Index, Message, REVISION_3, ScopedPacket},
     };
-
-    
 
     /// Opens the world to the network with one player in the Overworld whose client, of revision
     /// 3, views 2 levels; its packets.
@@ -211,20 +219,6 @@ use sunrise_gameplay_common::game::server_side::view_pass::tests::sent;
         receive
     }
 
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
     /// Summons `entity` in the Nether, at chunk (40, 40) above its bedrock roof, and gives its id.
     pub fn summon_in_the_nether(game: &mut crate::game::ServerGame<'_>, entity: &str) -> i32 {
         game.enter_level(Dim::Nether).unwrap();
@@ -233,18 +227,6 @@ use sunrise_gameplay_common::game::server_side::view_pass::tests::sent;
         let summoned = game.mobs.iter().find(|m| m.kind.id == entity).unwrap();
         summoned.id as i32
     }
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
 
     /// The viewer, a server player.
     pub fn viewer<'h>(game: &'h crate::game::ServerGame<'_>) -> &'h sunrise_sim::lan::guest::Guest {
@@ -267,12 +249,6 @@ use sunrise_gameplay_common::game::server_side::view_pass::tests::sent;
         game.run_level_teleports();
     }
 
-    
-
-    
-
-    
-
     /// Runs `command` in the Overworld, where the player is, then a tick: what the viewer's Nether
     /// was told of its clocks meanwhile, each update's clocks as their totals and rates.
     pub fn clocks_after(
@@ -290,19 +266,8 @@ use sunrise_gameplay_common::game::server_side::view_pass::tests::sent;
             })
             .collect()
     }
-
-    
-
-    
-
-    
 }
-
-
-
-
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::block_entity_on_load::BlockEntityOnLoadGameExt1 as _;
-

@@ -321,11 +321,7 @@ pub(in crate::game::server_side) fn convert_to_zombie_villager(from: &Mob, to: &
 }
 /// A cured zombie villager becomes a villager again, queasy for 10 seconds
 /// when `nausea` (the `canBeAffected` ask on the fresh villager) allows it.
-pub fn convert_to_villager(
-    from: &Mob,
-    to: &mut Mob,
-    nausea: bool,
-) -> Vec<ItemStack> {
+pub fn convert_to_villager(from: &Mob, to: &mut Mob, nausea: bool) -> Vec<ItemStack> {
     carry_over(from, to);
     let mut drops_out = Vec::new();
     // `EquipmentSlot.VALUES` order: main hand, off hand, feet, legs, chest, head.

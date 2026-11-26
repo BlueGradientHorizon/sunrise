@@ -127,12 +127,14 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn server_target_eye_height(&self, t: Target) -> f64 {
         match t {
             Target::Player => self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .map_or(1.62, |p| f64::from(p.dimensions.eye_height)),
             Target::Guest(conn) => self.command_guest(conn).map_or(1.62, |g| g.eye_height()),
             Target::Mob(id) => self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == id)
                 .map_or(0.0, |m| m.eye_y() - m.position.y),
@@ -365,7 +367,8 @@ impl crate::game::ServerGame<'_> {
                 Self::check_summon_bounds(s.pos)?;
                 if self.difficulty_id() == 0
                     && self
-                        .common.res
+                        .common
+                        .res
                         .mob_types()
                         .get(&kind)
                         .is_some_and(|t| !t.allowed_in_peaceful())
@@ -400,7 +403,8 @@ impl crate::game::ServerGame<'_> {
             let facts = facts.get(state);
             let blocks = facts.legacy_solid || facts.fluid != sunrise_items::blocks::Fluid::None;
             let leaves = self
-                .common.pack
+                .common
+                .pack
                 .assets
                 .registry
                 .state(state)
@@ -563,8 +567,12 @@ impl crate::game::ServerGame<'_> {
                         let Some(de) = de else {
                             return Ok((false, 0));
                         };
-                        let st =
-                            self.encode_live_block_entity((x, y, z), se, &name, self.common.res.items());
+                        let st = self.encode_live_block_entity(
+                            (x, y, z),
+                            se,
+                            &name,
+                            self.common.res.items(),
+                        );
                         let dt = self.encode_live_block_entity(
                             (dx, dy, dz),
                             de,
@@ -653,18 +661,10 @@ pub mod passenger_relation_tests {
     pub fn actor(i: usize) -> String {
         format!("00000096-0000-0002-0000-{i:012x}")
     }
-    pub fn value(
-        game: &crate::game::ServerGame<'_>,
-        i: usize,
-        objective: &str,
-    ) -> i32 {
+    pub fn value(game: &crate::game::ServerGame<'_>, i: usize, objective: &str) -> i32 {
         game.score.board.score(&actor(i), objective).unwrap().value
     }
-    pub fn vehicle(
-        game: &mut crate::game::ServerGame<'_>,
-        child: usize,
-        parent: usize,
-    ) {
+    pub fn vehicle(game: &mut crate::game::ServerGame<'_>, child: usize, parent: usize) {
         assert!(game.run_command("scoreboard players set #r h150u 91"));
         assert!(game.run_command("scoreboard players set #s h150u 17"));
         assert!(game.run_command(&format!(

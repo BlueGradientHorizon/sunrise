@@ -1,12 +1,13 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod enchantment_snapshot_tests {
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay_common::game::tables::GameItems;
-use sunrise_gameplay_common::game::tables::WorldTablesExt;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_client_render::settings::Settings, crate::game::resource_load::load_resources};
+    use sunrise_gameplay_common::game::tables::GameItems;
+    use sunrise_gameplay_common::game::tables::WorldTablesExt;
+    use {
+        crate::game::resource_load::load_resources, sunrise_client_render::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -28,7 +29,8 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -167,7 +169,10 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
 #[cfg(test)]
 pub(crate) mod damage_type_registry_tests {
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_client_render::settings::Settings, crate::game::resource_load::load_resources};
+    use {
+        crate::game::resource_load::load_resources, sunrise_client_render::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     /// A world pack's damage type is a `/damage` type once the world opens,
     /// beside vanilla's, and the registry keeps vanilla's tags.
@@ -191,7 +196,8 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -257,6 +263,5 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
 #[path = "tests/end_clock_tests_server.rs"]
 pub(crate) mod end_clock_tests;
 use sunrise_gameplay_common::game::tables::GameItems as _;
-
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

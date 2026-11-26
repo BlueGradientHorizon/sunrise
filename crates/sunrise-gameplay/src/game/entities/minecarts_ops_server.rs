@@ -1,9 +1,11 @@
 //! Server-side minecart operations split from common `minecarts.rs`, `minecarts/hit.rs`, and `minecarts/save_lending.rs`.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::minecarts::{CART_KEY_Y, CartKind, Minecart, TNT_PRIME_EVENT, cart_is_destroyed};
 use crate::game::minecarts_server::CartHit;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_game_data::sound_source::BLOCKS;
+use sunrise_gameplay_common::game::minecarts::{
+    CART_KEY_Y, CartKind, Minecart, TNT_PRIME_EVENT, cart_is_destroyed,
+};
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
 
@@ -43,7 +45,8 @@ impl ServerGame<'_> {
             None,
         );
         match self
-            .common.world
+            .common
+            .world
             .block_entities
             .get_mut(&(i32::MAX - 15, CART_KEY_Y, id as i32))
         {
@@ -88,7 +91,8 @@ impl ServerGame<'_> {
     /// receives 70 only sets the fuse (`handleEntityEvent`).
     pub(in crate::game) fn prime_cart(&mut self, c: &mut Minecart) {
         if !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
         {
@@ -106,14 +110,7 @@ impl ServerGame<'_> {
     /// `VehicleEntity.hurtServer`: shake, add the damage, break past 40 (at
     /// once for creative players); TNT minecarts prime instead when moving
     /// or hurt by fire or an explosion (`damageSourceIgnitesTnt`).
-    pub fn hurt_cart(
-        &mut self,
-        i: usize,
-        damage: f32,
-        creative: bool,
-        fire: bool,
-        hit: CartHit,
-    ) {
+    pub fn hurt_cart(&mut self, i: usize, damage: f32, creative: bool, fire: bool, hit: CartHit) {
         self.hurt_cart_result(i, damage, creative, fire, hit);
     }
 
@@ -121,7 +118,11 @@ impl ServerGame<'_> {
     /// vehicle's `CustomName` as `DataComponents.CUSTOM_NAME`.
     pub(in crate::game) fn cart_drop(&self, kind: CartKind, id: u32) -> ItemStack {
         let mut stack = ItemStack::new(kind.item(), 1);
-        if let Some(name) = self.common.persist_raw(id).and_then(|raw| raw.get("CustomName")) {
+        if let Some(name) = self
+            .common
+            .persist_raw(id)
+            .and_then(|raw| raw.get("CustomName"))
+        {
             let text = sunrise_sim::entity_nbt::name_text(name);
             stack.data_mut().custom_name = Some(sunrise_game_data::scoreboard::component_tag(
                 &text.component(),
@@ -152,7 +153,11 @@ impl ServerGame<'_> {
         let join = self.common.carts[i].join;
         let target = crate::game::commands::Target::Cart(id);
         if self.common.persist.destroying_vehicles.contains(&target)
-            || self.common.persist.preparing_vehicle_removals.contains(&target)
+            || self
+                .common
+                .persist
+                .preparing_vehicle_removals
+                .contains(&target)
         {
             return false;
         }
@@ -166,7 +171,8 @@ impl ServerGame<'_> {
             c.id == id
                 && c.join == join
                 && !self
-                    .common.persist
+                    .common
+                    .persist
                     .removals
                     .contains(&crate::game::commands::Target::Cart(id))
         }) else {
@@ -190,7 +196,11 @@ impl ServerGame<'_> {
                 self.common.carts[i].kind == CartKind::Tnt && (fire || speed >= f64::from(0.01f32));
             if tnt_prime {
                 let _save_lease = sunrise_sim::join_seq::visibility::PassLease::enter();
-                let mut c = self.common.carts.extract(self.common.carts[i].join).unwrap();
+                let mut c = self
+                    .common
+                    .carts
+                    .extract(self.common.carts[i].join)
+                    .unwrap();
                 // MinecartTNT.destroy: prime instead of breaking.
                 if c.fuse < 0 {
                     self.prime_cart(&mut c);
@@ -207,7 +217,12 @@ impl ServerGame<'_> {
                 }) {
                     return true;
                 }
-                let Some(cart) = self.common.carts.iter().find(|c| c.id == id && c.join == join) else {
+                let Some(cart) = self
+                    .common
+                    .carts
+                    .iter()
+                    .find(|c| c.id == id && c.join == join)
+                else {
                     return true;
                 };
                 let (kind, slots) = (cart.kind, cart.items.len());
@@ -215,7 +230,8 @@ impl ServerGame<'_> {
                 if self.kill_vehicle_object(target) && !creative {
                     self.entity_killed_event(at, false);
                     if self
-                        .common.ui
+                        .common
+                        .ui
                         .rules
                         .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS)
                     {

@@ -5,7 +5,8 @@ pub(crate) fn matrix(mods: mod_api::Mods) {
     mod_platform::testing::with_mods(mods.clone(), || {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
         with_interaction_client_game_at(root.prepared().to_owned(), |game| {
             let stone = game
                 .pack
@@ -26,7 +27,8 @@ pub(crate) fn matrix(mods: mod_api::Mods) {
                 ] {
                     for server_only in [false, true] {
                         game.set_local_mode(sunrise_command::args::GameMode::Survival);
-                        game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:paper", 1));
+                        game.common.inventory[game.common.selected] =
+                            Some(ItemStack::new("minecraft:paper", 1));
                         let target_state = if path >= 3 { air } else { stone };
                         game.world.set(0, 64, 0, target_state).unwrap();
                         game.offhand = Some(ItemStack::new("minecraft:torch", 2));
@@ -78,7 +80,13 @@ pub(crate) fn matrix(mods: mod_api::Mods) {
                             game.offhand.as_ref().unwrap().count,
                             if placed { 1 } else { 2 }
                         );
-                        assert_eq!(game.common.inventory[game.common.selected].as_ref().unwrap().count, 1);
+                        assert_eq!(
+                            game.common.inventory[game.common.selected]
+                                .as_ref()
+                                .unwrap()
+                                .count,
+                            1
+                        );
                         assert_eq!(game.world.block(0, 64, 0), target_state);
                         assert!(game.mobs.iter().all(|mob| !mob.removed && mob.alive()));
                         assert_eq!(

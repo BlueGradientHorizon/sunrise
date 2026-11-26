@@ -1,19 +1,17 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::tables::GameItems;
-use crate::game::server_side::damage_item_tests::{Rule, with_wear_part};
+    use crate::game::server_side::damage_item_tests::{Rule, with_wear_part};
+    use sunrise_gameplay_common::game::tables::GameItems;
 
-use sunrise_core::geometry::Vec3;
+    use sunrise_core::geometry::Vec3;
 
-use sunrise_sim::mobs::{Mob, finalize};
+    use sunrise_sim::mobs::{Mob, finalize};
 
-use sunrise_items::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn mob_armour_obeys_negative_cancel_and_breaking_answers() {
         with_wear_part("minecraft:iron_helmet", Rule::Set(-1), |game, wear| {
@@ -53,7 +51,7 @@ use sunrise_items::items::ItemStack;
             assert!(wear.take_asked().is_empty());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn thorns_and_boots_wear_break_the_equipped_piece() {
         use sunrise_core::geometry::Vec3;

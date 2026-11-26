@@ -1,15 +1,15 @@
-use sunrise_sim::menu::place::PostPlace;
-use sunrise_sim::menu::place::custom_plan::MenuPlacement;
-#[cfg(test)]
-use sunrise_sim::recipe_book::placement_sync as sync;
 use super::*;
+use mod_api::__private::game::Fields;
+use mod_api::{Hand, HostTransaction, ItemPlace, ItemResource, MenuSlotPlace, ServerHost};
 use sunrise_gameplay::game::server_side::native_book_backings::Backings;
 use sunrise_gameplay::game::server_side::native_book_grid::Session;
 use sunrise_gameplay::game::server_side::native_book_scope::MenuSnapshot;
-use sunrise_sim::menu::{Kind, Menu};
-use mod_api::__private::game::Fields;
-use mod_api::{Hand, HostTransaction, ItemPlace, ItemResource, MenuSlotPlace, ServerHost};
 use sunrise_level::containers::{BlockEntity, ModBlockEntity, ModMenuType};
+use sunrise_sim::menu::place::PostPlace;
+use sunrise_sim::menu::place::custom_plan::MenuPlacement;
+use sunrise_sim::menu::{Kind, Menu};
+#[cfg(test)]
+use sunrise_sim::recipe_book::placement_sync as sync;
 use sunrise_sim::{
     crafting::{Ingredient, Placement},
     lan::menu::{Menu as Open, Slots},

@@ -367,7 +367,10 @@ impl crate::game::ClientGame<'_> {
             }
         }
         self.refresh_screen_widgets();
-        self.client.server_packs.0.complete_prompt(prompt, Some(yes));
+        self.client
+            .server_packs
+            .0
+            .complete_prompt(prompt, Some(yes));
         Ok(())
     }
 
@@ -573,10 +576,13 @@ impl crate::game::ClientGame<'_> {
             .with_title_color(sunrise_client::hud::rgba(255, 85, 85, 255));
             // Audio playback notices retain the player's existing F1 visibility rule.
             let hide_with_f1 = matches!(report.hook, "AudioStream::read" | "AudioStream::drop");
-            self.client.toast_manager.queued.push_back(Toast::Diagnostic {
-                toast,
-                hide_with_f1,
-            });
+            self.client
+                .toast_manager
+                .queued
+                .push_back(Toast::Diagnostic {
+                    toast,
+                    hide_with_f1,
+                });
         }
     }
 

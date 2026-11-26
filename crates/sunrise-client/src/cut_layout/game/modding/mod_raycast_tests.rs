@@ -1,12 +1,18 @@
 //! A client mod's `raycast` and `view_hit` hit loaded blocks only, far terrain on or off.
-use {sunrise_gameplay_common::game::execution_role, sunrise_gameplay_common::game::launch_options::Options, sunrise_gameplay_common::game::resource_load::Progress, crate::game::resource_load::load_resources};
 use std::sync::Arc;
 use sunrise_client::{audio::Audio, settings::Settings};
 use sunrise_core::geometry::Vec3;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    crate::game::resource_load::load_resources, sunrise_gameplay_common::game::execution_role,
+    sunrise_gameplay_common::game::launch_options::Options,
+    sunrise_gameplay_common::game::resource_load::Progress,
+};
 
-fn game<'a>(resources: &'a mut Option<Arc<sunrise_gameplay_common::game::Resources>>) -> sunrise_client_gameplay::game::ClientGame<'a> {
+fn game<'a>(
+    resources: &'a mut Option<Arc<sunrise_gameplay_common::game::Resources>>,
+) -> sunrise_client_gameplay::game::ClientGame<'a> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),

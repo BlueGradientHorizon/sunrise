@@ -14,17 +14,21 @@ impl ClientGame<'_> {
         }
         let Ok(index) = sunrise_gameplay_common::game::api_values::block_state::current() else {
             for request in requests {
-                self.client
-                    .streaming
-                    .submit_visibility_answer(&mut self.common.world, request, None);
+                self.client.streaming.submit_visibility_answer(
+                    &mut self.common.world,
+                    request,
+                    None,
+                );
             }
             return;
         };
         let Ok(air) = index.to_api(self.common.world.air) else {
             for request in requests {
-                self.client
-                    .streaming
-                    .submit_visibility_answer(&mut self.common.world, request, None);
+                self.client.streaming.submit_visibility_answer(
+                    &mut self.common.world,
+                    request,
+                    None,
+                );
             }
             return;
         };
@@ -65,9 +69,11 @@ impl ClientGame<'_> {
                     .refresh_section_visibility(&mut self.common.world, true);
                 return;
             }
-            self.client
-                .streaming
-                .submit_visibility_answer(&mut self.common.world, request, plan.finish());
+            self.client.streaming.submit_visibility_answer(
+                &mut self.common.world,
+                request,
+                plan.finish(),
+            );
         }
         self.client.streaming.section_visibility.refusals = refusals;
     }

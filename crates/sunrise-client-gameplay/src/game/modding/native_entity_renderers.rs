@@ -15,9 +15,7 @@
 //! drawing.
 //! Each load also asks for the layers of the living renderers (`native_entity_layers`), which draw
 //! through the same guard ([`Game::guarded_entity_draw`]).
-use super::{
-    native_block_entity_draw::{BlockEntityDraw, LevelLight},
-};
+use super::native_block_entity_draw::{BlockEntityDraw, LevelLight};
 use crate::game::host::draw::GameBlockEntityDrawContext;
 use glam::{DVec3, Mat4};
 use mod_api::{BlockEntityDrawContext, EntityRenderState, EntityRenderer};
@@ -172,10 +170,7 @@ impl EntityRendererTable {
     }
 
     /// The renderer of the thrown type `t`, when a mod registered one.
-    pub fn thrown(
-        &self,
-        t: &ThrownType,
-    ) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
+    pub fn thrown(&self, t: &ThrownType) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
         self.thrown.get(t.slot)?.as_ref()
     }
 
@@ -200,18 +195,12 @@ impl EntityRendererTable {
     }
 
     /// The renderer of the general type in catalog slot `slot`, when a mod registered one.
-    pub fn general(
-        &self,
-        slot: usize,
-    ) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
+    pub fn general(&self, slot: usize) -> Option<&Arc<Resolved<dyn EntityRenderer>>> {
         self.general.get(slot)?.as_ref()
     }
 
     /// The general types of `catalog` no mod registered a renderer for: their rows draw nothing.
-    pub fn unrendered_general<'c>(
-        &self,
-        catalog: &'c GeneralTypeCatalog,
-    ) -> Vec<&'c str> {
+    pub fn unrendered_general<'c>(&self, catalog: &'c GeneralTypeCatalog) -> Vec<&'c str> {
         (0..catalog.len())
             .filter(|&slot| self.general(slot).is_none())
             .map(|slot| catalog.key(slot))

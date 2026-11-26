@@ -3,16 +3,16 @@
 //! (`killed_by_player` holds) and its own weapon counts for looting, while
 //! the message goes to the issuer (tools/test_loot_kill_guest_parity.py
 //! measures the same on vanilla 26.3).
+use super::*;
+use crate::game::load_resources;
+use crate::settings::Settings;
+use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::Dim;
-use super::*;
-use crate::settings::Settings;
 use sunrise_gameplay_common::game::Options;
-use sunrise_gameplay_common::game::execution_role;
 use sunrise_gameplay_common::game::Resources;
-use crate::game::load_resources;
+use sunrise_gameplay_common::game::execution_role;
 use sunrise_gameplay_common::game::resource_load::Progress;
-use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::configuration::ClientInformation;
@@ -27,7 +27,9 @@ const PIG: &str = "00000038-0000-0000-0000-000000000002";
 
 /// A host on a stone floor, holding a plain sword, with one connected,
 /// placed guest (conn 2), an elder guardian, a pig and a chest.
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::game::ServerGame<'_> {
+fn game(
+    resources: &mut Option<std::sync::Arc<Resources>>,
+) -> sunrise_gameplay::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -127,7 +129,8 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::
     guest.inventory[0] = Some(sword);
     game.server.lan.as_mut().unwrap().hub.guests.push(guest);
     game.player.as_mut().unwrap().position = Vec3::new(4.5, 100.0, 4.5);
-    game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:diamond_sword", 1));
+    game.common.inventory[game.common.selected] =
+        Some(ItemStack::new("minecraft:diamond_sword", 1));
     assert!(game.run_command("setblock 8 100 8 chest"));
     assert!(game.run_command("difficulty normal"));
     let still = "NoAI:1b,NoGravity:1b,PersistenceRequired:1b,Silent:1b";
@@ -165,12 +168,20 @@ fn run(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> (boo
 
 /// The chest's items after `command` puts the guardian's kill loot in it,
 /// and what the issuer was told.
-fn loot(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> (Vec<String>, Vec<String>) {
+fn loot(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    command: &str,
+) -> (Vec<String>, Vec<String>) {
     // An empty chest answers "Nothing changed" here; that is fine.
     let _ = game.run_command("data merge block 8 100 8 {Items:[]}");
     let (_, said) = run(game, command);
     let items = (0..27)
-        .filter_map(|i| game.slot_get(&sunrise_gameplay::game::commands::items::Slot::Block([8, 100, 8], i)))
+        .filter_map(|i| {
+            game.slot_get(&sunrise_gameplay::game::commands::items::Slot::Block(
+                [8, 100, 8],
+                i,
+            ))
+        })
         .map(|s| s.item.to_string())
         .collect();
     (items, said)
@@ -197,7 +208,9 @@ fn loot_kill_as_a_guest_is_killed_by_that_player() {
     // The host's own place and stack are its own again.
     let p = game.player.as_ref().unwrap().position;
     assert_eq!([p.x, p.y, p.z], [4.5, 100.0, 4.5]);
-    let held = game.common.inventory[game.common.selected].as_ref().unwrap();
+    let held = game.common.inventory[game.common.selected]
+        .as_ref()
+        .unwrap();
     assert_eq!(
         (&*held.item, held.data().is_some()),
         ("minecraft:diamond_sword", false)
@@ -205,11 +218,19 @@ fn loot_kill_as_a_guest_is_killed_by_that_player() {
 }
 
 /// The full stacks (item, count, components) after `command`.
-fn loot_stacks(game: &mut sunrise_gameplay::game::ServerGame<'_>, command: &str) -> Vec<(String, u32, bool)> {
+fn loot_stacks(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    command: &str,
+) -> Vec<(String, u32, bool)> {
     let _ = game.run_command("data merge block 8 100 8 {Items:[]}");
     assert!(game.run_command(command));
     (0..27)
-        .filter_map(|i| game.slot_get(&sunrise_gameplay::game::commands::items::Slot::Block([8, 100, 8], i)))
+        .filter_map(|i| {
+            game.slot_get(&sunrise_gameplay::game::commands::items::Slot::Block(
+                [8, 100, 8],
+                i,
+            ))
+        })
         .map(|s| (s.item.to_string(), s.count, s.data().is_some()))
         .collect()
 }
@@ -252,7 +273,9 @@ fn an_empty_handed_guest_is_the_killer_and_a_missing_one_is_not() {
         "the guest's empty hand, and no extra draw"
     );
     // Everyone is as before.
-    let held = first.common.inventory[first.common.selected].as_ref().unwrap();
+    let held = first.common.inventory[first.common.selected]
+        .as_ref()
+        .unwrap();
     assert_eq!(
         (&*held.item, held.count, held.data().is_some()),
         ("minecraft:diamond_sword", 1, true)
@@ -273,7 +296,12 @@ fn an_empty_handed_guest_is_the_killer_and_a_missing_one_is_not() {
     let _ = first.run_command("data merge block 8 100 8 {Items:[]}");
     assert!(first.execute_line(&insert, missing).is_ok());
     let items: Vec<String> = (0..27)
-        .filter_map(|i| first.slot_get(&sunrise_gameplay::game::commands::items::Slot::Block([8, 100, 8], i)))
+        .filter_map(|i| {
+            first.slot_get(&sunrise_gameplay::game::commands::items::Slot::Block(
+                [8, 100, 8],
+                i,
+            ))
+        })
         .map(|s| s.item.to_string())
         .collect();
     assert!(

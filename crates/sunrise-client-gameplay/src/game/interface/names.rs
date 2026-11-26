@@ -500,8 +500,9 @@ impl crate::game::ClientGame<'_> {
             let (lo, hi) = frame.bounds();
             let center = glam::DVec3::from_array(std::array::from_fn(|a| (lo[a] + hi[a]) / 2.0));
             if center.distance_squared(camera) < 64.0 * 64.0 {
-                let name_shown =
-                    !self.client.chat_ui.hide_gui && targeted_frame == Some(index) && name.is_some();
+                let name_shown = !self.client.chat_ui.hide_gui
+                    && targeted_frame == Some(index)
+                    && name.is_some();
                 let mut visible = name_shown;
                 let mut text = None;
                 if hooks {
@@ -897,9 +898,9 @@ pub(in crate::game) struct NameTag {
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-    use sunrise_gameplay_common::game::name_component::name_component;
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::name_component::name_component;
     use sunrise_sim::mobs::{Anim, Brain, MobType, Species};
     use sunrise_sim::pose::Pose;
 

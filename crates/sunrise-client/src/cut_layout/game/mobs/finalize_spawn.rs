@@ -1,9 +1,7 @@
-
-
 #![cfg(test)]
-use sunrise_sim::mobs::{finalize, spawning};
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::mobs::Species;
+use sunrise_sim::mobs::{finalize, spawning};
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -22,7 +20,11 @@ mod tests {
     }
 
     /// Any other mob for the spawn tests, at the same spot.
-    fn mob_of(game: &sunrise_gameplay::game::ServerGame<'_>, id: u32, kind: &str) -> sunrise_sim::mobs::Mob {
+    fn mob_of(
+        game: &sunrise_gameplay::game::ServerGame<'_>,
+        id: u32,
+        kind: &str,
+    ) -> sunrise_sim::mobs::Mob {
         let kind = game.res.mob_types().get(kind).unwrap().clone();
         sunrise_sim::mobs::Mob::new(id, kind, Vec3::new(8.0, 65.0, 8.0), 0.0)
     }
@@ -105,7 +107,10 @@ mod tests {
             game.world.random =
                 sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(42_i64));
             let outcome = game.finalize_with(&mut with, Reason::Natural, None);
-            assert_eq!(outcome, sunrise_gameplay_common::game::creatures::Finalized::Done);
+            assert_eq!(
+                outcome,
+                sunrise_gameplay_common::game::creatures::Finalized::Done
+            );
             // The same stream for the plain path: same seed, same draws.
             game.world.random =
                 sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(42_i64));

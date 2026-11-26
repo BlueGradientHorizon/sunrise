@@ -3,15 +3,15 @@ use sunrise_gameplay_common::game::remote::minecarts::CartLerp;
 use sunrise_gameplay_common::game::remote::minecarts::CartStep;
 
 pub(in crate::game) trait CartLerpClientExt: Sized {
-fn at(&self, partial: f32) -> (Vec3, Vec3, f32, f32);
-fn new() -> Self;
-fn tick(&mut self, c: &mut super::super::minecarts::Minecart) -> bool;
+    fn at(&self, partial: f32) -> (Vec3, Vec3, f32, f32);
+    fn new() -> Self;
+    fn tick(&mut self, c: &mut super::super::minecarts::Minecart) -> bool;
 }
 impl CartLerpClientExt for CartLerp {
     /// `NewMinecartBehavior.getCartLerpPosition`, `getCartLerpMovements` and
     /// `getCartLerpYRot` / `getCartLerpXRot` at `partial`: the step the weights
     /// put this moment in, and how far along it from the one before.
-     fn at(&self, partial: f32) -> (Vec3, Vec3, f32, f32) {
+    fn at(&self, partial: f32) -> (Vec3, Vec3, f32, f32) {
         let alpha = ((3 - self.delay) as f32 + partial) / 3.0;
         let mut count_up = 0.0f32;
         let mut in_step = 1.0f32;
@@ -51,7 +51,7 @@ impl CartLerpClientExt for CartLerp {
             previous.pitch + in_step * wrap_degrees(current.pitch - previous.pitch),
         )
     }
-     fn new() -> Self {
+    fn new() -> Self {
         Self {
             pending: Vec::new(),
             current: Vec::new(),
@@ -70,7 +70,7 @@ impl CartLerpClientExt for CartLerp {
     /// being played are used up, the queued ones become the current ones;
     /// the cart then sits where the steps put it at the end of this tick.
     /// False when it has no steps to play.
-     fn tick(&mut self, c: &mut super::super::minecarts::Minecart) -> bool {
+    fn tick(&mut self, c: &mut super::super::minecarts::Minecart) -> bool {
         self.delay -= 1;
         if self.delay <= 0 {
             self.old = CartStep {

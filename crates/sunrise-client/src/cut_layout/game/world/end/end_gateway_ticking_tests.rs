@@ -3,11 +3,11 @@
 //! entities in entity-ticking chunks: past the simulation distance an item in
 //! an End gateway stays where it is, and only the ticking one goes in.
 
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::game::Dim;
-use sunrise_gameplay::game::game_tests::tests::server_game;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::game_tests::tests::server_game;
+use sunrise_gameplay_common::game::Dim;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::entities::ItemEntity;
@@ -124,7 +124,10 @@ fn a_ticking_gateway_counts_its_age_in_its_block_entity() {
     game.update_chunk_tickets();
     assert!(game.block_ticking_area()(40, 8));
     // What `/data get block` and the chunk save encode (`TheEndGatewayBlockEntity.saveAdditional`).
-    let age = |game: &sunrise_gameplay::game::ServerGame<'_>| match game.world.block_entities.get(&(40, 64, 8))
+    let age = |game: &sunrise_gameplay::game::ServerGame<'_>| match game
+        .world
+        .block_entities
+        .get(&(40, 64, 8))
     {
         Some(BlockEntity::EndGateway(g)) => Some(g.age),
         _ => None,

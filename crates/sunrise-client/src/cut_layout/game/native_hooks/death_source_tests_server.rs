@@ -1,6 +1,3 @@
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
-use sunrise_gameplay::game::native_entity_refs::tests::bind_local_player;
 use crate::game::native_hooks::death_source_tests::bow;
 use crate::game::native_hooks::death_source_tests::finish_projectile_death;
 use crate::game::native_hooks::death_source_tests::mob;
@@ -8,6 +5,9 @@ use crate::game::native_hooks::death_source_tests::observed;
 use crate::game::native_hooks::death_source_tests::player_arrow;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::native_entity_refs::tests::bind_local_player;
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{mobs::Who, motion::PlayerMotion};
 

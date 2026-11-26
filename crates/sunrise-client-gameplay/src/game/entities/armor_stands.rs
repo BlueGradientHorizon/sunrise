@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 pub(in crate::game) mod layer_color_tests {
     use crate::game::client_side::armor_stands_client::{layer_color, preview_slot};

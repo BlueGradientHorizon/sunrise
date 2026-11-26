@@ -1,5 +1,3 @@
-use {crate::game::cauldron_interactions::*, sunrise_gameplay_common::game::cauldron_interactions::{Arc, Items, Registrar, clear, install, snapshot}};
-use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
 use mod_api::__private::game::RegistrationContextNew;
 use mod_api::{
     BlockUpdateFlags, CauldronDecision, CauldronUse, Hooks, ItemPlace, ItemResource, ServerHost,
@@ -10,6 +8,17 @@ use sunrise_gameplay_common::hit::Hit;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::cauldron::{Outcome, interactions::Entry};
 use sunrise_sim::first_person_sim::Hand;
+use {
+    crate::game::cauldron_interactions::*,
+    sunrise_gameplay_common::game::cauldron_interactions::{
+        Arc, Items, Registrar, clear, install, snapshot,
+    },
+};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+};
 
 pub(crate) const POS: [i32; 3] = [0, 64, 0];
 #[derive(Default)]
@@ -307,7 +316,10 @@ pub(crate) fn fixture_mods_client(
 }
 pub(crate) fn fixture_mods_pair(
     mods: mod_api::Mods,
-    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &mut sunrise_client_gameplay::game::ClientGame<'_>),
+    test: impl FnOnce(
+        &mut sunrise_gameplay::game::ServerGame<'_>,
+        &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    ),
 ) {
     mod_platform::__private::install(mods.clone());
     sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
@@ -370,7 +382,8 @@ pub(crate) fn setup_common<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
     game.hand = Hand::Main;
     game.inventory.fill(None);
     game.inventory[0] = Some(ItemStack::new(item, count));
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|events| *events.borrow_mut() = Some(Vec::new()));
 }
 pub(crate) fn setup(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
@@ -385,7 +398,9 @@ pub(crate) fn setup(
     game.server.audio_capture_active = true;
     game.server.pending_sounds.clear();
 }
-pub(crate) fn state<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(game: &G) -> (String, Option<String>) {
+pub(crate) fn state<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(
+    game: &G,
+) -> (String, Option<String>) {
     let state = game
         .pack
         .assets
@@ -395,7 +410,8 @@ pub(crate) fn state<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(game: &G
     (state.name.clone(), state.properties.get("level").cloned())
 }
 pub(crate) fn events() -> usize {
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| events.borrow().as_ref().unwrap().len())
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|events| events.borrow().as_ref().unwrap().len())
 }
 pub(crate) fn unchanged<'g, G: sunrise_gameplay_common::game::SideGame<'g>>(game: &G, seen: &Seen) {
     assert_eq!(state(game), ("minecraft:cauldron".into(), None));
@@ -1501,8 +1517,15 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
     ) {
         return;
     }
-    use {sunrise_gameplay_common::game::cauldron_prediction::USE_CHANNEL, sunrise_gameplay_common::game::cauldron_prediction::UseOnOutcome, sunrise_gameplay_common::game::cauldron_prediction::registration_packet, sunrise_gameplay_common::game::cauldron_prediction::use_result, sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest, sunrise_gameplay_common::game::server_side::native_sound_refs::tests::packets};
     use sunrise_protocol::packets::play::{Clientbound as C, Serverbound as S};
+    use {
+        sunrise_gameplay_common::game::cauldron_prediction::USE_CHANNEL,
+        sunrise_gameplay_common::game::cauldron_prediction::UseOnOutcome,
+        sunrise_gameplay_common::game::cauldron_prediction::registration_packet,
+        sunrise_gameplay_common::game::cauldron_prediction::use_result,
+        sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest,
+        sunrise_gameplay_common::game::server_side::native_sound_refs::tests::packets,
+    };
 
     let case = std::env::var("SUNRISE_CAULDRON_CASE").unwrap();
     let already_sent = case == "already-sent";
@@ -1682,7 +1705,8 @@ fn cauldron_packet_pass_resumes_item_use_once_without_client_prediction() {
         let aim = (35.0, -12.0);
         (client.yaw, client.pitch) = aim;
         if sneaking {
-            client.client.remote.as_mut().unwrap().last_input |= sunrise_gameplay_common::game::remote::SHIFT_INPUT;
+            client.client.remote.as_mut().unwrap().last_input |=
+                sunrise_gameplay_common::game::remote::SHIFT_INPUT;
         }
         // The client has no local registration. Selection must come from the server.
         clear();

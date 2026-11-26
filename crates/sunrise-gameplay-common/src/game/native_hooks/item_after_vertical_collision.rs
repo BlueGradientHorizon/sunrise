@@ -1,6 +1,6 @@
 pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// Dropped-item contact after vertical collision response and before block effects.
-     fn native_item_after_vertical_collision(
+    fn native_item_after_vertical_collision(
         &mut self,
         call: crate::game::native_hooks::fire::ItemAfterVerticalCollisionCall<'_>,
     ) {

@@ -1,8 +1,13 @@
 //! Run alone with private prepared resources: installs process-wide trait mods.
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, ItemStack, PlayerMotion, Vec3, World, in_own_process, mods}};
 use mod_api::{Hooks, PlayerInventoryChangedEvent, ServerHost};
 use std::sync::Mutex;
 use sunrise_level::chunk::Chunk;
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{
+        Arc, ItemStack, PlayerMotion, Vec3, World, in_own_process, mods,
+    },
+};
 
 type Heard = (u128, Vec<Option<(String, u32)>>);
 
@@ -113,7 +118,9 @@ fn the_slots_follow_inventory_numbering() {
         Some(ItemStack::new("minecraft:iron_boots", 1)),
     ];
     let offhand = Some(ItemStack::new("minecraft:shield", 1));
-    let slots = sunrise_gameplay::game::server_side::advancements::inventory_slots(&inventory, &armor, &offhand);
+    let slots = sunrise_gameplay::game::server_side::advancements::inventory_slots(
+        &inventory, &armor, &offhand,
+    );
     assert_eq!(slots.len(), 41);
     assert_eq!(slots[0].as_ref().map(|s| &*s.item), Some("minecraft:stone"));
     assert_eq!(
@@ -129,7 +136,11 @@ fn the_slots_follow_inventory_numbering() {
         Some("minecraft:shield")
     );
     // A short inventory is padded, never shifted into the armour.
-    assert_eq!(sunrise_gameplay::game::server_side::advancements::inventory_slots(&[], &armor, &None).len(), 41);
+    assert_eq!(
+        sunrise_gameplay::game::server_side::advancements::inventory_slots(&[], &armor, &None)
+            .len(),
+        41
+    );
 }
 
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

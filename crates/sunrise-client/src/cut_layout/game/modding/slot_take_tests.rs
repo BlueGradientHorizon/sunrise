@@ -2,7 +2,6 @@
 //! owned menu, as a LAN guest's clicks reach the server: what each take hands over, once per take;
 //! what is not a take is silent; and a failing listener undoes its writes, effects and transient
 //! slots with the take. The fixtures need prepared resources.
-use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use mod_api::item::menu::{ClickedStackResult, StackResult, StackedOnOtherDirection};
 use mod_api::{
     BlockPart, Hooks, HostBlockStates, HostTransaction, ITEMS, ItemCraftedEvent, ItemPlace,
@@ -13,6 +12,7 @@ use std::{
     cell::{Cell, RefCell},
     sync::{Arc, mpsc},
 };
+use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{
     chunk::Chunk,
@@ -489,7 +489,10 @@ fn took(slot: usize, taken: u32, left: u32) -> Heard {
     (12, MENU.to_owned(), slot, stone(taken), left)
 }
 
-fn with_pot(menu_type: &'static ModMenuType, test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+fn with_pot(
+    menu_type: &'static ModMenuType,
+    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
+) {
     with_pot_parts(
         menu_type,
         TakeMod {
@@ -585,7 +588,9 @@ fn set(
 }
 /// The guest's click (`input` is `ClickType`'s id), claiming nothing.
 fn click(game: &mut sunrise_gameplay::game::ServerGame<'_>, slot: i32, button: i8, input: i32) {
-    let menu = game.server.lan.as_ref().unwrap().hub.guests[0].menu.as_ref();
+    let menu = game.server.lan.as_ref().unwrap().hub.guests[0]
+        .menu
+        .as_ref();
     let (container, state) = menu.map(|m| (m.window, m.state)).unwrap();
     game.lan_guest_packet(
         12,
@@ -1233,8 +1238,12 @@ fn a_damage_only_repair_reaches_the_open_menu_and_inventory() {
                     );
                     assert!(!old.matches(&stack, &names));
                 };
-                game.common.world.block_entities.get_mut(&POS).unwrap().slots_mut()[RESULT] =
-                    Some(repaired.clone());
+                game.common
+                    .world
+                    .block_entities
+                    .get_mut(&POS)
+                    .unwrap()
+                    .slots_mut()[RESULT] = Some(repaired.clone());
                 host.hub.sync_containers(&game.common.world);
                 zero(
                     slot_replies(&rx)
@@ -1416,7 +1425,9 @@ fn a_partial_mod_craft_keeps_crafting_bookkeeping_but_not_item_crafted() {
 
 /// Guest 12 with the blockless processing menu `OWNED_MENU` open and an empty inventory and
 /// cursor; `rx` receives the guest's packets.
-fn with_owned_processor(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, mpsc::Receiver<Out>)) {
+fn with_owned_processor(
+    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, mpsc::Receiver<Out>),
+) {
     let parts = TakeMod {
         menu_slot_take: true,
         item_parts_take: false,
@@ -1450,8 +1461,9 @@ fn with_owned_processor(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGam
                         guest.carried = None;
                         guest.offhand = None;
                     });
-                    let key =
-                        sunrise_gameplay::game::native_guest_turn_tests::register_test_menu(game, OWNED_MENU);
+                    let key = sunrise_gameplay::game::native_guest_turn_tests::register_test_menu(
+                        game, OWNED_MENU,
+                    );
                     let player = game.player(12).unwrap();
                     let opened = game
                         .as_guest(12, |game| {

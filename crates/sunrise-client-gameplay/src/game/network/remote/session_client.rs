@@ -48,7 +48,12 @@ impl crate::game::ClientGame<'_> {
         if self.client.remote.is_some() {
             self.forget_all_remote_columns();
         }
-        if let Some(old) = self.client.remote.as_mut().and_then(|r| r.heard_level.take()) {
+        if let Some(old) = self
+            .client
+            .remote
+            .as_mut()
+            .and_then(|r| r.heard_level.take())
+        {
             self.native_client_level_unload(&old);
         }
         if self.client.remote.is_some() {
@@ -64,7 +69,9 @@ impl crate::game::ClientGame<'_> {
         // Minecraft.disconnect -> updateLevelInEngines(null), after logout and level
         // unload: stop even the sounds a listener started during teardown.
         self.client.ambience.clear(&mut self.client.audio.0);
-        self.client.music.stop_playing(None, &mut self.client.audio.0);
+        self.client
+            .music
+            .stop_playing(None, &mut self.client.audio.0);
         self.client.audio.0.leave_level();
         self.client.jukebox_sounds.clear();
         self.client.mod_sounds.clear();
@@ -222,7 +229,11 @@ impl crate::game::ClientGame<'_> {
         let previous = spawn
             .previous_game_type
             .map(sunrise_gameplay_common::game_modes::mode_from_id);
-        let body_flight = self.common.player.as_ref().map(|p| (p.flying, p.flying_speed));
+        let body_flight = self
+            .common
+            .player
+            .as_ref()
+            .map(|p| (p.flying, p.flying_speed));
         let r = self.client.remote.as_mut().unwrap();
         let new_logical_player =
             !matches!(entry, RemoteDimensionEntry::Login) || !r.has_logical_player;
@@ -302,7 +313,8 @@ impl crate::game::ClientGame<'_> {
             );
             self.reset_client_world(spawn.seed);
             if let Some(remote) = self.client.remote.as_ref() {
-                self.common.world
+                self.common
+                    .world
                     .chunks
                     .track_connection_groups(remote.group_count.clone());
             }
@@ -462,7 +474,8 @@ impl crate::game::ClientGame<'_> {
         self.client.streaming = streaming;
         self.reset_client_world(0);
         let group_count = sunrise_level::chunk_map::ConnectionGroupCount::default();
-        self.common.world
+        self.common
+            .world
             .chunks
             .track_connection_groups(group_count.clone());
         self.common.inventory = vec![None; 36];
@@ -738,7 +751,8 @@ impl crate::game::ClientGame<'_> {
         self.client.streaming = streaming;
         self.reset_client_world(0);
         let group_count = sunrise_level::chunk_map::ConnectionGroupCount::default();
-        self.common.world
+        self.common
+            .world
             .chunks
             .track_connection_groups(group_count.clone());
         self.common.inventory = vec![None; 36];
@@ -987,7 +1001,13 @@ impl crate::game::ClientGame<'_> {
     }
     /// Disconnect and return to the multiplayer screen (DisconnectedScreen).
     pub fn leave_server(&mut self, reason: Option<Text>) -> Result<()> {
-        if reason.is_none() && self.client.integrated.as_ref().is_some_and(|s| !s.stopped()) {
+        if reason.is_none()
+            && self
+                .client
+                .integrated
+                .as_ref()
+                .is_some_and(|s| !s.stopped())
+        {
             return self.begin_closing_save(false);
         }
         self.close_server_session(reason, |_| {})

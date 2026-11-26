@@ -29,10 +29,7 @@ pub(in crate::game) fn native_add_pack_finders(
 
 pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// Register sources when a resource or data pack repository is discovered.
-     fn native_add_pack_finders(
-        &mut self,
-        packs: &mut crate::game::pack_discovery::Registry,
-    ) {
+    fn native_add_pack_finders(&mut self, packs: &mut crate::game::pack_discovery::Registry) {
         let mods = self.mods.clone();
         native_add_pack_finders(
             <Self::State as crate::game::Side>::as_pack_discovery_context_mut(self),

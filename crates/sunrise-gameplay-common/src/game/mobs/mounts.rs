@@ -1,11 +1,9 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use sunrise_core::{geometry::Vec3, random::RandomSource};
+    use sunrise_core::{geometry::Vec3, random::RandomSource};
 
-/// A mob of the prepared resources' type `kind` (None without them).
+    /// A mob of the prepared resources' type `kind` (None without them).
     pub fn mob(kind: &str) -> Option<sunrise_sim::mobs::Mob> {
         let root = std::env::var_os("SUNRISE_RESOURCES")
             .map(std::path::PathBuf::from)
@@ -23,14 +21,14 @@ use sunrise_core::{geometry::Vec3, random::RandomSource};
             0.0,
         ))
     }
-pub fn block_of(at: Vec3) -> [i32; 3] {
+    pub fn block_of(at: Vec3) -> [i32; 3] {
         [
             at.x.floor() as i32,
             at.y.floor() as i32,
             at.z.floor() as i32,
         ]
     }
-/// `AbstractHorse.handleEating`'s growth particle position draws:
+    /// `AbstractHorse.handleEating`'s growth particle position draws:
     /// `getRandomX(1.0)`, `getRandomY()` and `getRandomZ(1.0)` take a double each.
     pub fn sparkle_draws(r: &mut sunrise_core::random::LegacyRandom) {
         for _ in 0..3 {

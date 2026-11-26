@@ -1,9 +1,12 @@
 //! Witness-driven parity tests for FishingHook hitting pickable targets and ItemEntities.
-use {sunrise_gameplay_common::game::fishing_common::Hook, sunrise_gameplay_common::game::fishing_common::State};
 use serde::Deserialize;
 use std::path::PathBuf;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::LegacyRandom;
+use {
+    sunrise_gameplay_common::game::fishing_common::Hook,
+    sunrise_gameplay_common::game::fishing_common::State,
+};
 
 #[derive(Deserialize)]
 pub(in crate::game) struct FishingWitness {

@@ -1,13 +1,5 @@
 use super::piston_push::Lid;
 use super::{Dim, entity_culling::EntityCullDecision, native_mob_draw::PlayerRender};
-use sunrise_gameplay_common::game::creatures::MobDrawFrame;
-use sunrise_gameplay_common::game::creatures::Skinned;
-use sunrise_gameplay_common::game::creatures::is_item_billboard;
-use sunrise_gameplay_common::game::creatures::living_draw::LivingFrame;
-use sunrise_gameplay_common::game::creatures::thrown_item_axes;
-use sunrise_gameplay_common::game::creatures::thrown_item_quad;
-use {sunrise_gameplay_common::game::creatures::*};
-use sunrise_gameplay_common::game::wither_common::skull_kind;
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{graphics::EntityCullingMode, mesher::Vertex};
 use sunrise_client_render::render_geometry::EntitySpan;
@@ -17,6 +9,14 @@ use sunrise_core::{
     random::RandomSource,
 };
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::creatures::MobDrawFrame;
+use sunrise_gameplay_common::game::creatures::Skinned;
+use sunrise_gameplay_common::game::creatures::is_item_billboard;
+use sunrise_gameplay_common::game::creatures::living_draw::LivingFrame;
+use sunrise_gameplay_common::game::creatures::thrown_item_axes;
+use sunrise_gameplay_common::game::creatures::thrown_item_quad;
+use sunrise_gameplay_common::game::creatures::*;
+use sunrise_gameplay_common::game::wither_common::skull_kind;
 use sunrise_sim::{
     mobs::{Mob, MobEvent, Species, Who},
     projectiles::{Projectile, ProjectileKind},
@@ -191,14 +191,11 @@ impl crate::game::ClientGame<'_> {
             self.living_geometry::<PRECHECK>(mob, frame, out);
         }
     }
-    pub fn begin_mob_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-    ) -> MobDrawFrame<'_> {
+    pub fn begin_mob_geometry(&self, camera: glam::DVec3, alpha: f64) -> MobDrawFrame<'_> {
         // The coarse mob bounds pay off only in dense async scenes; otherwise,
         // keep the existing exact mesh-culling path.
-        let precheck = self.client.settings.sunrise.entity_culling == EntityCullingMode::Asynchronous
+        let precheck = self.client.settings.sunrise.entity_culling
+            == EntityCullingMode::Asynchronous
             && self
                 .client
                 .occlusion
@@ -207,7 +204,8 @@ impl crate::game::ClientGame<'_> {
                 .as_ref()
                 .is_some_and(|culler| culler.camera_is_stationary())
             && self.client.settings.sunrise.entity_culling_precheck != 0
-            && self.common.mobs.len() >= self.client.settings.sunrise.entity_culling_precheck as usize
+            && self.common.mobs.len()
+                >= self.client.settings.sunrise.entity_culling_precheck as usize
             && !self.client.occlusion.0.shadow_casters.0
             && mod_api::__private::mods().is_empty();
         self.client.rendered_mobs.set(0);
@@ -248,7 +246,12 @@ impl crate::game::ClientGame<'_> {
     /// poses entities: a new frame of draws, the store restarted when the
     /// renderer's no longer matches. Once per frame, before any entity draws.
     pub fn begin_skinning(&self) {
-        let renderer = self.client.renderer.0.as_ref().filter(|r| r.skins_entities());
+        let renderer = self
+            .client
+            .renderer
+            .0
+            .as_ref()
+            .filter(|r| r.skins_entities());
         match renderer.and_then(|r| r.skinned_models()) {
             Some(stored) => {
                 let mut models = self.client.skin_models.0.borrow_mut();
@@ -341,7 +344,10 @@ impl crate::game::ClientGame<'_> {
             let x = at[0] + width * (2.0 * r.next_double() - 1.0) - xa * 10.0;
             let y = at[1] + height * r.next_double() - ya * 10.0;
             let z = at[2] + width * (2.0 * r.next_double() - 1.0) - za * 10.0;
-            self.client.particles.0.add(&options, [x, y, z], [xa, ya, za]);
+            self.client
+                .particles
+                .0
+                .add(&options, [x, y, z], [xa, ya, za]);
         }
     }
     /// `Guardian.aiStep` on a client: two bubbles a tick trailing a guardian
@@ -399,10 +405,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// Handle client-produced `MobEvent` visuals and local movement effects.
-    pub fn handle_client_mob_events(
-        &mut self,
-        events: &mut Vec<sunrise_sim::mobs::MobEvent>,
-    ) {
+    pub fn handle_client_mob_events(&mut self, events: &mut Vec<sunrise_sim::mobs::MobEvent>) {
         use sunrise_level::particle_options::{ParticleOptions, ParticleType};
         use sunrise_sim::mobs::MobEvent;
         for event in events.drain(..) {
@@ -553,7 +556,8 @@ impl crate::game::ClientGame<'_> {
         out: &mut Vec<Vertex>,
     ) {
         let atlas = &self.client.gui.atlas;
-        let (right, up) = thrown_item_axes(self.client.camera_type, self.common.yaw, self.common.pitch);
+        let (right, up) =
+            thrown_item_axes(self.client.camera_type, self.common.yaw, self.common.pitch);
         // A glowing projectile's outline: what it drew up to the next one.
         let mut glowing = None;
         for (a, at) in projectiles {
@@ -812,12 +816,7 @@ impl crate::game::ClientGame<'_> {
             .is_some_and(|r| r.skins_entities() && r.skinned_models().is_some())
     }
     #[cfg(any(test, feature = "test-support"))]
-    pub fn mob_geometry(
-        &self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-    ) {
+    pub fn mob_geometry(&self, camera: glam::DVec3, alpha: f64, out: &mut Vec<Vertex>) {
         let frame = self.begin_mob_geometry(camera, alpha);
         self.mob_run_geometry(&frame, 0..self.common.mobs.len(), out);
         self.mark_motion(out.len(), 0);
@@ -832,7 +831,8 @@ impl crate::game::ClientGame<'_> {
         self.elder_apparition_geometry(alpha, out);
         self.spawner_geometry(camera, alpha, out);
         let live = self
-            .common.creatures
+            .common
+            .creatures
             .projectiles
             .iter()
             .filter(|a| !self.hides_as_camera(a.id))

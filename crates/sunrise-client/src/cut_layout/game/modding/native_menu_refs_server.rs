@@ -1,17 +1,18 @@
-
-
 #![cfg(test)]
 use mod_api::EntityRef;
 use mod_api::MenuSlotBacking;
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
-    use {sunrise_gameplay::game::server_side::lan::LanSettings, crate::game::server_side::native_entity_refs::tests::with_game};
     use super::*;
     use sunrise_client_gameplay::game::client_side::native_menu_refs::tests::guest;
-    use sunrise_sim::lan::{NetConfig, hub::HubConfig};
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use sunrise_sim::lan::menu::VEHICLE_KEY_Y;
+    use sunrise_sim::lan::{NetConfig, hub::HubConfig};
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_game,
+        sunrise_gameplay::game::server_side::lan::LanSettings,
+    };
 
     #[test]
     #[ignore = "daily"]

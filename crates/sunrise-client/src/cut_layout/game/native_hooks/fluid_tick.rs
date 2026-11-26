@@ -1,17 +1,15 @@
-
-
 #![cfg(test)]
 use sunrise_core::position::BlockPos;
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
-use {crate::game::native_hooks::fluid_tick::*};
-    use sunrise_gameplay_common::game::LevelDimension;
+    use crate::game::native_hooks::fluid_tick::*;
     use mod_api::{FluidTickEvent, Hooks, LevelHost, Registrar};
     use std::sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     };
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::LevelDimension;
 
     struct CancelWater(Arc<AtomicUsize>);
     #[mod_api::__subscriptions]

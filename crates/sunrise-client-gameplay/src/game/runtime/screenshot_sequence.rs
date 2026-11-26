@@ -56,7 +56,10 @@ impl crate::game::ClientGame<'_> {
         let g = &self.client.settings.sunrise;
         if !self.common.clock.still() {
             Some("screenshot-sequence needs SUNRISE_STILL=1")
-        } else if !self.common.clock.frozen() || self.common.clock.stepping() || self.common.clock.sprinting() {
+        } else if !self.common.clock.frozen()
+            || self.common.clock.stepping()
+            || self.common.clock.sprinting()
+        {
             Some("screenshot-sequence needs the world frozen (/tick freeze), not stepping")
         } else if self.client.title.0.is_some()
             || self.client.screen != Screen::Playing

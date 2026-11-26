@@ -19,7 +19,8 @@ pub trait Hooks {
 A mod's spawner is a key it owns, and the `custom_spawner_tick(dimension, key, spawn_enemies)` hook stands for `CustomSpawner.tick`: it runs once per tick for each key in the list, in list order, while the `spawn_mobs` rule is on, and the mod that owns the key spawns through its `host`. Every mod gets the call and the others ignore it. A level with no mod spawner pays one list walk per tick and no hook call. Beyond NeoForge: a key plus a tick hook in place of an object.
 
 Sunrise ticks vanilla's spawners where it always has: the trader, patrol, cat and siege spawners in the custom spawner block (vanilla's own order differs, and moving it is a separate parity change) and the phantom spawner with the stats, after the mobs. A mod's spawners tick after them in list order, so the position of the `Phantom` entry in the list does not move it. Listeners run on replayed ticks, so they are pure functions of their inputs."#]
-    #[hook(target = "sunrise_gameplay::game::native_hooks::custom_spawners::ServerGame<'_>::native_modify_custom_spawners", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::custom_spawners::ServerGame<'_>::native_modify_custom_spawners",
         receiver = "read",
         dispatch = "flat",
         side = "server",
@@ -39,7 +40,8 @@ Sunrise ticks vanilla's spawners where it always has: the trader, patrol, cat an
     /// spawners are, and only for a key in the list, so a level with no mod spawner pays one
     /// check per tick. Beyond NeoForge: a key and this hook stand in for the `CustomSpawner`
     /// object. Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::custom_spawners::ServerGame<'_>::native_custom_spawner_tick", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::custom_spawners::ServerGame<'_>::native_custom_spawner_tick",
         dispatch = "flat",
         side = "server",
         contract = "listen",

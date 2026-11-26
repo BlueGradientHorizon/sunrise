@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use mod_api::FluidStack;
 use std::sync::Arc;
@@ -8,13 +6,13 @@ use sunrise_level::containers::{BlockEntity, ModFluidTanks};
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
-use sunrise_gameplay_common::game::server_side::machines::native_fluids::tests::tanks;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::server_side::machines::native_fluids::tests::tanks;
+    use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 
-use super::*;
+    use super::*;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_mods_cauldron_fills_and_drains_by_its_levels_and_a_refusal_names_both_sides() {
         use super::super::super::native_entity_refs::tests::{
@@ -96,10 +94,11 @@ use super::*;
         mod_platform::testing::with_mods(mods, || {
             let base =
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-            let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default())
-                .unwrap()
-                .prepared()
-                .to_path_buf();
+            let root =
+                sunrise_gameplay_common::game::mods::content_root(&base, &Default::default())
+                    .unwrap()
+                    .prepared()
+                    .to_path_buf();
             with_game_at(root, |game| {
                 game.options.dedicated = Some(Vec::new());
                 game.world
@@ -107,7 +106,9 @@ use super::*;
                     .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
                 let level = game.level("minecraft:overworld").unwrap();
                 let flags = BlockUpdateFlags::NEIGHBORS;
-                let block = |game: &sunrise_gameplay::game::ServerGame<'_>, name: &str, level: Option<u32>| {
+                let block = |game: &sunrise_gameplay::game::ServerGame<'_>,
+                             name: &str,
+                             level: Option<u32>| {
                     let state = sunrise_world::chunk::BlockState {
                         name: name.to_owned(),
                         properties: level
@@ -191,22 +192,25 @@ use super::*;
                     assert_eq!(handler.capacity(game, 0, Some(&water)), 1000);
                 }
                 let handler = handler.unwrap();
-                let extract =
-                    |game: &mut sunrise_gameplay::game::ServerGame<'_>, resource: &FluidResource, amount| {
-                        game.storage_transaction(|host, tx| {
-                            handler.extract_at(host, tx, 0, resource, amount)
-                        })
-                        .unwrap()
-                    };
-                let insert =
-                    |game: &mut sunrise_gameplay::game::ServerGame<'_>, resource: &FluidResource, amount| {
-                        game.storage_transaction(|host, tx| {
-                            handler.insert_at(host, tx, 0, resource, amount)
-                        })
-                        .unwrap()
-                    };
-                let at =
-                    |game: &sunrise_gameplay::game::ServerGame<'_>| game.world.block(pos[0], pos[1], pos[2]);
+                let extract = |game: &mut sunrise_gameplay::game::ServerGame<'_>,
+                               resource: &FluidResource,
+                               amount| {
+                    game.storage_transaction(|host, tx| {
+                        handler.extract_at(host, tx, 0, resource, amount)
+                    })
+                    .unwrap()
+                };
+                let insert = |game: &mut sunrise_gameplay::game::ServerGame<'_>,
+                              resource: &FluidResource,
+                              amount| {
+                    game.storage_transaction(|host, tx| {
+                        handler.insert_at(host, tx, 0, resource, amount)
+                    })
+                    .unwrap()
+                };
+                let at = |game: &sunrise_gameplay::game::ServerGame<'_>| {
+                    game.world.block(pos[0], pos[1], pos[2])
+                };
                 // A drain takes whole levels: 1500 mB asked takes one level, 999 none, and the
                 // last level leaves an empty cauldron.
                 assert_eq!(extract(game, &syrup, 1500), 1000);
@@ -269,11 +273,11 @@ use super::*;
         });
     }
     #[cfg(any())]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_scoped_tank_can_refuse_a_fluid() {
-        use sunrise_gameplay::game::machines::native_fluids::read_tanks;
         use super::super::super::native_entity_refs::tests::{run_fresh_cases, with_game_at};
+        use sunrise_gameplay::game::machines::native_fluids::read_tanks;
         if run_fresh_cases(
             "game::server_side::machines::native_fluids::tests::a_scoped_tank_can_refuse_a_fluid",
             "SUNRISE_SCOPED_FLUID_CHILD",
@@ -334,10 +338,11 @@ use super::*;
         mod_platform::testing::with_mods(mods, || {
             let base =
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-            let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default())
-                .unwrap()
-                .prepared()
-                .to_path_buf();
+            let root =
+                sunrise_gameplay_common::game::mods::content_root(&base, &Default::default())
+                    .unwrap()
+                    .prepared()
+                    .to_path_buf();
             with_game_at(root, |game| {
                 game.options.dedicated = Some(Vec::new());
                 game.world

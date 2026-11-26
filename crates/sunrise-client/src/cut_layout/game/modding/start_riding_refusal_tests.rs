@@ -10,7 +10,10 @@ use sunrise_core::geometry::Vec3;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::Mob;
 
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::commands_common::Target,
+};
 
 fn add_mob(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32, name: &str) -> EntityRef {
     let kind = game.res.mob_types().get(name).unwrap().clone();
@@ -51,7 +54,10 @@ impl Hooks for MountCounter {
     }
 }
 
-fn with_counter(cancel: bool, test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Mutex<u32>)) {
+fn with_counter(
+    cancel: bool,
+    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Mutex<u32>),
+) {
     let heard = Arc::new(Mutex::new(0));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "start_riding_refusal_counter",

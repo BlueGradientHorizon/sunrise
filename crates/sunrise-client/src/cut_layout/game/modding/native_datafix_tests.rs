@@ -1,11 +1,16 @@
 //! Standalone upgrades through a mod callback on each logical side.
-use {sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{
     Compound, Hooks, HostSide, LevelTickPreEvent, LogicalSide, ModEntry, NbtDataType,
     NbtUpgradeError, Tag,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_core::nbt::parse_snbt;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 fn compound(text: &str) -> Compound {
     match parse_snbt(text).unwrap().0 {
@@ -90,9 +95,12 @@ fn a_mods_host_upgrades_old_data_and_refuses_by_name() {
     mod_platform::testing::with_mods(mods, || {
         match expected {
             LogicalSide::Client => with_client_game(|game| {
-                use {sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
                 use sunrise_client::level_loading::Reason;
                 use sunrise_protocol::{connection::Pipe, packets::play::SpawnInfo};
+                use {
+                    sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry,
+                    sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle,
+                };
 
                 game.native_lifecycle = NativeLifecycle::default();
                 let (client, _server) = Pipe::pair();

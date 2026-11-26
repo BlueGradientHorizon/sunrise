@@ -2,13 +2,20 @@
 //! writes `profile`, `hidden_layers`, `main_hand` and `pose`, and, as an
 //! `Avatar` and not a `Mob`, none of `Mob.addAdditionalSaveData`'s fields
 //! (tools/test_mannequin_save_parity.py measures the same on vanilla 26.3).
-use {crate::game::*, sunrise_gameplay_common::game::{Instant, Mob, Options, PathBuf, Progress, Resources, entity, execution_role}};
+use crate::game::server_side::commands;
 use crate::settings::Settings;
 use std::sync::Arc;
 use sunrise_core::nbt::{Tag, parse_snbt};
-use crate::game::server_side::commands;
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{
+        Instant, Mob, Options, PathBuf, Progress, Resources, entity, execution_role,
+    },
+};
 
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::game::ServerGame<'_> {
+fn game(
+    resources: &mut Option<std::sync::Arc<Resources>>,
+) -> sunrise_gameplay::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -75,7 +82,11 @@ fn a_mannequin_saves_its_own_fields_and_no_mob_fields() {
     };
     let (plain, mob_input) = (id(&game, 1), id(&game, 6));
     for mob in [plain, mob_input] {
-        let tag = game.command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Mob(mob)).unwrap();
+        let tag = game
+            .command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Mob(
+                mob,
+            ))
+            .unwrap();
         assert_eq!(tag.get("profile"), Some(&snbt("{}")), "{mob}");
         assert_eq!(tag.get("hidden_layers"), Some(&Tag::List(Vec::new())));
         assert_eq!(tag.get("main_hand"), Some(&Tag::String("right".into())));
@@ -89,7 +100,9 @@ fn a_mannequin_saves_its_own_fields_and_no_mob_fields() {
         "data merge entity 00000141-0000-0000-0000-000000000001 {pose:\"swimming\",main_hand:\"left\",hidden_layers:[\"jacket\"]}"
     ));
     let tag = game
-        .command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Mob(plain))
+        .command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Mob(
+            plain,
+        ))
         .unwrap();
     assert_eq!(tag.get("pose"), Some(&Tag::String("swimming".into())));
     assert_eq!(tag.get("main_hand"), Some(&Tag::String("left".into())));
@@ -105,16 +118,17 @@ fn a_mannequin_saves_its_own_fields_and_no_mob_fields() {
 fn a_mannequin_reads_and_saves_from_its_own_state() {
     let mut game_resources = None;
     let mut game = game(&mut game_resources);
-    let summon = |g: &mut sunrise_gameplay::game::ServerGame<'_>, kind: &str, n: i32, fields: &str| {
-        assert!(g.run_command(&format!(
-            "summon {kind} {}.5 100 4.5 {{UUID:[I;321,0,0,{n}],NoGravity:1b,{fields}}}",
-            n * 2
-        )));
-        g.mobs
-            .iter()
-            .position(|m| g.persist.uuids.get(&m.id) == Some(&[321, 0, 0, n]))
-            .unwrap()
-    };
+    let summon =
+        |g: &mut sunrise_gameplay::game::ServerGame<'_>, kind: &str, n: i32, fields: &str| {
+            assert!(g.run_command(&format!(
+                "summon {kind} {}.5 100 4.5 {{UUID:[I;321,0,0,{n}],NoGravity:1b,{fields}}}",
+                n * 2
+            )));
+            g.mobs
+                .iter()
+                .position(|m| g.persist.uuids.get(&m.id) == Some(&[321, 0, 0, n]))
+                .unwrap()
+        };
     let flags = "NoAI:1b,PersistenceRequired:1b,CanPickUpLoot:1b,LeftHanded:1b";
     let mannequin = summon(
         &mut game,
@@ -176,7 +190,11 @@ fn a_mannequin_reads_and_saves_from_its_own_state() {
             Some(raw) => game.persist.raw.insert(id, raw.clone()),
             None => game.persist.raw.remove(&id),
         };
-        let tag = game.command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Mob(id)).unwrap();
+        let tag = game
+            .command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Mob(
+                id,
+            ))
+            .unwrap();
         assert_eq!(tag.get("pose"), Some(&Tag::String("crouching".into())));
         assert_eq!(tag.get("main_hand"), Some(&Tag::String("left".into())));
         assert_eq!(tag.get("hidden_layers"), Some(&snbt("[\"cape\",\"hat\"]")));
@@ -204,7 +222,9 @@ fn a_mannequin_reads_and_saves_from_its_own_state() {
     // The pig's save keeps its Mob fields.
     let pig_id = game.mobs[pig].id;
     let tag = game
-        .command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Mob(pig_id))
+        .command_target_nbt(sunrise_gameplay_common::game::commands_common::Target::Mob(
+            pig_id,
+        ))
         .unwrap();
     for key in MOB_ONLY {
         assert_eq!(tag.get(key), Some(&Tag::Byte(1)), "{key}");

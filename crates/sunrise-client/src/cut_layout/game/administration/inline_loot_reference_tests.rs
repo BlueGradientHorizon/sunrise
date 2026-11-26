@@ -4,17 +4,17 @@
 //! parse. The command never runs, an `execute store` around it stores
 //! nothing and no item is given
 //! (tools/test_inline_loot_reference_parity.py measures the same on vanilla 26.3).
-use sunrise_core::geometry::Vec3;
-use sunrise_sim::motion::PlayerMotion;
 use super::*;
+use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::Arc;
+use sunrise_core::geometry::Vec3;
+use sunrise_core::position::ChunkPos;
 use sunrise_gameplay_common::game::Options;
 use sunrise_gameplay_common::game::execution_role;
-use crate::game::load_resources;
 use sunrise_gameplay_common::game::resource_load::Progress;
-use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 const MISSING_MESSAGE: &str = "Failed to parse structure: Failed to parse either. First: Not a tag id; \
      Second: Failed to parse either. First: Not a list: \"parity:il_none\"; \

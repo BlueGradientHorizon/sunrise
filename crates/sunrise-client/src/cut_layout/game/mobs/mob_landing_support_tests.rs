@@ -5,11 +5,16 @@
 //! (top 15/16) but whose box rests on the stone beside it takes the stone's
 //! plain fall, not honey's fifth
 //! (tools/test_mob_landing_support_parity.py measures the same on vanilla 26.3).
-use {crate::game::*, sunrise_gameplay_common::game::{Instant, Options, PathBuf, Progress, Resources, entity, execution_role}};
-use std::sync::Arc;
 use crate::settings::Settings;
+use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{
+        Instant, Options, PathBuf, Progress, Resources, entity, execution_role,
+    },
+};
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,

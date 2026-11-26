@@ -1,9 +1,9 @@
+use super::*;
+use mod_api::ServerHost;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::Mob;
-use super::*;
-use mod_api::ServerHost;
 
 /// `LivingDropsEvent` hears a copper golem's preserved equipment with the
 /// rest of its drops and can cancel it, and an armor stand's break

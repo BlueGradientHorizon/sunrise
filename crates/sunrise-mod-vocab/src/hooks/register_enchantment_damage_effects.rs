@@ -22,7 +22,8 @@ consumption. The callback runs at `EnchantmentHelper.modifyDamage` during ordina
 before incoming-damage hooks and armor reductions. It is an effect registrar, not a generic hit hook.
 Callbacks are indexed directly by resolved slots; hits never scan installed mods. Hits without custom
 nodes retain the vanilla evaluator without constructing API weapon snapshots."#]
-    #[hook(target = "sunrise_gameplay_common::game::native_hooks::register_enchantment_damage_effects::native_register_enchantment_damage_effects", 
+    #[hook(
+        target = "sunrise_gameplay_common::game::native_hooks::register_enchantment_damage_effects::native_register_enchantment_damage_effects",
         receiver = "associated",
         dispatch = "flat",
         side = "server",

@@ -1,4 +1,7 @@
-use {sunrise_gameplay_common::game::remote::look_at_rotation, sunrise_gameplay_common::game::remote::snapshot_value};
+use {
+    sunrise_gameplay_common::game::remote::look_at_rotation,
+    sunrise_gameplay_common::game::remote::snapshot_value,
+};
 
 /// An NPC plugin's scale: a base the plugin sets, or a modifier on 1.
 #[test]

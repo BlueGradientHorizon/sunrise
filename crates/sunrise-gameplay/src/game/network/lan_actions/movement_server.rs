@@ -75,13 +75,21 @@ impl crate::game::ServerGame<'_> {
     pub fn in_wall(&self, conn: u32, at: [f64; 3], body: Dimensions) -> bool {
         let y = (at[1] + f64::from(body.eye_height)).floor() as i32;
         let [xs, zs] = eye_columns(at, body);
-        let guest = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn));
+        let guest = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn));
         let spared = |x: i32, z: i32| {
             guest.is_some_and(|g| g.collision_exclusions.spares(BlockPos::new(x, y, z)))
         };
         let in_block = xs.into_iter().any(|x| {
             zs.clone().any(|z| {
-                let f = self.common.res.facts().get(self.common.world.block(x, y, z));
+                let f = self
+                    .common
+                    .res
+                    .facts()
+                    .get(self.common.world.block(x, y, z));
                 f.full_collision && f.solid_render && !spared(x, z)
             })
         });
@@ -116,7 +124,12 @@ impl crate::game::ServerGame<'_> {
     /// `Player.tryToStartFallFlying`, or else `stopFallFlying` (a second
     /// start while gliding ends the glide, as in vanilla).
     pub(in crate::game::server_side) fn lan_start_gliding(&mut self, conn: u32) {
-        let Some(g) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(g) = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+        else {
             return;
         };
         let start = !g.fall_flying && self.guest_can_glide(conn) == Some(true);

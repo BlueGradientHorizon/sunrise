@@ -1,11 +1,14 @@
 //! A projectile that strikes an item frame hurts it (#11383): `ItemFrame.hurtServer`
 //! gives the item up, an empty frame breaks, and a fixed one refuses the hit.
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role};
-use crate::settings::Settings;
 use crate::game::load_resources;
+use crate::settings::Settings;
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
+use {
+    sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    sunrise_gameplay_common::game::execution_role,
+};
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,

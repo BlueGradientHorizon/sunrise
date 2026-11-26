@@ -1,10 +1,13 @@
 //! Production singleton installation/removal and id-allocation contracts.
+use super::*;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_gameplay_common::game::creatures::SpawnSite;
 use sunrise_gameplay_common::game::dragon_common::Dragon;
-use super::*;
-use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 #[test]
 #[ignore = "daily"]

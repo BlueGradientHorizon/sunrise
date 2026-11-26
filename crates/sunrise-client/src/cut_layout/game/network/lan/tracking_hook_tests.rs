@@ -3,16 +3,19 @@
 //! with the entity in the level once the player was sent its spawn bundle, a stop once it was
 //! sent the removal, and a payload a listener sends reaches the player right after that packet.
 //! A leaving player's stops follow `player_logged_out`.
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
 use mod_api::{Hooks, ModEntry, PayloadBytes, PayloadId, Registrar, ServerHost};
 use std::sync::{Arc, Mutex};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::{buf::Reader, ids::play::clientbound as id};
 use sunrise_sim::{
     lan::{PlayerSender, hub::HostEvent},
     raw_payloads::{Side, Transport},
+};
+use {
+    sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+    sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
 };
 
 pub(crate) const CHANNEL: &str = "tracktest:seen";
@@ -28,13 +31,7 @@ pub(in crate::game) enum Heard {
 pub(crate) struct Probe(pub(crate) Arc<Mutex<Vec<Heard>>>);
 impl Probe {
     /// Tell the player which entity it heard of, on the mod's channel.
-    pub(crate) fn send(
-        &self,
-        host: &mut dyn ServerHost,
-        player: u128,
-        what: &str,
-        entity: u32,
-    ) {
+    pub(crate) fn send(&self, host: &mut dyn ServerHost, player: u128, what: &str, entity: u32) {
         let Some(player) = host.player(player) else {
             return;
         };
@@ -178,9 +175,15 @@ pub(crate) fn tick_until_heard(
     for _ in 0..20 {
         // The tracker pairs only what the client was sent the chunk of (`isChunkTracked`); this
         // fixture runs no chunk sending, so chunk (0, 0) stands as sent.
-        game.server.lan.as_mut().unwrap().hub.guests.update_all(|g| {
-            g.sent_chunks.insert((0, 0));
-        });
+        game.server
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .update_all(|g| {
+                g.sent_chunks.insert((0, 0));
+            });
         game.tick_lan(false);
         let told = heard();
         if !told.is_empty() {
@@ -206,10 +209,7 @@ pub(crate) fn at(sent: &[Sent], wanted: &Sent) -> usize {
 
 /// The stops a removal packet carries: it is followed at once by the mod's word for each,
 /// in the order the mods heard them.
-pub(crate) fn words_after_removal(
-    sent: &[Sent],
-    id: u32,
-) -> (Vec<u32>, Vec<&Sent>) {
+pub(crate) fn words_after_removal(sent: &[Sent], id: u32) -> (Vec<u32>, Vec<&Sent>) {
     let removed = sent
         .iter()
         .position(|s| matches!(s, Sent::Remove(ids) if ids.contains(&id)))

@@ -1,4 +1,3 @@
-
 #[cfg(any())]
 #[cfg(test)]
 pub(in crate::game) mod server_tick_rate_changed_tests {
@@ -29,6 +28,4 @@ pub(in crate::game) mod server_tick_rate_changed_tests {
             }
         }
     }
-
-    
 }

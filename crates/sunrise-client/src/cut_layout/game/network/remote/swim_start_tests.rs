@@ -1,12 +1,20 @@
 //! Exercise both owning player tick routes, not the standalone swim oracle.
-use sunrise_gameplay_common::game::native_hooks::can_start_swimming::SprintGameExt;
-use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{Chunk, ItemStack, Keys, PlayerMotion, S, Vec3, motion, play, tick}};
-use std::sync::Arc;
-use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
-use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{CanStartSwimmingEvent, EquipmentSlot, Hooks, Host, LogicalSide, SwimmingCheck};
+use std::sync::Arc;
 use std::sync::Mutex;
+use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
+use sunrise_gameplay_common::game::native_hooks::can_start_swimming::SprintGameExt;
 use winit::keyboard::KeyCode;
+use {
+    crate::game::remote::*,
+    sunrise_gameplay_common::game::remote::{
+        Chunk, ItemStack, Keys, PlayerMotion, S, Vec3, motion, play, tick,
+    },
+};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 #[derive(Clone, Default)]
 struct SwimRules(Arc<Mutex<Vec<(LogicalSide, SwimmingCheck, u32)>>>);
@@ -47,8 +55,7 @@ impl Hooks for MutatesQuery {
     }
 }
 
-fn water_column(game: &mut sunrise_gameplay_common::game::CommonGame<'_>)
-{
+fn water_column(game: &mut sunrise_gameplay_common::game::CommonGame<'_>) {
     let water = game
         .pack
         .assets
@@ -166,12 +173,13 @@ fn local_swim_eligibility_replaces_entry_and_the_shallow_sprint_query() {
                     let p = game.player.as_mut().unwrap();
                     p.swimming = false;
                     p.set_sprinting(true).unwrap();
-                    game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(
-                        71,
-                        "oak".into(),
-                        Vec3::new(10.5, 64.5, 10.5),
-                        0.0,
-                    ));
+                    game.boats
+                        .push(sunrise_gameplay_common::game::boats_common::Boat::new(
+                            71,
+                            "oak".into(),
+                            Vec3::new(10.5, 64.5, 10.5),
+                            0.0,
+                        ));
                     game.riding = Some(71);
                     tick(game);
                     let p = game.player.as_ref().unwrap();
@@ -191,7 +199,10 @@ fn local_swim_eligibility_replaces_entry_and_the_shallow_sprint_query() {
 #[test]
 #[ignore = "daily"]
 fn swim_entry_reads_each_authoritative_guests_own_equipment() {
-    use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
+    use {
+        sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+        sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+    };
     sunrise_gameplay_common::game::in_own_process(
         "game::remote::swim_start_tests::swim_entry_reads_each_authoritative_guests_own_equipment",
         || {

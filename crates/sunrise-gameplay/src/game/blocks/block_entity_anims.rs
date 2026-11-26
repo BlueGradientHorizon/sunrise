@@ -4,12 +4,12 @@
 //! `BlockEntity.triggerEvent`). The renderer reads the resulting state through
 //! [`Game::block_anim`] and [`Game::chest_lid`].
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::block_entity_anims_common::PLAYER;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
+use sunrise_gameplay_common::game::block_entity_anims_common::PLAYER;
 use sunrise_level::{
     block_entity_ticks::{BellEntity, ConduitServer, Ticker, closer_to_center_than},
     shulker_box::{Shulker, ShulkerStatus},
@@ -37,11 +37,7 @@ impl ServerGame<'_> {
         !self.common.spectator() && self.container_openers_changed(key, open)
     }
     /// `container_opener_event` for a player who is not a spectator (a guest).
-    pub fn container_openers_changed(
-        &mut self,
-        key: (i32, i32, i32),
-        open: bool,
-    ) -> bool {
+    pub fn container_openers_changed(&mut self, key: (i32, i32, i32), open: bool) -> bool {
         // Declared containers use their own counter, even on a lid-bearing template.
         if self.common.mod_menu_at(key).is_some() {
             return false;
@@ -57,7 +53,8 @@ impl ServerGame<'_> {
                 edge
             }
             _ if self
-                .common.res
+                .common
+                .res
                 .facts()
                 .get(self.common.world.block(pos[0], pos[1], pos[2]))
                 .name
@@ -97,7 +94,8 @@ impl ServerGame<'_> {
         // (`TrappedChestBlock.getSignal`), so the blocks around it and
         // below it hear of a change.
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
-        if before != count && self.common.res.facts().get(state).name.as_ref() == "minecraft:trapped_chest"
+        if before != count
+            && self.common.res.facts().get(state).name.as_ref() == "minecraft:trapped_chest"
         {
             let p = BlockPos::new(pos[0], pos[1], pos[2]);
             self.with_level(|b, level, ticks| {
@@ -375,7 +373,10 @@ impl ServerGame<'_> {
             .0
             .levels()
             .block_ticking_at(pos[0], pos[2])
-            || !self.common.border.contains(f64::from(pos[0]), f64::from(pos[2]))
+            || !self
+                .common
+                .border
+                .contains(f64::from(pos[0]), f64::from(pos[2]))
         {
             return;
         }
@@ -391,7 +392,8 @@ impl ServerGame<'_> {
             let facts = self.common.res.facts();
             let registry = self.common.pack.assets.registry;
             let frames = self
-                .common.res
+                .common
+                .res
                 .items()
                 .block_tags
                 .get("minecraft:conduit_effect_block");
@@ -519,7 +521,8 @@ impl ServerGame<'_> {
             None => self.conduit_new_target(pos),
             Some(None) => None,
             Some(Some(id)) => self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == id && !m.removed)
                 .filter(|m| {
@@ -537,7 +540,8 @@ impl ServerGame<'_> {
         if saved.is_some() {
             let target = conduit.target.map(|id| self.mob_uuid(id));
             if saved != Some(target)
-                && let Some(BlockEntity::Conduit(saved)) = self.common.world.block_entities.get_mut(&key)
+                && let Some(BlockEntity::Conduit(saved)) =
+                    self.common.world.block_entities.get_mut(&key)
             {
                 // `sendBlockUpdated`: the new target reaches the clients.
                 *saved = target;
@@ -567,17 +571,15 @@ impl ServerGame<'_> {
     }
     /// `ConduitBlockEntity.selectNewTarget`: one of the enemies in water or
     /// rain whose box meets the conduit's block inflated by 8.
-    pub fn conduit_new_target(
-        &mut self,
-        pos: [i32; 3],
-    ) -> Option<u32> {
+    pub fn conduit_new_target(&mut self, pos: [i32; 3]) -> Option<u32> {
         let [x, y, z] = pos.map(f64::from);
         let area = Aabb::new(
             Vec3::new(x - 8.0, y - 8.0, z - 8.0),
             Vec3::new(x + 9.0, y + 9.0, z + 9.0),
         );
         let near: Vec<(u32, bool, Vec3, f64)> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             // `instanceof Enemy`, not the monster category: the zombie horse,
             // camel husk and zombie nautilus are `Animal`s.
@@ -596,7 +598,8 @@ impl ServerGame<'_> {
             return None;
         }
         let pick = self
-            .common.world
+            .common
+            .world
             .random
             .next_int_bound(candidates.len() as i32)
             .unwrap_or(0);
@@ -676,7 +679,10 @@ impl ServerGame<'_> {
         let state = self.common.world.block(pos[0], pos[1], pos[2]).0;
         let time = self.common.world.game_time;
         // PotentSulfurBlock.triggerEvent.
-        if self.common.potent_sulfur_eruption_event((pos[0], pos[1], pos[2])) {
+        if self
+            .common
+            .potent_sulfur_eruption_event((pos[0], pos[1], pos[2]))
+        {
             return;
         }
         match self.server.be_anims.ticker(state) {
@@ -735,10 +741,6 @@ pub mod conduit_target_tests {
     //! `Target` reaches every window through `sendBlockUpdated`; the window
     //! then spits a nautilus particle at the mob.
 
-    
-
-    
-
     /// A conduit in a loaded chunk.
     pub fn setup(game: &mut crate::game::ServerGame<'_>) {
         for command in [
@@ -749,8 +751,6 @@ pub mod conduit_target_tests {
             assert!(game.run_command(command), "{command}");
         }
     }
-
-    
 
     /// A mob of `kind` beside the conduit, in the water.
     pub fn summon(game: &mut crate::game::ServerGame<'_>, kind: &str) -> u32 {
@@ -767,8 +767,6 @@ pub mod conduit_target_tests {
     ) {
         game.conduit_attack(&mut super::ConduitServer::default(), pos, hunting);
     }
-
-    
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;

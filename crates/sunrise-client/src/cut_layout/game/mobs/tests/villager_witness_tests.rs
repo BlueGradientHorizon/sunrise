@@ -1,10 +1,15 @@
 //! Actual murder notification, with no server or world tick.
+use super::*;
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::mobs::Mob;
 use sunrise_sim::mobs::villager_brain;
-use super::*;
-use {sunrise_gameplay::game::native_entity_refs::tests::bind_acting_guest, sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use sunrise_sim::mobs::{Damage, Who};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::bind_acting_guest,
+    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -142,7 +147,9 @@ fn two_hits_of_a_mob_without_uuid_share_one() {
         game.options.dedicated = Some(Vec::new());
         game.build_registries();
         let (common, server) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
-        server.streaming.insert_remote(&mut common.world, sunrise_level::chunk::Chunk::empty(0, 0));
+        server
+            .streaming
+            .insert_remote(&mut common.world, sunrise_level::chunk::Chunk::empty(0, 0));
         game.mobs.clear();
         let fish = game
             .res

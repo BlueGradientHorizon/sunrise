@@ -4,11 +4,11 @@
 //! moment vanilla draws them. The item entities they make are added to the
 //! world as soon as the behaviour returns, within the same tick.
 use super::GameLevel;
+use mod_api::EntityRef;
+use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::game::spill_common::{
     BlockDrops, BlockItemDrop, Pending, Spawn, UsedDrops, saved_entity, world_source,
 };
-use mod_api::EntityRef;
-use sunrise_core::position::BlockPos;
 use sunrise_items::items::{BlockLootRoll, ItemStack};
 use sunrise_level::containers::BlockEntity;
 use sunrise_world::registry::BlockStateId;
@@ -86,11 +86,21 @@ impl crate::game::ServerGame<'_> {
         roll: BlockLootRoll<'_>,
     ) -> Vec<ItemStack> {
         let source = self.common.pending.source(pos).or_else(|| {
-            self.common.pack.assets.registry.state(state).and_then(|block| {
-                world_source(&self.common.world, pos, &block.name, |key, entity, block| {
-                    self.encode_live_block_entity(key, entity, block, world_items!(self))
+            self.common
+                .pack
+                .assets
+                .registry
+                .state(state)
+                .and_then(|block| {
+                    world_source(
+                        &self.common.world,
+                        pos,
+                        &block.name,
+                        |key, entity, block| {
+                            self.encode_live_block_entity(key, entity, block, world_items!(self))
+                        },
+                    )
                 })
-            })
         });
         let storage = self.common.score.storage.snapshot();
         sunrise_world::loot::copy::with_storage(storage, || {
@@ -209,28 +219,9 @@ impl crate::game::ServerGame<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_gameplay_common::game::spill_common::BlockDropEntity;
     use sunrise_core::random::RandomSource;
+    use sunrise_gameplay_common::game::spill_common::BlockDropEntity;
     use sunrise_world::level::removal;
-
-    
-    
-    
-    
-    
-    
-    
-    
-
-    
-    
-    
-    
-
-    
-    
-
-    
 
     #[test]
     #[ignore = "daily"]
@@ -295,13 +286,6 @@ mod tests {
         assert_eq!(*seen.lock().unwrap(), [0]);
     }
 
-    
-
-    
-
-    
-
-    
     use sunrise_core::nbt::Tag;
     use sunrise_items::item_data;
     use sunrise_sim::{block_entity_item, mobs::raider, save};
@@ -455,6 +439,5 @@ mod tests {
 use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
-
 
 use sunrise_gameplay_common::game::native_hooks::block_entity_save_additional::BlockEntitySaveAdditionalGameExt1 as _;

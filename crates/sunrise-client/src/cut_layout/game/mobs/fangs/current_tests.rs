@@ -1,11 +1,15 @@
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay::game::commands::data::DataRef;
-use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use std::collections::BTreeMap;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;
+use sunrise_gameplay::game::commands::data::DataRef;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+    sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 fn read_witness() -> String {
     let raw = std::env::var_os("SUNRISE_FANGS_FLUID_CURRENT_WITNESS").unwrap_or_else(|| {
@@ -109,8 +113,7 @@ fn fangs_in_a_current_are_pushed_and_fangs_in_still_water_are_not() {
     run_fangs_in_a_current_are_pushed_and_fangs_in_still_water_are_not();
 }
 
-pub(crate) fn run_fangs_in_a_current_are_pushed_and_fangs_in_still_water_are_not()
- {
+pub(crate) fn run_fangs_in_a_current_are_pushed_and_fangs_in_still_water_are_not() {
     let witness = read_witness();
     assert!(
         witness.starts_with("# minecraft 26.3 "),

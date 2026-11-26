@@ -86,7 +86,8 @@ impl crate::game::ServerGame<'_> {
                     teleported = moved.then_some((from, m.position));
                     moved
                 });
-                self.common.mobs
+                self.common
+                    .mobs
                     .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
                 let _ = self.handle_mob_events(events);
                 // `teleportTo` is one position update, told at once.

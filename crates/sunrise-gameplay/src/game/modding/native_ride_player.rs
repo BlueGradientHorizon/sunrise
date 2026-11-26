@@ -21,7 +21,8 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn player_vehicle_id(&self, player: Target) -> Option<u32> {
         match player {
             Target::Player => self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .map(|_| self.own_entity_id() as u32)
                 .filter(|&id| id != 0),
@@ -63,7 +64,8 @@ impl crate::game::ServerGame<'_> {
             _ => return Err(RidePlayerRefusal::UnsupportedRider),
         };
         let mob = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .find(|m| m.id == id && !m.removed)
             .ok_or(RidePlayerRefusal::NoEntity)?;
@@ -99,7 +101,11 @@ impl crate::game::ServerGame<'_> {
     /// hears it); one a listener kept on is taken off anyway. Nothing to do, and nothing
     /// allocated, while no mob rides a player, which is every vanilla game.
     pub(in crate::game) fn eject_player_riders(&mut self, vehicle: Option<u32>) {
-        let own = self.common.player.as_ref().map(|_| self.own_entity_id() as u32);
+        let own = self
+            .common
+            .player
+            .as_ref()
+            .map(|_| self.own_entity_id() as u32);
         let is_player =
             |game: &Self, v: u32| match vehicle {
                 Some(only) => v == only,
@@ -111,14 +117,16 @@ impl crate::game::ServerGame<'_> {
                 }
             };
         if !self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .any(|m| !m.removed && m.extra.mount.is_some_and(|v| is_player(self, v)))
         {
             return;
         }
         let riders: Vec<(u32, u32)> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter(|m| !m.removed)
             .filter_map(|m| {
@@ -131,7 +139,8 @@ impl crate::game::ServerGame<'_> {
         for (id, v) in riders {
             self.dismount_mob(id);
             if self
-                .common.mob_object(id)
+                .common
+                .mob_object(id)
                 .is_some_and(|m| m.extra.mount == Some(v))
             {
                 self.dismount_mob_reentrant(id);

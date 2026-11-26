@@ -1,13 +1,16 @@
 //! Client-side cartography table preview rendering (`CartographyTableScreen`).
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::maps::{Decoration, decoration_pose, decoration_pose_at, map_id, shown_on_frame};
 use sunrise_client::hud::HudBatch;
+use sunrise_gameplay_common::game::maps::{
+    Decoration, decoration_pose, decoration_pose_at, map_id, shown_on_frame,
+};
 
 impl ClientGame<'_> {
     /// `CartographyTableScreen.extractBackground` after the background.
     pub(in crate::game) fn draw_cartography(&mut self, batch: &mut HudBatch, ox: f32, oy: f32) {
         let Some((map, extra)) = self
-            .common.station
+            .common
+            .station
             .as_ref()
             .map(|s| (s.inputs[0].clone(), s.inputs[1].clone()))
         else {

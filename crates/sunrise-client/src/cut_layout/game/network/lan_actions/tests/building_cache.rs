@@ -2,7 +2,6 @@
 //! a guest teleported, killed or put in spectator mode in the middle of the
 //! tick blocks placement where it is now, as when each turn built the boxes
 //! afresh, not at its box from the start of the tick.
-use {crate::game::*, sunrise_gameplay_common::game::{Dim, Instant, Options, PathBuf, Progress, Resources, Vec3, execution_role}};
 use crate::settings::Settings;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_level::chunk::Chunk;
@@ -10,6 +9,12 @@ use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_sim::{
     lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig},
     motion::PlayerMotion,
+};
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{
+        Dim, Instant, Options, PathBuf, Progress, Resources, Vec3, execution_role,
+    },
 };
 
 pub(crate) type Boxes = Vec<([f64; 3], [f64; 3])>;
@@ -37,7 +42,8 @@ pub(crate) fn game<'a>(
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         res,
@@ -120,13 +126,12 @@ pub(crate) use sunrise_gameplay::game::server_side::lan_actions_server::tick::bu
 /// The Builder's view at the start of a tick, after `command` (and, with
 /// `turns`, the guests' turns that follow it in the tick), and the same
 /// without the shared boxes.
-pub(crate) fn the_mover_changed_mid_tick(
-    command: &str,
-    turns: bool,
-) -> (Boxes, Boxes, Boxes) {
+pub(crate) fn the_mover_changed_mid_tick(command: &str, turns: bool) -> (Boxes, Boxes, Boxes) {
     let mut resources = None;
     let mut game = game(&mut resources);
-    sunrise_gameplay::game::server_side::lan_actions_server::building_cache(game.server.lan.as_ref());
+    sunrise_gameplay::game::server_side::lan_actions_server::building_cache(
+        game.server.lan.as_ref(),
+    );
     let before = seen_by_builder(&mut game);
     assert!(game.run_command(command), "{command}");
     if turns {

@@ -1,13 +1,13 @@
 //! Direct production handlers over an empty in-memory world; no server or renderer.
-use sunrise_core::nbt::Tag;
-use sunrise_sim::nether_portal::PortalState;
-use sunrise_gameplay::game::server_side::nether_portal::{arrival_from_tag, arrival_tag, doubles};
-use sunrise_core::position::BlockPos;
 use super::*;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 use crate::game::{Settings, load_resources};
 use std::sync::Arc;
+use sunrise_core::nbt::Tag;
+use sunrise_core::position::BlockPos;
+use sunrise_gameplay::game::server_side::nether_portal::{arrival_from_tag, arrival_tag, doubles};
 use sunrise_level::chunk::Chunk;
+use sunrise_sim::nether_portal::PortalState;
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 
 #[test]
 #[ignore = "needs explicit SUNRISE_TEST_RESOURCES and SUNRISE_PORTAL_REFERENCE"]
@@ -15,8 +15,7 @@ fn portal_contact_and_waiting_handoff_match_vanilla_counters() {
     run_portal_contact_and_waiting_handoff_match_vanilla_counters();
 }
 
-pub(crate) fn run_portal_contact_and_waiting_handoff_match_vanilla_counters()
-{
+pub(crate) fn run_portal_contact_and_waiting_handoff_match_vanilla_counters() {
     let reference: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(std::env::var_os("SUNRISE_PORTAL_REFERENCE").unwrap()).unwrap(),
     )
@@ -40,7 +39,8 @@ pub(crate) fn run_portal_contact_and_waiting_handoff_match_vanilla_counters()
     options.resources = root.clone();
     options.headless = true;
     options.game_dir = Some(std::env::current_dir().unwrap());
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
@@ -119,7 +119,8 @@ pub(crate) fn run_portal_contact_and_waiting_handoff_match_vanilla_counters()
     let mut runtime = Vec::new();
     for (step, ticks) in [1, 3, 1, 1, 8].into_iter().enumerate() {
         if step == 2 {
-            game.common.world
+            game.common
+                .world
                 .set(entry.x, entry.y, entry.z, game.common.res.facts().air)
                 .unwrap();
         }

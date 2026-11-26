@@ -1,7 +1,7 @@
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_sim::motion::PlayerMotion;
 
 fn load_witness_26_3() -> String {
@@ -83,8 +83,7 @@ fn a_stand_breaks_on_low_health_only_through_damage_and_a_dead_one_goes_at_twent
     run_a_stand_breaks_on_low_health_only_through_damage_and_a_dead_one_goes_at_twenty();
 }
 
-pub(crate) fn run_a_stand_breaks_on_low_health_only_through_damage_and_a_dead_one_goes_at_twenty()
- {
+pub(crate) fn run_a_stand_breaks_on_low_health_only_through_damage_and_a_dead_one_goes_at_twenty() {
     let witness = load_witness_26_3();
     let rows = parse_witness_26_3(&witness);
     with_game(|game| {

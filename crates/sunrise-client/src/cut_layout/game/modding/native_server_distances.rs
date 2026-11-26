@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
@@ -50,7 +48,8 @@ mod tests {
         with_guests(|game| {
             assert_eq!(game.options.execution_role, ExecutionRole::IntegratedServer);
             game.options.dedicated = Some(Vec::new());
-            game.server.serving = Some(sunrise_gameplay::game::server_side::integrated::Serving::fixture(0));
+            game.server.serving =
+                Some(sunrise_gameplay::game::server_side::integrated::Serving::fixture(0));
             let published = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
                 let host: &dyn mod_api::ServerHost = game;
                 host.server_is_published()

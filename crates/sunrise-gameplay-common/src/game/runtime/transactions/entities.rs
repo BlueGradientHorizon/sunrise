@@ -82,10 +82,7 @@ pub enum Step {
 
 impl Step {
     /// A journal's steps: its joins, then its removals, then the rest of what it held.
-    pub fn of(
-        announcements: Vec<Announcement>,
-        removals: Vec<Removal>,
-    ) -> Vec<Step> {
+    pub fn of(announcements: Vec<Announcement>, removals: Vec<Removal>) -> Vec<Step> {
         let (joins, rest): (Vec<_>, Vec<_>) = (announcements.into_iter())
             .partition(|announcement| matches!(announcement, Announcement::Joins { .. }));
         let steps = joins.into_iter().map(Step::Tell);
@@ -289,8 +286,7 @@ pub type ArrivalRollback =
 /// undone. Until then the source level's index keeps the rows it had at the take.
 pub struct Departure {
     pub lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
-    pub registration:
-        Option<sunrise_mod_runtime::attachments::AttachmentRegistration>,
+    pub registration: Option<sunrise_mod_runtime::attachments::AttachmentRegistration>,
 }
 
 impl Drop for Departure {

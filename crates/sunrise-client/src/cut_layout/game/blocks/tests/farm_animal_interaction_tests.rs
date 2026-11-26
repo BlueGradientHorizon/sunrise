@@ -2,12 +2,18 @@
 //! pitch is fixed at 1.0 (`AbstractCow.mobInteract`, `Goat.mobInteract`,
 //! `MushroomCow.mobInteract`) and shearing posts `GameEvent.SHEAR` with the
 //! player (`Sheep.mobInteract`, `MushroomCow.mobInteract`).
-use {crate::game::*, sunrise_gameplay_common::game::{Instant, InteractTarget, ItemStack, Options, PathBuf, Progress, Resources, Side, api_values, entity, execution_role}};
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::{Mob, Who};
 use sunrise_sim::motion::PlayerMotion;
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{
+        Instant, InteractTarget, ItemStack, Options, PathBuf, Progress, Resources, Side,
+        api_values, entity, execution_role,
+    },
+};
 
 fn game<'a>(resources: &'a mut Option<Arc<Resources>>) -> sunrise_gameplay::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
@@ -186,7 +192,8 @@ fn shearing_by_hand_posts_the_shear_game_event() {
     let mut resources = None;
     let mut game = game(&mut resources);
     game.inventory[0] = Some(ItemStack::new("minecraft:shears", 1));
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|events| *events.borrow_mut() = Some(Vec::new()));
     for (kind, id, at) in [
         ("minecraft:sheep", 11, [1.5, 64.0, 2.5]),
         ("minecraft:mooshroom", 12, [2.5, 64.0, 2.5]),
@@ -200,7 +207,8 @@ fn shearing_by_hand_posts_the_shear_game_event() {
             "{kind}"
         );
     }
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = None);
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|events| *events.borrow_mut() = None);
 }
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

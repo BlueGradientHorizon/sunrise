@@ -1,13 +1,13 @@
 //! Client ticks of mod block entities (`ClientLevel.tickBlockEntities`): the client's own
 //! ticker list, made from `native_block_entity_client_ticks`.
 use super::*;
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
-use sunrise_gameplay_common::game::native_hooks::block_entity_read::ResidentReadBlockEntity;
 use mod_api::{
     BlockEntityClientAccess, BlockEntityClientScope, BlockEntityReadView, BlockEntityRef,
     ClientHost,
 };
 use sunrise_client::animate_tick::campfire_particle_tick;
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
+use sunrise_gameplay_common::game::native_hooks::block_entity_read::ResidentReadBlockEntity;
 use sunrise_level::{block_entities::Ticking, containers::BlockEntity};
 
 /// Shared sequential client block-entity view + mutable `ClientHost` backend.
@@ -117,7 +117,10 @@ impl crate::game::ClientGame<'_> {
             // (`BlockEntityTicker` of the registered type): never a vanilla animation.
             let animated = match self.common.world.block_entities.get(&key) {
                 Some(BlockEntity::Mod(_)) => None,
-                _ => self.client.be_anims.ticker(self.common.world.block(x, y, z).0),
+                _ => self
+                    .client
+                    .be_anims
+                    .ticker(self.common.world.block(x, y, z).0),
             };
             // One outside the border waits (`LevelChunk.isTicking`).
             if !self.common.border.contains(f64::from(x), f64::from(z)) {

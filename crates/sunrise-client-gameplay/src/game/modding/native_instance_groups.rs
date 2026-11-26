@@ -120,7 +120,10 @@ impl InstanceGroups for ClientGame<'_> {
         if capacity > 16_384 || reserved + (capacity as usize).max(1) > MOD_CAPACITY {
             return Err(GroupError::CapacityExceeded);
         }
-        self.client.prepared_model_draws.borrow_mut().reserve(16_384);
+        self.client
+            .prepared_model_draws
+            .borrow_mut()
+            .reserve(16_384);
         storage.next = storage
             .next
             .checked_add(1)

@@ -42,7 +42,11 @@ impl crate::game::ClientGame<'_> {
         // RespawnAnchorBlock.useItemOn: PASS when the off hand's glowstone is to
         // charge the anchor, so useWithoutItem doesn't run and the off hand's turn
         // comes (glowstone in this hand charges it in `use_item_on`).
-        if !self.common.anchor_takes(hit.pos, held) && self.common.anchor_takes(hit.pos, self.common.offhand.as_ref()) {
+        if !self.common.anchor_takes(hit.pos, held)
+            && self
+                .common
+                .anchor_takes(hit.pos, self.common.offhand.as_ref())
+        {
             return (InteractionResult::Pass, DryUse::default());
         }
         // BeehiveBlock.useItemOn: a glass bottle on a full hive (honey level 5)
@@ -51,7 +55,8 @@ impl crate::game::ClientGame<'_> {
         // they fall through to the empty-hand use, and the click goes on.
         if held.is_some_and(|s| &*s.item == "minecraft:glass_bottle")
             && self
-                .common.hive_state(hit.pos)
+                .common
+                .hive_state(hit.pos)
                 .is_some_and(|(honey, _)| honey == Some(5))
         {
             return (InteractionResult::Success, DryUse::default());
@@ -89,7 +94,8 @@ impl crate::game::ClientGame<'_> {
             may_build: self.may_build(),
             can_eat: self.common.creative
                 || self
-                    .common.player
+                    .common
+                    .player
                     .as_ref()
                     .is_some_and(|p| p.health.food.food < 20),
             game_master: self.common.can_use_game_master_blocks(),
@@ -132,7 +138,8 @@ impl crate::game::ClientGame<'_> {
             return false;
         };
         let batch = HudBatch::new(size, self.client.settings.gui_scale_inputs());
-        let Some(internal) = self.slot_at(&batch, self.client.cursor.0, self.client.cursor.1) else {
+        let Some(internal) = self.slot_at(&batch, self.client.cursor.0, self.client.cursor.1)
+        else {
             return false;
         };
         let input = if self.has_shift_down() {
@@ -253,7 +260,8 @@ impl crate::game::ClientGame<'_> {
         yaw: f32,
     ) {
         let Some(consumable) = self
-            .common.res
+            .common
+            .res
             .items()
             .get(item)
             .and_then(|i| i.consumable.as_ref())
@@ -497,10 +505,12 @@ impl crate::game::ClientGame<'_> {
     /// MultiPlayerGameMode.startDestroyBlock / continueDestroyBlock.
     pub(in crate::game) fn remote_mining(&mut self, start: bool) -> bool {
         let debug_stick = self
-            .common.held()
+            .common
+            .held()
             .is_some_and(|stack| &*stack.item == "minecraft:debug_stick");
         if !self
-            .common.res
+            .common
+            .res
             .items()
             .can_destroy_block(self.common.held(), self.common.creative)
         {

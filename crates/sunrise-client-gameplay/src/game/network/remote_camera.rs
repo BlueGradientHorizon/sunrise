@@ -359,9 +359,11 @@ pub(in crate::game) struct CameraEntities<'a> {
     pub frames: &'a [ItemFrame],
     pub tnts: &'a [sunrise_gameplay_common::game::tnt_common::PrimedTnt],
     pub displays: &'a indexmap::IndexMap<i32, super::text_displays::RemoteTextDisplay>,
-    pub interactions: &'a HashMap<i32, sunrise_gameplay_common::game::interactions_common::RemoteInteraction>,
+    pub interactions:
+        &'a HashMap<i32, sunrise_gameplay_common::game::interactions_common::RemoteInteraction>,
     pub tracked: Option<&'a HashMap<i32, Tracked>>,
-    pub vehicles: &'a HashMap<u32, sunrise_gameplay_common::game::remote::passengers::PassengerSeat>,
+    pub vehicles:
+        &'a HashMap<u32, sunrise_gameplay_common::game::remote::passengers::PassengerSeat>,
     pub player: Option<(u32, &'a PlayerMotion)>,
     pub living: Box<dyn Fn(&Mob) -> (f32, f64) + 'a>,
     pub stand_living: Box<dyn Fn(&ArmorStand) -> (f32, f64) + 'a>,
@@ -445,7 +447,11 @@ impl ClientGame<'_> {
     /// True if this client holds a live entity with `id` in any runtime list or slot.
     fn holds_camera_entity(&self, id: u32) -> bool {
         self.common.dragon.as_ref().is_some_and(|d| d.id == id)
-            || self.common.mob_index.find_ref(&self.common.mobs, id).is_some()
+            || self
+                .common
+                .mob_index
+                .find_ref(&self.common.mobs, id)
+                .is_some()
             || self.common.armor_stands.iter().any(|a| a.id == id)
             || self.client.interactions.contains_key(&(id as i32))
             || self.common.boats.iter().any(|b| b.id == id)
@@ -592,13 +598,15 @@ impl ClientGame<'_> {
         let m = self.common.mob_index.get_ref(&self.common.mobs, uid)?;
         let mob_id = m.id as i32;
         let max_health = self
-            .common.motion
+            .common
+            .motion
             .attributes
             .id("minecraft:max_health")
             .and_then(|attr| self.remote_attribute(mob_id, attr))
             .map_or(m.attrs.max_health, |v| v as f32);
         let armor = self
-            .common.motion
+            .common
+            .motion
             .attributes
             .id("minecraft:armor")
             .and_then(|attr| self.remote_attribute(mob_id, attr))
@@ -701,10 +709,7 @@ impl ClientGame<'_> {
     }
 
     /// `GameRenderer.shouldRenderBlockOutline` evaluated against an optional targeted block hit.
-    pub fn should_render_block_outline_for_hit(
-        &self,
-        hit: Option<&super::Hit>,
-    ) -> bool {
+    pub fn should_render_block_outline_for_hit(&self, hit: Option<&super::Hit>) -> bool {
         let Some(cam) = self.camera_subject().filter(|c| c.is_player) else {
             return false;
         };
@@ -730,7 +735,8 @@ impl ClientGame<'_> {
         } else if let Some(hud) = cam.detached_hud.as_ref() {
             hud.main_hand.as_ref()
         } else {
-            self.common.mob_index
+            self.common
+                .mob_index
                 .find_ref(&self.common.mobs, cam.entity_id)
                 .and_then(|i| {
                     self.common.mobs[i]
@@ -795,7 +801,8 @@ impl ClientGame<'_> {
     /// `AbstractClientPlayer.getFieldOfViewModifier` inputs for a spectated remote player.
     fn remote_fov_player(&self, m: &Mob) -> FovPlayer {
         let movement_speed = self
-            .common.motion
+            .common
+            .motion
             .attributes
             .id("minecraft:movement_speed")
             .and_then(|attr| self.remote_attribute(m.id as i32, attr))
@@ -835,25 +842,33 @@ impl ClientGame<'_> {
             .attributes
             .computed_value_of("minecraft:camera_distance")
             .unwrap_or(4.0);
-        let sleeping = self.common.sleeping.map(|head| self.bed_orientation_yaw(head));
+        let sleeping = self
+            .common
+            .sleeping
+            .map(|head| self.bed_orientation_yaw(head));
         let mount = self
-            .common.riding
+            .common
+            .riding
             .and_then(|id| self.common.mob_index.get_ref(&self.common.mobs, id))
             .map(|m| self.living_camera_values(m));
         let ride_turn = self
-            .common.riding
+            .common
+            .riding
             .and_then(|id| self.common.boats.iter().find(|b| b.id == id))
             .map_or_else(
                 || {
-                    self.common.riding
+                    self.common
+                        .riding
                         .and_then(|id| self.common.carts.iter().find(|c| c.id == id))
                         .map_or(0.0, |c| c.passenger_yaw_delta)
                 },
                 |b| b.delta_rotation,
             );
         let dead = self.death_time();
-        let fog_effects =
-            CameraFogEffects::from_effects(&self.common.potions.effects, self.client.darkness_blend);
+        let fog_effects = CameraFogEffects::from_effects(
+            &self.common.potions.effects,
+            self.client.darkness_blend,
+        );
         let camera = CameraEntity {
             position: [p.position.x, p.position.y, p.position.z],
             previous: [
@@ -944,7 +959,8 @@ impl ClientGame<'_> {
         let rides_target = |mut rider: u32| -> bool {
             for _ in 0..limit {
                 let next = if rider == remote.entity_id as u32 {
-                    self.common.riding
+                    self.common
+                        .riding
                         .or_else(|| remote.passenger_vehicles.get(&rider).map(|s| s.vehicle))
                 } else {
                     remote.passenger_vehicles.get(&rider).map(|s| s.vehicle)
@@ -1022,7 +1038,8 @@ impl ClientGame<'_> {
     ) -> Option<ResolvedCameraEntity> {
         let uid = id as u32;
         let uuid = remote.level_entity_uuids.get(&id).copied().or_else(|| {
-            self.common.persist
+            self.common
+                .persist
                 .uuids
                 .get(&uid)
                 .copied()
@@ -1054,7 +1071,8 @@ impl ClientGame<'_> {
             let (scale, camera_distance) = self.remote_entity_living_values(id);
             let dead = (d.health <= 0.0).then_some(d.death_time);
             let fog_effects = self
-                .common.mob_index
+                .common
+                .mob_index
                 .get_ref(&self.common.mobs, uid)
                 .map(|m| {
                     CameraFogEffects::from_effects(&m.extra.client_effects, m.extra.darkness_blend)
@@ -1254,7 +1272,13 @@ impl ClientGame<'_> {
                 "minecraft:experience_orb",
             ));
         }
-        if let Some(p) = self.common.creatures.projectiles.iter().find(|p| p.id == uid) {
+        if let Some(p) = self
+            .common
+            .creatures
+            .projectiles
+            .iter()
+            .find(|p| p.id == uid)
+        {
             let kind = remote
                 .entities
                 .get(&id)
@@ -1386,7 +1410,8 @@ impl ClientGame<'_> {
             ));
         }
         if let Some((position, previous)) = self
-            .common.hook
+            .common
+            .hook
             .as_ref()
             .filter(|h| h.id() == uid)
             .map(|h| {
@@ -1515,7 +1540,9 @@ impl ClientGame<'_> {
             };
         }
         match self.common.mob_index.find(&self.common.mobs, id) {
-            Some(i) if &*self.common.mobs[i].kind.id == "minecraft:player" => CameraPlayer::Other(i),
+            Some(i) if &*self.common.mobs[i].kind.id == "minecraft:player" => {
+                CameraPlayer::Other(i)
+            }
             _ => CameraPlayer::Absent,
         }
     }
@@ -1574,7 +1601,8 @@ impl ClientGame<'_> {
         self.client.camera_type.is_first_person()
             && self.live_remote_camera_id() == Some(id)
             && !self
-                .common.mob_index
+                .common
+                .mob_index
                 .get_ref(&self.common.mobs, id)
                 .is_some_and(|m| self.mob_sleeping_view(m).is_some())
     }

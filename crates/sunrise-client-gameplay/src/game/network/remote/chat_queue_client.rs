@@ -11,7 +11,10 @@ impl crate::game::ClientGame<'_> {
     /// `ChatListener.queueSize`: the messages Chat Delay holds, for the chat's
     /// `chat.queue` row.
     pub fn chat_queue_len(&self) -> usize {
-        self.client.remote.as_ref().map_or(0, |r| r.chat_queue.len())
+        self.client
+            .remote
+            .as_ref()
+            .map_or(0, |r| r.chat_queue.len())
     }
 
     /// `ChatListener.handleMessage`: hold the packet's receipt context or

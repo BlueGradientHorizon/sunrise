@@ -11,9 +11,9 @@
 //! stale handle, and for a kind Sunrise keeps no such state for (each doc
 //! says which).
 use super::commands::Target;
-use sunrise_gameplay_common::game::native_living_body::FlagClimbing;
 use mod_api::LivingRef;
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::native_living_body::FlagClimbing;
 use sunrise_sim::mobs::villager;
 use sunrise_world::climbing;
 
@@ -34,7 +34,9 @@ impl crate::game::ServerGame<'_> {
                 };
                 // The entity resolver includes players in other levels, but a
                 // body swap does not swap the world a bed write would touch.
-                if self.server.lan.as_ref().unwrap().hub.guests[gi].dimension != self.common.dim.id() {
+                if self.server.lan.as_ref().unwrap().hub.guests[gi].dimension
+                    != self.common.dim.id()
+                {
                     return false;
                 }
                 self.as_guest_at(gi, conn, |game| !game.server.lan_acting_fake && write(game))
@@ -63,7 +65,12 @@ impl crate::game::ServerGame<'_> {
                 .and_then(|h| h.hub.update_guest(conn, |g| g.fall_flying = true))
                 .is_some(),
             Some(Target::Mob(id)) => {
-                let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+                let Some(m) = self
+                    .common
+                    .mobs
+                    .iter_mut()
+                    .find(|m| m.id == id && !m.removed)
+                else {
                     return false;
                 };
                 m.extra.fall_flying = true;
@@ -94,7 +101,12 @@ impl crate::game::ServerGame<'_> {
                 .and_then(|h| h.hub.update_guest(conn, |g| g.fall_flying = false))
                 .is_some(),
             Some(Target::Mob(id)) => {
-                let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+                let Some(m) = self
+                    .common
+                    .mobs
+                    .iter_mut()
+                    .find(|m| m.id == id && !m.removed)
+                else {
                     return false;
                 };
                 m.extra.fall_flying = false;
@@ -112,11 +124,7 @@ impl crate::game::ServerGame<'_> {
     /// inside or outside their own turn, in the level in place. False for
     /// a guest in another level, a fake player, another
     /// mob, an armor stand or the dragon, or a bed without a sleep shape.
-    pub fn living_start_sleeping(
-        &mut self,
-        living: LivingRef,
-        pos: [i32; 3],
-    ) -> bool {
+    pub fn living_start_sleeping(&mut self, living: LivingRef, pos: [i32; 3]) -> bool {
         match self.native_living_target(living) {
             Some(target @ (Target::Player | Target::Guest(_))) => {
                 self.native_player_sleep_write(target, |game| game.lie_in_bed(pos))
@@ -149,7 +157,8 @@ impl crate::game::ServerGame<'_> {
                     }
                     slept
                 });
-                self.common.mobs
+                self.common
+                    .mobs
                     .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
                 let _ = self.handle_mob_events(events);
                 slept
@@ -188,7 +197,8 @@ impl crate::game::ServerGame<'_> {
                 if let Some(m) = mobs.iter_mut().find(|m| m.id == id) {
                     villager::stop_sleeping(m, &w, &mut events);
                 }
-                self.common.mobs
+                self.common
+                    .mobs
                     .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
                 let _ = self.handle_mob_events(events);
                 true
@@ -204,11 +214,7 @@ impl crate::game::ServerGame<'_> {
     /// are supported; guests in another level, fake players, mobs, armor
     /// stands and the dragon are refused. This only
     /// changes the sleeping position/pose, not bed occupancy.
-    pub fn living_set_sleeping_pos(
-        &mut self,
-        living: LivingRef,
-        pos: [i32; 3],
-    ) -> bool {
+    pub fn living_set_sleeping_pos(&mut self, living: LivingRef, pos: [i32; 3]) -> bool {
         let Some(target) = self.native_living_target(living) else {
             return false;
         };
@@ -242,11 +248,7 @@ impl crate::game::ServerGame<'_> {
     /// jumps, as their own key does. False for a guest outside its turn,
     /// whose client holds its own jump, a mob, an armor stand or the
     /// dragon.
-    pub fn living_set_is_jumping(
-        &mut self,
-        living: LivingRef,
-        jumping: bool,
-    ) -> bool {
+    pub fn living_set_is_jumping(&mut self, living: LivingRef, jumping: bool) -> bool {
         match self.native_living_target(living) {
             Some(Target::Player) => {
                 let Some(p) = self.common.player.as_mut() else {

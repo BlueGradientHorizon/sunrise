@@ -1,10 +1,10 @@
 use super::*;
-use sunrise_gameplay_common::game::native_hooks::slot_icon_tests::ICON_MENU;
-use sunrise_gameplay_common::game::native_hooks::slot_icon_tests::IconMod;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
+use sunrise_gameplay_common::game::native_hooks::slot_icon_tests::ICON_MENU;
+use sunrise_gameplay_common::game::native_hooks::slot_icon_tests::IconMod;
 
 #[test]
 #[ignore = "daily"]
@@ -70,7 +70,13 @@ fn empty_slot_draws_icon_but_a_filled_slot_does_not() {
             });
             let mut with_icon = HudBatch::scratch([128, 128]);
             game.draw_slot_item(&mut with_icon, None, 300, &filled, 8.0, 18.0);
-            game.client.mod_screen.0.as_mut().unwrap().layout_mut().slots[0]
+            game.client
+                .mod_screen
+                .0
+                .as_mut()
+                .unwrap()
+                .layout_mut()
+                .slots[0]
                 .as_mut()
                 .unwrap()
                 .no_item_icon = None;
@@ -102,7 +108,8 @@ fn unknown_slot_icon_opens_screen_and_draws_missing_sprite() {
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_api::__private::mark_game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
         sunrise_level::containers::with_mod_menu_types(
             [(
                 ICON_MENU.into(),

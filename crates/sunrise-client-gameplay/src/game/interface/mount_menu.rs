@@ -109,7 +109,8 @@ impl crate::game::ClientGame<'_> {
     }
     /// Riding a mount that has a horse inventory (`HasCustomInventoryScreen`).
     pub(in crate::game::client_side) fn riding_mount_with_menu(&self) -> bool {
-        self.common.riding
+        self.common
+            .riding
             .and_then(|id| self.mount_mob_index(id))
             .is_some_and(|i| has_mount_menu(self.common.mobs[i].species()))
     }

@@ -139,8 +139,11 @@ impl ClientGame<'_> {
                 let macros = sunrise_shaders::Macros::standard();
                 let properties = sunrise_shaders::Properties::parse(&listed, &macros);
                 let ids = sunrise_shaders::BlockIds::parse(&properties);
-                let table =
-                    super::shader_packs::block_id_table(&self.common.pack, &self.client.client_pack, &ids);
+                let table = super::shader_packs::block_id_table(
+                    &self.common.pack,
+                    &self.client.client_pack,
+                    &ids,
+                );
                 for (layer, id) in table.iter().step_by(2).enumerate() {
                     let layer = layer as u32;
                     if *id > 0 && !materials.iter().any(|m| m.0 == layer) {

@@ -2,10 +2,7 @@
 //! synchronous transitions from widget callbacks, text field editing & IME integration, custom
 //! `ScreenWidget` dispatch & panic isolation, and separated screen input Pre/Post hooks.
 
-use {crate::game::native_hooks::base::*};
-use {sunrise_client_gameplay::game::client_side::native_hooks_client::screen_view::screen_view_for_mod, sunrise_client_gameplay::game::client_side::screen_build::ObservedScreen};
-use sunrise_client_gameplay::game::event_loop::EventLoopCtl;
-use sunrise_client_gameplay::input_trace::InputOrigin;
+use crate::game::native_hooks::base::*;
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use mod_api::client::widgets::Button;
 use mod_api::{
@@ -20,11 +17,17 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicUsize, Ordering},
 };
+use sunrise_client_gameplay::game::event_loop::EventLoopCtl;
+use sunrise_client_gameplay::input_trace::InputOrigin;
 use winit::event::{
     DeviceId, ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent,
 };
 use winit::event_loop::ControlFlow;
 use winit::keyboard::KeyCode;
+use {
+    sunrise_client_gameplay::game::client_side::native_hooks_client::screen_view::screen_view_for_mod,
+    sunrise_client_gameplay::game::client_side::screen_build::ObservedScreen,
+};
 
 #[path = "screen_widgets_input_tests.rs"]
 pub(crate) mod input_routing;
@@ -102,7 +105,10 @@ pub(crate) fn send_scroll(
     );
 }
 
-pub(crate) fn send_key_control(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, line: &str) {
+pub(crate) fn send_key_control(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    line: &str,
+) {
     game.replay_line(line, &NoLoop);
 }
 
@@ -120,7 +126,8 @@ pub(crate) fn take_log(log: &Arc<Mutex<Vec<String>>>) -> Vec<String> {
 /// (`bump_instance()`).
 #[test]
 fn double_click_window_checks_250ms_button_screen_and_generation() {
-    let mut state = sunrise_client_gameplay::game::client_side::screen_build::ScreenState::default();
+    let mut state =
+        sunrise_client_gameplay::game::client_side::screen_build::ScreenState::default();
     let t0 = 1_000;
     let inst = state.screen_instance;
     assert!(!state.is_double_click(t0, inst, None, 0));

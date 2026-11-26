@@ -1,6 +1,4 @@
 use super::super::native_entity_refs::tests::with_game;
-use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
-use sunrise_gameplay_common::game::combat_common::PlayerCredit;
 use crate::game::creatures::enchanted_entity_loot_tests::Answer;
 use crate::game::creatures::enchanted_entity_loot_tests::Heard;
 use crate::game::creatures::enchanted_entity_loot_tests::dropped;
@@ -10,8 +8,13 @@ use mod_api::ServerHost;
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::{LegacyRandom, RandomSource};
+use sunrise_gameplay_common::game::combat_common::PlayerCredit;
 use sunrise_sim::mobs::{Damage, DamageKind, Mob, Who};
 use sunrise_sim::motion::PlayerMotion;
+use {
+    sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+    sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+};
 
 /// A draw the listener makes from the level's random during `/loot ... kill`
 /// stays made: the roll's sequence is its own, and the level random moves.
@@ -41,10 +44,12 @@ fn a_draw_made_during_loot_kill_stays_in_the_level_random() {
             game.mobs.last_mut().unwrap().health = 20.0;
             game.world.random.set_seed(7);
             let source = game.player_source();
-            game.server.command_source = Some(sunrise_gameplay::game::server_side::commands::execute::Source {
-                entity: None,
-                ..source
-            });
+            game.server.command_source = Some(
+                sunrise_gameplay::game::server_side::commands::execute::Source {
+                    entity: None,
+                    ..source
+                },
+            );
             assert!(game.run_command("loot spawn 0 64 0 kill @e[type=minecraft:zombie,limit=1]"));
             game.server.command_source = None;
             let mut expected = LegacyRandom::new(7);
@@ -165,10 +170,12 @@ fn loot_kill_asks_with_a_non_living_source_and_with_none() {
             let kill = "loot spawn 0 64 0 kill @e[type=minecraft:zombie,limit=1]";
 
             let source = game.player_source();
-            game.server.command_source = Some(sunrise_gameplay::game::server_side::commands::execute::Source {
-                entity: None,
-                ..source
-            });
+            game.server.command_source = Some(
+                sunrise_gameplay::game::server_side::commands::execute::Source {
+                    entity: None,
+                    ..source
+                },
+            );
             assert!(game.run_command(kill));
             assert_eq!(
                 *seen.lock().unwrap(),
@@ -187,10 +194,12 @@ fn loot_kill_asks_with_a_non_living_source_and_with_none() {
             game.spawn_item(stick, [0.5, 64.0, 0.5], [0.0; 3], 0);
             let item = game.dropped.iter().last().unwrap().id;
             let item = sunrise_gameplay_common::game::commands_common::Target::Item(item);
-            game.server.command_source = Some(sunrise_gameplay::game::server_side::commands::execute::Source {
-                entity: Some(item),
-                ..source
-            });
+            game.server.command_source = Some(
+                sunrise_gameplay::game::server_side::commands::execute::Source {
+                    entity: Some(item),
+                    ..source
+                },
+            );
             assert!(game.run_command(kill));
             game.server.command_source = None;
             assert_eq!(
@@ -310,7 +319,12 @@ pub(crate) fn zombie(game: &mut sunrise_gameplay::game::ServerGame<'_>, damage: 
         .get("minecraft:zombie")
         .unwrap()
         .clone();
-    let mut mob = Mob::new(game.server.next_entity, kind, Vec3::new(0.5, 64.0, 0.5), 0.0);
+    let mut mob = Mob::new(
+        game.server.next_entity,
+        kind,
+        Vec3::new(0.5, 64.0, 0.5),
+        0.0,
+    );
     mob.health = 0.0;
     mob.last_damage = Some((damage, 0));
     game.mobs.push(mob.clone());

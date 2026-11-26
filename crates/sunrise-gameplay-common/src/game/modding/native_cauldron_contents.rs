@@ -30,10 +30,7 @@ impl crate::game::CommonGame<'_> {
         export(contents.of_fluid(id)?.1)
     }
 
-    pub fn cauldron_level(
-        &self,
-        state: sunrise_world::registry::BlockStateId,
-    ) -> Option<u32> {
+    pub fn cauldron_level(&self, state: sunrise_world::registry::BlockStateId) -> Option<u32> {
         let info = self.pack.assets.registry.state(state)?;
         let contents = cauldron_contents::current_if_built()?;
         let content = contents.of_block(&info.name)?.1;

@@ -140,7 +140,8 @@ impl crate::game::ServerGame<'_> {
         }
         let mut ids: Vec<String> = defs.keys().cloned().collect();
         ids.sort();
-        self.common.ui
+        self.common
+            .ui
             .registries
             .by_registry
             .entry("minecraft:test_instance".into())
@@ -152,7 +153,8 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn read_test_def(&self, id: &str) -> Option<TestDef> {
         let (ns, path) = id.split_once(':').unwrap_or(("minecraft", id));
         let file = self
-            .common.options
+            .common
+            .options
             .resources
             .join("data")
             .join(ns)
@@ -224,7 +226,12 @@ impl crate::game::ServerGame<'_> {
         conn: u32,
         p: play::TestInstanceBlockAction,
     ) {
-        let Some(g) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(g) = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+        else {
             return;
         };
         let allowed = g.creative() && g.permission >= 2;
@@ -347,7 +354,12 @@ impl crate::game::ServerGame<'_> {
 
     /// `removeBarriers`.
     pub(in crate::game) fn remove_test_barriers(&mut self, pos: Pos) {
-        let barrier = self.common.pack.assets.registry.default_state("minecraft:barrier");
+        let barrier = self
+            .common
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:barrier");
         for at in self.structure_boundary(pos) {
             if Some(self.common.world.block(at.0, at.1, at.2)) == barrier {
                 self.set_test_block_state(at, "minecraft:air", flags::UPDATE_ALL);

@@ -2669,7 +2669,8 @@ macro_rules! install_test_mod_platform {
             );
             assert!(
                 result.is_ok()
-                    || result == Err(mod_api::__private::platform::PlatformRefusal::AlreadyInstalled)
+                    || result
+                        == Err(mod_api::__private::platform::PlatformRefusal::AlreadyInstalled)
             );
         });
     }};

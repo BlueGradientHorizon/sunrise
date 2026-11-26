@@ -2,6 +2,7 @@
 //! families, of an entity spawned during play and of one that crosses into
 //! another section. `tools/test_chunk_entity_order_parity.py` compares the
 //! printed sequences with the real `PersistentEntitySectionManager`.
+use super::*;
 use std::collections::HashSet;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
@@ -9,8 +10,10 @@ use sunrise_core::nbt::Tag;
 use sunrise_gameplay::game::server_side::persist::ChunkKey;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::entity_nbt;
-use super::*;
-use {sunrise_gameplay::game::native_entity_refs::tests::collect_game_all_entities, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::collect_game_all_entities,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 fn doubles(values: [f64; 3]) -> Tag {
     Tag::List(
@@ -220,8 +223,7 @@ fn a_crossing_without_a_listener_saves_after_the_entity_already_in_the_section()
     run_a_crossing_without_a_listener_saves_after_the_entity_already_in_the_section();
 }
 
-pub(crate) fn run_a_crossing_without_a_listener_saves_after_the_entity_already_in_the_section()
- {
+pub(crate) fn run_a_crossing_without_a_listener_saves_after_the_entity_already_in_the_section() {
     with_game(|game| {
         assert!(!mod_api::__private::listened(
             mod_api::HookId::EntityEnteringSection

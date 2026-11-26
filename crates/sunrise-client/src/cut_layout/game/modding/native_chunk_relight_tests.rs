@@ -1,9 +1,9 @@
 //! `level.relight_chunks` (queued, not lit) and `chunk.resend` through the public handles, with a
 //! literal test for each refusal.
 
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{ChunkRefusal, LevelRef, WorldEpoch};
 use std::sync::Arc;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_level::chunk::Chunk;
 
 /// A stone roof over the chunk (100, 100), all eight neighbours loaded around it.
@@ -116,7 +116,8 @@ fn another_level_is_not_in_place() {
         roofed(game);
         let overworld = game.level("minecraft:overworld").unwrap();
         game.world.block_log = Some(Vec::new());
-        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+            .unwrap();
         assert_eq!(
             overworld.relight_chunks(game, &[[100, 100]]),
             Err(ChunkRefusal::NotInPlace)

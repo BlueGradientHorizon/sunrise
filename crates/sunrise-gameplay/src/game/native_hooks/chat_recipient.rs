@@ -1,5 +1,3 @@
-
-
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
     /// A public chat line from `sender` (`sender_name`), shown as `message`, is about to reach the

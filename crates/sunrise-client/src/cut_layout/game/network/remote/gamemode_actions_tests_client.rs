@@ -1,10 +1,10 @@
-use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
+use mod_api::InteractionAttempt;
+use std::sync::Arc;
 use sunrise_client_gameplay::game::remote::gamemode_actions_tests::add_entity;
 use sunrise_client_gameplay::game::remote::gamemode_actions_tests::outgoing;
 use sunrise_client_gameplay::game::remote::gamemode_actions_tests::ranged_stick;
-use mod_api::InteractionAttempt;
-use std::sync::Arc;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
@@ -233,7 +233,15 @@ fn spectator_entity_use_sends_both_hands_without_feeding_or_swinging() {
                             .iter()
                             .any(|p| matches!(p, S::UseItem(_) | S::UseItemOn(_) | S::Punch(_)))
                     );
-                    assert!(game.client.particles.0.requested.as_ref().unwrap().is_empty());
+                    assert!(
+                        game.client
+                            .particles
+                            .0
+                            .requested
+                            .as_ref()
+                            .unwrap()
+                            .is_empty()
+                    );
                     assert_eq!(game.swings_started, swings);
                     assert_eq!(game.common.inventory[game.common.selected], wheat);
                     assert_eq!(game.offhand, wheat);

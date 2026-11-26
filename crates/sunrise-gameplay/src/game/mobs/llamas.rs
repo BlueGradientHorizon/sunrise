@@ -127,10 +127,12 @@ impl ServerGame<'_> {
                 return true;
             }
             if carpet(item) && m.extra.body_id().is_none() {
-                let held = self.common.inventory[self.common.selected].clone().map(|mut stack| {
-                    stack.count = 1;
-                    stack
-                });
+                let held = self.common.inventory[self.common.selected]
+                    .clone()
+                    .map(|mut stack| {
+                        stack.count = 1;
+                        stack
+                    });
                 self.common.mobs[index].extra.set_body_stack(held);
                 self.llama_sound(index, "entity.llama.swag", 1.0);
                 self.consume_held();
@@ -165,7 +167,9 @@ impl ServerGame<'_> {
         volume: f32,
     ) {
         let at = self.common.mobs[index].center();
-        let pitch = (self.common.world.random.next_float() - self.common.world.random.next_float()) * 0.2 + 1.0;
+        let pitch = (self.common.world.random.next_float() - self.common.world.random.next_float())
+            * 0.2
+            + 1.0;
         self.server_play_sound(&format!("minecraft:{sound}"), at, volume, pitch);
     }
 }

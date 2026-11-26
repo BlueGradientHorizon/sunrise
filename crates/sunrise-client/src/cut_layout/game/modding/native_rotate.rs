@@ -1,16 +1,19 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use {crate::game::native_rotate::*, sunrise_gameplay_common::game::native_rotate::{BlockState, EngineState, Rotation, native_worldgen_parts, rotate}};
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::{BlockPart, Hooks, ModEntry, Mods, RotateEvent, WorldgenHost};
     use std::collections::BTreeMap;
     use std::sync::{Arc, Mutex, PoisonError};
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs};
     use sunrise_world::registry::BlockRegistry;
     use sunrise_world::worldgen::structure::Mirror;
+    use {
+        crate::game::native_rotate::*,
+        sunrise_gameplay_common::game::native_rotate::{
+            BlockState, EngineState, Rotation, native_worldgen_parts, rotate,
+        },
+    };
 
     /// The states the furnace's part was asked with.
     static ASKED: Mutex<Vec<BlockState>> = Mutex::new(Vec::new());
@@ -66,7 +69,10 @@ mod tests {
     /// `name` facing `facing`.
     fn facing(registry: &BlockRegistry, name: &str, facing: &str) -> EngineState {
         let default = registry.default_state(name).unwrap();
-        sunrise_gameplay_common::game::native_hooks::with_property(registry, default, "facing", facing).unwrap()
+        sunrise_gameplay_common::game::native_hooks::with_property(
+            registry, default, "facing", facing,
+        )
+        .unwrap()
     }
 
     #[test]

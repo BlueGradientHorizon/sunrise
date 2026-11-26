@@ -90,9 +90,8 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait MountsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-
     /// `positionRider`: the player sits on the mount after it moves.
-     fn position_rider(&mut self) {
+    fn position_rider(&mut self) {
         let Some(i) = self.mount_index() else {
             return;
         };
@@ -131,6 +130,5 @@ pub trait MountsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> MountsCommonGameExt1<'__sg> for G {}
-
 
 use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;

@@ -80,7 +80,8 @@ impl crate::game::ServerGame<'_> {
                 return false;
             }
             if let Some(tnt_id) = self
-                .common.tnts
+                .common
+                .tnts
                 .iter()
                 .find(|t| t.id as i32 == hit.id)
                 .map(|t| t.id)
@@ -95,7 +96,9 @@ impl crate::game::ServerGame<'_> {
             && self.before_block(d)
         {
             // `BlockAttachedEntity.hurtServer` refuses first through `isInvulnerableToBase`.
-            if self.native_player_hit_invulnerable(self.common.paintings[i].id, "minecraft:painting") {
+            if self
+                .native_player_hit_invulnerable(self.common.paintings[i].id, "minecraft:painting")
+            {
                 self.server.attack_ticks = 0;
             } else {
                 self.break_painting(i, true);
@@ -137,7 +140,8 @@ impl crate::game::ServerGame<'_> {
         };
         let catalog = sunrise_gameplay_common::game::general::general_type_catalog();
         let Some((id, kind, distance)) = self
-            .common.resident_entities
+            .common
+            .resident_entities
             .general
             .rows
             .iter()
@@ -222,7 +226,8 @@ impl crate::game::ServerGame<'_> {
             self.native_kill_event(i);
         }
         let Some(index) = self
-            .common.mob_index
+            .common
+            .mob_index
             .find(&self.common.mobs, id)
             .filter(|&i| self.common.mobs[i].join == join && !self.common.mobs[i].removed)
         else {
@@ -259,7 +264,8 @@ impl crate::game::ServerGame<'_> {
         if landed {
             if knockback > 0.0 {
                 let (xd, zd) = self.extra_knockback_direction();
-                let plan = self.prepare_knockback_credit(self.common.mobs[index].id as i32, None, &attack);
+                let plan =
+                    self.prepare_knockback_credit(self.common.mobs[index].id as i32, None, &attack);
                 let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
                 let level = crate::game::server_side::entity_server::damage_level_of!(
                     self,
@@ -351,7 +357,8 @@ impl crate::game::ServerGame<'_> {
             // its voice pitch from its own random). A sweep's own hurt/death
             // listeners may have changed the entity list.
             let Some(index) = self
-                .common.mob_index
+                .common
+                .mob_index
                 .find(&self.common.mobs, id)
                 .filter(|&i| self.common.mobs[i].join == join && !self.common.mobs[i].removed)
             else {
@@ -418,7 +425,11 @@ impl crate::game::ServerGame<'_> {
     ) -> ((f32, f32, bool, bool), bool) {
         let hand_damage = self.attack_damage();
         // Riptide's spin replaces the attack damage attribute.
-        let spin = self.common.player.as_ref().map_or(0.0, |p| p.auto_spin_attack_dmg);
+        let spin = self
+            .common
+            .player
+            .as_ref()
+            .map_or(0.0, |p| p.auto_spin_attack_dmg);
         let damage = if spin > 0.0 { spin } else { hand_damage };
         let scale = self.attack_strength_scale();
         // getEnchantedDamage(target, damage, source) - damage, taken before the

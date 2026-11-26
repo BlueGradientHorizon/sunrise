@@ -1,9 +1,13 @@
-use sunrise_gameplay_common::game::GameGameExt1;
 use crate::game::server_side::commands::summon_bolt_tests::ORACLE_PLAYER_UUID;
-use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::ChunkPos;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+    sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 /// Verifies `Silent:1b` sound suppression and `minecraft:lightning_strike` game-event timing on first server tick.
 #[test]
@@ -38,7 +42,8 @@ fn silent_bolt_suppresses_sound_and_posts_strike_event_on_first_tick() {
 
         // Silent bolt: no event on spawn; strikes rod + posts event on tick 1 without playing audio on server.
         assert!(game.run_command("setblock 4 209 4 minecraft:lightning_rod"));
-        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = Some(Vec::new()));
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+            .with(|e| *e.borrow_mut() = Some(Vec::new()));
         game.server.audio_capture_active = true;
         game.server.pending_sounds.clear();
         assert!(game.run_command(
@@ -81,7 +86,8 @@ fn silent_bolt_suppresses_sound_and_posts_strike_event_on_first_tick() {
             1,
             "lightning_strike event posted on first server tick"
         );
-        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|e| *e.borrow_mut() = None);
+        sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+            .with(|e| *e.borrow_mut() = None);
     });
 
     // Client bolt tick plays thunder + impact once for audible bolts and suppresses both for Silent:1b.
@@ -92,10 +98,17 @@ fn silent_bolt_suppresses_sound_and_posts_strike_event_on_first_tick() {
         game.client.audio.0.capture = Some(Vec::new());
         game.client_tick_bolts();
         assert!(
-            game.client.audio.0.capture.as_ref().unwrap().iter().all(|s| {
-                s.event != "minecraft:entity.lightning_bolt.thunder"
-                    && s.event != "minecraft:entity.lightning_bolt.impact"
-            }),
+            game.client
+                .audio
+                .0
+                .capture
+                .as_ref()
+                .unwrap()
+                .iter()
+                .all(|s| {
+                    s.event != "minecraft:entity.lightning_bolt.thunder"
+                        && s.event != "minecraft:entity.lightning_bolt.impact"
+                }),
             "Silent:1b bolt must suppress thunder and impact sounds on client"
         );
 

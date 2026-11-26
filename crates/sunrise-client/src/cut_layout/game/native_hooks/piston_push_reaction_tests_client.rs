@@ -1,11 +1,11 @@
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 use crate::game::native_hooks::piston_push_reaction_tests::state;
 use std::sync::Arc;
 use sunrise_core::{
     geometry::Direction,
     position::{BlockPos, ChunkPos},
 };
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 use sunrise_world::level::LevelAccess;
 
 pub(crate) fn run_client_piston_case(root: std::path::PathBuf) {

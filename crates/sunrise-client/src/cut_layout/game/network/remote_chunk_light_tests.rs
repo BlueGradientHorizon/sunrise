@@ -1,4 +1,3 @@
-use {sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry, sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use std::sync::Arc;
 use sunrise_client::level_loading::Reason;
 use sunrise_level::world::World;
@@ -9,6 +8,11 @@ use sunrise_protocol::{
     packets::play::{
         Clientbound as C, Distance, ForgetLevelChunk, LevelChunkWithLight, LightUpdate, SpawnInfo,
     },
+};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry,
+    sunrise_gameplay_common::game::in_own_process,
 };
 
 fn data(sky: &[(usize, u8)], block: &[(usize, u8)], empty_sky: &[usize]) -> LightData {
@@ -168,7 +172,9 @@ fn standalone_light_survives_missing_columns_and_rebuilds_on_equal_resends() {
                     game.world.chunks[&origin].stored_light_layers(1),
                     Some([true, true])
                 );
-                assert!(game.client.remote.as_ref().unwrap().chunk_light.columns[&origin].is_none());
+                assert!(
+                    game.client.remote.as_ref().unwrap().chunk_light.columns[&origin].is_none()
+                );
 
                 let first = game.world.chunks[&origin].sections[0].clone();
                 for _ in 0..2 {

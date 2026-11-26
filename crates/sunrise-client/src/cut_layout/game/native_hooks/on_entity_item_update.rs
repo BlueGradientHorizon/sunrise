@@ -1,13 +1,20 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod on_entity_item_update_tests {
-    use sunrise_gameplay_common::game::native_item_entity_refs::NativeItemEntityRefsGameExt1;
-use {crate::game::native_hooks::*, sunrise_gameplay_common::game::native_hooks::{Arc, ItemStack, mod_api}};
-    use sunrise_gameplay::game::server_side::native_hooks_server::on_entity_item_update::ItemEntityTickAccess;
-    use {sunrise_gameplay_common::game::api_values::STACK_PROJECTIONS, sunrise_gameplay_common::game::api_values::test_snapshot, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use mod_api::{Flow, Hooks, ItemPart, OnEntityItemUpdateEvent, Registrar, RegistrationContext};
     use std::sync::Mutex;
+    use sunrise_gameplay::game::server_side::native_hooks_server::on_entity_item_update::ItemEntityTickAccess;
+    use sunrise_gameplay_common::game::native_item_entity_refs::NativeItemEntityRefsGameExt1;
     use sunrise_level::chunk::Chunk;
+    use {
+        crate::game::native_hooks::*,
+        sunrise_gameplay_common::game::native_hooks::{Arc, ItemStack, mod_api},
+    };
+    use {
+        sunrise_gameplay::game::native_entity_refs::tests::with_game,
+        sunrise_gameplay_common::game::api_values::STACK_PROJECTIONS,
+        sunrise_gameplay_common::game::api_values::test_snapshot,
+    };
 
     /// An item part that writes the entity's pickup delay to 7 on every update and
     /// records the entities it was told about; `cancels` ends the tick.
@@ -154,9 +161,7 @@ pub(crate) use sunrise_gameplay::game::server_side::native_hooks_server::on_enti
         );
     }
 
-    pub(crate) fn a_canceling_part_holds_its_own_item_and_nothing_else_isolated(
-        named: bool,
-    ) {
+    pub(crate) fn a_canceling_part_holds_its_own_item_and_nothing_else_isolated(named: bool) {
         let iron = Update {
             item: "minecraft:iron_ingot",
             cancels: true,

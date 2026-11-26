@@ -4,18 +4,18 @@
 //! menu stays open at 6.5 blocks and closes past 7, not at the 4.5 a
 //! centre-to-centre check gives. A server's guest is checked by
 //! `Game::lan_mount_valid`, the window's own copy by `Game::tick_mount_menu`.
-#[cfg(test)]
-use sunrise_gameplay_common::game::execution_role;
-use sunrise_client::audio::Audio;
-use sunrise_client::settings::Settings;
-use sunrise_gameplay_common::game::Options;
-use sunrise_gameplay_common::game::Screen;
-use sunrise_gameplay_common::game::resource_load::Progress;
+use super::super::*;
 #[cfg(test)]
 use crate::game::load_resources;
-use super::super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
+use sunrise_client::audio::Audio;
+use sunrise_client::settings::Settings;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::Options;
+use sunrise_gameplay_common::game::Screen;
+#[cfg(test)]
+use sunrise_gameplay_common::game::execution_role;
+use sunrise_gameplay_common::game::resource_load::Progress;
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_sim::{
     lan::{Joined, PlayerSender, guest::Guest},

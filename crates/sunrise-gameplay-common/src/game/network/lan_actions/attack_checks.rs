@@ -30,7 +30,7 @@ pub mod tests {
     use sunrise_sim::lan::Out;
 
     #[cfg(test)]
-pub(in crate::game) fn tags(redirectable: &[i32]) -> UpdateTags {
+    pub(in crate::game) fn tags(redirectable: &[i32]) -> UpdateTags {
         UpdateTags {
             registries: vec![RegistryTags {
                 registry: "minecraft:entity_type".into(),
@@ -43,7 +43,7 @@ pub(in crate::game) fn tags(redirectable: &[i32]) -> UpdateTags {
     }
 
     #[cfg(test)]
-/// `AbstractArrow.isAttackable` reads the tag the players were sent: a data pack that
+    /// `AbstractArrow.isAttackable` reads the tag the players were sent: a data pack that
     /// puts arrows in `#minecraft:redirectable_projectile` makes them attackable, and a
     /// vanilla client then picks and attacks them, which must not kick.
     #[test]

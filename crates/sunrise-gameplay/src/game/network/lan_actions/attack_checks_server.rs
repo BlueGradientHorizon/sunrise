@@ -65,7 +65,8 @@ impl crate::game::ServerGame<'_> {
     /// The main-hand stack has `minecraft:piercing_weapon` (a spear's).
     pub(in crate::game::server_side) fn holds_piercing_weapon(&self) -> bool {
         self.common.held().is_some_and(|stack| {
-            self.common.pack
+            self.common
+                .pack
                 .item_models
                 .components_view(&sunrise_sim::item_models::stack_view(stack))
                 .contains_key("minecraft:piercing_weapon")

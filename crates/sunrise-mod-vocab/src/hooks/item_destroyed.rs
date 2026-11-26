@@ -17,7 +17,8 @@ pub trait Hooks {
     /// entity.
     /// Only the `ItemPart`s attached to `stack`'s item hear it: an item with none costs one
     /// table lookup, and a game with no such part none at all.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::item_destroyed::ServerGame<'_>::native_item_destroyed", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::item_destroyed::ServerGame<'_>::native_item_destroyed",
         dispatch = "flat",
         side = "server",
         contract = "collect",

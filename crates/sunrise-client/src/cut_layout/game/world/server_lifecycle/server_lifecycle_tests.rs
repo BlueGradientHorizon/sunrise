@@ -1,12 +1,17 @@
-use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1;
-use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
 use mod_api::{
     __private::{HookPanicReport, take_hook_panics},
     Hooks, ModEntry, ServerHost,
 };
 use mod_platform::testing::with_mods;
-use sunrise_gameplay_common::world_biomes;
 use std::sync::{Arc, Mutex};
+use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1;
+use sunrise_gameplay_common::world_biomes;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay::game::native_guest_turn_tests::with_guests,
+    sunrise_gameplay_common::game::execution_role::ExecutionRole,
+};
 
 const CHILD: &str = "SUNRISE_SERVER_LIFECYCLE_CHILD";
 
@@ -448,7 +453,10 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
                             "storage released after {case}"
                         );
                         assert!(!game.server.world_adopted, "adoption cleared after {case}");
-                        assert!(game.server.serving.is_none(), "serving retired after {case}");
+                        assert!(
+                            game.server.serving.is_none(),
+                            "serving retired after {case}"
+                        );
                         assert!(game.server.lan.is_none(), "LAN dropped after {case}");
                         if config_panic {
                             let registry = &game.pack.assets.registry;

@@ -1,35 +1,33 @@
-
-
 #![cfg(test)]
+use mod_api::prelude::BlockStatesHost;
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::channel;
 use std::time::Duration;
 use std::time::Instant;
-use sunrise_gameplay::game::world_loading::WorldRequest;
-use sunrise_gameplay_common::game::owner_link::OwnerRequest;
 use sunrise_client_gameplay::game::client_side::integrated_client::Integrated;
 use sunrise_gameplay::game::server_side::integrated::{LoadPhase, Serving, server_game};
-use sunrise_gameplay_common::game::integrated_link::{Flags, server_thread_stack};
+use sunrise_gameplay::game::world_loading::WorldRequest;
 use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-use mod_api::prelude::BlockStatesHost;
+use sunrise_gameplay_common::game::integrated_link::{Flags, server_thread_stack};
+use sunrise_gameplay_common::game::owner_link::OwnerRequest;
 #[cfg(test)]
 pub(crate) mod tests {
-use mod_api::prelude::{EntitiesHost, LivingHost, ServicesClientHost};
-use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1;
-use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1;
-use sunrise_gameplay_common::game::tables::WorldTablesExt;
-use std::sync::{Arc, Mutex};
-use sunrise_gameplay_common::game::Dim;
+    use mod_api::prelude::{EntitiesHost, LivingHost, ServicesClientHost};
+    use std::sync::{Arc, Mutex};
+    use sunrise_gameplay_common::game::Dim;
+    use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1;
+    use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1;
+    use sunrise_gameplay_common::game::tables::WorldTablesExt;
 
-#[derive(Debug, PartialEq, Eq)]
+    #[derive(Debug, PartialEq, Eq)]
     enum CheckpointEvent {
         LevelSaved,
         WorldSaved,
         LevelUnloaded,
         Closed(mod_api::WorldPhase, String),
     }
-struct CheckpointMod(Arc<Mutex<Vec<CheckpointEvent>>>);
-#[mod_api::__subscriptions]
+    struct CheckpointMod(Arc<Mutex<Vec<CheckpointEvent>>>);
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for CheckpointMod {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
             let kind = r
@@ -86,10 +84,10 @@ struct CheckpointMod(Arc<Mutex<Vec<CheckpointEvent>>>);
             }
         }
     }
-struct CheckpointCounter;
-#[mod_api::sunrise_part]
+    struct CheckpointCounter;
+    #[mod_api::sunrise_part]
     impl mod_api::BlockPart for CheckpointCounter {}
-#[mod_api::sunrise_part]
+    #[mod_api::sunrise_part]
     impl mod_api::BlockEntityPart for CheckpointCounter {
         fn block_entity_save_additional(
             &self,
@@ -109,10 +107,9 @@ struct CheckpointCounter;
         }
     }
 
+    use super::*;
 
-use super::*;
-
-#[test]
+    #[test]
     #[ignore = "daily"]
     #[cfg(any())]
     fn posted_native_panic_writes_one_server_report() {
@@ -168,15 +165,21 @@ use super::*;
         assert!(text.contains("posted integrated panic 3494"));
         assert!(text.contains("in native mod example:posted, hook server_tick"));
     }
-/// A mod's quit while the world is still loading stops and joins the starting server
+    /// A mod's quit while the world is still loading stops and joins the starting server
     /// before the loop ends, and that server's failure is the game's error.
     #[test]
     #[ignore = "daily"]
     fn a_quit_while_the_world_loads_waits_for_its_server() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
-        use {sunrise_client_gameplay::game::EventLoopCtl, sunrise_client_gameplay::game::client_side::integrated_client::Starting};
         use std::cell::Cell;
         use winit::event_loop::ControlFlow;
+        use {
+            crate::game::server_side::native_entity_refs::tests::with_client_game,
+            sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+        };
+        use {
+            sunrise_client_gameplay::game::EventLoopCtl,
+            sunrise_client_gameplay::game::client_side::integrated_client::Starting,
+        };
         if run_fresh_cases(
             "game::server_side::integrated::tests::a_quit_while_the_world_loads_waits_for_its_server",
             "SUNRISE_CLIENT_QUIT_STARTING_CHILD",
@@ -241,7 +244,7 @@ use super::*;
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn integrated_rules_screen_shares_server_session_registry() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
@@ -273,7 +276,7 @@ use super::*;
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn block_state_weathering_reverts_after_integrated_session_stops() {
         use mod_api::HostBlockStates;
@@ -332,12 +335,15 @@ use super::*;
             }
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn forced_disconnect_keeps_wire_cache_until_integrated_server_stops() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
         use sunrise_game_data::text::Text;
         use sunrise_sim::lan::data::{SyncData, WorldTags};
+        use {
+            crate::game::server_side::native_entity_refs::tests::with_client_game,
+            sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+        };
 
         if run_fresh_cases(
             "game::server_side::integrated::tests::forced_disconnect_keeps_wire_cache_until_integrated_server_stops",
@@ -371,7 +377,10 @@ use super::*;
                             std::thread::sleep(Duration::from_millis(1));
                         }
                         observed
-                            .send(sunrise_gameplay::game::server_side::lan::sync::cached_reload_sync())
+                            .send(
+                                sunrise_gameplay::game::server_side::lan::sync::cached_reload_sync(
+                                ),
+                            )
                             .unwrap();
                         *stopping.failure.lock().unwrap() = failure.map(str::to_owned);
                     })),
@@ -392,11 +401,13 @@ use super::*;
                         .is_some_and(|seen| Arc::ptr_eq(&seen, &sync)),
                     "the cache must still hold the server's snapshot during shutdown"
                 );
-                assert!(sunrise_gameplay::game::server_side::lan::sync::cached_reload_sync().is_none());
+                assert!(
+                    sunrise_gameplay::game::server_side::lan::sync::cached_reload_sync().is_none()
+                );
             }
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn client_session_identifies_only_its_own_integrated_server() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
@@ -428,11 +439,14 @@ use super::*;
             assert_eq!(guest.address, None);
         });
     }
-/// Install the mod before building the fixture's frozen block and block entity registries.
+    /// Install the mod before building the fixture's frozen block and block entity registries.
     fn with_checkpoint_mod(
         test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Mutex<Vec<CheckpointEvent>>),
     ) {
-        use {sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
+        use {
+            sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+            sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+        };
 
         let events = Arc::new(Mutex::new(Vec::new()));
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -443,23 +457,32 @@ use super::*;
         mod_platform::testing::with_mods(mods.clone(), || {
             sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
             mod_api::__private::mark_game_thread();
-            let resources =
-                sunrise_gameplay_common::game::mods::content_root(&fixture_root(), &Default::default()).unwrap();
+            let resources = sunrise_gameplay_common::game::mods::content_root(
+                &fixture_root(),
+                &Default::default(),
+            )
+            .unwrap();
             with_game_at(resources.prepared().to_path_buf(), |game| {
                 test(game, &events)
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn integrated_tick_panic_saves_changed_world() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay_common::game::server_side::native_living_refs::tests::ZOMBIE_UUID, sunrise_gameplay::game::server_side::native_living_refs::tests::hurt_pig, sunrise_gameplay::game::server_side::native_living_refs::tests::send_to_the_nether, sunrise_gameplay::game::server_side::native_living_refs::tests::summon_mob};
         use sunrise_core::nbt::Tag;
         use sunrise_level::{
             chunk::Chunk,
             containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields},
         };
         use sunrise_sim::save::{LevelShape, SaveDir, SessionLock};
+        use {
+            sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+            sunrise_gameplay::game::server_side::native_living_refs::tests::hurt_pig,
+            sunrise_gameplay::game::server_side::native_living_refs::tests::send_to_the_nether,
+            sunrise_gameplay::game::server_side::native_living_refs::tests::summon_mob,
+            sunrise_gameplay_common::game::server_side::native_living_refs::tests::ZOMBIE_UUID,
+        };
 
         const NAME: &str =
             "game::server_side::integrated::tests::integrated_tick_panic_saves_changed_world";
@@ -508,7 +531,9 @@ use super::*;
                 game.mobs.update(slot, |m| m.position = to);
                 game.entity_section_step(victim, [from.x, from.y, from.z], [to.x, to.y, to.z]);
             }
-            let living = game.living(EntitiesHost::entity(game, victim).unwrap()).unwrap();
+            let living = game
+                .living(EntitiesHost::entity(game, victim).unwrap())
+                .unwrap();
             assert_eq!(
                 living.last_attacker(game).unwrap().level(game),
                 EntitiesHost::level(game, Dim::Nether.id())

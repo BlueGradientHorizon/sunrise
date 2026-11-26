@@ -1,7 +1,7 @@
 //! Cancelled guest bodies survive turn reconstruction without repeating die.
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{Flow, Hooks, HostSide, LivingDeathEvent, ModEntry, PlayerTickPreEvent, ServerHost};
 use std::sync::{Arc, Mutex};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 

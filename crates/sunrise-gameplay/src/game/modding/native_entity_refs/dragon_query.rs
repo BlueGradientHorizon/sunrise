@@ -12,7 +12,8 @@ impl crate::game::ServerGame<'_> {
         };
         let mut cursor = None;
         while let Some(id) = self.common.dragon.next_part(&mut cursor) {
-            if let Some(part) = sunrise_gameplay_common::game::dragon_common::dragon_part_index(dragon.id, id)
+            if let Some(part) =
+                sunrise_gameplay_common::game::dragon_common::dragon_part_index(dragon.id, id)
                 && bounds.intersects(dragon.part_geometry(part).1)
             {
                 visit_id(id)?;

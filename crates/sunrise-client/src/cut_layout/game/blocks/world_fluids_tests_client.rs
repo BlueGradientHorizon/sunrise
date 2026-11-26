@@ -1,8 +1,11 @@
 //! Client-role bucket target prediction tests for mod `BlockPart::can_place_liquid`.
-use {sunrise_gameplay_common::game::Hit, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use std::sync::Arc;
 use sunrise_level::chunk::Chunk;
 use sunrise_world::{fluid::FluidKind, level::BucketContent};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay_common::game::Hit,
+};
 
 const AT: [i32; 3] = [2, 65, 2];
 

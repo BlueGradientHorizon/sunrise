@@ -1,11 +1,17 @@
-use {sunrise_gameplay_common::game::remote::C, sunrise_gameplay_common::game::remote::Signature, sunrise_gameplay_common::game::remote::Tag, sunrise_gameplay_common::game::remote::play};
-use {sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use sunrise_protocol::rsa::{RsaPrivateKey, RsaPublicKey, SignatureHash};
 use sunrise_protocol::secure_chat;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay_common::game::in_own_process,
+};
 use {
     sunrise_client::chat::ChatAbilities, sunrise_client::chat::ChatOptions,
     sunrise_client::chat::ChatVisibility, sunrise_client::hud_layout::GuiDraw,
     sunrise_client::options_file::V, sunrise_level::profile_lookup::TabPlayer,
+};
+use {
+    sunrise_gameplay_common::game::remote::C, sunrise_gameplay_common::game::remote::Signature,
+    sunrise_gameplay_common::game::remote::Tag, sunrise_gameplay_common::game::remote::play,
 };
 
 pub(crate) const ALICE: u128 = 10;
@@ -65,11 +71,7 @@ pub(crate) fn bound() -> play::ChatTypeBound {
     }
 }
 
-pub(crate) fn player_chat(
-    sender: u128,
-    global_index: i32,
-    content: &str,
-) -> play::PlayerChat {
+pub(crate) fn player_chat(sender: u128, global_index: i32, content: &str) -> play::PlayerChat {
     play::PlayerChat {
         global_index,
         sender,

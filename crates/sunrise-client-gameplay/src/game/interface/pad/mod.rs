@@ -3,8 +3,8 @@
 //! the vanilla key mappings they are bound to, the left stick as an analog
 //! move vector and the right stick turning the view. `sunrise-ctl pad`
 //! injects a virtual pad on top of the real one.
-use super::event_loop::EventLoopCtl;
 use super::Screen;
+use super::event_loop::EventLoopCtl;
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 use sunrise_client::actions::Action;
@@ -325,7 +325,12 @@ impl crate::game::ClientGame<'_> {
         } else {
             self.client.pad.0.read()
         };
-        let hardware = if self.client.pad.0.by_letter(&self.client.settings.controller) {
+        let hardware = if self
+            .client
+            .pad
+            .0
+            .by_letter(&self.client.settings.controller)
+        {
             hardware.by_letter()
         } else {
             hardware
@@ -356,7 +361,10 @@ impl crate::game::ClientGame<'_> {
             .activity
             .observe(&state, &self.client.settings.controller);
         for (i, (stick, deadzone)) in [
-            (&mut state.left, self.client.settings.controller.move_deadzone),
+            (
+                &mut state.left,
+                self.client.settings.controller.move_deadzone,
+            ),
             (
                 &mut state.right,
                 self.client.settings.controller.look_deadzone,
@@ -392,18 +400,21 @@ impl crate::game::ClientGame<'_> {
         // Damage from any source, here or on a server; nothing counts on
         // the title screen.
         let health = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .filter(|_| self.client.title.0.is_none())
             .map(|p| p.health.health());
         if let Some(damage) = self.client.pad.0.health.observe(health) {
             self.pad_rumble(Rumble::Hurt(damage));
         }
-        let ticking =
-            self.client.title.0.is_none() && self.client.screen == Screen::Playing && !self.common.pause;
+        let ticking = self.client.title.0.is_none()
+            && self.client.screen == Screen::Playing
+            && !self.common.pause;
         let mut due = Vec::new();
         for button in std::mem::take(&mut self.client.pad.0.late_releases) {
-            if !ticking || self.client.pad.0.pressed_at[button as usize] != Some(self.common.ticks) {
+            if !ticking || self.client.pad.0.pressed_at[button as usize] != Some(self.common.ticks)
+            {
                 due.push(button);
             } else {
                 self.client.pad.0.late_releases.push(button);
@@ -439,8 +450,9 @@ impl crate::game::ClientGame<'_> {
         button: Button,
         down: bool,
     ) {
-        let ticking =
-            self.client.title.0.is_none() && self.client.screen == Screen::Playing && !self.common.pause;
+        let ticking = self.client.title.0.is_none()
+            && self.client.screen == Screen::Playing
+            && !self.common.pause;
         if down {
             // Pressed again before its held-back release went out.
             if let Some(i) = self
@@ -455,7 +467,9 @@ impl crate::game::ClientGame<'_> {
                 self.pad_button_logged(event_loop, button, false);
             }
             self.client.pad.0.pressed_at[button as usize] = Some(self.common.ticks);
-        } else if ticking && self.client.pad.0.pressed_at[button as usize] == Some(self.common.ticks) {
+        } else if ticking
+            && self.client.pad.0.pressed_at[button as usize] == Some(self.common.ticks)
+        {
             self.client.pad.0.late_releases.push(button);
             return;
         }
@@ -600,11 +614,7 @@ impl crate::game::ClientGame<'_> {
 
     /// A bound action: a vanilla mapping acts as its default key or mouse
     /// button, like a rebound keyboard key.
-    pub fn pad_action(
-        &mut self,
-        action: &str,
-        down: bool,
-    ) -> Result<()> {
+    pub fn pad_action(&mut self, action: &str, down: bool) -> Result<()> {
         let Some(route) = gamepad::route(action) else {
             log::warn!("Sunrise: controller action {action} has no handler");
             return Ok(());
@@ -683,7 +693,8 @@ impl crate::game::ClientGame<'_> {
                 Ok(())
             }
             Route::Mouse(button) => {
-                let playing = self.client.title.0.is_none() && self.client.screen == Screen::Playing;
+                let playing =
+                    self.client.title.0.is_none() && self.client.screen == Screen::Playing;
                 // What the window path tells mods and the click counters. Pick block isn't one
                 // they count.
                 if playing
@@ -784,10 +795,7 @@ impl crate::game::ClientGame<'_> {
 
     /// A changed stick component is input for that direction, even below the digital
     /// threshold. Positive and negative travel take over their own mappings only.
-    pub fn resume_stick_mappings(
-        &mut self,
-        previous: Option<[f32; 2]>,
-    ) {
+    pub fn resume_stick_mappings(&mut self, previous: Option<[f32; 2]>) {
         let before = previous.unwrap_or_default();
         let after = self.pad_move().unwrap_or_default();
         for (axis, (positive, negative)) in [
@@ -882,7 +890,8 @@ impl crate::game::ClientGame<'_> {
 
     /// Connection notices sit below the boss bars and last as long as a toast.
     pub(in crate::game::client_side) fn draw_controller_notice(&mut self, batch: &mut HudBatch) {
-        let shown_for = Duration::from_secs_f64(5.0 * self.client.settings.notification_display_time);
+        let shown_for =
+            Duration::from_secs_f64(5.0 * self.client.settings.notification_display_time);
         self.client.controller_notice.draw(
             batch,
             &self.client.gui.atlas,

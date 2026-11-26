@@ -1,4 +1,3 @@
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_game_role_client};
 use crate::game::native_hooks::block_entity_client_tick_tests::CHUNK;
 use crate::game::native_hooks::block_entity_client_tick_tests::CRATE;
 use crate::game::native_hooks::block_entity_client_tick_tests::CRATE_AT;
@@ -20,6 +19,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use sunrise_core::nbt::{Compound, Tag};
 use sunrise_level::containers::BlockEntity;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_game_role_client,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -58,8 +61,11 @@ fn a_clients_frames_tick_its_declared_copies_until_they_go() {
             sunrise_protocol::registry::Ids::from_names(types.map(str::to_owned).to_vec()),
         );
         for (x, z) in [CHUNK, (101, 100)] {
-            let (common, client) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
-            client.streaming.insert_remote(&mut common.world, Chunk::empty(x, z));
+            let (common, client) =
+                sunrise_gameplay_common::game::SideGame::common_and_state_mut(game);
+            client
+                .streaming
+                .insert_remote(&mut common.world, Chunk::empty(x, z));
         }
         let registry = game.pack.assets.registry;
         let hum = registry.default_state(HUM).unwrap();

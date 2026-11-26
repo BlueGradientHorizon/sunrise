@@ -1,16 +1,17 @@
-
-
 #![cfg(test)]
+use sunrise_gameplay_common::game::jukebox_common::jukebox_signals;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
 use sunrise_level::containers::Jukebox;
-use sunrise_gameplay_common::game::jukebox_common::jukebox_signals;
 #[cfg(test)]
 pub(crate) mod jukebox_play_tests {
     use super::*;
 
     fn playing(ticks: i32) -> Option<Vec<String>> {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        };
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES")?);
         let settings = Settings::default();
         let loaded = load_resources(
@@ -28,7 +29,8 @@ pub(crate) mod jukebox_play_tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -113,8 +115,8 @@ pub(crate) mod jukebox_play_tests {
 
 #[cfg(test)]
 pub(crate) mod saved_song_clock_tests {
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 
     #[test]
     #[ignore = "daily"]
@@ -204,9 +206,9 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 #[cfg(test)]
 pub(crate) mod jukebox_component_tests {
     use super::*;
-    use sunrise_gameplay::game::game_tests::tests::server_game;
     use sunrise_core::nbt::Tag;
     use sunrise_core::position::BlockPos;
+    use sunrise_gameplay::game::game_tests::tests::server_game;
 
     fn comparator(game: &mut sunrise_gameplay::game::ServerGame<'_>, stack: ItemStack) -> i32 {
         let key = (8, 64, 8);
@@ -309,9 +311,12 @@ pub(crate) mod jukebox_tests;
 #[cfg(test)]
 pub(crate) mod block_change_tests {
 
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_level::chunk::Chunk;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -333,7 +338,8 @@ pub(crate) mod block_change_tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,

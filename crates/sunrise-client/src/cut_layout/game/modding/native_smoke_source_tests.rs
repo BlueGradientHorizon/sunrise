@@ -1,8 +1,8 @@
 //! `smoke_source` answered by a block Part, as Farmer's Delight's head inject on
 //! `CampfireBlock.isSmokeSource` needs (#1027): the Part's answer replaces vanilla's both ways,
 //! and the campfire above takes it as the block under it changes.
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{self, BlockPart, Hooks, LevelSide, Registrar, SmokeSourceEvent};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 
 /// Answers `smoke_source` for its block.
 struct Smoky(bool);

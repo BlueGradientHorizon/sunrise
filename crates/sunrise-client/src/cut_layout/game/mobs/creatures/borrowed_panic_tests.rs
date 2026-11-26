@@ -1,11 +1,20 @@
-use {crate::game::creatures::*, sunrise_gameplay_common::game::creatures::{Arc, Damage, Dim, ItemStack, Mob, MobEvent, MobOutputBatch, NormalMobActions, Result, Vec3, knockback}};
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::__private::{HookPanicReport, take_hook_panics};
 use std::sync::{
     Mutex,
     atomic::{AtomicUsize, Ordering},
 };
 use sunrise_mod_runtime::attachments::{AttachmentType, Holder};
+use {
+    crate::game::creatures::*,
+    sunrise_gameplay_common::game::creatures::{
+        Arc, Damage, Dim, ItemStack, Mob, MobEvent, MobOutputBatch, NormalMobActions, Result, Vec3,
+        knockback,
+    },
+};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(in crate::game) enum Family {
@@ -626,7 +635,11 @@ pub(in crate::game) struct ConsumerProbe {
 }
 
 impl ConsumerProbe {
-    pub(crate) fn assert_tick(&self, game: &sunrise_gameplay::game::ServerGame<'_>, egg_count: u32) {
+    pub(crate) fn assert_tick(
+        &self,
+        game: &sunrise_gameplay::game::ServerGame<'_>,
+        egg_count: u32,
+    ) {
         assert_eq!(self.calls.load(Ordering::SeqCst), 1);
         assert_eq!(std::mem::take(&mut *self.posts.lock().unwrap()), [71, 72]);
         assert_eq!(eggs(game), egg_count);
@@ -697,7 +710,8 @@ impl mod_api::Hooks for Consumer {
 pub(crate) use crate::game::server_side::creatures_server::borrowed_panic_tests::with_consumer_game;
 
 pub(crate) fn queue_egg(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
-    game.common.creatures
+    game.common
+        .creatures
         .pending
         .entry(game.common.dim.id())
         .or_default()
@@ -832,7 +846,12 @@ pub(crate) fn run_conditional(test: &str, nested: bool) {
             events.extend([egg, conditional()]);
         }
         // The same frame keeps its completed breaks; a new batch does not inherit them.
-        let batch = game.common.creatures.pending.entry(game.common.dim.id()).or_default();
+        let batch = game
+            .common
+            .creatures
+            .pending
+            .entry(game.common.dim.id())
+            .or_default();
         batch.batches.push_back(MobOutputBatch {
             normal: NormalMobActions::new(events),
             guests: Vec::new(),

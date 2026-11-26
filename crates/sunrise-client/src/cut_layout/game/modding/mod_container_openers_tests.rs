@@ -2,11 +2,7 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
-use super::super::native_entity_refs::tests::run_fresh_cases;
-    use sunrise_gameplay_common::game::lan_actions::MenuOpen;
+    use super::super::native_entity_refs::tests::run_fresh_cases;
     use mod_api::{
         BlockState, BlockUpdateFlags, Flow, Hooks, HostBlockStates, MenuReplace,
         ModContainerViewersEvent, ModEntry, PlayerContainerOpenEvent, ServerHost, Text,
@@ -14,6 +10,10 @@ use super::super::native_entity_refs::tests::run_fresh_cases;
     };
     use std::sync::{Arc, Mutex};
     use sunrise_core::nbt::Tag;
+    use sunrise_gameplay_common::game::lan_actions::MenuOpen;
+    use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
     use sunrise_level::containers::{
         BlockEntity, ModBlockEntity, ModBlockEntityFields, ModContainer,
     };
@@ -199,11 +199,17 @@ use super::super::native_entity_refs::tests::run_fresh_cases;
                 game.guest_disconnected(12);
                 assert_eq!(notices.lock().unwrap().last(), Some(&(2, 1)));
                 // A lost menu is repaired by the scheduled recheck, not each tick.
-                game.server.lan.as_mut().unwrap().hub.guests.update_all(|g| {
-                    if g.conn == 13 {
-                        g.menu = None;
-                    }
-                });
+                game.server
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update_all(|g| {
+                        if g.conn == 13 {
+                            g.menu = None;
+                        }
+                    });
                 game.world.game_time = start + 4;
                 game.tick_mod_container_viewers();
                 assert_eq!(notices.lock().unwrap().len(), 3);

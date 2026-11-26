@@ -12,10 +12,7 @@ impl ServerGame<'_> {
 
     /// Paper's `Server.setMaxPlayers`: the live login limit, not `server.properties`. Players
     /// already on stay, whatever the new limit.
-    pub fn server_set_max_players(
-        &mut self,
-        max_players: u32,
-    ) -> Result<(), PlayerLimitRefusal> {
+    pub fn server_set_max_players(&mut self, max_players: u32) -> Result<(), PlayerLimitRefusal> {
         let Some(host) = self.server.lan.as_ref() else {
             return Err(PlayerLimitRefusal::NotOpen);
         };

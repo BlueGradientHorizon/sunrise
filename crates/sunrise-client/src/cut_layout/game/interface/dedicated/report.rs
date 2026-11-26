@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use std::path::Path;
 use std::path::PathBuf;
@@ -8,9 +6,9 @@ use sunrise_perf_format::v1::StopReason;
 mod tests {
     use super::*;
     use std::time::Instant;
-    use sunrise_level::spans;
     use sunrise_gameplay::dedicated::report::Recording;
     use sunrise_gameplay::game::server_side::dedicated::report::Plan;
+    use sunrise_level::spans;
     use sunrise_perf_format::v1::Trigger;
     use sunrise_sim::server_perf::SamplerOptions;
 
@@ -18,7 +16,11 @@ mod tests {
         resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
         root: &Path,
     ) -> sunrise_gameplay::game::ServerGame<'a> {
-        use {sunrise_gameplay_common::game::{Options, Progress}, crate::settings::Settings, crate::game::load_resources};
+        use {
+            crate::game::load_resources,
+            crate::settings::Settings,
+            sunrise_gameplay_common::game::{Options, Progress},
+        };
         let settings = Settings::default();
         let loaded = load_resources(
             sunrise_assets::resource_source::ResourceRoot::directory(root.to_path_buf()),

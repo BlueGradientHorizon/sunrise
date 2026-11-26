@@ -1,11 +1,10 @@
 //! Crosshair targeting parity tests (#32 TNT/falling blocks, #34 root-vehicle exclusion) against vanilla 26.3.
-use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt;
-use {sunrise_gameplay_common::game::FallingBlock, sunrise_gameplay_common::game::InteractTarget, sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry, sunrise_gameplay_common::game::entity_memory::OffLevel, sunrise_gameplay_common::game::in_own_process, sunrise_gameplay_common::game::interactions_common::RemoteInteraction, sunrise_client_gameplay::game::client_side::native_client_session::tests::finish_login, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle, sunrise_gameplay_common::game::tnt_common::PrimedTnt};
 use mod_api::CrosshairTarget;
 use serde_json::Value;
 use std::sync::Arc;
 use sunrise_client::level_loading::Reason;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt;
 use sunrise_items::items::ItemStack;
 use sunrise_level::camera_math::CameraType;
 use sunrise_level::chunk::Chunk;
@@ -20,6 +19,18 @@ use sunrise_protocol::{
 };
 use sunrise_sim::first_person_sim::Hand;
 use sunrise_sim::{entities::ArmorStand, mobs::Mob, motion::PlayerMotion};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_client_gameplay::game::client_side::native_client_session::tests::finish_login,
+    sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay_common::game::FallingBlock, sunrise_gameplay_common::game::InteractTarget,
+    sunrise_gameplay_common::game::entity_memory::OffLevel,
+    sunrise_gameplay_common::game::in_own_process,
+    sunrise_gameplay_common::game::interactions_common::RemoteInteraction,
+    sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle,
+    sunrise_gameplay_common::game::tnt_common::PrimedTnt,
+};
 
 fn crosshair_witness() -> Value {
     let path = std::env::var("SUNRISE_CROSSHAIR_PICK_WITNESS")
@@ -145,7 +156,12 @@ fn add_entity_with_data(
     .unwrap();
 }
 
-fn sync_interaction_size(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: i32, width: f32, height: f32) {
+fn sync_interaction_size(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    id: i32,
+    width: f32,
+    height: f32,
+) {
     game.handle_packet(C::SetEntityData(play::SetEntityData {
         id,
         values: vec![
@@ -245,7 +261,10 @@ fn pin_entity_pose(
     }
 }
 
-fn replay_witness_case(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, tc: &Value) -> Pipe {
+fn replay_witness_case(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    tc: &Value,
+) -> Pipe {
     let player_id = tc["player_id"].as_i64().unwrap() as i32;
     let camera_id = tc["camera_id"].as_i64().unwrap() as i32;
     let entities = tc["entities"].as_array().unwrap();
@@ -430,7 +449,11 @@ fn replay_witness_case(game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
     server
 }
 
-fn check_case_hit(game: &sunrise_client_gameplay::game::ClientGame<'_>, tc: &Value, failures: &mut Vec<String>) {
+fn check_case_hit(
+    game: &sunrise_client_gameplay::game::ClientGame<'_>,
+    tc: &Value,
+    failures: &mut Vec<String>,
+) {
     let name = tc["name"].as_str().unwrap();
     let hit = &tc["hit"];
     let want_type = hit["type"].as_str().unwrap();
@@ -734,8 +757,7 @@ fn middle_click_sends_pick_item_from_entity_for_tnt_and_falling_block() {
     run_middle_click_sends_pick_item_from_entity_for_tnt_and_falling_block();
 }
 
-pub(crate) fn run_middle_click_sends_pick_item_from_entity_for_tnt_and_falling_block()
- {
+pub(crate) fn run_middle_click_sends_pick_item_from_entity_for_tnt_and_falling_block() {
     in_own_process(
         "game::client_side::crosshair_pick_tests::middle_click_sends_pick_item_from_entity_for_tnt_and_falling_block",
         || {
@@ -805,8 +827,7 @@ fn dynamic_redirectable_tag_controls_arrow_pick_and_in_ground_stops_it() {
     run_dynamic_redirectable_tag_controls_arrow_pick_and_in_ground_stops_it();
 }
 
-pub(crate) fn run_dynamic_redirectable_tag_controls_arrow_pick_and_in_ground_stops_it()
- {
+pub(crate) fn run_dynamic_redirectable_tag_controls_arrow_pick_and_in_ground_stops_it() {
     in_own_process(
         "game::client_side::crosshair_pick_tests::dynamic_redirectable_tag_controls_arrow_pick_and_in_ground_stops_it",
         || {
@@ -865,8 +886,7 @@ fn singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3() 
     run_singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3();
 }
 
-pub(crate) fn run_singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3()
- {
+pub(crate) fn run_singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3() {
     in_own_process(
         "game::client_side::crosshair_pick_tests::singleplayer_and_unstored_pick_share_unified_query_and_root_exclusion_26_3",
         || {
@@ -1620,7 +1640,6 @@ pub(crate) fn run_singleplayer_and_unstored_pick_share_unified_query_and_root_ex
         },
     );
 }
-
 
 use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
 

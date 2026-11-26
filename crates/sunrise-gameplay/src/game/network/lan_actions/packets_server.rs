@@ -269,16 +269,26 @@ impl crate::game::ServerGame<'_> {
         if let Some(Slots::Block(key) | Slots::Double(key, _)) = slots
             && slots.and_then(|s| s.read(&self.common.world, &host.hub.guests[gi])) != before
         {
-            self.after_commit(sunrise_gameplay_common::game::transactions::After::Changed(key));
+            self.after_commit(sunrise_gameplay_common::game::transactions::After::Changed(
+                key,
+            ));
         }
         if let Some(Slots::Block(key)) = slots {
-            self.after_commit(sunrise_gameplay_common::game::transactions::After::StoreCartItems(key));
+            self.after_commit(
+                sunrise_gameplay_common::game::transactions::After::StoreCartItems(key),
+            );
         }
         if !drops.is_empty() {
-            self.after_commit(sunrise_gameplay_common::game::transactions::After::GuestMenu(
-                conn,
-                Box::new(sunrise_gameplay_common::game::lan_menu_data::GuestMenuEffects::dropped(drops)),
-            ));
+            self.after_commit(
+                sunrise_gameplay_common::game::transactions::After::GuestMenu(
+                    conn,
+                    Box::new(
+                        sunrise_gameplay_common::game::lan_menu_data::GuestMenuEffects::dropped(
+                            drops,
+                        ),
+                    ),
+                ),
+            );
         }
         true
     }
@@ -466,12 +476,14 @@ impl crate::game::ServerGame<'_> {
                     // mayInteract: a block outside the world border can't be
                     // dug (the ack puts it back on the client).
                     if !self
-                        .common.border
+                        .common
+                        .border
                         .contains(f64::from(a.pos[0]), f64::from(a.pos[2]))
                     {
                         return;
                     }
-                    let face = sunrise_gameplay_common::game::hit::direction(i32::from(a.direction));
+                    let face =
+                        sunrise_gameplay_common::game::hit::direction(i32::from(a.direction));
                     // Native mods, once the dig may start: a canceled click
                     // attacks, digs and breaks nothing (the ack puts the
                     // block back on the client).
@@ -585,7 +597,8 @@ impl crate::game::ServerGame<'_> {
                     // ServerPlayerGameMode.abortDestroyBlock clears the dig and the crack; the
                     // clock `destroy_pos` names is left to the next START (#4124).
                     host.play.entry(conn).or_default().dig_ended();
-                    host.hub.send_authoritative_block(conn, &self.common.world, a.pos);
+                    host.hub
+                        .send_authoritative_block(conn, &self.common.world, a.pos);
                     self.guest_crack_progress(conn, a.pos, -1);
                     let Some(host) = self.server.lan.as_ref() else {
                         return;
@@ -816,9 +829,15 @@ impl crate::game::ServerGame<'_> {
                 let _ = self.guest_attack(conn, gi, p.id);
             }
             S::Interact(p) => {
-                self.server.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
-                    g.sneaking = p.secondary;
-                });
+                self.server
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .guests
+                    .update(gi, |g| {
+                        g.sneaking = p.secondary;
+                    });
                 let hand = if p.hand == 1 { Hand::Off } else { Hand::Main };
                 let _ = self.guest_interact(conn, gi, p.id, hand, p.location);
             }
@@ -1017,7 +1036,9 @@ impl crate::game::ServerGame<'_> {
                     .as_ref()
                     .filter(|m| m.window == p.container)
                     .and_then(|m| match m.slots {
-                        Slots::Block(key) if key.1 == sunrise_gameplay_common::game::minecarts::CART_KEY_Y => {
+                        Slots::Block(key)
+                            if key.1 == sunrise_gameplay_common::game::minecarts::CART_KEY_Y =>
+                        {
                             Some(key)
                         }
                         _ => None,
@@ -1133,12 +1154,19 @@ impl crate::game::ServerGame<'_> {
                     conn,
                     &C::GameRuleValues(play::GameRuleValues {
                         entries: self
-                            .common.ui
+                            .common
+                            .ui
                             .rules
                             .available_rules()
                             .map(|r| play::GameRuleEntry {
                                 name: r.name.clone(),
-                                value: self.common.ui.rules.get(&r.name).unwrap_or(r.default).to_string(),
+                                value: self
+                                    .common
+                                    .ui
+                                    .rules
+                                    .get(&r.name)
+                                    .unwrap_or(r.default)
+                                    .to_string(),
                             })
                             .collect(),
                     }),
@@ -1428,7 +1456,8 @@ impl crate::game::ServerGame<'_> {
         };
         (info.block.is_some() || sunrise_items::items::bucket_contents(&stack.item).is_some())
             && !self
-                .common.cooldowns
+                .common
+                .cooldowns
                 .is_on_cooldown(&sunrise_items::cooldowns::group(
                     &stack,
                     info.use_cooldown.as_ref(),

@@ -10,7 +10,8 @@ pub trait Hooks {
     /// stayed in the slot (`None` once it is empty) with 0; a hotbar swap
     /// passes the taken stack with 0. Fires before `furnace_extract`.
     /// Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::item_smelted::ServerGame<'_>::native_item_smelted", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::item_smelted::ServerGame<'_>::native_item_smelted",
         dispatch = "flat",
         side = "server",
         contract = "listen",

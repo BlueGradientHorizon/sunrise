@@ -1,23 +1,24 @@
-use sunrise_core::random::RandomSource;
-use std::sync::Arc;
-use sunrise_core::geometry::Vec3;
-use sunrise_gameplay_common::game::minecarts::CartKind;
-use sunrise_gameplay_common::game::minecarts::Minecart;
-use sunrise_sim::sprint::Keys;
 use super::*;
 use crate::game::minecarts::lifetime_tests::CancelCartDismount;
 use crate::game::minecarts::lifetime_tests::VALUE;
 use crate::game::minecarts::lifetime_tests::assert_vehicle_residency_retired;
+use std::sync::Arc;
 use std::sync::Mutex;
+use sunrise_core::geometry::Vec3;
+use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::minecarts::CartKind;
+use sunrise_gameplay_common::game::minecarts::Minecart;
 use sunrise_mod_runtime::attachments::{
     Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
 };
+use sunrise_sim::sprint::Keys;
 
 #[test]
 #[ignore = "daily"]
 fn a_bound_cart_survives_the_parked_level_swap() {
     bound_cart_case(CartKind::Rideable, |game| {
-        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+            .unwrap();
         assert!(game.carts.is_empty());
         assert_eq!(
             game.server
@@ -29,7 +30,8 @@ fn a_bound_cart_survives_the_parked_level_swap() {
                 .id,
             71
         );
-        game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
+            .unwrap();
         assert_eq!(game.carts[0].id, 71);
     });
 }
@@ -192,9 +194,10 @@ fn destroyed_carts_retain_authoritative_state_and_retire_their_registration() {
                 let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                 let mut rider = sunrise_sim::mobs::Mob::new(72, kind, start, 0.0);
                 rider.extra.mount = Some(71);
-                game.persist
-                    .off_level
-                    .insert(72, sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(rider));
+                game.persist.off_level.insert(
+                    72,
+                    sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(rider),
+                );
 
                 let holder = game.entity(71).unwrap();
                 let mut values = Attachments::default();
@@ -379,7 +382,8 @@ fn terminal_vehicle_damage_and_native_removal_retire_residency() {
                             5.0,
                             true,
                             false,
-                            sunrise_gameplay::game::server_side::minecarts_server::CartHit::default(),
+                            sunrise_gameplay::game::server_side::minecarts_server::CartHit::default(
+                            ),
                         );
                     } else {
                         assert!(game.hurt_boat(0, 5.0, true));

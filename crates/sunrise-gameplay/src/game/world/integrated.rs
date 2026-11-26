@@ -19,18 +19,6 @@ use super::{
 #[cfg(any())]
 use crate::game::client_side::integrated_client::Integrated;
 #[cfg(test)]
-use sunrise_gameplay_common::game::integrated_link::stack_for;
-use sunrise_gameplay_common::game::{
-    integrated_link::{
-        ComponentHarness, Flags, Launch, PLAYER_CHUNKS, ProfileResolverFactory, Ready,
-        ServerOptions, server_thread_stack,
-    },
-    lan_common::{
-        LanSettings,
-        sync::{SyncPreload, preload_sync_data},
-    },
-};
-#[cfg(test)]
 use std::sync::Mutex;
 #[cfg(any(test, feature = "test-support"))]
 use std::sync::mpsc::channel;
@@ -44,6 +32,18 @@ use std::{
     time::{Duration, Instant},
 };
 use sunrise_game_data::Result;
+#[cfg(test)]
+use sunrise_gameplay_common::game::integrated_link::stack_for;
+use sunrise_gameplay_common::game::{
+    integrated_link::{
+        ComponentHarness, Flags, Launch, PLAYER_CHUNKS, ProfileResolverFactory, Ready,
+        ServerOptions, server_thread_stack,
+    },
+    lan_common::{
+        LanSettings,
+        sync::{SyncPreload, preload_sync_data},
+    },
+};
 use sunrise_level::level_loading::{STATUS_RADIUS, Stage};
 use sunrise_level::sim_settings::SimSettings;
 use sunrise_level::spans::startup;
@@ -138,7 +138,9 @@ impl crate::game::ServerGame<'_> {
         let focus = match serving.load.focus {
             Some(focus) => focus,
             None => {
-                let Some(spawn) = self.common.spawn else { return };
+                let Some(spawn) = self.common.spawn else {
+                    return;
+                };
                 let focus = ((spawn.x.floor() as i32) >> 4, (spawn.z.floor() as i32) >> 4);
                 view.start(Stage::LoadPlayerChunks, PLAYER_CHUNKS);
                 serving.load.focus = Some(focus);
@@ -216,7 +218,8 @@ impl crate::game::ServerGame<'_> {
             return self.run_command_harness(script.as_ref(), output.as_ref());
         }
         let slow_ms = self
-            .common.options
+            .common
+            .options
             .spikes
             .unwrap_or(super::dedicated::SLOW_TICK_MS);
         self.server
@@ -226,10 +229,7 @@ impl crate::game::ServerGame<'_> {
         self.integrated_tick_loop(&flags)
     }
 
-    pub fn integrated_tick_loop(
-        &mut self,
-        flags: &Flags,
-    ) -> Result<()> {
+    pub fn integrated_tick_loop(&mut self, flags: &Flags) -> Result<()> {
         let mut next = Instant::now();
         let mut was_paused = false;
         let mut smoothed_tick_ms = 0.0f32;
@@ -690,10 +690,7 @@ impl crate::game::ServerGame<'_> {
     /// `IntegratedServer.publishServer`: listen on `settings.port` (0 picks
     /// one) and announce the world. The socket is bound at once so a busy
     /// port fails here; the hub starts listening once it is at hand.
-    pub fn publish(
-        &mut self,
-        settings: LanSettings,
-    ) -> std::result::Result<u16, String> {
+    pub fn publish(&mut self, settings: LanSettings) -> std::result::Result<u16, String> {
         if self.common.options.developer_single_player {
             return Err(sunrise_game_data::lang::get(
                 "sunrise.developer_offline.single_player",
@@ -1022,12 +1019,8 @@ pub mod tests {
     use mod_api::prelude::*;
     use std::sync::mpsc::channel;
 
-    
-
-    
-
     #[cfg(test)]
-/// The integrated server keeps its stack floor and honors a larger
+    /// The integrated server keeps its stack floor and honors a larger
     /// `RUST_MIN_STACK` override (#2430).
     #[test]
     fn integrated_server_stack_honors_its_floor_and_larger_overrides() {
@@ -1070,35 +1063,14 @@ pub mod tests {
         }
     }
 
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-    
-    
-
-    
-
-    
-
     #[cfg(test)]
-#[test]
+    #[test]
     fn emergency_save_waits_for_finished_and_times_out() {
         let flags = Arc::new(Flags::default());
         let saving = flags.clone();
         let server = std::thread::spawn(move || {
-            let _finished = sunrise_gameplay_common::game::integrated_link::Finished::new(saving.clone());
+            let _finished =
+                sunrise_gameplay_common::game::integrated_link::Finished::new(saving.clone());
             while !saving.stop.load(Ordering::Relaxed) {
                 std::thread::yield_now();
             }
@@ -1118,10 +1090,8 @@ pub mod tests {
         assert!(!flags.stop.load(Ordering::Relaxed));
     }
 
-
-
     #[cfg(test)]
-#[test]
+    #[test]
     fn the_owner_joins_only_through_memory_and_lan_guests_only_when_published() {
         for published in [false, true] {
             assert!(
@@ -1137,10 +1107,6 @@ pub mod tests {
             }
         }
     }
-
-
-
-
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;

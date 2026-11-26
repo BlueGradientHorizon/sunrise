@@ -8,7 +8,7 @@ pub trait NativeLivingBlockingGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// that blocks attacks, from either hand, and has used it for the component's block delay.
     /// False while it uses nothing or another item. None for armor stands, the dragon and a
     /// stale handle.
-     fn living_is_blocking(&self, living: LivingRef) -> Option<bool> {
+    fn living_is_blocking(&self, living: LivingRef) -> Option<bool> {
         let ticks = self.side_living_use_ticks(living)?;
         let blocking = ticks.is_some_and(|ticks| {
             self.side_living_used_item_hand(living)
@@ -28,7 +28,6 @@ pub trait NativeLivingBlockingGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeLivingBlockingGameExt1<'__sg> for G {}
-
 
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 

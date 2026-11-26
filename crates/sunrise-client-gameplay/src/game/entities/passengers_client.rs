@@ -1,7 +1,7 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::passengers_common::{Riders, player_box_top};
 use std::collections::HashMap;
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_gameplay_common::game::passengers_common::{Riders, player_box_top};
 use sunrise_sim::mobs::riders;
 
 impl ClientGame<'_> {
@@ -11,7 +11,13 @@ impl ClientGame<'_> {
         id: u32,
         previous: bool,
     ) -> Option<sunrise_gameplay_common::game::seats_common::Seat> {
-        let row = self.client.remote.as_ref()?.general.rows.get(&(id as i32))?;
+        let row = self
+            .client
+            .remote
+            .as_ref()?
+            .general
+            .rows
+            .get(&(id as i32))?;
         let ([x, y, z], [yaw, _]) = if previous {
             (row.previous, row.previous_rotation)
         } else {
@@ -103,12 +109,26 @@ impl ClientGame<'_> {
         if let Some(c) = self.common.carts.iter().find(|c| c.id == vehicle) {
             return Some(super::minecarts::cart_general_seat(c.position));
         }
-        if let Some(t) = self.common.tnts.iter().find(|t| t.id == vehicle && t.id != 0) {
-            return Some(sunrise_gameplay_common::game::tnt_common::tnt_general_seat(t.position));
+        if let Some(t) = self
+            .common
+            .tnts
+            .iter()
+            .find(|t| t.id == vehicle && t.id != 0)
+        {
+            return Some(sunrise_gameplay_common::game::tnt_common::tnt_general_seat(
+                t.position,
+            ));
         }
-        if let Some(v) = self.common.mobs.iter().find(|m| m.id == vehicle && !m.removed) {
+        if let Some(v) = self
+            .common
+            .mobs
+            .iter()
+            .find(|m| m.id == vehicle && !m.removed)
+        {
             let (index, count) = self.client_passenger_place(vehicle, rider);
-            let attachment = sunrise_gameplay_common::game::CommonGame::mob_passenger_attachment(v, false, index, count);
+            let attachment = sunrise_gameplay_common::game::CommonGame::mob_passenger_attachment(
+                v, false, index, count,
+            );
             return Some(riders::seat(attachment, 0.0, v.position, v.yaw));
         }
         let at = self.client_passenger_riding_position(vehicle, None, None, &HashMap::new())?;
@@ -247,7 +267,8 @@ impl ClientGame<'_> {
         self.position_remote_general_passengers();
         self.client_seat_static_mobs(&riders);
         let index: HashMap<u32, usize> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .enumerate()
             .map(|(i, m)| (m.id, i))
@@ -259,7 +280,9 @@ impl ClientGame<'_> {
                     continue;
                 };
                 let Some(&j) = index.get(&v) else {
-                    if self.common.seats_own_riders(v) || self.client_general_seat(v, false).is_some() {
+                    if self.common.seats_own_riders(v)
+                        || self.client_general_seat(v, false).is_some()
+                    {
                         continue;
                     }
                     let me = self.client.remote.as_ref().map(|r| r.entity_id as u32);
@@ -433,7 +456,8 @@ impl ClientGame<'_> {
             self.common.previous_position.add_vector(up),
         );
         for stand in self
-            .common.armor_stands
+            .common
+            .armor_stands
             .iter_mut()
             .filter(|a| a.vehicle == Some(me))
         {

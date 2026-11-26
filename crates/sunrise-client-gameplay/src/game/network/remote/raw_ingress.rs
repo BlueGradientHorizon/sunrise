@@ -1,9 +1,9 @@
 //! Receiving-provider credit follows ordered events and decoder placeholders.
+#[cfg(any(test, feature = "test-support"))]
+use super::Received;
 use super::opening::RemoteOpening;
 #[cfg(test)]
 use super::{C, play};
-#[cfg(any(test, feature = "test-support"))]
-use super::Received;
 #[cfg(any(test, feature = "test-support"))]
 use std::time::{Duration, Instant};
 use sunrise_client_lib::net::Event;

@@ -33,7 +33,8 @@ pub(super) struct PlacementOverlay {
 impl crate::game::ClientGame<'_> {
     pub(super) fn request_mod_book_recipe(&mut self, recipe: String, source: u32) {
         if !self
-            .common.native_net
+            .common
+            .native_net
             .placement
             .client
             .window()
@@ -92,7 +93,8 @@ impl crate::game::ClientGame<'_> {
         selection: &sunrise_sim::recipe_book::placement_sync::Selection,
     ) {
         let Some(view) = self
-            .common.native_net
+            .common
+            .native_net
             .placement
             .view
             .as_ref()

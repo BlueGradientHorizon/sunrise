@@ -102,29 +102,17 @@ impl ServerGame<'_> {
     }
 
     /// `ServerPlayer.setExperienceLevels`.
-    pub fn player_set_experience_levels(
-        &mut self,
-        player: PlayerRef,
-        levels: i32,
-    ) -> bool {
+    pub fn player_set_experience_levels(&mut self, player: PlayerRef, levels: i32) -> bool {
         self.native_player_write(player, |game| game.experience.level = levels)
     }
 
     /// `Player.totalExperience`.
-    pub fn player_set_total_experience(
-        &mut self,
-        player: PlayerRef,
-        total: i32,
-    ) -> bool {
+    pub fn player_set_total_experience(&mut self, player: PlayerRef, total: i32) -> bool {
         total >= 0 && self.native_player_write(player, |game| game.experience.total = total)
     }
 
     /// `ExperienceOrb.playerTouch`: Mending first, then `Player.giveExperiencePoints`.
-    pub fn player_give_experience_points(
-        &mut self,
-        player: PlayerRef,
-        points: u32,
-    ) -> bool {
+    pub fn player_give_experience_points(&mut self, player: PlayerRef, points: u32) -> bool {
         let Ok(points) = i32::try_from(points) else {
             return false;
         };

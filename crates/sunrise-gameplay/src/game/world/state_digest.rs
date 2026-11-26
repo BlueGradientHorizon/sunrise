@@ -215,8 +215,12 @@ impl crate::game::ServerGame<'_> {
                 continue;
             };
             let name = self.common.data_block_name([pos.0, pos.1, pos.2]);
-            let tag =
-                sunrise_sim::save::block_entity_encode::encode(pos, e, &name, self.common.res.items());
+            let tag = sunrise_sim::save::block_entity_encode::encode(
+                pos,
+                e,
+                &name,
+                self.common.res.items(),
+            );
             let mut one = hasher();
             pos.hash(&mut one);
             slot.hash(&mut one);

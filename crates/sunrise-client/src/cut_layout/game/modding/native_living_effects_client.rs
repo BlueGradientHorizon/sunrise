@@ -1,11 +1,9 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use mod_api::{EntityRef, LivingRef, WorldEpoch};
+    use mod_api::{EntityRef, LivingRef, WorldEpoch};
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 
     /// `LivingEntity.getEffectBlendFactor` on a client: the local player's
     /// darkness fades in a 22nd a tick and nausea a 150th

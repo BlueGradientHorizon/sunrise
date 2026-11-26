@@ -104,7 +104,11 @@ fn drawn(game: &sunrise_client_gameplay::game::ClientGame<'_>, item: &str) -> Ve
     drawn_with(game, item, MODEL)
 }
 /// The layers `item` draws under the fluid container `model`, asking the game.
-fn drawn_with(game: &sunrise_client_gameplay::game::ClientGame<'_>, item: &str, model: &str) -> Vec<Layer> {
+fn drawn_with(
+    game: &sunrise_client_gameplay::game::ClientGame<'_>,
+    item: &str,
+    model: &str,
+) -> Vec<Layer> {
     let mut models = ItemModels::default();
     models.definitions.insert(
         item.into(),

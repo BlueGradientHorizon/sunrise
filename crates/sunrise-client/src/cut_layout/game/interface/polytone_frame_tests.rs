@@ -13,8 +13,11 @@ use sunrise_level::particle_options::ParticleOptions;
 /// A game over the prepared resources that registers no mod tables of the process (the
 /// particles here are the pack's): a direct `ClientGame`, not the mod fixture's `with_client_game`.
 fn with_game(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role};
     use crate::game::{Audio, Settings, load_resources};
+    use {
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        sunrise_gameplay_common::game::execution_role,
+    };
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -78,7 +81,11 @@ fn rain_pack(dies_under: bool) -> ResourceSource {
 
 /// `game`'s particles reading `pack`, with the rain's sprite in their atlas (as a resource load
 /// puts it there) and their camera at `camera`.
-fn rain_particles(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, pack: &ResourceSource, camera: [f64; 3]) {
+fn rain_particles(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    pack: &ResourceSource,
+    camera: [f64; 3],
+) {
     let registry = Registry::read(pack, Default::default(), game.pack.assets.registry);
     let rect = Rect {
         u0: 0.0,
@@ -93,7 +100,10 @@ fn rain_particles(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, pack
         &HashMap::from([("particle/generic_0".to_owned(), rect)]),
         &HashSet::new(),
     );
-    game.client.particles.0.set_polytone(Some(Arc::new(registry)));
+    game.client
+        .particles
+        .0
+        .set_polytone(Some(Arc::new(registry)));
     game.client.particles.0.camera = camera;
 }
 

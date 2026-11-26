@@ -16,11 +16,7 @@ impl crate::game::ClientGame<'_> {
         });
     }
     /// The items [`Self::campfire_geometry`] draws, in `CampfireRenderer.submit`'s order.
-    pub fn campfire_items(
-        &self,
-        camera: glam::DVec3,
-        mut draw: impl FnMut(BlockItemDraw),
-    ) {
+    pub fn campfire_items(&self, camera: glam::DVec3, mut draw: impl FnMut(BlockItemDraw)) {
         let _items = sunrise_level::spans::raw_flight_guard("block_entity_items");
         let reach = Reach::Default;
         sunrise_level::spans::note_block_entity_item_visits(|| {
@@ -39,7 +35,8 @@ impl crate::game::ClientGame<'_> {
             // Direction.get2DDataValue: south 0, west 1, north 2, east 3.
             let state = self.common.world.block(key.0, key.1, key.2);
             let facing = match self
-                .common.pack
+                .common
+                .pack
                 .assets
                 .registry
                 .state(state)

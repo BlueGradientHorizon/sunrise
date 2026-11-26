@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 #[path = "native_entity_refs/level_uuid_tests.rs"]
 pub(crate) mod level_uuid_tests;
@@ -8,13 +7,13 @@ pub(crate) mod roll_loot_tests;
 
 #[cfg(test)]
 pub(crate) mod general_handle_tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5;
-use super::tests::with_game;
-    use sunrise_gameplay_common::game::commands_common::Target;
-    use sunrise_gameplay_common::game::general::GeneralRow;
+    use super::tests::with_game;
     use mod_api::{EntityRef, WorldEpoch};
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::commands_common::Target;
+    use sunrise_gameplay_common::game::general::GeneralRow;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5;
 
     fn row(id: u32, uuid: [i32; 4], fall: f64) -> GeneralRow {
         GeneralRow {
@@ -109,40 +108,41 @@ use super::tests::with_game;
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5;
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_player_food::NativePlayerFoodGameExt1;
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt3;
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1;
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1;
-use sunrise_gameplay_common::{game_side, world_biomes};
-    pub use sunrise_gameplay_common::game::test_fixtures::{
-        FRESH_CASE_LIMIT, fixture_block_names, fixture_facts_mut, fixture_root, output_within, ran_one_test,
-        record_key, resolve_parts, run_fresh_cases, run_fresh_cases_at_once, run_with_game_stack,
-    };
+    #[cfg(feature = "client")]
+    pub use sunrise_client_gameplay::game::native_entity_refs::tests::test_window;
     pub use sunrise_gameplay::game::native_entity_refs::tests::{
         bind_acting_guest, bind_local_player, collect_all_entities, collect_entities_in,
         collect_game_all_entities, collect_game_entities_in, lever_on, piston_pulls_above,
         prepare_entity_ticking_neighborhood,
     };
-    #[cfg(feature = "client")]
-    pub use sunrise_client_gameplay::game::native_entity_refs::tests::test_window;
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
+    use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1;
+    use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5;
+    use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1;
+    use sunrise_gameplay_common::game::native_player_food::NativePlayerFoodGameExt1;
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt3;
+    use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1;
+    pub use sunrise_gameplay_common::game::test_fixtures::{
+        FRESH_CASE_LIMIT, fixture_block_names, fixture_facts_mut, fixture_root, output_within,
+        ran_one_test, record_key, resolve_parts, run_fresh_cases, run_fresh_cases_at_once,
+        run_with_game_stack,
+    };
+    use sunrise_gameplay_common::{game_side, world_biomes};
 
-    #[allow(unused_imports)]
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     #[allow(unused_imports)]
     use core::ops::ControlFlow;
     #[allow(unused_imports)]
     use mod_api::__private::game::*;
     #[allow(unused_imports)]
     use mod_api::{EntityRef, LevelReadError, LevelRef};
+    #[allow(unused_imports)]
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
 
     // Keep the handle and direct Game routes separate when collecting for assertions.
     /// A child run with a name no test has fails the parent instead of passing vacuously.
@@ -199,7 +199,9 @@ use sunrise_gameplay_common::{game_side, world_biomes};
         );
     }
 
-    pub(crate) fn with_client_game(test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>)) {
+    pub(crate) fn with_client_game(
+        test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
+    ) {
         with_game_role_client(
             fixture_root(),
             sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,
@@ -207,7 +209,9 @@ use sunrise_gameplay_common::{game_side, world_biomes};
         );
     }
 
-    pub(crate) fn with_uncached_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+    pub(crate) fn with_uncached_game(
+        test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
+    ) {
         with_game_role_and_facts_with(
             fixture_root(),
             sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer,
@@ -277,10 +281,10 @@ use sunrise_gameplay_common::{game_side, world_biomes};
         cached: bool,
         test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
     ) {
-        use sunrise_gameplay_common::game::{Options, Progress};
-        use crate::settings::Settings;
         use crate::game::{load_resources, load_resources_uncached};
+        use crate::settings::Settings;
         use mod_api::Authority;
+        use sunrise_gameplay_common::game::{Options, Progress};
 
         // Parts registration replaces its metadata snapshot. Finish registration before
         // loading the resource graph, whose registry retains one immutable worker snapshot.
@@ -368,11 +372,11 @@ use sunrise_gameplay_common::{game_side, world_biomes};
         cached: bool,
         test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
     ) {
-        use sunrise_gameplay_common::game::{Options, Progress};
         use crate::audio::Audio;
-        use crate::settings::Settings;
         use crate::game::{load_resources, load_resources_uncached};
+        use crate::settings::Settings;
         use mod_api::Authority;
+        use sunrise_gameplay_common::game::{Options, Progress};
 
         // Parts registration replaces its metadata snapshot. Finish registration before
         // loading the resource graph, whose registry retains one immutable worker snapshot.
@@ -472,7 +476,8 @@ use sunrise_gameplay_common::{game_side, world_biomes};
                 "execute in minecraft:the_nether run summon cow 8.5 70 8.5 {UUID:[I;7,0,0,3],NoAI:1b}"
             )));
             let original = game.dim;
-            game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+            game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
+                .unwrap();
             let id = *game
                 .persist
                 .uuids
@@ -490,7 +495,8 @@ use sunrise_gameplay_common::{game_side, world_biomes};
             assert!(!nbt.contains_key(&"id".into()));
             game.enter_command_level(original).unwrap();
             assert_eq!(game.entity_nbt(entity), None);
-            game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+            game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
+                .unwrap();
             assert_eq!(game.entity_uuid(entity), Some(uuid));
             assert_eq!(game.entity_nbt(entity), Some(nbt));
             game.enter_command_level(original).unwrap();
@@ -613,7 +619,8 @@ use sunrise_gameplay_common::{game_side, world_biomes};
             assert!(!survives(game, "minecraft:stone"));
             // A non-authoritative copy of the level asks the part too (the client side itself is
             // covered by `client_placement_prediction_asks_placement_and_survival_parts`).
-            game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+            game.options.execution_role =
+                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
             game.options.dedicated = None;
             assert!(survives(game, "minecraft:glass"));
             assert!(!survives(game, "minecraft:grass_block"));
@@ -786,10 +793,11 @@ use sunrise_gameplay_common::{game_side, world_biomes};
                 .map(String::as_str)
                 == Some("true")
         };
-        let set = |game: &mut sunrise_gameplay::game::ServerGame<'_>, [x, y, z]: [i32; 3], name: &str| {
-            let state = game.pack.assets.registry.default_state(name).unwrap();
-            game.world.set(x, y, z, state).unwrap();
-        };
+        let set =
+            |game: &mut sunrise_gameplay::game::ServerGame<'_>, [x, y, z]: [i32; 3], name: &str| {
+                let state = game.pack.assets.registry.default_state(name).unwrap();
+                game.world.set(x, y, z, state).unwrap();
+            };
         // The powered lever at (6, 64, 5) on stone; unlit lamps beside it, east and above,
         // placed without updates, so they don't know it powers them yet.
         let (lever, east, above) = ([6, 64, 5], [7, 64, 5], [6, 65, 5]);
@@ -1417,8 +1425,8 @@ use sunrise_gameplay_common::{game_side, world_biomes};
     #[test]
     #[ignore = "daily"]
     fn side_guards_agree_across_integrated_dedicated_and_client() {
-        use sunrise_gameplay_common::game::execution_role::ExecutionRole;
         use std::sync::Arc;
+        use sunrise_gameplay_common::game::execution_role::ExecutionRole;
         use sunrise_level::chunk::Chunk;
         let mut server_level = None;
         with_game(|game| {
@@ -1651,12 +1659,12 @@ use sunrise_gameplay_common::{game_side, world_biomes};
     #[test]
     #[ignore = "daily"]
     fn acting_guest_handles_resolve_during_guest_turns() {
-        use sunrise_gameplay::game::server_side::lan::LanSettings;
         use mod_api::{EquipmentSlot, GameMode};
         use std::sync::{
             Arc,
             atomic::{AtomicI32, AtomicUsize},
         };
+        use sunrise_gameplay::game::server_side::lan::LanSettings;
         use sunrise_items::items::ItemStack;
         use sunrise_protocol::packets::configuration::ClientInformation;
         use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
@@ -2214,7 +2222,8 @@ use sunrise_gameplay_common::{game_side, world_biomes};
             game.server.lan.as_ref().unwrap().hub.lan.shared.next_id();
             let level = game.level(game.dim.id()).unwrap();
             let role = game.options.execution_role;
-            game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+            game.options.execution_role =
+                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
             assert!(game.fake_player(level, 1234, "machine").is_none());
             game.options.execution_role = role;
             let made = game.fake_player(level, 1234, "machine").unwrap();
@@ -2252,7 +2261,13 @@ use sunrise_gameplay_common::{game_side, world_biomes};
             let i = host.hub.guests.iter().position(|g| g.uuid == 1234).unwrap();
             let mut actor = host.hub.guests.remove(i);
             game.save_guest(&mut actor);
-            game.server.lan.as_mut().unwrap().hub.guests.insert(i, actor);
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .insert(i, actor);
             assert!(!scratch.exists());
             game.server.world_root = saved_root;
             let conn = game
@@ -2347,9 +2362,11 @@ use sunrise_gameplay_common::{game_side, world_biomes};
                 player: 2345,
                 slot: 0,
             };
-            let sticks = mod_api::ItemResource::of(&sunrise_gameplay_common::game::api_values::test_snapshot(
-                &sunrise_items::items::ItemStack::new("minecraft:stick", 1),
-            ));
+            let sticks = mod_api::ItemResource::of(
+                &sunrise_gameplay_common::game::api_values::test_snapshot(
+                    &sunrise_items::items::ItemStack::new("minecraft:stick", 1),
+                ),
+            );
             let host: &mut dyn mod_api::ServerHost = game;
             let rolled_back: Result<(), mod_api::TransactionError<()>> =
                 host.transaction(|host, tx| {
@@ -2407,7 +2424,8 @@ use sunrise_gameplay_common::{game_side, world_biomes};
                     .unwrap(),
                 17
             );
-            game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+            game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
+                .unwrap();
             assert_eq!(
                 attachment
                     .get(
@@ -2448,7 +2466,10 @@ use sunrise_gameplay_common::{game_side, world_biomes};
                     .guests
                     .update(0, |guest| guest.dimension = value);
             }
-            assert!(game.levels_to_tick().contains(&sunrise_gameplay_common::game::Dim::Nether));
+            assert!(
+                game.levels_to_tick()
+                    .contains(&sunrise_gameplay_common::game::Dim::Nether)
+            );
             {
                 let value = "minecraft:overworld".into();
                 game.server
@@ -2539,7 +2560,8 @@ use sunrise_gameplay_common::{game_side, world_biomes};
             .unwrap();
             assert_eq!(game.server.guest_packets.len(), 1);
             assert!(
-                game.server.guest_entity_events.is_empty() && game.server.guest_cooldowns.is_empty()
+                game.server.guest_entity_events.is_empty()
+                    && game.server.guest_cooldowns.is_empty()
             );
             assert_eq!(
                 game.server.lan.as_ref().unwrap().hub.guests[1]
@@ -2551,7 +2573,9 @@ use sunrise_gameplay_common::{game_side, world_biomes};
             assert!(rx.try_recv().is_err());
             game.with_guest_swap(real_id, game.dim, |game| {
                 assert!(!game.server.lan_acting_fake);
-                game.server.guest_cooldowns.push(("minecraft:real".into(), 7));
+                game.server
+                    .guest_cooldowns
+                    .push(("minecraft:real".into(), 7));
                 game.server
                     .guest_player_sounds
                     .push(("outer".into(), [0.0; 3], 1.0, 1.0));
@@ -2688,7 +2712,8 @@ use sunrise_gameplay_common::{game_side, world_biomes};
                 assert!(receiver.try_recv().is_err());
             }
             let fake = game.fake_player(level, 5678, "joiner").unwrap();
-            game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+            game.enter_command_level(sunrise_gameplay_common::game::Dim::Nether)
+                .unwrap();
             let nether = game.level("minecraft:the_nether").unwrap();
             let other_fake = game.fake_player(nether, 5678, "joiner").unwrap();
             game.enter_command_level(sunrise_gameplay_common::game::Dim::Overworld)
@@ -3215,7 +3240,8 @@ use sunrise_gameplay_common::{game_side, world_biomes};
                 .clone();
             game.mobs.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
             game.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
-            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon =
+                sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 14;
             game.dragon.replace(dragon);
             for (id, max) in [(12, 20.0), (13, 20.0), (14, 200.0)] {
@@ -3236,11 +3262,11 @@ use sunrise_gameplay_common::{game_side, world_biomes};
     #[test]
     #[ignore = "daily"]
     fn level_shapes_use_empty_context() {
-        use sunrise_gameplay_common::game::{Options, Progress};
-        use crate::settings::Settings;
         use crate::game::load_resources;
+        use crate::settings::Settings;
         use mod_api::{Authority, BlockShapeKind};
         use std::{sync::Arc, time::Instant};
+        use sunrise_gameplay_common::game::{Options, Progress};
         use sunrise_level::chunk::Chunk;
 
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -3260,7 +3286,8 @@ use sunrise_gameplay_common::{game_side, world_biomes};
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -3324,8 +3351,10 @@ use sunrise_gameplay_common::{game_side, world_biomes};
             game.outline_boxes([0, 64, 0]),
             vec![[0.0, 64.0, 0.0, 1.0, 65.0, 1.0]]
         );
-        game.common.inventory[game.common.selected].as_mut().unwrap().item =
-            "minecraft:scaffolding".into();
+        game.common.inventory[game.common.selected]
+            .as_mut()
+            .unwrap()
+            .item = "minecraft:scaffolding".into();
         let scaffolding = shape(&mut game, "minecraft:scaffolding", BlockShapeKind::Outline);
         assert!(!scaffolding.is_empty());
         assert_ne!(scaffolding, vec![[0.0, 0.0, 0.0, 1.0, 1.0, 1.0]]);
@@ -3377,11 +3406,11 @@ use sunrise_gameplay_common::{game_side, world_biomes};
     #[test]
     #[ignore = "daily"]
     fn level_block_writes_validate_and_change_world() {
-        use sunrise_gameplay_common::game::{Options, Progress};
-        use crate::settings::Settings;
         use crate::game::load_resources;
+        use crate::settings::Settings;
         use mod_api::{Authority, BlockUpdateFlags, HostTransaction};
         use std::{sync::Arc, time::Instant};
+        use sunrise_gameplay_common::game::{Options, Progress};
         use sunrise_items::items::ItemStack;
         use sunrise_level::chunk::Chunk;
 
@@ -3402,7 +3431,8 @@ use sunrise_gameplay_common::{game_side, world_biomes};
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         options.dedicated = Some(Vec::new());
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
@@ -3576,7 +3606,8 @@ use sunrise_gameplay_common::{game_side, world_biomes};
             assert_eq!(game.world.block(5, 64, 0), water);
             game.world.set(5, 64, 0, waterlogged).unwrap();
             let removed = game.with_level(|_, level, ticks| {
-                let mut host = sunrise_gameplay_common::game::mod_api_host::LevelTicks::new(level, ticks);
+                let mut host =
+                    sunrise_gameplay_common::game::mod_api_host::LevelTicks::new(level, ticks);
                 mod_api::LevelWriteHost::remove_block(&mut host, [5, 64, 0], moved)
             });
             assert!(removed);
@@ -3858,29 +3889,30 @@ use sunrise_gameplay_common::{game_side, world_biomes};
             game.player = Some(local);
             game.spawn_entity(15, "minecraft:pig", [2.0, 0.0, 0.0], [0.0; 3]);
             game.pick_section_sync_id(15);
-            let add_player = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id, uuid, x| {
-                game.handle_packet(C::PlayerInfoUpdate(PlayerInfoUpdate {
-                    actions: 1,
-                    entries: vec![PlayerInfo {
+            let add_player =
+                |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id, uuid, x| {
+                    game.handle_packet(C::PlayerInfoUpdate(PlayerInfoUpdate {
+                        actions: 1,
+                        entries: vec![PlayerInfo {
+                            uuid,
+                            name: Some(format!("Player{id}")),
+                            ..Default::default()
+                        }],
+                    }))
+                    .unwrap();
+                    game.handle_packet(C::AddEntity(AddEntity {
+                        id,
                         uuid,
-                        name: Some(format!("Player{id}")),
-                        ..Default::default()
-                    }],
-                }))
-                .unwrap();
-                game.handle_packet(C::AddEntity(AddEntity {
-                    id,
-                    uuid,
-                    kind: player,
-                    position: [x, 0.0, 0.0],
-                    velocity: [0.0; 3],
-                    pitch: 0,
-                    yaw: 0,
-                    head_yaw: 0,
-                    data: 0,
-                }))
-                .unwrap();
-            };
+                        kind: player,
+                        position: [x, 0.0, 0.0],
+                        velocity: [0.0; 3],
+                        pitch: 0,
+                        yaw: 0,
+                        head_yaw: 0,
+                        data: 0,
+                    }))
+                    .unwrap();
+                };
             // 18 stands in the box, 19 far outside it, 20 in it until the server removes it.
             add_player(game, 18, 9, 1.0);
             add_player(game, 19, 10, 40.0);
@@ -4020,7 +4052,13 @@ use sunrise_gameplay_common::{game_side, world_biomes};
             }
             let at = [16.5, 65.5, 3.0];
             assert_eq!(
-                game.place_teleport_filed(sunrise_gameplay_common::game::commands_common::Target::Other(block), at, None, [false; 3], false),
+                game.place_teleport_filed(
+                    sunrise_gameplay_common::game::commands_common::Target::Other(block),
+                    at,
+                    None,
+                    [false; 3],
+                    false
+                ),
                 Some(ADMISSIONS[1].2)
             );
             assert_eq!(ids(game, level, LO, HI), [pig, text, item, block]);
@@ -4051,19 +4089,6 @@ use sunrise_gameplay_common::{game_side, world_biomes};
 #[cfg(test)]
 #[path = "native_entity_refs/restitution_replay_tests.rs"]
 pub(crate) mod restitution_replay_tests;
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 #[path = "native_entity_refs/dragon_query.rs"]
 pub(crate) mod dragon_query;

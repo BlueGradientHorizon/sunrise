@@ -6,11 +6,7 @@ impl crate::game::ServerGame<'_> {
     /// of `kind`, once `attack_entity` let it through: true when the held
     /// item's Part canceled the attack. Nothing runs for a hand holding an
     /// item without the Part.
-    pub(crate) fn native_left_click_entity_event(
-        &mut self,
-        entity: i32,
-        kind: &str,
-    ) -> bool {
+    pub(crate) fn native_left_click_entity_event(&mut self, entity: i32, kind: &str) -> bool {
         if !mod_api::__private::has_part_hook(mod_api::HookId::OnLeftClickEntity) {
             return false;
         }

@@ -13,14 +13,20 @@ fn the_creative_sync_covers_inventory_menu_slots_5_to_45_once_each() {
         stack("minecraft:diamond_leggings"),
         stack("minecraft:diamond_boots"),
     ];
-    let stacks = sunrise_gameplay_common::game::remote::creative_sync_stacks(&inventory, &offhand, &armor);
-    assert_eq!(stacks.len(), sunrise_gameplay_common::game::remote::CREATIVE_SYNCED);
+    let stacks =
+        sunrise_gameplay_common::game::remote::creative_sync_stacks(&inventory, &offhand, &armor);
+    assert_eq!(
+        stacks.len(),
+        sunrise_gameplay_common::game::remote::CREATIVE_SYNCED
+    );
     let mut slots: Vec<i16> = (0..stacks.len())
         .map(sunrise_gameplay_common::game::remote::creative_sync_slot)
         .collect();
     // Each entry goes to the menu slot that holds that stack.
     for (i, &slot) in slots.iter().enumerate() {
-        let game_slot = sunrise_gameplay_common::game::inventory_screen_slot("inventory", i32::from(slot)).unwrap();
+        let game_slot =
+            sunrise_gameplay_common::game::inventory_screen_slot("inventory", i32::from(slot))
+                .unwrap();
         let expected = match game_slot {
             0..36 => &inventory[game_slot],
             504 => &offhand,
@@ -54,14 +60,17 @@ fn a_server_slot_update_leaves_an_unsent_creative_click_to_be_sent() {
 
 mod give_stack {
 
-    use sunrise_gameplay_common::game::api_values::test_snapshot;
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
-    use {crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::sent};
     use mod_api::CreativeGiveError;
     use sunrise_command::args::GameMode;
     use sunrise_core::nbt::{Compound, JavaString, Tag};
+    use sunrise_gameplay_common::game::api_values::test_snapshot;
     use sunrise_protocol::item::{Component, Stack};
     use sunrise_protocol::packets::play::Serverbound as S;
+    use {
+        crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in,
+        crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::sent,
+    };
 
     fn api(item: &str, count: u32, components: &[(&str, Tag)]) -> mod_api::ItemStack {
         let mut stack =
@@ -103,7 +112,11 @@ mod give_stack {
     }
 
     /// `name`'s network id in `registry`, from the tables the server gave the client.
-    fn net_id(game: &sunrise_client_gameplay::game::ClientGame<'_>, registry: &str, name: &str) -> i32 {
+    fn net_id(
+        game: &sunrise_client_gameplay::game::ClientGame<'_>,
+        registry: &str,
+        name: &str,
+    ) -> i32 {
         let r = game.client.remote.as_ref().unwrap();
         r.builtin
             .get(registry)
@@ -372,7 +385,8 @@ mod give_stack {
                     game.remote_send_state(0);
                     sent(&mut reader);
                     let stone = net_id(game, "minecraft:item", "minecraft:stone");
-                    let mut give = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, count| {
+                    let mut give = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                                    count| {
                         assert_eq!(
                             game.give_stack(&api("minecraft:stone", count, &[])),
                             Ok(None)

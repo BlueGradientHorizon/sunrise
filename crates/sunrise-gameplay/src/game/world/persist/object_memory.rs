@@ -15,7 +15,8 @@ impl crate::game::ServerGame<'_> {
         match object {
             MobObject::Resident(index) => &mut self.common.mobs[index],
             MobObject::OffLevel(id) => self
-                .common.persist
+                .common
+                .persist
                 .off_level
                 .get_mut(&id)
                 .and_then(OffLevel::as_mob_mut)
@@ -28,7 +29,8 @@ impl crate::game::ServerGame<'_> {
         if let Some(index) = self.common.mobs.iter().position(|mob| mob.id == id) {
             return Some(&mut self.common.mobs[index]);
         }
-        self.common.persist
+        self.common
+            .persist
             .off_level
             .get_mut(&id)
             .and_then(OffLevel::as_mob_mut)
@@ -36,11 +38,21 @@ impl crate::game::ServerGame<'_> {
 
     /// A boat object, resident or retained as the root of a passenger graph.
     /// Selectors, tracking and ticking keep iterating `boats` instead.
-    pub fn boat_object(&self, id: u32) -> Option<&sunrise_gameplay_common::game::boats_common::Boat> {
-        self.common.boats
+    pub fn boat_object(
+        &self,
+        id: u32,
+    ) -> Option<&sunrise_gameplay_common::game::boats_common::Boat> {
+        self.common
+            .boats
             .iter()
             .find(|boat| boat.id == id)
-            .or_else(|| self.common.persist.off_level.get(&id).and_then(OffLevel::as_boat))
+            .or_else(|| {
+                self.common
+                    .persist
+                    .off_level
+                    .get(&id)
+                    .and_then(OffLevel::as_boat)
+            })
     }
 
     /// A minecart object, resident or retained as the root of a passenger graph.
@@ -49,18 +61,29 @@ impl crate::game::ServerGame<'_> {
         &self,
         id: u32,
     ) -> Option<&sunrise_gameplay_common::game::minecarts::Minecart> {
-        self.common.carts
+        self.common
+            .carts
             .iter()
             .find(|cart| cart.id == id)
-            .or_else(|| self.common.persist.off_level.get(&id).and_then(OffLevel::as_cart))
+            .or_else(|| {
+                self.common
+                    .persist
+                    .off_level
+                    .get(&id)
+                    .and_then(OffLevel::as_cart)
+            })
     }
 
     /// Internal topology only: resident objects followed by retained passengers.
     /// Callers needing level membership must continue to iterate `mobs` instead.
     pub fn mob_objects(&self) -> impl Iterator<Item = &Mob> {
-        self.common.mobs
-            .iter()
-            .chain(self.common.persist.off_level.values().filter_map(OffLevel::as_mob))
+        self.common.mobs.iter().chain(
+            self.common
+                .persist
+                .off_level
+                .values()
+                .filter_map(OffLevel::as_mob),
+        )
     }
 
     pub(in crate::game::server_side) fn load_item_transferred(
@@ -345,34 +368,37 @@ impl crate::game::ServerGame<'_> {
             // getShortOr uses NumericTag.shortValue: floor floating values
             // to int before short narrowing; integer tags narrow directly.
             let fuse = tnt_fuse(&tag);
-            self.common.tnts.push(sunrise_gameplay_common::game::tnt_common::PrimedTnt {
-                size_answer: None,
-                used_portal,
-                attachment_lifetime: Default::default(),
-                rotation: [0.0, 0.0],
-                join: Default::default(),
-                no_gravity: entity_nbt::flag(&tag, "NoGravity"),
-                id,
-                position,
-                previous: position,
-                velocity: entity_nbt::motion(&tag),
-                fuse,
-                ticks: 0,
-                ground: sunrise_world::ground_support::GroundState::from_ground_flag(
-                    entity_nbt::flag(&tag, "OnGround"),
-                ),
-                fall_distance: sunrise_sim::save::float(tag.get("fall_distance")).unwrap_or(0.0),
-                stuck: Vec3::ZERO,
-                in_water: false,
-                owner: None,
-                guest: None,
-                // PrimedTnt.readAdditionalSaveData: 4 by default,
-                // kept to 0..128.
-                power: entity_nbt::tnt_power(&tag),
-                block_state: tag
-                    .get("block_state")
-                    .and_then(|v| entity_nbt::state_from_nbt(self.common.pack.assets.registry, v)),
-            });
+            self.common
+                .tnts
+                .push(sunrise_gameplay_common::game::tnt_common::PrimedTnt {
+                    size_answer: None,
+                    used_portal,
+                    attachment_lifetime: Default::default(),
+                    rotation: [0.0, 0.0],
+                    join: Default::default(),
+                    no_gravity: entity_nbt::flag(&tag, "NoGravity"),
+                    id,
+                    position,
+                    previous: position,
+                    velocity: entity_nbt::motion(&tag),
+                    fuse,
+                    ticks: 0,
+                    ground: sunrise_world::ground_support::GroundState::from_ground_flag(
+                        entity_nbt::flag(&tag, "OnGround"),
+                    ),
+                    fall_distance: sunrise_sim::save::float(tag.get("fall_distance"))
+                        .unwrap_or(0.0),
+                    stuck: Vec3::ZERO,
+                    in_water: false,
+                    owner: None,
+                    guest: None,
+                    // PrimedTnt.readAdditionalSaveData: 4 by default,
+                    // kept to 0..128.
+                    power: entity_nbt::tnt_power(&tag),
+                    block_state: tag.get("block_state").and_then(|v| {
+                        entity_nbt::state_from_nbt(self.common.pack.assets.registry, v)
+                    }),
+                });
             // `Entity.load`: the `PortalCooldown` of one that just came through.
             if let Some(state) = transferred {
                 self.adopt_transferred_entity_state(id, state);
@@ -401,10 +427,14 @@ impl crate::game::ServerGame<'_> {
             let riders = self.take_passengers(&mut tag);
             self.server.next_entity += 1;
             let id = self.server.next_entity;
-            let (wood, chest) =
-                sunrise_gameplay_common::game::boats_common::any_boat_wood(k).unwrap_or(("oak", false));
-            let mut b =
-                sunrise_gameplay_common::game::boats_common::Boat::new(id, std::sync::Arc::from(wood), position, yaw);
+            let (wood, chest) = sunrise_gameplay_common::game::boats_common::any_boat_wood(k)
+                .unwrap_or(("oak", false));
+            let mut b = sunrise_gameplay_common::game::boats_common::Boat::new(
+                id,
+                std::sync::Arc::from(wood),
+                position,
+                yaw,
+            );
             b.no_gravity = entity_nbt::flag(&tag, "NoGravity");
             b.ground.on_ground = entity_nbt::flag(&tag, "OnGround");
             b.fire_ticks = crate::game::boats::saved_fire(&tag);
@@ -454,7 +484,9 @@ impl crate::game::ServerGame<'_> {
         let mut tag = tag;
         let riders = self.take_passengers(&mut tag);
         let id = self.server.next_entity + 1;
-        if let Some(mut c) = sunrise_gameplay_common::game::minecarts::Minecart::from_nbt(&tag, id, kind) {
+        if let Some(mut c) =
+            sunrise_gameplay_common::game::minecarts::Minecart::from_nbt(&tag, id, kind)
+        {
             sunrise_gameplay_common::game::minecarts::forget_unreadable_display(&mut c, |t| {
                 self.state_from_nbt(t).is_some()
             });
@@ -543,7 +575,8 @@ impl crate::game::ServerGame<'_> {
         // end time, and the mob is angry at the target again, through
         // `Mob.setTarget` -> `asValidTarget`: a player the golem cannot attack
         // (`IronGolem.canAttack`) comes back as no target.
-        m.extra.anger = sunrise_sim::mobs::anger_left(m.extra.anger_end, self.common.world.game_time);
+        m.extra.anger =
+            sunrise_sim::mobs::anger_left(m.extra.anger_end, self.common.world.game_time);
         let anger_uuid = match tag.get("angry_at") {
             Some(Tag::IntArray(words)) if words.len() == 4 => {
                 Some([words[0], words[1], words[2], words[3]])
@@ -566,8 +599,9 @@ impl crate::game::ServerGame<'_> {
         // can name an unloaded entity, an online player, or another mob;
         // substituting the local player when there is no listener both changes
         // vanilla behavior and makes loading depend on mod subscriptions.
-        let restore_target =
-            neutral && self.common.is_logical_server() && self.common.native_lifecycle.epoch().is_some();
+        let restore_target = neutral
+            && self.common.is_logical_server()
+            && self.common.native_lifecycle.epoch().is_some();
         m.extra.mount = mount;
         m.extra.passenger = mount.is_some();
         // The object id preserves load order even when some passengers are
@@ -624,10 +658,11 @@ impl crate::game::ServerGame<'_> {
                     Some(kind) if self.loads_as_passenger(&kind) => riders.push(p),
                     Some(kind)
                         if self.entity_type_exists(&kind)
-                            || (sunrise_gameplay_common::game::general::quarantined_kind(&kind)
-                                && entity_nbt::position(&p).is_some_and(|at| {
-                                    self.general_quarantine_admits(&p, &kind, at)
-                                })) =>
+                            || (sunrise_gameplay_common::game::general::quarantined_kind(
+                                &kind,
+                            ) && entity_nbt::position(&p).is_some_and(|at| {
+                                self.general_quarantine_admits(&p, &kind, at)
+                            })) =>
                     {
                         unknown.push(p);
                     }
@@ -647,13 +682,15 @@ impl crate::game::ServerGame<'_> {
     /// passengers cannot save even before their list entry is swept.
     pub(super) fn mob_passenger_objects(&self, id: u32) -> Vec<MobObject> {
         let mut riders: Vec<(i64, u32, MobObject)> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .enumerate()
             .filter(|(_, mob)| mob.extra.mount == Some(id) && !mob.removed)
             .map(|(index, mob)| (mob.extra.vehicle_order, mob.id, MobObject::Resident(index)))
             .chain(
-                self.common.persist
+                self.common
+                    .persist
                     .off_level
                     .iter()
                     .filter_map(|(&object_id, object)| {
@@ -686,10 +723,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Capture after tree serialization and before source removal. This consumes
     /// each object's runtime ownership once, independently of duplicate UUIDs.
-    pub fn capture_vehicle_tree_state(
-        &mut self,
-        root: u32,
-    ) -> Option<TransferredVehicleTree> {
+    pub fn capture_vehicle_tree_state(&mut self, root: u32) -> Option<TransferredVehicleTree> {
         let (kind, name) = if let Some(mob) = self.common.mob_object(root) {
             (
                 VehicleTreeKind::Mob,
@@ -706,7 +740,12 @@ impl crate::game::ServerGame<'_> {
             )
         } else if let Some(cart) = self.cart_object(root) {
             (VehicleTreeKind::Cart, cart.kind.id().to_owned())
-        } else if self.common.armor_stands.iter().any(|stand| stand.id == root) {
+        } else if self
+            .common
+            .armor_stands
+            .iter()
+            .any(|stand| stand.id == root)
+        {
             (VehicleTreeKind::Stand, "minecraft:armor_stand".to_owned())
         } else {
             let other = self.server.others.0.iter().find(|other| other.id == root)?;
@@ -800,7 +839,9 @@ impl crate::game::ServerGame<'_> {
                 self.set_general_mount(id, Some((root, order as i64)));
             }
         }
-        let mob_rider = riders.into_iter().find(|&id| self.common.mob_object(id).is_some());
+        let mob_rider = riders
+            .into_iter()
+            .find(|&id| self.common.mob_object(id).is_some());
         if let Some(mob) = self.mob_object_mut(root) {
             mob.extra.rider = mob_rider;
         }
@@ -827,7 +868,8 @@ impl crate::game::ServerGame<'_> {
             VehicleTreeKind::Stand => {
                 let id = self.server.next_entity + 1;
                 self.load_armor_stand_transferred(tag, uuid, Some(state));
-                self.common.armor_stands
+                self.common
+                    .armor_stands
                     .iter()
                     .any(|stand| stand.id == id)
                     .then_some(id)
@@ -837,12 +879,14 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(super) fn mob_object_slot(&self, id: u32) -> Option<MobObject> {
-        self.common.mobs
+        self.common
+            .mobs
             .iter()
             .position(|mob| mob.id == id)
             .map(MobObject::Resident)
             .or_else(|| {
-                self.common.persist
+                self.common
+                    .persist
                     .off_level
                     .get(&id)
                     .and_then(OffLevel::as_mob)
@@ -932,7 +976,8 @@ impl crate::game::ServerGame<'_> {
         }
         use sunrise_sim::mobs::leash::Holder;
         let mut retained = self
-            .common.persist
+            .common
+            .persist
             .raw
             .get(&id)
             .cloned()
@@ -999,7 +1044,8 @@ impl crate::game::ServerGame<'_> {
             }
         }
         retained.extend(
-            self.common.persist
+            self.common
+                .persist
                 .removed_vehicles
                 .keys()
                 .copied()
@@ -1021,7 +1067,8 @@ impl crate::game::ServerGame<'_> {
             }
         }
         let gone: Vec<_> = self
-            .common.persist
+            .common
+            .persist
             .off_level
             .keys()
             .copied()
@@ -1032,7 +1079,8 @@ impl crate::game::ServerGame<'_> {
             self.forget_entity(id);
         }
         let gone: Vec<_> = self
-            .common.persist
+            .common
+            .persist
             .removed_vehicles
             .keys()
             .copied()
@@ -1048,6 +1096,5 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
-
 
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

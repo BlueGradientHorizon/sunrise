@@ -29,7 +29,9 @@ pub(in crate::game) fn spawn() -> play::SpawnInfo {
 pub(in crate::game) use crate::game::client_side::remote_client::tests::client_vanilla_reads_tests::stand;
 
 /// Joins as entity [`PLAYER`] in the overworld.
-pub(in crate::game) fn join(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> (ConnReader, ConnWriter) {
+pub(in crate::game) fn join(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+) -> (ConnReader, ConnWriter) {
     let connection = super::connect_menu_test(game);
     game.handle_packet(C::Login(play::Login {
         player_id: PLAYER as i32,
@@ -51,7 +53,11 @@ pub(in crate::game) fn join(game: &mut sunrise_client_gameplay::game::ClientGame
 }
 
 /// The server adds entity `id` of `kind` beside the player.
-pub(in crate::game) fn add(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: u32, kind: &str) {
+pub(in crate::game) fn add(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    id: u32,
+    kind: &str,
+) {
     let kind = game
         .client
         .remote
@@ -77,7 +83,10 @@ pub(in crate::game) fn add(game: &mut sunrise_client_gameplay::game::ClientGame<
 }
 
 /// `EntityRef::tick_count` of entity `id`, read through a client host.
-pub(in crate::game) fn tick_count(game: &sunrise_client_gameplay::game::ClientGame<'_>, id: u32) -> Option<i32> {
+pub(in crate::game) fn tick_count(
+    game: &sunrise_client_gameplay::game::ClientGame<'_>,
+    id: u32,
+) -> Option<i32> {
     game.entity(id)?.tick_count(game as &dyn ClientHost)
 }
 
@@ -411,14 +420,15 @@ fn the_contextual_bar_facts_read_the_jumpable_mount_and_the_tracked_waypoints() 
                     (host.jumpable_vehicle(), host.has_waypoints())
                 };
                 assert_eq!(facts(game), (None, false));
-                let ride =
-                    |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, vehicle: u32, passengers: Vec<i32>| {
-                        game.handle_packet(C::SetPassengers(play::SetPassengers {
-                            vehicle: vehicle as i32,
-                            passengers,
-                        }))
-                        .unwrap();
-                    };
+                let ride = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                            vehicle: u32,
+                            passengers: Vec<i32>| {
+                    game.handle_packet(C::SetPassengers(play::SetPassengers {
+                        vehicle: vehicle as i32,
+                        passengers,
+                    }))
+                    .unwrap();
+                };
                 for (id, kind) in [
                     (30, "minecraft:horse"),
                     (31, "minecraft:pig"),
@@ -498,8 +508,9 @@ fn a_respawned_player_counts_from_its_admission() {
                 .unwrap();
                 assert!(game.player.is_none());
                 let me = mod_api::EntityRef::new(game.native_lifecycle.epoch().unwrap(), PLAYER);
-                let count =
-                    |game: &sunrise_client_gameplay::game::ClientGame<'_>| me.tick_count(game as &dyn ClientHost);
+                let count = |game: &sunrise_client_gameplay::game::ClientGame<'_>| {
+                    me.tick_count(game as &dyn ClientHost)
+                };
                 assert_eq!(count(game), Some(0));
                 game.tick_remote().unwrap();
                 assert_eq!(count(game), Some(1));

@@ -1,4 +1,3 @@
-
 #[allow(unused_variables)]
 impl SideOps for crate::game::server_side::ServerState {
     type Game<'g> = crate::game::ServerGame<'g>;
@@ -6,12 +5,7 @@ impl SideOps for crate::game::server_side::ServerState {
     fn side_process_level_events(game: &mut Self::Game<'_>) -> Result<()> {
         game.server_process_level_events()
     }
-    fn side_level_event_at(
-        game: &mut Self::Game<'_>,
-        id: i32,
-        pos: [i32; 3],
-        data: i32,
-    ) {
+    fn side_level_event_at(game: &mut Self::Game<'_>, id: i32, pos: [i32; 3], data: i32) {
         {
             game.server_level_event_at(id, pos, data);
         }
@@ -54,12 +48,7 @@ impl SideOps for crate::game::server_side::ServerState {
             game.server_tick_bell(pos, tags);
         }
     }
-    fn side_award_stat(
-        game: &mut Self::Game<'_>,
-        category: &str,
-        item: &str,
-        amount: i32,
-    ) {
+    fn side_award_stat(game: &mut Self::Game<'_>, category: &str, item: &str, amount: i32) {
         {
             game.server_award_stat(category, item, amount);
         }
@@ -108,8 +97,8 @@ impl SideOps for crate::game::server_side::ServerState {
         }
     }
 }
-use sunrise_gameplay_common::game::side_ops::events::SideOps;
 use sunrise_gameplay_common::game::Result;
+use sunrise_gameplay_common::game::side_ops::events::SideOps;
 use sunrise_gameplay_common::game::transactions;
 use sunrise_level::block_entities::BlockEntityIdentity;
 use sunrise_level::sculk::Context as SculkContext;

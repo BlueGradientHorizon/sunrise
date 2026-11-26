@@ -114,7 +114,8 @@ impl ServerGame<'_> {
         self.common.ui.registries.permission = 4;
         // The levels' handles, which a world's opening publishes to mods.
         self.reset_entity_residency();
-        self.common.native_lifecycle
+        self.common
+            .native_lifecycle
             .begin_open(mod_api::Authority::DedicatedServer);
         if let Ok(mode) = std::env::var("SUNRISE_BLOCK_ENTITY_VIEW_BENCH") {
             return self.hot_block_entity_view(&mut recorder, &mode);

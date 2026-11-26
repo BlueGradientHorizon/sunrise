@@ -30,7 +30,12 @@ impl ServerGame<'_> {
         let started = std::time::Instant::now();
         let changed = self.apply_block_edit(edit)?;
         let ms = started.elapsed().as_secs_f32() * 1000.0;
-        if self.common.options.spikes.is_some_and(|threshold| ms > threshold) {
+        if self
+            .common
+            .options
+            .spikes
+            .is_some_and(|threshold| ms > threshold)
+        {
             log::info!(
                 "Sunrise: slow mod block edit {ms:.1} ms ({} runs, {changed} blocks)",
                 edit.runs.len()
@@ -73,7 +78,9 @@ impl ServerGame<'_> {
             for dz in -1..=1 {
                 for dx in -1..=1 {
                     let key = (x.wrapping_add(dx), z.wrapping_add(dz));
-                    if self.common.world.chunks.contains_key(&key) && self.common.world.dirty_light.insert(key) {
+                    if self.common.world.chunks.contains_key(&key)
+                        && self.common.world.dirty_light.insert(key)
+                    {
                         queued += 1;
                     }
                 }

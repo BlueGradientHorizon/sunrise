@@ -1,4 +1,3 @@
-
 #[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
@@ -120,8 +119,8 @@ fn client_fishing_hook_by_id<'a>(
         EntityLookup::Taken | EntityLookup::Missing => None,
     }
 }
-use sunrise_gameplay_common::game::side_ops::items::SideOps;
+use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::Hit;
 use sunrise_gameplay_common::game::item_use_common::ItemConsumable;
-use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::side_ops::items::SideOps;
 use sunrise_items::items::ItemStack;

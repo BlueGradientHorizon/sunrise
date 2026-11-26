@@ -20,7 +20,8 @@ impl crate::game::ServerGame<'_> {
     fn parse_as(&mut self, permission: u8, command: &str) -> ParseResults {
         let level = std::mem::replace(&mut self.common.ui.registries.permission, permission);
         let parse = self
-            .common.ui
+            .common
+            .ui
             .dispatcher
             .0
             .clone()
@@ -188,9 +189,10 @@ impl crate::game::ServerGame<'_> {
 
         let hidden = self.chat_hidden_from(|game| {
             let sender = match game.source_entity() {
-                Some(Target::Player) => {
-                    game.server.lan_acting_uuid.unwrap_or_else(|| game.own_uuid())
-                }
+                Some(Target::Player) => game
+                    .server
+                    .lan_acting_uuid
+                    .unwrap_or_else(|| game.own_uuid()),
                 Some(Target::Guest(conn)) => game.command_guest(conn).map_or(0, |guest| guest.uuid),
                 _ => 0, // PlayerChatMessage.system uses the nil UUID.
             };
@@ -225,9 +227,10 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<bool> {
         let hidden = self.chat_hidden_from(|game| {
             let sender = match game.source_entity() {
-                Some(Target::Player) => {
-                    game.server.lan_acting_uuid.unwrap_or_else(|| game.own_uuid())
-                }
+                Some(Target::Player) => game
+                    .server
+                    .lan_acting_uuid
+                    .unwrap_or_else(|| game.own_uuid()),
                 Some(Target::Guest(conn)) => game.command_guest(conn).map_or(0, |guest| guest.uuid),
                 _ => 0,
             };

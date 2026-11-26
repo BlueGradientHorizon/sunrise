@@ -334,9 +334,9 @@ fn console_and_command_block_say_can_be_hidden_per_receiver() {
 #[test]
 #[ignore = "daily"]
 fn dispatcher_say_filters_the_acting_guests_captured_copy() {
-    use sunrise_gameplay_common::game::lan_actions::GuestCommand;
     use play::Clientbound as C;
     use sunrise_game_data::scoreboard::{comp_text, tag_to_json};
+    use sunrise_gameplay_common::game::lan_actions::GuestCommand;
 
     let asked = Asked::default();
     let mods = vec![mod_api::ModEntry::new(

@@ -1,10 +1,10 @@
-use mod_api::AttachmentHolder;
-use sunrise_mod_runtime::attachments::Holder;
-use sunrise_gameplay_common::game::Dim;
 use super::*;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use mod_api::AttachmentHolder;
 use mod_api::EntityRef;
 use std::collections::HashSet;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::Dim;
+use sunrise_mod_runtime::attachments::Holder;
 use {
     sunrise_core::nbt::{Compound, Tag},
     sunrise_mod_runtime::attachments::{

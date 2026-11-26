@@ -66,12 +66,7 @@ impl PickAccumulator {
         self.consider_candidate(game, candidate)
     }
 
-    pub fn accept(
-        &mut self,
-        candidate: PickCandidate,
-        same_vehicle: bool,
-        allowed: bool,
-    ) -> bool {
+    pub fn accept(&mut self, candidate: PickCandidate, same_vehicle: bool, allowed: bool) -> bool {
         if candidate.inside {
             if self.nearest_sq < 0.0 {
                 return false;
@@ -94,7 +89,6 @@ impl PickAccumulator {
 }
 
 impl crate::game::CommonGame<'_> {
-
     /// `Entity.canBePickedFromInside`, false only for a sulfur cube holding a body item.
     pub(in crate::game) fn pickable_from_inside(&self, id: u32) -> bool {
         !self.mobs.iter().any(|m| {
@@ -107,13 +101,7 @@ impl crate::game::CommonGame<'_> {
 
 pub trait PickRayGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Vanilla `ProjectileUtil.getEntityHitResult` per-box test (`AABB.contains` and `AABB.clip`).
-     fn test_pick_box(
-        &self,
-        id: u32,
-        from: Vec3,
-        to: Vec3,
-        bb: Aabb,
-    ) -> Option<PickCandidate> {
+    fn test_pick_box(&self, id: u32, from: Vec3, to: Vec3, bb: Aabb) -> Option<PickCandidate> {
         if self.side_is_pick_camera(id) {
             return None;
         }
@@ -140,61 +128,60 @@ pub trait PickRayGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         }
     }
 
-     fn aim(&self) -> Option<([f64; 3], [f64; 3])> {
+    fn aim(&self) -> Option<([f64; 3], [f64; 3])> {
         self.side_aim()
     }
 
-     fn pick(&self) -> Option<Hit> {
+    fn pick(&self) -> Option<Hit> {
         self.side_pick()
     }
 
-     fn pick_unfiltered(&self) -> Option<Hit> {
+    fn pick_unfiltered(&self) -> Option<Hit> {
         self.side_pick_unfiltered()
     }
 
-     fn mob_hit(&self) -> Option<(usize, f64, [f64; 3])> {
+    fn mob_hit(&self) -> Option<(usize, f64, [f64; 3])> {
         self.side_mob_hit()
     }
 
     /// Nearer than the targeted block?
-     fn before_block(&self, distance: f64) -> bool {
+    fn before_block(&self, distance: f64) -> bool {
         self.side_block_distance()
             .is_none_or(|block| block > distance)
     }
 
     /// The frame under the crosshair within reach and its distance.
-     fn frame_hit(&self) -> Option<(usize, f64)> {
+    fn frame_hit(&self) -> Option<(usize, f64)> {
         self.side_frame_hit()
     }
 
-     fn boat_hit(&self) -> Option<(usize, f64)> {
+    fn boat_hit(&self) -> Option<(usize, f64)> {
         self.side_boat_hit()
     }
 
-     fn cart_hit(&self) -> Option<(usize, f64)> {
+    fn cart_hit(&self) -> Option<(usize, f64)> {
         self.side_cart_hit()
     }
 
     /// The armor stand under the crosshair, its distance and the hit point.
-     fn armor_stand_hit(&self) -> Option<(usize, f64, [f64; 3])> {
+    fn armor_stand_hit(&self) -> Option<(usize, f64, [f64; 3])> {
         self.side_armor_stand_hit()
     }
 
-     fn painting_hit(&self) -> Option<(usize, f64)> {
+    fn painting_hit(&self) -> Option<(usize, f64)> {
         self.side_painting_hit()
     }
 
-     fn dragon_hit(&self) -> Option<(u32, f64)> {
+    fn dragon_hit(&self) -> Option<(u32, f64)> {
         self.side_dragon_hit()
     }
 
     #[cfg(any(test, feature = "test-support"))]
-     fn set_test_forced_hit(&mut self, hit: Option<Hit>) {
+    fn set_test_forced_hit(&mut self, hit: Option<Hit>) {
         self.side_set_test_forced_hit(hit);
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> PickRayGameExt1<'__sg> for G {}
-
 
 use crate::game::side_ops::player::PlayerSideGameExt as _;
 

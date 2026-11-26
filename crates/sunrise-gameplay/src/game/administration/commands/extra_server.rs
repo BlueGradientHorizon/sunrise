@@ -342,12 +342,12 @@ impl crate::game::ServerGame<'_> {
     /// Whether a `/fetchprofile` lookup is still in flight (the command
     /// harness waits for them, as vanilla's oracle resolves at once).
     pub(in crate::game::server_side) fn profile_fetches_pending(&mut self) -> bool {
-        self.server
-            .cmds
-            .0
-            .profile_fetches
-            .iter()
-            .any(|f| matches!(self.server.profile_resolver.lookup(&f.key), Resolve::Pending))
+        self.server.cmds.0.profile_fetches.iter().any(|f| {
+            matches!(
+                self.server.profile_resolver.lookup(&f.key),
+                Resolve::Pending
+            )
+        })
     }
     /// `ServerPlayer.openDialog` for each target: the packet to a guest, the
     /// acting player's packet queue otherwise.
@@ -498,7 +498,8 @@ impl crate::game::ServerGame<'_> {
         }
         if t == Target::Player {
             return self
-                .common.player
+                .common
+                .player
                 .as_mut()
                 .and_then(|p| {
                     let k = p.attributes.key("minecraft:waypoint_transmit_range")?;
@@ -512,7 +513,8 @@ impl crate::game::ServerGame<'_> {
         // modifier among the others (`Mob::set_effect_modifiers`).
         if let Target::Mob(id) = t {
             return self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == id && !m.removed)
                 .map_or(0.0, |m| {
@@ -541,7 +543,9 @@ impl crate::game::ServerGame<'_> {
             // The player's own icon comes back from their saved `locator_bar_icon`.
             .or_else(|| {
                 (t == Target::Player)
-                    .then(|| Self::waypoint_icon_from_saved(self.common.level.player_extra.as_ref()))
+                    .then(|| {
+                        Self::waypoint_icon_from_saved(self.common.level.player_extra.as_ref())
+                    })
                     .flatten()
             })
             .unwrap_or_default()
@@ -560,7 +564,8 @@ impl crate::game::ServerGame<'_> {
     /// `/waypoint modify` re-tracks its waypoint whatever its range.
     pub(in crate::game) fn waypoint_transmitters(&mut self) -> Vec<Target> {
         if self.server.cmds.0.waypoints.is_none() {
-            let tracked = if self.server.lan.is_none() && self.transmit_range(Target::Player) > 0.0 {
+            let tracked = if self.server.lan.is_none() && self.transmit_range(Target::Player) > 0.0
+            {
                 vec![self.waypoint_target(Target::Player)]
             } else {
                 Vec::new()

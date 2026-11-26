@@ -8,8 +8,8 @@
 //! use the client's own cached state.
 //! Ticks lived (`Entity.tickCount`) are read for players, mobs, items, orbs and minecarts.
 use super::commands::Target;
-use sunrise_gameplay_common::game::native_entity_state_common::Body;
 use mod_api::EntityRef;
+use sunrise_gameplay_common::game::native_entity_state_common::Body;
 use sunrise_sim::mobs::sync;
 use sunrise_sim::pose::Pose;
 
@@ -71,7 +71,9 @@ impl crate::game::ServerGame<'_> {
         let left = match target {
             Target::Player => return self.guest_main_arm(self.server.lan_acting?),
             Target::Guest(conn) => return self.guest_main_arm(conn),
-            Target::Mob(_) => self.common.mobs[self.common.mobs.locate(location?.join)?].main_arm_left(),
+            Target::Mob(_) => {
+                self.common.mobs[self.common.mobs.locate(location?.join)?].main_arm_left()
+            }
             Target::Stand(_) | Target::Dragon(_) => false,
             _ => return None,
         };
@@ -104,11 +106,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `Entity.setSprinting` for a player (the flag and the speed modifier) or a mob (the
     /// flag, sent to the clients). False for other kinds, a stale handle and a client.
-    pub fn entity_set_sprinting(
-        &mut self,
-        entity: EntityRef,
-        sprinting: bool,
-    ) -> bool {
+    pub fn entity_set_sprinting(&mut self, entity: EntityRef, sprinting: bool) -> bool {
         if !self.common.is_logical_server() {
             return false;
         }
@@ -145,11 +143,16 @@ impl crate::game::ServerGame<'_> {
                 })
                 .flatten()
                 .is_some(),
-            Some(Target::Mob(id)) => self.common.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-                m.extra.sprinting = sprinting;
-                m.needs_sync = true;
-                true
-            }),
+            Some(Target::Mob(id)) => self
+                .common
+                .mobs
+                .iter_mut()
+                .find(|m| m.id == id)
+                .is_some_and(|m| {
+                    m.extra.sprinting = sprinting;
+                    m.needs_sync = true;
+                    true
+                }),
             _ => false,
         }
     }
@@ -175,7 +178,12 @@ impl crate::game::ServerGame<'_> {
         let server = self.common.is_logical_server();
         let (grant, ticks) = match target {
             Target::Mob(id) => {
-                let Some(mob) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+                let Some(mob) = self
+                    .common
+                    .mobs
+                    .iter_mut()
+                    .find(|m| m.id == id && !m.removed)
+                else {
                     return false;
                 };
                 mob.needs_sync |= server && mob.mod_fire_immune != immune;
@@ -210,9 +218,13 @@ impl crate::game::ServerGame<'_> {
         match self.native_entity_body(entity)? {
             Body::Player(p) => Some(p.fire_ticks),
             Body::Mob(m) => Some(m.fire_ticks),
-            Body::Other(Target::Stand(id)) => {
-                Some(self.common.armor_stands.iter().find(|s| s.id == id)?.fire_ticks)
-            }
+            Body::Other(Target::Stand(id)) => Some(
+                self.common
+                    .armor_stands
+                    .iter()
+                    .find(|s| s.id == id)?
+                    .fire_ticks,
+            ),
             Body::Other(Target::Item(id)) => {
                 Some(self.common.dropped.iter().find(|i| i.id == id)?.fire_ticks)
             }
@@ -231,10 +243,22 @@ impl crate::game::ServerGame<'_> {
                 return Some(play.map_or(0, |p| p.portal.cooldown));
             }
             Target::Falling(id) => {
-                return Some(self.common.falling.iter().find(|f| f.id == id)?.portal.cooldown);
+                return Some(
+                    self.common
+                        .falling
+                        .iter()
+                        .find(|f| f.id == id)?
+                        .portal
+                        .cooldown,
+                );
             }
             Target::Projectile(id) => {
-                let p = self.common.creatures.projectiles.iter().find(|p| p.id == id)?;
+                let p = self
+                    .common
+                    .creatures
+                    .projectiles
+                    .iter()
+                    .find(|p| p.id == id)?;
                 if matches!(p.kind, sunrise_sim::projectiles::ProjectileKind::EnderPearl) {
                     return Some(self.pearl_portal_cooldown(id));
                 }
@@ -286,7 +310,12 @@ impl crate::game::ServerGame<'_> {
         }
         match self.native_entity_target(entity) {
             Some(Target::Projectile(id)) => {
-                let Some(projectile) = self.common.creatures.projectiles.iter().find(|p| p.id == id)
+                let Some(projectile) = self
+                    .common
+                    .creatures
+                    .projectiles
+                    .iter()
+                    .find(|p| p.id == id)
                 else {
                     return false;
                 };
@@ -335,28 +364,34 @@ impl crate::game::ServerGame<'_> {
                     p.fire_ticks = ticks;
                     true
                 }),
-            Some(Target::Mob(id)) => self.common.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-                m.fire_ticks = ticks;
-                m.needs_sync = true;
-                true
-            }),
+            Some(Target::Mob(id)) => self
+                .common
+                .mobs
+                .iter_mut()
+                .find(|m| m.id == id)
+                .is_some_and(|m| {
+                    m.fire_ticks = ticks;
+                    m.needs_sync = true;
+                    true
+                }),
             Some(Target::Stand(id)) => self
-                .common.armor_stands
+                .common
+                .armor_stands
                 .iter_mut()
                 .find(|s| s.id == id)
                 .is_some_and(|s| {
                     s.fire_ticks = ticks;
                     true
                 }),
-            Some(Target::Item(id)) => {
-                self.common.dropped
-                    .iter_mut()
-                    .find(|i| i.id == id)
-                    .is_some_and(|i| {
-                        i.fire_ticks = ticks;
-                        true
-                    })
-            }
+            Some(Target::Item(id)) => self
+                .common
+                .dropped
+                .iter_mut()
+                .find(|i| i.id == id)
+                .is_some_and(|i| {
+                    i.fire_ticks = ticks;
+                    true
+                }),
             _ => false,
         }
     }
@@ -439,7 +474,13 @@ impl crate::game::ServerGame<'_> {
                 let m = self.common.mobs.iter().find(|m| m.id == id)?;
                 Some(m.is_invisible())
             }
-            Target::Stand(id) => Some(self.common.armor_stands.iter().find(|s| s.id == id)?.invisible),
+            Target::Stand(id) => Some(
+                self.common
+                    .armor_stands
+                    .iter()
+                    .find(|s| s.id == id)?
+                    .invisible,
+            ),
             _ => None,
         }
     }
@@ -463,11 +504,16 @@ impl crate::game::ServerGame<'_> {
                     p.ticks_frozen = ticks;
                     true
                 }),
-            Some(Target::Mob(id)) => self.common.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-                m.ticks_frozen = ticks;
-                m.needs_sync = true;
-                true
-            }),
+            Some(Target::Mob(id)) => self
+                .common
+                .mobs
+                .iter_mut()
+                .find(|m| m.id == id)
+                .is_some_and(|m| {
+                    m.ticks_frozen = ticks;
+                    m.needs_sync = true;
+                    true
+                }),
             _ => false,
         }
     }
@@ -483,7 +529,8 @@ impl crate::game::ServerGame<'_> {
         match self.native_entity_body(entity)? {
             Body::Mob(m) => Some(m.no_gravity),
             Body::Other(Target::Item(id)) => self
-                .common.dropped
+                .common
+                .dropped
                 .iter()
                 .find(|i| i.id == id)
                 .map(|i| i.no_gravity),
@@ -503,11 +550,15 @@ impl crate::game::ServerGame<'_> {
         let Some(Target::Mob(id)) = self.native_entity_target(entity) else {
             return false;
         };
-        self.common.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-            m.glowing = glowing;
-            m.needs_sync = true;
-            true
-        })
+        self.common
+            .mobs
+            .iter_mut()
+            .find(|m| m.id == id)
+            .is_some_and(|m| {
+                m.glowing = glowing;
+                m.needs_sync = true;
+                true
+            })
     }
     /// Sets the mob's or dropped item's no-gravity flag (`Entity.setNoGravity`). Returns false
     /// for players and guests.
@@ -517,21 +568,26 @@ impl crate::game::ServerGame<'_> {
         no_gravity: bool,
     ) -> bool {
         match self.native_entity_target(entity) {
-            Some(Target::Mob(id)) => self.common.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-                m.no_gravity = no_gravity;
-                m.needs_sync = true;
-                true
-            }),
-            Some(Target::Item(id)) => {
-                self.common.dropped
-                    .iter_mut()
-                    .find(|i| i.id == id)
-                    .is_some_and(|i| {
-                        i.no_gravity = no_gravity;
-                        i.needs_sync = true;
-                        true
-                    })
-            }
+            Some(Target::Mob(id)) => self
+                .common
+                .mobs
+                .iter_mut()
+                .find(|m| m.id == id)
+                .is_some_and(|m| {
+                    m.no_gravity = no_gravity;
+                    m.needs_sync = true;
+                    true
+                }),
+            Some(Target::Item(id)) => self
+                .common
+                .dropped
+                .iter_mut()
+                .find(|i| i.id == id)
+                .is_some_and(|i| {
+                    i.no_gravity = no_gravity;
+                    i.needs_sync = true;
+                    true
+                }),
             _ => false,
         }
     }
@@ -542,13 +598,19 @@ impl crate::game::ServerGame<'_> {
         invisible: bool,
     ) -> bool {
         match self.native_entity_target(entity) {
-            Some(Target::Mob(id)) => self.common.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
-                m.invisible = invisible;
-                m.needs_sync = true;
-                true
-            }),
+            Some(Target::Mob(id)) => self
+                .common
+                .mobs
+                .iter_mut()
+                .find(|m| m.id == id)
+                .is_some_and(|m| {
+                    m.invisible = invisible;
+                    m.needs_sync = true;
+                    true
+                }),
             Some(Target::Stand(id)) => self
-                .common.armor_stands
+                .common
+                .armor_stands
                 .iter_mut()
                 .find(|s| s.id == id)
                 .is_some_and(|s| {
@@ -573,7 +635,9 @@ impl crate::game::ServerGame<'_> {
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
     use super::*;
-    use sunrise_gameplay_common::game::native_entity_state_common::{eye_fluid, max_air, touched_fluids};
+    use sunrise_gameplay_common::game::native_entity_state_common::{
+        eye_fluid, max_air, touched_fluids,
+    };
     use sunrise_sim::{
         mobs::{Mob, Species},
         motion::PlayerMotion,
@@ -581,7 +645,7 @@ pub mod tests {
     };
 
     #[cfg(test)]
-/// The reads' order: highest first, water before lava in a tie, an untouched fluid left
+    /// The reads' order: highest first, water before lava in a tie, an untouched fluid left
     /// out even with a height, and nothing for an entity in neither.
     #[test]
     fn fluid_reads_list_the_touched_fluids_highest_first() {
@@ -605,7 +669,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn poses_keep_vanillas_ids() {
         assert_eq!(POSES[usize::from(sync::SITTING)], "sitting");
         assert_eq!(POSES[usize::from(sync::INHALING)], "inhaling");
@@ -623,7 +687,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn mob_setters_update_stored_state() {
         use super::super::native_entity_refs::tests::with_game;
@@ -663,7 +727,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-/// `Entity.setNoGravity` and `Entity.isNoGravity` reach a live dropped item, not only a
+    /// `Entity.setNoGravity` and `Entity.isNoGravity` reach a live dropped item, not only a
     /// mob; a kind that is neither still refuses both, as does a stale handle (#5011, #3938
     /// item 47).
     #[test]
@@ -722,7 +786,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_granted_player_does_not_burn_or_take_damage_in_lava() {
         use std::sync::Arc;
@@ -785,7 +849,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn fire_ticks_reads_supported_entities_and_refuses_others() {
         use mod_api::WorldEpoch;
@@ -843,12 +907,8 @@ pub mod tests {
         });
     }
 
-    
-
-    
-
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn portal_cooldown_write_blocks_entry_and_counts_down() {
         use super::super::native_entity_refs::tests::with_game;
@@ -930,7 +990,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn portal_cooldown_write_is_refused_for_a_player() {
         with_player(|game, player| {
@@ -941,10 +1001,8 @@ pub mod tests {
         });
     }
 
-    
-
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn portal_cooldown_write_is_refused_for_a_falling_block() {
         use super::super::FallingBlock;
@@ -1007,7 +1065,7 @@ pub mod tests {
     // (`ClientGame` does not implement `ServerHost`).
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn portal_cooldown_write_reaches_an_item() {
         use super::super::native_entity_refs::tests::with_game;
@@ -1032,7 +1090,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn portal_cooldown_write_reaches_an_arrow() {
         use super::super::native_entity_refs::tests::with_game;
@@ -1056,7 +1114,7 @@ pub mod tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn portal_cooldown_write_is_refused_for_a_non_portal_projectile() {
         use super::super::native_entity_refs::tests::with_game;
@@ -1076,28 +1134,28 @@ pub mod tests {
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn player_invisibility_write_is_refused() {
         with_player(|game, player| assert!(!player.set_invisible(game, true)));
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn player_glowing_write_is_refused() {
         with_player(|game, player| assert!(!player.set_glowing(game, true)));
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn player_no_gravity_write_is_refused() {
         with_player(|game, player| assert!(!player.set_no_gravity(game, true)));
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn player_frozen_write_updates_server_state() {
         with_player(|game, player| {
@@ -1106,16 +1164,8 @@ pub mod tests {
         });
     }
 
-    
-
-    
-
-    
-
-    
-
     #[cfg(test)]
-#[test]
+    #[test]
     fn max_air_follows_the_species() {
         assert_eq!(max_air(None), 300);
         assert_eq!(max_air(Some(Species::Dolphin)), 4800);
@@ -1129,10 +1179,6 @@ pub mod tests {
     use mod_api::MainHand;
     use sunrise_protocol::entity_data::{Value, serializer};
     use sunrise_protocol::packets::play::{self, Clientbound as C};
-
-    
-
-    
 }
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
@@ -1144,4 +1190,3 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 use sunrise_gameplay_common::game::native_entity_state_common::NativeEntityStateCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
-

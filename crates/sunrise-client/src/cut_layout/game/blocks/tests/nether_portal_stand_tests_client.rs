@@ -24,6 +24,9 @@ fn the_portal_effect_keeps_the_screens_that_allow_it() {
         // And no screen at all is nothing to close.
         game.client.client_inside = true;
         assert!(game.client_portal_effect(), "the effect grows");
-        assert!(game.client.screen == Screen::Playing, "playing stays playing");
+        assert!(
+            game.client.screen == Screen::Playing,
+            "playing stays playing"
+        );
     });
 }

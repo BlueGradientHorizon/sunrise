@@ -71,7 +71,8 @@ impl crate::game::ClientGame<'_> {
         }
         if fields.is_empty() && !matches!(entity, BlockEntity::Conduit(_)) {
             if source == BlockEntityDataSource::UpdatePacket
-                && let Some(BlockEntity::TrialSpawner(s)) = self.common.world.block_entities.get_mut(&key)
+                && let Some(BlockEntity::TrialSpawner(s)) =
+                    self.common.world.block_entities.get_mut(&key)
             {
                 s.next_spawn_data = None;
                 self.side_update_spawner_display(key);

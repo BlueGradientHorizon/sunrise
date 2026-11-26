@@ -6,14 +6,14 @@
 //! Saving them under the boat's `Passengers` lives in `persist.rs`.
 #[allow(unused_imports)]
 use super::lan_mobs::guest_bounds;
-use sunrise_gameplay_common::game::{
-    boats_common::{PLAYER_RIDING_OFFSET, boat_pushes, push_impulse},
-    commands_common::Target,
-};
 use std::cell::{Cell, Ref, RefCell};
 use sunrise_core::geometry::{Aabb, Vec3};
 #[allow(unused_imports)]
 use sunrise_game_data::scoreboard::pushable_by;
+use sunrise_gameplay_common::game::{
+    boats_common::{PLAYER_RIDING_OFFSET, boat_pushes, push_impulse},
+    commands_common::Target,
+};
 #[allow(unused_imports)]
 use sunrise_level::fast_hash::FxHashMap;
 #[allow(unused_imports)]
@@ -97,7 +97,10 @@ impl crate::game::ServerGame<'_> {
     /// changes its box, so the next query works the [`BoxReach`] out again.
     pub(in crate::game::server_side) fn vehicle_picked_up(&self) {
         if let Some((_, reach)) = self.server.vehicle_mobs.reach.get() {
-            self.server.vehicle_mobs.reach.set(Some((usize::MAX, reach)));
+            self.server
+                .vehicle_mobs
+                .reach
+                .set(Some((usize::MAX, reach)));
         }
     }
     /// The mobs' [`BoxReach`] while vehicles tick, none otherwise.
@@ -129,7 +132,10 @@ impl crate::game::ServerGame<'_> {
                 grid.walked += 1;
                 return false;
             }
-            grid.built = Some((stamp, SeenGrid::new(self.common.mobs.iter().map(Mob::bounds))));
+            grid.built = Some((
+                stamp,
+                SeenGrid::new(self.common.mobs.iter().map(Mob::bounds)),
+            ));
             grid.walked = 0;
             grid.patience = (grid.patience * 2).max(WALKS_BEFORE_GRID);
         }
@@ -368,7 +374,8 @@ impl crate::game::ServerGame<'_> {
                         count = self.seated_passenger_count(id);
                         if count < self.common.boats[i].max_passengers()
                             && let Some(m) = self
-                                .common.mobs
+                                .common
+                                .mobs
                                 .iter_mut()
                                 .find(|m| m.id == mob && !m.removed && m.extra.mount.is_none())
                         {
@@ -400,7 +407,8 @@ impl crate::game::ServerGame<'_> {
             };
             for _ in 0..usize::from(touched) + usize::from(pushes) {
                 if count == 0 {
-                    self.common.boats
+                    self.common
+                        .boats
                         .update(i, |b| b.velocity = b.velocity.subtract(v));
                 }
                 if own && let Some(p) = self.common.player.as_mut() {
@@ -413,15 +421,19 @@ impl crate::game::ServerGame<'_> {
             if k == i || !ob.intersects(area) || !boat_pushes(bb, ob, true) {
                 continue;
             }
-            let Some(v) = push_impulse(self.common.boats[i].position, self.common.boats[k].position) else {
+            let Some(v) =
+                push_impulse(self.common.boats[i].position, self.common.boats[k].position)
+            else {
                 continue;
             };
             if count == 0 {
-                self.common.boats
+                self.common
+                    .boats
                     .update(i, |b| b.velocity = b.velocity.subtract(v));
             }
             if !self.has_seated_passengers(self.common.boats[k].id) {
-                self.common.boats
+                self.common
+                    .boats
                     .update(k, |b| b.velocity = b.velocity.add_vector(v));
             }
         }
@@ -430,15 +442,19 @@ impl crate::game::ServerGame<'_> {
             if !cb.intersects(area) || !boat_pushes(bb, cb, false) {
                 continue;
             }
-            let Some(v) = push_impulse(self.common.boats[i].position, self.common.carts[c].position) else {
+            let Some(v) =
+                push_impulse(self.common.boats[i].position, self.common.carts[c].position)
+            else {
                 continue;
             };
             if count == 0 {
-                self.common.boats
+                self.common
+                    .boats
                     .update(i, |b| b.velocity = b.velocity.subtract(v));
             }
             if !self.has_seated_passengers(self.common.carts[c].id) {
-                self.common.carts
+                self.common
+                    .carts
                     .update(c, |c| c.velocity = c.velocity.add_vector(v));
             }
         }
@@ -453,7 +469,8 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         if count == 0 {
-            self.common.boats
+            self.common
+                .boats
                 .update(i, |b| b.velocity = b.velocity.subtract(v));
         }
         let m = &mut self.common.mobs[j];
@@ -496,12 +513,14 @@ impl crate::game::ServerGame<'_> {
         use sunrise_gameplay_common::game::entity_memory::RemovedVehicle;
         let vehicle = match target {
             Target::Boat(_) => self
-                .common.boats
+                .common
+                .boats
                 .iter()
                 .position(|b| b.id == id)
                 .map(|i| RemovedVehicle::Boat(self.common.boats.remove(i))),
             Target::Cart(_) => self
-                .common.carts
+                .common
+                .carts
                 .iter()
                 .position(|c| c.id == id)
                 .map(|i| RemovedVehicle::Cart(self.common.carts.remove(i))),
@@ -534,16 +553,16 @@ impl crate::game::ServerGame<'_> {
             )
         };
         let slots = match target {
-            Target::Boat(_) => self
-                .common.boats
-                .iter()
-                .position(|b| b.id == id)
-                .map(|i| self.common.boats.update(i, |b| take(b.position, &mut b.items))),
-            _ => self
-                .common.carts
-                .iter()
-                .position(|c| c.id == id)
-                .map(|i| self.common.carts.update(i, |c| take(c.position, &mut c.items))),
+            Target::Boat(_) => self.common.boats.iter().position(|b| b.id == id).map(|i| {
+                self.common
+                    .boats
+                    .update(i, |b| take(b.position, &mut b.items))
+            }),
+            _ => self.common.carts.iter().position(|c| c.id == id).map(|i| {
+                self.common
+                    .carts
+                    .update(i, |c| take(c.position, &mut c.items))
+            }),
         };
         if let Some((at, items)) = slots {
             self.drop_vehicle_contents(at, &items);
@@ -561,7 +580,8 @@ impl crate::game::ServerGame<'_> {
         let (id, y) = (b.id, b.position.y);
         for rider in self.mob_passenger_ids(id) {
             if self
-                .common.mob_object(rider)
+                .common
+                .mob_object(rider)
                 .is_none_or(|m| m.removed || m.extra.mount != Some(id))
             {
                 continue;
@@ -570,7 +590,8 @@ impl crate::game::ServerGame<'_> {
                 continue;
             }
             let Some(m) = self
-                .common.mob_object(rider)
+                .common
+                .mob_object(rider)
                 .filter(|m| !m.removed && m.extra.mount == Some(id))
             else {
                 continue;
@@ -659,8 +680,6 @@ impl VehicleMobs {
 mod tests {
     use super::*;
 
-    
-
     #[test]
     fn push_is_capped_and_scaled() {
         // One block apart on x: the full 0.05 along x.
@@ -718,12 +737,6 @@ mod tests {
         assert!(boat_pushes(boat, at(64.5), true));
         assert!(!boat_pushes(boat, at(64.5625), true));
     }
-
-    
-
-    
-
-    
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;

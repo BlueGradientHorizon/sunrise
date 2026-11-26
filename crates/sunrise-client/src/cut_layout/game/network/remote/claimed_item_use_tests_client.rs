@@ -1,4 +1,3 @@
-use {sunrise_protocol::packets::play::Clientbound as C, sunrise_sim::motion::PlayerMotion, sunrise_core::geometry::Vec3, sunrise_protocol::packets::play};
 use crate::game::remote::claimed_item_use_tests::CUSTOM_DATA;
 use crate::game::remote::claimed_item_use_tests::Call;
 use crate::game::remote::claimed_item_use_tests::OWNER;
@@ -6,11 +5,20 @@ use crate::game::remote::claimed_item_use_tests::Phase;
 use crate::game::remote::claimed_item_use_tests::SHIELD;
 use crate::game::remote::claimed_item_use_tests::STICK;
 use crate::game::remote::claimed_item_use_tests::with_owner;
-use {sunrise_gameplay_common::game::Screen, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in};
 use std::sync::Arc;
 use sunrise_client::interaction_input::Button;
 use sunrise_core::nbt::{JavaString, Tag};
 use sunrise_items::items::ItemStack;
+use {
+    crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in,
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay_common::game::Screen,
+};
+use {
+    sunrise_core::geometry::Vec3, sunrise_protocol::packets::play,
+    sunrise_protocol::packets::play::Clientbound as C, sunrise_sim::motion::PlayerMotion,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -124,7 +132,9 @@ fn owner_gets_release_or_reset_with_live_typed_stack() {
             assert!(game.client.client_item_use.0.is_some());
             game.remote_handle_input();
             assert!(game.client.client_item_use.0.is_none());
-            game.close_chat(sunrise_client_gameplay::game::client_side::chat::ChatExit::Intentional);
+            game.close_chat(
+                sunrise_client_gameplay::game::client_side::chat::ChatExit::Intentional,
+            );
             key_up(game);
             assert_eq!(
                 calls.take(),
@@ -147,7 +157,8 @@ fn owner_gets_release_or_reset_with_live_typed_stack() {
             assert!(!game.dialog_open());
             assert!(game.client.client_item_use.0.is_some());
             {
-                let registries = Arc::make_mut(&mut game.client.remote.as_mut().unwrap().registries);
+                let registries =
+                    Arc::make_mut(&mut game.client.remote.as_mut().unwrap().registries);
                 let mut notice = std::collections::BTreeMap::new();
                 notice.insert(
                     JavaString::from("type"),

@@ -4,7 +4,8 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 impl crate::game::ClientGame<'_> {
     /// `Player.interactOn`: Fail skips this interaction, not the hand loop.
     pub(in crate::game) fn entity_interaction(&mut self, hand: Hand, id: i32) -> Option<bool> {
-        if self.common.spectator() || !mod_api::__private::listened(mod_api::HookId::EntityInteract) {
+        if self.common.spectator() || !mod_api::__private::listened(mod_api::HookId::EntityInteract)
+        {
             return None;
         }
         let kind = self.client_entity_interaction_kind(id)?;

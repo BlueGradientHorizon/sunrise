@@ -9,10 +9,7 @@ impl crate::game::ClientGame<'_> {
         };
         Some(dimensions)
     }
-    pub fn set_preset_editor_dimensions(
-        &self,
-        dimensions: mod_api::Compound,
-    ) -> bool {
+    pub fn set_preset_editor_dimensions(&self, dimensions: mod_api::Compound) -> bool {
         self.preset_editor_title().is_some_and(|title| {
             title.set_preset_editor_dimensions(sunrise_core::nbt::Tag::Compound(dimensions))
         })

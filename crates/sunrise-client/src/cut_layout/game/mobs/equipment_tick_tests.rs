@@ -150,7 +150,9 @@ fn a_players_non_compass_keeps_its_lodestone_tracker() {
         target(held),
         Some(("minecraft:overworld".to_owned(), vec![5, 64, 5]))
     );
-    let offhand = game.stack_in(sunrise_gameplay::game::shield::OFFHAND_SLOT).unwrap();
+    let offhand = game
+        .stack_in(sunrise_gameplay::game::shield::OFFHAND_SLOT)
+        .unwrap();
     assert_eq!(target(offhand), None);
     assert!(tracked(offhand));
 }

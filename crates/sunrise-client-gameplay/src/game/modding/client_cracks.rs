@@ -28,14 +28,18 @@ impl crate::game::ClientGame<'_> {
     pub fn reset_client_world(&mut self, seed: i64) {
         self.client.destroying.clear();
         self.set_client_mining(None);
-        self.common.world = sunrise_gameplay_common::game::world_for_mods(self.common.res.facts().air, seed);
+        self.common.world =
+            sunrise_gameplay_common::game::world_for_mods(self.common.res.facts().air, seed);
     }
 
     /// Preserve the stage's stored display answer across prediction updates.
     pub fn set_client_mining(&mut self, mining: Option<Mining>) {
-        let keep = mining
-            .as_ref()
-            .is_some_and(|next| self.common.mining.as_ref().is_some_and(|old| old.pos == next.pos));
+        let keep = mining.as_ref().is_some_and(|next| {
+            self.common
+                .mining
+                .as_ref()
+                .is_some_and(|old| old.pos == next.pos)
+        });
         if !keep {
             self.client.mining_crack = None;
         }
@@ -45,7 +49,8 @@ impl crate::game::ClientGame<'_> {
 
     pub(in crate::game) fn update_local_crack(&mut self) {
         let Some((pos, stage)) = self
-            .common.mining
+            .common
+            .mining
             .as_ref()
             .and_then(|mining| Some((mining.pos, mining.stage()?)))
         else {

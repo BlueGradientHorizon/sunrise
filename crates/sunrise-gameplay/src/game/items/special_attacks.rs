@@ -35,7 +35,8 @@ impl crate::game::ServerGame<'_> {
         self.swing_arm();
         // The part's box.
         let area = self
-            .common.special_targets()
+            .common
+            .special_targets()
             .into_iter()
             .find(|(part, _)| *part == id)
             .map(|(_, b)| b);
@@ -62,7 +63,8 @@ impl crate::game::ServerGame<'_> {
             return false;
         }
         let burning = self
-            .common.held()
+            .common
+            .held()
             .is_some_and(|s| s.enchantment_level("minecraft:fire_aspect") > 0);
         let area = self.common.carts[i].bounds();
         // Player.attack's full damage against the cart's entity type.

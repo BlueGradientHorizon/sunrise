@@ -18,7 +18,8 @@ impl crate::game::ServerGame<'_> {
         if self.entity_ids_exhausted() {
             return None;
         }
-        if !self.common.is_logical_server() || ![offset, power, inaccuracy].into_iter().all(f32::is_finite)
+        if !self.common.is_logical_server()
+            || ![offset, power, inaccuracy].into_iter().all(f32::is_finite)
         {
             return None;
         }

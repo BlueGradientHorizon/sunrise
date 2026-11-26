@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
@@ -9,9 +7,9 @@ pub(crate) mod player_armor_weapon_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use super::*;
+    use super::*;
 
-/// A hit takes the mace one point (`Weapon.itemDamagePerAttack`): a part of the mace that
+    /// A hit takes the mace one point (`Weapon.itemDamagePerAttack`): a part of the mace that
     /// multiplies the wear by 5 makes it 5, one that halves it leaves 0 (the item stays whole), one
     /// that cancels it none; an iron sword without a part wears as vanilla.
     #[test]

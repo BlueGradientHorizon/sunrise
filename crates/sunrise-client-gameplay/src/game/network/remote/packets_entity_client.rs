@@ -27,11 +27,13 @@ impl crate::game::ClientGame<'_> {
                 .cause
                 .and_then(|id| u32::try_from(id).ok())
                 .and_then(|id| {
-                    self.common.mob_index
+                    self.common
+                        .mob_index
                         .get(&self.common.mobs, id)
                         .map(|m| m.kind.id.to_string())
                 });
-            self.common.events
+            self.common
+                .events
                 .note_hit(cause.unwrap_or_else(|| "unknown".into()), by);
             if let Some(pl) = self.common.player.as_mut() {
                 pl.health.animate_hurt();
@@ -39,7 +41,11 @@ impl crate::game::ClientGame<'_> {
                 let pitch = player_voice_pitch();
                 self.play_client_player_sound(sound, 1.0, pitch);
             }
-        } else if let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, p.id as u32) {
+        } else if let Some(m) = self
+            .common
+            .mob_index
+            .get_mut(&mut self.common.mobs, p.id as u32)
+        {
             m.limb_speed = 1.5;
             m.hurt_time = 10;
             // LivingEntity.handleDamageEvent.
@@ -118,7 +124,10 @@ impl crate::game::ClientGame<'_> {
         // Entity.spawnSprintParticle (one block-dust crumb).
         if p.event == 1 {
             let hop = {
-                let m = self.common.mob_index.get_mut(&mut self.common.mobs, p.id as u32);
+                let m = self
+                    .common
+                    .mob_index
+                    .get_mut(&mut self.common.mobs, p.id as u32);
                 if let Some(m) = m
                     && m.species() == sunrise_sim::mobs::Species::Rabbit
                 {
@@ -138,21 +147,28 @@ impl crate::game::ClientGame<'_> {
                 let id = p.id as u32;
                 self.sprint_particle(position, movement, support, width, |game| {
                     // this.random: the rabbit's own, x then z.
-                    game.common.mob_index
+                    game.common
+                        .mob_index
                         .get_mut(&mut game.common.mobs, id)
                         .map(|m| (m.random.next_double(), m.random.next_double()))
                 });
             }
         }
         if p.event == 19
-            && let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, p.id as u32)
+            && let Some(m) = self
+                .common
+                .mob_index
+                .get_mut(&mut self.common.mobs, p.id as u32)
         {
             sunrise_sim::mobs::aquatic::squid_cycle_event(m);
         }
         // LivingEntity.handleEntityEvent 55: another player swapped
         // its main and off hand (`swapHandItems`).
         if p.event == 55
-            && let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, p.id as u32)
+            && let Some(m) = self
+                .common
+                .mob_index
+                .get_mut(&mut self.common.mobs, p.id as u32)
         {
             m.extra.swap_hands();
         }
@@ -163,7 +179,10 @@ impl crate::game::ClientGame<'_> {
         }
         // EntityEvent.DEATH: start the death animation.
         if p.event == 3
-            && let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, p.id as u32)
+            && let Some(m) = self
+                .common
+                .mob_index
+                .get_mut(&mut self.common.mobs, p.id as u32)
         {
             m.health = 0.0;
         }
@@ -183,7 +202,11 @@ impl crate::game::ClientGame<'_> {
             self.play_client_player_sound(sound, 1.0, pitch);
         }
         // The events that start a mob's animation (the warden's).
-        if let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, p.id as u32) {
+        if let Some(m) = self
+            .common
+            .mob_index
+            .get_mut(&mut self.common.mobs, p.id as u32)
+        {
             sunrise_sim::mobs::sync::entity_event(m, p.event as u8);
         }
         // LivingEntity.handleEntityEvent 46: portal particles from the
@@ -214,7 +237,8 @@ impl crate::game::ClientGame<'_> {
         // the projectile is (the server removes it right after).
         if p.event == 3 {
             let crumbs = self
-                .common.creatures
+                .common
+                .creatures
                 .projectiles
                 .iter()
                 .find(|pr| pr.id == p.id as u32)
@@ -244,11 +268,13 @@ impl crate::game::ClientGame<'_> {
                 .as_ref()
                 .is_some_and(|r| r.entity_id == p.id)
             {
-                self.common.player
+                self.common
+                    .player
                     .as_ref()
                     .map(|q| [q.position.x, q.position.y, q.position.z])
             } else {
-                self.common.mobs
+                self.common
+                    .mobs
                     .iter()
                     .find(|m| m.id == p.id as u32)
                     .map(|m| [m.position.x, m.position.y, m.position.z])
@@ -281,9 +307,18 @@ impl crate::game::ClientGame<'_> {
             .is_some_and(|r| r.entity_id == p.id)
         {
             self.common.potions.effects.list.retain(|e| e.id != id);
-        } else if let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, p.id as u32) {
+        } else if let Some(m) = self
+            .common
+            .mob_index
+            .get_mut(&mut self.common.mobs, p.id as u32)
+        {
             m.extra.client_effects.list.retain(|e| e.id != id);
-        } else if let Some(a) = self.common.armor_stands.iter_mut().find(|a| a.id == p.id as u32) {
+        } else if let Some(a) = self
+            .common
+            .armor_stands
+            .iter_mut()
+            .find(|a| a.id == p.id as u32)
+        {
             a.client_effects.list.retain(|e| e.id != id);
         }
     }
@@ -319,7 +354,11 @@ impl crate::game::ClientGame<'_> {
         // Entity.DATA_SHARED_FLAGS_ID, DATA_CUSTOM_NAME and
         // DATA_CUSTOM_NAME_VISIBLE: server NPCs and holograms rely on
         // these instead of saved NBT.
-        if let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, id as u32) {
+        if let Some(m) = self
+            .common
+            .mob_index
+            .get_mut(&mut self.common.mobs, id as u32)
+        {
             match (index, value) {
                 (0, Value::Byte(flags)) => {
                     m.invisible = flags & 0x20 != 0;
@@ -356,7 +395,10 @@ impl crate::game::ClientGame<'_> {
             }
         }
         self.remote_mob_data(id, single);
-        if let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, id as u32)
+        if let Some(m) = self
+            .common
+            .mob_index
+            .get_mut(&mut self.common.mobs, id as u32)
             && m.species() == sunrise_sim::mobs::Species::Creeper
         {
             match (index, value) {
@@ -367,7 +409,11 @@ impl crate::game::ClientGame<'_> {
                 _ => {}
             }
         }
-        if let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, id as u32) {
+        if let Some(m) = self
+            .common
+            .mob_index
+            .get_mut(&mut self.common.mobs, id as u32)
+        {
             match (index, value) {
                 // Entity.DATA_TICKS_FROZEN: isFullyFrozen shakes it.
                 (7, Value::Int(ticks)) => m.ticks_frozen = *ticks,
@@ -382,7 +428,8 @@ impl crate::game::ClientGame<'_> {
         // LivingEntity.DATA_LIVING_ENTITY_FLAGS: for another player
         // too, remote_mob_data's apply reads index 8 above.
         let mannequin = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .any(|m| m.id == id as u32 && &*m.kind.id == "minecraft:mannequin");
         let other = mannequin
@@ -397,7 +444,11 @@ impl crate::game::ClientGame<'_> {
             if let (14, Value::OptPos(bed)) = (index, value) {
                 let code = bed.map_or(0, |b| self.common.bed_facing(b));
                 let at = bed.and_then(|head| self.sleeping_position(head));
-                if let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, id as u32) {
+                if let Some(m) = self
+                    .common
+                    .mob_index
+                    .get_mut(&mut self.common.mobs, id as u32)
+                {
                     m.extra.ints[1] = code;
                     if bed.is_some() {
                         // setPosToBed leaves the server's position alone
@@ -414,21 +465,32 @@ impl crate::game::ClientGame<'_> {
             // Avatar.DATA_PLAYER_MAIN_HAND (HumanoidArm: 0 left, 1
             // right): the arm a swing of the main hand moves.
             if let (15, Value::Id(arm)) = (index, value)
-                && let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, id as u32)
+                && let Some(m) = self
+                    .common
+                    .mob_index
+                    .get_mut(&mut self.common.mobs, id as u32)
             {
                 m.extra.main_hand_left = *arm == 0;
             }
             // Avatar.DATA_PLAYER_MODE_CUSTOMISATION: the skin layers
             // the player shows (PlayerModelPart bits).
             if let (16, Value::Byte(bits)) = (index, value)
-                && let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, id as u32)
+                && let Some(m) = self
+                    .common
+                    .mob_index
+                    .get_mut(&mut self.common.mobs, id as u32)
             {
                 m.extra.hidden_model_parts = !(*bits as u8) & 0x7F;
             }
         }
         // LivingEntity.onSyncedDataUpdated(SLEEPING_POS_ID): this
         // player lies down in the bed, or gets up.
-        if self.client.remote.as_ref().is_some_and(|r| r.entity_id == id) {
+        if self
+            .client
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.entity_id == id)
+        {
             match (index, value) {
                 (14, Value::OptPos(bed)) => {
                     if bed.is_some() && self.common.sleeping.is_none() {
@@ -544,7 +606,8 @@ impl crate::game::ClientGame<'_> {
                         && let Some(stack) = self.common.stack_in(slot).cloned()
                     {
                         self.common.use_duration = self.use_duration(&stack);
-                        self.common.use_start = sunrise_gameplay_common::game::item_use_common::UseStart::of(stack);
+                        self.common.use_start =
+                            sunrise_gameplay_common::game::item_use_common::UseStart::of(stack);
                         self.side_reset_client_item_use();
                     }
                 }
@@ -560,7 +623,10 @@ impl crate::game::ClientGame<'_> {
                 .remote
                 .as_ref()
                 .is_some_and(|r| r.level_players.contains_key(&id)))
-            && let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, id as u32)
+            && let Some(m) = self
+                .common
+                .mob_index
+                .get_mut(&mut self.common.mobs, id as u32)
             && let (0, Value::Byte(flags)) = (index, value)
         {
             m.extra.crouching = flags & 2 != 0;
@@ -587,10 +653,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `ClientPacketListener.handleSetEntityData`: require an active level, ignore absent entities,
     /// and validate/assign each entry in wire order (`SynchedEntityData.assignValues`).
-    pub fn apply_set_entity_data_packet(
-        &mut self,
-        p: play::SetEntityData,
-    ) -> Result<()> {
+    pub fn apply_set_entity_data_packet(&mut self, p: play::SetEntityData) -> Result<()> {
         if !self
             .client
             .remote
@@ -659,7 +722,11 @@ impl crate::game::ClientGame<'_> {
                 )
             })
         });
-        if let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, p.id as u32) {
+        if let Some(m) = self
+            .common
+            .mob_index
+            .get_mut(&mut self.common.mobs, p.id as u32)
+        {
             if let Some(charged) = charged
                 && &*m.kind.id == "minecraft:player"
             {
@@ -710,7 +777,8 @@ impl crate::game::ClientGame<'_> {
         if let Some(t) = r.entities.get(&id) {
             return Some(t.kind.clone());
         }
-        self.common.mobs
+        self.common
+            .mobs
             .iter()
             .find(|m| m.id == id as u32)
             .map(|m| m.kind.id.to_string())

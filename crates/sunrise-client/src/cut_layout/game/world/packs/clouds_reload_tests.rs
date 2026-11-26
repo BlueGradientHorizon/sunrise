@@ -6,7 +6,10 @@
 //! required shader programs"), even with Improved Transparency off. Each case runs in a process
 //! of its own, in a folder whose `resourcepacks` holds the packs.
 use sunrise_client_gameplay::game::client_side::model_baking_completed_tests::reload;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+};
 
 const NAME: &str = "game::client_side::packs::clouds_reload_tests::a_pack_whose_clouds_vanilla_reads_past_fails_the_load";
 const CASE: &str = "SUNRISE_CLOUDS_RELOAD_CASE";
@@ -152,7 +155,9 @@ fn startup_rollback_waits_for_world_resources() {
         assert!(
             game.client
                 .toast_manager
-                .system_mut(sunrise_client_gameplay::game::toast_manager::SystemToastId::PackLoadFailure)
+                .system_mut(
+                    sunrise_client_gameplay::game::toast_manager::SystemToastId::PackLoadFailure
+                )
                 .is_some()
         );
         assert!(game.client.pending_pack_reload);
@@ -203,7 +208,9 @@ fn a_reload_fails_and_drops_the_selection(refused: &str) {
         assert!(
             game.client
                 .toast_manager
-                .system_mut(sunrise_client_gameplay::game::toast_manager::SystemToastId::PackLoadFailure)
+                .system_mut(
+                    sunrise_client_gameplay::game::toast_manager::SystemToastId::PackLoadFailure
+                )
                 .is_some(),
             "resourcePack.load_fail"
         );
@@ -220,7 +227,13 @@ fn a_startup_load_fails_back_to_the_games_resources(refused: &str, error: &str) 
         ..Settings::default()
     };
     let sources = mods::ModsState::default();
-    let roots = sunrise_client_gameplay::game::client_side::packs::startup_root(&root, &settings.resource_packs, &[], &sources).unwrap();
+    let roots = sunrise_client_gameplay::game::client_side::packs::startup_root(
+        &root,
+        &settings.resource_packs,
+        &[],
+        &sources,
+    )
+    .unwrap();
     let loaded = load_resources_sync(
         roots,
         Vec::new(),
@@ -280,7 +293,13 @@ fn content_entity_stays_registered_after_startup_pack_rollback() {
 
     let vanilla = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let load = |selected: &[String]| {
-        let roots = sunrise_client_gameplay::game::client_side::packs::startup_root(&vanilla, selected, &[], &sources).unwrap();
+        let roots = sunrise_client_gameplay::game::client_side::packs::startup_root(
+            &vanilla,
+            selected,
+            &[],
+            &sources,
+        )
+        .unwrap();
         load_resources_sync(
             roots,
             Vec::new(),
@@ -312,7 +331,10 @@ fn content_entity_stays_registered_after_startup_pack_rollback() {
         .contains_key(ENTITY);
     drop(rolled_back);
 
-    std::fs::remove_dir_all(sunrise_client_gameplay::game::client_side::packs::packs_dir().join("past")).unwrap();
+    std::fs::remove_dir_all(
+        sunrise_client_gameplay::game::client_side::packs::packs_dir().join("past"),
+    )
+    .unwrap();
     let reloaded = load(&[]);
     assert!(reloaded.pack_error.is_none());
     let key = mod_api::__private::resolved_entity_type_key(ENTITY).expect("content entity API key");
@@ -327,13 +349,20 @@ fn content_entity_stays_registered_after_startup_pack_rollback() {
 #[test]
 #[ignore = "daily"]
 fn startup_saves_the_cleared_selection_even_when_a_required_pack_fails() {
-    use {sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_client_gameplay::game::client_side::resource_load_client::StartupLoadContext, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_client_gameplay::game::client_side::resource_load_client::load_resources_sync, sunrise_gameplay_common::game::mods};
     use std::{path::PathBuf, time::Instant};
     use sunrise_assets::resource_source::ResourceRoot;
     use sunrise_client::{
         clouds,
         options_file::{OptionsFile, V},
         packs::{self, Source},
+    };
+    use {
+        crate::settings::Settings,
+        sunrise_client_gameplay::game::client_side::resource_load_client::StartupLoadContext,
+        sunrise_client_gameplay::game::client_side::resource_load_client::load_resources_sync,
+        sunrise_gameplay_common::game::Progress,
+        sunrise_gameplay_common::game::execution_role::ExecutionRole,
+        sunrise_gameplay_common::game::mods,
     };
 
     const CASE: &str = "SUNRISE_FAILED_STARTUP_PACK_RECOVERY_CASE";

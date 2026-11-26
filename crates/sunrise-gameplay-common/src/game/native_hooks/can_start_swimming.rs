@@ -3,29 +3,30 @@ use mod_api::SwimmingCheck;
 use sunrise_sim::{motion::SwimEntry, sprint};
 
 impl crate::game::CommonGame<'_> {
-
     pub fn has_swim_eligibility_listener(&self) -> bool {
         mod_api::__private::listened(mod_api::HookId::CanStartSwimming)
     }
-
 }
 
 pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// The first answer replaces the shared player swim predicate at this call site.
-     fn native_can_start_swimming(
+    fn native_can_start_swimming(
         &self,
         player: PlayerRef,
         side: LogicalSide,
         check: mod_api::SwimmingCheck,
         can_start_swimming: &mut Option<bool>,
     ) {
-        crate::game::native_hooks::fire::FireHooks::fire_can_start_swimming(self, player, side, check, can_start_swimming);
+        crate::game::native_hooks::fire::FireHooks::fire_can_start_swimming(
+            self,
+            player,
+            side,
+            check,
+            can_start_swimming,
+        );
     }
 
-     fn ask_swim_entry(
-        &self,
-        step: Option<SwimEntry>,
-    ) -> Option<(SwimEntry, bool)> {
+    fn ask_swim_entry(&self, step: Option<SwimEntry>) -> Option<(SwimEntry, bool)> {
         let step = step?;
         self.side_ask_swim_eligibility(SwimmingCheck::Entry)
             .map(|answer| (step, answer))
@@ -33,9 +34,7 @@ pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> GameHooks<'__sg> for G {}
 
-
 use crate::game::side_ops::modapi_hooks::ModapiHooksSideGameExt as _;
-
 
 pub trait SprintGameExt<'g>: crate::game::SideGame<'g> {
     /// `LocalPlayer.isSprintingPossible` asks about shallow water only once

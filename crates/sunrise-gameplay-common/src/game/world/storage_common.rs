@@ -7,10 +7,7 @@ use sunrise_level::containers::{BlockEntity, is_chest_block};
 impl crate::game::CommonGame<'_> {
     /// The other half of the open double chest and whether the open one is
     /// the right half (`ChestBlock.getConnectedDirection`).
-    pub fn chest_partner(
-        &self,
-        key: (i32, i32, i32),
-    ) -> Option<((i32, i32, i32), bool)> {
+    pub fn chest_partner(&self, key: (i32, i32, i32)) -> Option<((i32, i32, i32), bool)> {
         let registry = self.pack.assets.registry;
         let state = registry.state(self.world.block(key.0, key.1, key.2))?;
         if !is_chest_block(&state.name) {
@@ -28,10 +25,7 @@ impl crate::game::CommonGame<'_> {
         paired.then_some((other, own.kind == "right"))
     }
     /// The other half of a double chest at `key`, for neighbour updates.
-    pub fn chest_other_half(
-        &self,
-        key: (i32, i32, i32),
-    ) -> Option<(i32, i32, i32)> {
+    pub fn chest_other_half(&self, key: (i32, i32, i32)) -> Option<(i32, i32, i32)> {
         self.chest_partner(key).map(|p| p.0)
     }
     /// The block entities of the open container in menu order, with their

@@ -1,11 +1,9 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::{Authority, ChunkRef, DimensionKey, LevelRef};
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 
     /// #2906: the sections whose palette may hold a block, by section Y from the bottom, with a
     /// section whose only such block was replaced still named (`maybeHas` keeps the entry),
@@ -16,7 +14,11 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
         with_game(|game| {
             let key = |name: &str| mod_api::__private::block_key(name).unwrap();
             let (ore, emerald) = (key("minecraft:diamond_ore"), key("minecraft:emerald_ore"));
-            let id = |block| sunrise_gameplay_common::game::api_values::default_state(block).unwrap().0;
+            let id = |block| {
+                sunrise_gameplay_common::game::api_values::default_state(block)
+                    .unwrap()
+                    .0
+            };
             let mut column = sunrise_level::chunk::Chunk::empty(3, 4);
             // The vanilla column starts at Y -64: section index 2 is section Y -2, 5 is 1.
             std::sync::Arc::make_mut(&mut column.sections[2]).set(0, id(ore));
@@ -33,7 +35,8 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
             assert_eq!(chunk.sections_with_block(game, emerald), Some(vec![]));
             let unloaded = level.chunk_ref(game, [90_000, 90_000]).unwrap();
             assert_eq!(unloaded.sections_with_block(game, ore), None);
-            game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+            game.options.execution_role =
+                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
             assert_eq!(chunk.sections_with_block(game, ore), None);
         });
     }
@@ -65,7 +68,8 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
             assert_eq!(invalid.is_slime_chunk(game), None);
             let unopened = LevelRef::new(level.epoch(), DimensionKey::NETHER);
             assert_eq!(ChunkRef::new(unopened, [0, 0]).is_slime_chunk(game), None);
-            game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+                .unwrap();
             let nether = game.level("minecraft:the_nether").unwrap();
             game.level.seed = 0;
             let parked = ChunkRef::new(level, [-17, 29]);
@@ -75,7 +79,8 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
             assert_eq!(active.is_slime_chunk(game), Some(true));
             assert!(!game.world.chunks.contains_key(&far));
             // These handles are still current: refusal must be due to client role.
-            game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+            game.options.execution_role =
+                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
             assert_eq!(active.is_slime_chunk(game), None);
             assert_eq!(parked.is_slime_chunk(game), None);
             game.options.execution_role =

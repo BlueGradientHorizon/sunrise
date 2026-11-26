@@ -27,7 +27,11 @@ impl crate::game::ClientGame<'_> {
     }
     /// `CrafterScreen`'s background, disabled slots, powered arrow, and centred title.
     pub(in crate::game) fn draw_crafter_screen(&self, batch: &mut HudBatch, ox: f32, oy: f32) {
-        let Some(c) = self.common.container.and_then(|k| self.common.crafter_at(k)) else {
+        let Some(c) = self
+            .common
+            .container
+            .and_then(|k| self.common.crafter_at(k))
+        else {
             return;
         };
         // CrafterScreen draws the arrow from `menu.isPowered()`: data slot 9, the int, is 1.
@@ -70,10 +74,16 @@ impl crate::game::ClientGame<'_> {
     }
     /// `gui.togglable_slot` over an empty, enabled grid slot.
     pub(in crate::game::client_side) fn crafter_tooltip(&self, slot: usize) -> Option<String> {
-        let c = self.common.container.and_then(|k| self.common.crafter_at(k))?;
+        let c = self
+            .common
+            .container
+            .and_then(|k| self.common.crafter_at(k))?;
         let i = slot.checked_sub(300).filter(|i| *i < 9)?;
-        (self.common.carried.is_none() && c.items[i].is_none() && !c.disabled[i] && !self.common.spectator())
-            .then(|| self.translate_with_fallback("gui.togglable_slot", "Click to disable slot"))
+        (self.common.carried.is_none()
+            && c.items[i].is_none()
+            && !c.disabled[i]
+            && !self.common.spectator())
+        .then(|| self.translate_with_fallback("gui.togglable_slot", "Click to disable slot"))
     }
     /// A click in the crafter menu: `CrafterMenu` on the verified menu engine.
     #[allow(dead_code)]
@@ -103,7 +113,11 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         let i = slot - 300;
-        let Some(c) = self.common.container.and_then(|k| self.common.crafter_at(k)) else {
+        let Some(c) = self
+            .common
+            .container
+            .and_then(|k| self.common.crafter_at(k))
+        else {
             return;
         };
         if c.items[i].is_some() {

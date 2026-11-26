@@ -4,12 +4,19 @@
 //! already been seen by the wire next to it, which then ends as a cross, not a dot
 //! (tools/redstone_diff.py found it on vanilla 26.3 with two random circuits and reduced it to these
 //! four commands).
-use {crate::game::*, sunrise_gameplay_common::game::{BlockPos, Direction, Instant, Options, PathBuf, Progress, Resources, entity, execution_role}};
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{
+        BlockPos, Direction, Instant, Options, PathBuf, Progress, Resources, entity, execution_role,
+    },
+};
 
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::game::ServerGame<'_> {
+fn game(
+    resources: &mut Option<std::sync::Arc<Resources>>,
+) -> sunrise_gameplay::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),

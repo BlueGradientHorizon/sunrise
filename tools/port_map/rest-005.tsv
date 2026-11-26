@@ -100,7 +100,7 @@ Tutorial.start	inline	crates/sunrise-client-gameplay/src/game/interface/tutorial
 Tutorial.tick	port	crates/sunrise-client-gameplay/src/game/interface/tutorial.rs::Game::tick_tutorial	the step's tick, the movement input, and the look-at pick, once per tick in the world
 Tutorial.setStep	port	crates/sunrise-client/src/game/interface/tutorial.rs::Tutorial::set_step	the step with a fresh state; Game::persist_tutorial_step writes it to options.txt
 Tutorial.isSurvival	inline	crates/sunrise-client-gameplay/src/game/interface/tutorial.rs::Game::tick_tutorial	the game mode is read there and passed to Tutorial::tick, which stops the step outside survival
-TutorialSteps.getByName	port	crates/sunrise-client-render/src/options_file.rs::OptionsFile::try_apply	tutorialStep name read from options
+TutorialSteps.getByName	port	crates/sunrise-level/src/options_file.rs::OptionsFile::try_apply	tutorialStep name read from options
 ClientWaypointManager.updateWaypoint	port	crates/sunrise-client/src/locator_bar.rs::ClientWaypoints::apply	updates a tracked waypoint by id
 ClientWaypointManager.forEachWaypoint	port	crates/sunrise-client/src/locator_bar.rs::ClientWaypoints::draw	drawn farthest first
 ArgumentVisitor.visitArguments	port	crates/sunrise-gameplay/src/game/network/lan_chat.rs::Game::signable_arguments	collects the message arguments of a command

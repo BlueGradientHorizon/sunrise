@@ -191,10 +191,14 @@ impl ClientGame<'_> {
                 .pots
                 .retain(|[bx, _, bz], _| (*bx >> 4, *bz >> 4) != (x, z));
             sunrise_level::spans::time("replace_remote", || {
-                self.client.streaming.replace_remote(&mut self.common.world, chunk)
+                self.client
+                    .streaming
+                    .replace_remote(&mut self.common.world, chunk)
             });
         } else {
-            self.client.streaming.insert_remote(&mut self.common.world, chunk);
+            self.client
+                .streaming
+                .insert_remote(&mut self.common.world, chunk);
         }
         // Before any block entity joins: a state change before the first ticker pass (a campfire
         // lit) must find which states tick, to join the list at that moment, not at its place.
@@ -275,7 +279,8 @@ impl ClientGame<'_> {
                 log::warn!("Sunrise: biomes of chunk {x} {z}: {e}");
             }
         }
-        let mask = sunrise_level::section_mask::SectionMask::below(self.common.world.layout().sections());
+        let mask =
+            sunrise_level::section_mask::SectionMask::below(self.common.world.layout().sections());
         for data in &p.chunks {
             let [x, z] = data.pos;
             for dz in -1..=1 {

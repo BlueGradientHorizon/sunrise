@@ -89,7 +89,6 @@ pub struct Body {
 }
 
 impl crate::game::CommonGame<'_> {
-
     /// Index the first position of each moving piston in `block_ticks` and `world`.
     pub fn build_piston_index(&self) -> PistonIndex {
         let mut index = PistonIndex::default();
@@ -203,7 +202,7 @@ impl crate::game::CommonGame<'_> {
 
 pub trait PistonPushGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `Entity.move(mover, …)` for the local player in place, dispatched by role.
-     fn move_local_player(
+    fn move_local_player(
         &mut self,
         mover: MoverType,
         movement: Vec3,
@@ -213,13 +212,13 @@ pub trait PistonPushGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// Push whatever this tick's moving pistons ran into, dispatched by role.
-     fn push_piston_entities(&mut self, pushes: Vec<Push>) {
+    fn push_piston_entities(&mut self, pushes: Vec<Push>) {
         self.side_push_piston_entities(pushes);
     }
 
     /// `Entity.collide`'s `getEntityCollisions` for a body a piston or a
     /// shulker lid pushes.
-     fn pushed_entity_colliders(&self, target: MoveWho) -> Vec<Aabb> {
+    fn pushed_entity_colliders(&self, target: MoveWho) -> Vec<Aabb> {
         match target {
             MoveWho::Entity(EntityHandle::Boat(_) | EntityHandle::Cart(_)) => Vec::new(),
             MoveWho::Entity(handle) => {
@@ -232,13 +231,16 @@ pub trait PistonPushGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         }
     }
 
-     fn pushed_living_collision<'__loan>(
+    fn pushed_living_collision<'__loan>(
         &'__loan self,
         target: MoveWho,
     ) -> Option<(
         CollisionContext<'_>,
         sunrise_level::collisions::PowderSnowSubject<'_>,
-    )> where '__sg: '__loan {
+    )>
+    where
+        '__sg: '__loan,
+    {
         match target {
             MoveWho::Entity(EntityHandle::Mob(i)) => {
                 Some(self.mobs[i].support_collision(Some(&self.items().entity_type_tags)))
@@ -251,7 +253,6 @@ pub trait PistonPushGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> PistonPushGameExt1<'__sg> for G {}
-
 
 /// The lid's push: the swept box in world space (`Shulker.
 /// getProgressDeltaAabb`) and the movement out along the facing, the box's own

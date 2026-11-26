@@ -4,8 +4,7 @@ pub(in crate::game) mod tests {
     use mod_api::HostTransaction;
     use mod_api::{ENTITY_ITEMS, ItemResource, TransactionError};
     use sunrise_gameplay_common::game::{
-        api_values::TryIntoApi,
-        native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
+        api_values::TryIntoApi, native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
         transactions::TransactionsGameExt as _,
     };
     use sunrise_items::items::ItemStack;

@@ -1,4 +1,3 @@
-
 #[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
@@ -31,22 +30,19 @@ impl SideOps for crate::game::client_side::ClientState {
     ) -> Result<Option<Vec3>> {
         game.client_move_local_player(mover, movement, auto_jump)
     }
-    fn side_push_piston_entities(
-        game: &mut Self::Game<'_>,
-        pushes: Vec<piston_push::Push>,
-    ) {
+    fn side_push_piston_entities(game: &mut Self::Game<'_>, pushes: Vec<piston_push::Push>) {
         game.client_push_piston_entities(pushes)
     }
     fn side_carry_pass(game: &mut Self::Game<'_>, start: &Prepared) {
         game.client_carry_pass(start)
     }
 }
-use sunrise_gameplay_common::game::side_ops::blocks::SideOps;
-use sunrise_gameplay_common::game::piston_push;
-use sunrise_gameplay_common::game::stations_common;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::piston_push;
+use sunrise_gameplay_common::game::side_ops::blocks::SideOps;
+use sunrise_gameplay_common::game::stations_common;
 use sunrise_level::containers::BlockEntity;
 use sunrise_world::entity_move::MoverType;
 use sunrise_world::moving_colliders::Prepared;

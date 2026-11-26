@@ -1,31 +1,29 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-use mod_api::__private::game::Fields;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
-use sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest;
+    use mod_api::__private::game::Fields;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+    use sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest;
 
-use sunrise_gameplay_common::game::server_side::native_sound_refs::tests::packets;
+    use sunrise_gameplay_common::game::server_side::native_sound_refs::tests::packets;
 
-use sunrise_gameplay_common::game::lan_common::LanSettings;
+    use sunrise_gameplay_common::game::lan_common::LanSettings;
 
-use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::with_game;
 
-use mod_api::{SoundSource, WorldEpoch};
+    use mod_api::{SoundSource, WorldEpoch};
 
-use sunrise_core::geometry::Vec3;
+    use sunrise_core::geometry::Vec3;
 
-use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
+    use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
 
-use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
+    use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
 
-use sunrise_sim::mobs::Mob;
+    use sunrise_sim::mobs::Mob;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn sounds_reach_the_right_connections() {
         with_game(|game| {
@@ -139,7 +137,7 @@ use sunrise_sim::mobs::Mob;
             assert!(packets(&rx_far).is_empty());
         });
     }
-/// `Level.playSound` draws its seed at the call, from the level's own
+    /// `Level.playSound` draws its seed at the call, from the level's own
     /// sound-seed generator (`Level.soundSeedGenerator`), not the gameplay
     /// random; and a player exactly at the range edge is outside
     /// `PlayerList.broadcast`.

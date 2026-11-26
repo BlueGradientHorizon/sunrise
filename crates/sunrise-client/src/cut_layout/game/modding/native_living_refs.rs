@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use mod_api::LivingRef;
 use sunrise_items::items::ItemStack;
@@ -8,42 +6,42 @@ use sunrise_sim::mobs::Who;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt6;
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
-use sunrise_gameplay_common::game::tables::GameItems;
-use sunrise_gameplay_common::game::TryIntoApi;
-use sunrise_gameplay_common::game::block_props::BlockPropsGameExt2;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
-use mod_api::AttributeModifier;
+    use mod_api::AttributeModifier;
+    use sunrise_gameplay_common::game::TryIntoApi;
+    use sunrise_gameplay_common::game::block_props::BlockPropsGameExt2;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt6;
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+    use sunrise_gameplay_common::game::tables::GameItems;
+    use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 
-use mod_api::EquipmentSlot;
+    use mod_api::EquipmentSlot;
 
-use mod_api::client::first_person::Hand;
+    use mod_api::client::first_person::Hand;
 
-use sunrise_gameplay::game::commands::Target;
+    use sunrise_gameplay::game::commands::Target;
 
-use sunrise_gameplay::game::commands::items::Owner;
+    use sunrise_gameplay::game::commands::items::Owner;
 
-use sunrise_gameplay::game::living_attributes::AttributeWrite;
+    use sunrise_gameplay::game::living_attributes::AttributeWrite;
 
-use sunrise_gameplay::game::server_side::native_living_refs::slot_name;
+    use sunrise_gameplay::game::server_side::native_living_refs::slot_name;
 
-use sunrise_gameplay_common::game::server_side::native_living_refs::tests::ZOMBIE_NBT;
+    use sunrise_gameplay_common::game::server_side::native_living_refs::tests::ZOMBIE_NBT;
 
-use sunrise_gameplay_common::game::server_side::native_living_refs::tests::ZOMBIE_UUID;
+    use sunrise_gameplay_common::game::server_side::native_living_refs::tests::ZOMBIE_UUID;
 
-use sunrise_gameplay::game::server_side::native_living_refs::tests::hurt_pig;
+    use sunrise_gameplay::game::server_side::native_living_refs::tests::hurt_pig;
 
-use sunrise_gameplay::game::server_side::native_living_refs::tests::send_to_the_nether;
+    use sunrise_gameplay::game::server_side::native_living_refs::tests::send_to_the_nether;
 
-use sunrise_gameplay::game::server_side::native_living_refs::tests::summon_mob;
+    use sunrise_gameplay::game::server_side::native_living_refs::tests::summon_mob;
 
-use super::*;
+    use super::*;
 
-use sunrise_core::geometry::Vec3;
+    use sunrise_core::geometry::Vec3;
 
-/// The mod API keeps a written base in range; vanilla's own `setBaseValue` (`/attribute base set`) does not.
+    /// The mod API keeps a written base in range; vanilla's own `setBaseValue` (`/attribute base set`) does not.
     #[test]
     #[ignore = "daily"]
     fn a_mod_base_write_stays_in_range_and_a_vanilla_one_does_not() {
@@ -71,7 +69,7 @@ use sunrise_core::geometry::Vec3;
             }
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn durability_handle_and_held_path_share_rng_and_damage() {
         use mod_api::ServerHost;
@@ -173,7 +171,7 @@ use sunrise_core::geometry::Vec3;
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn armor_hit_matches_old_draws_and_break_order() {
         use sunrise_core::random::RandomSource;
@@ -219,7 +217,10 @@ use sunrise_core::geometry::Vec3;
                     stack.damage = stack.damage.saturating_add(loss).min(max);
                     if stack.damage >= max {
                         game.armor[index] = None;
-                        game.player_equipment_broke(sunrise_gameplay_common::game::armor_slot(index), &stack);
+                        game.player_equipment_broke(
+                            sunrise_gameplay_common::game::armor_slot(index),
+                            &stack,
+                        );
                         broken.push(index);
                     } else {
                         game.armor[index] = Some(stack);
@@ -244,7 +245,7 @@ use sunrise_core::geometry::Vec3;
             }
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn immutable_host_attribute_read_refreshes_live_cache() {
         use mod_api::Host;
@@ -299,7 +300,7 @@ use sunrise_core::geometry::Vec3;
             );
         });
     }
-/// The reads a handle answers about an entity's attributes: the type's
+    /// The reads a handle answers about an entity's attributes: the type's
     /// attribute ids, and one attribute's modifiers through the handle's own
     /// add, replace and remove writes.
     #[test]
@@ -423,7 +424,7 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(stand.attribute_modifiers(game, "minecraft:armor"), None);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn living_reads_answer_the_vanilla_defaults_and_a_gone_entity_reads_none() {
         use sunrise_core::geometry::Vec3;
@@ -439,7 +440,8 @@ use sunrise_core::geometry::Vec3;
                 .clone();
             game.mobs.push(Mob::new(12, zombie, Vec3::ZERO, 0.0));
             game.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
-            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon =
+                sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             // The eight dragon parts must not overlap the player at ID 20.
             dragon.id = 40;
             game.dragon.replace(dragon);
@@ -479,7 +481,7 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(dragon_handle.alive(game), None);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn kill_credit_prefers_the_player_reference_and_never_falls_back_when_unresolved() {
         use sunrise_core::geometry::Vec3;
@@ -539,7 +541,7 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(living.kill_credit(game), None);
         });
     }
-/// `EntityReference.getEntity` looks through every level: the zombie that
+    /// `EntityReference.getEntity` looks through every level: the zombie that
     /// hurt the pig keeps the credit after it crossed into the Nether under a
     /// new id, even with another mob holding its UUID in the pig's level.
     #[test]
@@ -577,7 +579,7 @@ use sunrise_core::geometry::Vec3;
             });
         });
     }
-/// A Nether mob already holds the zombie's UUID, so the zombie's copy is
+    /// A Nether mob already holds the zombie's UUID, so the zombie's copy is
     /// refused residency there: the credit names no one, not that other mob.
     #[test]
     #[ignore = "daily"]
@@ -594,7 +596,7 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(living.last_attacker(game), None);
         });
     }
-/// `last_hurt_by_mob` keeps naming a credited mob that is in another
+    /// `last_hurt_by_mob` keeps naming a credited mob that is in another
     /// loaded level: saved through the hundredth tick, not the next, and read
     /// back to the mob there.
     #[test]
@@ -639,7 +641,7 @@ use sunrise_core::geometry::Vec3;
             }
         });
     }
-/// `living_knockback`'s kill credit for a push that leaves the pig's credit
+    /// `living_knockback`'s kill credit for a push that leaves the pig's credit
     /// as it was: the zombie now in the Nether, and the sword it holds there.
     #[cfg(any())]
     #[test]
@@ -660,7 +662,8 @@ use sunrise_core::geometry::Vec3;
             send_to_the_nether(game, zombie);
             let living = game.living(game.entity(pig).unwrap()).unwrap();
             credited = living.kill_credit(game).unwrap().id() as i32;
-            let plan = game.prepare_knockback_credit(pig as i32, None, game.server.combat.0.attack());
+            let plan =
+                game.prepare_knockback_credit(pig as i32, None, game.server.combat.0.attack());
             let mut credit = plan.lend(&mut game.server.last_hurt_by_player);
             let i = game.mobs.iter().position(|m| m.id == pig).unwrap();
             let mob = &mut game.mobs[i];
@@ -683,7 +686,7 @@ use sunrise_core::geometry::Vec3;
             Some(&(credited, Some("minecraft:iron_sword".to_owned())))
         );
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_mobs_last_attacker_names_a_mob_the_host_and_none_when_displaced() {
         use sunrise_core::geometry::Vec3;
@@ -710,9 +713,10 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(pig_living.last_attacker(game).map(|a| a.id()), Some(15));
             // The host's hit, read in the host's own turn: the host's handle.
             game.mobs[0].ai.last_hurt_by = Some(Who::Player);
-            game.server
-                .last_hurt_by_player
-                .insert(12, sunrise_gameplay_common::game::combat_common::PlayerCredit(123));
+            game.server.last_hurt_by_player.insert(
+                12,
+                sunrise_gameplay_common::game::combat_common::PlayerCredit(123),
+            );
             assert_eq!(pig_living.last_attacker(game).map(|a| a.id()), Some(20));
             // The same record inside a guest's turn: the host's displaced
             // body is out of reach, so the attacker reads None.
@@ -721,7 +725,7 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(pig_living.last_attacker(game), None);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn set_health_can_store_zero() {
         use sunrise_core::geometry::Vec3;
@@ -741,7 +745,7 @@ use sunrise_core::geometry::Vec3;
             assert_eq!((accepted, living.health(game)), (true, Some(0.0)));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn set_health_journal_restores_nested_player_and_mob_writes() {
         use sunrise_core::geometry::Vec3;
@@ -811,7 +815,7 @@ use sunrise_core::geometry::Vec3;
             assert!(game.player.as_ref().unwrap().events.len() > events);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn set_health_journal_restores_zero_health_guest_outside_its_turn() {
         super::super::native_guest_turn_tests::with_guests(|game| {
@@ -835,7 +839,7 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(living.health(game), Some(before));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn heal_uses_the_vanilla_signed_sum() {
         use sunrise_core::geometry::Vec3;
@@ -857,7 +861,7 @@ use sunrise_core::geometry::Vec3;
         });
     }
     #[cfg(any())]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn absorbed_player_hit_still_remembers_the_living_attacker() {
         use sunrise_core::geometry::Vec3;
@@ -935,7 +939,7 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(attackers, vec![Some(15), Some(15)]);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn raw_health_write_can_change_a_dead_entity_but_heal_cannot() {
         use sunrise_core::geometry::Vec3;
@@ -967,7 +971,7 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(player_living.health(game), Some(10.0));
         });
     }
-/// `set_hand_item` writes the hand's equipment slot, as vanilla's
+    /// `set_hand_item` writes the hand's equipment slot, as vanilla's
     /// `setItemInHand` does: a player's selected slot or off hand, a mob's
     /// main or off hand; a stale handle writes nothing.
     #[test]
@@ -1043,22 +1047,24 @@ use sunrise_core::geometry::Vec3;
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn mob_equipment_writes_keep_full_stacks() {
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::mobs::gear;
         super::super::native_entity_refs::tests::with_game(|game| {
-            let expect_slot =
-                |game: &sunrise_gameplay::game::ServerGame<'_>, living, slot, expected: Option<&ItemStack>| {
-                    assert_eq!(
-                        game.living_equipment_stack(living, slot)
-                            .map(|stack| stack.project())
-                            .as_deref(),
-                        expected,
-                        "{slot:?}"
-                    );
-                };
+            let expect_slot = |game: &sunrise_gameplay::game::ServerGame<'_>,
+                               living,
+                               slot,
+                               expected: Option<&ItemStack>| {
+                assert_eq!(
+                    game.living_equipment_stack(living, slot)
+                        .map(|stack| stack.project())
+                        .as_deref(),
+                    expected,
+                    "{slot:?}"
+                );
+            };
             for (id, kind) in [
                 (12, "minecraft:zombie"),
                 (13, "minecraft:horse"),
@@ -1152,7 +1158,8 @@ use sunrise_core::geometry::Vec3;
                 Some(ItemStack::new("minecraft:air", 1))
             ));
             expect_slot(game, horse, EquipmentSlot::Body, None);
-            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon =
+                sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             // Reserve the dragon's eight consecutive part IDs away from the stand.
             dragon.id = 40;
             game.dragon.replace(dragon);
@@ -1178,7 +1185,8 @@ use sunrise_core::geometry::Vec3;
                 .as_ref()
                 .unwrap()
                 .to_nbt([0; 4], None, &Default::default());
-            let loaded = sunrise_gameplay_common::game::dragon_common::Dragon::from_nbt(&saved, 0).unwrap();
+            let loaded =
+                sunrise_gameplay_common::game::dragon_common::Dragon::from_nbt(&saved, 0).unwrap();
             assert_eq!(loaded.equipment, game.dragon.as_ref().unwrap().equipment);
             let stored = game.armor_stands.last().unwrap();
             let saved = sunrise_sim::entity_nbt::armor_stand_to_nbt(
@@ -1205,7 +1213,7 @@ use sunrise_core::geometry::Vec3;
             assert!(stale.get("equipment").is_none());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_wolf_throws_and_reads_tamed_and_owner() {
         use sunrise_core::geometry::Vec3;
@@ -1272,7 +1280,7 @@ use sunrise_core::geometry::Vec3;
             assert!(game.living_drop(stand, apple, false, false).is_none());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn player_mod_drop_and_drop_key_have_equivalent_motion() {
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -1316,7 +1324,7 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(key_velocity, mod_velocity);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn player_drop_spread_uses_the_players_random_even_when_cancelled() {
         use mod_api::{Flow, Hooks, ItemTossEvent, ModEntry, ServerHost};
@@ -1394,7 +1402,7 @@ use sunrise_core::geometry::Vec3;
             });
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn armor_stand_drop_does_not_swing() {
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -1414,7 +1422,7 @@ use sunrise_core::geometry::Vec3;
             assert!(game.dropped.is_empty());
         });
     }
-/// The living reads of #943 answer the engine's own decisions.
+    /// The living reads of #943 answer the engine's own decisions.
     #[test]
     #[ignore = "daily"]
     fn the_engines_own_portal_melee_freeze_and_air_answers() {
@@ -1548,7 +1556,7 @@ use sunrise_core::geometry::Vec3;
             }
         });
     }
-/// A sleeper's bed orientation is the bed block's own facing (#943):
+    /// A sleeper's bed orientation is the bed block's own facing (#943):
     /// the block at the sleeping position, where it is one of `#minecraft:beds`.
     #[test]
     #[ignore = "daily"]
@@ -1631,7 +1639,7 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(sleeper.bed_orientation(host), None);
         });
     }
-/// #943, review: a guest answers the same one portal rule over their
+    /// #943, review: a guest answers the same one portal rule over their
     /// body and vehicle (`can_use_portal_of`), not a hand-rolled copy.
     #[test]
     #[ignore = "daily"]
@@ -1693,7 +1701,7 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(living.can_use_portal(host), Some(false));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn armor_stand_first_tick_equipment_change_fires_after_base_tick() {
         use mod_api::{self, Hooks, LivingEquipmentChangeEvent, ModEntry, ServerHost};
@@ -1736,7 +1744,8 @@ use sunrise_core::geometry::Vec3;
                     game.start_audio_capture();
                     sunrise_gameplay::game::server_side::dispense_fixture::start_recording();
                     game.tick_armor_stands().unwrap();
-                    let events = sunrise_gameplay::game::server_side::dispense_fixture::stop_recording();
+                    let events =
+                        sunrise_gameplay::game::server_side::dispense_fixture::stop_recording();
                     assert_eq!(
                         game.armor_stands[0].equipment[5],
                         Some(ItemStack::new("minecraft:iron_helmet", 1)),
@@ -1753,7 +1762,7 @@ use sunrise_core::geometry::Vec3;
             },
         );
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn mob_equipment_writes_emit_vanilla_equip_events() {
         use sunrise_core::geometry::Vec3;
@@ -1809,7 +1818,7 @@ use sunrise_core::geometry::Vec3;
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn stand_and_dragon_equipment_writes_run_on_equip_item() {
         use sunrise_core::geometry::Vec3;
@@ -1821,7 +1830,8 @@ use sunrise_core::geometry::Vec3;
             let mut stand = sunrise_sim::entities::ArmorStand::new(16, Vec3::ZERO, 0.0);
             stand.id = 16;
             game.armor_stands.push(stand);
-            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon =
+                sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 17;
             game.dragon.replace(dragon);
             let stand = game.living(game.entity(16).unwrap()).unwrap();
@@ -1855,7 +1865,7 @@ use sunrise_core::geometry::Vec3;
             assert_eq!(count("minecraft:unequip"), 2);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn the_host_players_body_and_saddle_are_slots_and_saved_in_equipment() {
         super::super::native_entity_refs::tests::with_game(|game| {

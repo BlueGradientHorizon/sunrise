@@ -1,9 +1,9 @@
 use super::chat_common::PLAYER_NAME;
-use sunrise_gameplay_common::game::scoreboard_common::{pet_team, root_owner, tame_owner};
 use std::collections::HashMap;
 use sunrise_client::actions::Action;
 use sunrise_client::{hud::HudBatch, hud_layout, hud_overlays};
 use sunrise_game_data::scoreboard::{self as sb};
+use sunrise_gameplay_common::game::scoreboard_common::{pet_team, root_owner, tame_owner};
 use sunrise_sim::{lan::playerdata::ints_uuid, save::uuid_text};
 
 pub(in crate::game) fn tab_players_needed(shown: bool, changed: bool) -> bool {
@@ -42,7 +42,12 @@ impl crate::game::ClientGame<'_> {
             self.client.tab_list.0.set_visible(false);
             return;
         };
-        let has_objective = self.common.score.board.display_objective(sb::SLOT_LIST).is_some();
+        let has_objective = self
+            .common
+            .score
+            .board
+            .display_objective(sb::SLOT_LIST)
+            .is_some();
         let shown = tab_list::visible(
             // `Hud.extractRenderState` draws the list inside `if (!isHidden)`.
             !self.client.chat_ui.hide_gui,
@@ -91,7 +96,10 @@ impl crate::game::ClientGame<'_> {
             online_mode,
             gui_ticks: self.visual_ticks() as i64,
             // Sunrise has no "chat background only" option: vanilla's default (on).
-            background: tab_list::row_background(true, self.client.settings.text_background_opacity),
+            background: tab_list::row_background(
+                true,
+                self.client.settings.text_background_opacity,
+            ),
             upside_down: &up,
         };
         let draws = self
@@ -155,7 +163,11 @@ impl crate::game::ClientGame<'_> {
             return None;
         }
         self.client_team_with_owner(id, || {
-            self.common.mobs.iter().find(|m| m.id == id).and_then(tame_owner)
+            self.common
+                .mobs
+                .iter()
+                .find(|m| m.id == id)
+                .and_then(tame_owner)
         })
     }
     /// Client-side [`client_mob_team`](Self::client_mob_team) for a mob already in hand.
@@ -174,7 +186,8 @@ impl crate::game::ClientGame<'_> {
             return Default::default();
         }
         let tame_owners: HashMap<u32, [i32; 4]> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter_map(|m| Some((m.id, tame_owner(m)?)))
             .collect();
@@ -192,7 +205,8 @@ impl crate::game::ClientGame<'_> {
             player: self.client_player_team(),
             players,
             mobs: self
-                .common.persist
+                .common
+                .persist
                 .uuids
                 .keys()
                 .filter_map(|id| {
@@ -227,12 +241,14 @@ impl crate::game::ClientGame<'_> {
                 .and_then(|r| r.level_uuids.get(&ints_uuid(uuid)).copied())
                 .and_then(|id| u32::try_from(id).ok())
                 .or_else(|| {
-                    self.common.persist
+                    self.common
+                        .persist
                         .uuids
                         .iter()
                         .find_map(|(&id, &u)| (u == uuid).then_some(id))
                 })?;
-            self.common.mobs
+            self.common
+                .mobs
                 .iter()
                 .find(|m| m.id == pet && m.extra.tame)?
                 .extra
@@ -254,7 +270,8 @@ impl crate::game::ClientGame<'_> {
                 return Some(uuid_text(root));
             }
         }
-        self.common.persist
+        self.common
+            .persist
             .uuids
             .values()
             .any(|&u| u == root)

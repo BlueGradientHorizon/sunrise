@@ -1,7 +1,7 @@
-use std::sync::Arc;
 use super::*;
-use sunrise_gameplay::game::lan::LanHost;
 use crate::game::native_hooks::build_creative_mode_tab_contents::tests::definition;
+use std::sync::Arc;
+use sunrise_gameplay::game::lan::LanHost;
 use sunrise_sim::lan::{
     Lan, NetConfig,
     chunks::ChunkEncoder,

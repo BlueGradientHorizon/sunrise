@@ -2,9 +2,9 @@
 //! hand clicked on a hanging sign's free side chains another sign onto it, unless
 //! the side the player faces carries click commands, which the click runs instead
 //! (`shouldTryToChainAnotherHangingSign`).
-use sunrise_gameplay_common::game::Hit;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::game::Hit;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
 use sunrise_level::signs_data::SignData;
@@ -88,7 +88,8 @@ fn click_sign(
             0.5 + 0.5 * f64::from(face[2]),
         ],
     };
-    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = Some(Vec::new()));
+    sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS
+        .with(|events| *events.borrow_mut() = Some(Vec::new()));
     // The player caused it (`GameEvent.Context.of(player, state)`).
     game.with_player_actor(|game| game.use_hand(Some(&hit)))
         .unwrap();

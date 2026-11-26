@@ -1,7 +1,10 @@
-use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{C, Chunk, Vec3, play}};
 use std::sync::mpsc::Receiver;
 use sunrise_protocol::buf::Reader;
 use sunrise_sim::lan::Out;
+use {
+    crate::game::remote::*,
+    sunrise_gameplay_common::game::remote::{C, Chunk, Vec3, play},
+};
 
 pub const OWNER: u32 = 12;
 pub const START: Vec3 = Vec3::new(4.5, 64.0, 4.5);

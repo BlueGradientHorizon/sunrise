@@ -1,13 +1,13 @@
 //! `/data merge entity` (and a mod's `EntityRef::merge_nbt`) on an arrow, a spectral arrow
 //! and a trident: `Entity.load` with `AbstractArrow.readAdditionalSaveData` over the
 //! resident entity.
-use sunrise_gameplay_common::game::commands_common::Target;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 use crate::game::resource_load::load_resources;
 use crate::settings::Settings;
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_sim::arrows::Pickup;
 use sunrise_sim::projectiles::ProjectileKind;
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 
 /// What `entity_merge_nbt` does: the saved compound, `nbt` merged in, loaded back.
 fn merge(game: &mut sunrise_gameplay::game::ServerGame<'_>, target: Target, nbt: Tag) {
@@ -37,7 +37,8 @@ fn a_merge_reloads_an_arrows_own_save_data() {
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,

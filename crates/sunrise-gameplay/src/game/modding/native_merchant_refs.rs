@@ -182,7 +182,9 @@ impl crate::game::ServerGame<'_> {
         let Some(mob) = self.native_merchant_index(merchant) else {
             return false;
         };
-        if self.lan_trade_conn(self.common.mobs[mob].id).is_none() && !self.common.mobs[mob].extra.flag2 {
+        if self.lan_trade_conn(self.common.mobs[mob].id).is_none()
+            && !self.common.mobs[mob].extra.flag2
+        {
             self.ensure_offers(mob);
         }
         self.merchant_write(mob, |offers, _, _| {
@@ -343,30 +345,20 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use sunrise_gameplay_common::game::api_values::{StackReadError, TryIntoApi, TryIntoEngine};
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::WorldEpoch;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::api_values::{StackReadError, TryIntoApi, TryIntoEngine};
     use sunrise_items::items::ItemStack;
     use sunrise_sim::{merchant::ItemCost, mobs::Mob};
 
-    
-
-    pub fn spawn(
-        game: &mut crate::game::ServerGame<'_>,
-        id: u32,
-        kind: &str,
-    ) -> MerchantRef {
+    pub fn spawn(game: &mut crate::game::ServerGame<'_>, id: u32, kind: &str) -> MerchantRef {
         let kind = game.res.mob_types().get(kind).unwrap().clone();
         game.mobs.push(Mob::new(id, kind, Vec3::ZERO, 0.0));
         let entity = game.entity(id).unwrap();
         game.merchant(entity).unwrap()
     }
-
-    
-
-    
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;

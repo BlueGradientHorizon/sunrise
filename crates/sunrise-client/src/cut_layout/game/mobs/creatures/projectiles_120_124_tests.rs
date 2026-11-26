@@ -1,10 +1,10 @@
 //! Witness-driven parity tests for projectile gaps #120-#124 against vanilla 26.3.
-use sunrise_gameplay_common::game::commands_common::Target;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::{LegacyRandom, RandomSource};
+use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_sim::mobs::{Who, leash::Holder};
 use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 
@@ -203,7 +203,11 @@ pub(crate) fn setup_game<'a>(
         sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::new(4.5, 64.0, 17.5)).unwrap();
     player.client_loaded = true;
     game.player = Some(player);
-    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player(&mut game, 1, (413u128 << 96) | 1);
+    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player(
+        &mut game,
+        1,
+        (413u128 << 96) | 1,
+    );
     game.level.health = 20.0;
     game.creative = false;
     game.build_registries();

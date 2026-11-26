@@ -1672,10 +1672,7 @@ impl crate::game::ClientGame<'_> {
     /// can't see them. One request out at a time. None until the answer comes,
     /// outside a screen that takes recipes, and on a server that doesn't advertise
     /// `sunrise:recipe_check`.
-    pub fn transfer_recipe_check(
-        &mut self,
-        recipe: &str,
-    ) -> Option<RecipeTransferCheck> {
+    pub fn transfer_recipe_check(&mut self, recipe: &str) -> Option<RecipeTransferCheck> {
         let eligible_menu = self.mod_recipe_screen()
             || (self.client.screen == Screen::Inventory
                 && !self.common.spectator()

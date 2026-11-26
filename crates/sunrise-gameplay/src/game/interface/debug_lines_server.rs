@@ -29,7 +29,10 @@ impl ServerGame<'_> {
         // PersistentEntitySectionManager's known and visible entities, its
         // sections, the chunks it loaded and sees, and its two queues
         // (Sunrise loads a chunk's entities with it: both stay empty).
-        let (entities, loaded) = (self.common.debug_entity_count(), self.common.world.chunks.len());
+        let (entities, loaded) = (
+            self.common.debug_entity_count(),
+            self.common.world.chunks.len(),
+        );
         let chunks = Some((loaded, entities, self.common.debug_entity_sections()));
         ServerDebug {
             heights,

@@ -1,8 +1,8 @@
-use sunrise_protocol::packets::Empty;
-use sunrise_protocol::packets::play::Serverbound as S;
 use super::*;
 use sunrise_client_gameplay::game::remote::riptide_tests::OWNER;
 use sunrise_protocol::connection::ConnReader;
+use sunrise_protocol::packets::Empty;
+use sunrise_protocol::packets::play::Serverbound as S;
 use sunrise_sim::lan::guest::InboxItem;
 
 /// Transfer the client's real play packets to the integrated server's normal

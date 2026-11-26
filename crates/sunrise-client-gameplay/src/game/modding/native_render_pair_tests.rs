@@ -169,7 +169,9 @@ fn two_entities_are_asked_in_the_draw_queues_order() {
     let heard = Arc::default();
     with_pair(&heard, |game| {
         game.client.pack_ids = Some(Default::default());
-        game.common.mobs.push(mob(game, "minecraft:zombie", 91, 0.0));
+        game.common
+            .mobs
+            .push(mob(game, "minecraft:zombie", 91, 0.0));
         admit_own_player(game, false);
         game.common.mobs.push(mob(game, "minecraft:cow", 92, 2.0));
         let (out, ..) = game.entity_geometry(CAMERA, 1.0, None, Vec::new(), &mut Vec::new());
@@ -219,7 +221,9 @@ fn a_spectator_following_an_entity_submits_no_local_body() {
         game.connect_local(pipe, "Steve").unwrap();
         admit_own_player(game, true);
         game.mode = GameMode::Spectator;
-        game.common.mobs.push(mob(game, "minecraft:zombie", 91, 0.0));
+        game.common
+            .mobs
+            .push(mob(game, "minecraft:zombie", 91, 0.0));
         game.handle_packet(Clientbound::SetCamera(SetCamera { camera_id: 91 }))
             .unwrap();
         assert!(!game.controls_camera());
@@ -267,9 +271,7 @@ pub(in crate::game) fn witness_body(id: u32, start: usize, end: usize) {
     }
 }
 
-pub fn capture_body_witnesses<T>(
-    draw: impl FnOnce() -> T,
-) -> (T, Vec<BodyWitness>) {
+pub fn capture_body_witnesses<T>(draw: impl FnOnce() -> T) -> (T, Vec<BodyWitness>) {
     BODY_WITNESSES.with_borrow_mut(|witnesses| *witnesses = Some(Vec::new()));
     let output = draw();
     let witnesses = BODY_WITNESSES.with_borrow_mut(|witnesses| witnesses.take().unwrap());
@@ -541,7 +543,9 @@ fn a_canceled_living_pre_skips_the_model_and_the_post_hook() {
     }
     let heard: Arc<Mutex<Heard>> = Arc::default();
     with_pair(&heard, |game| {
-        game.common.mobs.push(mob(game, "minecraft:zombie", 91, 0.0));
+        game.common
+            .mobs
+            .push(mob(game, "minecraft:zombie", 91, 0.0));
         let drawn = mob_frame(game);
         assert!(drawn.len() > 4, "its model, beside the marker");
         events(&heard);
@@ -588,11 +592,13 @@ fn a_canceled_entity_draws_no_name_tag() {
 
 /// A stone floor under the origin, so a standing entity has something to cast a shadow on.
 fn place_stone_floor(game: &mut crate::game::ClientGame<'_>) {
-    game.common.world
+    game.common
+        .world
         .chunks
         .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
     let stone = game
-        .common.pack
+        .common
+        .pack
         .assets
         .registry
         .default_state("minecraft:stone")
@@ -684,7 +690,9 @@ fn a_culled_entity_is_asked_neither_hook() {
     let heard: Arc<Mutex<Heard>> = Arc::default();
     with_pair(&heard, |game| {
         // Far past any render distance.
-        game.common.mobs.push(mob(game, "minecraft:zombie", 91, 100_000.0));
+        game.common
+            .mobs
+            .push(mob(game, "minecraft:zombie", 91, 100_000.0));
         let out = mob_frame(game);
         assert_eq!(events(&heard), Vec::<String>::new());
         assert_eq!(markers(&out), 0);

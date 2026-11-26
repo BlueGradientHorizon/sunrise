@@ -2,12 +2,12 @@
 //! menu's storage slots and one by the inventory's (an optional key sorts the part under the
 //! cursor). The clicks come from `inv_sort::plan` and go through the Mouse Tweaks' ordinary slot
 //! clicks (`mouse_tweaks.rs`), so they work wherever vanilla's do.
-use sunrise_gameplay_common::game::Screen;
 use sunrise_client::{
     creative::Creative,
     hud::{HudBatch, rgba},
     keybinds,
 };
+use sunrise_gameplay_common::game::Screen;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::{inv_sort, menu::Input};
@@ -47,7 +47,9 @@ impl crate::game::ClientGame<'_> {
         let container: Vec<usize> = self
             .slots()
             .into_iter()
-            .filter(|&s| sunrise_gameplay_common::game::inventory_slots::container_slot_index(s).is_some())
+            .filter(|&s| {
+                sunrise_gameplay_common::game::inventory_slots::container_slot_index(s).is_some()
+            })
             .collect();
         if chest_like && !container.is_empty() {
             buttons.push(((160.0, 5.0), container));

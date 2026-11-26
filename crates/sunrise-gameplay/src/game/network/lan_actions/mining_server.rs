@@ -68,7 +68,8 @@ impl crate::game::ServerGame<'_> {
         };
         if play.last_progress >= 0
             && self
-                .common.res
+                .common
+                .res
                 .facts()
                 .is_air(self.common.world.block(pos[0], pos[1], pos[2]))
         {
@@ -104,7 +105,8 @@ impl crate::game::ServerGame<'_> {
         };
         let ticks = host.hub.ticks;
         let air = self
-            .common.res
+            .common
+            .res
             .facts()
             .is_air(self.common.world.block(pos[0], pos[1], pos[2]));
         let per_tick = if !air

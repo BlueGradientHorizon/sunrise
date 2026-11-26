@@ -50,7 +50,8 @@ impl ClientGame<'_> {
             return height;
         }
         if self
-            .common.station
+            .common
+            .station
             .as_ref()
             .is_some_and(|s| s.kind == sunrise_gameplay_common::game::stations_common::Kind::Beacon)
         {

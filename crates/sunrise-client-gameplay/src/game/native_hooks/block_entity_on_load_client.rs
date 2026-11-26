@@ -12,7 +12,8 @@ impl crate::game::ClientGame<'_> {
         };
         let mut remaining = self.common.world.block_entities.pending_on_load_len();
         while let Some((pos, generation)) = self
-            .common.world
+            .common
+            .world
             .block_entities
             .next_on_load_in_batch(&mut remaining)
         {

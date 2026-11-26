@@ -81,7 +81,8 @@ geometry. A layer that returns an `Err` or panics is logged once with the error
 and asked no more until the next resource load adds it again; what it drew that frame is dropped. The layers draw on the mobs (vanilla's and the content mods'
 living types) and the players; the armour stand and the ender dragon take them once their own draws run
 layers, in a follow-up of #860, which lifts their refusal."#]
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::register_entity_layers::native_register_entity_layers", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::register_entity_layers::native_register_entity_layers",
         receiver = "associated",
         dispatch = "flat",
         side = "client",

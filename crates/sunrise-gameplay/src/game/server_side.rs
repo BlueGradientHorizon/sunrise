@@ -221,9 +221,6 @@ pub(in crate::game) mod level_sounds;
 pub(in crate::game) mod level_tick;
 #[path = "world/levels.rs"]
 pub mod levels;
-#[cfg(any(test, feature = "test-support"))]
-#[path = "world/world_session.rs"]
-mod world_session;
 #[path = "entities/lightning_server.rs"]
 pub(in crate::game) mod lightning_server;
 #[path = "mobs/living_attributes.rs"]
@@ -320,9 +317,6 @@ pub(in crate::game) mod native_entity_moves;
 pub(in crate::game) mod native_entity_physics;
 #[path = "modding/native_entity_refs.rs"]
 pub mod native_entity_refs;
-#[cfg(any(test, feature = "test-support"))]
-#[path = "modding/native_guest_turn_tests.rs"]
-pub mod native_guest_turn_tests;
 #[path = "modding/native_entity_remove.rs"]
 pub(in crate::game) mod native_entity_remove;
 #[path = "modding/native_entity_riding.rs"]
@@ -345,6 +339,9 @@ pub(in crate::game) mod native_fishing_hook_refs;
 pub(in crate::game) mod native_game_event_context;
 #[path = "modding/native_goal_ticks/mod.rs"]
 pub mod native_goal_ticks;
+#[cfg(any(test, feature = "test-support"))]
+#[path = "modding/native_guest_turn_tests.rs"]
+pub mod native_guest_turn_tests;
 #[path = "modding/native_hanging.rs"]
 pub(in crate::game) mod native_hanging;
 #[path = "modding/native_harvest_queries.rs"]
@@ -362,11 +359,11 @@ pub(in crate::game) mod native_level_border;
 pub mod native_level_effects;
 #[path = "modding/native_level_events.rs"]
 pub(in crate::game) mod native_level_events;
+#[path = "modding/native_level_items.rs"]
+pub mod native_level_items;
 #[cfg(test)]
 #[path = "modding/native_level_notify_tests.rs"]
 mod native_level_notify_tests;
-#[path = "modding/native_level_items.rs"]
-pub mod native_level_items;
 #[path = "modding/native_level_players.rs"]
 pub mod native_level_players;
 #[path = "modding/native_level_refs.rs"]
@@ -624,6 +621,9 @@ pub(in crate::game) mod wither;
 pub(in crate::game) mod world_fluids;
 #[path = "world/world_loading.rs"]
 pub mod world_loading;
+#[cfg(any(test, feature = "test-support"))]
+#[path = "world/world_session.rs"]
+mod world_session;
 #[path = "world/world_update_server.rs"]
 pub(in crate::game) mod world_update_server;
 #[path = "mobs/xp_orb_targeting.rs"]
@@ -785,11 +785,11 @@ pub(in crate::game) mod native_level_weather;
 pub(in crate::game) mod native_living_absorption_server;
 #[path = "modding/native_living_body_server.rs"]
 pub(in crate::game) mod native_living_body_server;
-#[path = "modding/native_menu_refs_server.rs"]
-pub(in crate::game) mod native_menu_refs_server;
 #[cfg(test)]
 #[path = "modding/native_menu_drop_tests.rs"]
 mod native_menu_drop_tests;
+#[path = "modding/native_menu_refs_server.rs"]
+pub(in crate::game) mod native_menu_refs_server;
 #[path = "modding/native_mob_navigation.rs"]
 pub mod native_mob_navigation;
 #[path = "modding/native_player_attack.rs"]
@@ -1031,8 +1031,7 @@ pub struct ServerState {
     /// The next enter_dimension call comes from an End portal.
     pub(in crate::game::server_side) end_portal_travel: bool,
     pub(in crate::game::server_side) tick_scratch: TickScratch,
-    pub tick_chunks:
-        sunrise_sim::tick_chunk_membership::TickChunkMembership,
+    pub tick_chunks: sunrise_sim::tick_chunk_membership::TickChunkMembership,
     /// Worn armor as of the last equipment check (frost walker).
     pub(in crate::game::server_side) location_armor: [Option<ItemStack>; 4],
     /// The boats a mob's lead can hang on, for this tick's mob ticks.
@@ -1063,8 +1062,7 @@ pub struct ServerState {
     pub(in crate::game::server_side) creaking: creaking::CreakingState,
     /// Reused candidate buffers for natural spawning.
     pub(in crate::game::server_side) spawn_scratch: natural_spawning::SpawnScratch,
-    pub hoppers:
-        HashMap<(i32, i32, i32), sunrise_gameplay_common::hoppers::HopperState>,
+    pub hoppers: HashMap<(i32, i32, i32), sunrise_gameplay_common::hoppers::HopperState>,
     /// The source of the running dispenser behaviour, including across mod callbacks.
     pub(in crate::game::server_side) dispense_source: Option<dispenser::DispenseSource>,
     /// Open mod menus whose `menu_slot_changed` dispatch is currently on the call stack.
@@ -1096,12 +1094,10 @@ pub struct ServerState {
     pub level_shapes: sunrise_level::chunk::LevelShapes,
     /// `IntegratedServer`'s single-player profile, fixed when the server thread is created,
     /// before its startup hooks (game/modding/native_singleplayer_owner.rs). None elsewhere.
-    pub singleplayer_profile:
-        Option<native_singleplayer_owner::SingleplayerProfile>,
+    pub singleplayer_profile: Option<native_singleplayer_owner::SingleplayerProfile>,
     /// `StructureTemplateManager.structureRepository`: the templates in memory
     /// by id, a miss included (game/administration/structure_blocks.rs).
-    pub structure_templates:
-        HashMap<String, Option<structure_blocks::TemplateEntry>>,
+    pub structure_templates: HashMap<String, Option<structure_blocks::TemplateEntry>>,
     pub(in crate::game::server_side) structure_spawns:
         sunrise_sim::mobs::spawn_selection::StructureSpawns,
     /// `test_defs` holds the world's whole test instance registry
@@ -1227,8 +1223,7 @@ pub struct ServerState {
     /// sent once it returns (`send_admin_feedback`), each with the guest whose
     /// command it was (`commandSource() != source`): None for a block, a
     /// minecart, the console or the host.
-    pub admin_feedback:
-        Vec<(sunrise_game_data::text::Text, Option<u32>)>,
+    pub admin_feedback: Vec<(sunrise_game_data::text::Text, Option<u32>)>,
     /// The server console is running a command: whether its feedback goes to
     /// the operators (`DedicatedServer.shouldInformAdmins`,
     /// `broadcast-console-to-ops`).
@@ -1237,8 +1232,7 @@ pub struct ServerState {
     /// (`RconConsoleSource.createCommandSourceStack`), not `Server`.
     pub rcon_source: bool,
     pub bosses: bossbars::BossState,
-    pub rand_sequences:
-        sunrise_items::random_sequences::RandomSequences,
+    pub rand_sequences: sunrise_items::random_sequences::RandomSequences,
     /// `BrushableBlockEntity`'s brush counts of the blocks being brushed.
     pub(in crate::game::server_side) brushing: brush::Brushing,
     pub(in crate::game::server_side) restore_player_state: bool,
@@ -1246,11 +1240,9 @@ pub struct ServerState {
     pub(in crate::game::server_side) pending_guest_ui: acting_state::ServerPendingGuestUi,
     pub audio_capture_active: bool,
     pub pending_sounds: Vec<sunrise_game_data::sound_source::ServerSound>,
-    pub pending_particles:
-        Vec<sunrise_sim::lan::server_effects::ServerQueuedParticle>,
+    pub pending_particles: Vec<sunrise_sim::lan::server_effects::ServerQueuedParticle>,
     pub(in crate::game) pending_explosions: Vec<sunrise_sim::lan::server_effects::ServerExplosion>,
-    pub pending_native_sounds:
-        Vec<sunrise_gameplay_common::game::creatures::NativeSound>,
+    pub pending_native_sounds: Vec<sunrise_gameplay_common::game::creatures::NativeSound>,
     pub effect_rng: sunrise_core::random::LegacyRandom,
     pub sculk: sculk_server::SculkState,
 
@@ -1259,23 +1251,20 @@ pub struct ServerState {
     pub(in crate::game::server_side) player_autosaves:
         ServerOnly<sunrise_sim::lan::playerdata::Autosaves>,
     pub session_lock: ServerShared<Option<sunrise_sim::save::SessionLock>>,
-    pub paused_mob_hurt:
-        ServerOnly<Option<Box<sunrise_sim::mobs::PausedMobHurt>>>,
+    pub paused_mob_hurt: ServerOnly<Option<Box<sunrise_sim::mobs::PausedMobHurt>>>,
     pub raiding: ServerOnly<raids::Raiding>,
     /// The world's data packs' content tables, when it has packs (`None`
     /// keeps `Resources.rest`'s own in use).
     pub world_tables: ServerShared<Option<WorldTables>>,
     /// Server-owned loot and item snapshots, independent of client preloads.
-    pub server_loot:
-        ServerOnly<sunrise_sim::structure_blocks::LootSnapshot>,
+    pub server_loot: ServerOnly<sunrise_sim::structure_blocks::LootSnapshot>,
     /// A server's levels other than the one in place (game/world/levels.rs).
     pub levels: ServerOnly<levels::Levels>,
     pub tickets: ServerShared<sunrise_sim::ticket_levels::ChunkTickets>,
     pub(in crate::game::server_side) random_tick_sections:
         ServerOnly<sunrise_sim::random_tick_sections::RandomTickSections>,
     /// Entities of types Sunrise does not simulate.
-    pub others:
-        ServerShared<sunrise_sim::join_seq::ResidentList<commands::OtherEntity>>,
+    pub others: ServerShared<sunrise_sim::join_seq::ResidentList<commands::OtherEntity>>,
     /// Item entities spawned and block entities removed while the block
     /// behaviour ran (spilled contents, popped resources).
     pub spill: ServerOnly<spill_common::Spill>,
@@ -1293,8 +1282,7 @@ pub struct ServerState {
     pub native_commands:
         ServerOnly<sunrise_gameplay_common::game::native_server::NativeCommandState>,
     /// Other players in the current guest turn, including borrowed ancestor bodies.
-    pub lan_building_boxes:
-        ServerOnly<building_players::BuildingPlayers>,
+    pub lan_building_boxes: ServerOnly<building_players::BuildingPlayers>,
     /// Bodies and their statistics displaced by guest turns, outer first.
     pub(in crate::game::server_side) lan_displaced_players:
         ServerOnly<Vec<lan_actions_server::DisplacedPlayer>>,
@@ -1303,16 +1291,14 @@ pub struct ServerState {
         ServerOnly<std::sync::Arc<sunrise_gameplay_common::game::native_server::FakeAction>>,
     /// A dedicated server's operator, whitelist and ban lists, for `/op`,
     /// `/ban` and friends (`DedicatedPlayerList`).
-    pub server_lists:
-        ServerOnly<Option<std::sync::Arc<std::sync::Mutex<dedicated::Lists>>>>,
+    pub server_lists: ServerOnly<Option<std::sync::Arc<std::sync::Mutex<dedicated::Lists>>>>,
     /// State of `/spectate`, `/posteffect`, `/debug`, `/waypoint` and friends.
     pub cmds: ServerOnly<commands::extra::CommandExtras>,
     /// The retained server reload listeners of the last successful reload.
     pub(in crate::game::server_side) reload_resources: ServerOnly<mod_api::RetainedListeners>,
     pub combat: ServerOnly<combat::CombatTracker>,
     /// Each guest's own `CombatTracker`, out of `combat` between turns.
-    pub guest_combat:
-        ServerOnly<std::collections::HashMap<u32, combat::CombatTracker>>,
+    pub guest_combat: ServerOnly<std::collections::HashMap<u32, combat::CombatTracker>>,
     pub fns: ServerOnly<functions::FnState>,
     pub exec: ServerOnly<commands::execute::ExecState>,
     pub(in crate::game::server_side) profile_resolver:

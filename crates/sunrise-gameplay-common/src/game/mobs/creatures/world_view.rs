@@ -5,8 +5,7 @@ use crate::game::GameGameExt1 as _;
 /// Side-specific inputs supplied to [`Game::mob_world_base_with`] by server or client.
 pub struct MobWorldSideParams<'s> {
     pub side: &'s dyn sunrise_sim::motion::SideLevel,
-    pub trading_players:
-        Option<&'s dyn sunrise_sim::mobs::villager_brain::TradingPlayers>,
+    pub trading_players: Option<&'s dyn sunrise_sim::mobs::villager_brain::TradingPlayers>,
     pub player: Option<PlayerView>,
     pub player_identity: Option<([i32; 4], u32)>,
     pub leash_boats: &'s [(u32, sunrise_sim::mobs::leash::HolderState)],
@@ -23,11 +22,14 @@ pub struct MobWorldSideParams<'s> {
 }
 
 pub trait WorldViewExt<'__sg>: crate::game::SideGame<'__sg> {
-     fn mob_world_base_with<'s>(
+    fn mob_world_base_with<'s>(
         &'s self,
         others: &'s [Seen],
         params: MobWorldSideParams<'s>,
-    ) -> MobWorld<'s> where '__sg: 's {
+    ) -> MobWorld<'s>
+    where
+        '__sg: 's,
+    {
         let (rain, thunder) = self.weather_levels(1.0);
         let weather = self.can_have_weather();
         let nearest_player = params
@@ -118,7 +120,7 @@ pub trait WorldViewExt<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `Level.getEntity`: revenge goals must resolve the dragon too.
-     fn dragon_target(&self) -> Option<(u32, sunrise_sim::mobs::TargetInfo)> {
+    fn dragon_target(&self) -> Option<(u32, sunrise_sim::mobs::TargetInfo)> {
         let d = self.dragon.as_ref().filter(|d| d.alive())?;
         let p = d.position;
         let bounds = Aabb::new(
@@ -142,7 +144,6 @@ pub trait WorldViewExt<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, T: crate::game::SideGame<'__sg>> WorldViewExt<'__sg> for T {}
-
 
 use crate::game::tables::GameItems as _;
 

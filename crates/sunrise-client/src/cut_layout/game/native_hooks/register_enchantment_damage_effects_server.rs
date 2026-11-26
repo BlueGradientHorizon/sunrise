@@ -1,16 +1,14 @@
-
-
 #![cfg(test)]
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::tables::GameItems;
-use super::*;
-    use sunrise_gameplay_common::game::native_hooks::register_enchantment_damage_effects::tests::Observations;
-    use sunrise_gameplay_common::game::native_hooks::register_enchantment_damage_effects::tests::TestMod;
+    use super::*;
     use mod_api::ModEntry;
     use mod_platform::testing::with_mods;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::native_hooks::register_enchantment_damage_effects::tests::Observations;
+    use sunrise_gameplay_common::game::native_hooks::register_enchantment_damage_effects::tests::TestMod;
+    use sunrise_gameplay_common::game::tables::GameItems;
     use sunrise_sim::{mobs::Mob, motion::PlayerMotion};
 
     #[test]
@@ -95,7 +93,9 @@ use super::*;
                     player.entity_id = 7;
                     player.ground.on_ground = true;
                     game.player = Some(player);
-                    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player(game, 7, 1);
+                    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player(
+                        game, 7, 1,
+                    );
                     game.server.lan_acting_uuid = Some(1);
                     game.server.lan_acting_entity = Some(7);
                     game.server.lan_acting_name = Some("attacker".into());

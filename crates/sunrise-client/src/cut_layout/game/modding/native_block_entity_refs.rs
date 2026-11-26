@@ -1,36 +1,34 @@
-
-
 #![cfg(test)]
-use mod_api::BlockEntityError;
 use mod_api::__private::game::player_ref;
+use mod_api::BlockEntityError;
 use sunrise_core::nbt::Tag;
 use sunrise_level::containers::BlockEntity;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use mod_api::HostTransaction;
-use sunrise_gameplay_common::game::{
-    native_block_entity_read::NativeBlockEntityReadGameExt1 as _,
-    native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
-    native_server::NativeServerGameExt1 as _,
-};
-use sunrise_gameplay_common::game::server_side::native_block_entity_refs::tests::compound;
+    use mod_api::HostTransaction;
+    use sunrise_gameplay_common::game::server_side::native_block_entity_refs::tests::compound;
+    use sunrise_gameplay_common::game::{
+        native_block_entity_read::NativeBlockEntityReadGameExt1 as _,
+        native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
+        native_server::NativeServerGameExt1 as _,
+    };
 
-use super::*;
+    use super::*;
 
-use mod_api::LevelRef;
+    use mod_api::LevelRef;
 
-use mod_api::ServerHost;
+    use mod_api::ServerHost;
 
-use mod_api::TransactionError;
+    use mod_api::TransactionError;
 
-use std::sync::Arc;
+    use std::sync::Arc;
 
-use sunrise_level::{chunk::Chunk, containers::ModBlockEntityFields};
+    use sunrise_level::{chunk::Chunk, containers::ModBlockEntityFields};
 
-use sunrise_sim::lan::menu::Slots;
+    use sunrise_sim::lan::menu::Slots;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn player_opens_provider_and_refuses_non_provider() {
         use mod_api::*;
@@ -226,13 +224,25 @@ use sunrise_sim::lan::menu::Slots;
             game.server.lan = host;
             let mut guest = game.server.lan.as_mut().unwrap().hub.guests.remove(0);
             guest.kind = sunrise_sim::lan::guest::GuestKind::Fake;
-            game.server.lan.as_mut().unwrap().hub.guests.insert(0, guest);
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .insert(0, guest);
             // Fake players have no client menu. This is a refusal, not a hook cancellation.
             assert_eq!(game.open_block_menu(12, (0, 64, 0)), MenuOpen::Refused);
             assert!(!player.open_menu(game, chest).unwrap());
             let mut guest = game.server.lan.as_mut().unwrap().hub.guests.remove(0);
             guest.kind = sunrise_sim::lan::guest::GuestKind::Network;
-            game.server.lan.as_mut().unwrap().hub.guests.insert(0, guest);
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .hub
+                .guests
+                .insert(0, guest);
             assert!(player.open_menu(game, chest).unwrap());
             assert_eq!(chest.lock(game), None);
             assert!(chest.set_lock(game, Some(Compound::new())).unwrap());
@@ -315,11 +325,11 @@ use sunrise_sim::lan::menu::Slots;
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn viewers_follow_open_menus_per_level_and_leave_out_fake_players() {
-        use sunrise_gameplay_common::game::Dim;
         use mod_api::{BlockUpdateFlags, EntityRef, Host};
+        use sunrise_gameplay_common::game::Dim;
         use sunrise_world::chunk::BlockState;
         super::super::native_guest_turn_tests::with_guests(|game| {
             game.options.dedicated = Some(Vec::new());
@@ -327,28 +337,29 @@ use sunrise_sim::lan::menu::Slots;
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
             let level = game.level("minecraft:overworld").unwrap();
-            let chest = |game: &mut sunrise_gameplay::game::ServerGame<'_>, level, x: i32, kind: &str| {
-                let state = game
-                    .pack
-                    .assets
-                    .registry
-                    .resolve(&BlockState {
-                        name: "minecraft:chest".into(),
-                        properties: [
-                            ("facing".into(), "north".into()),
-                            ("type".into(), kind.into()),
-                            ("waterlogged".into(), "false".into()),
-                        ]
-                        .into_iter()
-                        .collect(),
-                    })
-                    .unwrap();
-                assert_eq!(
-                    game.level_set_block(level, [x, 64, 0], state, BlockUpdateFlags::NEIGHBORS),
-                    Ok(true)
-                );
-                game.block_entity(level, [x, 64, 0]).unwrap()
-            };
+            let chest =
+                |game: &mut sunrise_gameplay::game::ServerGame<'_>, level, x: i32, kind: &str| {
+                    let state = game
+                        .pack
+                        .assets
+                        .registry
+                        .resolve(&BlockState {
+                            name: "minecraft:chest".into(),
+                            properties: [
+                                ("facing".into(), "north".into()),
+                                ("type".into(), kind.into()),
+                                ("waterlogged".into(), "false".into()),
+                            ]
+                            .into_iter()
+                            .collect(),
+                        })
+                        .unwrap();
+                    assert_eq!(
+                        game.level_set_block(level, [x, 64, 0], state, BlockUpdateFlags::NEIGHBORS),
+                        Ok(true)
+                    );
+                    game.block_entity(level, [x, 64, 0]).unwrap()
+                };
             let single = chest(game, level, 0, "single");
             let left = chest(game, level, 6, "left");
             let right = chest(game, level, 7, "right");
@@ -428,7 +439,7 @@ use sunrise_sim::lan::menu::Slots;
             assert_eq!(right.viewers(game), None);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn writes_merge_data_name_and_roll_back_with_a_transaction() {
         use super::super::native_entity_refs::tests::{run_fresh_cases, with_game_at};

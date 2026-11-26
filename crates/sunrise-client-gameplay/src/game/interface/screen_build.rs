@@ -641,14 +641,15 @@ impl crate::game::ClientGame<'_> {
         // The container screens' layout is a build input: the frame's own
         // state, and the mods' effects answer, compared here so the panels and
         // the exclusion never disagree by a frame.
-        let container = (shown && matches!(self.client.screen, Screen::Inventory | Screen::Creative))
-            .then(|| {
-                let batch = sunrise_client::hud::HudBatch::new(
-                    framebuffer,
-                    self.client.settings.gui_scale_inputs(),
-                );
-                self.container_layout_inputs(&batch)
-            });
+        let container = (shown
+            && matches!(self.client.screen, Screen::Inventory | Screen::Creative))
+        .then(|| {
+            let batch = sunrise_client::hud::HudBatch::new(
+                framebuffer,
+                self.client.settings.gui_scale_inputs(),
+            );
+            self.container_layout_inputs(&batch)
+        });
         let container = container.and_then(|inputs| {
             let unchanged = self
                 .client
@@ -831,11 +832,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// The build's chat layout, when it holds `(width, height)`.
-    pub fn built_chat(
-        &self,
-        width: f32,
-        height: f32,
-    ) -> Option<&ChatLayout> {
+    pub fn built_chat(&self, width: f32, height: f32) -> Option<&ChatLayout> {
         self.client
             .screen_state
             .0

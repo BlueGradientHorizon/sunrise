@@ -1,6 +1,9 @@
-use {sunrise_gameplay::game::server_side::commands::data::DataRef, sunrise_gameplay_common::game::commands_common::Target};
 use std::path::PathBuf;
 use sunrise_core::nbt::{Tag, parse_snbt};
+use {
+    sunrise_gameplay::game::server_side::commands::data::DataRef,
+    sunrise_gameplay_common::game::commands_common::Target,
+};
 
 pub(crate) fn load_witness() -> String {
     let raw = std::env::var_os("SUNRISE_EYE_ITEM_WITNESS").unwrap_or_else(|| {

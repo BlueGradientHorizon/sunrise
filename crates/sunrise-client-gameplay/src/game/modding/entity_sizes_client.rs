@@ -1,7 +1,7 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::entity_sizes_common::synced_pose;
 use mod_api::Pose;
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_gameplay_common::game::entity_sizes_common::synced_pose;
 use sunrise_sim::pose::SizeAnswer;
 
 impl ClientGame<'_> {
@@ -64,8 +64,8 @@ impl ClientGame<'_> {
         if !mod_api::__private::listened(mod_api::HookId::EntitySize) {
             return None;
         }
-        let vanilla =
-            super::entity_type_rows::entity_type_rows(&self.common.options.resources).dimensions(kind)?;
+        let vanilla = super::entity_type_rows::entity_type_rows(&self.common.options.resources)
+            .dimensions(kind)?;
         self.ask_entity_size(id, Pose::Standing, vanilla, None)
     }
 
@@ -123,7 +123,8 @@ impl ClientGame<'_> {
             return;
         };
         let Some(answers) = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map(|body| self.body_fit_sizes(id, body, body.size_answer))
         else {
@@ -148,7 +149,8 @@ impl ClientGame<'_> {
             return;
         };
         let Some(answer) = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .and_then(|body| self.ask_body_size(id, body))
         else {
@@ -215,9 +217,7 @@ impl ClientGame<'_> {
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
     /// The F3+B outline's white edges: their lowest and highest corner.
-    pub fn white_outline(
-        game: &mut crate::game::ClientGame<'_>,
-    ) -> ([f64; 3], [f64; 3]) {
+    pub fn white_outline(game: &mut crate::game::ClientGame<'_>) -> ([f64; 3], [f64; 3]) {
         // F3+B, on entries with no file behind them: nothing is saved.
         game.client.debug_entries.0 = sunrise_client::debug_entries::DebugEntries::default();
         game.client
@@ -243,6 +243,5 @@ pub mod tests {
 }
 
 use sunrise_gameplay_common::game::entity_sizes_common::EntitySizesCommonGameExt1 as _;
-
 
 use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;

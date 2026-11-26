@@ -1,7 +1,7 @@
 //! A dispenser emptying a filled bucket, or a mod container item whose `empty_contents` Part
 //! empties it.
-use crate::game::ServerGame;
 use super::dispenser::{CLICK, Dispensed, FAIL, Pos, offset};
+use crate::game::ServerGame;
 use sunrise_core::geometry::Direction;
 use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;

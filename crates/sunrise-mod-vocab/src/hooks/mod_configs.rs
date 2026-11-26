@@ -62,7 +62,8 @@ pub trait Hooks {
     /// game quits. Receives the stopping game's [`ServerHost`], before the
     /// final save and teardown. A panic disables only that mod’s unload callback,
     /// not other listeners or the rest of teardown. Live writes outside a journal stand.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::mod_configs::ServerGame<'_>::native_config_unloading", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::mod_configs::ServerGame<'_>::native_config_unloading",
         dispatch = "flat",
         side = "server",
         contract = "listen",

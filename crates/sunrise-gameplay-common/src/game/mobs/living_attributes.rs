@@ -1,22 +1,22 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use super::*;
+    use super::*;
 
-use sunrise_items::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
-use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetime};
+    use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetime};
 
-pub fn stack(item: &str) -> Option<ItemStack> {
+    pub fn stack(item: &str) -> Option<ItemStack> {
         Some(ItemStack::new(item, 1))
     }
-pub fn modifier(id: &str, amount: f64, operation: AttributeOperation) -> AttributeModifier {
+    pub fn modifier(id: &str, amount: f64, operation: AttributeOperation) -> AttributeModifier {
         AttributeModifier::new(Identifier::parse(id).unwrap(), amount, operation)
     }
-/// The ids of the modifiers a saved `attributes` list holds.
-    pub fn saved_ids<'a>(list: impl IntoIterator<Item = &'a sunrise_core::nbt::Tag>) -> Vec<String> {
+    /// The ids of the modifiers a saved `attributes` list holds.
+    pub fn saved_ids<'a>(
+        list: impl IntoIterator<Item = &'a sunrise_core::nbt::Tag>,
+    ) -> Vec<String> {
         use sunrise_core::nbt::Tag;
         use sunrise_game_data::nbt_value::text;
         list.into_iter()
@@ -26,12 +26,12 @@ pub fn modifier(id: &str, amount: f64, operation: AttributeOperation) -> Attribu
             })
             .collect()
     }
-#[cfg(test)]
-/// Plates every chestplate with +0.4 knockback resistance and no armor
+    #[cfg(test)]
+    /// Plates every chestplate with +0.4 knockback resistance and no armor
     /// toughness (`item_attribute_modifier`).
     struct Plated;
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for Plated {
         fn item_attribute_modifier(&self, event: &mut mod_api::ItemAttributeModifierEvent<'_>) {
             if !mod_api::__private::item_key_id(event.stack.item())

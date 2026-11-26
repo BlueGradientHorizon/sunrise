@@ -1,15 +1,18 @@
-use sunrise_gameplay_common::game::Hit;
-use sunrise_items::items::ItemStack;
-use sunrise_protocol::packets::play;
-use sunrise_protocol::packets::play::Serverbound as S;
 use super::*;
 use crate::game::lan_actions::crack_feedback_tests::cracks;
 use crate::game::lan_actions::crack_feedback_tests::observer;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
 use std::sync::Arc;
+use sunrise_gameplay_common::game::Hit;
+use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
+use sunrise_protocol::packets::play;
+use sunrise_protocol::packets::play::Serverbound as S;
 use sunrise_sim::lan::{NetConfig, hub::HubConfig};
 use sunrise_world::registry::BlockStateId;
+use {
+    crate::game::load_resources, crate::settings::Settings, sunrise_gameplay_common::game::Options,
+    sunrise_gameplay_common::game::Progress,
+};
 
 pub(crate) fn run_crack_packets_follow_start_clock_and_strict_observer_radius() {
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -29,7 +32,8 @@ pub(crate) fn run_crack_packets_follow_start_clock_and_strict_observer_radius() 
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,

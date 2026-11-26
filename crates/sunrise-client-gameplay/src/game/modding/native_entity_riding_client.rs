@@ -1,5 +1,5 @@
-use sunrise_gameplay_common::game::remote::passengers::passenger_root;
 use mod_api::EntityRef;
+use sunrise_gameplay_common::game::remote::passengers::passenger_root;
 
 impl crate::game::ClientGame<'_> {
     /// What the entity rides (`Entity.getVehicle`), if its vehicle has a handle.

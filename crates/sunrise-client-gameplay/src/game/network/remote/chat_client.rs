@@ -1,15 +1,15 @@
 use super::*;
+use sunrise_client::chat::{ChatSource, Tag as ChatTag};
 use sunrise_gameplay_common::game::remote::chat::ChatTrust;
 use sunrise_gameplay_common::game::remote::chat::Decoration;
 use sunrise_gameplay_common::game::remote::chat::chat_type_decorate;
-use sunrise_client::chat::{ChatSource, Tag as ChatTag};
 
 pub(in crate::game) trait ChatTrustClientExt: Sized {
-fn tag(&self) -> Option<ChatTag>;
+    fn tag(&self) -> Option<ChatTag>;
 }
 impl ChatTrustClientExt for ChatTrust {
     /// `ChatTrustLevel.createTag`.
-     fn tag(&self) -> Option<ChatTag> {
+    fn tag(&self) -> Option<ChatTag> {
         match self {
             Self::Secure => None,
             Self::Modified(original) => Some(ChatTag::modified(original)),

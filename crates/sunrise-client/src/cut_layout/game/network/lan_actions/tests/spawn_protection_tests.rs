@@ -1,5 +1,8 @@
 #![cfg(test)]
-use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::server_side::lan::world_spawn_sync_tests::host_for};
+use {
+    sunrise_gameplay::game::server_side::lan::world_spawn_sync_tests::host_for,
+    sunrise_gameplay_common::game::execution_role::ExecutionRole,
+};
 
 /// `DedicatedServer.isUnderSpawnProtection` is the dedicated server's. The integrated server
 /// thread keeps the launch configuration (`options.dedicated`) too, so it cannot be what turns

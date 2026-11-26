@@ -1,6 +1,6 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::native_passages::{HeldRefusal, MAX_PER_LEVEL, check, passage};
 use mod_api::PassageId;
+use sunrise_gameplay_common::game::native_passages::{HeldRefusal, MAX_PER_LEVEL, check, passage};
 use sunrise_protocol::passage_sync::{Message, PassageForm};
 
 impl ClientGame<'_> {

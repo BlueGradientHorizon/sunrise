@@ -14,7 +14,8 @@ impl ClientGame<'_> {
     /// instance reads about the mob the player rides.
     pub(in crate::game::client_side) fn start_riding_sound(&mut self) -> Option<RiddenSound> {
         let ridden = self
-            .common.riding
+            .common
+            .riding
             .and_then(|id| self.common.mobs.iter().find(|m| m.id == id && !m.removed))
             .map(|m| {
                 let species = m.species();
@@ -140,7 +141,8 @@ impl ClientGame<'_> {
     /// sound loop starts (`SnifferSoundInstance`).
     pub(in crate::game::client_side) fn start_sniffer_digging_sound(&mut self, id: u32) {
         let Some(m) = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .find(|m| m.id == id && m.species() == Species::Sniffer)
         else {

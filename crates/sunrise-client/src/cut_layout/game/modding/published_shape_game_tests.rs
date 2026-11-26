@@ -1,10 +1,13 @@
 //! #1666: a content block whose block entity publishes its shapes
 //! (`shapes_from_block_entity`), on a game over the prepared resources.
-use sunrise_gameplay_common::game::GameGameExt1;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
 use mod_api::*;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::GameGameExt1;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+};
 
 pub(super) const BUS: &str = "shapes:bus";
 /// A flagged block on a template with a dynamic shape and a random outline offset
@@ -35,7 +38,8 @@ pub(super) fn with_bus(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame
         sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
         mod_api::__private::mark_game_thread();
         let base = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
         with_game_at(root.prepared().to_path_buf(), |game| {
             game.options.dedicated = Some(Vec::new());
             game.world
@@ -69,7 +73,11 @@ pub(super) fn place(
 }
 
 /// Places [`BUS`] at `pos` in the level in place and publishes `shapes` from its block entity.
-fn publish(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: [i32; 3], shapes: BlockEntityShapes) {
+fn publish(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    pos: [i32; 3],
+    shapes: BlockEntityShapes,
+) {
     let entity = place(game, BUS, pos);
     assert_eq!(game.block_entity_set_shapes(entity, Some(shapes)), Ok(true));
 }

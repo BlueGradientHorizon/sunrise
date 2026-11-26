@@ -2,18 +2,20 @@
 //! (`ResourceOrHolderArgument`): the same `Feature.place` as a named one,
 //! reported by `commands.place.feature.success.inline`. The expected results
 //! and messages are vanilla 26.3's (tools/test_place_feature_inline_parity.py).
+use super::*;
+use crate::game::load_resources;
+use std::sync::Arc;
+use sunrise_client::settings::Settings;
+use sunrise_gameplay_common::game::Resources;
 #[cfg(test)]
 use sunrise_gameplay_common::game::execution_role;
-use sunrise_client::settings::Settings;
 use sunrise_gameplay_common::game::launch_options::Options;
 use sunrise_gameplay_common::game::resource_load::Progress;
-use crate::game::load_resources;
-use sunrise_gameplay_common::game::Resources;
-use super::*;
-use std::sync::Arc;
 use sunrise_level::chunk::Chunk;
 
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::game::ServerGame<'_> {
+fn game(
+    resources: &mut Option<std::sync::Arc<Resources>>,
+) -> sunrise_gameplay::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),

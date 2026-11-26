@@ -217,7 +217,8 @@ impl crate::game::ClientGame<'_> {
     ) {
         let mut screen = BlockEditScreen::new(pos, editor);
         let opening = self
-            .common.world
+            .common
+            .world
             .block_entities
             .get(&pos)
             .map(|entity| screen.editor.opened(entity, pos))
@@ -266,7 +267,8 @@ impl crate::game::ClientGame<'_> {
     ) -> Option<R> {
         let mut screen = self.client.block_editor.0.take()?;
         let result = self
-            .common.world
+            .common
+            .world
             .block_entities
             .get_mut(&screen.pos)
             .map(|entity| f(&mut screen, entity));
@@ -442,8 +444,7 @@ impl crate::game::ClientGame<'_> {
         let cursor = self.client.cursor;
         let shift = self.has_shift_down();
         let alt = self.client.keys.raw(&KeyCode::AltLeft);
-        let atlas_click = |game: &crate::game::ClientGame<'_>,
-                           edit: &mut EditBox| {
+        let atlas_click = |game: &crate::game::ClientGame<'_>, edit: &mut EditBox| {
             edit.click(&game.client.gui.atlas, cursor.0, false, false);
         };
         let Some(items) = self.with_block_editor(|s, e| s.editor.items(e, b.width, b.height))

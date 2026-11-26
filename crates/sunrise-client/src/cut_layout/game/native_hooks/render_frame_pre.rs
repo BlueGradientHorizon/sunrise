@@ -1,10 +1,6 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
-    use sunrise_client_gameplay::game::native_hooks::particle_count_tests::frame_scene;
     use mod_api::{
         ClientHost, Hooks, ModEntry, RenderFramePostEvent, RenderFramePreEvent,
         RenderLevelStageEvent,
@@ -14,7 +10,12 @@ pub(crate) mod tests {
         time::Duration,
     };
     use sunrise_client::title::Title;
+    use sunrise_client_gameplay::game::native_hooks::particle_count_tests::frame_scene;
     use sunrise_sim::clock::FixedStep;
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    };
 
     #[derive(Default)]
     struct Heard {
@@ -63,7 +64,8 @@ pub(crate) mod tests {
                 game.clock.set_frozen(false);
                 game.clock.end_frame(false);
                 let elapsed = Duration::from_secs_f64(1.0 / 60.0);
-                let frame = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, world: bool| {
+                let frame = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                             world: bool| {
                     game.clock.advance(elapsed, 50.0);
                     game.extras_frame(elapsed);
                     // A clock change after pre cannot change the captured draw/post value.

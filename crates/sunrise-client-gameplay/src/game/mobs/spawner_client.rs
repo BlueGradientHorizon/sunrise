@@ -56,7 +56,10 @@ impl ClientGame<'_> {
             let x = at.x + w * (2.0 * r.next_double() - 1.0) - xa * 10.0;
             let y = at.y + h * r.next_double() - ya * 10.0;
             let z = at.z + w * (2.0 * r.next_double() - 1.0) - za * 10.0;
-            self.client.particles.0.add(&options, [x, y, z], [xa, ya, za]);
+            self.client
+                .particles
+                .0
+                .add(&options, [x, y, z], [xa, ya, za]);
         }
     }
     /// `LevelEventHandler` 2004: twenty smoke and flame pairs around the spawner.
@@ -90,7 +93,9 @@ impl ClientGame<'_> {
                 let d = (p.position.x - center[0]).powi(2)
                     + (p.position.y - center[1]).powi(2)
                     + (p.position.z - center[2]).powi(2);
-                !p.health.dead_or_dying() && !self.common.spectator() && (range < 0.0 || d < range * range)
+                !p.health.dead_or_dying()
+                    && !self.common.spectator()
+                    && (range < 0.0 || d < range * range)
             })
         };
         let display = self.update_spawner_display(key);
@@ -144,7 +149,8 @@ impl ClientGame<'_> {
             BlockEntity::Spawner(s) => s.next_data()?.id()?,
             BlockEntity::TrialSpawner(s) => {
                 let block = self
-                    .common.pack
+                    .common
+                    .pack
                     .assets
                     .registry
                     .state(self.common.world.block(key.0, key.1, key.2))?;
@@ -178,12 +184,10 @@ impl ClientGame<'_> {
         // A shader pack's shadow pass draws a block entity only in the sections it draws
         // (`Renderer::shadow_pass_block_entities`, #8464): a spawner's mob out of the view and
         // out of those sections isn't drawn, where it would have gone to the shadow pass alone.
-        let shadow_sections = self
-            .client
-            .renderer
-            .0
-            .as_ref()
-            .filter(|_| self.client.pack_ids.is_some() && self.client.occlusion.0.shadow_casters.0);
+        let shadow_sections =
+            self.client.renderer.0.as_ref().filter(|_| {
+                self.client.pack_ids.is_some() && self.client.occlusion.0.shadow_casters.0
+            });
         for (key, (_, mob)) in &self.client.spawners.0.displays {
             let at = glam::DVec3::new(f64::from(key.0), f64::from(key.1), f64::from(key.2));
             if !Reach::Default.should_render([key.0, key.1, key.2], camera, 0) {

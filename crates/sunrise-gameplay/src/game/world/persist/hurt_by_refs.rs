@@ -58,7 +58,12 @@ impl ServerGame<'_> {
                 if !mob.alive() {
                     return None;
                 }
-                return self.common.resident_entities.table.borrow_mut().resident_uuid(id);
+                return self
+                    .common
+                    .resident_entities
+                    .table
+                    .borrow_mut()
+                    .resident_uuid(id);
             }
             id = self.server.levels.0.travelled(id)?;
         }
@@ -72,7 +77,8 @@ impl ServerGame<'_> {
     /// and does not exclude the holder).
     pub fn resolve_last_hurt_by_refs(&mut self) {
         let resolved: Vec<(usize, Who)> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .enumerate()
             .filter_map(|(i, m)| {
@@ -96,7 +102,8 @@ impl ServerGame<'_> {
             let mut after = None;
             loop {
                 let next = self
-                    .common.resident_entities
+                    .common
+                    .resident_entities
                     .table
                     .borrow_mut()
                     .level_uuid_candidate(dim.key(), uuid, after);

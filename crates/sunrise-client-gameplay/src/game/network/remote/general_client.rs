@@ -7,10 +7,10 @@
 //! extraction retains the published generation, not the live synced holder. The row's behaviour
 //! is the server's.
 use super::{Lerp, Remote};
-use sunrise_gameplay_common::game::general::general_type_catalog;
 use indexmap::IndexMap;
 use std::collections::HashMap;
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_gameplay_common::game::general::general_type_catalog;
 use sunrise_mod_runtime::attachments::{Attachments, Holder};
 use sunrise_protocol::general_entity::{self, Message};
 use sunrise_sim::join_seq::JoinSeq;
@@ -144,7 +144,8 @@ impl crate::game::ClientGame<'_> {
             }
         };
         let row = RemoteGeneral::new(type_slot, uuid, position, rotation, render_attachments);
-        self.common.persist
+        self.common
+            .persist
             .uuids
             .insert(id as u32, sunrise_sim::lan::playerdata::uuid_ints(uuid));
         // Tracked: the id-keyed move, position sync, teleport and removal handlers apply.

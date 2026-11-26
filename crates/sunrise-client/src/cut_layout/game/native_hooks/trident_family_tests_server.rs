@@ -1,4 +1,3 @@
-use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use crate::game::native_hooks::trident_family_tests::Probe;
 use crate::game::native_hooks::trident_family_tests::Seen;
 use mod_api::ModEntry;
@@ -6,6 +5,10 @@ use std::sync::{Arc, Mutex};
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 pub(crate) fn fixture(
     run: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Arc<Mutex<Seen>>),

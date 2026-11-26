@@ -8,9 +8,9 @@ use super::*;
 #[ignore = "daily"]
 fn an_end_crystal_click_on_a_block_ends_there() {
     crate::game::native_entity_refs::tests::with_client_game(|game| {
-        use sunrise_gameplay_common::game::Hit;
         use std::sync::Arc;
         use sunrise_core::geometry::Vec3;
+        use sunrise_gameplay_common::game::Hit;
         use sunrise_protocol::packets::play;
         use {
             sunrise_level::chunk::Chunk, sunrise_sim::first_person_sim::Hand,
@@ -78,9 +78,13 @@ fn an_end_crystal_click_on_a_block_ends_there() {
 #[test]
 #[ignore = "daily"]
 fn flint_and_steel_use_on_ends_the_click() {
-    use sunrise_gameplay_common::game::Hit;
-    use {sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, crate::game::load_resources};
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::Hit;
+    use {
+        crate::game::load_resources, crate::settings::Settings, sunrise_client_lib::audio::Audio,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        sunrise_gameplay_common::game::execution_role::ExecutionRole,
+    };
     use {sunrise_sim::first_person_sim::Hand, sunrise_sim::motion::PlayerMotion};
 
     let root = std::path::PathBuf::from(

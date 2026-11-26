@@ -62,12 +62,7 @@ impl ServerGame<'_> {
     /// `BlockItem.updateCustomBlockEntityTag` and `updateBlockEntityComponents`
     /// for the block entity just placed at `pos` from `stack`; `game_master`:
     /// the placer can use game master blocks (a dispenser can't).
-    pub fn apply_placed_item(
-        &mut self,
-        pos: [i32; 3],
-        stack: &ItemStack,
-        game_master: bool,
-    ) {
+    pub fn apply_placed_item(&mut self, pos: [i32; 3], stack: &ItemStack, game_master: bool) {
         let key = (pos[0], pos[1], pos[2]);
         self.common.pending.clear(pos);
         let state = self.common.world.block(pos[0], pos[1], pos[2]);

@@ -1,9 +1,9 @@
 //! The player's `CombatTracker`: the damage taken lately, who dealt it and
 //! where the player fell from, turned into the vanilla death message.
 use super::commands_common::Target;
-use sunrise_gameplay_common::game::combat_common::{DROWN_EVENT, PlayerCredit};
 #[cfg(test)]
 use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::combat_common::{DROWN_EVENT, PlayerCredit};
 use {
     sunrise_game_data::text::Text, sunrise_level::particle_options::ParticleType,
     sunrise_sim::health::Attack, sunrise_sim::health::HealthEvent, sunrise_sim::mobs::Damage,
@@ -248,11 +248,7 @@ impl crate::game::ServerGame<'_> {
     /// skipped. Mob victims take their attack explicitly (`DamageLevel::attacked_by`); this is
     /// the one implicit scope left, because the player-victim path (`hurt_player_from`,
     /// `mob_hits_player`) has ~30 callers that would all pass it through.
-    pub fn with_attack<R>(
-        &mut self,
-        attack: Attack,
-        f: impl FnOnce(&mut Self) -> R,
-    ) -> R {
+    pub fn with_attack<R>(&mut self, attack: Attack, f: impl FnOnce(&mut Self) -> R) -> R {
         let outer = std::mem::replace(&mut self.server.combat.0.attack, attack);
         let result = f(self);
         self.server.combat.0.attack = outer;
@@ -286,7 +282,8 @@ impl crate::game::ServerGame<'_> {
     /// A mob's drowning tick (`MobEvent::Drown`).
     pub(in crate::game::server_side) fn mob_drown(&mut self, mob: u32, at: [f64; 3], bubbles: i32) {
         let v = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .find(|m| m.id == mob)
             .map_or([0.0; 3], |m| [m.velocity.x, m.velocity.y, m.velocity.z]);
@@ -545,7 +542,8 @@ impl crate::game::ServerGame<'_> {
         self.server.combat.0.noted_since = None;
         self.server.combat.0.projectile_direct = None;
         self.server.combat.0.projectile_attacker = None;
-        self.server.combat.0.fall_before = self.common.player.as_ref().map_or(0.0, |p| p.fall_distance);
+        self.server.combat.0.fall_before =
+            self.common.player.as_ref().map_or(0.0, |p| p.fall_distance);
     }
     /// `FallLocation.getCurrentFallLocation` and the fall distance so far.
     pub(in crate::game::server_side) fn fall_location(&self) -> (Option<&'static str>, f32) {
@@ -555,7 +553,8 @@ impl crate::game::ServerGame<'_> {
         let distance = p.fall_distance.max(self.server.combat.0.fall_before) as f32;
         let location = if let Some(c) = p.last_climbable {
             let name = self
-                .common.res
+                .common
+                .res
                 .facts()
                 .get(self.common.world.block(c.x, c.y, c.z))
                 .name
@@ -672,7 +671,8 @@ impl crate::game::ServerGame<'_> {
             return Text::translate("death.attack.generic", &[me]);
         };
         let def = self
-            .common.health_resources
+            .common
+            .health_resources
             .damage
             .id(&killing.damage_type)
             .and_then(|id| self.common.health_resources.damage.definition(id))
@@ -769,7 +769,8 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         if !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SHOW_DEATH_MESSAGES)
         {
@@ -804,11 +805,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `CombatTracker.getDeathMessage` for a mob, from the hits it recorded
     /// (`Mob::combat`), told the way the player's own tracker tells them.
-    pub fn mob_death_message(
-        &mut self,
-        m: &Mob,
-        killer: Option<Option<u32>>,
-    ) -> Text {
+    pub fn mob_death_message(&mut self, m: &Mob, killer: Option<Option<u32>>) -> Text {
         use sunrise_sim::mobs::{DamageKind, Who};
         let me = mob_name(m);
         // The player behind a `Who::Player` hit: the last one to hurt it, or
@@ -1012,7 +1009,8 @@ impl crate::game::ServerGame<'_> {
         if let Some(player) = self.combat_player(id) {
             return match player {
                 CombatPlayer::InPlace => self
-                    .common.player
+                    .common
+                    .player
                     .as_ref()
                     .is_some_and(|p| p.health.health() > 0.0),
                 CombatPlayer::Displaced(_, body) => body.health.health() > 0.0,
@@ -1022,15 +1020,19 @@ impl crate::game::ServerGame<'_> {
             };
         }
         match self.last_hurt_living_target(id) {
-            Some((Target::Mob(_), join)) => {
-                self.common.mobs.locate(join).is_some_and(|i| self.common.mobs[i].alive())
-            }
+            Some((Target::Mob(_), join)) => self
+                .common
+                .mobs
+                .locate(join)
+                .is_some_and(|i| self.common.mobs[i].alive()),
             Some((Target::Stand(_), join)) => self
-                .common.armor_stands
+                .common
+                .armor_stands
                 .locate(join)
                 .is_some_and(|i| self.common.armor_stands[i].health > 0.0),
             Some((Target::Dragon(id), _)) => self
-                .common.dragon
+                .common
+                .dragon
                 .as_ref()
                 .is_some_and(|d| d.id == id && d.health > 0.0),
             _ => self.parked_living_alive(id),
@@ -1039,7 +1041,11 @@ impl crate::game::ServerGame<'_> {
 
     /// The player's `LivingEntity.baseTick` clears the remembered target before effects.
     pub(in crate::game) fn clear_dead_player_target(&mut self) {
-        if let Some((id, _)) = self.common.player.as_ref().and_then(|p| p.health.last_hurt_mob)
+        if let Some((id, _)) = self
+            .common
+            .player
+            .as_ref()
+            .and_then(|p| p.health.last_hurt_mob)
             && !self.last_hurt_target_alive(id)
         {
             self.remember_player_target(None);
@@ -1135,7 +1141,9 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         let ticked = &self.common.creatures.ticked;
-        if !self.common.creatures.deferred_hits || !ticked.contains(&attacker) || !ticked.contains(&target)
+        if !self.common.creatures.deferred_hits
+            || !ticked.contains(&attacker)
+            || !ticked.contains(&target)
         {
             return false;
         }

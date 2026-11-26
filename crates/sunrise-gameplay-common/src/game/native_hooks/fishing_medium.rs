@@ -8,7 +8,7 @@ pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// cast it and `owner_position` where they stand. The first mod to answer wins. Asked each
     /// tick on the server, with the caster's state swapped in, and on each client that draws
     /// the bobber; only called when a mod listens.
-     fn native_fishing_medium(
+    fn native_fishing_medium(
         &mut self,
         level: LevelRef,
         bobber: EntityRef,
@@ -17,7 +17,15 @@ pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
         owner_position: Option<[f64; 3]>,
         medium: &mut Option<Answered<mod_api::FishingMedium>>,
     ) {
-        crate::game::native_hooks::fire::FireHooks::fire_fishing_medium(self, level, bobber, position, owner, owner_position, medium);
+        crate::game::native_hooks::fire::FireHooks::fire_fishing_medium(
+            self,
+            level,
+            bobber,
+            position,
+            owner,
+            owner_position,
+            medium,
+        );
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> GameHooks<'__sg> for G {}

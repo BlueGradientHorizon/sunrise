@@ -2,10 +2,10 @@
 //! not follow the order they finished loading in, or the level random's draws
 //! land on other blocks from one run of a world to the next (#15164).
 
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay::game::game_tests::tests::server_game;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::game_tests::tests::server_game;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_level::chunk::Chunk;
 
 /// A game whose player stands in chunk (0, 0), with lit chunks loaded in

@@ -47,11 +47,7 @@ impl EntityServerAccess for GeneralTickAccess<'_, '_, '_> {
             return;
         }
         let common = &mut self.game.common;
-        let Some(row) = common
-            .resident_entities
-            .general
-            .row_mut(self.subject.id())
-        else {
+        let Some(row) = common.resident_entities.general.row_mut(self.subject.id()) else {
             return;
         };
         let mut data = ResidentGeneralRow {

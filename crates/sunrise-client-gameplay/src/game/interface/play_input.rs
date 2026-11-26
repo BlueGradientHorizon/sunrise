@@ -91,10 +91,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
 
-    pub fn update_modifiers(
-        &mut self,
-        state: winit::keyboard::ModifiersState,
-    ) {
+    pub fn update_modifiers(&mut self, state: winit::keyboard::ModifiersState) {
         self.client.modifiers = state;
         if let Some(title) = &mut self.client.title.0 {
             title.set_alt_down(state.alt_key());
@@ -170,12 +167,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
     /// Apply a physical key to every mapping bound to it.
-    pub fn mapped_key_event(
-        &mut self,
-        key: KeyCode,
-        pressed: bool,
-        repeat: bool,
-    ) -> Result<()> {
+    pub fn mapped_key_event(&mut self, key: KeyCode, pressed: bool, repeat: bool) -> Result<()> {
         self.mapped_key_event_from(key, pressed, repeat, Source::Keyboard)
     }
     /// Apply a physical key edge from `source` to every mapping bound to it, once per binding
@@ -545,11 +537,7 @@ impl crate::game::ClientGame<'_> {
     /// Asks the mods about each gameplay mapping a physical input (a key's or a mouse button's
     /// name) is bound to, before the game acts on it: true when one cancels a press. Only while
     /// playing, and nothing is asked with no mod listening.
-    pub fn key_mapping_canceled(
-        &mut self,
-        input: Option<&str>,
-        pressed: bool,
-    ) -> bool {
+    pub fn key_mapping_canceled(&mut self, input: Option<&str>, pressed: bool) -> bool {
         let Some(input) = input else {
             return false;
         };
@@ -580,12 +568,7 @@ impl crate::game::ClientGame<'_> {
     /// press that is cancelled never happened, so `restore_held_keys` must not hold it (nor its
     /// repeats); a cancelled repeat only drops its own action and keeps the hold an accepted
     /// press made.
-    pub fn key_press_canceled(
-        &mut self,
-        key: KeyCode,
-        pressed: bool,
-        repeat: bool,
-    ) -> bool {
+    pub fn key_press_canceled(&mut self, key: KeyCode, pressed: bool, repeat: bool) -> bool {
         if !repeat {
             self.client.rejected_keys.remove(&key);
         }
@@ -630,10 +613,7 @@ impl crate::game::ClientGame<'_> {
 
     /// KeyboardInput.tick: classify the original stick first; a direct write changes only
     /// its own flag and analog component, never a different direction's classification.
-    pub fn sample_movement_keys(
-        &self,
-        stick: Option<[f32; 2]>,
-    ) -> sunrise_sim::sprint::Keys {
+    pub fn sample_movement_keys(&self, stick: Option<[f32; 2]>) -> sunrise_sim::sprint::Keys {
         use sunrise_sim::sprint::Keys;
         let mut keys = Keys {
             forward: self.mapped_key_down("key.forward"),

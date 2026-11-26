@@ -1,4 +1,3 @@
-
 #[allow(unused_variables)]
 impl SideOps for crate::game::server_side::ServerState {
     type Game<'g> = crate::game::ServerGame<'g>;
@@ -75,8 +74,8 @@ impl SideOps for crate::game::server_side::ServerState {
         game.server_current_level_ref()
     }
 }
-use sunrise_gameplay_common::game::side_ops::items::SideOps;
+use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::Hit;
 use sunrise_gameplay_common::game::item_use_common::ItemConsumable;
-use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::side_ops::items::SideOps;
 use sunrise_items::items::ItemStack;

@@ -20,7 +20,9 @@ impl ServerGame<'_> {
     /// `player` finds the player).
     fn native_cooldowns_of(&self, player: PlayerRef) -> Option<&Cooldowns> {
         match self.player_handle_read(player)? {
-            sunrise_gameplay_common::game::native_server::PlayerRead::Acting { .. } => Some(&self.common.cooldowns),
+            sunrise_gameplay_common::game::native_server::PlayerRead::Acting { .. } => {
+                Some(&self.common.cooldowns)
+            }
             sunrise_gameplay_common::game::native_server::PlayerRead::Guest(g) => Some(
                 self.server
                     .lan
@@ -51,11 +53,7 @@ impl ServerGame<'_> {
         Some(out)
     }
     /// `ItemCooldowns.isOnCooldown`: whether `group` still has time to run.
-    pub fn player_has_item_cooldown(
-        &self,
-        player: PlayerRef,
-        group: &str,
-    ) -> Option<bool> {
+    pub fn player_has_item_cooldown(&self, player: PlayerRef, group: &str) -> Option<bool> {
         Some(self.native_cooldowns_of(player)?.is_on_cooldown(group))
     }
     /// `ItemCooldowns.getCooldownPercent(group, 0)`: what is left of the
@@ -70,12 +68,7 @@ impl ServerGame<'_> {
     /// `ItemCooldowns.addCooldown(group, ticks)`: starts (or restarts) the
     /// group's cooldown, and the player's client draws it on every item of the
     /// group (`ServerItemCooldowns.onCooldownStarted`).
-    pub fn player_set_item_cooldown(
-        &mut self,
-        player: PlayerRef,
-        group: &str,
-        ticks: i32,
-    ) -> bool {
+    pub fn player_set_item_cooldown(&mut self, player: PlayerRef, group: &str, ticks: i32) -> bool {
         let group: Arc<str> = group.into();
         self.native_as_player_handle(player, |game| game.add_cooldown(group, ticks))
     }
@@ -98,7 +91,9 @@ impl ServerGame<'_> {
     /// experience orb.
     pub fn player_exp_cooldown(&self, player: PlayerRef) -> Option<u32> {
         match self.player_handle_read(player)? {
-            sunrise_gameplay_common::game::native_server::PlayerRead::Acting { .. } => Some(self.server.xp_delay),
+            sunrise_gameplay_common::game::native_server::PlayerRead::Acting { .. } => {
+                Some(self.server.xp_delay)
+            }
             sunrise_gameplay_common::game::native_server::PlayerRead::Guest(g) => Some(
                 self.server
                     .lan
@@ -111,11 +106,7 @@ impl ServerGame<'_> {
     }
     /// Sets `Player.takeXpDelay`: no orb is taken for `ticks` ticks. The
     /// change is not reported to `player_exp_cooldown_change`.
-    pub fn player_set_exp_cooldown(
-        &mut self,
-        player: PlayerRef,
-        ticks: u32,
-    ) -> bool {
+    pub fn player_set_exp_cooldown(&mut self, player: PlayerRef, ticks: u32) -> bool {
         self.native_as_player_handle(player, |game| game.server.xp_delay = ticks)
     }
     /// Sets the player's `WardenSpawnTracker.cooldownTicks`: sculk shriekers
@@ -123,11 +114,7 @@ impl ServerGame<'_> {
     /// one tracker here, the integrated server owner's (the shriekers read it
     /// for whoever sets them off), so this is every player's.
     /// False, changing nothing, for anyone but the tracker's owner until each player has their own.
-    pub fn player_set_warden_warning_cooldown(
-        &mut self,
-        player: PlayerRef,
-        ticks: u32,
-    ) -> bool {
+    pub fn player_set_warden_warning_cooldown(&mut self, player: PlayerRef, ticks: u32) -> bool {
         // The tracker loads from and saves to the level's player data, the
         // owner's: in another player's turn theirs is in its place.
         let owner = self

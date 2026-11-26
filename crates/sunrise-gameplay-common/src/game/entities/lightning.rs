@@ -1,21 +1,19 @@
-
-
 #[cfg(test)]
 #[cfg(feature = "client")]
 pub(crate) mod tests {
 
-use super::*;
+    use super::*;
 
-use mod_api::{self, ServerHost};
+    use mod_api::{self, ServerHost};
 
-use std::sync::Arc;
+    use std::sync::Arc;
 
-/// Spares the entity whose id it holds, and logs each (entity, bolt) asked.
+    /// Spares the entity whose id it holds, and logs each (entity, bolt) asked.
     pub(in crate::game) struct Spare(
         pub(in crate::game) u32,
         pub(in crate::game) Arc<std::sync::Mutex<Vec<(u32, u32)>>>,
     );
-#[mod_api::__subscriptions]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for Spare {
         fn entity_struck_by_lightning(
             &self,

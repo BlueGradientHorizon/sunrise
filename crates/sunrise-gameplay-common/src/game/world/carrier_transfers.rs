@@ -1,11 +1,9 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use super::*;
+    use super::*;
 
-pub fn copy_dir(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
+    pub fn copy_dir(from: &std::path::Path, to: &std::path::Path) -> std::io::Result<()> {
         std::fs::create_dir_all(to)?;
         for entry in std::fs::read_dir(from)? {
             let entry = entry?;
@@ -18,7 +16,7 @@ pub fn copy_dir(from: &std::path::Path, to: &std::path::Path) -> std::io::Result
         }
         Ok(())
     }
-/// A fresh throwaway world root with `data/` and a readable
+    /// A fresh throwaway world root with `data/` and a readable
     /// `level.dat`, named after the test.
     /// The region directory's files with their bytes, for before/after
     /// comparisons that no save wrote anything.
@@ -33,7 +31,7 @@ pub fn copy_dir(from: &std::path::Path, to: &std::path::Path) -> std::io::Result
         files.sort();
         files
     }
-pub fn transfer_root(name: &str) -> std::path::PathBuf {
+    pub fn transfer_root(name: &str) -> std::path::PathBuf {
         let root =
             std::env::temp_dir().join(format!("sunrise-carrier-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
@@ -41,7 +39,7 @@ pub fn transfer_root(name: &str) -> std::path::PathBuf {
         write_level_dat(&root);
         root
     }
-pub fn write_level_dat(root: &std::path::Path) {
+    pub fn write_level_dat(root: &std::path::Path) {
         // A current DataVersion inside Data keeps the world-gen reader
         // out of the data fixers, whose tables the prepared test
         // resources do not carry.

@@ -1,6 +1,6 @@
 //! Registered play-Ping regression with the production sender-flush completion boundary.
-use sunrise_gameplay::game::lan::LanSettings;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
+use sunrise_gameplay::game::lan::LanSettings;
 use sunrise_protocol::{
     buf::Reader,
     packets::{
@@ -111,7 +111,10 @@ fn complete_sender_tick(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
 /// outbound packets.
 pub(crate) fn fixture(
     resources: &mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
-) -> (sunrise_gameplay::game::ServerGame<'_>, [mpsc::Receiver<Out>; 2]) {
+) -> (
+    sunrise_gameplay::game::ServerGame<'_>,
+    [mpsc::Receiver<Out>; 2],
+) {
     let mut game = sunrise_gameplay::game::game_tests::tests::server_game(resources);
     game.build_registries();
     game.lan_host(
@@ -175,11 +178,11 @@ pub(crate) fn fixture(
 #[test]
 #[ignore = "daily"]
 fn player_pong_observes_order_and_sends_typed_ping() {
-    use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
     use mod_api::{
         EntityRef, Hooks, ModEntry, Mods, PlayerPingRefusal, PlayerPongEvent, ServerHost,
     };
     use std::sync::{Mutex, atomic::Ordering};
+    use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
     use sunrise_protocol::packets::configuration::Ping;
     use sunrise_sim::lan::guest::InboxItem;
 

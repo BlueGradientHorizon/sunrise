@@ -1,9 +1,6 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::block_items::BlockItemsGameExt1;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::{BlockEntityPart, BlockEntitySaveAdditionalEvent, Hooks, LevelHost, ModEntry};
     use std::sync::atomic::{AtomicI32, Ordering};
     use std::sync::{Arc, Mutex};
@@ -11,6 +8,9 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
         nbt::{Compound, JavaString, Limits, Tag},
         position::ChunkPos,
     };
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::block_items::BlockItemsGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_level::{
         chunk::{Chunk, LevelShape},
         containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields, SHAPES_KEY},
@@ -277,9 +277,7 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
         }
     }
 
-    pub(crate) struct BreakObserver(
-        pub(crate) Arc<Mutex<Vec<(&'static str, Option<Tag>)>>>,
-    );
+    pub(crate) struct BreakObserver(pub(crate) Arc<Mutex<Vec<(&'static str, Option<Tag>)>>>);
 
     #[mod_api::__subscriptions]
     impl Hooks for BreakObserver {

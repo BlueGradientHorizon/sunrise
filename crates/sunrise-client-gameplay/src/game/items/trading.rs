@@ -1,17 +1,15 @@
-
-
 #[cfg(test)]
 pub(crate) mod tests {
 
-use super::*;
+    use super::*;
 
-use crate::game::client_side::trading_client::{
+    use crate::game::client_side::trading_client::{
         SHIFT, drag_scroll, on_scroller, scroller_cursor, scroller_rect,
     };
 
-use sunrise_client::widgets::Cursor;
+    use sunrise_client::widgets::Cursor;
 
-#[test]
+    #[test]
     fn scroller_takes_presses_only_with_more_than_seven_offers() {
         let x = SHIFT + 97.0;
         assert!(on_scroller((x, 20.0), 8));
@@ -23,7 +21,7 @@ use sunrise_client::widgets::Cursor;
         assert!(on_scroller((x, 158.0), 8));
         assert!(!on_scroller((x, 158.5), 8));
     }
-#[test]
+    #[test]
     fn dragged_scroller_picks_the_nearest_offer() {
         // 10 offers: the list scrolls 3 steps over the track's 112 px.
         assert_eq!(drag_scroll(0.0, 10), 0);
@@ -32,7 +30,7 @@ use sunrise_client::widgets::Cursor;
         assert_eq!(drag_scroll(31.5 + 112.0, 10), 3);
         assert_eq!(drag_scroll(500.0, 10), 3);
     }
-/// `MerchantScreen.extractScroller`: the thumb, not the whole track, takes
+    /// `MerchantScreen.extractScroller`: the thumb, not the whole track, takes
     /// the cursor; the vertical resize while it is dragged.
     #[test]
     fn the_scroller_thumb_asks_for_its_cursor() {

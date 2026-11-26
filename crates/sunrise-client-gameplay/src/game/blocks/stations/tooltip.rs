@@ -1,8 +1,11 @@
 use super::*;
-use {crate::game::client_item_extensions::DEFAULT_TOOLTIP_FONT_ID, crate::game::host::draw::{EngineTooltipFont, font_id_str}};
 use mod_api::{ClientTooltipPositioner, DefaultTooltipPositioner};
 use std::borrow::Cow;
 use sunrise_client::tooltip_components::TooltipComponentPrepareError;
+use {
+    crate::game::client_item_extensions::DEFAULT_TOOLTIP_FONT_ID,
+    crate::game::host::draw::{EngineTooltipFont, font_id_str},
+};
 
 /// Single integer anchor quantization shared by Gather wrapping, `render_tooltip_pre`
 /// (`TooltipPlace`), and the active positioner. Vanilla GUI extraction truncates toward zero.
@@ -83,9 +86,7 @@ pub enum PreparedTooltipItem {
 
 impl PreparedTooltipItem {
     #[cfg(any(test, feature = "test-support"))]
-    pub fn as_text(
-        &self,
-    ) -> Option<(&sunrise_game_data::text::Text, u32)> {
+    pub fn as_text(&self) -> Option<(&sunrise_game_data::text::Text, u32)> {
         match self {
             Self::Text { text, color } => Some((text, *color)),
             _ => None,
@@ -101,9 +102,7 @@ impl PreparedTooltipItem {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn as_custom(
-        &self,
-    ) -> Option<&mod_api::PreparedTooltipComponent> {
+    pub fn as_custom(&self) -> Option<&mod_api::PreparedTooltipComponent> {
         match self {
             Self::Custom(component) => Some(component),
             _ => None,
@@ -111,11 +110,7 @@ impl PreparedTooltipItem {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn downcast_ref<
-        C: mod_api::ClientTooltipComponent + 'static,
-    >(
-        &self,
-    ) -> Option<&C> {
+    pub fn downcast_ref<C: mod_api::ClientTooltipComponent + 'static>(&self) -> Option<&C> {
         self.as_custom().and_then(|c| c.downcast_ref::<C>())
     }
 }
@@ -261,11 +256,10 @@ impl crate::game::ClientGame<'_> {
         component: &mod_api::TooltipComponent,
     ) -> Result<PreparedTooltipItem, TooltipComponentPrepareError> {
         if let Some(api_stack) = component.as_bundle() {
-            let engine_stack = sunrise_gameplay_common::game::api_values::stack_value(api_stack).map_err(|_| {
-                TooltipComponentPrepareError::InvalidBundle {
+            let engine_stack = sunrise_gameplay_common::game::api_values::stack_value(api_stack)
+                .map_err(|_| TooltipComponentPrepareError::InvalidBundle {
                     owner: component.__owner_id(),
-                }
-            })?;
+                })?;
             return self.prepare_bundle_tooltip(Cow::Owned(engine_stack));
         }
         sunrise_client::tooltip_components::create(component).map(PreparedTooltipItem::Custom)
@@ -737,13 +731,7 @@ impl crate::game::ClientGame<'_> {
     /// A stack's tooltip: its ordered lines and a bundle's contents
     /// (`ClientBundleTooltip`: the 4 wide grid, the `+N` of what it leaves
     /// out, and the weight bar).
-    pub fn draw_stack_tooltip(
-        &mut self,
-        batch: &mut HudBatch,
-        stack: &ItemStack,
-        x: f32,
-        y: f32,
-    ) {
+    pub fn draw_stack_tooltip(&mut self, batch: &mut HudBatch, stack: &ItemStack, x: f32, y: f32) {
         self.draw_stack_tooltip_with(batch, stack, false, x, y, Vec::new());
     }
 
@@ -808,8 +796,6 @@ impl crate::game::ClientGame<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    
 
     #[test]
     fn wrap_tooltip_width_matches_neoforge_client_hooks() {

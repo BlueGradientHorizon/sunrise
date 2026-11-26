@@ -119,7 +119,8 @@ impl crate::game::ServerGame<'_> {
             ],
         );
         let touching: Vec<usize> = self
-            .common.orbs
+            .common
+            .orbs
             .iter()
             .enumerate()
             .filter(|(_, o)| {
@@ -136,7 +137,8 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let pick = self
-            .common.world
+            .common
+            .world
             .random
             .next_int_bound(touching.len() as i32)
             .unwrap_or(0) as usize;
@@ -232,7 +234,8 @@ impl crate::game::ServerGame<'_> {
         }
         let listens = mod_api::__private::listened(mod_api::HookId::ItemPickedUp);
         let near: Vec<_> = self
-            .common.dropped
+            .common
+            .dropped
             .iter()
             .filter(|d| {
                 (listens || (d.pickup_delay == 0 && d.target.is_none_or(|t| t == uuid)))

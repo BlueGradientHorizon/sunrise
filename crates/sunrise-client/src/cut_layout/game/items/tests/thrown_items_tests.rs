@@ -2,11 +2,11 @@
 //! own (`Entity.random`, `LivingEntity.createItemStackToDrop`) or a client's
 //! (`ClientPacketListener.random`), never the level's, whose draws are what
 //! random ticks, leaf decay and spawns come from.
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_core::geometry::Vec3;
 use super::*;
-use sunrise_gameplay::game::game_tests::tests::server_game;
 use std::sync::Arc;
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::game_tests::tests::server_game;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -110,10 +110,13 @@ fn a_death_scatter_takes_the_throwers_random_not_the_levels() {
 #[test]
 #[ignore = "daily"]
 fn a_pickup_pitch_is_not_drawn_from_the_levels_random() {
+    use sunrise_core::random::{EntityRandom, LegacyRandom};
     use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
     use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
-    use {sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest, sunrise_gameplay_common::game::server_side::native_sound_refs::tests::packets};
-    use sunrise_core::random::{EntityRandom, LegacyRandom};
+    use {
+        sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest,
+        sunrise_gameplay_common::game::server_side::native_sound_refs::tests::packets,
+    };
 
     if run_fresh_cases(
         "game::server_side::item_entities::thrown_items_tests::a_pickup_pitch_is_not_drawn_from_the_levels_random",

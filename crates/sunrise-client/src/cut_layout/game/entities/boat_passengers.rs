@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Aabb;
 use sunrise_core::geometry::Vec3;
@@ -11,27 +9,29 @@ use sunrise_sim::mobs::seen_grid::SeenGrid;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1;
-use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1;
-use super::*;
+    use super::*;
+    use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1;
+    use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn rejected_boat_passengers_fill_actual_capacity_without_becoming_resident() {
         super::super::native_entity_refs::tests::with_game(|game| {
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
-            game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(
-                71,
-                "oak".into(),
-                Vec3::ZERO,
-                0.0,
-            ));
+            game.boats
+                .push(sunrise_gameplay_common::game::boats_common::Boat::new(
+                    71,
+                    "oak".into(),
+                    Vec3::ZERO,
+                    0.0,
+                ));
             for id in [72, 73] {
                 let mut rider = Mob::new(id, kind.clone(), Vec3::ZERO, 0.0);
                 rider.extra.mount = Some(71);
-                game.persist
-                    .off_level
-                    .insert(id, sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(rider));
+                game.persist.off_level.insert(
+                    id,
+                    sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(rider),
+                );
             }
             assert!(game.boat_mobs(71).is_empty());
             // An ordinary oak boat has two seats; rejected passengers still own both.
@@ -42,7 +42,7 @@ use super::*;
             assert!(game.boat_has_room(0));
         });
     }
-/// A mob pushes the cart its box touches while a mob far from every cart pushes none and
+    /// A mob pushes the cart its box touches while a mob far from every cart pushes none and
     /// is not pushed, whichever grid finds them: the carts' (four carts in four of its columns,
     /// asked once per mob while the mobs are the fewer) or, in a crowd, the mobs' (asked once
     /// per cart).
@@ -79,7 +79,7 @@ use super::*;
         });
         assert_eq!(pushed[0], pushed[1]);
     }
-/// A vehicle's box query during a stretch of vehicle ticks names the mobs a walk over
+    /// A vehicle's box query during a stretch of vehicle ticks names the mobs a walk over
     /// every box names, in the same order, also right after a mob moved into the box (a
     /// push or a pick-up writes the mob list in the middle of a stretch).
     #[test]
@@ -143,7 +143,7 @@ use super::*;
         }
         assert!(met > 100, "the boxes met {met} mobs");
     }
-/// Who rides a vehicle follows the mob list through a stretch of vehicle ticks: a mob that
+    /// Who rides a vehicle follows the mob list through a stretch of vehicle ticks: a mob that
     /// boards counts from then on, one removed no longer does, and a dead one still makes
     /// its cart a vehicle but is no passenger of a boat.
     #[test]
@@ -173,7 +173,6 @@ use super::*;
     }
 }
 
-
 #[cfg(test)]
 mod off_level_tests {
     use super::*;
@@ -194,9 +193,10 @@ mod off_level_tests {
             let expected = boat.seat(1, 2, true, offset, false);
             game.boats.push(boat);
             game.mobs.push(resident);
-            game.persist
-                .off_level
-                .insert(72, sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(ghost));
+            game.persist.off_level.insert(
+                72,
+                sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(ghost),
+            );
             game.position_riders();
             assert_eq!(game.mob_object(73).unwrap().position, expected);
             assert_eq!(game.mob_object(72).unwrap().position, Vec3::ZERO);
@@ -260,12 +260,13 @@ mod boat_callback_review_tests {
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.options.dedicated = Some(Vec::new());
-                game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(
-                    71,
-                    "oak".into(),
-                    Vec3::ZERO,
-                    0.0,
-                ));
+                game.boats
+                    .push(sunrise_gameplay_common::game::boats_common::Boat::new(
+                        71,
+                        "oak".into(),
+                        Vec3::ZERO,
+                        0.0,
+                    ));
                 let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                 for id in [72, 73, 74] {
                     let mut mob = Mob::new(id, kind.clone(), Vec3::ZERO, 0.0);
@@ -273,7 +274,9 @@ mod boat_callback_review_tests {
                     mob.extra.vehicle_order = i64::from(id);
                     game.mobs.push(mob);
                 }
-                assert!(game.kill_vehicle_object(sunrise_gameplay_common::game::commands_common::Target::Boat(71)));
+                assert!(game.kill_vehicle_object(
+                    sunrise_gameplay_common::game::commands_common::Target::Boat(71)
+                ));
                 assert_eq!(game.mob_object(73).unwrap().extra.mount, Some(74));
                 assert_eq!(
                     heard
@@ -302,12 +305,13 @@ mod boat_callback_review_tests {
         mod_platform::testing::with_mods(mods, || {
             super::super::native_entity_refs::tests::with_game(|game| {
                 game.options.dedicated = Some(Vec::new());
-                game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(
-                    71,
-                    "oak".into(),
-                    Vec3::ZERO,
-                    0.0,
-                ));
+                game.boats
+                    .push(sunrise_gameplay_common::game::boats_common::Boat::new(
+                        71,
+                        "oak".into(),
+                        Vec3::ZERO,
+                        0.0,
+                    ));
                 let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
                 let original = Vec3::new(2.0, 60.0, 3.0);
                 let mut rider = Mob::new(72, kind.clone(), original, 0.0);
@@ -319,7 +323,9 @@ mod boat_callback_review_tests {
                 let mut boat = game.boats[0].clone();
                 boat.position = Vec3::new(40.0, 70.0, 40.0);
                 game.boats.store_back(0, boat);
-                assert!(game.kill_vehicle_object(sunrise_gameplay_common::game::commands_common::Target::Boat(71)));
+                assert!(game.kill_vehicle_object(
+                    sunrise_gameplay_common::game::commands_common::Target::Boat(71)
+                ));
                 assert!(game.mob_object(72).unwrap().removed);
                 assert_eq!(game.mob_object(72).unwrap().position, original);
                 assert_eq!(game.mob_object(73).unwrap().position, original);

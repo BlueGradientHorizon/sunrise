@@ -82,11 +82,7 @@ impl Children {
     /// Capture only shared resources and action ownership, leaving Game available as a
     /// mutable ServerHost during dispatch. The caller must still recheck the live world,
     /// parent and read-set versions before accepting the frozen output.
-    pub fn new(
-        game: &crate::game::ServerGame<'_>,
-        action: Action,
-        breeding: bool,
-    ) -> Self {
+    pub fn new(game: &crate::game::ServerGame<'_>, action: Action, breeding: bool) -> Self {
         game.expire_standalone_lends();
         Self {
             resources: game.res.clone(),
@@ -99,9 +95,7 @@ impl Children {
         }
     }
 
-    pub fn receiver(
-        &self,
-    ) -> Result<PendingChildrenRef, UnspawnedMobError> {
+    pub fn receiver(&self) -> Result<PendingChildrenRef, UnspawnedMobError> {
         sync_listener(&self.arena, &self.hook);
         let (world, lease) = self
             .arena

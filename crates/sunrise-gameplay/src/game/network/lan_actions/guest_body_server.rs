@@ -1,6 +1,6 @@
 use super::*;
-pub(in crate::game::server_side) use sunrise_gameplay_common::game::lan_actions::guest_body::initialize;
 use sunrise_core::geometry::Vec3;
+pub(in crate::game::server_side) use sunrise_gameplay_common::game::lan_actions::guest_body::initialize;
 use sunrise_sim::{lan::hub::CommittedMove, landing::PlayerLandingPause, motion::ServerTravel};
 
 /// The server copy of the acting guest's body, borrowing its player and the level from `game`.
@@ -33,7 +33,12 @@ macro_rules! settle_guest_hit {
             if let Err(collected) = $game.finish_guest_damage_before_resume() {
                 return (collected, None, ServerTravel::Continue);
             }
-            let Some(player) = $game.common.player.as_mut().filter(|p| p.entity_id as u32 == $id) else {
+            let Some(player) = $game
+                .common
+                .player
+                .as_mut()
+                .filter(|p| p.entity_id as u32 == $id)
+            else {
                 return (Vec::new(), None, ServerTravel::Continue);
             };
             $side = server_game_side!($game);
@@ -52,7 +57,12 @@ impl crate::game::ServerGame<'_> {
             from,
             jump_yaw,
         } = commit;
-        let Some(g) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(g) = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+        else {
             return;
         };
         let id = g.entity_id as u32;
@@ -99,8 +109,11 @@ impl crate::game::ServerGame<'_> {
                     Ok(Some(PlayerLandingPause::Trample(trample))) => {
                         let mut collected = std::mem::take(&mut w.player.events);
                         game.trample_farmland(id, true, trample);
-                        let Some(player) =
-                            game.common.player.as_mut().filter(|p| p.entity_id as u32 == id)
+                        let Some(player) = game
+                            .common
+                            .player
+                            .as_mut()
+                            .filter(|p| p.entity_id as u32 == id)
                         else {
                             return collected;
                         };
@@ -117,7 +130,11 @@ impl crate::game::ServerGame<'_> {
                     if let Err(collected) = game.finish_guest_damage_before_resume() {
                         return collected;
                     }
-                    let Some(player) = game.common.player.as_mut().filter(|p| p.entity_id as u32 == id)
+                    let Some(player) = game
+                        .common
+                        .player
+                        .as_mut()
+                        .filter(|p| p.entity_id as u32 == id)
                     else {
                         return Vec::new();
                     };
@@ -302,8 +319,10 @@ impl crate::game::ServerGame<'_> {
                     if let Some(host) = self.server.lan.as_ref()
                         && let Some(g) = host.hub.guest(conn)
                     {
-                        host.hub
-                            .entity_event(g.entity_id, sunrise_gameplay_common::game::combat_common::DROWN_EVENT);
+                        host.hub.entity_event(
+                            g.entity_id,
+                            sunrise_gameplay_common::game::combat_common::DROWN_EVENT,
+                        );
                     }
                 }
                 MotionEvent::EnterBlock { state } => {
@@ -401,7 +420,12 @@ impl crate::game::ServerGame<'_> {
                     rules,
                 );
                 game.finish_guest_damage();
-                let Some(player) = game.common.player.as_mut().filter(|p| p.entity_id as u32 == id) else {
+                let Some(player) = game
+                    .common
+                    .player
+                    .as_mut()
+                    .filter(|p| p.entity_id as u32 == id)
+                else {
                     return;
                 };
                 let events = std::mem::take(&mut player.events);
@@ -440,7 +464,12 @@ impl crate::game::ServerGame<'_> {
             if w.begin_fluid_tick().is_ok() {
                 let decision = if swim_listener { w.swim_entry() } else { None };
                 let answer = game.ask_swim_entry(decision);
-                let Some(player) = game.common.player.as_mut().filter(|p| p.entity_id as u32 == id) else {
+                let Some(player) = game
+                    .common
+                    .player
+                    .as_mut()
+                    .filter(|p| p.entity_id as u32 == id)
+                else {
                     return (Vec::new(), None, ServerTravel::Continue);
                 };
                 side = server_game_side!(game);
@@ -606,7 +635,12 @@ impl crate::game::ServerGame<'_> {
                 rules,
             );
             game.finish_guest_damage();
-            let Some(player) = game.common.player.as_mut().filter(|p| p.entity_id as u32 == id) else {
+            let Some(player) = game
+                .common
+                .player
+                .as_mut()
+                .filter(|p| p.entity_id as u32 == id)
+            else {
                 return (events, None, ServerTravel::Continue);
             };
             events.append(&mut player.events);
@@ -668,7 +702,11 @@ impl crate::game::ServerGame<'_> {
                 self.native_player_velocity(uuid, &name, [v.x, v.y, v.z]);
             }
             if !travel_synced
-                && let Some(g) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn))
+                && let Some(g) = self
+                    .server
+                    .lan
+                    .as_ref()
+                    .and_then(|host| host.hub.guest(conn))
             {
                 g.send(&C::SetEntityMotion(play::SetEntityMotion {
                     id: g.entity_id,

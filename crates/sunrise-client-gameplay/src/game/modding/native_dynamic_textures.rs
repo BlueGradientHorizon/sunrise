@@ -38,13 +38,12 @@ impl ClientGame<'_> {
             .update(pool, &mut names, owner, id, [width, height], rgba)
     }
     /// The calling mod's image `id` freed: its name and slot go at once.
-    pub fn free_dynamic_texture(
-        &mut self,
-        id: &Identifier,
-    ) -> Result<(), DynamicTextureError> {
+    pub fn free_dynamic_texture(&mut self, id: &Identifier) -> Result<(), DynamicTextureError> {
         let owner = mod_api::content::crash::current_native_mod();
         let (pool, mut names) = self.client.gui.atlas.dynamic_names();
-        self.client.dynamic_textures.free(pool, &mut names, owner, id)
+        self.client
+            .dynamic_textures
+            .free(pool, &mut names, owner, id)
     }
     /// What the calling mod may still create.
     pub(in crate::game) fn dynamic_texture_budget(

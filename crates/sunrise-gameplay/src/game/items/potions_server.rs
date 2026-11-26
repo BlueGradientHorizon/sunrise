@@ -1,8 +1,4 @@
 use super::{commands::Target, dragon::FightPlayer, living_attributes::AttributeWrite};
-use sunrise_gameplay_common::game::dragon_common::Breath;
-use sunrise_gameplay_common::game::potions_common::{
-    BodyPotions, CloudParticle, CloudSettings, PotionCloud, PotionState, Victim,
-};
 use mod_api::{EffectApplicable, EffectTickChange, EntityRef, LivingRef, PlayerFood};
 use sunrise_core::nbt::Tag;
 use sunrise_core::{
@@ -10,6 +6,10 @@ use sunrise_core::{
     random::{LegacyRandom, RandomSource},
 };
 use sunrise_gameplay::particle_options::custom_particle_options;
+use sunrise_gameplay_common::game::dragon_common::Breath;
+use sunrise_gameplay_common::game::potions_common::{
+    BodyPotions, CloudParticle, CloudSettings, PotionCloud, PotionState, Victim,
+};
 use sunrise_sim::health::Attack;
 use {
     sunrise_game_data::text::Text, sunrise_items::items::ItemStack, sunrise_level::brewing,
@@ -34,7 +34,8 @@ impl crate::game::ServerGame<'_> {
             ];
             let look = super::view_vector(self.common.yaw, self.common.pitch);
             // The player's draws come from the world's random.
-            let velocities = sunrise_sim::mobs::infested_silverfish(&mut self.common.world.random, look);
+            let velocities =
+                sunrise_sim::mobs::infested_silverfish(&mut self.common.world.random, look);
             self.spawn_infested(at, velocities);
         }
     }
@@ -91,7 +92,14 @@ impl crate::game::ServerGame<'_> {
                     player.position.z + w,
                 ),
             );
-            let ids: Vec<&'static str> = self.common.potions.effects.list.iter().map(|e| e.id).collect();
+            let ids: Vec<&'static str> = self
+                .common
+                .potions
+                .effects
+                .list
+                .iter()
+                .map(|e| e.id)
+                .collect();
             self.common.potions.effects.clear();
             if !ids.is_empty() {
                 self.remove_player_effect_attributes(&ids);
@@ -99,7 +107,8 @@ impl crate::game::ServerGame<'_> {
                     &ids,
                     bounds,
                     sunrise_sim::save::number(
-                        self.common.level
+                        self.common
+                            .level
                             .player_extra
                             .as_ref()
                             .and_then(|tag| tag.get("Silent")),
@@ -114,7 +123,8 @@ impl crate::game::ServerGame<'_> {
         // The omens act from inside the effect tick (BadOmenMobEffect,
         // RaidOmenMobEffect), as a content mod's effects do.
         let absorption_empty = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .is_some_and(|p| p.health.absorption() <= 0.0);
         let mut effects = std::mem::take(&mut self.common.potions.effects);
@@ -238,9 +248,17 @@ impl crate::game::ServerGame<'_> {
             eye_y.floor() as i32,
             p.position.z.floor() as i32,
         );
-        let f = self.common.res.facts().get(self.common.world.block(bx, by, bz));
+        let f = self
+            .common
+            .res
+            .facts()
+            .get(self.common.world.block(bx, by, bz));
         let eye_in_water = f.fluid == sunrise_items::blocks::Fluid::Water && {
-            let above = self.common.res.facts().get(self.common.world.block(bx, by + 1, bz));
+            let above = self
+                .common
+                .res
+                .facts()
+                .get(self.common.world.block(bx, by + 1, bz));
             let height = if above.fluid == sunrise_items::blocks::Fluid::Water {
                 1.0
             } else {
@@ -628,7 +646,8 @@ impl crate::game::ServerGame<'_> {
                 let target_pos = match who {
                     Who::Player => self.common.player.as_ref().map(|p| p.position),
                     Who::Mob(id) => self
-                        .common.mobs
+                        .common
+                        .mobs
                         .iter()
                         .find(|m| m.id == id)
                         .map(|m| m.position)
@@ -894,7 +913,12 @@ impl crate::game::ServerGame<'_> {
                 }
             }
             Who::Mob(id) => {
-                let Some(i) = self.common.mobs.iter().position(|m| m.id == id && m.alive()) else {
+                let Some(i) = self
+                    .common
+                    .mobs
+                    .iter()
+                    .position(|m| m.id == id && m.alive())
+                else {
                     return;
                 };
                 let inverted = self.items().entity_type_tags.has_bit(
@@ -935,7 +959,8 @@ impl crate::game::ServerGame<'_> {
                             if self.can_be_affected(Some(id as i32), &kind, effect)
                                 && let Some(name) = mob_effect_id(effect)
                             {
-                                let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id) else {
+                                let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id)
+                                else {
                                     return;
                                 };
                                 let new = !m.has_effect(name);
@@ -1030,7 +1055,9 @@ impl crate::game::ServerGame<'_> {
                                 let plan =
                                     self.prepare_knockback_credit(mob as i32, owner, &attack);
                                 let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
-                                let Some(index) = self.common.mob_index.find(&self.common.mobs, mob) else {
+                                let Some(index) =
+                                    self.common.mob_index.find(&self.common.mobs, mob)
+                                else {
                                     return;
                                 };
                                 self.common.mobs[index].damage_by(
@@ -1057,7 +1084,8 @@ impl crate::game::ServerGame<'_> {
                             if self.can_be_affected(Some(mob as i32), &kind, id)
                                 && let Some(name) = mob_effect_id(id)
                             {
-                                let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == mob) else {
+                                let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == mob)
+                                else {
                                     return;
                                 };
                                 let new = !m.has_effect(name);
@@ -1129,14 +1157,16 @@ impl crate::game::ServerGame<'_> {
             // OozingMobEffect.numberOfSlimesToSpawn: two, fewer when the
             // slimes close by already fill the cramming limit.
             let limit = self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .int_at(sunrise_game_data::gamerules::vanilla::MAX_ENTITY_CRAMMING);
             let mut count = 2;
             if limit >= 1 {
                 let near = bounds.inflate(Vec3::new(2.0, 2.0, 2.0));
                 let nearby = self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter()
                     .filter(|m| {
                         m.species() == sunrise_sim::mobs::Species::Slime
@@ -1308,11 +1338,15 @@ impl crate::game::ServerGame<'_> {
         pos: [i32; 3],
         mut random: Option<&mut LegacyRandom>,
     ) {
-        let r = random.as_deref_mut().unwrap_or(&mut self.common.world.random);
+        let r = random
+            .as_deref_mut()
+            .unwrap_or(&mut self.common.world.random);
         let wanted = 2 + r.next_int_bound(2).unwrap_or(0) as usize;
         let mut chosen: Vec<[i32; 3]> = Vec::new();
         for _ in 0..15 {
-            let r = random.as_deref_mut().unwrap_or(&mut self.common.world.random);
+            let r = random
+                .as_deref_mut()
+                .unwrap_or(&mut self.common.world.random);
             let at = [
                 pos[0] - 1 + r.next_int_bound(3).unwrap_or(0),
                 pos[1] - 1 + r.next_int_bound(3).unwrap_or(0),
@@ -1681,7 +1715,8 @@ impl crate::game::ServerGame<'_> {
         // taken (`allEffects.stream().anyMatch(entity::canBeAffected)`), so
         // the others neither become victims nor use up its radius.
         let candidates: Vec<(u32, String, f64, f64)> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter(|m| m.alive() && m.bounds().intersects(area))
             .map(|m| (m.id, m.kind.id.clone(), m.position.x, m.position.z))
@@ -1762,7 +1797,8 @@ impl crate::game::ServerGame<'_> {
             }
             keep
         });
-        self.common.breath_clouds
+        self.common
+            .breath_clouds
             .restore(clouds, sunrise_sim::join_seq::RestoreOrder::SpawnsFirst);
         // A cloud that expired on its own takes its `noPhysics` write with it.
         for id in expired {
@@ -1797,7 +1833,11 @@ impl crate::game::ServerGame<'_> {
                 // Projectile.shootFromRotation(xRot, yRot, -20, power, 1.0), with
                 // what the thrower last moved (getKnownMovement).
                 let velocity = self.known_player_movement();
-                let on_ground = self.common.player.as_ref().is_some_and(|p| p.ground.on_ground);
+                let on_ground = self
+                    .common
+                    .player
+                    .as_ref()
+                    .is_some_and(|p| p.ground.on_ground);
                 let one = ItemStack {
                     count: 1,
                     ..stack.clone()
@@ -1805,7 +1845,13 @@ impl crate::game::ServerGame<'_> {
                 let mut shot =
                     thrown_projectile(one, Vec3::new(eye[0], eye[1] - 0.1, eye[2]), true);
                 shot.shoot_from_rotation(
-                    self.common.pitch, self.common.yaw, -20.0, power, 1.0, velocity, on_ground,
+                    self.common.pitch,
+                    self.common.yaw,
+                    -20.0,
+                    power,
+                    1.0,
+                    velocity,
+                    on_ground,
                 );
                 shot.guest = self.server.lan_acting;
                 self.add_projectile(shot);
@@ -1858,7 +1904,8 @@ impl crate::game::ServerGame<'_> {
                 }
                 // The sound at the player, the game event at the water block.
                 let Some(at) = self
-                    .common.player
+                    .common
+                    .player
                     .as_ref()
                     .map(|p| [p.position.x, p.position.y, p.position.z])
                 else {
@@ -1923,7 +1970,13 @@ impl crate::game::ServerGame<'_> {
         }
         self.server_play_sound("minecraft:item.bottle.empty", centre, 1.0, 1.0);
         self.post_block_game_event("minecraft:fluid_place", pos, None, None);
-        if let Some(mud) = self.common.pack.assets.registry.default_state("minecraft:mud") {
+        if let Some(mud) = self
+            .common
+            .pack
+            .assets
+            .registry
+            .default_state("minecraft:mud")
+        {
             self.level_set(pos, mud)?;
         }
         self.award_stat("used", &stack.item, 1);
@@ -2078,11 +2131,7 @@ pub(in crate::game) fn splash_distance_sqr(at: Vec3, age: u32, bounds: Aabb) -> 
 /// `ThrownLingeringPotion` or `ThrownExperienceBottle`, which
 /// `level.addFreshEntity` makes a level entity like a summoned one, so
 /// selectors and `/data` find it (#13201).
-pub fn thrown_projectile(
-    stack: ItemStack,
-    position: Vec3,
-    by_player: bool,
-) -> Projectile {
+pub fn thrown_projectile(stack: ItemStack, position: Vec3, by_player: bool) -> Projectile {
     let kind = match &*stack.item {
         "minecraft:experience_bottle" => ProjectileKind::ExperienceBottle,
         item => {

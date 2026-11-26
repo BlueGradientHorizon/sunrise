@@ -1,11 +1,10 @@
-
 #![cfg(test)]
-#[cfg(test)]
-#[path = "minecarts/lifetime_tests.rs"]
-pub(crate) mod lifetime_tests;
 #[cfg(test)]
 #[path = "minecarts/hit.rs"]
 pub(crate) mod hit;
+#[cfg(test)]
+#[path = "minecarts/lifetime_tests.rs"]
+pub(crate) mod lifetime_tests;
 
 #[cfg(test)]
 #[path = "minecarts/minecart_tnt_tests.rs"]
@@ -17,10 +16,13 @@ pub(crate) mod tests;
 
 #[cfg(test)]
 pub(crate) mod tnt_impact_tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
-use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use {
+        sunrise_gameplay_common::game::minecarts::CartKind,
+        sunrise_gameplay_common::game::minecarts::Minecart,
+    };
 
     /// Ticks a moving TNT cart until it stops or blows up; true when it
     /// blew up.
@@ -60,7 +62,8 @@ use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common
                     &mut cart,
                     [0.0; 2],
                     0,
-                    &mut sunrise_gameplay::game::server_side::minecarts_server::CartIndex::default(),
+                    &mut sunrise_gameplay::game::server_side::minecarts_server::CartIndex::default(
+                    ),
                 ) {
                     result = true;
                     break;
@@ -89,7 +92,10 @@ use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common
         ] {
             let id = registry.default_state(block).unwrap();
             game.world.set(4, 64, 8, id).unwrap();
-            let push = game.redstone_direction([5, 64, 8], sunrise_gameplay_common::game::minecarts::Shape::EastWest);
+            let push = game.redstone_direction(
+                [5, 64, 8],
+                sunrise_gameplay_common::game::minecarts::Shape::EastWest,
+            );
             assert_eq!(push.x == 1.0, pushed, "{block}");
         }
     }
@@ -256,10 +262,13 @@ use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common
 
 #[cfg(test)]
 pub(crate) mod cart_push_tests {
-    use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
     use sunrise_core::geometry::Vec3;
     use sunrise_items::items::ItemStack;
     use sunrise_sim::save::PendingContainerLoot;
+    use {
+        sunrise_gameplay_common::game::minecarts::CartKind,
+        sunrise_gameplay_common::game::minecarts::Minecart,
+    };
 
     /// Two chest carts pushed apart (`OldMinecartBehavior.pushAndPickupEntities`):
     /// the push runs on copies of the ticked cart, and the one still holding
@@ -320,11 +329,15 @@ pub(crate) mod cart_push_tests {
     #[test]
     #[ignore = "daily"]
     fn a_moving_carts_team_rules_which_carts_it_pushes() {
-        use sunrise_gameplay_common::game::commands_common::Target;
         use sunrise_game_data::scoreboard::CollisionRule;
+        use sunrise_gameplay_common::game::commands_common::Target;
 
         /// Puts a cart on a team of its own, as `/team join` would.
-        fn on_a_team(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32, rule: CollisionRule) {
+        fn on_a_team(
+            game: &mut sunrise_gameplay::game::ServerGame<'_>,
+            id: u32,
+            rule: CollisionRule,
+        ) {
             let name = game.holder_name(Target::Cart(id)).expect("a cart's UUID");
             let team = format!("cart-{id}");
             game.score.board.add_team(&team).collision_rule = rule;
@@ -340,7 +353,8 @@ pub(crate) mod cart_push_tests {
         ) -> Vec3 {
             game.carts.update(target, |cart| cart.velocity = Vec3::ZERO);
             game.carts.update(pusher, |cart| cart.velocity = velocity);
-            let mut index = sunrise_gameplay::game::server_side::minecarts_server::CartIndex::default();
+            let mut index =
+                sunrise_gameplay::game::server_side::minecarts_server::CartIndex::default();
             game.push_from_cart(pusher, &mut index);
             game.carts[target].velocity
         }
@@ -403,8 +417,8 @@ pub(crate) mod cart_push_tests {
     #[test]
     #[ignore = "daily"]
     fn a_moving_carts_team_keeps_it_from_boarding_a_cow() {
-        use sunrise_gameplay_common::game::commands_common::Target;
         use sunrise_game_data::scoreboard::CollisionRule;
+        use sunrise_gameplay_common::game::commands_common::Target;
         use sunrise_sim::mobs::Mob;
 
         let mut resources = None;
@@ -446,13 +460,16 @@ pub(crate) mod cart_push_tests {
 
 #[cfg(test)]
 pub(crate) mod container_drop_tests {
-    use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
-    use sunrise_gameplay_common::game::boats_common::Boat;
-    use sunrise_gameplay::game::server_side::minecarts_server::CartHit;
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
     use sunrise_core::random::{LegacyRandom, RandomSource};
+    use sunrise_gameplay::game::server_side::minecarts_server::CartHit;
+    use sunrise_gameplay_common::game::boats_common::Boat;
     use sunrise_items::items::ItemStack;
+    use {
+        sunrise_gameplay_common::game::minecarts::CartKind,
+        sunrise_gameplay_common::game::minecarts::Minecart,
+    };
 
     /// Advances `r` past the draws a spill takes from the level random, as
     /// vanilla's `Containers.dropContents` takes them: for each slot
@@ -529,9 +546,17 @@ pub(crate) mod container_drop_tests {
 
 #[cfg(test)]
 pub(crate) mod rejected_passenger_tests {
-    use {crate::game::minecarts::*, sunrise_gameplay_common::game::minecarts::{Arc, CartKind, HEIGHT, InteractTarget, Minecart, Vec3}};
-    use {sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use sunrise_core::nbt::Tag;
+    use {
+        crate::game::minecarts::*,
+        sunrise_gameplay_common::game::minecarts::{
+            Arc, CartKind, HEIGHT, InteractTarget, Minecart, Vec3,
+        },
+    };
+    use {
+        sunrise_gameplay::game::native_entity_refs::tests::with_game,
+        sunrise_gameplay_common::game::commands_common::Target,
+    };
 
     fn pig(uuid: i32, children: Vec<Tag>) -> Tag {
         Tag::compound([
@@ -649,9 +674,12 @@ pub(crate) mod rejected_passenger_tests {
 
 #[cfg(test)]
 pub(crate) mod hook_mutation_regressions {
-    use {crate::game::minecarts::*, sunrise_gameplay_common::game::minecarts::{CartKind, Minecart, Vec3}};
     use std::sync::{Arc, Mutex};
     use sunrise_sim::mobs::Mob;
+    use {
+        crate::game::minecarts::*,
+        sunrise_gameplay_common::game::minecarts::{CartKind, Minecart, Vec3},
+    };
 
     struct MutateRider {
         pub discard: bool,
@@ -797,15 +825,17 @@ pub(crate) mod hook_mutation_regressions {
                             5.0,
                             false,
                             false,
-                            sunrise_gameplay::game::server_side::minecarts_server::CartHit::default(),
+                            sunrise_gameplay::game::server_side::minecarts_server::CartHit::default(
+                            ),
                         );
                     } else {
-                        game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(
-                            71,
-                            "oak".into(),
-                            Vec3::ZERO,
-                            0.0,
-                        ));
+                        game.boats
+                            .push(sunrise_gameplay_common::game::boats_common::Boat::new(
+                                71,
+                                "oak".into(),
+                                Vec3::ZERO,
+                                0.0,
+                            ));
                         game.hurt_boat(0, 5.0, false);
                     }
                     assert_eq!(*destroyed.lock().unwrap(), 0);
@@ -825,10 +855,13 @@ pub(crate) mod hook_mutation_regressions {
 
 #[cfg(test)]
 pub(crate) mod cart_cost_bench {
-    use sunrise_gameplay_common::game::GameGameExt1;
-use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
-    use sunrise_gameplay::game::game_tests::tests::server_game;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay::game::game_tests::tests::server_game;
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use {
+        sunrise_gameplay_common::game::minecarts::CartKind,
+        sunrise_gameplay_common::game::minecarts::Minecart,
+    };
 
     /// Times `tick_carts` with many parked carts and some moving ones:
     /// `CARTS_PARKED` (default 600) carts each on its own rail piece, and

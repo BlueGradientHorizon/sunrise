@@ -62,7 +62,9 @@ impl crate::game::ClientGame<'_> {
             self.native_client_tick_post();
             self.common.clock.record(started.elapsed());
         }
-        self.common.clock.update_animation_phase(self.client.texture_ticks);
+        self.common
+            .clock
+            .update_animation_phase(self.client.texture_ticks);
         Ok(())
     }
     /// The window's own lead of a tick: debug keys and charts, the tutorial and the creative screen.
@@ -88,8 +90,11 @@ impl crate::game::ClientGame<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use {crate::game::native_entity_refs::tests::with_client_game, crate::game::startup_menu::StartupMenu};
     use winit::{event::WindowEvent, event_loop::ControlFlow};
+    use {
+        crate::game::native_entity_refs::tests::with_client_game,
+        crate::game::startup_menu::StartupMenu,
+    };
 
     struct NoLoop(std::cell::Cell<bool>);
     impl EventLoopCtl for NoLoop {

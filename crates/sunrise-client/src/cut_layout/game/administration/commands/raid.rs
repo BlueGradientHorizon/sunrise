@@ -1,12 +1,10 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_command::vanilla;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_sim::motion::PlayerMotion;
 
     /// Runs a line of the dev tree (`/raid` is registered only there).

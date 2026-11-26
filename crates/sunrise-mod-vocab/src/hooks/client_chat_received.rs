@@ -17,7 +17,8 @@ pub trait Hooks {
     /// one, while the narrator still says the original. Set `cancel` and it
     /// doesn't show: a delayed message lets the next one through. Lines the
     /// client adds itself and validation errors are not told. Client-side.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::client_chat_received::ClientGame<'_>::native_client_chat_received", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::client_chat_received::ClientGame<'_>::native_client_chat_received",
         dispatch = "api_carrier",
         side = "client",
         contract = "cancel",

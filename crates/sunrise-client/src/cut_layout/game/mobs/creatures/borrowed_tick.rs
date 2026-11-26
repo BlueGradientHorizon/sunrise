@@ -1,11 +1,9 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::mobs::Mob;
 #[cfg(test)]
 pub(crate) mod off_level_tests {
-    use {crate::game::creatures::borrowed_tick::*};
+    use crate::game::creatures::borrowed_tick::*;
 
     #[test]
     #[ignore = "daily"]
@@ -36,9 +34,10 @@ pub(crate) mod off_level_tests {
             rider.extra.mount = Some(71);
             rider.age = 19;
             game.mobs.push(vehicle);
-            game.persist
-                .off_level
-                .insert(72, sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(rider));
+            game.persist.off_level.insert(
+                72,
+                sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(rider),
+            );
             game.tick_creature_entities().unwrap();
             assert_eq!(
                 game.mob_object(71).unwrap().ai.goals.disabled & (MOVE | JUMP | LOOK),
@@ -66,9 +65,10 @@ pub(crate) mod off_level_tests {
             child.no_ai = true;
             child.age = 19;
             child.fire_ticks = 20;
-            game.persist
-                .off_level
-                .insert(72, sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(parent));
+            game.persist.off_level.insert(
+                72,
+                sunrise_gameplay_common::game::entity_memory::OffLevel::Mob(parent),
+            );
             game.mobs.push(child);
             game.tick_creature_entities().unwrap();
             let child = game.mob_object(73).unwrap();

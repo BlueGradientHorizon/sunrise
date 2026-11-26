@@ -32,7 +32,7 @@ impl Deref for ItemSnapshot {
 }
 
 pub trait ItemSnapshotGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-     fn stack_boundary_items(&self) -> Option<ItemSnapshot> {
+    fn stack_boundary_items(&self) -> Option<ItemSnapshot> {
         Some(ItemSnapshot::capture(
             self.server_items.as_ref(),
             self.side_world_table_items(),
@@ -41,7 +41,6 @@ pub trait ItemSnapshotGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> ItemSnapshotGameExt1<'__sg> for G {}
-
 
 impl<'a> super::GameLevel<'a> {
     pub(in crate::game) fn stack_boundary_items(&self) -> Option<&'a Items> {

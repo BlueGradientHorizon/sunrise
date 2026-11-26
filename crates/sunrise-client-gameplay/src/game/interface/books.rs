@@ -365,11 +365,7 @@ impl ClientGame<'_> {
     }
     /// A key and the text it typed in the open book (the keyboard, or a
     /// controller's on-screen keyboard).
-    pub fn book_input(
-        &mut self,
-        key: Option<KeyCode>,
-        text: Option<&str>,
-    ) -> bool {
+    pub fn book_input(&mut self, key: Option<KeyCode>, text: Option<&str>) -> bool {
         match self.client.book.as_mut() {
             Some(BookScreen::View { .. }) => match key {
                 Some(KeyCode::Escape) => {
@@ -528,7 +524,10 @@ impl ClientGame<'_> {
         &mut self,
         shortcut: sunrise_client::clipboard::EditShortcut,
     ) {
-        let signing = matches!(self.client.book, Some(BookScreen::Edit { signing: true, .. }));
+        let signing = matches!(
+            self.client.book,
+            Some(BookScreen::Edit { signing: true, .. })
+        );
         if signing {
             if let Some(BookScreen::Edit {
                 title, title_edit, ..

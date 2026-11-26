@@ -529,7 +529,8 @@ impl crate::game::ClientGame<'_> {
                         }
                         let diff = (target - m.body_yaw + 180.0).rem_euclid(360.0) - 180.0;
                         m.body_yaw += diff * 0.3;
-                        let body_diff = (self.common.yaw - m.body_yaw + 180.0).rem_euclid(360.0) - 180.0;
+                        let body_diff =
+                            (self.common.yaw - m.body_yaw + 180.0).rem_euclid(360.0) - 180.0;
                         if body_diff.abs() > 50.0 {
                             m.body_yaw += body_diff - body_diff.signum() * 50.0;
                         }

@@ -18,7 +18,8 @@ pub trait Hooks {
     /// separate earlier passes, and decorations run last in storage order.
     /// Block positions are shuffled before destruction, so their list order is
     /// not destruction order either. Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::explosion_detonate::ServerGame<'_>::native_explosion_detonate", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::explosion_detonate::ServerGame<'_>::native_explosion_detonate",
         dispatch = "flat",
         side = "server",
         contract = "collect",

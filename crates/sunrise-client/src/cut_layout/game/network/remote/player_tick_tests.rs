@@ -1,9 +1,12 @@
 // Test module extracted without changing its logical path.
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
 use mod_api::{Host, HostSide, PlayerRef};
 use std::sync::{Arc, Mutex};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_items::items::ItemStack;
+use {
+    sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+    sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+};
 
 #[derive(Debug, PartialEq)]
 pub(in crate::game) struct Snapshot {
@@ -17,12 +20,7 @@ pub(in crate::game) struct Snapshot {
 
 pub(crate) struct Log(pub(crate) Arc<Mutex<Vec<Snapshot>>>);
 impl Log {
-    pub(crate) fn record(
-        &self,
-        side: HostSide<'_>,
-        player: PlayerRef,
-        phase: &'static str,
-    ) {
+    pub(crate) fn record(&self, side: HostSide<'_>, player: PlayerRef, phase: &'static str) {
         let (host, side, cooldown): (&dyn Host, _, _) = match side {
             HostSide::Server(host) => {
                 assert_eq!(
@@ -218,8 +216,15 @@ fn guest_tick_brackets_sleep_cooldowns_pickups_and_death() {
             assert_eq!(observations[2].diamonds, 0);
             drop(observations);
             // The missing bed is a living-entity continuation failure: immediate wake.
-            assert_eq!(game.server.lan.as_ref().unwrap().hub.guests[0].sleep_timer, 0);
-            assert!(game.server.lan.as_ref().unwrap().hub.guests[0].bed.is_none());
+            assert_eq!(
+                game.server.lan.as_ref().unwrap().hub.guests[0].sleep_timer,
+                0
+            );
+            assert!(
+                game.server.lan.as_ref().unwrap().hub.guests[0]
+                    .bed
+                    .is_none()
+            );
             assert!(game.inventory.iter().all(Option::is_none));
             heard.lock().unwrap().clear();
             // A real zero-health death-screen tick still gets both endpoints,
@@ -262,9 +267,7 @@ fn guest_tick_brackets_sleep_cooldowns_pickups_and_death() {
 
 // `player_name_format` on the name tag over a player (`Player.getDisplayName`).
 /// Renames "Steve" and counts how often the hook is asked.
-pub(crate) struct Captain(
-    pub(crate) std::sync::Arc<std::sync::atomic::AtomicUsize>,
-);
+pub(crate) struct Captain(pub(crate) std::sync::Arc<std::sync::atomic::AtomicUsize>);
 
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Captain {

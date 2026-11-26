@@ -12,10 +12,10 @@
 //! it by the rope either. Here the pull lands on the server's copy and the
 //! rider's client overwrites it the same way (`tick_boats`).
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::boats_common::Boat;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::boats_common::Boat;
 use sunrise_sim::mobs::leash::{self, Holder, HolderState, Pending};
 
 /// `AbstractBoat`'s `getBbWidth` and `getBbHeight`.
@@ -63,11 +63,7 @@ impl ServerGame<'_> {
     pub(in crate::game::server_side) fn boat_leash_player(&self, b: &Boat) -> Option<[i32; 4]> {
         b.leash_player.or(self.common.level.player_uuid)
     }
-    pub fn boat_holder(
-        &self,
-        holder: Holder,
-        player: Option<[i32; 4]>,
-    ) -> Held {
+    pub fn boat_holder(&self, holder: Holder, player: Option<[i32; 4]>) -> Held {
         match holder {
             Holder::Player => {
                 let want = player.or(self.common.level.player_uuid);
@@ -157,11 +153,13 @@ impl ServerGame<'_> {
             },
             Holder::Knot(pos) => {
                 let name = self
-                    .common.res
+                    .common
+                    .res
                     .facts()
                     .get(self.common.world.block(pos[0], pos[1], pos[2]));
                 let fence = self
-                    .common.res
+                    .common
+                    .res
                     .items()
                     .block_tags
                     .get("minecraft:fences")
@@ -197,7 +195,10 @@ impl ServerGame<'_> {
 
     pub fn release_stored_boat_leash(&mut self, i: usize, drop: bool) {
         let (holder, id) = (self.common.boats[i].leash, self.common.boats[i].id);
-        let at = self.common.boats.update(i, |b| Self::take_boat_leash(b, drop));
+        let at = self
+            .common
+            .boats
+            .update(i, |b| Self::take_boat_leash(b, drop));
         self.notify_knot_leashee_removed(holder, id);
         if let Some(at) = at {
             self.drop_lead_item(at);
@@ -242,7 +243,8 @@ impl ServerGame<'_> {
             // on, else removeLeash.
             Held::Gone => {
                 let drops = self
-                    .common.ui
+                    .common
+                    .ui
                     .rules
                     .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS);
                 self.release_boat_leash(b, drops);
@@ -322,7 +324,9 @@ impl ServerGame<'_> {
                         .iter()
                         .any(|g| sunrise_sim::lan::playerdata::uuid_ints(g.uuid) == u)
                 });
-                if guest || (self.common.level.player_uuid == Some(u) && self.common.player.is_some()) {
+                if guest
+                    || (self.common.level.player_uuid == Some(u) && self.common.player.is_some())
+                {
                     Some((Holder::Player, Some(u)))
                 } else {
                     self.mob_by_uuid(u)
@@ -384,7 +388,8 @@ impl ServerGame<'_> {
 
     /// The boat with this UUID (`ServerLevel.getEntity`).
     pub fn boat_by_uuid(&self, uuid: [i32; 4]) -> Option<u32> {
-        self.common.persist
+        self.common
+            .persist
             .uuids
             .iter()
             .find(|(id, u)| {
@@ -405,7 +410,9 @@ impl ServerGame<'_> {
             .others
             .0
             .iter()
-            .find(|o| o.kind == "minecraft:leash_knot" && self.common.persist.uuid_of(o.id) == Some(uuid))
+            .find(|o| {
+                o.kind == "minecraft:leash_knot" && self.common.persist.uuid_of(o.id) == Some(uuid)
+            })
             .map(|o| {
                 let block = sunrise_core::position::BlockPos::containing(o.position);
                 [block.x, block.y, block.z]
@@ -474,7 +481,9 @@ impl ServerGame<'_> {
         let mut any = false;
         for i in self.boats_on(Holder::Knot(knot)) {
             if self.boat_can_attach(i, player) {
-                self.common.boats.update(i, |b| b.leash = Some(Holder::Player));
+                self.common
+                    .boats
+                    .update(i, |b| b.leash = Some(Holder::Player));
                 self.common.boats.update(i, |b| b.leash_player = Some(me));
                 any = true;
             }
@@ -536,7 +545,8 @@ impl ServerGame<'_> {
         // hanging on it.
         if item.as_deref() == Some("minecraft:shears") {
             let held_mobs: Vec<u32> = self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .filter(|m| m.extra.leash == Some(Holder::Boat(id)))
                 .map(|m| m.id)
@@ -593,8 +603,6 @@ impl ServerGame<'_> {
 pub(in crate::game) mod tests {
     use super::*;
 
-    
-
     #[test]
     fn a_boat_is_centred_half_its_height_up() {
         let b = Boat::new(1, "oak".into(), Vec3::new(1.0, 64.0, 2.0), 0.0);
@@ -622,14 +630,12 @@ pub(in crate::game) mod tests {
         let d = distance(Vec3::new(0.0, 0.0, 0.0), Vec3::new(3.0, 4.0, 0.0));
         assert!((d - 5.0).abs() < 1e-12);
     }
-    
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::GameGameExt3 as _;
 use sunrise_gameplay_common::game::GameGameExt3 as _;
-
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
 

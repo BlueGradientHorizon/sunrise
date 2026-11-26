@@ -1,4 +1,3 @@
-
 #[allow(unused_variables)]
 impl SideOps for crate::game::server_side::ServerState {
     type Game<'g> = crate::game::ServerGame<'g>;
@@ -10,6 +9,6 @@ impl SideOps for crate::game::server_side::ServerState {
         game.server_handle_mob_events_reusable(events)
     }
 }
-use sunrise_gameplay_common::game::side_ops::mobs_creatures::SideOps;
 use sunrise_gameplay_common::game::Result;
+use sunrise_gameplay_common::game::side_ops::mobs_creatures::SideOps;
 use sunrise_sim::mobs::MobEvent;

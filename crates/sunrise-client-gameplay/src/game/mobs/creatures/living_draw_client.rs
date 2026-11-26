@@ -1,6 +1,6 @@
 use super::*;
-use sunrise_gameplay_common::game::creatures::living_draw::LivingFrame;
 use sunrise_client::mobs::render::FrameDraw;
+use sunrise_gameplay_common::game::creatures::living_draw::LivingFrame;
 
 impl crate::game::ClientGame<'_> {
     /// Draws `mob` into `out` as the frame's mob pass does, or nothing when it is out of range,

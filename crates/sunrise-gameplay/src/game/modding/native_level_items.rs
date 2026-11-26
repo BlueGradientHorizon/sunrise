@@ -6,8 +6,8 @@
 //! server's players, and in-frame on the window's own level. Clients get the
 //! new entities through the tracker, as any other.
 use crate::game::ServerGame;
-pub use sunrise_gameplay_common::game::spill_common as spill;
 use mod_api::{EntityRef, LevelRef};
+pub use sunrise_gameplay_common::game::spill_common as spill;
 use sunrise_items::items::ItemStack;
 
 impl ServerGame<'_> {
@@ -32,7 +32,8 @@ impl ServerGame<'_> {
         // `spawn_item` takes the next id.
         let id = self.server.next_entity + 1;
         self.add_item_entity(stack, at, motion, pickup_delay);
-        self.common.dropped
+        self.common
+            .dropped
             .iter()
             .rev()
             .any(|d| d.id == id)
@@ -59,7 +60,8 @@ impl ServerGame<'_> {
         // Block.popResource's private overload checks these after the draws.
         if !self.stack_spawns(&stack)
             || !self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS)
         {

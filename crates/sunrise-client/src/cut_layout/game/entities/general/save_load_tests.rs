@@ -5,10 +5,16 @@
 //! record per root (never for `noSave`), and refuse a whole tree — codec
 //! fault, structural fault or a UUID a live entity already owns — with zero
 //! published rows.
-use {crate::game::general::*, sunrise_gameplay_common::game::general::{Aabb, Entity, GeneralEntityRecord, GeneralRow, GeneralTypeEnvelope, JoinSeq, Tag, Target, Vec3, format, limits, nbt_size}};
+use std::collections::{HashMap, HashSet};
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_gameplay::game::server_side::persist::ChunkKey;
-use std::collections::{HashMap, HashSet};
+use {
+    crate::game::general::*,
+    sunrise_gameplay_common::game::general::{
+        Aabb, Entity, GeneralEntityRecord, GeneralRow, GeneralTypeEnvelope, JoinSeq, Tag, Target,
+        Vec3, format, limits, nbt_size,
+    },
+};
 
 /// Declares the fixture's two types: `mymod:robot`, which saves, and
 /// `mymod:ghost`, which never does.
@@ -88,11 +94,11 @@ fn record_tag(type_key: &str, uuid: [i32; 4], payload: &[u8], riders: Vec<Tag>) 
 #[test]
 #[ignore = "daily"]
 fn a_piston_ignored_general_row_moves_for_a_shulker_lid() {
-    use sunrise_gameplay_common::game::piston_push::Lid;
     use sunrise_core::{
         geometry::{Aabb, Direction},
         position::BlockPos,
     };
+    use sunrise_gameplay_common::game::piston_push::Lid;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::{entities::ArmorStand, mobs::Mob};
     use sunrise_world::level::pistons::MovingPiston;
@@ -190,7 +196,9 @@ fn general_tree_loads_joins_and_saves_one_record() {
         assert_eq!(rows[0].uuid, [1, 2, 3, 4]);
         assert_eq!(rows[1].mount, Some(rows[0].id));
         assert_eq!(
-            game.target_position(sunrise_gameplay_common::game::commands_common::Target::General(rows[0].id)),
+            game.target_position(
+                sunrise_gameplay_common::game::commands_common::Target::General(rows[0].id)
+            ),
             Some([0.5, 64.0, 0.5])
         );
         assert_eq!(rows[0].payload_bytes, b"payload");
@@ -285,8 +293,8 @@ fn minecart_keeps_its_general_passenger_after_the_rider_tick() {
 #[test]
 #[ignore = "daily"]
 fn mixed_passengers_sit_and_unload_with_their_actual_root() {
-    use sunrise_gameplay_common::game::commands_common::Target;
     use mod_api::StartRidingRefusal;
+    use sunrise_gameplay_common::game::commands_common::Target;
     with_types(|game| {
         let root_uuid = [1, 2, 3, 4];
         let pig_uuid = [2, 3, 4, 5];
@@ -508,9 +516,9 @@ fn unknown_rider_type_hands_the_tree_back() {
 #[test]
 #[ignore = "daily"]
 fn general_row_unloads_with_its_chunk_and_reloads_once() {
-    use sunrise_gameplay::game::entity_residency::SlotAccess;
     use mod_api::DimensionKey;
     use std::num::NonZeroU32;
+    use sunrise_gameplay::game::entity_residency::SlotAccess;
     with_types(|game| {
         game.reset_entity_residency();
         let grandchild = record_tag("mymod:robot", [8, 8, 8, 8], b"grandchild", Vec::new());
@@ -647,7 +655,11 @@ fn quarantine_record_limit_skips_one_byte_over() {
         let fill = limits::QUARANTINE_RECORD_LIMIT - base;
         assert!(fill > 1, "the base record must sit below the bound");
         game.spawn_loaded_entity((0, 0), sized(fill), None);
-        assert_eq!(game.server.others.0.len(), 1, "a record at the bound is kept");
+        assert_eq!(
+            game.server.others.0.len(),
+            1,
+            "a record at the bound is kept"
+        );
         game.spawn_loaded_entity((0, 0), sized(fill + 1), None);
         assert_eq!(game.server.others.0.len(), 1, "one byte over skips");
     });
@@ -667,7 +679,10 @@ fn quarantine_chunk_limit_skips_past_256() {
         for slot in 0..limits::QUARANTINE_CHUNK_LIMIT - 1 {
             game.spawn_loaded_entity((0, 0), tag(slot), None);
         }
-        assert_eq!(game.server.others.0.len(), limits::QUARANTINE_CHUNK_LIMIT - 1);
+        assert_eq!(
+            game.server.others.0.len(),
+            limits::QUARANTINE_CHUNK_LIMIT - 1
+        );
         game.spawn_loaded_entity((0, 0), tag(250), None);
         assert_eq!(
             game.server.others.0.len(),
@@ -693,7 +708,10 @@ fn quarantine_chunk_limit_skips_past_256() {
             );
         }
         game.spawn_loaded_entity((64, 0), elsewhere, None);
-        assert_eq!(game.server.others.0.len(), limits::QUARANTINE_CHUNK_LIMIT + 1);
+        assert_eq!(
+            game.server.others.0.len(),
+            limits::QUARANTINE_CHUNK_LIMIT + 1
+        );
     });
 }
 
@@ -796,7 +814,10 @@ fn a_general_riders_motion_follows_the_commands_delta_flags() {
             3,
         );
         let velocity = Vec3::new(0.25, -0.5, 0.75);
-        fn rider<'a>(game: &'a mut sunrise_gameplay::game::ServerGame<'_>, id: u32) -> &'a mut GeneralRow {
+        fn rider<'a>(
+            game: &'a mut sunrise_gameplay::game::ServerGame<'_>,
+            id: u32,
+        ) -> &'a mut GeneralRow {
             game.resident_entities.general.row_mut(id).unwrap()
         }
         rider(game, ids[1]).velocity = velocity;
@@ -939,7 +960,8 @@ fn guest_teleport_packets(
 ) {
     use sunrise_protocol::packets::play::Clientbound as C;
     let (mut own, mut vehicle) = (Vec::new(), Vec::new());
-    for packet in sunrise_gameplay_common::game::server_side::native_sound_refs::tests::packets(rx) {
+    for packet in sunrise_gameplay_common::game::server_side::native_sound_refs::tests::packets(rx)
+    {
         match packet {
             C::PlayerPosition(p) => own.push(p),
             C::TeleportEntity(p) => vehicle.push(p),
@@ -1086,9 +1108,12 @@ impl mod_api::Hooks for ObserveDismounts {
 #[test]
 #[ignore = "daily"]
 fn removing_a_vehicle_dismounts_general_and_mob_passengers_immediately_in_order() {
-    use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
     use sunrise_gameplay::game::server_side::minecarts_server::CartHit;
     use sunrise_sim::mobs::Mob;
+    use {
+        sunrise_gameplay_common::game::minecarts::CartKind,
+        sunrise_gameplay_common::game::minecarts::Minecart,
+    };
 
     let dismounts = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let observer =
@@ -1110,12 +1135,15 @@ fn removing_a_vehicle_dismounts_general_and_mob_passengers_immediately_in_order(
         .zip(71..)
         {
             match case {
-                "boat damage" => game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(
-                    vehicle,
-                    "oak".into(),
-                    at,
-                    0.0,
-                )),
+                "boat damage" => {
+                    game.boats
+                        .push(sunrise_gameplay_common::game::boats_common::Boat::new(
+                            vehicle,
+                            "oak".into(),
+                            at,
+                            0.0,
+                        ))
+                }
                 "stand damage" => game
                     .armor_stands
                     .push(sunrise_sim::entities::ArmorStand::new(vehicle, at, 0.0)),
@@ -1324,9 +1352,9 @@ fn a_volume_selector_finds_a_general_rows_box_without_its_origin() {
 #[test]
 #[ignore = "daily"]
 fn general_tree_travels_to_another_dimension_with_its_riders() {
-    use sunrise_gameplay::game::entity_residency::SlotAccess;
     use mod_api::DimensionKey;
     use std::num::NonZeroU32;
+    use sunrise_gameplay::game::entity_residency::SlotAccess;
     with_types(|game| {
         game.reset_entity_residency();
         let grandchild = record_tag("mymod:robot", [8, 8, 8, 8], b"", Vec::new());
@@ -1365,7 +1393,8 @@ fn general_tree_travels_to_another_dimension_with_its_riders() {
             ));
         }
         // The destination holds the same tree, freshly admitted.
-        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+            .unwrap();
         let rows = &game.resident_entities.general.rows;
         assert_eq!(rows.len(), 4);
         assert_eq!(rows[2].uuid, [8, 8, 8, 8]);
@@ -1419,7 +1448,8 @@ fn a_cross_level_general_tree_applies_each_riders_transition_on_arrival() {
             )
             .unwrap()
         );
-        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+            .unwrap();
         let rider = game.resident_entities.general.row(ids[1]).unwrap();
         assert_eq!(rider.position, Vec3::new(9.5, 101.25, 7.5));
         assert_eq!(rider.rotation, [120.0, 30.0]);
@@ -1456,7 +1486,8 @@ fn a_general_rider_targeted_across_levels_leaves_its_vehicle_first() {
         assert_eq!(moved, Some(true));
         assert_eq!(game.resident_entities.general.rows.len(), 1);
         assert_eq!(game.resident_entities.general.rows[0].id, ids[0]);
-        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+            .unwrap();
         let rows = &game.resident_entities.general.rows;
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].id, ids[1]);
@@ -1473,7 +1504,8 @@ fn a_general_rider_targeted_across_levels_leaves_its_vehicle_first() {
 fn refused_dimension_transfer_returns_the_whole_tree() {
     with_types(|game| {
         // Seed the destination with a row of the travelling UUID.
-        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+            .unwrap();
         game.load_listed(
             "mymod:robot",
             None,
@@ -1481,7 +1513,8 @@ fn refused_dimension_transfer_returns_the_whole_tree() {
             record_tag("mymod:robot", [1, 2, 3, 4], b"", Vec::new()),
         )
         .unwrap();
-        game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
+            .unwrap();
         let grandchild = record_tag("mymod:robot", [8, 8, 8, 8], b"", Vec::new());
         let rider = record_tag("mymod:robot", [9, 9, 9, 9], b"", vec![grandchild]);
         let sibling = record_tag("mymod:robot", [7, 7, 7, 7], b"", Vec::new());
@@ -1551,9 +1584,12 @@ fn no_save_rider_is_omitted_from_saved_tree() {
 #[test]
 #[ignore = "daily"]
 fn a_general_rider_keeps_minecart_drag_and_pickup_occupied() {
-    use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::mobs::Mob;
+    use {
+        sunrise_gameplay_common::game::minecarts::CartKind,
+        sunrise_gameplay_common::game::minecarts::Minecart,
+    };
     with_types(|game| {
         let at = Vec3::new(8.5, 64.0, 8.5);
         let cart_id = 5000;

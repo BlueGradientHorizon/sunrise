@@ -37,7 +37,6 @@ pub mod player;
 #[allow(unused_imports)]
 pub(in crate::game) use player::PlayerSectionObserver;
 
-
 use mod_api::__private::game::BackendRefOf;
 use mod_api::{DimensionKey, EntityRef, WorldEpoch};
 use std::collections::HashMap;
@@ -126,13 +125,7 @@ impl EntitySections {
     /// that is a crossing. One not filed in this level yet (it changed level, or its join is
     /// still to be told) is filed where it was, `from` when the boundary knows it, so a move
     /// before its join is told is a crossing too; otherwise it is filed untold.
-    pub fn moved(
-        &mut self,
-        scope: Scope,
-        id: u32,
-        from: Option<[f64; 3]>,
-        to: [f64; 3],
-    ) {
+    pub fn moved(&mut self, scope: Scope, id: u32, from: Option<[f64; 3]>, to: [f64; 3]) {
         let new = section_of(to);
         let old = match self.table(scope).entry(id) {
             Entry::Occupied(mut entry) => {
@@ -333,7 +326,6 @@ impl sunrise_sim::mobs::living::section_writes::WriteObserver for LiveSectionObs
 }
 
 impl crate::game::CommonGame<'_> {
-
     /// `Callback.onMove` for the residency table: a server entity's write from `from` to `to`
     /// that leaves its section puts it at the end of the section it enters, whether or not a
     /// hook listens. Cost: the integer compare of [`crossed`]; the table is touched only on a
@@ -350,7 +342,7 @@ impl crate::game::CommonGame<'_> {
 
 pub trait EntitySectionsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Where boundaries are now: None with no listener (nothing is filed) or no world open.
-     fn entity_section_scope(&self) -> Option<Scope> {
+    fn entity_section_scope(&self) -> Option<Scope> {
         if !mod_api::__private::listened(mod_api::HookId::EntityEnteringSection) {
             return None;
         }
@@ -361,12 +353,7 @@ pub trait EntitySectionsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// Entity `id` was put from `from` (when known) at `to`; tell it immediately after filing.
-     fn entity_section_moved(
-        &mut self,
-        id: u32,
-        from: Option<[f64; 3]>,
-        to: [f64; 3],
-    ) {
+    fn entity_section_moved(&mut self, id: u32, from: Option<[f64; 3]>, to: [f64; 3]) {
         self.side_pick_section_move(id, to);
         if let Some(from) = from {
             self.entity_section_entered(id, from, to);
@@ -380,7 +367,7 @@ pub trait EntitySectionsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// Entity `id`'s position was written: it is wherever it is now (any kind, either side).
-     fn entity_section_moved_id(&mut self, id: u32) {
+    fn entity_section_moved_id(&mut self, id: u32) {
         self.side_pick_section_sync_moved_id(id);
         let Some(scope) = self.entity_section_scope() else {
             return;
@@ -394,7 +381,7 @@ pub trait EntitySectionsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// Entity `id` is gone, or replaced under the same id: it starts over untold.
-     fn entity_section_forget(&mut self, id: u32) {
+    fn entity_section_forget(&mut self, id: u32) {
         self.side_pick_section_remove(id);
         self.native_lifecycle.entity_sections.forget(id);
         self.native_lifecycle
@@ -410,7 +397,7 @@ pub trait EntitySectionsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// temporarily moved to each recorded write while its crossing is told;
     /// this gives listeners the same position they would see at the write and
     /// preserves a listener's own position change.
-     fn entity_sections_ticked_live(
+    fn entity_sections_ticked_live(
         &mut self,
         sections: &mut EntitySections,
         moves: &mut Vec<PositionWrite>,
@@ -462,7 +449,7 @@ pub trait EntitySectionsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// Entity `id`'s position was written from `from` to `to` (`setPosRaw`) inside a family tick
     /// or while a rider is carried by a vehicle teleport. File and tell it at this write.
-     fn entity_section_step(&mut self, id: u32, from: [f64; 3], to: [f64; 3]) {
+    fn entity_section_step(&mut self, id: u32, from: [f64; 3], to: [f64; 3]) {
         if crossed(from, to) {
             self.side_pick_section_move(id, to);
         }
@@ -479,12 +466,7 @@ pub trait EntitySectionsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// Tell a write whose row is temporarily lent to a family pass. The callback sees the
     /// committed position without removing and reinserting the surrounding list tail.
-     fn entity_section_step_visible(
-        &mut self,
-        id: u32,
-        from: [f64; 3],
-        to: [f64; 3],
-    ) -> bool {
+    fn entity_section_step_visible(&mut self, id: u32, from: [f64; 3], to: [f64; 3]) -> bool {
         let scope = self.entity_section_scope();
         self.native_lifecycle.entity_sections.write_position = Some((id, to));
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -504,7 +486,7 @@ pub trait EntitySectionsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// An entity joined (`addEntity`): filed untold where it is now, which a join listener may
     /// have changed from `at`, where it joined.
-     fn entity_section_joined(&mut self, id: u32, at: [f64; 3]) {
+    fn entity_section_joined(&mut self, id: u32, at: [f64; 3]) {
         let Some(scope) = self.entity_section_scope() else {
             return;
         };
@@ -516,7 +498,7 @@ pub trait EntitySectionsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// Tells `entity_entering_section` each crossing queued by a nested write, in order. Called
     /// from inside a listener it does nothing: the outer write is still in progress.
-     fn tell_entity_sections(&mut self) {
+    fn tell_entity_sections(&mut self) {
         let Some(batch) = self.native_lifecycle.entity_sections.begin_telling() else {
             return;
         };
@@ -534,7 +516,7 @@ pub trait EntitySectionsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         self.native_lifecycle.entity_sections.end_telling(batch);
     }
 
-     fn tell_entity_sections_in(&mut self, sections: &mut EntitySections) {
+    fn tell_entity_sections_in(&mut self, sections: &mut EntitySections) {
         let Some(batch) = sections.begin_telling() else {
             return;
         };
@@ -553,7 +535,6 @@ pub trait EntitySectionsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> EntitySectionsGameExt1<'__sg> for G {}
-
 
 impl LiveSectionObserver {
     pub(crate) fn new(

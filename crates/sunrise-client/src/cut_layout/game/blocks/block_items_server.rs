@@ -1,20 +1,18 @@
-
-
 #![cfg(test)]
 use sunrise_core::nbt::Tag;
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::save;
 #[cfg(test)]
 pub(crate) mod tests {
+    use sunrise_gameplay_common::game::block_items::BlockItemsGameExt1;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::block_items::BlockItemsGameExt1;
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn placed_sculk_item_data_survives_pending_placement() {
-        use sunrise_gameplay::game::native_entity_refs::tests::with_game;
         use std::sync::Arc;
         use sunrise_core::nbt::Tag;
+        use sunrise_gameplay::game::native_entity_refs::tests::with_game;
         use sunrise_items::items::ItemStack;
         use sunrise_level::chunk::Chunk;
 
@@ -58,11 +56,14 @@ use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     #[test]
     #[ignore = "daily"]
     fn a_mod_block_entity_rides_its_item_through_the_game() {
-        use sunrise_gameplay_common::game::block_items::components;
-        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
         use mod_api::{self, *};
         use std::sync::Arc;
+        use sunrise_gameplay_common::game::block_items::components;
         use sunrise_level::{chunk::Chunk, containers::BlockEntity};
+        use {
+            sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+            sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+        };
 
         const CHILD: &str = "SUNRISE_MOD_BLOCK_ENTITY_ITEM_CHILD";
         if run_fresh_cases(
@@ -196,10 +197,13 @@ use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     #[test]
     #[ignore = "daily"]
     fn a_content_blocks_pick_item_is_what_pick_block_takes() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
         use mod_api::{self, *};
         use std::sync::Arc;
         use sunrise_level::chunk::Chunk;
+        use {
+            sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+            sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+        };
 
         const CHILD: &str = "SUNRISE_MOD_PICK_ITEM_CHILD";
         if run_fresh_cases(
@@ -269,8 +273,8 @@ use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
 #[cfg(test)]
 pub(crate) mod plain_name_overlay_tests {
     use super::*;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_core::position::BlockPos;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 
     /// BaseContainerBlockEntity's removed external name must not be restored
     /// from the original saved source by the chunk writer.
@@ -398,8 +402,8 @@ pub(crate) mod plain_name_overlay_tests {
 #[cfg(test)]
 pub(crate) mod styled_name_model_tests {
     use super::*;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_core::position::BlockPos;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 
     fn parse(input: &str) -> Tag {
         let (tag, used) = sunrise_core::nbt::parse_snbt(input).unwrap();

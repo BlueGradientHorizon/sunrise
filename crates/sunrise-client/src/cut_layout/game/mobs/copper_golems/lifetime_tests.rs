@@ -1,10 +1,10 @@
-use sunrise_sim::mobs::Mob;
 use super::*;
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
 use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
 };
+use sunrise_sim::mobs::Mob;
 
 static VALUE: AttachmentType<i32> = AttachmentType {
     namespace: "test",

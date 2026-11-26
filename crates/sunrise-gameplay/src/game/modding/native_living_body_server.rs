@@ -1,5 +1,5 @@
-use crate::game::ServerGame;
 use super::commands::Target;
+use crate::game::ServerGame;
 
 impl ServerGame<'_> {
     /// The entity id `who` names as a hit's causing entity: a mob's own, the player in place's
@@ -7,7 +7,9 @@ impl ServerGame<'_> {
     pub(in crate::game) fn causer_id(&self, who: Option<sunrise_sim::mobs::Who>) -> i32 {
         match who {
             Some(sunrise_sim::mobs::Who::Mob(id)) => id as i32,
-            Some(sunrise_sim::mobs::Who::Player) => self.common.player.as_ref().map_or(0, |p| p.entity_id),
+            Some(sunrise_sim::mobs::Who::Player) => {
+                self.common.player.as_ref().map_or(0, |p| p.entity_id)
+            }
             None => 0,
         }
     }

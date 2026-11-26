@@ -14,7 +14,11 @@ impl crate::game::ClientGame<'_> {
         let strength = self.client.hand_strength.scale(0.5, speed);
         // Player.attack's damage: a riptide spin's, or this client's own
         // ATTACK_DAMAGE, which the held item and effects don't change here.
-        let spin = self.common.player.as_ref().map_or(0.0, |p| p.auto_spin_attack_dmg);
+        let spin = self
+            .common
+            .player
+            .as_ref()
+            .map_or(0.0, |p| p.auto_spin_attack_dmg);
         let damage = if spin > 0.0 {
             spin
         } else {
@@ -39,7 +43,8 @@ impl crate::game::ClientGame<'_> {
             self.pvp_attacked(id, distance);
             self.remote_player_attack(index);
         } else if let Some(projectile) = self
-            .common.creatures
+            .common
+            .creatures
             .projectiles
             .iter()
             .find(|p| p.id as i32 == id)

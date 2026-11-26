@@ -1,4 +1,3 @@
-
 #[cfg(feature = "client")]
 use super::native_block_entity_draw::BlockEntityDraw;
 #[cfg(test)]

@@ -28,10 +28,7 @@ pub fn boat(copy_box: impl FnOnce(u32, Vec3, Aabb) -> Aabb, b: &Boat) -> Candida
 }
 
 /// [`boat`] for a minecart.
-pub fn cart(
-    copy_box: impl FnOnce(u32, Vec3, Aabb) -> Aabb,
-    c: &Minecart,
-) -> Candidate {
+pub fn cart(copy_box: impl FnOnce(u32, Vec3, Aabb) -> Aabb, c: &Minecart) -> Candidate {
     let bounds = copy_box(c.id, c.position, c.bounds());
     Candidate::fixed(SolidKind::Cart, c.id, bounds)
 }
@@ -48,7 +45,7 @@ pub fn cart_reach(c: &Minecart) -> Aabb {
 
 pub trait CollisionSourceGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The boxes of the solid entities for `mover`, in the order its inputs are read.
-     fn entity_collisions(&self, mover: Mover<'_>) -> Vec<Aabb> {
+    fn entity_collisions(&self, mover: Mover<'_>) -> Vec<Aabb> {
         let mut boxes = Vec::new();
         self.each_solid(mover, |c, _| boxes.push(c.bounds));
         boxes
@@ -56,11 +53,7 @@ pub trait CollisionSourceGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// Asks the rule about every entity `mover` may meet, and hands the solid ones to `each`
     /// with the index of its mob.
-     fn each_solid(
-        &self,
-        mover: Mover<'_>,
-        mut each: impl FnMut(&Candidate, Option<usize>),
-    ) {
+    fn each_solid(&self, mover: Mover<'_>, mut each: impl FnMut(&Candidate, Option<usize>)) {
         let (rule, area) = match mover {
             Mover::Player => {
                 let Some(p) = &self.player else {
@@ -125,7 +118,6 @@ pub trait CollisionSourceGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> CollisionSourceGameExt1<'__sg> for G {}
-
 
 use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
 

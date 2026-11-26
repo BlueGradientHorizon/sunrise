@@ -1,19 +1,21 @@
-
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
+    use sunrise_gameplay_common::game::GameGameExt1;
     use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
     use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::GameGameExt1;
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn declared_types_create_tick_and_reload_through_game() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::record_key, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
         use mod_api::{self, *};
         use std::sync::Arc;
         use sunrise_level::{chunk::Chunk, containers::BlockEntity};
         use sunrise_sim::save;
+        use {
+            sunrise_gameplay::game::native_entity_refs::tests::record_key,
+            sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+            sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+        };
 
         const CHILD: &str = "SUNRISE_DECLARED_BE_GAME_CHILD";
         if run_fresh_cases(
@@ -175,7 +177,8 @@ use sunrise_gameplay_common::game::GameGameExt1;
             vec![package("be_test", &[]), package("be_user", &["be_test"])],
             || {
                 sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
-                let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default());
+                let root =
+                    sunrise_gameplay_common::game::mods::content_root(&base, &Default::default());
                 if invalid {
                     let error = root.unwrap_err().to_string();
                     assert!(error.contains("be_test:shared"), "{error}");
@@ -286,7 +289,9 @@ use sunrise_gameplay_common::game::GameGameExt1;
                     use sunrise_gameplay_common::game::api_values::TryIntoApi;
                     let written = game.with_level(|_, level, ticks| {
                         LevelWriteHost::set_block(
-                            &mut sunrise_gameplay_common::game::mod_api_host::LevelTicks::new(level, ticks),
+                            &mut sunrise_gameplay_common::game::mod_api_host::LevelTicks::new(
+                                level, ticks,
+                            ),
                             [5, 64, 0],
                             first.try_into_api().unwrap(),
                             BlockUpdateFlags::NONE,
@@ -307,24 +312,21 @@ use sunrise_gameplay_common::game::GameGameExt1;
     #[test]
     fn observed_overlay_prefers_first_open_screen() {
         assert_eq!(
-            sunrise_client_gameplay::game::client_side::native_hooks_client::observed_overlay_id(&[
-                (false, "sign"),
-                (false, "book")
-            ]),
+            sunrise_client_gameplay::game::client_side::native_hooks_client::observed_overlay_id(
+                &[(false, "sign"), (false, "book")]
+            ),
             None
         );
         assert_eq!(
-            sunrise_client_gameplay::game::client_side::native_hooks_client::observed_overlay_id(&[
-                (false, "sign"),
-                (true, "book")
-            ]),
+            sunrise_client_gameplay::game::client_side::native_hooks_client::observed_overlay_id(
+                &[(false, "sign"), (true, "book")]
+            ),
             Some("book")
         );
         assert_eq!(
-            sunrise_client_gameplay::game::client_side::native_hooks_client::observed_overlay_id(&[
-                (true, "sign"),
-                (true, "book")
-            ]),
+            sunrise_client_gameplay::game::client_side::native_hooks_client::observed_overlay_id(
+                &[(true, "sign"), (true, "book")]
+            ),
             Some("sign")
         );
     }
@@ -343,9 +345,12 @@ use sunrise_gameplay_common::game::GameGameExt1;
         ) {
             return;
         }
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::Settings, crate::game::load_resources};
         use sunrise_mod_package::content::{Block, Content};
         use sunrise_sim::mod_content::{ContentMod, build};
+        use {
+            crate::game::Settings, crate::game::load_resources,
+            sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        };
 
         let base = std::path::PathBuf::from(
             std::env::var_os("SUNRISE_TEST_RESOURCES")
@@ -412,7 +417,8 @@ use sunrise_gameplay_common::game::GameGameExt1;
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -464,9 +470,12 @@ use sunrise_gameplay_common::game::GameGameExt1;
     #[ignore = "daily"]
     #[cfg(any())]
     fn generated_fire_matches_dispatch() {
-        use {crate::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::Settings, crate::game::load_resources};
         use mod_api::{ClientHost, Flow, Hooks, ModEntry};
         use std::sync::{Arc, Mutex};
+        use {
+            crate::game::Audio, crate::game::Settings, crate::game::load_resources,
+            sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        };
 
         #[derive(Default)]
         struct Listener(usize, Arc<Mutex<Vec<usize>>>);
@@ -518,7 +527,8 @@ use sunrise_gameplay_common::game::GameGameExt1;
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
         let game = sunrise_client_gameplay::game::ClientGame::new(
             &loaded.resources,
             loaded.client_res.unwrap(),
@@ -556,29 +566,32 @@ use sunrise_gameplay_common::game::GameGameExt1;
                     mod_api::dispatch_block_highlight(
                         &game,
                         [1, 2, 3],
-                        sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(&sunrise_gameplay_common::game::native_hooks::BlockStateId(7))
-                            .unwrap(),
+                        sunrise_gameplay_common::game::api_values::TryIntoApi::try_into_api(
+                            &sunrise_gameplay_common::game::native_hooks::BlockStateId(7),
+                        )
+                        .unwrap(),
                         0.5,
                         &mut canceled,
                     );
                 }
                 let cancel_trace = trace.lock().unwrap().clone();
                 trace.lock().unwrap().clear();
-                let view = sunrise_client_gameplay::game::client_side::screen_build::ObservedScreen {
-                    id: "inventory",
-                    overlay: false,
-                    mod_screen: None,
-                    menu: None,
-                    menu_generation: None,
-                    dialog_key: None,
-                    title: None,
-                    rect: [0.0; 4],
-                    screen_size: [0.0; 2],
-                    slots: 0,
-                    mouse: [0.0; 2],
-                    partial_tick: 0.0,
-                    regions: Vec::new(),
-                };
+                let view =
+                    sunrise_client_gameplay::game::client_side::screen_build::ObservedScreen {
+                        id: "inventory",
+                        overlay: false,
+                        mod_screen: None,
+                        menu: None,
+                        menu_generation: None,
+                        dialog_key: None,
+                        title: None,
+                        rect: [0.0; 4],
+                        screen_size: [0.0; 2],
+                        slots: 0,
+                        mouse: [0.0; 2],
+                        partial_tick: 0.0,
+                        regions: Vec::new(),
+                    };
                 let mut areas = Vec::new();
                 if fire {
                     game.fire_screen_exclusion_areas(&view.view(), &mut areas);
@@ -614,7 +627,11 @@ use sunrise_gameplay_common::game::GameGameExt1;
         sunrise_gameplay_common::game::in_own_process(
             "game::native_hooks::tests::no_stack_is_hovered_without_a_window",
             || {
-                use {crate::game::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::Settings, crate::game::load_resources};
+                use {
+                    crate::game::Audio, crate::game::Settings, crate::game::load_resources,
+                    sunrise_gameplay_common::game::Options,
+                    sunrise_gameplay_common::game::Progress,
+                };
 
                 let root =
                     std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -657,6 +674,5 @@ use sunrise_gameplay_common::game::GameGameExt1;
         );
     }
 }
-
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

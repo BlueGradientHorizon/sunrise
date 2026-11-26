@@ -1,8 +1,8 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::lan_particle_data::decode_mod_particle;
-use sunrise_gameplay_common::game::lan_particle_data::particle_position_source;
 use sunrise_client::particles::ExplosionParticle;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_gameplay_common::game::lan_particle_data::decode_mod_particle;
+use sunrise_gameplay_common::game::lan_particle_data::particle_position_source;
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_protocol::{
     entity_data::{Particle, ParticleData, PositionSource as NetworkPositionSource},
@@ -137,11 +137,7 @@ impl ClientGame<'_> {
     }
     /// The options a server's particle stands for (None for a type or data
     /// this client doesn't draw).
-    pub fn received_particle(
-        &mut self,
-        p: &Particle,
-        at: [f64; 3],
-    ) -> Option<ParticleOptions> {
+    pub fn received_particle(&mut self, p: &Particle, at: [f64; 3]) -> Option<ParticleOptions> {
         if let Some(ParticleData::Mod { name, options }) = &p.data {
             return decode_mod_particle(name, options);
         }
@@ -220,7 +216,8 @@ impl ClientGame<'_> {
             ]),
             NetworkPositionSource::Entity { id, y_offset } => {
                 let id = u32::try_from(*id).ok()?;
-                self.common.mobs
+                self.common
+                    .mobs
                     .iter()
                     .find(|m| m.id == id && !m.removed)
                     .map(|m| {

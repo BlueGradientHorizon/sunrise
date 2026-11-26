@@ -34,7 +34,8 @@ impl crate::game::ServerGame<'_> {
                 let blocks_ok = match o.get("blocks").or_else(|| o.get("block")) {
                     Some(Value::String(b)) => match b.strip_prefix('#') {
                         Some(tag) => self
-                            .common.res
+                            .common
+                            .res
                             .items()
                             .block_tags
                             .get(tag.trim_start_matches("minecraft:"))

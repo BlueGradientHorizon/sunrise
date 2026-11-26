@@ -4,16 +4,16 @@ use super::*;
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use crate::game::native_entity_refs::tests::with_game;
-    use sunrise_gameplay_common::game::native_hooks::enchanted_block_loot::tests::Fortune;
-    use sunrise_gameplay_common::game::native_hooks::enchanted_block_loot::tests::POS;
-    use sunrise_gameplay_common::game::native_hooks::enchanted_block_loot::tests::ROLLS;
-    use sunrise_gameplay_common::game::native_hooks::enchanted_block_loot::tests::Read;
     use mod_api::ModEntry;
     use mod_platform::testing::with_mods;
     use std::sync::{Arc, Mutex};
     use sunrise_core::random::{LegacyRandom, RandomSource};
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::native_hooks::enchanted_block_loot::tests::Fortune;
+    use sunrise_gameplay_common::game::native_hooks::enchanted_block_loot::tests::POS;
+    use sunrise_gameplay_common::game::native_hooks::enchanted_block_loot::tests::ROLLS;
+    use sunrise_gameplay_common::game::native_hooks::enchanted_block_loot::tests::Read;
 
     /// gravel.json's `table_bonus` is `[0.1, 0.14285715, 0.25, 1.0]`: at
     /// level 3 every break gives flint, at level 0 few do. The answer reaches
@@ -133,6 +133,10 @@ pub(in crate::game) mod tests {
             .server
             .rand_sequences
             .get("minecraft:blocks/gravel", seed);
-        (flint, game.common.world.random.next_int(), sequence.next_int())
+        (
+            flint,
+            game.common.world.random.next_int(),
+            sequence.next_int(),
+        )
     }
 }

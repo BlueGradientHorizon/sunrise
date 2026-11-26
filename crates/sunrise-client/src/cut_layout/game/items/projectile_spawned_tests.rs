@@ -2,11 +2,11 @@
 //! the mod host, with enchantments from a world datapack. Expected values come
 //! from vanilla's formulas run on copies of the randoms involved.
 #![cfg(test)]
-use sunrise_gameplay_common::game::tables::GameItems;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::Identifier;
 use serde_json::{Value, json};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::tables::GameItems;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::Mob;
 
@@ -164,6 +164,5 @@ fn owner_launch_applies_the_supplied_stacks_effects() {
         }
     });
 }
-
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

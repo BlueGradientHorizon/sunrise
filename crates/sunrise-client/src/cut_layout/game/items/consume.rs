@@ -1,38 +1,35 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
 use sunrise_world::teleport_consume::TeleportConsume;
 #[cfg(test)]
 pub(crate) mod teleport_hook_tests {
-use sunrise_core::random::RandomSource;
-use sunrise_gameplay_common::game::tables::GameItems;
-use sunrise_gameplay::game::server_side::consume::teleport_hook_tests::ConsumptionProbe;
+    use sunrise_core::random::RandomSource;
+    use sunrise_gameplay::game::server_side::consume::teleport_hook_tests::ConsumptionProbe;
+    use sunrise_gameplay_common::game::tables::GameItems;
 
-use sunrise_gameplay_common::game::api_values::test_snapshot;
+    use sunrise_gameplay_common::game::api_values::test_snapshot;
 
-use super::*;
+    use super::*;
 
+    use crate::game::native_entity_refs::tests::with_game;
 
-use crate::game::native_entity_refs::tests::with_game;
+    use mod_api::{Flow, Hooks, ItemConsumptionTeleportEvent, ModEntry, ServerHost};
 
-use mod_api::{Flow, Hooks, ItemConsumptionTeleportEvent, ModEntry, ServerHost};
-
-use std::sync::{
+    use std::sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     };
 
-use sunrise_sim::motion::PlayerMotion;
+    use sunrise_sim::motion::PlayerMotion;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn consumption_hook_keeps_the_stack_before_use_and_cancellation_stops_attempts() {
         run_consumption_hook_keeps_the_stack_before_use_and_cancellation_stops_attempts();
     }
-pub(crate) fn run_consumption_hook_keeps_the_stack_before_use_and_cancellation_stops_attempts()
-     {
+    pub(crate) fn run_consumption_hook_keeps_the_stack_before_use_and_cancellation_stops_attempts()
+    {
         let heard = Arc::new(Mutex::new(Vec::new()));
         let moved = Arc::new(AtomicBool::new(false));
         let mods: mod_api::Mods = vec![ModEntry::new(
@@ -77,7 +74,8 @@ pub(crate) fn run_consumption_hook_keeps_the_stack_before_use_and_cancellation_s
                 assert_eq!(game.player.as_ref().unwrap().position, at);
 
                 // The source stack is explicit, even if the hand has since changed.
-                game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:stone", 1));
+                game.common.inventory[game.common.selected] =
+                    Some(ItemStack::new("minecraft:stone", 1));
                 let mut expected_random = game.world.random.clone();
                 for _ in 0..3 {
                     expected_random.next_double();
@@ -120,18 +118,17 @@ pub(crate) fn run_consumption_hook_keeps_the_stack_before_use_and_cancellation_s
     }
 }
 
-
 #[cfg(test)]
 pub(crate) mod fox_consumption_hook_tests {
-    use sunrise_core::random::RandomSource;
-use super::*;
-    use sunrise_gameplay_common::game::api_values::test_snapshot;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use super::*;
     use mod_api::{Flow, Hand, Hooks, ItemConsumptionTeleportEvent, ModEntry, ServerHost};
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicU8, Ordering},
     };
+    use sunrise_core::random::RandomSource;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::api_values::test_snapshot;
     use sunrise_sim::mobs::{Mob, fox};
 
     struct Probe {
@@ -254,8 +251,7 @@ use super::*;
         run_fox_consumption_adapter_uses_full_host_and_preserves_listener_writes();
     }
 
-    pub(crate) fn run_fox_consumption_adapter_uses_full_host_and_preserves_listener_writes()
-     {
+    pub(crate) fn run_fox_consumption_adapter_uses_full_host_and_preserves_listener_writes() {
         let mode = Arc::new(AtomicU8::new(0));
         let heard = Arc::new(Mutex::new(Vec::new()));
         let mods: mod_api::Mods = vec![ModEntry::new(

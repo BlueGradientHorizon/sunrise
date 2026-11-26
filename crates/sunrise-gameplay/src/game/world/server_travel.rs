@@ -11,9 +11,9 @@ use super::nether_portal::Plan;
 use super::respawn_anchor::RespawnConfig;
 use super::respawn_position::Respawn;
 use super::{Dim, Mob, lan::LanHost, minecarts};
+use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_gameplay_common::game::end_state::GatewayJob;
 use sunrise_gameplay_common::game::entity_memory::OffLevel;
-use sunrise_core::{geometry::Vec3, position::BlockPos};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_sim::nether_portal::PLAYER_DELAY;
 use sunrise_sim::{lan::hub::TickCtx, world_spawn::PlayerSpawnFinder};
@@ -178,8 +178,13 @@ macro_rules! server_ctx {
             next_entity: &mut $s.server.next_entity,
             spawn,
             spawn_angle: $s.common.level.world_spawn_angle,
-            spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&$s.common.level).id(),
-            sea_level: $s.common.end.locator().map_or(63, |terrain| terrain.sea_level()),
+            spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&$s.common.level)
+                .id(),
+            sea_level: $s
+                .common
+                .end
+                .locator()
+                .map_or(63, |terrain| terrain.sea_level()),
             difficulty: i32::from($s.common.ui.difficulty),
             difficulty_locked: $s.common.level.difficulty_locked,
             clock_rate,
@@ -456,12 +461,7 @@ impl crate::game::ServerGame<'_> {
     /// destination (`getPortalDestination`, `Entity.teleportToPortalDestination`)
     /// after the camera goes back to the player, or says `spectator.cannot_teleport`
     /// when it has none. Returns whether the block was a portal (`CONSUME`).
-    pub fn spectator_use_portal(
-        &mut self,
-        conn: u32,
-        gi: usize,
-        pos: [i32; 3],
-    ) -> bool {
+    pub fn spectator_use_portal(&mut self, conn: u32, gi: usize, pos: [i32; 3]) -> bool {
         let name = self.block_name(pos);
         let name = name.trim_start_matches("minecraft:");
         if !matches!(name, "nether_portal" | "end_portal" | "end_gateway") {
@@ -478,7 +478,8 @@ impl crate::game::ServerGame<'_> {
         // EndGatewayBlock.getPortalDestination: none without its block entity.
         let gateway_ok = name != "end_gateway"
             || self
-                .common.world
+                .common
+                .world
                 .block_entities
                 .get(&(pos[0], pos[1], pos[2]))
                 .is_some_and(|e| {
@@ -540,7 +541,8 @@ impl crate::game::ServerGame<'_> {
                 }
             }
             _ => {
-                if self.server_player_travel_allowed(conn, self.common.dim, TravelCause::EndGateway) {
+                if self.server_player_travel_allowed(conn, self.common.dim, TravelCause::EndGateway)
+                {
                     self.start_gateway_trip(conn, pos);
                 }
             }
@@ -570,7 +572,12 @@ impl crate::game::ServerGame<'_> {
         target: Dim,
         cause: TravelCause,
     ) -> bool {
-        let Some(g) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(g) = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+        else {
             return false;
         };
         let entity = g.entity_id;
@@ -580,12 +587,7 @@ impl crate::game::ServerGame<'_> {
     /// `EntityTravelToDimensionEvent`: whether the entity `id` (the network
     /// id its handle names) may travel to the level `to`, asked before
     /// anything of it moves. Only a server asks, and only when a mod listens.
-    pub fn entity_may_travel(
-        &mut self,
-        id: u32,
-        to: Dim,
-        cause: TravelCause,
-    ) -> bool {
+    pub fn entity_may_travel(&mut self, id: u32, to: Dim, cause: TravelCause) -> bool {
         self.entity_tree_may_travel(id, to, cause, &mut Vec::new())
     }
 
@@ -659,7 +661,11 @@ impl crate::game::ServerGame<'_> {
             .collect();
         for rider in accepted {
             if self.entity_is_passenger(rider) == Some(false)
-                && !self.common.mobs.iter().any(|m| m.id == rider.id() && !m.alive())
+                && !self
+                    .common
+                    .mobs
+                    .iter()
+                    .any(|m| m.id == rider.id() && !m.alive())
             {
                 // Reject callback topology changes: the shared mount path
                 // checks live handles, dimension, cycles and vehicle capacity.
@@ -742,7 +748,11 @@ impl crate::game::ServerGame<'_> {
             && self.gateway_available(g)
         {
             if self.common.portal_player.cooldown == 0 {
-                let Some(player) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn))
+                let Some(player) = self
+                    .server
+                    .lan
+                    .as_ref()
+                    .and_then(|host| host.hub.guest(conn))
                 else {
                     return;
                 };
@@ -752,7 +762,11 @@ impl crate::game::ServerGame<'_> {
                 if cancel {
                     return;
                 }
-                if !self.server_player_travel_allowed(conn, self.common.dim, TravelCause::EndGateway) {
+                if !self.server_player_travel_allowed(
+                    conn,
+                    self.common.dim,
+                    TravelCause::EndGateway,
+                ) {
                     return;
                 }
             }
@@ -772,7 +786,8 @@ impl crate::game::ServerGame<'_> {
         };
         let transition = self.common.ui.rules.int_at(rule).max(0);
         let Some(entry) = self
-            .common.portal_player
+            .common
+            .portal_player
             .handle(!sleeping, transition, PLAYER_DELAY)
         else {
             return;
@@ -870,12 +885,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     /// The player moves to `target`'s level at the approximate exit while its chunks load.
-    pub fn start_server_trip(
-        &mut self,
-        conn: u32,
-        target: Dim,
-        plan: Option<Plan>,
-    ) {
+    pub fn start_server_trip(&mut self, conn: u32, target: Dim, plan: Option<Plan>) {
         // A player changing level carries no mob a mod seated on it: it gets off here.
         if target != self.common.dim
             && let Some(carrier) = self
@@ -1411,13 +1421,7 @@ impl crate::game::ServerGame<'_> {
     /// arrives: it keeps its entity id, so the ride is never broken
     /// (`Entity.teleportCrossDimension` recreates the vehicle in the other
     /// dimension, and its passengers ride it again).
-    pub fn arrive_vehicle(
-        &mut self,
-        source: Dim,
-        id: u32,
-        at: Vec3,
-        yaw: f32,
-    ) {
+    pub fn arrive_vehicle(&mut self, source: Dim, id: u32, at: Vec3, yaw: f32) {
         let Some(id) = self.parked_vehicle_root(source, id) else {
             return;
         };
@@ -1702,13 +1706,18 @@ impl crate::game::ServerGame<'_> {
         let spawn = self.world_spawn_position();
         let clock_rate = self.network_clock_rate();
         TickCtx {
-            sea_level: self.common.end.locator().map_or(63, |terrain| terrain.sea_level()),
+            sea_level: self
+                .common
+                .end
+                .locator()
+                .map_or(63, |terrain| terrain.sea_level()),
             world: &mut self.common.world,
             entities: &[],
             next_entity: &mut self.server.next_entity,
             spawn,
             spawn_angle: self.common.level.world_spawn_angle,
-            spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&self.common.level).id(),
+            spawn_dimension: sunrise_gameplay_common::game::Dim::of_world_spawn(&self.common.level)
+                .id(),
             difficulty: i32::from(self.common.ui.difficulty),
             difficulty_locked: self.common.level.difficulty_locked,
             clock_rate,
@@ -1727,16 +1736,6 @@ mod tests {
     use super::*;
     use mod_api::ServerHost;
     use std::sync::Arc;
-
-    
-
-    
-
-    
-
-    
-
-    
 
     /// A minecart a player rides through a portal rolls on at the motion it
     /// crossed with, clamped to 0.4 along x and z (`PositionMoveRotation.of`
@@ -1765,14 +1764,15 @@ mod tests {
     /// ride the vehicle that is recreated in the other dimension).
     #[test]
     fn the_vehicle_a_player_rides_travels_with_it() {
-        let mut boats: sunrise_sim::join_seq::JoinList<_> = [sunrise_gameplay_common::game::boats_common::Boat::new(
-            7,
-            Arc::from("oak"),
-            Vec3::new(0.0, 64.0, 0.0),
-            0.0,
-        )]
-        .into_iter()
-        .collect();
+        let mut boats: sunrise_sim::join_seq::JoinList<_> =
+            [sunrise_gameplay_common::game::boats_common::Boat::new(
+                7,
+                Arc::from("oak"),
+                Vec3::new(0.0, 64.0, 0.0),
+                0.0,
+            )]
+            .into_iter()
+            .collect();
         let mut carts = sunrise_sim::join_seq::JoinList::<minecarts::Minecart>::default();
         let mut mobs = sunrise_sim::join_seq::JoinList::<Mob>::default();
         let at = Vec3::new(1.5, 65.0, -2.5);
@@ -1796,7 +1796,7 @@ mod tests {
 
 #[cfg(test)]
 mod transfer_lifetime_tests {
-use sunrise_gameplay_common::game::server_side::server_travel::transfer_lifetime_tests::VALUE;
+    use sunrise_gameplay_common::game::server_side::server_travel::transfer_lifetime_tests::VALUE;
 
     use super::*;
     use std::sync::{Arc, Mutex};
@@ -1805,8 +1805,6 @@ use sunrise_gameplay_common::game::server_side::server_travel::transfer_lifetime
         index::AttachmentIndex,
     };
     use sunrise_sim::join_seq::Joined;
-
-    
 
     fn removal<T: Rideable + sunrise_sim::join_seq::Joined + HasAttachmentLifetime>(mut owner: T) {
         let index = Arc::new(Mutex::new(AttachmentIndex::default()));
@@ -1840,13 +1838,11 @@ use sunrise_gameplay_common::game::server_side::server_travel::transfer_lifetime
             0.0,
         ));
     }
-
-    
 }
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod credits_respawn_tests {
-use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::ANCHOR;
+    use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::ANCHOR;
 
     use super::Dim;
 
@@ -1865,16 +1861,6 @@ use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_t
         hub::HubConfig,
     };
     use sunrise_world::registry::BlockStateId;
-
-    
-
-    
-
-    
-
-    
-
-    
 
     pub fn light_spawn_chunks(game: &mut crate::game::ServerGame<'_>) {
         for x in -2..=2 {
@@ -1896,14 +1882,9 @@ use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_t
         game.world.set(x, y, z, charged).unwrap();
         charged
     }
-
-    
-
-    
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

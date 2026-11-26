@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use core::ops::ControlFlow;
 use mod_api::DimensionKey;
@@ -9,14 +7,20 @@ use sunrise_core::geometry::Vec3;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use {sunrise_gameplay_common::game::dragon_common::Dragon, sunrise_gameplay::game::native_entity_refs::tests::collect_entities_in, sunrise_gameplay::game::native_entity_refs::tests::collect_game_all_entities, sunrise_gameplay::game::native_entity_refs::tests::collect_game_entities_in, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use sunrise_sim::{join_seq::Joined, mobs::Mob};
+    use {
+        sunrise_gameplay::game::native_entity_refs::tests::collect_entities_in,
+        sunrise_gameplay::game::native_entity_refs::tests::collect_game_all_entities,
+        sunrise_gameplay::game::native_entity_refs::tests::collect_game_entities_in,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game,
+        sunrise_gameplay_common::game::dragon_common::Dragon,
+    };
 
     #[test]
     #[ignore = "daily"]
     fn entity_uuid_lookup_includes_the_dragon_and_excludes_its_parts() {
-        use sunrise_gameplay_common::game::creatures::SpawnSite;
         use mod_api::{EntityUuid, ServerHost};
+        use sunrise_gameplay_common::game::creatures::SpawnSite;
         use sunrise_sim::lan::playerdata::uuid_ints;
 
         with_game(|game| {
@@ -140,7 +144,8 @@ mod tests {
                 collect_game_all_entities(game, LevelRef::new(level.epoch(), DimensionKey::NETHER)),
                 Err(LevelReadError::Unavailable)
             );
-            game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
+            game.options.execution_role =
+                sunrise_gameplay_common::game::execution_role::ExecutionRole::Client;
             assert_eq!(
                 collect_game_all_entities(game, level),
                 Err(LevelReadError::Unavailable)

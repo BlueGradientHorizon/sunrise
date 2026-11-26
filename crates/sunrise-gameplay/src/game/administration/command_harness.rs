@@ -65,7 +65,11 @@ impl ServerGame<'_> {
         let Some(guest) = guest else {
             return Err("command harness: owner is not connected".into());
         };
-        let (conn, dim, back) = (guest.conn, super::Dim::from_id(&guest.dimension), self.common.dim);
+        let (conn, dim, back) = (
+            guest.conn,
+            super::Dim::from_id(&guest.dimension),
+            self.common.dim,
+        );
         self.enter_level(dim)?;
         let result = self
             .with_guest_swap(conn, back, f)
@@ -286,7 +290,11 @@ impl ServerGame<'_> {
                             .0
                             .broadcast_announced
                             .clamp(earlier.min(len), len);
-                        self.common.adv.announced.drain(earlier.min(len)..end).collect()
+                        self.common
+                            .adv
+                            .announced
+                            .drain(earlier.min(len)..end)
+                            .collect()
                     };
                     if let Some(host) = self.server.lan.as_mut() {
                         for text in &earned {
@@ -336,7 +344,8 @@ impl ServerGame<'_> {
                     if !op["start_sleeping"].is_null() {
                         let bed: [i32; 3] = serde_json::from_value(op["start_sleeping"].clone())?;
                         let epoch = self
-                            .common.native_lifecycle
+                            .common
+                            .native_lifecycle
                             .epoch()
                             .ok_or("sleep fixture: no level")?;
                         let mob = mod_api::LivingRef::new(mod_api::EntityRef::new(epoch, id));
@@ -345,7 +354,8 @@ impl ServerGame<'_> {
                         }
                     }
                     let index = self
-                        .common.mob_index
+                        .common
+                        .mob_index
                         .find(&self.common.mobs, id)
                         .ok_or("mob damage state: missing row")?;
                     let mob = &mut self.common.mobs[index];
@@ -786,7 +796,12 @@ impl ServerGame<'_> {
                             .mob_by_uuid(sunrise_sim::lan::playerdata::uuid_ints(uuid))
                             .filter(|id| g.mobs.iter().any(|m| m.id == *id && !m.removed))
                             .ok_or("mob click: missing live mob")?;
-                        let owner = g.server.serving.as_ref().ok_or("mob click: no server")?.owner;
+                        let owner = g
+                            .server
+                            .serving
+                            .as_ref()
+                            .ok_or("mob click: no server")?
+                            .owner;
                         let conn = g
                             .server
                             .lan

@@ -1,18 +1,16 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Aabb;
-use sunrise_level::brewing;
 use sunrise_core::geometry::Direction;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay::game::server_side::potions_server::PotionOwner;
 use sunrise_items::items::ItemStack;
+use sunrise_level::brewing;
 use sunrise_level::effects::EffectInstance;
 use sunrise_level::effects::PlayerEffects;
 use sunrise_sim::mobs::Mob;
 use sunrise_sim::projectiles::Projectile;
 use sunrise_sim::projectiles::ProjectileKind;
-use sunrise_gameplay::game::server_side::potions_server::PotionOwner;
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -140,22 +138,23 @@ pub(crate) mod tests {
                     .unwrap();
             let potion = game.load_potion_cloud(&tag).unwrap();
             for (age, duration) in [(20, 1), (0, 40)] {
-                game.breath_clouds.push(sunrise_gameplay_common::game::dragon_common::Breath {
-                    attachment_lifetime: Default::default(),
-                    join: Default::default(),
-                    id: 0,
-                    at: [0.0, 80.0, 0.0],
-                    motion: [0.0; 3],
-                    fall_distance: 0.0,
-                    fire_ticks: 0,
-                    first_tick: true,
-                    radius: 3.0,
-                    age,
-                    duration,
-                    from_dragon: false,
-                    victims: Vec::new(),
-                    potion: None,
-                });
+                game.breath_clouds
+                    .push(sunrise_gameplay_common::game::dragon_common::Breath {
+                        attachment_lifetime: Default::default(),
+                        join: Default::default(),
+                        id: 0,
+                        at: [0.0, 80.0, 0.0],
+                        motion: [0.0; 3],
+                        fall_distance: 0.0,
+                        fire_ticks: 0,
+                        first_tick: true,
+                        radius: 3.0,
+                        age,
+                        duration,
+                        from_dragon: false,
+                        victims: Vec::new(),
+                        potion: None,
+                    });
             }
             game.add_remote_ominous_item_spawner(0, [0.0, 80.0, 0.0]);
             let before = game.server.next_entity;
@@ -234,13 +233,18 @@ pub(crate) mod tests {
         ) {
             return;
         }
-        use {sunrise_gameplay::game::lan_particles::tests::MeasuredParticle, sunrise_gameplay::game::server_side::lan_particles::tests::PARTICLE_MAP_READS, sunrise_gameplay::game::server_side::lan_particles::tests::test_hub};
         use sunrise_protocol::entity_data::{ParticleData, Value, serializer};
+        use {
+            sunrise_gameplay::game::lan_particles::tests::MeasuredParticle,
+            sunrise_gameplay::game::server_side::lan_particles::tests::PARTICLE_MAP_READS,
+            sunrise_gameplay::game::server_side::lan_particles::tests::test_hub,
+        };
 
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             let entries = [mod_api::ModEntry::new("test", Box::new(MeasuredParticle))];
             mod_platform::__private::part_tests::install_parts_fixture(&entries).unwrap();
-            sunrise_gameplay_common::game::mods::resolve_particle_providers(&Default::default()).unwrap();
+            sunrise_gameplay_common::game::mods::resolve_particle_providers(&Default::default())
+                .unwrap();
             PARTICLE_MAP_READS.set(0);
             let (hub, _, _) = test_hub(
                 "CloudParticleOptions",
@@ -720,12 +724,15 @@ pub(crate) mod potion_contents_tests;
 
 #[cfg(test)]
 pub(crate) mod mob_absorption_max_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -749,7 +756,8 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
             std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                 .join(format!("h203-{:?}", std::thread::current().id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -894,12 +902,15 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
 
 #[cfg(test)]
 pub(crate) mod mob_health_boost_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -923,7 +934,8 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
             std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                 .join(format!("h205-{:?}", std::thread::current().id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -1147,12 +1159,16 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
 
 #[cfg(test)]
 pub(crate) mod depleted_absorption_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::commands_common::Target, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, position::ChunkPos};
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        sunrise_gameplay_common::game::commands_common::Target,
+    };
 
     fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -1176,7 +1192,8 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
             std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                 .join(format!("h204-{:?}", std::thread::current().id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -1411,10 +1428,14 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
 pub(crate) mod arrow_contents {
     //! Actual in-memory Game potion paths. No run loop, world load or server startup.
     use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::execution_role, crate::game::load_resources};
     use serde_json::{Value, json};
     use std::{path::PathBuf, sync::Arc, time::Instant};
     use sunrise_level::chunk::Chunk;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        sunrise_gameplay_common::game::execution_role,
+    };
 
     fn stack(row: &Value) -> ItemStack {
         let mut stack = ItemStack::new("minecraft:tipped_arrow", 1);

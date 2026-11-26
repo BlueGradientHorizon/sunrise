@@ -1,7 +1,5 @@
 //! Block parts answer the enchanting power an enchanting table counts (`enchant_power_bonus`)
 //! and the colour a beacon beam takes (`beacon_color_multiplier`).
-use sunrise_gameplay_common::game::beacon_common::BeaconCommonGameExt1;
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::native_entity_refs::tests::with_game_role, crate::game::server_side::native_entity_refs::tests::with_game_role_client};
 use mod_api::{
     BlockPart, EnchantPowerBonusEvent, Hooks, Host, LevelReadError, ModEntry, Mods, Registrar,
     RegistrationContext,
@@ -9,7 +7,17 @@ use mod_api::{
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::beacon_common::BeaconCommonGameExt1;
 use sunrise_level::chunk::Chunk;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_game_role_client,
+    sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_role,
+    sunrise_gameplay_common::game::Dim,
+    sunrise_gameplay_common::game::execution_role::ExecutionRole,
+};
 
 const TABLE: [i32; 3] = [8, 64, 8];
 const PROVIDER: [i32; 3] = [12, 64, 8];
@@ -350,8 +358,8 @@ pub(crate) fn enchant_particles(game: &sunrise_client_gameplay::game::ClientGame
 #[test]
 #[ignore = "daily"]
 fn enchant_particles_share_native_power_and_rebuild_only_on_parts_reload() {
-    use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
     use std::sync::atomic::AtomicU32;
+    use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
 
     const CHILD: &str = "SUNRISE_ENCHANT_PARTICLES_CHILD";
     if run_fresh_cases(

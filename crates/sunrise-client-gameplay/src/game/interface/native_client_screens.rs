@@ -3,8 +3,8 @@
 //! (`ClientHost::sign_editor`): the same paths Escape and the inventory key
 //! take, so the packets and follow-ups are vanilla's.
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::Screen;
 use mod_api::{BlockPos, SignEditView};
+use sunrise_gameplay_common::game::Screen;
 use winit::keyboard::KeyCode;
 
 impl ClientGame<'_> {
@@ -102,7 +102,8 @@ impl ClientGame<'_> {
         {
             return false;
         }
-        if self.client.remote.is_some() && (self.riding_mount_with_menu() || self.common.riding_chest_boat())
+        if self.client.remote.is_some()
+            && (self.riding_mount_with_menu() || self.common.riding_chest_boat())
         {
             self.queue_mapping_click("key.inventory");
             return true;

@@ -1,4 +1,3 @@
-
 #[cfg(any())]
 #[cfg(any(test, feature = "test-support"))]
 pub mod customize_boss_event_progress_tests {
@@ -10,14 +9,14 @@ pub mod customize_boss_event_progress_tests {
     use sunrise_client::hud_layout::GuiDraw;
 
     #[cfg(test)]
-pub(in crate::game) type Seen = Arc<Mutex<Vec<(u128, BossBarColor, i32, i32, i32)>>>;
+    pub(in crate::game) type Seen = Arc<Mutex<Vec<(u128, BossBarColor, i32, i32, i32)>>>;
 
     #[cfg(test)]
-/// Spaces the pink bar 30 pixels from the next, hides the blue one and moves the red one
+    /// Spaces the pink bar 30 pixels from the next, hides the blue one and moves the red one
     /// 10 pixels right, logging what it was told.
     pub(in crate::game) struct Rearrange(pub(in crate::game) Seen);
     #[cfg(test)]
-#[mod_api::__subscriptions]
+    #[mod_api::__subscriptions]
     impl Hooks for Rearrange {
         fn customize_boss_event_progress(
             &self,
@@ -53,6 +52,4 @@ pub(in crate::game) use crate::game::client_side::native_hooks_client::customize
             })
             .collect()
     }
-
-    
 }

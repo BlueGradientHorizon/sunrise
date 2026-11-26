@@ -1,21 +1,19 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use crate::game::block_edits_common::column_height;
-use mod_api::{BlockEdit, Heightmap};
-use std::sync::Arc;
-use sunrise_level::world::World;
-use sunrise_world::registry::BlockStateId;
+    use crate::game::block_edits_common::column_height;
+    use mod_api::{BlockEdit, Heightmap};
+    use std::sync::Arc;
+    use sunrise_level::world::World;
+    use sunrise_world::registry::BlockStateId;
 
-use mod_api::BlockRun;
+    use mod_api::BlockRun;
 
-use sunrise_level::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
 
-use sunrise_world::heightmap::HeightmapType;
+    use sunrise_world::heightmap::HeightmapType;
 
-pub fn run(block: u32, only: Option<u32>) -> BlockRun {
+    pub fn run(block: u32, only: Option<u32>) -> BlockRun {
         BlockRun {
             x: 1,
             z: 2,
@@ -26,19 +24,19 @@ pub fn run(block: u32, only: Option<u32>) -> BlockRun {
             only,
         }
     }
-pub fn edit(runs: Vec<BlockRun>) -> BlockEdit {
+    pub fn edit(runs: Vec<BlockRun>) -> BlockEdit {
         BlockEdit {
             palette: vec![],
             filters: vec![],
             runs,
         }
     }
-pub fn world() -> World {
+    pub fn world() -> World {
         let mut w = World::new(BlockStateId(0), 0);
         w.chunks.insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         w
     }
-pub fn names(s: u32) -> Arc<str> {
+    pub fn names(s: u32) -> Arc<str> {
         match s {
             0 => "minecraft:air",
             1 => "minecraft:stone",
@@ -49,7 +47,7 @@ pub fn names(s: u32) -> Arc<str> {
         }
         .into()
     }
-/// air 0, stone 1, leaves 2, water 3: column (1, 1) stone to 60, water, then leaves to 64; column (2, 2)
+    /// air 0, stone 1, leaves 2, water 3: column (1, 1) stone to 60, water, then leaves to 64; column (2, 2)
     /// stone to 60, leaves, then water to 64; at (3, 3) stone at the top of the world.
     pub fn columns_world() -> World {
         let mut w = world();
@@ -66,7 +64,7 @@ pub fn names(s: u32) -> Arc<str> {
         w.set(3, 319, 3, BlockStateId(1)).unwrap();
         w
     }
-pub fn height(w: &World, h: Heightmap, x: i32, z: i32) -> i32 {
+    pub fn height(w: &World, h: Heightmap, x: i32, z: i32) -> i32 {
         column_height(
             w,
             h,

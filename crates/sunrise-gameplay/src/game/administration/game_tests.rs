@@ -264,10 +264,7 @@ fn batch_infos(infos: Vec<Info>, size: usize) -> Vec<Batch> {
 /// `/test verify`'s batches: each test in each rotation 100 times, with
 /// `RetryOptions(1, true)`, at the test's block if it has one; the batch
 /// index is the rotation's ordinal.
-pub fn verify_batches(
-    infos: &[Info],
-    mut next_id: impl FnMut() -> u32,
-) -> Vec<Batch> {
+pub fn verify_batches(infos: &[Info], mut next_id: impl FnMut() -> u32) -> Vec<Batch> {
     let mut batches = Vec::new();
     for info in infos {
         for (ordinal, rotation) in Rotation::ALL.into_iter().enumerate() {
@@ -944,7 +941,8 @@ impl crate::game::ServerGame<'_> {
     /// `encaseStructure`: barriers around the box, but for the block itself.
     fn encase_test_structure(&mut self, pos: Pos) {
         let block = self
-            .common.pack
+            .common
+            .pack
             .assets
             .registry
             .default_state("minecraft:test_instance_block");
@@ -990,7 +988,8 @@ impl crate::game::ServerGame<'_> {
             return true;
         };
         (b.min[0] >> 4..=b.max[0] >> 4).all(|cx| {
-            (b.min[2] >> 4..=b.max[2] >> 4).all(|cz| self.common.world.chunks.contains_key(&(cx, cz)))
+            (b.min[2] >> 4..=b.max[2] >> 4)
+                .all(|cz| self.common.world.chunks.contains_key(&(cx, cz)))
         })
     }
 
@@ -1655,7 +1654,13 @@ impl crate::game::ServerGame<'_> {
 
 /// `ReportGameListener.handleRetry`'s line: the counters, then the test's
 /// result.
-pub fn retry_line(info: &Info, retry: Retry, attempts: i32, successes: i32, passed: bool) -> String {
+pub fn retry_line(
+    info: &Info,
+    retry: Retry,
+    attempts: i32,
+    successes: i32,
+    passed: bool,
+) -> String {
     let mut report = format!(
         "[Run: {attempts:>4}, Ok: {successes:>4}, Fail: {:>4}",
         attempts - successes
@@ -1677,15 +1682,15 @@ use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
     use crate::game::native_entity_refs::tests::load_fixture_server_resources;
+    use std::sync::Arc;
     use sunrise_gameplay_common::game::{
-        Options, Resources, execution_role::ExecutionRole,
+        Options, Resources,
+        execution_role::ExecutionRole,
         test_fixtures::{fixture_root, offline_profiles},
     };
-    use std::sync::Arc;
     use sunrise_level::sim_settings::SimSettings;
 
     pub fn server_game(resources: &mut Option<Arc<Resources>>) -> crate::game::ServerGame<'_> {
@@ -1696,11 +1701,15 @@ pub mod tests {
         options.resources = root;
         options.execution_role = ExecutionRole::IntegratedServer;
         let res = resources.insert(loaded);
-        let mut game = crate::game::ServerGame::new(res, pack, options, settings, None, offline_profiles)
-            .unwrap();
+        let mut game =
+            crate::game::ServerGame::new(res, pack, options, settings, None, offline_profiles)
+                .unwrap();
         game.reset_entity_residency();
-        game.native_lifecycle.begin_open(mod_api::Authority::IntegratedServer);
-        game.world.chunks.insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
+        game.native_lifecycle
+            .begin_open(mod_api::Authority::IntegratedServer);
+        game.world
+            .chunks
+            .insert((0, 0), Arc::new(sunrise_level::chunk::Chunk::empty(0, 0)));
         game
     }
 }

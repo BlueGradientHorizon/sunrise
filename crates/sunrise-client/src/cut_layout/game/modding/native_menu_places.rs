@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use mod_api::ItemPlace;
 use mod_api::MenuRef;
@@ -8,14 +6,17 @@ use mod_api::ServerHost;
 use sunrise_sim::lan::menu::NativeMenuEvent;
 #[cfg(test)]
 mod tests {
-    use mod_api::__private::game::Fields;
-use super::super::native_entity_refs::tests::with_game as with_base_game;
-    use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
+    use super::super::native_entity_refs::tests::with_game as with_base_game;
     use super::*;
-    use mod_api::{HostTransaction, MenuReplace, MenuSlotBacking};
+    use mod_api::__private::game::Fields;
     use mod_api::{Hand, MenuContainer, MenuSlotBackRefusal};
+    use mod_api::{HostTransaction, MenuReplace, MenuSlotBacking};
     use sunrise_items::items::ItemStack;
     use sunrise_sim::lan::menu::Slots;
+    use {
+        sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+        sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+    };
 
     struct Backpack;
     #[mod_api::__subscriptions]
@@ -558,7 +559,9 @@ use super::super::native_entity_refs::tests::with_game as with_base_game;
             mod_api::__private::mark_game_thread();
             let base =
                 std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-            let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+            let root =
+                sunrise_gameplay_common::game::mods::content_root(&base, &Default::default())
+                    .unwrap();
             sunrise_level::containers::with_mod_menu_types(
                 [(
                     SATCHEL_MENU.into(),

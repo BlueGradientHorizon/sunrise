@@ -123,10 +123,7 @@ impl Hooks for Stacked {
         Flow::Continue
     }
 }
-pub(crate) fn trade(
-    host: &mut dyn ServerHost,
-    event: &mut TradeWithVillagerEvent<'_>,
-) {
+pub(crate) fn trade(host: &mut dyn ServerHost, event: &mut TradeWithVillagerEvent<'_>) {
     {
         let call = CALLS.get() + 1;
         CALLS.set(call);
@@ -251,7 +248,11 @@ pub(crate) fn open(
     game: &mut sunrise_gameplay::game::ServerGame<'_>,
     payment: u32,
 ) -> ContainerClick {
-    use {sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer, sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn, sunrise_gameplay_common::game::trading_common::MerchantState};
+    use {
+        sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn,
+        sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer,
+        sunrise_gameplay_common::game::trading_common::MerchantState,
+    };
     spawn(game, 40, "minecraft:villager");
     game.mobs[0].extra.profession = sunrise_sim::mobs::villager::ProfessionState::from_index(5);
     let mut offer = offer("minecraft:wheat", "minecraft:emerald");
@@ -311,11 +312,13 @@ pub(crate) fn prepare_work(
     use sunrise_sim::mobs::villager_brain;
 
     game.server.world_root = save.to_path_buf();
-    game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
+    game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
+        .unwrap();
     game.options.dedicated = Some(Vec::new());
-    game.server
-        .streaming
-        .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
+    game.server.streaming.insert_remote(
+        &mut game.common.world,
+        sunrise_level::chunk::Chunk::empty(0, 0),
+    );
     assert!(game.entity_ticking_area()(0, 0));
     let composter = game
         .pack
@@ -378,9 +381,7 @@ pub(crate) fn work_screen_mut<'a>(
         .unwrap()
 }
 
-pub(crate) fn reloaded_trader(
-    game: &sunrise_gameplay::game::ServerGame<'_>,
-) -> Box<Trader> {
+pub(crate) fn reloaded_trader(game: &sunrise_gameplay::game::ServerGame<'_>) -> Box<Trader> {
     let saved = sunrise_sim::entity_nbt::mob_to_nbt(
         game.mob_object(40).unwrap(),
         [1, 2, 3, 4],
@@ -732,7 +733,10 @@ fn refusal_restores_crafted_score_and_another_merchants_offers() {
     with_mod(|| {
         with_guests(|game| {
             let click = open(game, 2);
-            use {sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer, sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn};
+            use {
+                sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn,
+                sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer,
+            };
             spawn(game, 41, "minecraft:villager");
             game.mobs[1].extra.trade = Some(Box::new(Trader {
                 offers: vec![offer("minecraft:stick", "minecraft:emerald")],
@@ -778,7 +782,11 @@ fn an_invalid_offer_restores_another_merchants_effects_and_modifiers() {
     with_mod(|| {
         with_guests(|game| {
             let click = open(game, 2);
-            sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn(game, 41, "minecraft:villager");
+            sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn(
+                game,
+                41,
+                "minecraft:villager",
+            );
             let mob = &mut game.mobs[1];
             mob.add_effect("minecraft:slowness", 300, 0);
             mob.effects_dirty = false;
@@ -835,7 +843,11 @@ fn a_refused_trade_restores_modifier_order_after_reapplying_the_same_effect() {
     with_mod(|| {
         with_guests(|game| {
             let click = open(game, 2);
-            sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn(game, 41, "minecraft:villager");
+            sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn(
+                game,
+                41,
+                "minecraft:villager",
+            );
             let mob = &mut game.mobs[1];
             mob.add_effect("minecraft:speed", 300, 0);
             finalize::add_modifier(
@@ -878,7 +890,11 @@ fn a_refused_trade_restores_modifier_order_after_a_nested_effect_clear() {
     with_mod(|| {
         with_guests(|game| {
             let click = open(game, 2);
-            sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn(game, 41, "minecraft:villager");
+            sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn(
+                game,
+                41,
+                "minecraft:villager",
+            );
             let mob = &mut game.mobs[1];
             mob.add_effect("minecraft:speed", 300, 0);
             mob.add_effect("minecraft:slowness", 400, 0);
@@ -921,7 +937,11 @@ fn a_refused_trade_restores_a_replaced_transient_in_place() {
     with_mod(|| {
         with_guests(|game| {
             let click = open(game, 2);
-            sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn(game, 41, "minecraft:villager");
+            sunrise_gameplay::game::server_side::native_merchant_refs::tests::spawn(
+                game,
+                41,
+                "minecraft:villager",
+            );
             let mob = &mut game.mobs[1];
             finalize::add_transient_modifier(
                 mob,
@@ -1082,10 +1102,7 @@ pub(crate) fn stat(game: &sunrise_gameplay::game::ServerGame<'_>) -> i32 {
         .copied()
         .unwrap_or(0)
 }
-pub(crate) fn unchanged(
-    game: &mut sunrise_gameplay::game::ServerGame<'_>,
-    payment: u32,
-) {
+pub(crate) fn unchanged(game: &mut sunrise_gameplay::game::ServerGame<'_>, payment: u32) {
     assert_eq!(result(game), 0);
     assert_eq!(dirt(game), 0);
     assert_eq!(stat(game), 0);
@@ -1112,7 +1129,10 @@ fn accepted_trade_keeps_the_collect_answer() {
             });
             assert!(game.lan_merchant_click(12, &click));
             assert_eq!(CALLS.get(), 1);
-            assert_eq!(sunrise_gameplay::game::server_side::decided_action::DECIDED.get(), 1);
+            assert_eq!(
+                sunrise_gameplay::game::server_side::decided_action::DECIDED.get(),
+                1
+            );
             assert_eq!(IN_ACTION.with(|a| a.borrow().clone()), [true]);
             assert_eq!(result(game), 1);
             assert_eq!(dirt(game), 0);
@@ -1228,7 +1248,10 @@ fn a_second_trade_panic_undoes_the_entire_shift_click() {
             });
             assert!(game.lan_merchant_click(12, &click));
             assert_eq!(CALLS.get(), 2);
-            assert_eq!(sunrise_gameplay::game::server_side::decided_action::DECIDED.get(), 2);
+            assert_eq!(
+                sunrise_gameplay::game::server_side::decided_action::DECIDED.get(),
+                2
+            );
             unchanged(game, 3);
             assert!(game.transactions.is_empty());
             script(Script::default());
@@ -1288,7 +1311,10 @@ fn no_subscriber_uses_the_ordinary_trade_without_a_decision() {
             click.input = 1;
             script(Script::default());
             assert!(game.lan_merchant_click(12, &click));
-            assert_eq!(sunrise_gameplay::game::server_side::decided_action::DECIDED.get(), 0);
+            assert_eq!(
+                sunrise_gameplay::game::server_side::decided_action::DECIDED.get(),
+                0
+            );
             assert_eq!(CALLS.get(), 0);
             assert_eq!((result(game), stat(game)), (3, 3));
             assert_eq!(game.lan_trade_session(12).unwrap().offers[0].uses, 3);

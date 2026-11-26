@@ -14,11 +14,7 @@ pub fn synced_pose(m: &Mob) -> Pose {
 }
 
 impl crate::game::CommonGame<'_> {
-
-    pub fn apply_body_size(
-        body: &mut sunrise_sim::motion::PlayerMotion,
-        answer: SizeAnswer,
-    ) {
+    pub fn apply_body_size(body: &mut sunrise_sim::motion::PlayerMotion, answer: SizeAnswer) {
         body.size_answer = Some(answer);
         body.dimensions = Dimensions::from_array(answer.effective());
     }
@@ -27,7 +23,7 @@ impl crate::game::CommonGame<'_> {
 pub trait EntitySizesCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Ask `entity_size` for an entity whose vanilla size in `pose` is `vanilla`, unless
     /// `previous` was already asked for both. `None`: nothing to ask, keep `previous`.
-     fn ask_entity_size(
+    fn ask_entity_size(
         &self,
         id: u32,
         pose: Pose,
@@ -52,7 +48,7 @@ pub trait EntitySizesCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// A body's pose or size changed since it was last asked: ask, and size it by the answer.
-     fn ask_body_size(
+    fn ask_body_size(
         &self,
         id: u32,
         body: &sunrise_sim::motion::PlayerMotion,
@@ -67,7 +63,7 @@ pub trait EntitySizesCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// Snapshot only the three candidate boxes the shared pose fit test asks about.
-     fn body_fit_sizes(
+    fn body_fit_sizes(
         &self,
         id: u32,
         body: &sunrise_sim::motion::PlayerMotion,
@@ -93,6 +89,5 @@ pub trait EntitySizesCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> EntitySizesCommonGameExt1<'__sg> for G {}
-
 
 use crate::game::native_hooks::entity_size::GameHooks as _;

@@ -81,13 +81,16 @@ pub fn root_owner(
 pub trait CommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `Entity.getScoreboardName`: another player's profile name
     /// (`Player.getScoreboardName`), any other entity's UUID.
-     fn scoreboard_name(&self, id: u32, uuid: [i32; 4]) -> String {
+    fn scoreboard_name(&self, id: u32, uuid: [i32; 4]) -> String {
         crate::game::side_ops::player::SideOps::side_remote_player_name(self.side_state(), id)
             .map_or_else(|| uuid_text(uuid), str::to_owned)
     }
 
     /// `Entity.getTeam`: the team holding this entity's scoreboard name (its UUID).
-     fn entity_team<'__loan>(&'__loan self, id: u32) -> Option<&sb::Team> where '__sg: '__loan {
+    fn entity_team<'__loan>(&'__loan self, id: u32) -> Option<&sb::Team>
+    where
+        '__sg: '__loan,
+    {
         if self.score.board.teams.is_empty() {
             return None;
         }
@@ -97,7 +100,10 @@ pub trait CommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// [`mob_team`](Self::mob_team) of a mob at hand, without looking it up.
-     fn mob_team_of<'__loan>(&'__loan self, m: &sunrise_sim::mobs::Mob) -> Option<&'__loan sb::Team> where '__sg: '__loan {
+    fn mob_team_of<'__loan>(&'__loan self, m: &sunrise_sim::mobs::Mob) -> Option<&'__loan sb::Team>
+    where
+        '__sg: '__loan,
+    {
         if self.score.board.teams.is_empty() {
             return None;
         }
@@ -105,11 +111,14 @@ pub trait CommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// A mob's own team, else its tamed owner's (`owner` is asked only then).
-     fn team_with_owner<'__loan>(
+    fn team_with_owner<'__loan>(
         &'__loan self,
         id: u32,
         owner: impl FnOnce() -> Option<[i32; 4]>,
-    ) -> Option<&sb::Team> where '__sg: '__loan {
+    ) -> Option<&sb::Team>
+    where
+        '__sg: '__loan,
+    {
         let uuid = *self.persist.uuids.get(&id)?;
         let own = self.scoreboard_name(id, uuid);
         if let Some(team) = self.score.board.players_team(&own) {
@@ -121,7 +130,7 @@ pub trait CommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `TamableAnimal.getRootOwner().getScoreboardName`: a pet's owner, through
     /// owners that are tamed pets themselves.
-     fn root_owner_name(&self, owner: [i32; 4]) -> Option<String> {
+    fn root_owner_name(&self, owner: [i32; 4]) -> Option<String> {
         let pet_owner = |uuid: [i32; 4]| {
             let Target::Mob(pet) = self.target_by_uuid(ints_uuid(uuid))? else {
                 return None;
@@ -142,6 +151,5 @@ pub trait CommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> CommonGameExt1<'__sg> for G {}
-
 
 use crate::game::commands_common::CommandsCommonGameExt2 as _;

@@ -7,9 +7,6 @@
 //! They need prepared resources (`SUNRISE_TEST_RESOURCES`) and run with a native test mod
 //! installed for the test only.
 
-use {crate::game::creatures::*, sunrise_gameplay_common::game::creatures::{Dim, Mob, breeding, seen}};
-use sunrise_gameplay_common::world_biomes;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{
     __private::{HookPanicReport, take_hook_panics},
     BabyEntitySpawnEvent, Flow, Hooks, MobSplitEvent, PendingMobSpec, ServerHost,
@@ -19,7 +16,16 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU32, AtomicUsize, Ordering},
 };
+use sunrise_gameplay_common::world_biomes;
 use sunrise_level::chunk::Chunk;
+use {
+    crate::game::creatures::*,
+    sunrise_gameplay_common::game::creatures::{Dim, Mob, breeding, seen},
+};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 pub(crate) const IGNORE: &str = "needs prepared resources in SUNRISE_TEST_RESOURCES";
 

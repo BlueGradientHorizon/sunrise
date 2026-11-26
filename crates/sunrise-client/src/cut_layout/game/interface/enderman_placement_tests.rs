@@ -1,16 +1,26 @@
 //! Exercise the actual registered leave-block goal and Game event handler.
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
 use std::sync::Arc;
 use sunrise_core::random::RandomSource;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::{Mob, MobEvent, goals::Cx};
+use {
+    crate::game::load_resources, crate::settings::Settings, sunrise_gameplay_common::game::Options,
+    sunrise_gameplay_common::game::Progress,
+};
 
 /// The production tick lends the level's RNG and attachments to goals while
 /// they read its blocks. Keep that ownership boundary in the registered-goal test.
-fn tick_registered_goals(game: &mut sunrise_gameplay::game::ServerGame<'_>, mob: &mut Mob) -> Vec<MobEvent> {
+fn tick_registered_goals(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    mob: &mut Mob,
+) -> Vec<MobEvent> {
     let mut goals = std::mem::take(&mut mob.ai.goals);
-    let snapshot = [sunrise_gameplay_common::game::creatures::seen(mob, None, game.items())];
+    let snapshot = [sunrise_gameplay_common::game::creatures::seen(
+        mob,
+        None,
+        game.items(),
+    )];
     let mut events = Vec::new();
     let mut lent = sunrise_sim::health::LentLevel::take(&mut game.world);
     {
@@ -57,7 +67,8 @@ fn leave_block_goal_uses_real_neighbor_shapes_and_keeps_air_placement() {
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,
@@ -203,7 +214,11 @@ fn canceled_normalized_placements_keep_the_original_carried_block() {
         fn entity_place(&self, _: &mut dyn ServerHost, event: &mut EntityPlaceEvent) -> Flow {
             self.heard.lock().unwrap().push(event.pos);
             self.normalized.lock().unwrap().push(
-                sunrise_gameplay_common::game::api_values::TryIntoEngine::try_into_engine(&event.state, &()).unwrap(),
+                sunrise_gameplay_common::game::api_values::TryIntoEngine::try_into_engine(
+                    &event.state,
+                    &(),
+                )
+                .unwrap(),
             );
             Flow::Cancel
         }

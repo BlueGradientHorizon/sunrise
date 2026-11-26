@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 #[path = "entities/armor_stand_refind_tests.rs"]
 pub(crate) mod armor_stand_refind_tests;
@@ -17,6 +16,12 @@ pub(crate) mod cauldron_underwater_tests;
 #[cfg(test)]
 #[path = "administration/clone_dimensions_tests.rs"]
 pub(crate) mod clone_dimensions_tests;
+#[cfg(test)]
+#[path = "runtime/core_tests_server.rs"]
+pub(crate) mod core_tests_server;
+#[cfg(test)]
+#[path = "modding/crafting_recipe_kind_tests_server.rs"]
+pub(crate) mod crafting_recipe_kind_tests_server;
 #[cfg(test)]
 #[path = "items/damage_item_tests.rs"]
 pub(crate) mod damage_item_tests;
@@ -285,6 +290,9 @@ pub(crate) mod slot_take_tests;
 #[path = "world/spawn_save_tests.rs"]
 pub(crate) mod spawn_save_tests;
 #[cfg(test)]
+#[path = "modding/stacked_on_other_tests_server.rs"]
+pub(crate) mod stacked_on_other_tests_server;
+#[cfg(test)]
 #[path = "entities/stand_break_loot_tests.rs"]
 pub(crate) mod stand_break_loot_tests;
 #[cfg(test)]
@@ -315,25 +323,16 @@ pub(crate) mod visibility_unwind_tests;
 #[path = "mobs/wither_star_tests.rs"]
 pub(crate) mod wither_star_tests;
 #[cfg(test)]
+#[path = "blocks/world_fluids_tests.rs"]
+pub(crate) mod world_fluids_tests;
+#[path = "world/world_loading.rs"]
+pub(crate) mod world_loading;
+#[cfg(test)]
 #[path = "blocks/world_test_def_tests.rs"]
 pub(crate) mod world_test_def_tests;
 #[cfg(test)]
 #[path = "items/xp_repair_ratio_tests.rs"]
 pub(crate) mod xp_repair_ratio_tests;
-#[cfg(test)]
-#[path = "runtime/core_tests_server.rs"]
-pub(crate) mod core_tests_server;
-#[cfg(test)]
-#[path = "modding/crafting_recipe_kind_tests_server.rs"]
-pub(crate) mod crafting_recipe_kind_tests_server;
-#[cfg(test)]
-#[path = "modding/stacked_on_other_tests_server.rs"]
-pub(crate) mod stacked_on_other_tests_server;
-#[cfg(test)]
-#[path = "blocks/world_fluids_tests.rs"]
-pub(crate) mod world_fluids_tests;
-#[path = "world/world_loading.rs"]
-pub(crate) mod world_loading;
 
 #[path = "world/wake_time.rs"]
 pub(crate) mod wake_time;

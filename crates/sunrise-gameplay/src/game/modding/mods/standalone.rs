@@ -1,5 +1,3 @@
-
-
 #[cfg(test)]
 mod tests {
     use mod_api::{__private::game::StandaloneModelRegistration, RegistrationContext};

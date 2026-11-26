@@ -1,5 +1,3 @@
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{
     BlockPart, BlockState, Hooks, ItemPart, LevelSide, MustSurviveEvent, PlacementContextEvent,
     PlacementSource, Registrar, StateForPlacementEvent,
@@ -13,6 +11,8 @@ use sunrise_core::{
     nbt::Tag,
     position::BlockPos,
 };
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::motion::PlayerMotion;
 use sunrise_world::level::{PlaceContext, PlacementSource as EnginePlacementSource};
@@ -262,18 +262,19 @@ fn item_parts_rewrite_or_refuse_context_and_control_survival_on_both_sides() {
                     item: item.into(),
                     can_use_game_master_blocks: false,
                 };
-                let rewritten =
-                    |level: &mut sunrise_gameplay_common::game::GameLevel<'_>, ticks: &mut _, item: &str| {
-                        let stack = ItemStack::new(item, 1);
-                        b.decide_placement(
-                            level,
-                            ticks,
-                            &context(item),
-                            |s| (s, s),
-                            |level, context| level.rewrite_placement_context(&stack, context, None),
-                        )
-                        .map(|(_, preview)| preview)
-                    };
+                let rewritten = |level: &mut sunrise_gameplay_common::game::GameLevel<'_>,
+                                 ticks: &mut _,
+                                 item: &str| {
+                    let stack = ItemStack::new(item, 1);
+                    b.decide_placement(
+                        level,
+                        ticks,
+                        &context(item),
+                        |s| (s, s),
+                        |level, context| level.rewrite_placement_context(&stack, context, None),
+                    )
+                    .map(|(_, preview)| preview)
+                };
                 let trapdoor = rewritten(level, ticks, "minecraft:oak_trapdoor")
                     .expect("the clicked air is replaced");
                 assert_eq!(trapdoor.pos, at);
@@ -364,15 +365,21 @@ fn item_parts_rewrite_or_refuse_context_and_control_survival_on_both_sides() {
                 inside: false,
             };
             let stack = |item| ItemStack::new(item, 1);
-            assert!(!sunrise_client_gameplay::game::ClientGame::can_hint_block_placement(&stack(
-                "minecraft:stone"
-            )));
-            assert!(!sunrise_client_gameplay::game::ClientGame::can_hint_block_placement(&stack(
-                "minecraft:poppy"
-            )));
-            assert!(sunrise_client_gameplay::game::ClientGame::can_hint_block_placement(&stack(
-                "minecraft:glass"
-            )));
+            assert!(
+                !sunrise_client_gameplay::game::ClientGame::can_hint_block_placement(&stack(
+                    "minecraft:stone"
+                ))
+            );
+            assert!(
+                !sunrise_client_gameplay::game::ClientGame::can_hint_block_placement(&stack(
+                    "minecraft:poppy"
+                ))
+            );
+            assert!(
+                sunrise_client_gameplay::game::ClientGame::can_hint_block_placement(&stack(
+                    "minecraft:glass"
+                ))
+            );
             assert!(
                 game.remote_can_place(&hit, &stack("minecraft:glass"))
                     .is_none()

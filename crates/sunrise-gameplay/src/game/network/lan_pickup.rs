@@ -81,8 +81,10 @@ impl crate::game::ServerGame<'_> {
             }
             found = menu.stacked_click(env, slot, button, mode);
         });
-        let (Some(frozen), Some(())) = (found.filter(sunrise_gameplay_common::game::stacked_listens_for), planned)
-        else {
+        let (Some(frozen), Some(())) = (
+            found.filter(sunrise_gameplay_common::game::stacked_listens_for),
+            planned,
+        ) else {
             return action(self, menu, None);
         };
         let conn = self.server.lan.as_ref()?.hub.guests[gi].conn;
@@ -107,7 +109,15 @@ impl crate::game::ServerGame<'_> {
             route,
             frozen,
             move |game| {
-                let now = game.server.lan.as_ref()?.hub.guests.get(gi)?.carried.clone();
+                let now = game
+                    .server
+                    .lan
+                    .as_ref()?
+                    .hub
+                    .guests
+                    .get(gi)?
+                    .carried
+                    .clone();
                 (now == carried).then(|| same.clone())
             },
             move |game, carried, clicked| {

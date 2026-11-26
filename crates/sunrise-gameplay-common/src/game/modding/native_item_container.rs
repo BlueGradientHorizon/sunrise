@@ -205,10 +205,7 @@ pub trait NativeItemContainerGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `Capabilities.Item.ITEM`, read: the slots of one item of `stack`,
     /// empty ones included, kept in its `minecraft:container`. None for an
     /// item without slots, and for an empty stack.
-     fn item_container_slots(
-        &self,
-        stack: &ItemStack,
-    ) -> Option<Vec<Option<ItemStack>>> {
+    fn item_container_slots(&self, stack: &ItemStack) -> Option<Vec<Option<ItemStack>>> {
         let size = self.item_container_size(&stack.item)?;
         (stack.count > 0).then(|| contents(stack, size))
     }
@@ -221,7 +218,7 @@ pub trait NativeItemContainerGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// becomes (the item itself when none did). The stack given is not
     /// changed: shrink it by one and hand out the result, or leave the result
     /// unused to simulate. None where the item has no slots.
-     fn item_container_insert(
+    fn item_container_insert(
         &self,
         stack: &ItemStack,
         item: &ItemStack,
@@ -234,7 +231,7 @@ pub trait NativeItemContainerGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// into slot `slot` alone: topped up when it holds the same item and
     /// components, filled when empty. Nothing goes into a slot past the
     /// item's slots or holding another item.
-     fn item_container_insert_slot(
+    fn item_container_insert_slot(
         &self,
         stack: &ItemStack,
         slot: usize,
@@ -255,12 +252,7 @@ pub trait NativeItemContainerGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// slot `slot` of one item of `stack` holds when empty. None of a stack that
     /// doesn't fit inside container items (a shulker box, unless its parts say
     /// so), nor into a slot past the item's slots.
-     fn item_container_capacity(
-        &self,
-        stack: &ItemStack,
-        slot: usize,
-        item: &ItemStack,
-    ) -> u32 {
+    fn item_container_capacity(&self, stack: &ItemStack, slot: usize, item: &ItemStack) -> u32 {
         let fits = self
             .item_container_size(&stack.item)
             .is_some_and(|size| slot < size as usize)
@@ -276,7 +268,7 @@ pub trait NativeItemContainerGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// item's slots), and the single item it becomes. The stack given is not
     /// changed, as with `item_container_insert`. None where the item
     /// has no slots.
-     fn item_container_extract(
+    fn item_container_extract(
         &self,
         stack: &ItemStack,
         slot: usize,
@@ -287,7 +279,6 @@ pub trait NativeItemContainerGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeItemContainerGameExt1<'__sg> for G {}
-
 
 #[cfg(test)]
 mod tests {

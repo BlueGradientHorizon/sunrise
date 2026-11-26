@@ -1,5 +1,10 @@
 use super::super::{commands::Target, entity::Entity as _, lan_mobs::guest_bounds};
 use super::ProjWorld;
+use crate::game::server_side::minecarts_server::CartHit;
+use sunrise_core::{
+    geometry::{Aabb, Vec3},
+    position::BlockPos,
+};
 use sunrise_gameplay_common::game::creatures::projectile_targets::NonMobHit;
 use sunrise_gameplay_common::game::creatures::projectile_targets::ProjectileHitInfo;
 use sunrise_gameplay_common::game::creatures::projectile_targets::TargetQuery;
@@ -7,11 +12,6 @@ use sunrise_gameplay_common::game::creatures::projectile_targets::extents;
 use sunrise_gameplay_common::game::creatures::projectile_targets::is_pickable_projectile;
 use sunrise_gameplay_common::game::creatures::projectile_targets::knot_bounds;
 use sunrise_gameplay_common::game::deflect_common::redirectable;
-use crate::game::server_side::minecarts_server::CartHit;
-use sunrise_core::{
-    geometry::{Aabb, Vec3},
-    position::BlockPos,
-};
 use sunrise_sim::arrows::ArrowTargets;
 use sunrise_sim::mobs::{MobWorld, Who};
 use sunrise_sim::projectiles::{
@@ -171,18 +171,26 @@ impl<'r> crate::game::ServerGame<'r> {
                 .and_then(|h| h.hub.guests.iter().find(|g| g.entity_id as u32 == id))
                 .and_then(|g| g.vehicle)
                 .or_else(|| {
-                    self.common.mobs
+                    self.common
+                        .mobs
                         .iter()
                         .find(|m| m.id == id)
                         .and_then(|m| m.extra.mount)
                 })
                 .or_else(|| {
-                    self.common.armor_stands
+                    self.common
+                        .armor_stands
                         .iter()
                         .find(|a| a.id == id)
                         .and_then(|a| a.vehicle)
                 })
-                .or_else(|| self.common.resident_entities.general.row(id).and_then(|r| r.mount))
+                .or_else(|| {
+                    self.common
+                        .resident_entities
+                        .general
+                        .row(id)
+                        .and_then(|r| r.mount)
+                })
                 .map(Who::Mob),
         }
     }
@@ -235,7 +243,8 @@ impl<'r> crate::game::ServerGame<'r> {
                 .map(|p| p.bounds),
             Who::Mob(id) => {
                 if let Some(m) = self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter()
                     .find(|m| m.id == id && m.alive() && !m.removed)
                 {
@@ -256,9 +265,11 @@ impl<'r> crate::game::ServerGame<'r> {
                     return Some(c.bounds());
                 }
                 if id >= sunrise_gameplay_common::game::dragon_common::SPECIAL {
-                    let part = (id - sunrise_gameplay_common::game::dragon_common::SPECIAL) as usize;
+                    let part =
+                        (id - sunrise_gameplay_common::game::dragon_common::SPECIAL) as usize;
                     return self
-                        .common.dragon_part_boxes()
+                        .common
+                        .dragon_part_boxes()
                         .and_then(|boxes| boxes.get(part).copied());
                 }
                 if let Some(a) = self.common.armor_stands.iter().find(|a| a.id == id) {
@@ -285,7 +296,8 @@ impl<'r> crate::game::ServerGame<'r> {
         momentum: Option<Vec3>,
     ) {
         let Some(j) = self
-            .common.creatures
+            .common
+            .creatures
             .projectiles
             .iter()
             .position(|q| q.id == target_id && redirectable(q))
@@ -307,12 +319,7 @@ impl<'r> crate::game::ServerGame<'r> {
     }
 
     /// `AbstractArrow.canHitEntity`: player-on-player check (`owner.canHarmPlayer(target)`).
-    pub fn can_arrow_harm_player(
-        &self,
-        owner: Who,
-        owner_guest: Option<u32>,
-        target: Who,
-    ) -> bool {
+    pub fn can_arrow_harm_player(&self, owner: Who, owner_guest: Option<u32>, target: Who) -> bool {
         // A player by entity id with their team; none when `who` is no player.
         let guest = |conn: u32| {
             self.server
@@ -395,7 +402,13 @@ impl<'r> crate::game::ServerGame<'r> {
                 if self.common.tnts.iter().any(|t| t.id == id) {
                     return Some("minecraft:tnt".to_owned());
                 }
-                if let Some(p) = self.common.creatures.projectiles.iter().find(|p| p.id == id) {
+                if let Some(p) = self
+                    .common
+                    .creatures
+                    .projectiles
+                    .iter()
+                    .find(|p| p.id == id)
+                {
                     return Some(p.entity_type().to_owned());
                 }
                 if self.common.dropped.iter().any(|i| i.id == id) {
@@ -489,7 +502,8 @@ impl<'r> crate::game::ServerGame<'r> {
     ) -> NonMobHit {
         let (causing_target, by_player, creative, causing_id) = self.projectile_source_info(info);
         let mob_blocked = !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
             && matches!(causing_target, Some(Target::Mob(_)));
@@ -503,7 +517,9 @@ impl<'r> crate::game::ServerGame<'r> {
                 let ticks = (secs * 20.0) as i32;
                 let a = &mut self.common.armor_stands[i];
                 a.fire_ticks = a.fire_ticks.max(ticks);
-                if let Some(sunrise_core::nbt::Tag::Compound(map)) = self.common.persist.raw.get_mut(&id) {
+                if let Some(sunrise_core::nbt::Tag::Compound(map)) =
+                    self.common.persist.raw.get_mut(&id)
+                {
                     map.remove(&"TicksFrozen".into());
                 }
             }
@@ -573,7 +589,8 @@ impl<'r> crate::game::ServerGame<'r> {
 
         // Cushion (`Cushion.hurtServer`: checks `mayBuild` and `mayInteract` spawn protection).
         if let Some(pos) = self
-            .common.cushions
+            .common
+            .cushions
             .iter()
             .find(|c| c.id == id)
             .map(|c| BlockPos::new(c.pos[0], c.pos[1], c.pos[2]))
@@ -644,7 +661,13 @@ impl<'r> crate::game::ServerGame<'r> {
         }
 
         // Pickable projectiles (`ShulkerBullet.hurtServer` destroys; `#redirectable_projectile` refuses).
-        if let Some(i) = self.common.creatures.projectiles.iter().position(|p| p.id == id) {
+        if let Some(i) = self
+            .common
+            .creatures
+            .projectiles
+            .iter()
+            .position(|p| p.id == id)
+        {
             if matches!(
                 self.creatures.projectiles[i].kind,
                 ProjectileKind::ShulkerBullet { .. }
@@ -658,7 +681,13 @@ impl<'r> crate::game::ServerGame<'r> {
                 ) {
                     return NonMobHit::Refused;
                 }
-                let Some(i) = self.common.creatures.projectiles.iter().position(|p| p.id == id) else {
+                let Some(i) = self
+                    .common
+                    .creatures
+                    .projectiles
+                    .iter()
+                    .position(|p| p.id == id)
+                else {
                     return NonMobHit::Refused;
                 };
                 let _ = self.destroy_shulker_bullet(i);
@@ -794,7 +823,8 @@ impl<'r> crate::game::ServerGame<'r> {
         let allows = |id: u32, default_no_physics: bool| {
             !query.skip_no_physics
                 || !self
-                    .common.persist
+                    .common
+                    .persist
                     .no_physics
                     .get(&id)
                     .copied()

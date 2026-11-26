@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod client_information_updated_tests {

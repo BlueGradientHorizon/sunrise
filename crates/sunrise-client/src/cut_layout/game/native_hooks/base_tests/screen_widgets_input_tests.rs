@@ -1,7 +1,7 @@
 //! Real receiver, mod dispatcher and window input regressions for debt 59.
 use super::*;
-use sunrise_client_gameplay::game::WindowKeyInput;
 use mod_api::MouseScrollingEvent;
+use sunrise_client_gameplay::game::WindowKeyInput;
 use winit::{keyboard::PhysicalKey, window::WindowId};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]

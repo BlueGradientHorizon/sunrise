@@ -233,11 +233,7 @@ pub struct NativeRecipes {
 
 /// `native_living_use_totem` for the damage code: whether it
 /// canceled the totem. The entity and the source are named as the damage hook names them.
-pub fn use_totem(
-    level: DamageLevel<'_>,
-    hurting: Hurting<'_>,
-    off_hand: bool,
-) -> bool {
+pub fn use_totem(level: DamageLevel<'_>, hurting: Hurting<'_>, off_hand: bool) -> bool {
     if !mod_api::__private::listened(mod_api::HookId::LivingUseTotem) {
         return false;
     }
@@ -262,11 +258,7 @@ pub fn use_totem(
 pub struct HitLevel<'a>(pub DamageLevel<'a>);
 
 /// Let listeners override the vanilla invulnerability decision for this hit.
-pub fn invulnerability_check(
-    level: DamageLevel<'_>,
-    hurting: Hurting<'_>,
-    vanilla: bool,
-) -> bool {
+pub fn invulnerability_check(level: DamageLevel<'_>, hurting: Hurting<'_>, vanilla: bool) -> bool {
     if !mod_api::__private::listened(mod_api::HookId::EntityInvulnerabilityCheck) {
         return vanilla;
     }
@@ -282,9 +274,7 @@ pub fn invulnerability_check(
     invulnerable
 }
 
-pub fn engine_reduction(
-    reduction: mod_api::Reduction,
-) -> sunrise_world::living_damage::Reduction {
+pub fn engine_reduction(reduction: mod_api::Reduction) -> sunrise_world::living_damage::Reduction {
     match reduction {
         mod_api::Reduction::Invulnerability => {
             sunrise_world::living_damage::Reduction::Invulnerability
@@ -300,9 +290,7 @@ pub fn engine_reduction(
     }
 }
 
-pub struct LiveDamageRead<'a>(
-    pub &'a sunrise_world::living_damage::DamageState,
-);
+pub struct LiveDamageRead<'a>(pub &'a sunrise_world::living_damage::DamageState);
 
 impl mod_api::__private::DamageContainerRead for LiveDamageRead<'_> {
     fn original(&self) -> f32 {
@@ -439,11 +427,7 @@ pub fn incoming_damage(
 }
 
 /// `native_living_damage_pre` for the damage code.
-pub fn damage_pre(
-    level: DamageLevel<'_>,
-    hurting: Hurting<'_>,
-    container: &mut DamageContainer,
-) {
+pub fn damage_pre(level: DamageLevel<'_>, hurting: Hurting<'_>, container: &mut DamageContainer) {
     if !mod_api::__private::listened(mod_api::HookId::LivingDamagePre) {
         return;
     }
@@ -461,11 +445,7 @@ pub fn damage_pre(
 }
 
 /// `native_living_damage_post` for the damage code.
-pub fn damage_post(
-    level: DamageLevel<'_>,
-    hurting: Hurting<'_>,
-    container: &DamageContainer,
-) {
+pub fn damage_post(level: DamageLevel<'_>, hurting: Hurting<'_>, container: &DamageContainer) {
     if !mod_api::__private::listened(mod_api::HookId::LivingDamagePost) {
         return;
     }
@@ -502,11 +482,7 @@ pub fn shield_block(
 /// `native_living_knockback` for the knockback code: whether it
 /// canceled the push. Its one caller. The pushed entity and the source are named as the
 /// damage hook names them.
-pub fn knockback(
-    level: DamageLevel<'_>,
-    pushed: Hurting<'_>,
-    knock: &mut Knock,
-) -> bool {
+pub fn knockback(level: DamageLevel<'_>, pushed: Hurting<'_>, knock: &mut Knock) -> bool {
     if !mod_api::__private::listened(mod_api::HookId::LivingKnockback) {
         return false;
     }
@@ -793,7 +769,7 @@ impl crate::game::CommonGame<'_> {
 /// Where the game calls the hook points.
 pub trait SharedGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The chosen phase's broadcast event, before its scoped behaviour.
-     fn use_item_on_block(
+    fn use_item_on_block(
         &mut self,
         hit: &super::Hit,
         hand: Hand,
@@ -823,14 +799,11 @@ pub trait SharedGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// Tells the mods of the chunks that came into this level.
-     fn native_chunks_loaded(&mut self) {
+    fn native_chunks_loaded(&mut self) {
         self.side_chunks_loaded();
     }
     /// Tells the mods of the chunks leaving this level, after their last save.
-     fn native_chunks_unloaded(
-        &mut self,
-        unloaded: &[std::sync::Arc<sunrise_level::chunk::Chunk>],
-    ) {
+    fn native_chunks_unloaded(&mut self, unloaded: &[std::sync::Arc<sunrise_level::chunk::Chunk>]) {
         self.side_chunks_unloaded(unloaded);
     }
     /// `EntityBlock.newBlockEntity` of block `name`: Sunrise's own, else a
@@ -850,7 +823,7 @@ pub trait SharedGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         self.with_level(|_, level, _| level.new_block_entity(name))
     }
     /// Compile static state-factory ownership once per level, including on clients.
-     fn ensure_stateful_entity_table(&mut self) {
+    fn ensure_stateful_entity_table(&mut self) {
         if self.world.block_entities.has_stateful_entity_table() {
             return;
         }
@@ -874,15 +847,11 @@ pub trait SharedGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         self.world.block_entities.set_stateful_entities(states);
     }
     /// Create a block entity from an actual state using the level's creation hook.
-     fn new_block_entity_for_state(
-        &mut self,
-        state: BlockStateId,
-    ) -> Option<BlockEntity> {
+    fn new_block_entity_for_state(&mut self, state: BlockStateId) -> Option<BlockEntity> {
         self.with_level(|_, level, _| level.new_block_entity_for_state(state))
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> SharedGameExt1<'__sg> for G {}
-
 
 /// A supported type for a block's container menu. A transient container is never block-backed.
 pub fn mod_menu(name: &str) -> Option<(&'static str, usize)> {
@@ -933,9 +902,7 @@ pub fn config_dir(game_dir: &Path) -> std::io::Result<PathBuf> {
     Ok(dir)
 }
 
-pub fn client_packet_view(
-    packet: &sunrise_protocol::packets::play::Clientbound,
-) -> ClientPacket {
+pub fn client_packet_view(packet: &sunrise_protocol::packets::play::Clientbound) -> ClientPacket {
     use mod_api::Identifier;
     use std::sync::LazyLock;
     use sunrise_protocol::packets::play::Clientbound;

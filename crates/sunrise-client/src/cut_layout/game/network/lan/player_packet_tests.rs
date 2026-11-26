@@ -1,16 +1,8 @@
 //! Differential witness for tools/test_server_player_packets_parity.py. Packet bodies enter
 //! the server's ordinary inbox and run through the real Hub and Game dispatch.
-use sunrise_gameplay_common::game::GameGameExt1;
-#[cfg(test)]
-use sunrise_protocol::packets::play;
-use sunrise_gameplay_common::game::lan_common::LanSettings;
-use std::sync::Arc;
-use sunrise_protocol::packets::play::Clientbound as C;
-use sunrise_sim::lan::NetConfig;
-use sunrise_sim::lan::hub::HubConfig;
 use super::*;
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests};
 use serde_json::{Map, Value, json};
+use std::sync::Arc;
 use std::{
     collections::HashSet,
     sync::{atomic::AtomicI32, mpsc},
@@ -19,14 +11,25 @@ use sunrise_core::{
     geometry::Vec3,
     nbt::{self, Tag},
 };
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::lan_common::LanSettings;
 use sunrise_level::chunk::Chunk;
+#[cfg(test)]
+use sunrise_protocol::packets::play;
+use sunrise_protocol::packets::play::Clientbound as C;
 use sunrise_protocol::{
     buf::Reader,
     packets::{configuration::ClientInformation, play::Serverbound as S},
 };
+use sunrise_sim::lan::NetConfig;
+use sunrise_sim::lan::hub::HubConfig;
 use sunrise_sim::lan::{
     Joined, Out, PlayerSender,
     guest::{Guest, InboxItem},
+};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests, sunrise_gameplay_common::game::Dim,
+    sunrise_gameplay_common::game::execution_role::ExecutionRole,
 };
 
 const VIEWER: u32 = 1;
@@ -37,7 +40,11 @@ fn witness(rows: &mut Map<String, Value>, name: &str, actual: Value, expected: V
     rows.insert(name.into(), actual);
 }
 
-fn join(game: &mut sunrise_gameplay::game::ServerGame<'_>, conn: u32, loaded: bool) -> mpsc::Receiver<Out> {
+fn join(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    conn: u32,
+    loaded: bool,
+) -> mpsc::Receiver<Out> {
     let (tx, rx) = mpsc::channel();
     let id = 1000 + conn as i32;
     game.server.next_entity = game.server.next_entity.max(id as u32 + 1);
@@ -608,7 +615,12 @@ fn resend(game: &mut sunrise_gameplay::game::ServerGame<'_>, rows: &mut Map<Stri
         let conn = 20 + n as u32;
         let rx = join(game, conn, !route.starts_with("loading_"));
         let i = game.guest_index(conn).unwrap();
-        game.server.lan.as_mut().unwrap().hub.teleport(i, Some(START));
+        game.server
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .teleport(i, Some(START));
         for elapsed in 1..=22 {
             let mut packet = None;
             if elapsed >= 19 {
@@ -700,7 +712,10 @@ fn resend(game: &mut sunrise_gameplay::game::ServerGame<'_>, rows: &mut Map<Stri
     }
 }
 
-fn crystal_round_trip(game: &mut sunrise_gameplay::game::ServerGame<'_>, rows: &mut Map<String, Value>) {
+fn crystal_round_trip(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    rows: &mut Map<String, Value>,
+) {
     let key = (1, 0);
     game.server
         .streaming
@@ -784,14 +799,17 @@ pub(crate) fn run_server_player_packet_witness() {
     // Resource loading installs process-wide registries. Use the standard child
     // boundary, with a larger stack on the thread that loads the prepared game.
     let (_, module) = module_path!().split_once("::").unwrap();
-    sunrise_gameplay_common::game::in_own_process(&format!("{module}::server_player_packet_witness"), || {
-        std::thread::Builder::new()
-            .stack_size(16 * 1024 * 1024)
-            .spawn(run_witness)
-            .unwrap()
-            .join()
-            .unwrap();
-    });
+    sunrise_gameplay_common::game::in_own_process(
+        &format!("{module}::server_player_packet_witness"),
+        || {
+            std::thread::Builder::new()
+                .stack_size(16 * 1024 * 1024)
+                .spawn(run_witness)
+                .unwrap()
+                .join()
+                .unwrap();
+        },
+    );
 }
 
 fn run_witness() {

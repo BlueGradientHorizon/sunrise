@@ -1,13 +1,16 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
     #[test]
     #[ignore = "daily"]
     fn remove_entities_detaches_only_removed_vehicles() {
-        use {sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, crate::game::load_resources};
         use sunrise_protocol::packets::play::{self, Clientbound as C};
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options,
+            sunrise_gameplay_common::game::Progress,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole,
+        };
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -100,8 +103,13 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn add_entity_replaces_falling_block_without_removing_other_ids() {
-        use {sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, crate::game::load_resources};
         use sunrise_protocol::packets::play::{self, Clientbound as C};
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options,
+            sunrise_gameplay_common::game::Progress,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole,
+        };
 
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -195,8 +203,13 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn remove_entities_filters_mixed_entity_lists() {
-        use {sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, crate::game::load_resources};
         use sunrise_protocol::packets::play::{self, Clientbound as C};
+        use {
+            crate::game::load_resources, crate::settings::Settings,
+            sunrise_client_lib::audio::Audio, sunrise_gameplay_common::game::Options,
+            sunrise_gameplay_common::game::Progress,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole,
+        };
 
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();

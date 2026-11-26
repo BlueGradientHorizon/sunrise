@@ -2,7 +2,6 @@
 //! same random state it gives what the engine's own roll in the same context gives,
 //! `/loot … fish <table> <pos> <tool>` (whose `loot` path the loot harnesses hold to
 //! vanilla 26.3).
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role, sunrise_gameplay::game::functions};
 use crate::game::{Settings, load_resources};
 use mod_api::{Authority, LevelRef};
 use std::sync::Arc;
@@ -14,6 +13,10 @@ use sunrise_core::{
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    sunrise_gameplay::game::functions, sunrise_gameplay_common::game::Options,
+    sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role,
+};
 
 /// A weighted pool rolled 1 to 3 times (flint 6, iron nuggets 3 with a binomial
 /// count that may be 0, a gold nugget 1); a pool behind a 30% chance whose
@@ -159,7 +162,11 @@ fn lines<'a>(stacks: impl IntoIterator<Item = &'a ItemStack>) -> Vec<String> {
 
 /// What `/loot replace entity @s container.0 fish …` puts in the inventory, in
 /// the order the roll gave it.
-fn command_roll(game: &mut sunrise_gameplay::game::ServerGame<'_>, table: &str, tool: &str) -> Vec<String> {
+fn command_roll(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    table: &str,
+    tool: &str,
+) -> Vec<String> {
     let _ = game.run_command("clear @s");
     game.server.chat_capture = Some(Vec::new());
     let ok = game.run_command(&format!(

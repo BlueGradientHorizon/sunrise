@@ -81,9 +81,8 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait PassengersCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-
     /// Shared per-boat mob seating loop parameterized by the side's passenger order reader.
-     fn seat_boat_mobs_with_order(
+    fn seat_boat_mobs_with_order(
         &mut self,
         riding: &Riders,
         order_of: impl Fn(&Self, u32) -> Vec<u32>,
@@ -164,7 +163,7 @@ pub trait PassengersCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `Entity.getPassengerRidingPosition` of a vehicle.
-     fn passenger_riding_position(
+    fn passenger_riding_position(
         &self,
         vehicle: u32,
         me: Option<u32>,
@@ -175,21 +174,16 @@ pub trait PassengersCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `Entity.positionRider` for every passenger on the active side.
-     fn position_riders(&mut self) {
+    fn position_riders(&mut self) {
         self.side_position_riders();
     }
 
     /// `Entity.positionRider` for a general passenger, whose own vehicle attachment is zero.
-     fn general_passenger_position(
-        &self,
-        vehicle: u32,
-        rider: u32,
-    ) -> Option<Vec3> {
+    fn general_passenger_position(&self, vehicle: u32, rider: u32) -> Option<Vec3> {
         self.side_general_passenger_position(vehicle, rider)
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> PassengersCommonGameExt1<'__sg> for G {}
-
 
 /// The mobs riding each vehicle, by the vehicle's id: their indices, in the mobs' order.
 pub type Riders = HashMap<u32, Vec<usize>>;
@@ -213,7 +207,7 @@ pub fn player_box_top(pose: u8, scale: f64) -> f64 {
 pub trait PassengersCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// The player riding through `riding` and its place: the acting guest (its kept place, if
     /// any, comes from the hub's list) or, outside a guest turn, this game's own player.
-     fn riding_player(&self) -> Option<(u32, i64)> {
+    fn riding_player(&self) -> Option<(u32, i64)> {
         match (
             crate::game::Side::lan_acting_entity(self.side_state()),
             crate::game::Side::lan_acting(self.side_state()),
@@ -232,7 +226,6 @@ pub trait PassengersCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> PassengersCommonGameExt2<'__sg> for G {}
-
 
 use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
 

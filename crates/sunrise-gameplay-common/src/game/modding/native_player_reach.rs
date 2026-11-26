@@ -10,7 +10,7 @@ pub trait NativePlayerReachGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// the eyes inside), against the player's `entity_interaction_range` with the rule's buffer,
     /// or for an attack the main hand's attack range (`Player.isWithinAttackRange`). None for a
     /// stale player or entity, one without a box, or one in another level.
-     fn player_within_entity_reach(
+    fn player_within_entity_reach(
         &self,
         player: PlayerRef,
         entity: EntityRef,
@@ -46,12 +46,11 @@ pub trait NativePlayerReachGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `IPlayerExtension.mayFly`: whether the player may start flying, by game mode or ability.
     /// Sunrise has no creative-flight attribute yet, so this is the `mayfly` ability. None for a
     /// stale or unavailable player.
-     fn player_may_fly(&self, player: PlayerRef) -> Option<bool> {
+    fn player_may_fly(&self, player: PlayerRef) -> Option<bool> {
         Some(self.player_abilities(player)?.may_fly)
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativePlayerReachGameExt1<'__sg> for G {}
-
 
 use crate::game::game_mode_common::GameModeCommonGameExt1 as _;
 

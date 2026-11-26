@@ -89,10 +89,16 @@ impl ClientGame<'_> {
             c.pitch = pitch;
             c.previous_pitch = pitch;
             self.common.carts.push(c);
-        } else if let Some((wood, chest)) = sunrise_gameplay_common::game::boats_common::any_boat_wood(kind)
+        } else if let Some((wood, chest)) =
+            sunrise_gameplay_common::game::boats_common::any_boat_wood(kind)
             && self.client.boat_models.has(wood, chest)
         {
-            let mut b = sunrise_gameplay_common::game::boats_common::Boat::new(id, Arc::from(wood), at, yaw);
+            let mut b = sunrise_gameplay_common::game::boats_common::Boat::new(
+                id,
+                Arc::from(wood),
+                at,
+                yaw,
+            );
             if chest {
                 b = b.with_chest();
             }
@@ -376,7 +382,12 @@ impl ClientGame<'_> {
             .iter()
             .map(|(slot, stack)| (usize::from(*slot), self.to_stack(stack)))
             .collect();
-        if let Some(a) = self.common.armor_stands.iter_mut().find(|a| a.id == id as u32) {
+        if let Some(a) = self
+            .common
+            .armor_stands
+            .iter_mut()
+            .find(|a| a.id == id as u32)
+        {
             for (slot, item) in items {
                 a.equipment.set(slot, item);
             }
@@ -414,7 +425,8 @@ impl ClientGame<'_> {
     /// `MinecartTNT.handleEntityEvent(70)`: the client's fuse starts at 80.
     pub(in crate::game::client_side) fn remote_cart_primed(&mut self, id: u32) {
         if let Some(i) = self
-            .common.carts
+            .common
+            .carts
             .iter()
             .position(|c| c.id == id && c.kind == super::minecarts::CartKind::Tnt)
         {
@@ -616,7 +628,8 @@ impl ClientGame<'_> {
         // (`LivingEntity.dismountVehicle`), not inside the block below.
         if self.common.riding == Some(id)
             && let Some(y) = self
-                .common.cushions
+                .common
+                .cushions
                 .iter()
                 .find(|c| c.id == id)
                 .map(|c| c.position.y)
@@ -683,7 +696,6 @@ mod tests {
 use sunrise_gameplay_common::game::cart_rails::CartRailsGameExt1 as _;
 
 use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
-
 
 use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;
 

@@ -64,7 +64,8 @@ for this hook for the session, alone: the other listeners are asked as before, a
 is asked again without the one that failed, so no mask it gave earlier stays. The decision is asked on the client world thread, so
 it may read the `ClientHost`; it changes when the section meshes again, which a mod asks for with
 `ClientHost::refresh_render_visibility`, never by polling."#]
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::section_visibility::ClientGame<'_>::native_section_visibility", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::section_visibility::ClientGame<'_>::native_section_visibility",
         receiver = "read",
         dispatch = "api_carrier",
         side = "client",

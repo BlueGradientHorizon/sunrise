@@ -1,8 +1,8 @@
 #![cfg(test)]
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{Hooks, ModEntry, ServerHost};
 use std::sync::{Arc, Mutex};
 use sunrise_game_data::gamerules::Value;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 
 struct Observe(Arc<Mutex<Vec<&'static str>>>);
 fn assert_rules(host: &dyn ServerHost) {

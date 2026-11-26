@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
@@ -59,12 +57,15 @@ pub(crate) mod tests {
         assert_eq!(common.breeze_ground(&common.mobs[0]), ([8, 64, 8], stone));
     }
 
-    use sunrise_gameplay_common::game::entity::Entity;
     use sunrise_core::geometry::Vec3;
     use sunrise_core::random::LegacyRandom;
+    use sunrise_gameplay_common::game::entity::Entity;
 
     #[allow(unused_imports)]
-    pub(crate) use {crate::game::client_side::breezes_client::tests::game_with_breeze, sunrise_client_gameplay::game::client_side::breezes_client::tests::made_block_particles};
+    pub(crate) use {
+        crate::game::client_side::breezes_client::tests::game_with_breeze,
+        sunrise_client_gameplay::game::client_side::breezes_client::tests::made_block_particles,
+    };
 
     /// A breeze standing on a fence rests its feet at 64 + 1.5, where its own
     /// cell is air: `Breeze.emitGroundParticles` asks `getBlockStateOn` for the
@@ -81,8 +82,12 @@ pub(crate) mod tests {
         let fence = registry.default_state("minecraft:oak_fence").unwrap();
         game.world.set(8, 63, 8, stone).unwrap();
         game.world.set(8, 64, 8, fence).unwrap();
-        let (common, side) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(&mut game);
-        let items = match (&common.server_items, sunrise_gameplay_common::game::Side::world_tables(side)) {
+        let (common, side) =
+            sunrise_gameplay_common::game::SideGame::common_and_state_mut(&mut game);
+        let items = match (
+            &common.server_items,
+            sunrise_gameplay_common::game::Side::world_tables(side),
+        ) {
             (Some(items), _) => &**items,
             (None, Some(tables)) => &tables.items,
             (None, None) => common.res.items(),
@@ -130,8 +135,12 @@ pub(crate) mod tests {
             .default_state("minecraft:stone")
             .unwrap();
         game.world.set(8, 63, 8, stone).unwrap();
-        let (common, side) = sunrise_gameplay_common::game::SideGame::common_and_state_mut(&mut game);
-        let items = match (&common.server_items, sunrise_gameplay_common::game::Side::world_tables(side)) {
+        let (common, side) =
+            sunrise_gameplay_common::game::SideGame::common_and_state_mut(&mut game);
+        let items = match (
+            &common.server_items,
+            sunrise_gameplay_common::game::Side::world_tables(side),
+        ) {
             (Some(items), _) => &**items,
             (None, Some(tables)) => &tables.items,
             (None, None) => common.res.items(),

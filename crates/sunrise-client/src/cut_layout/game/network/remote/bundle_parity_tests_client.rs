@@ -2,7 +2,6 @@ use crate::game::client_side::remote_client::ingress_state::bundle_parity_tests:
 use crate::game::client_side::remote_client::ingress_state::bundle_parity_tests::hex_bytes;
 use crate::game::client_side::remote_client::ingress_state::bundle_parity_tests::wait_pong_in_game;
 use crate::game::client_side::remote_client::ingress_state::bundle_parity_tests::witness_json;
-use {sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use std::time::{Duration, Instant};
 use sunrise_client::{level_loading::Reason, multiplayer, net::Session, title::Mode};
 use sunrise_core::{geometry::Vec3, nbt::Tag};
@@ -15,6 +14,10 @@ use sunrise_protocol::{
     },
 };
 use sunrise_sim::motion::PlayerMotion;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry,
+};
 
 pub(crate) fn dependent_entity_bundle_body() {
     let witness = bundle_witness();
@@ -196,9 +199,7 @@ pub(crate) fn dependent_entity_bundle_body() {
     });
 }
 
-pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
-    case_name: &str,
-) {
+pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(case_name: &str) {
     let bundle = bundle_witness();
     let entity_data = witness_json("entity_data.json");
     let assignment = &entity_data["metadata_assignment"];
@@ -293,7 +294,15 @@ pub(crate) fn entity_data_validation_inline_painting_and_pre_login_bundle_case(
                 .unwrap();
                 wait_pong_in_game(game, &mut peer, 1);
                 assert!(game.client.remote.is_some());
-                assert!(!game.client.remote.as_ref().unwrap().glowing.contains(&77_777));
+                assert!(
+                    !game
+                        .client
+                        .remote
+                        .as_ref()
+                        .unwrap()
+                        .glowing
+                        .contains(&77_777)
+                );
 
                 // Spawn an Interaction and a Painting.
                 peer.send(

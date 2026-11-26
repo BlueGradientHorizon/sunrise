@@ -146,10 +146,7 @@ impl GoalCx<'_, '_> {
     }
 
     /// `Host::living`: the handle resolves in the tick's view.
-    pub fn lookup_living(
-        &self,
-        entity: EntityRef,
-    ) -> Option<LivingRef> {
+    pub fn lookup_living(&self, entity: EntityRef) -> Option<LivingRef> {
         match self.resolve(entity) {
             Some(Resolved::Unavailable) => None,
             Some(_) => Some(LivingRef::new(entity)),
@@ -679,7 +676,8 @@ impl mobs::part_goals::GoalHost for crate::game::ServerGame<'_> {
     }
 
     fn mob_added_to_level(&self, mob: &Mob) -> bool {
-        self.common.persist
+        self.common
+            .persist
             .live
             .binary_search_by_key(&mob.id, |entry| entry.0)
             .is_ok()
@@ -933,11 +931,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Run `read` against the goal view of `mob`'s tick, as a mod goal reads.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn in_goal_view<R>(
-        &self,
-        mob: &mut Mob,
-        read: impl FnOnce(&GoalCx<'_, '_>) -> R,
-    ) -> R {
+    pub fn in_goal_view<R>(&self, mob: &mut Mob, read: impl FnOnce(&GoalCx<'_, '_>) -> R) -> R {
         let mut world = self.mob_world_base(&[]);
         world.goal_host = Some(self as &dyn mobs::part_goals::GoalHost);
         read(&GoalCx {
@@ -981,15 +975,14 @@ impl crate::game::ServerGame<'_> {
         };
         let mut new_target = original;
         let mut cancel = false;
-        sunrise_gameplay_common::game::native_hooks::NativeHookHost { host: &context }.native_living_change_target(
-            mod_api::__private::LivingChangeTargetCall {
+        sunrise_gameplay_common::game::native_hooks::NativeHookHost { host: &context }
+            .native_living_change_target(mod_api::__private::LivingChangeTargetCall {
                 mob: entity,
                 original_target: original,
                 new_target: &mut new_target,
                 is_brain,
                 cancel: &mut cancel,
-            },
-        );
+            });
         if cancel {
             return mobs::TargetChange::Keep;
         }

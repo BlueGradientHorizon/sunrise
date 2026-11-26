@@ -1,14 +1,12 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-    use sunrise_gameplay_common::game::native_block_sounds::playable;
     use mod_api::BlockSoundCause::{Break, Dig, Fall, Place, Step};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, position::BlockPos};
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::native_block_sounds::playable;
     use sunrise_sim::mobs::{Mob, MobEvent, equine};
     use sunrise_world::level::LevelAccess;
 
@@ -61,18 +59,19 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
             let player = Some((7, "minecraft:player"));
             let creeper = Some((8, "minecraft:creeper"));
             let sniffer = Some((9, "minecraft:sniffer"));
-            let sound = |game: &sunrise_gameplay::game::ServerGame<'_>, block: &str, entity, cause| {
-                let state = registry.default_state(block).unwrap();
-                let sound = game.block_sound_type([5, 64, 5], state, entity, cause);
-                let event = match cause {
-                    Step => sound.step,
-                    Fall => sound.fall,
-                    Place => sound.place,
-                    Break => sound.break_sound,
-                    _ => sound.hit,
+            let sound =
+                |game: &sunrise_gameplay::game::ServerGame<'_>, block: &str, entity, cause| {
+                    let state = registry.default_state(block).unwrap();
+                    let sound = game.block_sound_type([5, 64, 5], state, entity, cause);
+                    let event = match cause {
+                        Step => sound.step,
+                        Fall => sound.fall,
+                        Place => sound.place,
+                        Break => sound.break_sound,
+                        _ => sound.hit,
+                    };
+                    (event.to_string(), sound.volume, sound.pitch)
                 };
-                (event.to_string(), sound.volume, sound.pitch)
-            };
             let stone = |event: &str| (format!("minecraft:block.stone.{event}"), 1.0, 1.0);
             let wool = |event: &str| (format!("minecraft:block.wool.{event}"), 1.0, 1.0);
             let answered = |event: &str| (format!("mymod:block.x.{event}"), 2.0, 1.5);

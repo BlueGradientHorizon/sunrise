@@ -186,7 +186,8 @@ impl crate::game::ClientGame<'_> {
         // every entry of a busy server's player list.
         // Build once: resolving each player must not scan every level entity.
         let players: HashMap<_, _> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .enumerate()
             .filter(|(_, m)| &*m.kind.id == "minecraft:player")
@@ -228,7 +229,8 @@ impl crate::game::ClientGame<'_> {
         // mannequin's DATA_PROFILE `textures` property resolves like a
         // player's, never required to be signed.
         let mannequins: Vec<(usize, sunrise_client::skins::Textures)> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .enumerate()
             .filter(|(_, m)| &*m.kind.id == "minecraft:mannequin" && m.profile.is_some())

@@ -1,13 +1,11 @@
-
-
 #![cfg(test)]
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(crate) mod hotbar_slot_tests {
     use super::*;
-    use mod_api::HotbarSlotError;
-    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use crate::game::remote::tests::connect_menu_test;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
+    use mod_api::HotbarSlotError;
     use sunrise_command::args::GameMode;
     use sunrise_protocol::connection::ConnReader;
     use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S};
@@ -54,7 +52,9 @@ pub(crate) mod hotbar_slot_tests {
 
     /// A window logged in to the overworld at (0.5, 65, 0.5), its player made by the server's
     /// position packet, with everything the login sent already drained.
-    pub(crate) fn logged_in(game: &mut sunrise_client_gameplay::game::ClientGame<'_>) -> ConnReader {
+    pub(crate) fn logged_in(
+        game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    ) -> ConnReader {
         let (mut reader, _writer) = connect_menu_test(game);
         game.handle_packet(C::Login(login_packet())).unwrap();
         game.handle_packet(C::PlayerPosition(play::PlayerPosition {

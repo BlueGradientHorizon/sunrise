@@ -290,7 +290,8 @@ impl crate::game::ServerGame<'_> {
         state: Option<BlockStateId>,
     ) -> Context {
         let dampens = self
-            .common.dropped
+            .common
+            .dropped
             .iter()
             .find(|item| item.id == id)
             .is_some_and(|item| {
@@ -310,10 +311,9 @@ impl crate::game::ServerGame<'_> {
     }
     /// `GameEvent.Context.of(player, state)`.
     pub(in crate::game) fn player_context(&self, state: Option<BlockStateId>) -> Context {
-        let (dead, creative) = self
-            .common.player
-            .as_ref()
-            .map_or((true, true), |p| (p.health.dead_or_dying(), self.common.creative));
+        let (dead, creative) = self.common.player.as_ref().map_or((true, true), |p| {
+            (p.health.dead_or_dying(), self.common.creative)
+        });
         Context {
             source: Some(Who::Player.into()),
             owner: None,
@@ -330,12 +330,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     /// `Level.gameEvent`: tell the listeners within reach.
-    pub fn post_game_event(
-        &mut self,
-        event: &'static str,
-        pos: [f64; 3],
-        ctx: Context,
-    ) {
+    pub fn post_game_event(&mut self, event: &'static str, pos: [f64; 3], ctx: Context) {
         #[cfg(any(test, feature = "test-support"))]
         TEST_POSTED_EVENTS.with(|events| {
             if let Some(events) = events.borrow_mut().as_mut() {
@@ -507,7 +502,8 @@ impl crate::game::ServerGame<'_> {
         // ItemEntity.tick, so only for the items in entity-ticking chunks.
         let ticking = self.entity_ticking_area();
         let items: Vec<[f64; 3]> = self
-            .common.dropped
+            .common
+            .dropped
             .iter()
             .filter(|i| {
                 i.ground.on_ground
@@ -531,7 +527,8 @@ impl crate::game::ServerGame<'_> {
             u32,
             bool,
         )> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter(|m| m.alive())
             .map(|m| {
@@ -553,7 +550,8 @@ impl crate::game::ServerGame<'_> {
             by_id.entry(m.id).or_insert(i);
         }
         let listeners = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .enumerate()
             .filter(|(_, m)| matches!(m.species(), Species::Warden | Species::Allay))
@@ -749,7 +747,9 @@ impl crate::game::ServerGame<'_> {
                 f64::from(at.1),
                 f64::from(at.2) + 0.5,
             ];
-            let yaw = mod_api::client::camera::wrap_degrees(self.common.world.random.next_float() * 360.0);
+            let yaw = mod_api::client::camera::wrap_degrees(
+                self.common.world.random.next_float() * 360.0,
+            );
             self.server.next_entity += 1;
             let mut mob = Mob::new(
                 self.server.next_entity,
@@ -801,7 +801,8 @@ impl crate::game::ServerGame<'_> {
             Some("dig") => {
                 // Let every warden's minute of calm run out.
                 for m in self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter_mut()
                     .filter(|m| m.species() == Species::Warden)
                 {
@@ -860,7 +861,8 @@ impl crate::game::ServerGame<'_> {
             }
         };
         if self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
         {
@@ -877,7 +879,8 @@ impl crate::game::ServerGame<'_> {
         }
         self.server.sculk.tracker_loaded = true;
         if let Some(tag) = self
-            .common.level
+            .common
+            .level
             .player_extra
             .as_ref()
             .and_then(|p| p.get("warden_spawn_tracker"))
@@ -916,7 +919,8 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         let extra = self
-            .common.level
+            .common
+            .level
             .player_extra
             .get_or_insert_with(|| sunrise_core::nbt::Tag::Compound(Default::default()));
         if let sunrise_core::nbt::Tag::Compound(map) = extra {
@@ -937,7 +941,8 @@ impl crate::game::ServerGame<'_> {
         let registry = self.common.pack.assets.registry;
         let n = registry.len();
         let tag = |name: &str| {
-            self.common.res
+            self.common
+                .res
                 .items()
                 .block_tags
                 .get(name)
@@ -1017,15 +1022,22 @@ impl crate::game::ServerGame<'_> {
         {
             self.server.sculk.known_revision = Some(revision);
             let loaded: HashSet<(i32, i32)> = self.common.world.chunks.keys().copied().collect();
-            let arrived: Vec<(i32, i32)> =
-                loaded.difference(&self.server.sculk.known).copied().collect();
+            let arrived: Vec<(i32, i32)> = loaded
+                .difference(&self.server.sculk.known)
+                .copied()
+                .collect();
             for key in arrived {
                 self.sculk_scan_chunk(key);
             }
             // The blocks of every chunk that left, in one pass: a player
             // leaving unloads thousands of chunks at once.
-            let gone: HashSet<(i32, i32)> =
-                self.server.sculk.known.difference(&loaded).copied().collect();
+            let gone: HashSet<(i32, i32)> = self
+                .server
+                .sculk
+                .known
+                .difference(&loaded)
+                .copied()
+                .collect();
             if !gone.is_empty() {
                 self.server
                     .sculk
@@ -1071,7 +1083,8 @@ impl crate::game::ServerGame<'_> {
             }
             self.server.sculk.index.remove(&key);
             if let Some(e) = Self::entity_for_kind(new_kind) {
-                self.common.world
+                self.common
+                    .world
                     .block_entities
                     .insert(key, BlockEntity::Sculk(Box::new(e)));
                 self.server.sculk.index.insert(key);
@@ -1115,7 +1128,8 @@ impl crate::game::ServerGame<'_> {
                 Some(BlockEntity::Sculk(_))
             ) && let Some(e) = Self::entity_for_kind(self.kind_of_state(state))
             {
-                self.common.world
+                self.common
+                    .world
                     .block_entities
                     .insert(pos, BlockEntity::Sculk(Box::new(e)));
             }
@@ -1227,7 +1241,8 @@ impl crate::game::ServerGame<'_> {
         if self.server.sculk.listeners_of.take() != Some(stamp) {
             slots.clear();
             slots.extend(
-                self.common.mobs
+                self.common
+                    .mobs
                     .iter()
                     .enumerate()
                     .filter(|(_, m)| matches!(m.species(), Species::Warden | Species::Allay))
@@ -1306,7 +1321,8 @@ impl crate::game::ServerGame<'_> {
     /// the end-of-tick scan then knows this damage.
     pub(in crate::game) fn mob_damage_event(&mut self, id: u32) {
         if let Some(t) = self
-            .common.mob_index
+            .common
+            .mob_index
             .get(&self.common.mobs, id)
             .and_then(|m| m.last_damage.map(|(_, t)| t))
         {
@@ -1318,7 +1334,8 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn post_entity_event(&mut self, event: &'static str, who: Who) {
         let at = match who {
             Who::Player => self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .map(|p| [p.position.x, p.position.y, p.position.z]),
             Who::Mob(id) => self.mob_slot(id).map(|i| {
@@ -1405,7 +1422,11 @@ impl crate::game::ServerGame<'_> {
                 };
                 !own && !calibrated_out
                     && frequency != 0
-                    && self.common.res.behaviours().sculk_sensor_can_activate(state)
+                    && self
+                        .common
+                        .res
+                        .behaviours()
+                        .sculk_sensor_can_activate(state)
             }
             SculkKind::Shrieker => !self.shrieker_shrieking(state) && ctx.player,
             SculkKind::Catalyst => false,
@@ -1449,7 +1470,8 @@ impl crate::game::ServerGame<'_> {
         self.state_property(state, "shrieking") == Some("true")
     }
     pub fn state_property(&self, state: BlockStateId, key: &str) -> Option<&str> {
-        self.common.pack
+        self.common
+            .pack
             .assets
             .registry
             .state(state)
@@ -1468,12 +1490,19 @@ impl crate::game::ServerGame<'_> {
         let now = self.common.world.game_time;
         let ctx = warden::heard_by(*ctx, &self.mob_teams(), self.common.mobs[index].id);
         let (occludes, world) = (&self.server.sculk.tables.occludes, &self.common.world);
-        let avoided = warden::listen(&mut self.common.mobs[index], now, event, pos, &ctx, |a, b| {
-            sculk::is_occluded(a, b, |p| {
-                let state = world.block(p.x, p.y, p.z);
-                occludes.get(state.0 as usize).copied().unwrap_or(false)
-            })
-        });
+        let avoided = warden::listen(
+            &mut self.common.mobs[index],
+            now,
+            event,
+            pos,
+            &ctx,
+            |a, b| {
+                sculk::is_occluded(a, b, |p| {
+                    let state = world.block(p.x, p.y, p.z);
+                    occludes.get(state.0 as usize).copied().unwrap_or(false)
+                })
+            },
+        );
         if avoided {
             self.trigger_player("minecraft:avoid_vibration");
         }
@@ -1627,7 +1656,12 @@ impl crate::game::ServerGame<'_> {
         match kind {
             SculkKind::Sensor | SculkKind::Calibrated => {
                 let state = self.common.world.block(key.0, key.1, key.2);
-                if self.common.res.behaviours().sculk_sensor_can_activate(state) {
+                if self
+                    .common
+                    .res
+                    .behaviours()
+                    .sculk_sensor_can_activate(state)
+                {
                     let frequency = self.mob_maps().vibration_frequency(info.event);
                     if let Some(e) = self.sculk_entity(key) {
                         e.last_frequency = frequency;
@@ -1726,7 +1760,13 @@ impl crate::game::ServerGame<'_> {
                 if self.mobs.iter().any(|m| m.id == id && m.species() == Species::Warden));
             match self.kind_of_state(state.0) {
                 KIND_SENSOR | KIND_CALIBRATED => {
-                    if is_warden || !self.common.res.behaviours().sculk_sensor_can_activate(state) {
+                    if is_warden
+                        || !self
+                            .common
+                            .res
+                            .behaviours()
+                            .sculk_sensor_can_activate(state)
+                    {
                         continue;
                     }
                     let calibrated = self.kind_of_state(state.0) == KIND_CALIBRATED;
@@ -1774,7 +1814,8 @@ impl crate::game::ServerGame<'_> {
         self.state_property(state, "can_summon") == Some("true")
             && self.common.world.health_rules.difficulty != Difficulty::Peaceful
             && self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_WARDENS)
     }
@@ -1908,7 +1949,8 @@ impl crate::game::ServerGame<'_> {
             .any(|p| p.alive && !p.spectator && p.bounds.intersects(bounds));
         if player_blocks
             || self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .any(|m| !m.removed && m.alive() && m.bounds().intersects(bounds))
         {
@@ -2058,7 +2100,8 @@ impl crate::game::ServerGame<'_> {
         to: [f64; 3],
         ticks: i32,
     ) {
-        let source = sunrise_gameplay_common::game::lan_particle_data::particle_position_source(&source);
+        let source =
+            sunrise_gameplay_common::game::lan_particle_data::particle_position_source(&source);
         self.vibration_particle(source, from, to, ticks);
     }
 
@@ -2247,7 +2290,8 @@ impl crate::game::ServerGame<'_> {
         }
         self.attack_block(pos)?;
         let block_item = held.is_some_and(|s| {
-            self.common.res
+            self.common
+                .res
                 .items()
                 .get(&s.item)
                 .is_some_and(|i| i.block.is_some())
@@ -2310,7 +2354,12 @@ impl crate::game::ServerGame<'_> {
             at[1].floor() as i32,
             at[2].floor() as i32,
         );
-        self.common.res.facts().get(self.common.world.block(x, y, z)).fluid == sunrise_items::blocks::Fluid::Water
+        self.common
+            .res
+            .facts()
+            .get(self.common.world.block(x, y, z))
+            .fluid
+            == sunrise_items::blocks::Fluid::Water
     }
     /// `Entity.checkSupportingBlock`: the block under this box closest to the
     /// entity. Everything but the player works it out when it asks (Breeze ground dust too).
@@ -2628,8 +2677,11 @@ pub(in crate::game) mod tests {
                     .lock()
                     .unwrap()
                     .push(event.affected_state.map(|state| {
-                        sunrise_gameplay_common::game::api_values::TryIntoEngine::try_into_engine(&state, &())
-                            .unwrap()
+                        sunrise_gameplay_common::game::api_values::TryIntoEngine::try_into_engine(
+                            &state,
+                            &(),
+                        )
+                        .unwrap()
                     }));
                 mod_api::Flow::Continue
             }
@@ -2648,8 +2700,6 @@ pub(in crate::game) mod tests {
         });
         assert_eq!(*heard.lock().unwrap(), vec![Some(BlockStateId(3)), None]);
     }
-
-    
 
     /// Retaining keeps the insertion order and the membership in step.
     #[test]
@@ -2766,5 +2816,4 @@ pub mod item_use_event_fixture {
             EVENTS.with(|events| events.borrow_mut().push((event, pos, source)));
         }
     }
-
 }

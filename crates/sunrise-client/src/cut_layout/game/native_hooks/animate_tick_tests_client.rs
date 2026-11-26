@@ -1,10 +1,13 @@
 use crate::game::native_hooks::animate_tick_tests::with_hearts;
-use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use mod_api::BlockPos;
 use std::sync::Arc;
 use sunrise_core::random::{LegacyRandom, RandomSource as _};
 use sunrise_level::particle_options::ParticleType;
 use sunrise_world::registry::BlockStateId;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client,
+};
 
 pub(crate) fn level_random(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,

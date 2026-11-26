@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_core::position::BlockPos;
 use sunrise_gameplay_common::game::GameLevel;
@@ -8,11 +6,11 @@ use sunrise_level::containers::BlockEntity;
 #[cfg(test)]
 pub(crate) mod tests {
 
-struct RemovalMod(u8);
-struct RemovalPart(u8, mod_api::ItemKey);
-#[mod_api::sunrise_part]
+    struct RemovalMod(u8);
+    struct RemovalPart(u8, mod_api::ItemKey);
+    #[mod_api::sunrise_part]
     impl mod_api::BlockPart for RemovalPart {}
-#[mod_api::sunrise_part]
+    #[mod_api::sunrise_part]
     impl mod_api::BlockEntityPart for RemovalPart {
         fn pre_remove_side_effects(
             &self,
@@ -40,7 +38,7 @@ struct RemovalPart(u8, mod_api::ItemKey);
             }
         }
     }
-#[mod_api::__subscriptions]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for RemovalMod {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
             let kind = r.block_entity_type("machine").blocks(&[]).build();
@@ -49,9 +47,9 @@ struct RemovalPart(u8, mod_api::ItemKey);
                 .unwrap();
         }
     }
-/// Listens to `block_drops`: takes any break of dirt, adds 2 points to the rest.
+    /// Listens to `block_drops`: takes any break of dirt, adds 2 points to the rest.
     struct DropsMod;
-#[mod_api::__subscriptions]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for DropsMod {
         fn block_drops(
             &self,
@@ -70,18 +68,17 @@ struct RemovalPart(u8, mod_api::ItemKey);
         }
     }
 
+    use super::*;
+    use sunrise_core::random::RandomSource;
+    use sunrise_gameplay_common::game::GameGameExt1;
 
-use sunrise_core::random::RandomSource;
-use sunrise_gameplay_common::game::GameGameExt1;
-use super::*;
+    use crate::game::spill_common::BlockDropEntity;
 
-use crate::game::spill_common::BlockDropEntity;
+    use sunrise_world::level::removal;
 
-use sunrise_world::level::removal;
+    use sunrise_sim::{block_entity_item, mobs::raider, save};
 
-use sunrise_sim::{block_entity_item, mobs::raider, save};
-
-fn removal_outputs(
+    fn removal_outputs(
         mode: u8,
         check: impl FnOnce(&mut GameLevel<'_>, &mut sunrise_core::random::LevelRandom),
     ) {
@@ -131,7 +128,7 @@ fn removal_outputs(
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn removal_keep_contents_suppresses_slot_scatter() {
         removal_outputs(1, |level, reference| {
@@ -139,7 +136,7 @@ fn removal_outputs(
             assert_eq!(level.world.random.next_int(), reference.next_int());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn removal_uses_the_same_random_state_for_lazy_and_padded_slots() {
         use std::sync::Arc;
@@ -193,7 +190,7 @@ fn removal_outputs(
             }
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn removal_spawn_has_exact_position_and_default_delay() {
         removal_outputs(2, |level, _| {
@@ -206,7 +203,7 @@ fn removal_outputs(
             assert!(spawn.motion.is_none());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn removal_experience_awards_positioned_orbs() {
         removal_outputs(3, |level, reference| {
@@ -226,7 +223,7 @@ fn removal_outputs(
             assert_eq!(level.world.random.next_int(), reference.next_int());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn removal_empty_slot_draws_three_doubles_without_spawning() {
         removal_outputs(4, |level, reference| {
@@ -250,7 +247,7 @@ fn removal_outputs(
             assert_eq!(level.world.random.next_int(), reference.next_int());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn removal_unanswered_part_leaves_random_untouched() {
         removal_outputs(0, |level, reference| {
@@ -259,7 +256,7 @@ fn removal_outputs(
             assert_eq!(level.world.random.next_int(), reference.next_int());
         });
     }
-/// `Block.dropResources` builds its item entities (and samples the experience) before
+    /// `Block.dropResources` builds its item entities (and samples the experience) before
     /// `BlockDropsEvent`, so the level random ends where it does without a listener; a mod that
     /// cancels gets no entities and no experience but the draws still happened; a mod that
     /// edits the amount changes only the amount.
@@ -277,22 +274,23 @@ fn removal_outputs(
             let dirt = registry.default_state("minecraft:dirt").unwrap();
             let ore = registry.default_state("minecraft:diamond_ore").unwrap();
             let pos = BlockPos::new(1, 64, 2);
-            let break_of = |game: &mut sunrise_gameplay::game::ServerGame<'_>, state, item, exp_to_drop| {
-                game.world.random =
-                    sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(7));
-                let dropped = game.with_level(|_, level, _| {
-                    level.block_dropped(
-                        pos,
-                        state,
-                        None,
-                        None,
-                        BlockDropEntity::None,
-                        vec![ItemStack::new(item, 1)],
-                        exp_to_drop,
-                    )
-                });
-                (dropped, game.world.random.next_int())
-            };
+            let break_of =
+                |game: &mut sunrise_gameplay::game::ServerGame<'_>, state, item, exp_to_drop| {
+                    game.world.random =
+                        sunrise_core::random::LevelRandom::for_level(LegacyRandom::new(7));
+                    let dropped = game.with_level(|_, level, _| {
+                        level.block_dropped(
+                            pos,
+                            state,
+                            None,
+                            None,
+                            BlockDropEntity::None,
+                            vec![ItemStack::new(item, 1)],
+                            exp_to_drop,
+                        )
+                    });
+                    (dropped, game.world.random.next_int())
+                };
             let (plain_ore, ore_after) = break_of(game, ore, "minecraft:diamond", None);
             let (plain_dirt, dirt_after) = break_of(game, dirt, "minecraft:dirt", None);
             let (overridden, _) = break_of(game, ore, "minecraft:diamond", Some(17));
@@ -315,7 +313,7 @@ fn removal_outputs(
             });
         });
     }
-/// Removing drop 0 shifts drop 1 without stealing drop 0's `ItemRandom`, and a later
+    /// Removing drop 0 shifts drop 1 without stealing drop 0's `ItemRandom`, and a later
     /// listener's invalid stack edit or out-of-bounds edit is rejected per call without rolling
     /// back earlier listeners' valid drop mutations or experience.
     #[test]
@@ -471,7 +469,7 @@ fn removal_outputs(
             });
         });
     }
-/// An empty or unrepresentable optional tool (such as an unregistered item from an older
+    /// An empty or unrepresentable optional tool (such as an unregistered item from an older
     /// save) omits only `event.tool` and still dispatches `block_drops` so listeners can edit
     /// drops and experience or cancel the break.
     #[test]
@@ -567,7 +565,7 @@ fn removal_outputs(
             assert_eq!(calls.load(Ordering::Relaxed), 6);
         });
     }
-/// A mod block entity's part answers its removal as vanilla's `preRemoveSideEffects`
+    /// A mod block entity's part answers its removal as vanilla's `preRemoveSideEffects`
     /// override does: found by the entity's type, not its block, reading its attachments in
     /// place, its stacks scattered after the block entity's own; skipped under flag 256, and
     /// drawing nothing when it gives nothing back.
@@ -644,7 +642,7 @@ fn removal_outputs(
             assert_eq!(HOARD_ASKED.load(Ordering::Relaxed) - asked, 2);
         });
     }
-/// LevelChunk ticks the resident row and calls its pre-removal effects before retiring it.
+    /// LevelChunk ticks the resident row and calls its pre-removal effects before retiring it.
     /// Replacing its own block must spill both the container contents and the Part's gold.
     #[test]
     #[ignore = "daily"]
@@ -719,7 +717,6 @@ fn removal_outputs(
         });
     }
 }
-
 
 #[cfg(test)]
 mod crafter_drop_name_tests {

@@ -8,14 +8,14 @@
 //! savepoint. A stale read, an invalid answer, a panicking listener and a busy menu leave it
 //! undone with every write the listener made rolled back.
 use super::*;
-use sunrise_gameplay_common::game::transactions::decision::{
-    self, ActionTarget, GameHost, Identity, InvalidReason, MenuId, Outcome, Reply, Side,
-    StaleReason,
-};
 use mod_api::EntityRef;
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
+};
+use sunrise_gameplay_common::game::transactions::decision::{
+    self, ActionTarget, GameHost, Identity, InvalidReason, MenuId, Outcome, Reply, Side,
+    StaleReason,
 };
 
 /// What a decision reads of the journals.
@@ -235,7 +235,12 @@ impl crate::game::ServerGame<'_> {
         if !mod_api::__private::has_part_hook(mod_api::HookId::MenuClicked) {
             return false;
         }
-        let Some(guest) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+        let Some(guest) = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
+        else {
             return false;
         };
         let Some(open) = guest.menu.as_ref().filter(|m| {
@@ -309,7 +314,11 @@ impl crate::game::ServerGame<'_> {
                 actor,
                 Epoch::Click(&handled),
                 |game| {
-                    let Some(guest) = game.server.lan.as_ref().and_then(|host| host.hub.guest(conn))
+                    let Some(guest) = game
+                        .server
+                        .lan
+                        .as_ref()
+                        .and_then(|host| host.hub.guest(conn))
                     else {
                         return false;
                     };

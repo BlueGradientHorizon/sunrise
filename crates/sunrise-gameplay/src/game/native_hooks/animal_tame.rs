@@ -1,5 +1,3 @@
-
-
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
     /// The player `tamer` (UUID) and `tamer_entity_id` is about to tame the

@@ -29,7 +29,8 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn lead_fences(&self) -> Vec<[i32; 3]> {
         let mut fences = Vec::new();
         let mobs = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter(|m| !m.removed)
             .map(|m| m.extra.leash);
@@ -48,7 +49,8 @@ impl crate::game::ServerGame<'_> {
     pub fn forget_untied_knots(&mut self) {
         let fences = self.lead_fences();
         self.server.knot_ids.retain(|p, _| fences.contains(p));
-        self.common.resident_entities
+        self.common
+            .resident_entities
             .knots
             .retain(|knot| fences.contains(&knot.fence));
     }
@@ -64,18 +66,21 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         if self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .any(|m| m.id != departing && !m.removed && m.extra.leash == Some(Holder::Knot(fence)))
             || self
-                .common.boats
+                .common
+                .boats
                 .iter()
                 .any(|b| b.id != departing && b.leash == Some(Holder::Knot(fence)))
         {
             return;
         }
         self.server.knot_ids.remove(&fence);
-        self.common.resident_entities
+        self.common
+            .resident_entities
             .knots
             .retain(|knot| knot.fence != fence);
     }
@@ -121,7 +126,11 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn natural_knot_id_iter(
         &self,
     ) -> impl Iterator<Item = u32> + '_ {
-        self.common.resident_entities.knots.iter().map(|knot| knot.id)
+        self.common
+            .resident_entities
+            .knots
+            .iter()
+            .map(|knot| knot.id)
     }
     /// The ids of the level's natural knots that a lead still holds, in the
     /// order they were made.
@@ -247,7 +256,8 @@ impl crate::game::ServerGame<'_> {
         let drop = drop
             && (!dying
                 || self
-                    .common.ui
+                    .common
+                    .ui
                     .rules
                     .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS));
         self.break_leash(id, drop, sound);
@@ -274,7 +284,8 @@ impl crate::game::ServerGame<'_> {
         }
         self.drop_boat_leashes(&boats);
         let at = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map_or([center.x, center.y, center.z], |p| {
                 [p.position.x, p.position.y, p.position.z]
@@ -287,12 +298,7 @@ impl crate::game::ServerGame<'_> {
     /// `Leashable.setLeashedTo` on the mob or boat `target`: its lead goes to `holder` whatever
     /// held it, or was still waiting for a saved holder. `player` is a player holder's UUID.
     /// Taking the lead over is no removal, so no unleash hook hears it. False for anything else.
-    pub fn set_leash(
-        &mut self,
-        target: Target,
-        holder: Holder,
-        player: Option<[i32; 4]>,
-    ) -> bool {
+    pub fn set_leash(&mut self, target: Target, holder: Holder, player: Option<[i32; 4]>) -> bool {
         let knot_id = match holder {
             Holder::Knot(fence) => self.server.knot_ids.get(&fence).copied(),
             _ => None,
@@ -333,15 +339,12 @@ impl crate::game::ServerGame<'_> {
     }
     /// `Leashable.dropLeash` (`drop`) or `removeLeash` on the mob or boat `target`. False when no
     /// holder has the lead: a holder still unresolved from a save stays, as in `dropLeash`.
-    pub fn detach_leash(
-        &mut self,
-        target: Target,
-        drop: bool,
-    ) -> bool {
+    pub fn detach_leash(&mut self, target: Target, drop: bool) -> bool {
         match target {
             Target::Mob(id) => {
                 let held = self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter()
                     .any(|m| m.id == id && m.extra.leash.is_some());
                 if held {
@@ -371,23 +374,35 @@ impl crate::game::ServerGame<'_> {
         sound: bool,
         used: bool,
     ) {
-        let killer = self.server.lead_killers.remove(&id).map(|(killer, _)| killer);
-        let Some((at, kind, holder)) = self.common.mobs.iter_mut().find(|m| m.id == id).and_then(|m| {
-            let holder = m.extra.leash;
-            sunrise_sim::mobs::leash::remove(m)?;
-            Some((
-                [m.position.x, m.position.y, m.position.z],
-                sunrise_gameplay_common::game::native_hooks::mob_kind(m),
-                holder,
-            ))
-        }) else {
+        let killer = self
+            .server
+            .lead_killers
+            .remove(&id)
+            .map(|(killer, _)| killer);
+        let Some((at, kind, holder)) =
+            self.common
+                .mobs
+                .iter_mut()
+                .find(|m| m.id == id)
+                .and_then(|m| {
+                    let holder = m.extra.leash;
+                    sunrise_sim::mobs::leash::remove(m)?;
+                    Some((
+                        [m.position.x, m.position.y, m.position.z],
+                        sunrise_gameplay_common::game::native_hooks::mob_kind(m),
+                        holder,
+                    ))
+                })
+        else {
             return;
         };
         self.notify_knot_leashee_removed(holder, id);
         self.native_entity_unleash(id, &kind);
         if used
-            && let (Some(player), Some(name)) =
-                (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
+            && let (Some(player), Some(name)) = (
+                self.server.lan_acting_uuid,
+                self.server.lan_acting_name.clone(),
+            )
         {
             self.native_player_unleash_entity(player, &name, id);
         }
@@ -467,13 +482,15 @@ impl crate::game::ServerGame<'_> {
         if !self.server.broken_knots.is_empty() {
             let fences = std::mem::take(&mut self.server.broken_knots);
             let drop = self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS);
             for fence in fences {
                 let live_id = self.server.knot_ids.get(&fence).copied();
                 let mobs: Vec<u32> = self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter()
                     .filter(|m| {
                         !m.removed
@@ -590,11 +607,13 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         let name = self
-            .common.res
+            .common
+            .res
             .facts()
             .get(self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]));
         if !self
-            .common.res
+            .common
+            .res
             .items()
             .block_tags
             .get("minecraft:fences")
@@ -624,7 +643,10 @@ impl crate::game::ServerGame<'_> {
             return None;
         }
         // Sneaking with mobs in hand: tie them to this one.
-        if sneaking && leash::can_be_leashed(&self.common.mobs[index]) && !self.common.mobs[index].is_baby() {
+        if sneaking
+            && leash::can_be_leashed(&self.common.mobs[index])
+            && !self.common.mobs[index].is_baby()
+        {
             let b = self.common.mobs[index].bounds();
             let (lo, hi) = (b.min_position(), b.max_position());
             let center = glam::DVec3::new(
@@ -645,7 +667,8 @@ impl crate::game::ServerGame<'_> {
                 dropped = true;
             }
             let others: Vec<u32> = self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .filter(|m| m.extra.leash == Some(Holder::Mob(id)))
                 .map(|m| m.id)
@@ -759,7 +782,9 @@ impl crate::game::ServerGame<'_> {
             }
             for i in self.boats_on(Holder::Knot(knot_pos)) {
                 if self.common.boats[i].leash_knot_id.is_none() {
-                    self.common.boats.update(i, |b| b.leash_knot_id = Some(knot_id));
+                    self.common
+                        .boats
+                        .update(i, |b| b.leash_knot_id = Some(knot_id));
                 }
             }
         }

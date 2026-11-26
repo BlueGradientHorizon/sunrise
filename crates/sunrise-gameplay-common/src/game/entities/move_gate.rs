@@ -20,7 +20,6 @@ pub enum MoveWho {
 }
 
 impl crate::game::CommonGame<'_> {
-
     /// The kind name (`minecraft:zombie`) a move is for, built on demand.
     fn move_who_kind(&self, who: MoveWho) -> Cow<'_, str> {
         match who {
@@ -36,12 +35,7 @@ pub trait MoveGateGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// the movement the gate decided (`delta`), and skips it when the gate
     /// says so. A pusher arms before its own restrictions — the piston limit
     /// included — so a cancelled move spends none of them.
-     fn entity_move(
-        &mut self,
-        who: MoveWho,
-        cause: MoverType,
-        delta: Vec3,
-    ) -> MoveGate {
+    fn entity_move(&mut self, who: MoveWho, cause: MoverType, delta: Vec3) -> MoveGate {
         let entity = self.move_who_id(who);
         // The type name is built only if a listener asks for it (#2414: a
         // move nobody listens to costs one branch and no string).
@@ -64,6 +58,5 @@ pub trait MoveGateGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> MoveGateGameExt1<'__sg> for G {}
-
 
 use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;

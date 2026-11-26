@@ -2,11 +2,9 @@ use crate::game::host::draw::GameBlockEntityDrawContext;
 use crate::game::host::draw::GameCameraDrawContext;
 use crate::game::host::draw::GameDrawContext;
 use crate::game::host::draw::GameWorldDrawContext;
-use mod_api::{prelude::*, *};
 use crate::game::host::draw::{EngineTooltipFont, font_id_str};
-use sunrise_gameplay_common::game::{
-    api_values::{TryIntoApi, TryIntoEngine},
-};
+use mod_api::{prelude::*, *};
+use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
 
 impl BlockEntityDrawContext for GameBlockEntityDrawContext<'_, '_> {
     fn push(&mut self) {

@@ -13,7 +13,10 @@ fn loaded(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     );
 }
 
-fn state(game: &sunrise_gameplay::game::ServerGame<'_>, name: &str) -> sunrise_world::registry::BlockStateId {
+fn state(
+    game: &sunrise_gameplay::game::ServerGame<'_>,
+    name: &str,
+) -> sunrise_world::registry::BlockStateId {
     game.pack.assets.registry.default_state(name).unwrap()
 }
 
@@ -113,9 +116,9 @@ fn a_post_write_placement_reads_the_stack_without_loading_its_data() {
 #[test]
 #[ignore = "daily"]
 fn a_code_placement_notifies_only_the_blocks_part_with_its_stack() {
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use mod_api::{EntityRef, HostTransaction, LevelRef, ServerHost, SetPlacedByEvent};
     use std::sync::{Arc, Mutex};
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use sunrise_items::items::ItemStack;
 
     #[derive(Debug, PartialEq)]
@@ -222,11 +225,13 @@ fn a_command_block_placement_callback_saves_updated_entity_data() {
             Ok(true)
         );
         let key = (pos[0], pos[1], pos[2]);
-        let Some(BlockEntity::CommandBlock(entity)) = game.common.world.block_entities.get_mut(&key)
+        let Some(BlockEntity::CommandBlock(entity)) =
+            game.common.world.block_entities.get_mut(&key)
         else {
             panic!("placement must create a command block entity");
         };
-        let feedback = game.common
+        let feedback = game
+            .common
             .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
@@ -346,8 +351,8 @@ fn a_tripwire_placement_cannot_rewrite_a_fenced_hook_or_wire() {
 #[ignore = "daily"]
 fn placement_previews_shape_updates_before_the_tripwire_callback() {
     use super::native_guest_turn_tests::with_guests;
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use mod_api::PlayerWorldRefusal;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
 
     with_guests(|game| {
         loaded(game);
@@ -399,8 +404,8 @@ fn placement_previews_shape_updates_before_the_tripwire_callback() {
 #[ignore = "daily"]
 fn a_transaction_refuses_only_a_completing_wither_placement() {
     use super::native_guest_turn_tests::with_guests;
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use mod_api::{HostTransaction, LevelWriteError, PlayerWorldRefusal, ServerHost};
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
 
     with_guests(|game| {
         loaded(game);

@@ -1,38 +1,36 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt3;
-use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt3;
 
-use super::super::native_living_flags::tests::{guest, guest_server, packets, sync_guests};
+    use super::super::native_living_flags::tests::{guest, guest_server, packets, sync_guests};
 
-use super::super::native_living_position::tests::floor_and_zombies;
+    use super::super::native_living_position::tests::floor_and_zombies;
 
-use sunrise_sim::mobs::stuck::Stuck;
+    use sunrise_sim::mobs::stuck::Stuck;
 
-use mod_api::client::first_person::Hand;
+    use mod_api::client::first_person::Hand;
 
-use mod_api::{
+    use mod_api::{
         EntityRef, Flow, Hooks, HostSide, Identifier, ItemPart, LivingEntityUseItemFinishEvent,
         LivingEntityUseItemStartEvent, LivingEntityUseItemStopEvent, LivingEntityUseItemTickEvent,
         LivingRef, OnUseTickEvent, Registrar, ReleaseUsingEvent, WorldEpoch,
     };
 
-use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex};
 
-use sunrise_core::geometry::Vec3;
+    use sunrise_core::geometry::Vec3;
 
-use sunrise_items::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
-use sunrise_sim::lan::waypoints::Icon;
+    use sunrise_sim::lan::waypoints::Icon;
 
-use sunrise_sim::mobs::Mob;
+    use sunrise_sim::mobs::Mob;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_mob_swings_while_its_hand_and_loot_flags_live_on_the_mob_handle() {
         with_game(|game| {
@@ -87,7 +85,7 @@ use sunrise_sim::mobs::Mob;
             assert!(!game.living_set_waypoint_color(stale, Some(0xFF)));
         });
     }
-/// What is stuck in a mob falls out in the mob's own ticks, one in a count's
+    /// What is stuck in a mob falls out in the mob's own ticks, one in a count's
     /// worth of `20 * (30 - count)` ticks as for a player, the timer a write set
     /// running first.
     #[test]
@@ -117,7 +115,7 @@ use sunrise_sim::mobs::Mob;
             assert_eq!(game.mobs[1].extra.stuck, Stuck::default());
         });
     }
-/// A spear's use counts its own ticks, which a write to the ticks left
+    /// A spear's use counts its own ticks, which a write to the ticks left
     /// moves: the next tick goes on from there.
     #[test]
     #[ignore = "daily"]
@@ -140,7 +138,7 @@ use sunrise_sim::mobs::Mob;
             assert_eq!(game.living_item_use_remaining(zombie), Some(own - 11));
         });
     }
-/// A waypoint write is `/waypoint modify`: what it stores is what the command
+    /// A waypoint write is `/waypoint modify`: what it stores is what the command
     /// stores, for the entities the command takes.
     #[test]
     #[ignore = "daily"]
@@ -164,7 +162,7 @@ use sunrise_sim::mobs::Mob;
             assert_eq!((icon.style.as_str(), icon.color), ("example:flag", None));
         });
     }
-/// A guest's waypoint is told again to the players who see it, with the new
+    /// A guest's waypoint is told again to the players who see it, with the new
     /// style and colour, and a spin shows in the flags the players around get,
     /// counts down in the guest's ticks and ends when asked to.
     #[test]
@@ -254,14 +252,14 @@ use sunrise_sim::mobs::Mob;
             .unwrap();
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_player_keeps_its_stuck_arrows_and_item_use_timer() {
-        use sunrise_gameplay::game::server_side::lan::LanSettings;
         use std::sync::{
             Arc,
             atomic::{AtomicI32, AtomicUsize},
         };
+        use sunrise_gameplay::game::server_side::lan::LanSettings;
         use sunrise_protocol::packets::configuration::ClientInformation;
         use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
         with_game(|game| {
@@ -368,14 +366,14 @@ use sunrise_sim::mobs::Mob;
             .unwrap();
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_mobs_swing_reaches_clients_with_the_hand_asked_for() {
-        use sunrise_gameplay::game::server_side::lan::LanSettings;
         use std::sync::{
             Arc,
             atomic::{AtomicI32, AtomicUsize},
         };
+        use sunrise_gameplay::game::server_side::lan::LanSettings;
         use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
         use sunrise_sim::lan::{
             Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig,

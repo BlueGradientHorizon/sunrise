@@ -1,9 +1,12 @@
-use {sunrise_gameplay::game::ServerGame, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
-use crate::settings::Settings;
 use crate::game::load_resources;
+use crate::settings::Settings;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_level::chunk::Chunk;
+use {
+    sunrise_gameplay::game::ServerGame, sunrise_gameplay_common::game::Options,
+    sunrise_gameplay_common::game::Progress,
+};
 
 fn end_game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
@@ -28,7 +31,8 @@ fn end_game<'a>(
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         res,
@@ -64,9 +68,7 @@ fn end_game<'a>(
 }
 
 /// The level's dragon fireballs: its projectiles of that kind.
-fn dragon_fireballs<'a>(
-    game: &'a ServerGame<'_>,
-) -> Vec<&'a sunrise_sim::projectiles::Projectile> {
+fn dragon_fireballs<'a>(game: &'a ServerGame<'_>) -> Vec<&'a sunrise_sim::projectiles::Projectile> {
     game.creatures
         .projectiles
         .iter()

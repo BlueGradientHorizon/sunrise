@@ -1,18 +1,22 @@
-
-
 #![cfg(test)]
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::boats_common::Boat;
-    use sunrise_gameplay_common::game::dragon_common::Crystal;
-    use {sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart};
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
-    use {crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::sent};
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::boats_common::Boat;
+    use sunrise_gameplay_common::game::dragon_common::Crystal;
     use sunrise_protocol::packets::play::Serverbound as S;
     use sunrise_sim::projectiles::{Projectile, ProjectileKind};
+    use {
+        crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in,
+        crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::sent,
+    };
+    use {
+        sunrise_gameplay_common::game::minecarts::CartKind,
+        sunrise_gameplay_common::game::minecarts::Minecart,
+    };
 
     /// Each target, sprinting at full strength (knockback 0.5): the horizontal motion times 0.6,
     /// the vertical kept, the sprint stopped, and STOP_SPRINTING after the Attack on the wire.

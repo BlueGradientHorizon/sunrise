@@ -1,11 +1,11 @@
 //! A client's `LevelRef::brightness`, `EntityRef::set_sprinting` and the server's
 //! `tick_rate_is_frozen`.
 
+use super::native_entity_refs::tests::with_game;
+use mod_api::LightLayer;
+use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-use super::native_entity_refs::tests::with_game;
-use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
-use mod_api::LightLayer;
 
 /// A client reads the light of the level it shows, only while logged in.
 #[test]
@@ -218,10 +218,10 @@ fn a_client_reads_only_its_own_menu() {
 #[test]
 #[ignore = "daily"]
 fn client_merchant_offers_follow_the_open_menu() {
-    use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
     use super::native_entity_refs::tests::with_client_game;
     use mod_api::__private::game::Fields;
     use mod_api::ClientHost;
+    use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
     use sunrise_core::nbt::Tag;
     use sunrise_game_data::text::Text;
     use sunrise_protocol::{
@@ -351,8 +351,8 @@ fn client_merchant_offers_follow_the_open_menu() {
 #[test]
 #[ignore = "daily"]
 fn client_player_state_reads_its_own_copy_only() {
-    use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
     use super::native_entity_refs::tests::with_client_game;
+    use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
     use sunrise_core::geometry::Vec3;
     use sunrise_items::items::ItemStack;
     use sunrise_sim::motion::PlayerMotion;
@@ -423,8 +423,8 @@ fn gui_ticks_follow_unpaused_client_ticks() {
 #[test]
 #[ignore = "daily"]
 fn client_abilities_follow_predicted_flying_between_packets() {
-    use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
     use super::native_entity_refs::tests::with_client_game;
+    use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::packets::play;
     use sunrise_sim::motion::PlayerMotion;

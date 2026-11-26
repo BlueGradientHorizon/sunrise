@@ -1,5 +1,5 @@
-use sunrise_gameplay_common::game::remote::C;
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
+use sunrise_gameplay_common::game::remote::C;
 
 pub(in crate::game) fn with_isolated_client(
     name: &str,

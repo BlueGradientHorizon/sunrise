@@ -1,5 +1,5 @@
-use sunrise_gameplay_common::game::api_values::TryIntoEngine;
 use mod_api::*;
+use sunrise_gameplay_common::game::api_values::TryIntoEngine;
 
 impl RenderAssets for crate::game::ClientGame<'_> {
     fn model(&self, id: &Identifier) -> Result<ModelRef, ModelError> {

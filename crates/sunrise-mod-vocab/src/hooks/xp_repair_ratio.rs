@@ -16,7 +16,8 @@ pub trait Hooks {
     /// asked: to change Mending for every item, change the enchantment's
     /// `minecraft:repair_with_xp` effect in a data pack. Server-side,
     /// including `PlayerRef::give_experience_points`.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::xp_repair_ratio::ServerGame<'_>::native_xp_repair_ratio", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::xp_repair_ratio::ServerGame<'_>::native_xp_repair_ratio",
         receiver = "read",
         dispatch = "flat",
         side = "server",

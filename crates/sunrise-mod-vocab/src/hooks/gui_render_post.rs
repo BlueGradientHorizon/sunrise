@@ -27,7 +27,8 @@ receive `&dyn ClientHost`. They do not grant server writes.
 `Hooks::client_disconnecting` runs before an actual connection is discarded,
 not for a dimension change. Initialization and final shutdown still use the
 existing `client_setup` and `client_stopping` hooks, with no parallel aliases."#]
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::gui_render_post::ClientGame<'_>::native_gui_render_post", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::gui_render_post::ClientGame<'_>::native_gui_render_post",
         receiver = "read",
         dispatch = "flat",
         side = "client",

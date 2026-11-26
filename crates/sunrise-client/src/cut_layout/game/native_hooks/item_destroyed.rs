@@ -1,11 +1,8 @@
-
-
 #![cfg(test)]
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
 mod item_destroyed_tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
-use {crate::game::native_hooks::item_destroyed::*};
+    use crate::game::native_hooks::item_destroyed::*;
     use mod_api::{
         Hooks, ItemDestroyedEvent, ItemPart, Registrar, RegistrationContext, ServerHost,
     };
@@ -14,6 +11,7 @@ use {crate::game::native_hooks::item_destroyed::*};
         atomic::{AtomicBool, Ordering},
     };
     use sunrise_core::position::ChunkPos;
+    use sunrise_gameplay_common::game::GameGameExt1;
 
     #[derive(Clone)]
     struct DestroyPart {

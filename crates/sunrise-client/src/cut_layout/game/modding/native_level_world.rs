@@ -1,28 +1,26 @@
-
-
 #![cfg(test)]
 use sunrise_gameplay_common::game::Dim;
 use sunrise_gameplay_common::game::native_rain_read::weather_flags;
 
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1;
-use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::with_game;
     use mod_api::{GameRuleChangedEvent, GameRuleValue, Hooks, LevelHost, ModEntry, ServerHost};
     use mod_platform::testing::with_mods;
     use std::sync::{Arc, Mutex};
     use sunrise_game_data::gamerules;
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1;
     use sunrise_gameplay_common::game_side;
     use sunrise_level::chunk::Chunk;
 
     #[test]
     #[ignore = "daily"]
     fn dimension_shape_reads_current_parked_and_stale_levels() {
-        use sunrise_gameplay_common::game::Dim;
         use mod_api::{Authority, Host, LevelDimensionShape};
+        use sunrise_gameplay_common::game::Dim;
         use sunrise_level::chunk::LevelShape;
 
         with_game(|game| {
@@ -177,7 +175,8 @@ use super::super::native_entity_refs::tests::with_game;
         let mods: mod_api::Mods = vec![ModEntry::new("example", Box::new(RuleMod))].into();
         with_mods(mods, || {
             with_game(|game| {
-                let registry = Arc::new(sunrise_gameplay_common::game::api_values::game_rule_registry());
+                let registry =
+                    Arc::new(sunrise_gameplay_common::game::api_values::game_rule_registry());
                 game.level.rule_registry = registry.clone();
                 game.ui.rules = gamerules::GameRules::with_registry(registry, &[]);
                 let level = game.level("minecraft:overworld").unwrap();
@@ -211,7 +210,8 @@ use super::super::native_entity_refs::tests::with_game;
         let mods: mod_api::Mods = vec![ModEntry::new("example", Box::new(RuleMod))].into();
         with_mods(mods, || {
             with_game(|game| {
-                let registry = Arc::new(sunrise_gameplay_common::game::api_values::game_rule_registry());
+                let registry =
+                    Arc::new(sunrise_gameplay_common::game::api_values::game_rule_registry());
                 game.level.rule_registry = registry.clone();
                 game.ui.rules = gamerules::GameRules::with_registry(registry.clone(), &[]);
                 game.load_world_state().unwrap();
@@ -498,8 +498,8 @@ use super::super::native_entity_refs::tests::with_game;
     #[test]
     #[ignore = "daily"]
     fn rule_reads_distinguish_unknown_stale_and_unavailable_and_snapshot_values() {
-        use sunrise_gameplay_common::game::execution_role::ExecutionRole;
         use mod_api::{LevelReadError, WorldEpoch};
+        use sunrise_gameplay_common::game::execution_role::ExecutionRole;
         with_game(|game| {
             let level = game.level(game.dim.id()).unwrap();
             assert!(

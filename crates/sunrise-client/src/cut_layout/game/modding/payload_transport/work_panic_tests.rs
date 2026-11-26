@@ -80,7 +80,11 @@ impl Hooks for Declares {
 #[test]
 #[ignore = "daily"]
 fn a_handled_child_abort_rolls_back_work_but_still_reports_the_panicking_owner() {
-    use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_client_gameplay::game::toast_manager::Toast};
+    use {
+        sunrise_client_gameplay::game::toast_manager::Toast,
+        sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    };
 
     if run_fresh_cases(
         "game::payload_transport::work_panic_tests::a_handled_child_abort_rolls_back_work_but_still_reports_the_panicking_owner",

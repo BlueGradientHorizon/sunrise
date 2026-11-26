@@ -1,9 +1,9 @@
-use {crate::game::*, sunrise_gameplay_common::game::*};
 use std::sync::Arc;
 use sunrise_core::{geometry::Aabb, position::BlockPos};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_gameplay_common::game_master_blocks::is_game_master_block;
 use sunrise_world::level::{Behaviours, BucketContent, LevelEvent, PlayerEffect, Ticks};
+use {crate::game::*, sunrise_gameplay_common::game::*};
 use {
     sunrise_game_data::Result, sunrise_items::items::ItemStack,
     sunrise_level::containers::BlockEntity, sunrise_sim::entities::Experience,
@@ -52,7 +52,8 @@ impl crate::game::ServerGame<'_> {
     /// (`ServerItemCooldowns.onCooldownStarted`), queued for their turn's end.
     pub(crate) fn apply_use_cooldown(&mut self, stack: &ItemStack) {
         let default = self
-            .common.res
+            .common
+            .res
             .items()
             .get(&stack.item)
             .and_then(|i| i.use_cooldown.clone());
@@ -61,9 +62,10 @@ impl crate::game::ServerGame<'_> {
         };
         let group = sunrise_items::cooldowns::group(stack, default.as_ref());
         let mut cancel = false;
-        if let (Some(player), Some(name)) =
-            (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-        {
+        if let (Some(player), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             self.native_player_item_cooldown(
                 player,
                 &name,
@@ -79,10 +81,7 @@ impl crate::game::ServerGame<'_> {
             self.server.guest_cooldowns.push((group, 0));
         }
     }
-    pub fn break_block_as_player(
-        &mut self,
-        pos: [i32; 3],
-    ) -> Result<bool> {
+    pub fn break_block_as_player(&mut self, pos: [i32; 3]) -> Result<bool> {
         // DebugStickItem.canDestroyBlock: a left click selects a property and
         // never destroys the block.
         if !self.debug_stick_can_destroy(pos)? {
@@ -93,7 +92,8 @@ impl crate::game::ServerGame<'_> {
             return Ok(false);
         }
         if !self
-            .common.res
+            .common
+            .res
             .items()
             .can_destroy_block(self.common.held(), self.common.creative)
         {
@@ -139,7 +139,9 @@ impl crate::game::ServerGame<'_> {
                     &facts.name,
                     self.common.res.items(),
                 );
-                self.common.pending.record_from(&self.common.world, pos, saved);
+                self.common
+                    .pending
+                    .record_from(&self.common.world, pos, saved);
                 None
             }
             None => {
@@ -159,7 +161,9 @@ impl crate::game::ServerGame<'_> {
             }
         };
         let hive = match self.common.world.block_entities.get(&key) {
-            Some(BlockEntity::Beehive(h)) => self.common.hive_state(pos).map(|s| ((**h).clone(), s)),
+            Some(BlockEntity::Beehive(h)) => {
+                self.common.hive_state(pos).map(|s| ((**h).clone(), s))
+            }
             _ => None,
         };
         let filled_hive = hive
@@ -236,7 +240,8 @@ impl crate::game::ServerGame<'_> {
                     && !silk
                     && !canceled
                     && self
-                        .common.ui
+                        .common
+                        .ui
                         .rules
                         .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS)
                 {
@@ -308,7 +313,8 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn server_expire_cracks(&mut self) {}
     #[inline(always)]
     pub(in crate::game) fn server_pick_camera_id(&self) -> Option<u32> {
-        self.common.player
+        self.common
+            .player
             .as_ref()
             .map(|p| p.entity_id as u32)
             .filter(|&id| id != 0)
@@ -480,7 +486,8 @@ impl crate::game::ServerGame<'_> {
             }
         }
         let (yaw, pitch) = self
-            .common.options
+            .common
+            .options
             .look
             .unwrap_or((level.rotation[0], level.rotation[1]));
         self.common.yaw = yaw;
@@ -494,14 +501,16 @@ impl crate::game::ServerGame<'_> {
         // MinecraftServer.prepareLevels restores the saved tickets after the
         // built-in levels have been published.
         self.server.tickets.0 = Default::default();
-        self.server.startup_ticket_restore_pending = self.common.options.execution_role.is_logical_server();
+        self.server.startup_ticket_restore_pending =
+            self.common.options.execution_role.is_logical_server();
         // The ride the player's file names, once the vehicle is in the world.
         self.server.pending_vehicle = level.root_vehicle;
         self.common.level = level;
         self.check_mod_mismatch();
         self.server.world_adopted = true;
         if self.common.options.execution_role.is_logical_server() {
-            self.common.options
+            self.common
+                .options
                 .save_failure_diagnostics
                 .register(self.server.save.0.save_failure_reporter());
         }
@@ -524,7 +533,8 @@ impl crate::game::ServerGame<'_> {
         self.server.player_beds.clear();
         self.common.spawn = None;
         self.server.respawn_config = self
-            .common.level
+            .common
+            .level
             .respawn_elsewhere
             .as_ref()
             .and_then(respawn_anchor::RespawnConfig::from_saved);
@@ -554,10 +564,11 @@ impl crate::game::ServerGame<'_> {
         };
         self.common.carried = None;
         self.common.using = None;
-        self.server.streaming.radius = sunrise_gameplay_common::game::streaming_radius::streaming_radius_for(
-            self.server.settings.render_distance,
-            None,
-        );
+        self.server.streaming.radius =
+            sunrise_gameplay_common::game::streaming_radius::streaming_radius_for(
+                self.server.settings.render_distance,
+                None,
+            );
         let facts = self.common.dimension_type_of(dim);
         self.server.streaming.sky_light = facts.height.has_skylight;
         self.load_world_state()?;
@@ -568,12 +579,7 @@ impl crate::game::ServerGame<'_> {
     /// (`Entity.checkFallDamage`): a mod block's `fall_on` Part hears it, through the same
     /// `block_contact::fall` as a player's and a mob's landing. An item takes no fall damage.
     /// Nothing is lent or built unless a Part of that block listens.
-    pub fn item_fall_on(
-        &mut self,
-        id: u32,
-        on: sunrise_core::position::BlockPos,
-        distance: f64,
-    ) {
+    pub fn item_fall_on(&mut self, id: u32, on: sunrise_core::position::BlockPos, distance: f64) {
         let state = self.common.world.block(on.x, on.y, on.z);
         if !sunrise_sim::block_contact::fall_listens(state) {
             return;
@@ -652,10 +658,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// The saved player's hands, armor, body, saddle and ender chest go in
     /// their fields; the 36 inventory slots come back.
-    pub fn load_saved_inventory(
-        &mut self,
-        level: &Level,
-    ) -> Vec<Option<ItemStack>> {
+    pub fn load_saved_inventory(&mut self, level: &Level) -> Vec<Option<ItemStack>> {
         let mut inventory = vec![None; 36];
         self.common.armor = [None, None, None, None];
         self.common.offhand = None;
@@ -690,7 +693,8 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let name = self
-            .common.res
+            .common
+            .res
             .facts()
             .get(self.common.world.block(pos[0], pos[1], pos[2]))
             .name
@@ -753,15 +757,21 @@ impl crate::game::ServerGame<'_> {
             && self.open_station(pos, &name)
         {
             // Station menus whose block has a block entity, not a container.
-            self.common.world.block_entities.get_or_insert_with(key, || {
-                BlockEntity::for_block(&name).unwrap_or(BlockEntity::Chest(Vec::new()))
-            });
+            self.common
+                .world
+                .block_entities
+                .get_or_insert_with(key, || {
+                    BlockEntity::for_block(&name).unwrap_or(BlockEntity::Chest(Vec::new()))
+                });
         } else if sunrise_gameplay_common::chests::is_shulker_box(&name)
             && !self.shulker_can_open(pos)
         {
             // ShulkerBoxBlock.canOpen: the lid has no room; nothing opens.
         } else if let Some(entity) = BlockEntity::for_block(&name) {
-            self.common.world.block_entities.get_or_insert_with(key, || entity);
+            self.common
+                .world
+                .block_entities
+                .get_or_insert_with(key, || entity);
             sunrise_level::spans::time("open_loot", || self.unpack_opened_loot(key, &name));
             let centre = [
                 f64::from(key.0) + 0.5,
@@ -826,14 +836,15 @@ impl crate::game::ServerGame<'_> {
     /// is the player's feet, the point the orb homes on and the player's UUID.
     pub fn orb_followed(&self) -> Vec<xp_orb_targeting::OrbCandidate> {
         let spectator = self.common.spectator();
-        let player = self
-            .common.player
-            .as_ref()
-            .filter(|p| !p.health.dead_or_dying() && !spectator && !self.server.lan_acting_fake);
+        let player =
+            self.common.player.as_ref().filter(|p| {
+                !p.health.dead_or_dying() && !spectator && !self.server.lan_acting_fake
+            });
         // ExperienceOrb.followNearbyPlayer: each orb goes for the nearest
         // living player within 8 blocks, the host's own or a guest.
         let uuid = self
-            .common.level
+            .common
+            .level
             .player_uuid
             .map(sunrise_sim::lan::playerdata::ints_uuid);
         let mut followed: Vec<xp_orb_targeting::OrbCandidate> = player
@@ -1110,8 +1121,11 @@ impl crate::game::ServerGame<'_> {
                     kind: "note_custom_sound",
                     ..
                 } => {
-                    if let Some(BlockEntity::Skull(skull)) =
-                        self.common.world.block_entities.get(&(pos.x, pos.y + 1, pos.z))
+                    if let Some(BlockEntity::Skull(skull)) = self
+                        .common
+                        .world
+                        .block_entities
+                        .get(&(pos.x, pos.y + 1, pos.z))
                         && let Some(sound) = skull.note_block_sound.clone()
                     {
                         let at = [
@@ -1144,7 +1158,8 @@ impl crate::game::ServerGame<'_> {
     }
     pub(in crate::game) fn rebuild_chunk_tickets(&mut self, notify: bool) {
         let rule = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
         let mut players: Vec<((i32, i32), bool)> =
@@ -1225,16 +1240,22 @@ impl crate::game::ServerGame<'_> {
     }
     /// Copy the live player and world state into the `Level` that gets saved.
     pub fn sync_level(&mut self) {
-        self.common.level.player_impulse_grace = self.common.player.as_ref().map(|p| p.impulse.reset_grace_time);
+        self.common.level.player_impulse_grace = self
+            .common
+            .player
+            .as_ref()
+            .map(|p| p.impulse.reset_grace_time);
         self.common.level.player_fall_particles = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map(|p| p.spawn_extra_particles_on_fall);
         // Level.write saves the game rules (game_rules.dat) with the rest.
         self.common.level.game_rules = self.common.ui.rules.by_name();
         // PrimaryLevelData.setDifficulty: /difficulty and the options button change it.
-        self.common.level.difficulty =
-            sunrise_sim::world_options::DIFFICULTIES[usize::from(self.common.ui.difficulty) & 3].into();
+        self.common.level.difficulty = sunrise_sim::world_options::DIFFICULTIES
+            [usize::from(self.common.ui.difficulty) & 3]
+            .into();
         self.common.level.time = self.common.world.game_time;
         self.common.level.weather = self.common.world.weather;
         // level.dat holds the Overworld clock's total, whichever level is in place.
@@ -1269,7 +1290,10 @@ impl crate::game::ServerGame<'_> {
         level.xp_level = self.common.experience.level;
         level.xp_progress = self.common.experience.progress;
         level.xp_total = self.common.experience.total;
-        level.root_vehicle = vehicle.as_ref().map(|v| v.2).or(self.server.pending_vehicle);
+        level.root_vehicle = vehicle
+            .as_ref()
+            .map(|v| v.2)
+            .or(self.server.pending_vehicle);
         // The ride's tree, or none once the file's own came back.
         if let Some((tag, ..)) = vehicle {
             let extra = level
@@ -1319,7 +1343,8 @@ impl crate::game::ServerGame<'_> {
             level.flying = p.flying;
         }
         level.inventory = self
-            .common.inventory
+            .common
+            .inventory
             .iter()
             .enumerate()
             .filter_map(|(i, s)| {
@@ -1328,7 +1353,8 @@ impl crate::game::ServerGame<'_> {
             })
             .collect();
         level.inventory_components = self
-            .common.inventory
+            .common
+            .inventory
             .iter()
             .enumerate()
             .filter_map(|(i, s)| Some((i as u8, s.as_ref()?.extra.clone()?)))
@@ -1407,7 +1433,8 @@ impl crate::game::ServerGame<'_> {
         // without a matching can_break item.
         if self.block_action_restricted(hit.pos)
             || !self
-                .common.res
+                .common
+                .res
                 .items()
                 .can_destroy_block(self.common.held(), self.common.creative)
         {
@@ -1469,7 +1496,8 @@ impl crate::game::ServerGame<'_> {
         Ok(())
     }
     pub fn tick_sleep(&mut self) {
-        self.common.sleep_timer = tick_sleep_timer(self.common.sleep_timer, self.common.sleeping.is_some());
+        self.common.sleep_timer =
+            tick_sleep_timer(self.common.sleep_timer, self.common.sleeping.is_some());
         if let Some(head) = self.common.sleeping {
             // LivingEntity.tick's checkBedExists: a sleeper whose bed is
             // gone gets up.
@@ -1479,7 +1507,8 @@ impl crate::game::ServerGame<'_> {
             // not get the sleeper up.
             let wake_immediately = bed_gone
                 || self
-                    .common.player
+                    .common
+                    .player
                     .as_ref()
                     .is_none_or(|p| p.health.dead_or_dying());
             if wake_immediately || self.server_acting_sneak() {
@@ -1503,7 +1532,8 @@ impl crate::game::ServerGame<'_> {
         // resetWeatherCycle if `advance_weather` is on and it is raining.
         if self.enough_slept() {
             if self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::ADVANCE_TIME)
             {
@@ -1519,7 +1549,8 @@ impl crate::game::ServerGame<'_> {
             }
             // Level.isRaining: the rain level is above 0.2.
             if self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::ADVANCE_WEATHER)
                 && self.weather_levels(1.0).0 > 0.2
@@ -1549,7 +1580,8 @@ impl crate::game::ServerGame<'_> {
         };
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
         let props = self
-            .common.pack
+            .common
+            .pack
             .assets
             .registry
             .state(state)
@@ -1567,7 +1599,8 @@ impl crate::game::ServerGame<'_> {
         // sleeps in it; the player stays up either way.
         let head_state = self.common.world.block(head[0], head[1], head[2]);
         let occupied = self
-            .common.pack
+            .common
+            .pack
             .assets
             .registry
             .state(head_state)
@@ -1594,10 +1627,11 @@ impl crate::game::ServerGame<'_> {
         // blocks above the head and the foot, as `in_wall` reads suffocating.
         let blocked = problem.is_none()
             && [head, foot].iter().any(|bed| {
-                let f = self
-                    .common.res
-                    .facts()
-                    .get(self.common.world.block(bed[0], bed[1] + 1, bed[2]));
+                let f = self.common.res.facts().get(self.common.world.block(
+                    bed[0],
+                    bed[1] + 1,
+                    bed[2],
+                ));
                 f.full_collision && f.solid_render
             });
         if blocked {
@@ -1629,7 +1663,8 @@ impl crate::game::ServerGame<'_> {
                 self.common.spawn = if self.server.lan_acting.is_some() {
                     None
                 } else {
-                    self.common.level
+                    self.common
+                        .level
                         .world_spawn
                         .map(|[x, y, z]| {
                             Vec3::new(f64::from(x) + 0.5, f64::from(y), f64::from(z) + 0.5)
@@ -1661,9 +1696,10 @@ impl crate::game::ServerGame<'_> {
         // NeoForge's CanPlayerSleepEvent: a mod may clear or replace the
         // problem vanilla found, or add one.
         let mut problem = problem.map(str::to_owned);
-        if let (Some(player), Some(name)) =
-            (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-        {
+        if let (Some(player), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             self.native_can_player_sleep(player, &name, head, &mut problem);
         }
         if let Some(problem) = problem {
@@ -1695,7 +1731,8 @@ impl crate::game::ServerGame<'_> {
         }
         // ServerPlayer.startSleepInBed: a percentage above 100 cannot skip the night.
         if self
-            .common.ui
+            .common
+            .ui
             .rules
             .int_at(sunrise_game_data::gamerules::vanilla::PLAYERS_SLEEPING_PERCENTAGE)
             > 100
@@ -1706,9 +1743,10 @@ impl crate::game::ServerGame<'_> {
                 true,
             );
         }
-        if let (Some(player), Some(name)) =
-            (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-        {
+        if let (Some(player), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             let mut cancel = false;
             self.native_player_bed_enter(player, &name, head, &mut cancel);
             if cancel {
@@ -1719,15 +1757,13 @@ impl crate::game::ServerGame<'_> {
             let bed = self.common.world.block(head[0], head[1], head[2]);
             self.award_custom_stat(self.slept_in_bed_stat(bed), 1);
             self.trigger_player("minecraft:slept_in_bed");
-            self.common.stats.reset("custom", "minecraft:time_since_rest");
+            self.common
+                .stats
+                .reset("custom", "minecraft:time_since_rest");
         }
     }
     /// `BlockTransformer.transformBlock` for a held axe, hoe or shovel.
-    pub fn use_block_transformer(
-        &mut self,
-        stack: &ItemStack,
-        hit: &Hit,
-    ) -> Result<bool> {
+    pub fn use_block_transformer(&mut self, stack: &ItemStack, hit: &Hit) -> Result<bool> {
         let pos = hit.pos;
         let face = hit.face;
         let Some((new, sound, loot, damage, particle, transform_type)) =
@@ -2046,7 +2082,10 @@ impl crate::game::ServerGame<'_> {
         self.common.sleep_timer = if wake_immediately { 0 } else { 100 };
         // The active guest's live body wakes here; the hub owns its wake
         // animation and sleeping metadata, not the suspended outer actor.
-        if let Some(i) = self.server.lan_acting.and_then(|conn| self.guest_index(conn))
+        if let Some(i) = self
+            .server
+            .lan_acting
+            .and_then(|conn| self.guest_index(conn))
             && let Some(host) = self.server.lan.as_mut()
         {
             // The live turn may have changed its bed since entry.
@@ -2124,7 +2163,11 @@ impl crate::game::ServerGame<'_> {
                 )
             });
             let player_collision = self.common.player.as_ref().filter(|_| !spectator).map(|p| {
-                let main_hand = self.common.inventory.get(self.common.selected).and_then(Option::as_ref);
+                let main_hand = self
+                    .common
+                    .inventory
+                    .get(self.common.selected)
+                    .and_then(Option::as_ref);
                 PlayerCollision {
                     y: p.position.y,
                     descending: p.velocity.y < 0.0,
@@ -2138,7 +2181,8 @@ impl crate::game::ServerGame<'_> {
                 }
             });
             let cart_boxes = self
-                .common.carts
+                .common
+                .carts
                 .iter()
                 .map(|c| {
                     let p = c.position;
@@ -2149,7 +2193,8 @@ impl crate::game::ServerGame<'_> {
                 })
                 .collect();
             let arrow_boxes = self
-                .common.creatures
+                .common
+                .creatures
                 .projectiles
                 .iter()
                 .filter(|p| p.arrow.is_some())
@@ -2167,7 +2212,8 @@ impl crate::game::ServerGame<'_> {
                 .is_some()
                 .then(|| self.server.lan_building_boxes.0.boxes(self.common.dim));
             let fire_players: Vec<[f64; 3]> = self
-                .common.player
+                .common
+                .player
                 .iter()
                 .filter(|_| !spectator)
                 .map(|p| [p.position.x, p.position.y, p.position.z])
@@ -2180,14 +2226,16 @@ impl crate::game::ServerGame<'_> {
                 }))
                 .collect();
             let mut trigger_hooks: Vec<(Aabb, bool)> = self
-                .common.hook
+                .common
+                .hook
                 .iter()
                 .map(|h| (h.bounds(), h.applies_block_effects()))
                 .collect();
             self.lan_hook_triggers(&mut trigger_hooks);
             // EntityType.LIGHTNING_BOLT: 0 x 0.
             let trigger_extras: Vec<Aabb> = self
-                .common.bolts
+                .common
+                .bolts
                 .iter()
                 .map(|b| {
                     let at = Vec3::new(b.at[0], b.at[1], b.at[2]);
@@ -2199,18 +2247,24 @@ impl crate::game::ServerGame<'_> {
             // double chest answers for both halves (`ChestBlockEntity$1` takes a
             // `CompoundContainer`), and a spectator's menu counts for nothing.
             let mut open_containers: Vec<(i32, i32, i32)> = Vec::new();
-            for key in self.common.container.into_iter().filter(|_| !spectator).chain(
-                self.server
-                    .lan
-                    .iter()
-                    .flat_map(|h| {
-                        h.hub
-                            .guests
-                            .simulation_iter()
-                            .filter(|g| h.hub.here(g) && !g.spectator())
-                    })
-                    .filter_map(|g| g.menu.as_ref().and_then(|m| m.pos)),
-            ) {
+            for key in self
+                .common
+                .container
+                .into_iter()
+                .filter(|_| !spectator)
+                .chain(
+                    self.server
+                        .lan
+                        .iter()
+                        .flat_map(|h| {
+                            h.hub
+                                .guests
+                                .simulation_iter()
+                                .filter(|g| h.hub.here(g) && !g.spectator())
+                        })
+                        .filter_map(|g| g.menu.as_ref().and_then(|m| m.pos)),
+                )
+            {
                 open_containers.push(key);
                 if let Some(other) = self.common.chest_other_half(key) {
                     open_containers.push(other);
@@ -2255,7 +2309,8 @@ impl crate::game::ServerGame<'_> {
             },
             border: self.common.border.geometry(),
             redstone_experiments: self
-                .common.level
+                .common
+                .level
                 .enabled_features
                 .iter()
                 .any(|feature| feature == "minecraft:redstone_experiments"),
@@ -2330,7 +2385,11 @@ impl crate::game::ServerGame<'_> {
             drop_breaker_at: None,
             drop_into: None,
         };
-        f(self.common.res.behaviours(), &mut level, &mut self.common.block_ticks)
+        f(
+            self.common.res.behaviours(),
+            &mut level,
+            &mut self.common.block_ticks,
+        )
     }
 }
 
@@ -2368,65 +2427,64 @@ use sunrise_gameplay_common::game::powder_snow::FilledResultGameExt as _;
 
 #[cfg(test)]
 mod landing_claim_tests {
-use crate::game::native_entity_refs::tests::with_game_at;
-use mod_api::{Flow, Hooks, ModEntry, ServerHost};
-use std::{path::PathBuf, sync::Arc};
-use sunrise_level::chunk::Chunk;
-use sunrise_gameplay_common::game::GameGameExt1 as _;
+    use crate::game::native_entity_refs::tests::with_game_at;
+    use mod_api::{Flow, Hooks, ModEntry, ServerHost};
+    use std::{path::PathBuf, sync::Arc};
+    use sunrise_gameplay_common::game::GameGameExt1 as _;
+    use sunrise_level::chunk::Chunk;
 
-mod claims {
-    use super::*;
-    #[derive(Default)]
-    struct Claims;
-    #[mod_api::sunrise_mod]
-    impl Hooks for Claims {
-        fn entity_change_block_pre(
-            &self,
-            host: &mut dyn ServerHost,
-            event: &mut mod_api::EntityChangeBlockPreEvent<'_>,
-        ) -> Flow {
-            assert_eq!(event.player, Some(7));
-            assert_eq!(event.entity, None);
-            assert_eq!(event.kind, "minecraft:player");
-            assert_eq!(Some(event.from), host.block_state_id("minecraft:farmland"));
-            assert_eq!(Some(event.to), host.block_state_id("minecraft:dirt"));
-            Flow::Cancel
+    mod claims {
+        use super::*;
+        #[derive(Default)]
+        struct Claims;
+        #[mod_api::sunrise_mod]
+        impl Hooks for Claims {
+            fn entity_change_block_pre(
+                &self,
+                host: &mut dyn ServerHost,
+                event: &mut mod_api::EntityChangeBlockPreEvent<'_>,
+            ) -> Flow {
+                assert_eq!(event.player, Some(7));
+                assert_eq!(event.entity, None);
+                assert_eq!(event.kind, "minecraft:player");
+                assert_eq!(Some(event.from), host.block_state_id("minecraft:farmland"));
+                assert_eq!(Some(event.to), host.block_state_id("minecraft:dirt"));
+                Flow::Cancel
+            }
         }
     }
-}
-#[test]
-#[ignore = "daily"]
-fn cancelled_landing_restores_farmland_before_its_crop_is_notified() {
-    let root = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
-    mod_platform::testing::with_mods(
-        vec![ModEntry::new("claims", claims::hooks())].into(),
-        || {
-            with_game_at(root, |game| {
-                game.world
-                    .chunks
-                    .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
-                let state = |name| game.pack.assets.registry.default_state(name).unwrap();
-                let (farmland, dirt, wheat) = (
-                    state("minecraft:farmland"),
-                    state("minecraft:dirt"),
-                    state("minecraft:wheat"),
-                );
-                game.world.set(1, 64, 1, dirt).unwrap();
-                game.world.set(1, 65, 1, wheat).unwrap();
-                game.landing_block_updates(
-                    Some(7),
-                    &sunrise_sim::landing::FallEvent::Write {
-                        position: sunrise_core::position::BlockPos::new(1, 64, 1),
-                        from: farmland,
-                        state: dirt,
-                        flags: 3,
-                    },
-                );
-                assert_eq!(game.world.block(1, 64, 1), farmland);
-                assert_eq!(game.world.block(1, 65, 1), wheat);
-            })
-        },
-    );
-}
-
+    #[test]
+    #[ignore = "daily"]
+    fn cancelled_landing_restores_farmland_before_its_crop_is_notified() {
+        let root = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
+        mod_platform::testing::with_mods(
+            vec![ModEntry::new("claims", claims::hooks())].into(),
+            || {
+                with_game_at(root, |game| {
+                    game.world
+                        .chunks
+                        .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
+                    let state = |name| game.pack.assets.registry.default_state(name).unwrap();
+                    let (farmland, dirt, wheat) = (
+                        state("minecraft:farmland"),
+                        state("minecraft:dirt"),
+                        state("minecraft:wheat"),
+                    );
+                    game.world.set(1, 64, 1, dirt).unwrap();
+                    game.world.set(1, 65, 1, wheat).unwrap();
+                    game.landing_block_updates(
+                        Some(7),
+                        &sunrise_sim::landing::FallEvent::Write {
+                            position: sunrise_core::position::BlockPos::new(1, 64, 1),
+                            from: farmland,
+                            state: dirt,
+                            flags: 3,
+                        },
+                    );
+                    assert_eq!(game.world.block(1, 64, 1), farmland);
+                    assert_eq!(game.world.block(1, 65, 1), wheat);
+                })
+            },
+        );
+    }
 }

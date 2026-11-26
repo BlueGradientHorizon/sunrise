@@ -30,7 +30,8 @@ impl crate::game::ServerGame<'_> {
         }
         // ServerLevel.canSleepThroughNights.
         if self
-            .common.ui
+            .common
+            .ui
             .rules
             .int_at(sunrise_game_data::gamerules::vanilla::PLAYERS_SLEEPING_PERCENTAGE)
             > 100
@@ -88,7 +89,8 @@ impl crate::game::ServerGame<'_> {
         let (identity, bed, gone, uuid) = host.hub.guests.update(gi, |g| {
             let was_deep = g.sleep_timer >= 100;
             if body {
-                g.sleep_timer = sunrise_gameplay_common::game::tick_sleep_timer(g.sleep_timer, g.bed.is_some());
+                g.sleep_timer =
+                    sunrise_gameplay_common::game::tick_sleep_timer(g.sleep_timer, g.bed.is_some());
             }
             let deep_sleep = !was_deep && g.sleep_timer >= 100 && g.bed.is_some();
             let identity = deep_sleep.then(|| (g.uuid, g.name.clone()));
@@ -170,7 +172,8 @@ impl crate::game::ServerGame<'_> {
                 }
             }
         };
-        if self.common.player.is_some() && !self.server.lan_acting_fake && !self.common.spectator() {
+        if self.common.player.is_some() && !self.server.lan_acting_fake && !self.common.spectator()
+        {
             count(self.common.sleeping.is_some(), self.common.sleep_timer);
         }
         if let Some(host) = self.server.lan.as_ref() {
@@ -189,7 +192,8 @@ impl crate::game::ServerGame<'_> {
     /// `SleepStatus.sleepersNeeded`.
     pub(in crate::game::server_side) fn sleepers_needed(&self, active: i64) -> i64 {
         let percent = i64::from(
-            self.common.ui
+            self.common
+                .ui
                 .rules
                 .int_at(sunrise_game_data::gamerules::vanilla::PLAYERS_SLEEPING_PERCENTAGE)
                 .max(0),

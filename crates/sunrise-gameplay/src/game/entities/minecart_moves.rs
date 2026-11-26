@@ -1,8 +1,8 @@
 //! The cart's `Entity.move` — `AbstractMinecart.move`'s own tick move through
 //! the move gate (#2414) — in its own module so `minecarts.rs` keeps its size.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_gameplay_common::game::minecarts::{CartKind, Minecart};
 use sunrise_sim::motion::BodyContact;
 
 pub(in crate::game) struct CartLanding {

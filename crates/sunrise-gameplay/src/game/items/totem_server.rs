@@ -18,12 +18,19 @@ impl ServerGame<'_> {
     /// the window's player once a tick, a server's player for each of its
     /// turns.
     pub(in crate::game) fn update_totem_ready(&mut self) {
-        let ready = self.common.held().is_some_and(|s| self.common.has_death_protection(s))
+        let ready = self
+            .common
+            .held()
+            .is_some_and(|s| self.common.has_death_protection(s))
             || self
-                .common.offhand
+                .common
+                .offhand
                 .as_ref()
                 .is_some_and(|s| self.common.has_death_protection(s));
-        let off = !self.common.held().is_some_and(|s| self.common.has_death_protection(s));
+        let off = !self
+            .common
+            .held()
+            .is_some_and(|s| self.common.has_death_protection(s));
         if let Some(p) = self.common.player.as_mut() {
             p.health.totem_ready = ready;
             p.health.totem_off_hand = off;
@@ -37,12 +44,18 @@ impl ServerGame<'_> {
     /// Broadcast the guest's activation before the hit's Post callback.
     fn apply_totem(&mut self, entity: i32) {
         // The mods hear a server player's totem before it is used up.
-        if let (Some(uuid), Some(name)) =
-            (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-        {
+        if let (Some(uuid), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             self.native_player_totem(uuid, &name);
         }
-        let Some(p) = self.common.player.as_mut().filter(|p| p.entity_id == entity) else {
+        let Some(p) = self
+            .common
+            .player
+            .as_mut()
+            .filter(|p| p.entity_id == entity)
+        else {
             return;
         };
         let _ = p.set_health(1.0, false);
@@ -51,7 +64,10 @@ impl ServerGame<'_> {
         // offhand. The copy of that stack is the protector (`protectionItem`)
         // the use is counted and the activation animation shown with, taken
         // before the use takes one off the stack.
-        let main = self.common.held().is_some_and(|s| self.common.has_death_protection(s));
+        let main = self
+            .common
+            .held()
+            .is_some_and(|s| self.common.has_death_protection(s));
         let cell = if main {
             &mut self.common.inventory[self.common.selected]
         } else {
@@ -61,7 +77,11 @@ impl ServerGame<'_> {
             .as_ref()
             .cloned()
             .unwrap_or_else(|| ItemStack::new(TOTEM, 1));
-        let slot = if main { self.common.selected } else { OFFHAND_SLOT };
+        let slot = if main {
+            self.common.selected
+        } else {
+            OFFHAND_SLOT
+        };
         self.consume_player_slot(slot, 1);
         self.award_stat("used", &protector.item, 1);
         self.trigger_item("minecraft:used_totem", &protector);
@@ -86,7 +106,8 @@ impl ServerGame<'_> {
     pub(in crate::game) fn finish_guest_damage_before_resume(
         &mut self,
     ) -> Result<(), Vec<MotionEvent>> {
-        let (Some(conn), Some(player)) = (self.server.lan_acting, self.common.player.as_mut()) else {
+        let (Some(conn), Some(player)) = (self.server.lan_acting, self.common.player.as_mut())
+        else {
             return Err(Vec::new());
         };
         let Some(hit) = player.health.damage_completion.take() else {
@@ -131,7 +152,11 @@ impl ServerGame<'_> {
             self.finish_damage_post(entity, "minecraft:player", post);
         }
         if self.server.lan_acting == Some(conn)
-            && let Some(player) = self.common.player.as_mut().filter(|p| p.entity_id == entity)
+            && let Some(player) = self
+                .common
+                .player
+                .as_mut()
+                .filter(|p| p.entity_id == entity)
         {
             events.append(&mut player.events);
             player.events = events;

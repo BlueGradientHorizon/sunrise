@@ -1,4 +1,3 @@
-
 use sunrise_command::args::ItemInput;
 use sunrise_command::args::Selector;
 use sunrise_core::geometry::Vec3;
@@ -26,25 +25,25 @@ pub(crate) mod summon_bolt_tests;
 #[cfg(test)]
 pub(crate) mod peaceful_tests {
 
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay_common::game::server_side::commands::peaceful_tests::TRADER;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::server_side::commands::peaceful_tests::TRADER;
 
-use sunrise_command::{Arg, Context};
+    use sunrise_command::{Arg, Context};
 
-use crate::game::{execution_role::ExecutionRole, native_entity_refs::tests as fixture};
+    use crate::game::{execution_role::ExecutionRole, native_entity_refs::tests as fixture};
 
-use std::sync::{Arc, OnceLock};
+    use std::sync::{Arc, OnceLock};
 
-use sunrise_command::ParsedArg;
+    use sunrise_command::ParsedArg;
 
-use sunrise_level::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
 
-use sunrise_mod_package::{Content, Package, enabled::EnabledMods};
+    use sunrise_mod_package::{Content, Package, enabled::EnabledMods};
 
-use sunrise_sim::mod_content::{self, ContentMod};
+    use sunrise_sim::mod_content::{self, ContentMod};
 
-pub(crate) use sunrise_gameplay::game::server_side::creatures_server::peaceful_fixture::with_types;
-pub(crate) fn with_types_client(
+    pub(crate) use sunrise_gameplay::game::server_side::creatures_server::peaceful_fixture::with_types;
+    pub(crate) fn with_types_client(
         role: ExecutionRole,
         test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>),
     ) {
@@ -103,7 +102,7 @@ capabilities = ["registries"]
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn summon_checks_the_mod_type_instead_of_its_template() {
         with_types(ExecutionRole::IntegratedServer, |game| {
@@ -167,7 +166,6 @@ capabilities = ["registries"]
     }
 }
 
-
 #[cfg(test)]
 #[path = "teleport_mob_tests.rs"]
 pub(crate) mod teleport_mob_tests;
@@ -186,10 +184,13 @@ pub(crate) mod teleport_player_rider_tests;
 
 #[cfg(test)]
 pub(crate) mod selector_bounds_tests {
-    use {crate::game::server_side::commands::*};
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
+    use crate::game::server_side::commands::*;
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::{entities::ArmorStand, mobs::Mob};
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -217,7 +218,8 @@ pub(crate) mod selector_bounds_tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -279,9 +281,9 @@ pub(crate) mod local_coordinate_command_tests;
 
 #[cfg(test)]
 pub(crate) mod effective_presence_tests {
-    use sunrise_gameplay_common::game::tables::GameItems;
-use {crate::game::server_side::commands::*};
+    use crate::game::server_side::commands::*;
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::tables::GameItems;
     #[test]
     #[ignore = "daily"]
     fn registered_presence_uses_actual_catalog_and_stack_patch() {
@@ -412,12 +414,15 @@ use {crate::game::server_side::commands::*};
 
 #[cfg(test)]
 pub(crate) mod fill_note_instrument_tests {
-    use {crate::game::server_side::commands::*};
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
+    use crate::game::server_side::commands::*;
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
     fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -440,7 +445,8 @@ pub(crate) mod fill_note_instrument_tests {
             std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                 .join(format!("h164-{:?}", std::thread::current().id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -547,10 +553,10 @@ pub(crate) mod fill_note_instrument_tests {
 
 #[cfg(test)]
 pub(crate) mod item_damage_range_tests {
-    use sunrise_gameplay_common::game::tables::GameItems;
-use {crate::game::server_side::commands::*};
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use crate::game::server_side::commands::*;
     use sunrise_core::position::BlockPos;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::tables::GameItems;
 
     #[test]
     #[ignore = "daily"]
@@ -722,13 +728,13 @@ pub(crate) mod vehicle_kill_tests;
 
 #[cfg(test)]
 pub(crate) mod global_selector_order_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
-use {sunrise_command::args::Selector, sunrise_gameplay_common::game::commands_common::Target};
     use sunrise_command::args::Sort;
     use sunrise_core::nbt::Tag;
     use sunrise_core::position::ChunkPos;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
     use sunrise_sim::join_seq::Joined;
+    use {sunrise_command::args::Selector, sunrise_gameplay_common::game::commands_common::Target};
 
     #[test]
     #[ignore = "daily"]
@@ -891,7 +897,6 @@ pub(crate) mod mob_display_name_tests;
 pub(crate) mod item_count_predicate_tests;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
-
 
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
 

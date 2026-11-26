@@ -1,5 +1,3 @@
-
-
 impl crate::game::ServerGame<'_> {
     /// A recipe viewer's "+" on a mod menu: the scoped part of the open menu's type may move
     /// `recipe`'s ingredients itself (or, with `dry_run`, say what that would do) and answer in

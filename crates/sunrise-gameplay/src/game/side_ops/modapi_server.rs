@@ -1,7 +1,7 @@
 //! Server-side implementations of `side_ops::modapi`.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::transactions::decision::Residence;
 use mod_api::AttachmentAccess;
+use sunrise_gameplay_common::game::transactions::decision::Residence;
 
 impl ServerGame<'_> {
     pub(in crate::game) fn server_attachment_map(

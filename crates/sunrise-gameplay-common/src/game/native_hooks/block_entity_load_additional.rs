@@ -62,7 +62,7 @@ impl BlockEntityLevelReadAccess for LevelReadBlockEntityAccess<'_> {
 
 pub trait BlockEntityLoadAdditionalGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// An explicit engine load into an attached instance.
-     fn notify_block_entity_load_additional(&self, pos: Pos) {
+    fn notify_block_entity_load_additional(&self, pos: Pos) {
         if self.is_logical_server()
             && mod_api::__private::has_part_hook(HookId::BlockEntityLoadAdditional)
             && let Some(level) = self.level(self.dim.id())
@@ -84,7 +84,7 @@ pub trait BlockEntityLoadAdditionalGameExt1<'__sg>: crate::game::SideGame<'__sg>
 
     /// Chunk workers decode data; only the level thread tells the Parts, after
     /// the instances and their attachments are in the world.
-     fn fire_pending_block_entity_data_loads(&mut self) {
+    fn fire_pending_block_entity_data_loads(&mut self) {
         if !self.world.block_entities.has_pending_data_load() {
             return;
         }
@@ -96,7 +96,6 @@ pub trait BlockEntityLoadAdditionalGameExt1<'__sg>: crate::game::SideGame<'__sg>
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> BlockEntityLoadAdditionalGameExt1<'__sg> for G {}
-
 
 impl GameLevel<'_> {
     pub(in crate::game) fn notify_block_entity_load_additional(&self, pos: Pos) {
@@ -110,25 +109,18 @@ impl GameLevel<'_> {
                 host: self,
                 subject,
             };
-            native_block_entity_load_additional(
-                id,
-                BlockEntityLevelReadScope::new(&access),
-                tag,
-            );
+            native_block_entity_load_additional(id, BlockEntityLevelReadScope::new(&access), tag);
         }
     }
-
-    
 }
 
 /// The level's `BlockEntity.loadAdditional` notice once the payload is installed.
-    pub(in crate::game) fn native_block_entity_load_additional(
-        id: mod_api::BlockEntityTypeKey,
-        subject: mod_api::BlockEntityLevelReadScope<'_>,
-        tag: &Compound,
-    ) {
-        crate::game::native_hooks::fire::fire_block_entity_load_additional(id, subject, tag);
-    }
-
+pub(in crate::game) fn native_block_entity_load_additional(
+    id: mod_api::BlockEntityTypeKey,
+    subject: mod_api::BlockEntityLevelReadScope<'_>,
+    tag: &Compound,
+) {
+    crate::game::native_hooks::fire::fire_block_entity_load_additional(id, subject, tag);
+}
 
 use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

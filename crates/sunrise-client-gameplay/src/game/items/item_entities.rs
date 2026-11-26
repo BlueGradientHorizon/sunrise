@@ -1,5 +1,3 @@
-
-
 #[cfg(test)]
 pub(in crate::game) mod bob_tests {
     use sunrise_core::geometry::Vec3;

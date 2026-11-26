@@ -3,10 +3,10 @@
 //! a worn-out piece of equipment (`ServerPlayer.onEquippedItemBroken`) and the
 //! bed slept in (`ServerPlayer.startSleepInBed`, whose statistic the bed picks:
 //! `StrawBedBlock.getSleptInBedStatType`).
-use sunrise_core::geometry::Vec3;
 use super::super::*;
-use sunrise_gameplay_common::game_side;
+use sunrise_core::geometry::Vec3;
 use sunrise_gameplay::game::game_tests::tests::server_game;
+use sunrise_gameplay_common::game_side;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::motion::{MotionWorld, PlayerMotion};
 use sunrise_world::registry::BlockStateId;
@@ -20,7 +20,10 @@ fn a_ground_jump_awards_the_jump_statistic() {
     let mut player = PlayerMotion::new(game.motion, Vec3::new(2.5, 64.0, 2.5)).unwrap();
     player.ground.on_ground = true;
     {
-        let meta = sunrise_gameplay_common::game::side_ops::world::WorldSideGameExt::side_game_side_meta(&game);
+        let meta =
+            sunrise_gameplay_common::game::side_ops::world::WorldSideGameExt::side_game_side_meta(
+                &game,
+            );
         let side = game_side!(
             game.common,
             meta,
@@ -81,7 +84,11 @@ fn a_worn_out_helmet_awards_the_broken_statistic() {
 }
 
 /// A bed's state with its `part`, facing north.
-fn bed_state(game: &sunrise_gameplay::game::ServerGame<'_>, kind: &str, part: &str) -> BlockStateId {
+fn bed_state(
+    game: &sunrise_gameplay::game::ServerGame<'_>,
+    kind: &str,
+    part: &str,
+) -> BlockStateId {
     let registry = game.pack.assets.registry;
     let mut state = registry
         .state(registry.default_state(kind).unwrap())

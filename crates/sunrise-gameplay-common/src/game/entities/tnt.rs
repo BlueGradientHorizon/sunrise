@@ -1,11 +1,9 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use super::*;
+    use super::*;
 
-pub fn write_silence_output(name: &str, rows: &[String]) {
+    pub fn write_silence_output(name: &str, rows: &[String]) {
         if let Some(root) = std::env::var_os("SUNRISE_SOURCE_SILENCE_OUTPUT") {
             std::fs::write(
                 std::path::Path::new(&root).join(format!("{name}.txt")),
@@ -14,7 +12,7 @@ pub fn write_silence_output(name: &str, rows: &[String]) {
             .unwrap();
         }
     }
-/// Runs `test` on a thread with an 8 MiB stack. A Game's explosion and potion-impact paths
+    /// Runs `test` on a thread with an 8 MiB stack. A Game's explosion and potion-impact paths
     /// need more than the 2 MiB test thread in a Windows debug build, where those tests
     /// overflowed it (4 MiB is enough).
     pub fn on_big_stack(test: impl FnOnce() + Send + 'static) {

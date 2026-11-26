@@ -283,8 +283,12 @@ fn datapack_game_open_reload_and_exhaustion_are_atomic() {
 #[test]
 #[ignore = "daily"]
 fn world_open_and_wire_use_the_pack_biome_instead_of_the_bundled_file() {
-    use {sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
     use sunrise_sim::lan::data::BIOME_REGISTRY;
+    use {
+        sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+        sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+    };
 
     // World open replaces the process-wide wire snapshot for the session.
     if run_fresh_cases(

@@ -73,7 +73,7 @@ pub fn outline_offset(
 }
 
 pub trait NativeStateShapesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-     fn selected_outline<'a>(
+    fn selected_outline<'a>(
         &'a self,
         world: &'a World,
         state: BlockStateId,
@@ -120,7 +120,7 @@ pub trait NativeStateShapesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// The same outline traversal without allocating a box list.
-     fn outline_boxes_iter<'a>(
+    fn outline_boxes_iter<'a>(
         &'a self,
         world: &'a World,
         state: BlockStateId,
@@ -136,7 +136,7 @@ pub trait NativeStateShapesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         outline_boxes(outline, base)
     }
 
-     fn state_shape_boxes(
+    fn state_shape_boxes(
         &self,
         world: &World,
         shulkers: &FxHashMap<[i32; 3], Shulker>,
@@ -157,7 +157,6 @@ pub trait NativeStateShapesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeStateShapesGameExt1<'__sg> for G {}
-
 
 pub(in crate::game) fn outline_boxes(
     outline: Outline<'_>,

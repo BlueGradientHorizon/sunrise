@@ -1,10 +1,9 @@
-use sunrise_client_render::hud_layout::GuiDraw;
-use sunrise_protocol::packets::play::TrackedWaypoint;
-use {sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry, sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
 use std::time::Duration;
 use sunrise_assets::resource_source::{Resource, ResourceSource};
 use sunrise_client::{level_loading::Reason, locator_bar::WaypointStyles};
+use sunrise_client_render::hud_layout::GuiDraw;
 use sunrise_core::geometry::Vec3;
+use sunrise_protocol::packets::play::TrackedWaypoint;
 use sunrise_protocol::{
     connection::Pipe,
     packets::play::{
@@ -12,6 +11,12 @@ use sunrise_protocol::{
     },
 };
 use sunrise_sim::motion::PlayerMotion;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry,
+    sunrise_gameplay_common::game::in_own_process,
+    sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle,
+};
 
 fn connect(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, position: Vec3) -> Pipe {
     game.native_lifecycle = NativeLifecycle::default();
@@ -82,7 +87,12 @@ fn add_armor_stand_facing(
     .unwrap();
 }
 
-fn track_block(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, uuid: u128, color: i32, position: [i32; 3]) {
+fn track_block(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    uuid: u128,
+    color: i32,
+    position: [i32; 3],
+) {
     game.handle_waypoint(&TrackedWaypoint {
         operation: waypoint_operation::TRACK,
         id: WaypointId::Uuid(uuid),

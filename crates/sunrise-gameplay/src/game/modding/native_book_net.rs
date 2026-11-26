@@ -22,7 +22,8 @@ impl ServerGame<'_> {
             return;
         };
         let Some(authority) = self
-            .common.native_net
+            .common
+            .native_net
             .book_connections
             .get_mut(&guest.conn)
             .and_then(|connection| connection.authority.as_mut())
@@ -82,7 +83,8 @@ impl ServerGame<'_> {
             return;
         };
         let Some(authority) = self
-            .common.native_net
+            .common
+            .native_net
             .book_connections
             .get_mut(&guest.conn)
             .and_then(|connection| connection.authority.as_mut())
@@ -110,7 +112,12 @@ impl ServerGame<'_> {
         {
             return;
         }
-        let connection = self.common.native_net.book_connections.entry(conn).or_default();
+        let connection = self
+            .common
+            .native_net
+            .book_connections
+            .entry(conn)
+            .or_default();
         if data.first() == Some(&settings_codec::PLACEMENT_TAG) {
             let frame = connection.receive_placement(data, std::time::Instant::now());
             if let Some(frame) = frame {

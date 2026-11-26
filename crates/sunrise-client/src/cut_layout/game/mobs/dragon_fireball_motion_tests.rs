@@ -3,16 +3,16 @@
 //! `acceleration_power` every tick, as a summoned `fireball` does
 //! (tools/test_dragon_fireball_motion_parity.py measures the same on vanilla 26.3).
 use super::*;
-use std::sync::Arc;
-use sunrise_core::position::ChunkPos;
-use sunrise_level::chunk::Chunk;
-use crate::settings::Settings;
-use sunrise_gameplay_common::game::resource_load::Progress;
-use sunrise_gameplay_common::game::Options;
 #[cfg(test)]
 use crate::game::load_resources;
+use crate::settings::Settings;
+use std::sync::Arc;
+use sunrise_core::position::ChunkPos;
+use sunrise_gameplay_common::game::Options;
 #[cfg(test)]
 use sunrise_gameplay_common::game::execution_role;
+use sunrise_gameplay_common::game::resource_load::Progress;
+use sunrise_level::chunk::Chunk;
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,

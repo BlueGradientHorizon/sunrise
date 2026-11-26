@@ -1,10 +1,13 @@
 //! `Zombie.doHurtTarget`'s burn, through the game's mob event handling with
 //! real resources: it rides a blow that hurt, on the local difficulty's chance.
 use super::*;
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, Mob, PlayerMotion, Vec3, World, hit}};
 use sunrise_core::random::LegacyRandom;
 use sunrise_sim::mobs::{Who, ai::do_hurt_target, goals::Cx};
 use sunrise_world::food::Difficulty;
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{Arc, Mob, PlayerMotion, Vec3, World, hit},
+};
 
 fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     let mut resources = None;

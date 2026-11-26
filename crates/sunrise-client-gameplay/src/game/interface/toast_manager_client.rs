@@ -18,11 +18,7 @@ impl ClientGame<'_> {
             self.add_system_toast(Some(id), new)
         }
     }
-    pub fn add_system_toast(
-        &mut self,
-        id: Option<SystemToastId>,
-        mut toast: SystemToast,
-    ) -> bool {
+    pub fn add_system_toast(&mut self, id: Option<SystemToastId>, mut toast: SystemToast) -> bool {
         if !self.admit_toast(
             mod_api::ToastKind::System,
             &mut toast.title,

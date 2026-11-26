@@ -1,5 +1,3 @@
-
-
 #[cfg(test)]
 #[path = "summon_item_orb_tests_server.rs"]
 pub(crate) mod summon_item_orb_tests;
@@ -10,10 +8,10 @@ pub(crate) mod summon_bolt_tests;
 
 #[cfg(test)]
 pub(crate) mod peaceful_tests {
-    use sunrise_gameplay_common::game::server_side::commands::peaceful_tests::TRADER;
     use crate::game::server_side::commands::peaceful_tests::with_types;
-    use sunrise_gameplay_common::game::execution_role::ExecutionRole;
     use sunrise_core::nbt::Tag;
+    use sunrise_gameplay_common::game::execution_role::ExecutionRole;
+    use sunrise_gameplay_common::game::server_side::commands::peaceful_tests::TRADER;
 
     #[test]
     #[ignore = "daily"]
@@ -63,12 +61,15 @@ pub(crate) mod teleport_player_rider_tests;
 pub(crate) mod query_feedback_tests {
 
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_silent_source_drops_query_results_but_still_stores_them() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role::ExecutionRole};
-        use crate::settings::Settings;
         use crate::game::load_resources;
+        use crate::settings::Settings;
+        use {
+            sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+            sunrise_gameplay_common::game::execution_role::ExecutionRole,
+        };
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
         let loaded = load_resources(
@@ -86,7 +87,8 @@ pub(crate) mod query_feedback_tests {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -122,7 +124,11 @@ pub(crate) mod query_feedback_tests {
         for command in queries {
             game.server.chat_capture = Some(Vec::new());
             assert!(game.run_command(command), "{command}");
-            assert_eq!(game.server.chat_capture.take().unwrap().len(), 1, "{command}");
+            assert_eq!(
+                game.server.chat_capture.take().unwrap().len(),
+                1,
+                "{command}"
+            );
         }
         // The result still reaches `execute store`.
         assert!(game.run_command_quietly("execute store result score #t q run time query day"));
@@ -135,11 +141,11 @@ pub(crate) mod query_feedback_tests {
     #[test]
     #[ignore = "daily"]
     fn gamerule_feedback_uses_short_ids_without_changing_registry_identity() {
-        use {sunrise_command::Arg, sunrise_command::Context};
-        use sunrise_gameplay::game::native_entity_refs::tests::with_game;
         use std::sync::Arc;
         use sunrise_command::ParsedArg;
         use sunrise_game_data::gamerules::{GameRules, Rule, RuleRegistry, Value};
+        use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+        use {sunrise_command::Arg, sunrise_command::Context};
         with_game(|game| {
             let registry = RuleRegistry::with_mod_rules(
                 &["test:feedback".into()],

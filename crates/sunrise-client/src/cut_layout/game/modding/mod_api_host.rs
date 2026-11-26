@@ -1,15 +1,22 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod attachment_membership_tests {
-    use {crate::game::mod_api_host::*, sunrise_gameplay_common::game::mod_api_host::{AttachmentAccess}};
-    use {sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::{join_seq::Joined, mobs::Mob};
+    use {
+        crate::game::mod_api_host::*, sunrise_gameplay_common::game::mod_api_host::AttachmentAccess,
+    };
+    use {
+        sunrise_gameplay::game::native_entity_refs::tests::with_game,
+        sunrise_gameplay_common::game::commands_common::Target,
+    };
 
     fn old_membership(game: &sunrise_gameplay::game::ServerGame<'_>, id: u32) -> bool {
-        use {sunrise_gameplay_common::game::entity::Entity as _, sunrise_gameplay_common::game::entity::entity_lists_of, sunrise_gameplay_common::game::entity::for_each_entity};
+        use {
+            sunrise_gameplay_common::game::entity::Entity as _,
+            sunrise_gameplay_common::game::entity::entity_lists_of,
+            sunrise_gameplay_common::game::entity::for_each_entity,
+        };
         let mut found = false;
         for_each_entity!(entity_lists_of!(game), entity => {
             found |= entity.id() == id && !entity.is_removed();
@@ -113,11 +120,13 @@ mod attachment_membership_tests {
                 );
             }
             game.as_guest(12, |game| {
-                game.install_fishing_hook(sunrise_gameplay_common::game::fishing_common::Hook::remote(
-                    901,
-                    Vec3::ZERO,
-                    [5, 6, 7, 8],
-                ));
+                game.install_fishing_hook(
+                    sunrise_gameplay_common::game::fishing_common::Hook::remote(
+                        901,
+                        Vec3::ZERO,
+                        [5, 6, 7, 8],
+                    ),
+                );
                 assert_membership(game, 901);
                 assert!(
                     game.attachment_slot(mod_api::Holder::Entity(901), AttachmentAccess::Existing)
@@ -182,7 +191,8 @@ mod attachment_membership_tests {
                 Err(mod_api::AttachmentError::HolderBusy)
             ));
             game.mobs.put_back(0, taken);
-            let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
+            let mut dragon =
+                sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::ZERO, 0.0, 0);
             dragon.id = 500;
             game.dragon.replace(dragon);
             for id in 500..=508 {
@@ -198,9 +208,11 @@ mod attachment_membership_tests {
             check(game);
             game.mobs.update(0, |mob| mob.removed = true);
             check(game);
-            game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+                .unwrap();
             check(game);
-            game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
+                .unwrap();
             let holder = mod_api::Holder::Entity(999);
             game.entity_initialization.active = Some(holder);
             assert!(

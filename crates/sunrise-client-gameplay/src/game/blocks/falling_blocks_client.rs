@@ -1,7 +1,7 @@
 use super::*;
-use sunrise_gameplay_common::game::FallingBlock;
 use sunrise_core::geometry::Vec3;
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::FallingBlock;
 use sunrise_level::collisions;
 use sunrise_world::{
     collision_context::{CollisionContext, CollisionEntity},
@@ -104,7 +104,8 @@ impl crate::game::ClientGame<'_> {
         let entity = (f.id, "minecraft:falling_block");
         let side_server = self.game_side_client();
         let response = self
-            .common.body_motion(&client_game_side!(self, side_server))
+            .common
+            .body_motion(&client_game_side!(self, side_server))
             .restitute(
                 entity,
                 sunrise_sim::motion::BodyMove {

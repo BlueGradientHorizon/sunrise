@@ -29,7 +29,8 @@ wake. A distinct level-and-position wake, if added, uses `(true, true)`; a
 disconnect wake, if added, uses `(true, false)`. Direct metadata clearing is not
 stop-sleeping, and client metadata resets do not emit this server hook.
 "#]
-    #[hook(target = "sunrise_gameplay::game::native_hooks::player_bed_leave::ServerGame<'_>::native_player_bed_leave", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::player_bed_leave::ServerGame<'_>::native_player_bed_leave",
         dispatch = "flat",
         side = "server",
         contract = "listen",

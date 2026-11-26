@@ -1,16 +1,12 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod sweep_tests {
 
-use super::*;
+    use super::*;
 
-/// The game's player sweeps its move through two stone blocks, over the game's
+    /// The game's player sweeps its move through two stone blocks, over the game's
     /// own world and assets, through the production `BLOCK_CONTACT_HOOKS` fire.
     /// Returns the player's velocity x before and after, and whether it died.
-    pub fn sweep_game_player(
-        game: &mut crate::game::ServerGame<'_>,
-    ) -> (f64, f64, bool) {
+    pub fn sweep_game_player(game: &mut crate::game::ServerGame<'_>) -> (f64, f64, bool) {
         let stone = game
             .pack
             .assets
@@ -44,7 +40,7 @@ use super::*;
             });
         sweep_game_player_runs(game, |w| w.apply_effects_from_blocks().map(|_| ()))
     }
-/// The same world and player setup, with the caller's passes run in the level
+    /// The same world and player setup, with the caller's passes run in the level
     /// scope: what a server turn walks, or the client's own tick.
     pub fn sweep_game_player_runs(
         game: &mut crate::game::ServerGame<'_>,
@@ -88,7 +84,7 @@ use super::*;
         let player = game.player.as_ref().unwrap();
         (before, player.velocity.x, player.health.dead_or_dying())
     }
-/// The item's batch sweep tests: the same part, the same assertions as the
+    /// The item's batch sweep tests: the same part, the same assertions as the
     /// player's, over `Game::sweep_item_inside`.
     pub fn item_at_blocks(
         game: &mut crate::game::ServerGame<'_>,

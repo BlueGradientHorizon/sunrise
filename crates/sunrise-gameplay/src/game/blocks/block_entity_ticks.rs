@@ -5,11 +5,11 @@
 //! chunks that tick blocks. Sculk, brewing stands and pistons tick in their
 //! own passes.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::published_loops::{Attributed, LoopFlow, LoopMod};
 use sunrise_core::position::BlockPos;
 #[allow(unused_imports)]
 use sunrise_game_data::Result;
 use sunrise_gameplay::block_entity_ticks::{block_ticking_at, ticker_name};
+use sunrise_gameplay_common::game::published_loops::{Attributed, LoopFlow, LoopMod};
 use sunrise_level::block_entity_ticks::Ticker;
 #[allow(unused_imports)]
 use sunrise_level::{
@@ -290,10 +290,7 @@ impl ServerGame<'_> {
     /// its own, the work after the loop included. It sets the enclosing pass's scratch (the item
     /// and mob caches, the spawners ticked so far) aside and puts it back when it ends, so the
     /// enclosing pass goes on with its own.
-    pub fn tick_block_entities_with<S: BlockEntityTickSlot>(
-        &mut self,
-        slot: &mut S,
-    ) -> Result<()> {
+    pub fn tick_block_entities_with<S: BlockEntityTickSlot>(&mut self, slot: &mut S) -> Result<()> {
         // Only a pass in progress holds item columns: every pass drops them as it ends.
         let scratch = self.server.item_columns.is_some().then(|| {
             (
@@ -477,7 +474,10 @@ impl ServerGame<'_> {
                 continue;
             };
             if !ticking(pos[0], pos[2])
-                || !self.common.border.contains(f64::from(pos[0]), f64::from(pos[2]))
+                || !self
+                    .common
+                    .border
+                    .contains(f64::from(pos[0]), f64::from(pos[2]))
             {
                 continue;
             }
@@ -534,47 +534,38 @@ pub mod own_block_entity_tests {
     use super::{BlockEntityTick, BlockEntityTickSlot, OwnBlockEntities, TickedKind};
 
     use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game_at};
-    use sunrise_gameplay_common::game::published_loops::LoopFlow;
     use mod_api::*;
     use std::sync::{Arc, OnceLock};
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::published_loops::LoopFlow;
     use sunrise_level::block_entities::Pos;
     use sunrise_level::containers::{BlockEntity, ModBlockEntity};
 
-    
-    
-    
-
     #[cfg(test)]
-/// A mod whose block `block` makes its ticking block entity type of the same id, which is
+    /// A mod whose block `block` makes its ticking block entity type of the same id, which is
     /// also valid on the block `also_on` (`BlockEntityType.validBlocks`, added by this mod).
     struct Machines {
         block: &'static str,
         also_on: Option<&'static str>,
         keys: OnceLock<(BlockEntityTypeKey, BlockKey)>,
     }
-    
-    
-    
-    
-    
-    
 
     #[cfg(test)]
-/// Counts what it is asked about, and notes those of its own types.
+    /// Counts what it is asked about, and notes those of its own types.
     struct Count {
         own: OwnBlockEntities,
         visited: u32,
         mine: Vec<Pos>,
     }
-    
-    
-
-    
 
     /// The block `block` at `pos` with a new block entity of the mod type `kind` on it, as a save
     /// that holds it loads it.
-    pub fn place_mod_entity(game: &mut crate::game::ServerGame<'_>, pos: Pos, block: &str, kind: &str) {
+    pub fn place_mod_entity(
+        game: &mut crate::game::ServerGame<'_>,
+        pos: Pos,
+        block: &str,
+        kind: &str,
+    ) {
         let state = game.pack.assets.registry.default_state(block).unwrap();
         game.world.set(pos.0, pos.1, pos.2, state).unwrap();
         let entity = ModBlockEntity::new(kind.into(), Default::default());
@@ -591,34 +582,23 @@ pub mod own_block_entity_tests {
         }
     }
 
-    
-
-    
-
     #[cfg(test)]
-/// Once, when asked about the block entity at `at`, replaces it in place (the loop's ticker
+    /// Once, when asked about the block entity at `at`, replaces it in place (the loop's ticker
     /// stays live) with a new one of mod B's type and answers Continue. Notes the entities it
     /// sees after their tick.
     struct Swap {
         at: Option<Pos>,
         after: Vec<Pos>,
     }
-    
-
-    
 
     #[cfg(test)]
-/// Notes each entry, as [`Entry`], before and after its tick.
+    /// Notes each entry, as [`Entry`], before and after its tick.
     struct Seen {
         a: OwnBlockEntities,
         b: OwnBlockEntities,
         before: Vec<Entry>,
         after: Vec<Entry>,
     }
-    
-    
-
-    
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

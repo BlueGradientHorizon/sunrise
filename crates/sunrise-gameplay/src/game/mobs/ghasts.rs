@@ -2,9 +2,9 @@
 //! off), riding, getting off on top, and the ghastling a dried ghast block
 //! hatches.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
 use mod_api::SoundSource;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
 use sunrise_sim::mobs::{MobEvent, happy_ghast};
 use sunrise_world::registry::BlockStateId;
 
@@ -36,7 +36,8 @@ impl ServerGame<'_> {
             f64::from(pos[2]) + 0.5,
         ];
         let facing = self
-            .common.pack
+            .common
+            .pack
             .assets
             .registry
             .state(state)

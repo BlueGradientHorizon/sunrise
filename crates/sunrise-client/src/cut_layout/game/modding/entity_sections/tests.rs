@@ -1,11 +1,20 @@
 #![cfg(test)]
 
-use mod_api::{EntityRef, WorldEpoch};
-use {crate::game::entity_sections::*, sunrise_gameplay_common::game::entity_sections::{Crossing, EntitySections, LiveSectionHost, Scope, player, section_coord, section_of}};
-use {sunrise_gameplay_common::game::commands_common::Target, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{EntityEnteringSectionEvent, Hooks, HostSide};
+use mod_api::{EntityRef, WorldEpoch};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use {
+    crate::game::entity_sections::*,
+    sunrise_gameplay_common::game::entity_sections::{
+        Crossing, EntitySections, LiveSectionHost, Scope, player, section_coord, section_of,
+    },
+};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay_common::game::commands_common::Target,
+};
 
 #[test]
 fn section_read_backend_refuses_reads_outside_its_snapshot() {
@@ -323,7 +332,11 @@ fn floating_cow(game: &mut sunrise_gameplay::game::ServerGame<'_>, at: [f64; 3])
         );
     }
     let id = game
-        .spawn_mob_spawned("cow", at, sunrise_gameplay_common::game::creatures::SpawnSite::Plain)
+        .spawn_mob_spawned(
+            "cow",
+            at,
+            sunrise_gameplay_common::game::creatures::SpawnSite::Plain,
+        )
         .unwrap();
     assert!(game.native_joins_flush(false, 0));
     let i = game.mobs.iter().position(|m| m.id == id).unwrap();
@@ -675,7 +688,10 @@ fn a_server_mobs_own_move_is_not_reconstructed_after_its_post() {
             let kind = game.mobs.iter().find(|m| m.id == id).unwrap().kind.clone();
             // The mobs' round: Pre, the tick (its own move over z = 16), then the Post.
             let mut round = game.native_tick_round();
-            round.add(id, sunrise_gameplay_common::game::native_ticks::TickKind::Mob(kind));
+            round.add(
+                id,
+                sunrise_gameplay_common::game::native_ticks::TickKind::Mob(kind),
+            );
             game.native_tick_pre_batch(&mut round);
             assert_eq!(round.let_through(0), Some(id));
             let i = game.mobs.iter().position(|m| m.id == id).unwrap();
@@ -919,7 +935,9 @@ fn section_host_and_game_read_the_same_entity_type_defaults() {
     }
     with_game(|game| {
         let host = LiveSectionHost(None);
-        let read = |game: &sunrise_gameplay::game::ServerGame<'_>, entity_type: &str, attribute: &str| {
+        let read = |game: &sunrise_gameplay::game::ServerGame<'_>,
+                    entity_type: &str,
+                    attribute: &str| {
             let scoped = mod_api::prelude::ItemsHost::entity_type_default_attribute(
                 &host,
                 entity_type,

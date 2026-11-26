@@ -1,11 +1,9 @@
-
-
 #![cfg(test)]
 use sunrise_level::containers::BlockEntity;
 #[cfg(test)]
 pub(crate) mod tests {
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn replacing_a_gateway_discards_its_old_cooldown() {
         run_replacing_a_gateway_discards_its_old_cooldown();
@@ -101,20 +99,20 @@ pub(crate) mod tests {
 #[cfg(test)]
 pub(crate) mod conduit_target_tests {
 
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay_common::game::server_side::block_entity_anims::conduit_target_tests::CONDUIT;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::server_side::block_entity_anims::conduit_target_tests::CONDUIT;
 
-use sunrise_gameplay::game::server_side::block_entity_anims::conduit_target_tests::setup;
+    use sunrise_gameplay::game::server_side::block_entity_anims::conduit_target_tests::setup;
 
-use sunrise_gameplay::game::server_side::block_entity_anims::conduit_target_tests::summon;
+    use sunrise_gameplay::game::server_side::block_entity_anims::conduit_target_tests::summon;
 
-use crate::game::{Options, Progress, Settings, execution_role, load_resources};
+    use crate::game::{Options, Progress, Settings, execution_role, load_resources};
 
-use std::sync::Arc;
+    use std::sync::Arc;
 
-use sunrise_level::chunk::Chunk;
+    use sunrise_level::chunk::Chunk;
 
-fn game_with(
+    fn game_with(
         resources: &mut Option<Arc<sunrise_gameplay_common::game::Resources>>,
         role: execution_role::ExecutionRole,
     ) -> sunrise_gameplay::game::ServerGame<'_> {
@@ -156,7 +154,7 @@ fn game_with(
             .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
         game
     }
-/// A level of a server.
+    /// A level of a server.
     pub(crate) fn game(
         resources: &mut Option<Arc<sunrise_gameplay_common::game::Resources>>,
     ) -> sunrise_gameplay::game::ServerGame<'_> {
@@ -164,7 +162,7 @@ fn game_with(
         setup(&mut game);
         game
     }
-/// `selectNewTarget`'s `instanceof Enemy`: the monster-category animals
+    /// `selectNewTarget`'s `instanceof Enemy`: the monster-category animals
     /// (a zombie horse, camel husk, zombie nautilus) are not enemies, so a
     /// conduit beside them picks nothing; a zombie is.
     #[test]
@@ -184,7 +182,6 @@ fn game_with(
         assert_eq!(game.conduit_new_target(CONDUIT), Some(zombie));
     }
 }
-
 
 #[cfg(test)]
 pub(crate) mod gateway_age_tests {

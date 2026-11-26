@@ -610,7 +610,8 @@ impl crate::game::ServerGame<'_> {
         use sunrise_game_data::lang::{self, Language, ResourceSource};
 
         let layers = self
-            .common.pack
+            .common
+            .pack
             .mod_layers
             .iter()
             .chain(
@@ -1014,8 +1015,10 @@ impl crate::game::ServerGame<'_> {
         self.native_server_about_to_start(true);
         self.native_lifecycle_open_started();
         // The registries the server sends are read while the world prepares.
-        let sync =
-            super::lan::sync::preload_sync_data(&self.common.res.core.item_data, self.common.res.shared_items());
+        let sync = super::lan::sync::preload_sync_data(
+            &self.common.res.core.item_data,
+            self.common.res.shared_items(),
+        );
         let opened_packs = self.finish_open_world(prepared)?;
         // WorldLoader: the world's packs must load before the server starts. The data store is read
         // now rather than at the first tick (reading parses functions; it runs none), and a broken
@@ -1103,7 +1106,8 @@ impl crate::game::ServerGame<'_> {
         // directly finds the older copy of itself that a hand-over left here, and items double.
         // Velocity forwarding made it so; without it nothing does.
         let transfers = self
-            .common.options
+            .common
+            .options
             .transfers
             .clone()
             .map(sunrise_sim::lan::arrivals::Transfers::new);
@@ -1162,7 +1166,9 @@ impl crate::game::ServerGame<'_> {
             ),
             server_links: if props.bug_report_link.is_empty() {
                 Vec::new()
-            } else if sunrise_gameplay_common::game::untrusted_uri::valid_untrusted_uri(&props.bug_report_link) {
+            } else if sunrise_gameplay_common::game::untrusted_uri::valid_untrusted_uri(
+                &props.bug_report_link,
+            ) {
                 vec![sunrise_protocol::packets::configuration::ServerLink {
                     kind: sunrise_protocol::packets::configuration::ServerLinkKind::Known(0),
                     link: props.bug_report_link.clone(),
@@ -1515,7 +1521,8 @@ impl crate::game::ServerGame<'_> {
                 self.server.streaming.extra.clear();
             }
             self.common.spawn = self
-                .common.level
+                .common
+                .level
                 .spawn
                 .map(|s| sunrise_core::geometry::Vec3::new(s[0] + 0.5, s[1], s[2] + 0.5));
             return Ok(());
@@ -1537,7 +1544,8 @@ impl crate::game::ServerGame<'_> {
     /// ticket), an integrated one the spawn chunk's.
     pub(in crate::game::server_side) fn update_dedicated_streaming(&mut self) {
         let rule = self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
         let guest = self.server.lan.as_ref().and_then(|h| {
@@ -1547,7 +1555,10 @@ impl crate::game::ServerGame<'_> {
                 .loading_chunks(|g| super::game_mode::loads_chunks(rule, g.spectator()))
                 .next()
         });
-        if self.common.is_dedicated_server() || self.common.dim != super::Dim::Overworld || guest.is_some() {
+        if self.common.is_dedicated_server()
+            || self.common.dim != super::Dim::Overworld
+            || guest.is_some()
+        {
             self.server.streaming.radius = if guest.is_some() {
                 self.server.settings.render_distance
             } else {
@@ -1555,7 +1566,8 @@ impl crate::game::ServerGame<'_> {
             };
         }
         let spawn = self
-            .common.spawn
+            .common
+            .spawn
             .map(|s| ((s.x.floor() as i32) >> 4, (s.z.floor() as i32) >> 4));
         if let Some(c) = guest.or(spawn) {
             self.server.streaming.center = c;
@@ -1758,10 +1770,7 @@ impl crate::game::ServerGame<'_> {
     /// level the last server tick left in place (the last one ticked, often
     /// the nether). Its commands run there and the level in place is put back
     /// afterwards.
-    pub fn as_console_in_spawn_level<T>(
-        &mut self,
-        f: impl FnOnce(&mut Self) -> T,
-    ) -> T {
+    pub fn as_console_in_spawn_level<T>(&mut self, f: impl FnOnce(&mut Self) -> T) -> T {
         let back = console_level(self.common.dim, self.world_spawn_level())
             .and_then(|dim| self.enter_command_level(dim));
         let source = super::commands::execute::Source {
@@ -2545,19 +2554,15 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(test)]
 mod tests {
-use sunrise_gameplay_common::game::server_side::dedicated::tests::CHILD_HOME;
+    use sunrise_gameplay_common::game::server_side::dedicated::tests::CHILD_HOME;
 
-use sunrise_gameplay_common::game::server_side::dedicated::tests::LOGIN;
+    use sunrise_gameplay_common::game::server_side::dedicated::tests::LOGIN;
 
-use sunrise_gameplay_common::game::server_side::dedicated::tests::READY;
+    use sunrise_gameplay_common::game::server_side::dedicated::tests::READY;
 
-use sunrise_gameplay_common::game::server_side::dedicated::tests::WARNING;
+    use sunrise_gameplay_common::game::server_side::dedicated::tests::WARNING;
 
-use sunrise_gameplay_common::game::server_side::dedicated::tests::assert_log_lines;
-
-    
-
-    
+    use sunrise_gameplay_common::game::server_side::dedicated::tests::assert_log_lines;
 
     use super::{
         FORWARDING_REMOVED, capture_log, log, log_from, overload_warning, panic_message,
@@ -2627,12 +2632,6 @@ use sunrise_gameplay_common::game::server_side::dedicated::tests::assert_log_lin
             "{a:?}"
         );
     }
-
-    
-
-    
-
-    
 
     /// A server folder that still has the forwarding secret is told what to do.
     #[test]
@@ -2754,13 +2753,6 @@ use sunrise_gameplay_common::game::server_side::dedicated::tests::assert_log_lin
         let other = std::panic::catch_unwind(|| std::panic::panic_any(7_u8)).unwrap_err();
         assert_eq!(panic_message(other.as_ref()), "unknown panic");
     }
-
-    
-    
-    
-    
-
-    
 
     #[test]
     #[ignore = "daily"]

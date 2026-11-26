@@ -1,16 +1,14 @@
 //! The notices a side's freshly bound data gives mods, in NeoForge's order.
 
-
 pub trait NativeDataBoundGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Items' default components are bound (`DefaultDataComponentsBoundEvent`), then the
     /// tags (`TagsUpdatedEvent`), both for `cause`.
-     fn announce_data_bound(&mut self, cause: mod_api::TagsUpdateCause) {
+    fn announce_data_bound(&mut self, cause: mod_api::TagsUpdateCause) {
         self.native_default_components_bound(cause);
         self.native_tags_updated(cause);
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeDataBoundGameExt1<'__sg> for G {}
-
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
@@ -24,8 +22,8 @@ pub mod tests {
         play::{self, Clientbound as C},
     };
 
-pub struct Probe(pub Arc<Mutex<Vec<(&'static str, TagsUpdateCause)>>>);
-#[mod_api::__subscriptions]
+    pub struct Probe(pub Arc<Mutex<Vec<(&'static str, TagsUpdateCause)>>>);
+    #[mod_api::__subscriptions]
     impl Hooks for Probe {
         fn default_components_bound(
             &self,
@@ -38,8 +36,6 @@ pub struct Probe(pub Arc<Mutex<Vec<(&'static str, TagsUpdateCause)>>>);
             self.0.lock().unwrap().push(("tags", event.cause));
         }
     }
-
-    
 
     /// The bound notice's default read: the value the mod's
     /// `modify_default_components` set, off the published defaults.
@@ -68,10 +64,10 @@ pub struct Probe(pub Arc<Mutex<Vec<(&'static str, TagsUpdateCause)>>>);
         );
     }
 
-/// A mod that raises dirt's default stack size to 99 at its load, and
+    /// A mod that raises dirt's default stack size to 99 at its load, and
     /// records, per bound notice, the cause and the stack size it reads.
     pub struct DefaultsProbe(pub Arc<Mutex<Vec<(TagsUpdateCause, Option<mod_api::Tag>)>>>);
-#[mod_api::__subscriptions]
+    #[mod_api::__subscriptions]
     impl Hooks for DefaultsProbe {
         fn modify_default_components(
             &self,
@@ -93,10 +89,6 @@ pub struct Probe(pub Arc<Mutex<Vec<(&'static str, TagsUpdateCause)>>>);
             self.0.lock().unwrap().push((event.cause, stack));
         }
     }
-
-    
-
-    
 
     /// The login packet the remote-tags tests use.
     pub fn login_packet() -> C {

@@ -1,12 +1,10 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt2;
-use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::with_game;
     use sunrise_core::nbt::Tag;
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt2;
     use sunrise_items::items::ItemStack;
 
     #[test]
@@ -92,10 +90,11 @@ use super::super::native_entity_refs::tests::with_game;
         super::super::native_guest_turn_tests::with_guests(|game| {
             // Guest 12 owns the world: their data is the level's, and 13 has
             // their own saved tracker (as `lan_guest_joined` loads them).
-            game.server.lan.as_mut().unwrap().owner = Some(sunrise_gameplay::game::server_side::lan::Owner {
-                uuid: 12,
-                saved: None,
-            });
+            game.server.lan.as_mut().unwrap().owner =
+                Some(sunrise_gameplay::game::server_side::lan::Owner {
+                    uuid: 12,
+                    saved: None,
+                });
             game.level.player_extra = tracker(2);
             game.server
                 .lan

@@ -1,5 +1,3 @@
-
-
 use sunrise_core::nbt::Tag;
 use sunrise_core::nbt::parse_snbt;
 use sunrise_gameplay_common::game::commands_common::Target;
@@ -51,10 +49,13 @@ pub(crate) mod eye_item_tests;
 
 #[cfg(test)]
 pub(crate) mod wolf_live_anger_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay_common::game::commands_common::Target;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_core::nbt::Tag;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::commands_common::Target;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -76,7 +77,8 @@ use sunrise_gameplay_common::game::commands_common::Target;
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -326,13 +328,16 @@ pub(crate) mod boat_passenger_tree_tests {
 
 #[cfg(test)]
 pub(crate) mod loot_table_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::nbt::Tag;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_items::items::ItemStack;
     use sunrise_level::{chunk::Chunk, containers::BlockEntity};
     use sunrise_sim::save::{self, ChunkExtras, PendingContainerLoot};
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     const TABLE: &str = "minecraft:chests/simple_dungeon";
 
@@ -387,7 +392,8 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -497,10 +503,13 @@ pub(crate) mod arrow_reload_tests;
 
 #[cfg(test)]
 pub(crate) mod arrow_owner_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay_common::game::commands_common::Target;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_core::nbt::Tag;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::commands_common::Target;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -522,7 +531,8 @@ use sunrise_gameplay_common::game::commands_common::Target;
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -711,11 +721,14 @@ pub(crate) mod bell_command_identity_tests {
 
 #[cfg(test)]
 pub(crate) mod falling_live_adoption_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_level::chunk::Chunk;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
     pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -738,7 +751,8 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
             std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                 .join(format!("h098-{:?}", std::thread::current().id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -942,14 +956,18 @@ pub(crate) mod vehicle_container_tests {
                     // The model, not a stale loaded Items list, owns the inventory.
                     match target {
                         Target::Boat(_) => {
-                            game.common.boats.update(game.common.boats.len() - 1, |boat| {
-                                boat.items[0].as_mut().unwrap().count = 4
-                            });
+                            game.common
+                                .boats
+                                .update(game.common.boats.len() - 1, |boat| {
+                                    boat.items[0].as_mut().unwrap().count = 4
+                                });
                         }
                         Target::Cart(_) => {
-                            game.common.carts.update(game.common.carts.len() - 1, |cart| {
-                                cart.items[0].as_mut().unwrap().count = 4
-                            });
+                            game.common
+                                .carts
+                                .update(game.common.carts.len() - 1, |cart| {
+                                    cart.items[0].as_mut().unwrap().count = 4
+                                });
                         }
                         _ => unreachable!(),
                     }

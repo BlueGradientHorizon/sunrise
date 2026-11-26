@@ -2,10 +2,10 @@
 //! (`BucketItem.java:59`), so on a dedicated server a guest who is not an
 //! operator neither empties nor fills a bucket inside the spawn protection
 //! radius, while an operator does both, and a non-operator outside it does.
-use sunrise_items::items::ItemStack;
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_core::position::ChunkPos;
+use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::{
     configuration::ClientInformation,
@@ -38,7 +38,8 @@ fn use_item(sequence: i32) -> Serverbound {
 fn a_guest_without_build_rights_neither_empties_nor_fills_a_bucket_under_spawn_protection() {
     let mut resources = None;
     let mut game = sunrise_gameplay::game::game_tests::tests::server_game(&mut resources);
-    game.options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::DedicatedServer;
+    game.options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::DedicatedServer;
     game.build_registries();
     game.set_allow_commands(true);
     game.block_ticks

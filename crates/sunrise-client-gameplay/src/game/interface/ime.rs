@@ -159,11 +159,7 @@ impl crate::game::ClientGame<'_> {
 
     /// `WindowEvent::Ime(Preedit)`: `KeyboardHandler.textEditing`. The text
     /// still being composed is shown under the focused field's caret.
-    pub fn ime_preedit(
-        &mut self,
-        text: &str,
-        cursor: Option<(usize, usize)>,
-    ) {
+    pub fn ime_preedit(&mut self, text: &str, cursor: Option<(usize, usize)>) {
         self.sync_ime();
         let preedit_receiver = (mod_api::__private::listened(mod_api::HookId::ScreenPreeditPre)
             || mod_api::__private::listened(mod_api::HookId::ScreenPreeditPost))
@@ -192,7 +188,8 @@ impl crate::game::ClientGame<'_> {
             self.vanilla_text_field_focused()
         };
         preedit::set_preedit(event.filter(|_| {
-            taken || (bound_editor && self.client.screen_state.0.screen_instance == initial_instance)
+            taken
+                || (bound_editor && self.client.screen_state.0.screen_instance == initial_instance)
         }));
         if !taken {
             self.dispatch_preedit_post_hook(preedit_receiver.as_ref(), &shown);

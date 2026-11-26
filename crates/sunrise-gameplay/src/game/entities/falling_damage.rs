@@ -33,7 +33,8 @@ impl crate::game::ServerGame<'_> {
                 // them in order. Death listeners can spawn or remove rows between hits.
                 let bounds = block.bounds();
                 let victims: Vec<_> = self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter()
                     .filter(|mob| mob.alive() && !mob.removed && bounds.intersects(mob.bounds()))
                     .map(|mob| mob.join)
@@ -111,11 +112,13 @@ impl crate::game::ServerGame<'_> {
             if anvil
                 && impact.wear_chance > 0.0
                 && self.common.world.random.next_float() < impact.wear_chance
-                && let Some(mut state) = self.common.pack.assets.registry.state(block.state).cloned()
+                && let Some(mut state) =
+                    self.common.pack.assets.registry.state(block.state).cloned()
             {
                 if falling_block::wear_anvil(&mut state) {
                     block.state = self
-                        .common.pack
+                        .common
+                        .pack
                         .assets
                         .registry
                         .resolve(&state)
@@ -159,7 +162,8 @@ impl crate::game::ServerGame<'_> {
                     source: None,
                 });
             } else if self
-                .common.res
+                .common
+                .res
                 .facts()
                 .get(block.state)
                 .name
@@ -209,7 +213,8 @@ impl crate::game::ServerGame<'_> {
                 .and_then(|saved| saved.1.get("TileEntityData"))
                 && let Some(entity) = self.common.world.block_entities.get(&key)
             {
-                let mut tag = self.encode_live_block_entity(key, entity, &name, self.common.res.items());
+                let mut tag =
+                    self.encode_live_block_entity(key, entity, &name, self.common.res.items());
                 // FallingBlockEntity.tick copies each supplied field over the
                 // new block entity's saved defaults before loadWithComponents.
                 if let sunrise_core::nbt::Tag::Compound(fields) = &mut tag {
@@ -237,7 +242,8 @@ impl crate::game::ServerGame<'_> {
         if matches!(landing, Landing::Broken)
             && block.drop_item
             && self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS)
         {
@@ -268,7 +274,8 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         if self
-            .common.player
+            .common
+            .player
             .as_ref()
             .is_none_or(|p| p.health.dead_or_dying() || !bounds.intersects(p.bounds()))
         {

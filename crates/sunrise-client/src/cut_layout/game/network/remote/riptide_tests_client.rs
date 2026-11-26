@@ -1,18 +1,21 @@
-use sunrise_gameplay_common::game::Screen;
-use std::sync::Arc;
-use sunrise_core::geometry::Vec3;
-use sunrise_items::items::ItemStack;
-use sunrise_protocol::packets::play::Serverbound as S;
-use sunrise_sim::motion::PlayerMotion;
 use super::*;
+use crate::game::server_side::remote_server::riptide_tests::client_tick_to_server;
+use std::sync::Arc;
+use std::sync::mpsc::channel;
 use sunrise_client_gameplay::game::remote::riptide_tests::OWNER;
 use sunrise_client_gameplay::game::remote::riptide_tests::START;
 use sunrise_client_gameplay::game::remote::riptide_tests::arena;
 use sunrise_client_gameplay::game::remote::riptide_tests::server_to_client;
-use crate::game::server_side::remote_server::riptide_tests::client_tick_to_server;
-use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
-use std::sync::mpsc::channel;
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::Screen;
+use sunrise_items::items::ItemStack;
+use sunrise_protocol::packets::play::Serverbound as S;
 use sunrise_sim::lan::PlayerSender;
+use sunrise_sim::motion::PlayerMotion;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_guest_turn_tests::with_guests,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -105,7 +108,14 @@ fn riptide_ground_release_keeps_launch_velocity() {
                         };
                         assert_eq!(body.position.y, y_after_lift);
                         assert!(!body.ground.on_ground);
-                        let guest = server.server.lan.as_ref().unwrap().hub.guest(OWNER).unwrap();
+                        let guest = server
+                            .server
+                            .lan
+                            .as_ref()
+                            .unwrap()
+                            .hub
+                            .guest(OWNER)
+                            .unwrap();
                         assert_eq!(guest.position, body.position.components());
                         assert_eq!(guest.motion.as_ref().unwrap().velocity, body.velocity);
                         assert!(!guest.on_ground && !guest.rests_on_ground);
@@ -128,7 +138,14 @@ fn riptide_ground_release_keeps_launch_velocity() {
                             if tick == 0 && !roof {
                                 assert_eq!(body.position.z, START.z + 3.0);
                             }
-                            let guest = server.server.lan.as_ref().unwrap().hub.guest(OWNER).unwrap();
+                            let guest = server
+                                .server
+                                .lan
+                                .as_ref()
+                                .unwrap()
+                                .hub
+                                .guest(OWNER)
+                                .unwrap();
                             assert_eq!(guest.position, body.position.components());
                             assert_eq!(guest.on_ground, body.ground.on_ground);
                         }

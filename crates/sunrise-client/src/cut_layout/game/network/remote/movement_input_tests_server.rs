@@ -1,12 +1,12 @@
-use sunrise_sim::motion::MotionWorld;
-use sunrise_sim::sprint::Keys;
 use super::*;
-use sunrise_gameplay_common::game_side;
-use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use crate::game::remote::movement_input_tests::Native;
 use crate::game::remote::movement_input_tests::reset_player;
 use crate::game::remote::movement_input_tests::tick;
 use crate::game::remote::movement_input_tests::*;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
+use sunrise_gameplay_common::game_side;
+use sunrise_sim::motion::MotionWorld;
+use sunrise_sim::sprint::Keys;
 use winit::keyboard::KeyCode;
 
 #[test]

@@ -1,7 +1,7 @@
-use sunrise_gameplay_common::game::native_world_read_common::engine_fluid_kind;
-use sunrise_gameplay_common::game::{Dim, GameLevel, native_level_signals::ReadLevel};
 use mod_api::{FluidKey, FluidState, LevelRef, LifecycleContext};
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::native_world_read_common::engine_fluid_kind;
+use sunrise_gameplay_common::game::{Dim, GameLevel, native_level_signals::ReadLevel};
 use sunrise_level::world::World;
 use sunrise_world::{chunk::BlockState, level::fluid_tick_delay, registry::BlockRegistry};
 
@@ -22,11 +22,7 @@ impl crate::game::ServerGame<'_> {
     /// The fluid state at `pos` of the level `level` names (`BlockGetter.getFluidState`). None
     /// for a stale handle, a chunk that isn't loaded or a `y` outside the world: a read never
     /// loads a chunk.
-    pub fn level_fluid_state(
-        &self,
-        level: LevelRef,
-        pos: [i32; 3],
-    ) -> Option<FluidState> {
+    pub fn level_fluid_state(&self, level: LevelRef, pos: [i32; 3]) -> Option<FluidState> {
         let state = self.level_block_state(level, pos)?;
         self.common.state_fluid_state(state)
     }

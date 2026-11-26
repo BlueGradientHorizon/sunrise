@@ -594,12 +594,7 @@ impl Containers<'_> {
         }
         self.insertion_room(view, slot, stack)
     }
-    pub fn insertion_room(
-        &self,
-        view: &View,
-        slot: usize,
-        stack: &ItemStack,
-    ) -> u32 {
+    pub fn insertion_room(&self, view: &View, slot: usize, stack: &ItemStack) -> u32 {
         room(
             self.slot_stack_limit(view, slot, Some(stack)),
             self.get(view, slot),

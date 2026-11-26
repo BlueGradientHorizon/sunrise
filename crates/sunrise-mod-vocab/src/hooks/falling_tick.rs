@@ -12,7 +12,8 @@ pub trait Hooks {
     /// Diverges from NeoForge: server only, where NeoForge also calls it on the client. Only a
     /// state a part listens to is recorded; with no such part, one table lookup per falling
     /// block per tick. Diverges from upstream: new hook.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::falling_tick::ServerGame<'_>::native_falling_tick", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::falling_tick::ServerGame<'_>::native_falling_tick",
         dispatch = "flat",
         side = "server",
         contract = "listen",

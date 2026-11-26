@@ -1,10 +1,13 @@
 //! A guest's menu owners live in `LanHost::menus`, outside the `GuestPlay` that a guest's turn
 //! lifts, and the hub's click runs with the host lifted out of the game. The fixtures use the
 //! LAN host with two guests (`with_guests`), which needs prepared resources.
-use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
-use {sunrise_gameplay::game::server_side::decision_engine_server::ServerDecisionTarget, sunrise_gameplay_common::game::transactions::decision::Admission};
 use std::panic::{AssertUnwindSafe, catch_unwind};
+use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use sunrise_sim::menu::{Kind, Menu};
+use {
+    sunrise_gameplay::game::server_side::decision_engine_server::ServerDecisionTarget,
+    sunrise_gameplay_common::game::transactions::decision::Admission,
+};
 
 /// Give guest `conn` an inventory menu carrying `count` sticks on its cursor, and some play
 /// state, as a guest who has clicked in their inventory has.
@@ -144,7 +147,8 @@ fn a_lifted_host_comes_back_after_a_panic_and_is_never_lifted_twice() {
 #[ignore = "daily"]
 fn removing_a_fake_player_drops_its_menu_owners() {
     with_guests(|game| {
-        let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(game, false);
+        let _serving =
+            sunrise_gameplay::game::server_side::integrated::tests::install_serving(game, false);
         game.server.next_entity = 100;
         let level = game.level(game.dim.id()).unwrap();
         let fake = game.fake_player(level, 1234, "machine").unwrap();

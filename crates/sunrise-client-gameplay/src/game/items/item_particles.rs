@@ -53,7 +53,12 @@ impl ClientGame<'_> {
         id: i32,
         slot: EquipmentSlot,
     ) {
-        if self.client.remote.as_ref().is_some_and(|r| r.entity_id == id) {
+        if self
+            .client
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.entity_id == id)
+        {
             let stack = match slot {
                 EquipmentSlot::MainHand => self.common.held().cloned(),
                 EquipmentSlot::OffHand => self.common.offhand.clone(),

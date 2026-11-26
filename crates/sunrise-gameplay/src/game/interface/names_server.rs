@@ -6,7 +6,8 @@ impl ServerGame<'_> {
     pub(in crate::game::server_side) fn name_mob(&mut self, index: usize) -> bool {
         // `NameTagItem`: the mob takes the tag's `custom_name` component, style and all.
         let Some((name, text)) = self
-            .common.held()
+            .common
+            .held()
             .filter(|h| &*h.item == "minecraft:name_tag")
             .and_then(|h| {
                 let text = h.data()?.other("minecraft:custom_name");
@@ -36,9 +37,10 @@ impl ServerGame<'_> {
         let ctx = self.who_context(Some(Who::Player), None);
         self.post_game_event("minecraft:entity_interact", at, ctx);
         self.swing_arm();
-        if let (Some(player), Some(player_name)) =
-            (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-        {
+        if let (Some(player), Some(player_name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             self.native_player_name_entity(player, &player_name, entity_id, &entity_name);
         }
         true

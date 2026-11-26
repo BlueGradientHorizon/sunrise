@@ -1,17 +1,14 @@
-
-
 #![cfg(test)]
 #[cfg(feature = "client")]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
-use super::*;
-    use {sunrise_gameplay_common::game::Dim, sunrise_gameplay::game::native_entity_refs::tests::with_game, crate::game::client_side::viewed_worlds::tests::client_with_pipe, crate::game::client_side::viewed_worlds::tests::close as viewed_close, crate::game::client_side::viewed_worlds::tests::column as viewed_column, crate::game::client_side::viewed_worlds::tests::open as viewed_open, crate::game::client_side::viewed_worlds::tests::run as viewed_run};
+    use super::*;
     use mod_api::{
         BlockEdit, BlockRun, BlockUpdateFlags, Host, HostTransaction, LevelReadError, LevelRef,
         LevelWriteError, ServerHost, WorldEpoch,
     };
     use std::sync::Arc;
+    use sunrise_gameplay_common::game::GameGameExt1;
     use sunrise_level::chunk::{Chunk, MIN_Y};
     use sunrise_protocol::{
         connection::Pipe,
@@ -23,6 +20,15 @@ use super::*;
         payload_negotiation::Phase,
     };
     use sunrise_sim::ticket_levels::{Sources, ViewedTicket};
+    use {
+        crate::game::client_side::viewed_worlds::tests::client_with_pipe,
+        crate::game::client_side::viewed_worlds::tests::close as viewed_close,
+        crate::game::client_side::viewed_worlds::tests::column as viewed_column,
+        crate::game::client_side::viewed_worlds::tests::open as viewed_open,
+        crate::game::client_side::viewed_worlds::tests::run as viewed_run,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game,
+        sunrise_gameplay_common::game::Dim,
+    };
 
     fn state(game: &sunrise_gameplay::game::ServerGame<'_>, name: &str) -> mod_api::BlockState {
         let host: &dyn Host = game;
@@ -955,7 +961,10 @@ use super::*;
         })
     }
 
-    fn deliver_group_bundle(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, packets: Vec<C>) {
+    fn deliver_group_bundle(
+        game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+        packets: Vec<C>,
+    ) {
         let epoch = game
             .client
             .remote
@@ -1227,15 +1236,16 @@ use super::*;
                 .expect("stone top face at the column edge")[0]
                 .layer
         };
-        let send_column = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, cx, local_x| {
-            deliver_group_bundle(
-                game,
-                vec![
-                    crate::game::client_side::viewed_worlds::tests::layered(cx, 0, 9),
-                    group_packet([(cx << 4) + local_x, 79, 2], Some(7)),
-                ],
-            );
-        };
+        let send_column =
+            |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, cx, local_x| {
+                deliver_group_bundle(
+                    game,
+                    vec![
+                        crate::game::client_side::viewed_worlds::tests::layered(cx, 0, 9),
+                        group_packet([(cx << 4) + local_x, 79, 2], Some(7)),
+                    ],
+                );
+            };
         send_column(&mut game, 0, 15);
         let alone = top_layer(&game, &mut mesher, &mut scratch);
         send_column(&mut game, 1, 0);

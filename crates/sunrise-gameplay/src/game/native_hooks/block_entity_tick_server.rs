@@ -344,10 +344,7 @@ impl BlockEntityAccess for ResidentBlockEntityAccess<'_, '_> {
 
 impl crate::game::ServerGame<'_> {
     /// The resident mod block entity and admitted block state behind a menu callback.
-    pub fn resident_block_entity_target(
-        &self,
-        pos: Pos,
-    ) -> Option<(BlockEntityRef, BlockStateId)> {
+    pub fn resident_block_entity_target(&self, pos: Pos) -> Option<(BlockEntityRef, BlockStateId)> {
         let level = self.level(self.common.dim.id())?;
         let handle = self.block_entity(level, [pos.0, pos.1, pos.2])?;
         matches!(

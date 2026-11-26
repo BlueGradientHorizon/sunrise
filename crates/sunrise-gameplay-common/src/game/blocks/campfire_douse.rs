@@ -8,11 +8,7 @@ use sunrise_world::chunk::BlockState;
 impl crate::game::CommonGame<'_> {
     /// The lit campfire at `pos` that `held` puts out, when the item is in
     /// `#minecraft:douses_campfires` (`CampfireBlock.useItemOn`).
-    pub fn campfire_to_douse(
-        &self,
-        pos: [i32; 3],
-        held: Option<&ItemStack>,
-    ) -> Option<BlockState> {
+    pub fn campfire_to_douse(&self, pos: [i32; 3], held: Option<&ItemStack>) -> Option<BlockState> {
         held.filter(|s| {
             self.res
                 .items()
@@ -31,8 +27,7 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait CampfireDouseGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-
-     fn modified_campfire(
+    fn modified_campfire(
         &self,
         hit: &Hit,
         stack: &ItemStack,
@@ -63,7 +58,6 @@ pub trait CampfireDouseGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> CampfireDouseGameExt1<'__sg> for G {}
-
 
 use crate::game::tables::GameItems as _;
 

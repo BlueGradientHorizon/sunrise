@@ -1,8 +1,8 @@
 //! Scoped access to the compound mods keep on a server player (NeoForge's
 //! `Entity.getPersistentData`).
-use sunrise_gameplay_common::game::native_server::PlayerRead;
 use mod_api::{Compound, JavaString, PlayerPersistentDataError, PlayerRef, Tag};
 use sunrise_core::nbt::{Limits, clone_tag};
+use sunrise_gameplay_common::game::native_server::PlayerRead;
 
 /// The key NeoForge writes the mods' compound under in the player file.
 const PERSISTENT_DATA: &str = "NeoForgeData";

@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -7,15 +5,15 @@ use sunrise_gameplay_common::game::Dim;
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
-use super::*;
-    use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
+    use super::*;
+    use mod_api::Attachments;
     use mod_api::{
         AttachmentType, Holder, Hooks, HostTransaction, PlayerCloneEvent,
         PlayerContainerCloseEvent, ServerHost,
     };
     use sunrise_core::nbt::{Compound, JavaString, Tag};
-    use mod_api::Attachments;
+    use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
+    use sunrise_gameplay_common::game::GameGameExt1;
 
     const VALUE: AttachmentType<i32> = AttachmentType {
         namespace: "clone",

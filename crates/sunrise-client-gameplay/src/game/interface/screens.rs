@@ -1,7 +1,6 @@
 //! The pause menu (PauseScreen) and death screen (DeathScreen) layouts.
-use super::screen_build::{PauseInputs, PauseLayout};
 use super::Screen;
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
+use super::screen_build::{PauseInputs, PauseLayout};
 use sunrise_client::{
     confirm_screen::Confirm,
     hud::{HudBatch, rgba},
@@ -13,12 +12,13 @@ use sunrise_game_data::{
     Result,
     text::{self, ClickEvent, Text},
 };
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use winit::keyboard::KeyCode;
 
 pub(in crate::game) trait ScreenClientExt: Sized {
-fn is_pause_screen(self) -> bool;
-fn allowed_in_portal(self) -> bool;
-fn blurs_background(self, pause_menu: bool) -> bool;
+    fn is_pause_screen(self) -> bool;
+    fn allowed_in_portal(self) -> bool;
+    fn blurs_background(self, pause_menu: bool) -> bool;
 }
 impl ScreenClientExt for Screen {
     /// `Screen.isPauseScreen`: whether this screen, open in a single-player
@@ -31,7 +31,7 @@ impl ScreenClientExt for Screen {
     /// (`WinScreen`, `!poem`) and a dialog (`DialogScreen`, its `pause`)
     /// answer from their own state, so `Game::pauses_game` reads those where
     /// they live and `Win` is not decided here.
-     fn is_pause_screen(self) -> bool {
+    fn is_pause_screen(self) -> bool {
         match self {
             // AbstractContainerScreen.isPauseScreen.
             Self::Creative | Self::Inventory
@@ -71,12 +71,12 @@ impl ScreenClientExt for Screen {
     /// leaves a screen that allows it open. The class default is
     /// `isPauseScreen`, and only `ChatScreen`, `DeathScreen` and `WinScreen`
     /// override it true (the win screen whatever its poem says).
-     fn allowed_in_portal(self) -> bool {
+    fn allowed_in_portal(self) -> bool {
         matches!(self, Self::Chat | Self::Dead | Self::Win) || self.is_pause_screen()
     }
     /// Screen.extractBackground for non-isInGameUi screens, and
     /// PauseScreen.extractBackground only when showPauseMenu is true.
-     fn blurs_background(self, pause_menu: bool) -> bool {
+    fn blurs_background(self, pause_menu: bool) -> bool {
         match self {
             Self::Paused => pause_menu,
             Self::Options
@@ -1097,7 +1097,8 @@ impl crate::game::ClientGame<'_> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ADDED_PAGES, ScreenClientExt as _, Screen, death_buttons, pause_buttons, pause_icon_focus_ids, pause_icons,
+        ADDED_PAGES, Screen, ScreenClientExt as _, death_buttons, pause_buttons,
+        pause_icon_focus_ids, pause_icons,
     };
 
     #[test]

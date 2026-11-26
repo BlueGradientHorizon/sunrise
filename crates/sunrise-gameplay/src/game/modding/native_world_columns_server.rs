@@ -21,7 +21,8 @@ impl ServerGame<'_> {
         }
         let started = std::time::Instant::now();
         let out = self.common.loaded_column_heights(columns, heightmap);
-        self.common.native_read_logged(started, "height query", columns.len());
+        self.common
+            .native_read_logged(started, "height query", columns.len());
         Ok(out)
     }
 
@@ -39,7 +40,8 @@ impl ServerGame<'_> {
         }
         let started = std::time::Instant::now();
         let out = self.read_loaded_block_columns(columns, heightmap, below, above)?;
-        self.common.native_read_logged(started, "column read", columns.len());
+        self.common
+            .native_read_logged(started, "column read", columns.len());
         Ok(out)
     }
 
@@ -85,7 +87,8 @@ impl ServerGame<'_> {
                     .collect::<Result<Vec<_>, String>>()?
             }
         };
-        self.common.native_read_logged(started, "terrain surface query", columns.len());
+        self.common
+            .native_read_logged(started, "terrain surface query", columns.len());
         Ok(out)
     }
 }

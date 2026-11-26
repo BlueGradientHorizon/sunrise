@@ -1,6 +1,6 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::lan_common::LanSettings;
 use sunrise_game_data::{Result, text::Text};
+use sunrise_gameplay_common::game::lan_common::LanSettings;
 use sunrise_sim::lan::{self};
 
 impl ClientGame<'_> {
@@ -11,7 +11,9 @@ impl ClientGame<'_> {
             .as_ref()
             .ok_or("no world of this game to open")?;
         let port = server
-            .ask(|reply| sunrise_gameplay_common::game::owner_link::OwnerRequest::Publish(settings, reply))
+            .ask(|reply| {
+                sunrise_gameplay_common::game::owner_link::OwnerRequest::Publish(settings, reply)
+            })
             .ok_or(sunrise_gameplay_common::game::integrated_link::NO_ANSWER)??;
         self.client_system_message(Text::translate(
             "menu.multiplayerOptions.publish.started.lan",

@@ -1,10 +1,13 @@
-use sunrise_protocol::packets::play::Clientbound as C;
-use {crate::game::lan_actions::tick::*};
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
+use crate::game::lan_actions::tick::*;
 use std::sync::{Arc, mpsc};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_level::chunk::Chunk;
+use sunrise_protocol::packets::play::Clientbound as C;
 use sunrise_sim::lan::{Out, PlayerSender, guest::GuestMove, hub::CommittedMove};
+use {
+    sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+    sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+};
 
 fn run(distance: f64, expected: usize) {
     mod_platform::testing::with_mods(Vec::new().into(), || {

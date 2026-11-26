@@ -1,12 +1,12 @@
-use sunrise_core::geometry::Vec3;
-use sunrise_sim::mobs::Mob;
-use sunrise_sim::mobs::MobEvent;
-use sunrise_sim::mobs::MobWorld;
 use super::*;
 use crate::game::creatures::breeding_tests::Bred;
 use crate::game::creatures::breeding_tests::SeededBreed;
 use mod_api::ServerHost;
+use sunrise_core::geometry::Vec3;
 use sunrise_core::random::RandomSource;
+use sunrise_sim::mobs::Mob;
+use sunrise_sim::mobs::MobEvent;
+use sunrise_sim::mobs::MobWorld;
 use sunrise_sim::mobs::{
     finalize::{Attr, set_base},
     goals::Breed,

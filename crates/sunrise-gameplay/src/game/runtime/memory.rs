@@ -12,7 +12,7 @@ use sunrise_sim::lan::hub::Hub;
 #[cfg(test)]
 use sunrise_sim::server_perf::MemoryCost;
 
-pub(in crate::game) use {sunrise_gameplay_common::game::memory_common::*};
+pub(in crate::game) use sunrise_gameplay_common::game::memory_common::*;
 
 pub(in crate::game::server_side) fn vec_bytes<T>(v: &Vec<T>) -> usize {
     v.capacity() * size_of::<T>()
@@ -398,4 +398,3 @@ pub(in crate::game) mod tests {
         );
     }
 }
-

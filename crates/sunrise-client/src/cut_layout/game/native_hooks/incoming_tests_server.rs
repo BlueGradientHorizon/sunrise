@@ -1,11 +1,15 @@
 #[test]
 #[ignore = "daily"]
 fn held_durability_retains_the_stack_hand_and_explicit_break_slot() {
-    use {sunrise_gameplay_common::game::Hand, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use sunrise_core::equipment_slot::EquipmentSlot;
     use sunrise_core::geometry::Vec3;
     use sunrise_items::items::ItemStack;
     use sunrise_sim::motion::PlayerMotion;
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Hand, sunrise_gameplay_common::game::Options,
+        sunrise_gameplay_common::game::Progress,
+    };
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES").expect("prepared resources required"),
     );
@@ -25,7 +29,8 @@ fn held_durability_retains_the_stack_hand_and_explicit_break_slot() {
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut game = sunrise_gameplay::game::ServerGame::new(
         &loaded.resources,
         loaded.pack,

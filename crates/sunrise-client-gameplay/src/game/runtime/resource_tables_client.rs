@@ -1,9 +1,9 @@
 use super::*;
+#[cfg(any(test, feature = "test-support"))]
+use crate::game::resource_tables::DYNAMIC_TEXTURE_POOL_OVERRIDE;
 use std::path::Path;
 use sunrise_client_render::streaming::{MeshWorkerContext, WorkerContext};
 use sunrise_gameplay_common::game::api_values::{self, TryIntoApi};
-#[cfg(any(test, feature = "test-support"))]
-use crate::game::resource_tables::DYNAMIC_TEXTURE_POOL_OVERRIDE;
 use sunrise_gameplay_common::game::resource_tables::PackParts;
 use sunrise_level::chunk_streamer::ChunkWorkerContext;
 
@@ -20,7 +20,7 @@ impl crate::game::ClientGame<'_> {
 }
 
 pub(in crate::game) trait PackResourcesClientExt: Sized {
-fn load(
+    fn load(
         root: &sunrise_assets::resource_source::ResourceRoot,
         assets: Arc<Assets>,
         render: Arc<RenderAssets>,
@@ -33,7 +33,7 @@ fn load(
 impl PackResourcesClientExt for PackResources {
     /// Everything a pack overlay at `root` provides, over `assets` and `render`
     /// loaded from it.
-     fn load(
+    fn load(
         root: &sunrise_assets::resource_source::ResourceRoot,
         assets: Arc<Assets>,
         render: Arc<RenderAssets>,
@@ -137,9 +137,7 @@ impl ClientResources {
     pub fn player_type(&self) -> &Option<Arc<sunrise_sim::mobs::MobType>> {
         &self.player_type
     }
-    pub fn client_mob_models(
-        &self,
-    ) -> &sunrise_client::mobs_render::ClientMobModels {
+    pub fn client_mob_models(&self) -> &sunrise_client::mobs_render::ClientMobModels {
         &self.client_mobs.models
     }
 
@@ -193,9 +191,7 @@ impl UiResources {
 }
 
 impl UiResources {
-    pub fn fonts_only(
-        root: &sunrise_assets::resource_source::ResourceSource,
-    ) -> Result<Self> {
+    pub fn fonts_only(root: &sunrise_assets::resource_source::ResourceSource) -> Result<Self> {
         Ok(Self {
             atlas: HudAtlas::fonts(root)?,
             panorama: Arc::new(sunrise_client::gfx::panorama::Faces::colour([0; 4])),

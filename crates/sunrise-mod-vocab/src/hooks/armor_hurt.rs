@@ -12,7 +12,8 @@ pub trait Hooks {
     /// after). Canceling means no armor damage. A server player's `feet`,
     /// `legs`, `chest` and `head`; a mob's `body` (a horse's armor).
     /// Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::armor_hurt::ServerGame<'_>::native_armor_hurt", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::armor_hurt::ServerGame<'_>::native_armor_hurt",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

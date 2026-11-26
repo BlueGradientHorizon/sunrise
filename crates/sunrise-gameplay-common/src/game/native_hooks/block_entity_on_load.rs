@@ -2,12 +2,11 @@ use super::*;
 
 pub trait BlockEntityOnLoadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Drain attachment notices before either logical side runs block entity tickers.
-     fn fire_pending_block_entity_loads(&mut self) {
+    fn fire_pending_block_entity_loads(&mut self) {
         self.side_fire_pending_block_entity_loads();
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> BlockEntityOnLoadGameExt1<'__sg> for G {}
-
 
 pub fn authoritative_world_for_mods(
     resources: &crate::game::Resources,
@@ -35,9 +34,7 @@ pub fn world_for_mods(air: BlockStateId, seed: i64) -> sunrise_level::world::Wor
 }
 
 /// Notify subscribers after this instance is attached and its saved data is applied.
-pub fn native_block_entity_on_load(
-    call: mod_api::__private::BlockEntityOnLoadCall<'_>,
-) {
+pub fn native_block_entity_on_load(call: mod_api::__private::BlockEntityOnLoadCall<'_>) {
     crate::game::native_hooks::fire::fire_block_entity_on_load(call);
 }
 

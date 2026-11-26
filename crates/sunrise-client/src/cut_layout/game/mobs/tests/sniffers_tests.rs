@@ -2,12 +2,12 @@
 //! (`Sniffer.emitDiggingParticles`), the local sounds silence does not mute
 //! (`playSearchingSound`, the block's hit sound) and the egg's own-random push
 //! (`Sniffer.spawnChildFromBreeding`'s `new ItemEntity(..)`).
-use sunrise_sim::mobs::{Mob, sniffer};
 use crate::game::server_side::kill_die_vibration_tests::game as sculk_game;
-use sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS;
-use sunrise_gameplay_common::game::PlayerMotion;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_gameplay_common::game::PlayerMotion;
+use sunrise_gameplay_common::game::side_ops::events::TEST_POSTED_EVENTS;
 use sunrise_sim::mobs::Who;
+use sunrise_sim::mobs::{Mob, sniffer};
 
 fn game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     sculk_game(|game| {
@@ -18,7 +18,9 @@ fn game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
 }
 
 /// A digging sniffer at `(8.5, 100, 8.5)`, facing +z, its head above the stone.
-fn digging_sniffer<'g>(game: &mut impl sunrise_gameplay_common::game::SideGame<'g>) -> (u32, [i32; 3]) {
+fn digging_sniffer<'g>(
+    game: &mut impl sunrise_gameplay_common::game::SideGame<'g>,
+) -> (u32, [i32; 3]) {
     let kind = game
         .res
         .mob_types()

@@ -42,7 +42,10 @@ pub(in crate::game) fn vec3_bits_expected(v: &Value) -> [u64; 3] {
     [hex_f64(&v[0]), hex_f64(&v[1]), hex_f64(&v[2])]
 }
 
-pub(in crate::game) fn entity_type_id(game: &sunrise_client_gameplay::game::ClientGame<'_>, kind: &str) -> i32 {
+pub(in crate::game) fn entity_type_id(
+    game: &sunrise_client_gameplay::game::ClientGame<'_>,
+    kind: &str,
+) -> i32 {
     game.client
         .remote
         .as_ref()

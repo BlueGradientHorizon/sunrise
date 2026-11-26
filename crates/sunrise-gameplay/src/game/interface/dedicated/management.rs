@@ -541,7 +541,11 @@ impl ServerGame<'_> {
                 // DedicatedServer.setDifficulty stores the property and then forces the world
                 // difficulty, including hardcore's always-hard rule and the player broadcast.
                 self.store_property("difficulty", value.to_owned());
-                self.set_difficulty_forced(if self.common.level.hardcore { 3 } else { index as u8 });
+                self.set_difficulty_forced(if self.common.level.hardcore {
+                    3
+                } else {
+                    index as u8
+                });
                 return json!({ "value": DIFFICULTIES[self.level.difficulty_id() as usize] });
             }
             "allowlist/add" => {
@@ -875,8 +879,6 @@ fn management_ip_ban(entry: &Value, ip: String) -> IpBan {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    
 
     #[test]
     fn a_game_rule_is_written_as_vanillas_typed_codec_does() {

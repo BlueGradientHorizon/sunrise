@@ -1,20 +1,10 @@
-
-
 #[cfg(test)]
 #[path = "transactions/player_tests.rs"]
 pub(crate) mod player_tests;
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
-use sunrise_client_gameplay::game::native_hooks::ModGameExt1;
-use sunrise_gameplay_common::game::tables::WorldTablesExt;
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use crate::game::{Settings, load_resources};
-    use {sunrise_gameplay_common::game::BlockEntity, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
     use mod_api::HostTransaction;
     use mod_api::ServerHost;
     use mod_api::{
@@ -22,16 +12,30 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
         TransactionContext, TransactionError,
     };
     use std::{sync::Arc, time::Instant};
+    use sunrise_client_gameplay::game::native_hooks::ModGameExt1;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+    use sunrise_gameplay_common::game::tables::WorldTablesExt;
+    use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
     use sunrise_items::items::ItemStack;
     use sunrise_level::chunk::Chunk;
+    use {
+        sunrise_gameplay_common::game::BlockEntity, sunrise_gameplay_common::game::Options,
+        sunrise_gameplay_common::game::Progress,
+    };
 
     #[test]
     #[ignore = "daily"]
     fn packet_refusal_rolls_back_the_child_and_reaches_the_transaction_caller() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
         use mod_api::prelude::BlockStatesHost;
         use std::sync::{atomic::AtomicUsize, mpsc};
         use sunrise_sim::lan::{PlayerSender, conn::transaction_packets::Scope};
+        use {
+            sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+            sunrise_gameplay::game::native_entity_refs::tests::with_game,
+        };
 
         if run_fresh_cases(
             "game::transactions::tests::packet_refusal_rolls_back_the_child_and_reaches_the_transaction_caller",
@@ -75,12 +79,12 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
     #[test]
     #[ignore = "daily"]
     fn cauldron_stat_listener_observes_committed_state_and_can_cancel() {
-        use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
-        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         use mod_api::{
             Flow, Hooks, ItemSpawnEvent, ItemTossEvent, ModEntry, Mods, PlayerStatAwardEvent,
         };
         use std::sync::Mutex;
+        use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
+        use sunrise_gameplay_common::game::api_values::TryIntoApi;
         if run_fresh_cases(
             "game::transactions::tests::cauldron_stat_listener_observes_committed_state_and_can_cancel",
             "SUNRISE_CAULDRON_STAT_CHILD",
@@ -533,14 +537,16 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
                 items[0] = Some(ItemStack::new("minecraft:stick", 2));
             }
             let sticks = |count| ItemStack::new("minecraft:stick", count);
-            let slots =
-                |game: &sunrise_gameplay::game::ServerGame<'_>, pos| match game.world.block_entities.get(&pos)
-                {
-                    Some(BlockEntity::Chest(items)) => {
-                        items.iter().flatten().map(|s| s.count).sum::<u32>()
-                    }
-                    _ => panic!("missing chest"),
-                };
+            let slots = |game: &sunrise_gameplay::game::ServerGame<'_>, pos| match game
+                .world
+                .block_entities
+                .get(&pos)
+            {
+                Some(BlockEntity::Chest(items)) => {
+                    items.iter().flatten().map(|s| s.count).sum::<u32>()
+                }
+                _ => panic!("missing chest"),
+            };
             assert_eq!(
                 game.level_set_block(level, [1, 64, 4], chest, flags),
                 Ok(true)
@@ -610,7 +616,8 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         options.dedicated = Some(Vec::new());
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
@@ -1090,13 +1097,14 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
             game.level_set_block(level, [2, 64, 4], chest, flags),
             Ok(true)
         );
-        let slots =
-            |game: &sunrise_gameplay::game::ServerGame<'_>, pos| match game.world.block_entities.get(&pos) {
-                Some(BlockEntity::Chest(items)) => {
-                    items.iter().flatten().map(|s| s.count).sum::<u32>()
-                }
-                _ => panic!("no container at {pos:?}"),
-            };
+        let slots = |game: &sunrise_gameplay::game::ServerGame<'_>, pos| match game
+            .world
+            .block_entities
+            .get(&pos)
+        {
+            Some(BlockEntity::Chest(items)) => items.iter().flatten().map(|s| s.count).sum::<u32>(),
+            _ => panic!("no container at {pos:?}"),
+        };
         for (id, moved) in [("test:pipe", 1), ("test:greedy", 0)] {
             let state = game.pack.assets.registry.default_state(id).unwrap();
             assert_eq!(
@@ -1122,14 +1130,14 @@ use sunrise_gameplay_common::game::api_values::TryIntoApi;
 
 #[cfg(test)]
 pub(crate) mod mod_capability_tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::ServerHost;
     use mod_api::{BlockSide, HostTransaction, ResourceHandler, resource_util::move_resources};
     use mod_platform::__private::part_tests::{CHEMICALS, ChemTank, Chemical};
     use std::sync::Arc;
     use sunrise_core::nbt::{Compound, Tag};
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
     use sunrise_level::chunk::Chunk;
     use sunrise_level::containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields};
 
@@ -1140,7 +1148,10 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     #[test]
     #[ignore = "daily"]
     fn a_chemical_moves_between_two_mods_parts_and_an_abort_puts_it_back() {
-        use {crate::game::server_side::native_entity_refs::tests::declared_part_root, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
+        use {
+            crate::game::server_side::native_entity_refs::tests::declared_part_root,
+            sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+        };
         let Some(root) = declared_part_root(
             "game::transactions::mod_capability_tests::a_chemical_moves_between_two_mods_parts_and_an_abort_puts_it_back",
         ) else {
@@ -1434,11 +1445,6 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
         });
     }
 }
-
-
-
-
-
 
 #[path = "transactions/scratch.rs"]
 pub(crate) mod scratch;

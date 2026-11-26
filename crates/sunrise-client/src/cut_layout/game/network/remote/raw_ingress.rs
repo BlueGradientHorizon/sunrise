@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use std::time::Duration;
 use sunrise_protocol::packets::play;
@@ -19,9 +17,9 @@ pub(crate) mod tests {
     use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::{ClientHost, ClientPacketEvent, EntityRef, Hooks, ModEntry};
     use std::sync::mpsc;
-    use sunrise_client_lib::net::Event;
-    use sunrise_client_gameplay::remote::chunks::Received;
     use sunrise_client_gameplay::game::client_side::remote_client::ingress_state::ListenerTurn;
+    use sunrise_client_gameplay::remote::chunks::Received;
+    use sunrise_client_lib::net::Event;
 
     #[test]
     #[ignore = "daily"]

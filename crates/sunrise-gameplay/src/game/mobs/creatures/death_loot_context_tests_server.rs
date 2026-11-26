@@ -163,9 +163,10 @@ fn death_loot_killer_is_not_the_acting_guest() {
                 let mut victim = Mob::new(id, ty.clone(), Vec3::ZERO, 0.0);
                 victim.ai.last_hurt_by_player = 100;
                 victim.last_damage = Some((Damage::player([0.0; 3]), 0));
-                game.server
-                    .last_hurt_by_player
-                    .insert(id, sunrise_gameplay_common::game::combat_common::PlayerCredit(12));
+                game.server.last_hurt_by_player.insert(
+                    id,
+                    sunrise_gameplay_common::game::combat_common::PlayerCredit(12),
+                );
                 if let Some(conn) = acting {
                     game.as_guest(conn, |g| g.mob_die(&victim)).unwrap();
                 } else {
@@ -274,7 +275,8 @@ fn death_loot_uses_call_scoped_source_and_hand() {
             crate::game::native_entity_refs::tests::bind_local_player(game, 11, 123);
             // Reserve the fixture's explicit IDs before spawning experience orbs.
             game.server.next_entity = 1000;
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:iron_sword", 2));
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:iron_sword", 2));
             for (id, environmental) in [(68, false), (69, true)] {
                 let mut victim = Mob::new(id, ty.clone(), Vec3::ZERO, 0.0);
                 victim.ai.last_hurt_by_player = 100;

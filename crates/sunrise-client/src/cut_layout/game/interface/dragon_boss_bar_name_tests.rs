@@ -1,17 +1,17 @@
 //! `EnderDragonFight.updateDragon`: the fight's boss bar takes the dragon's
 //! custom name (`dragon.getDisplayName()`), and keeps the type's name until
 //! it has one.
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_client::settings::Settings;
-use sunrise_gameplay_common::game::Dim;
-use sunrise_gameplay_common::game::launch_options::Options;
-use crate::game::load_resources;
-use sunrise_gameplay_common::game::resource_load::Progress;
-use sunrise_sim::motion::PlayerMotion;
 use super::*;
+use crate::game::load_resources;
+use sunrise_client::settings::Settings;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::game::Dim;
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::launch_options::Options;
+use sunrise_gameplay_common::game::resource_load::Progress;
 use sunrise_level::chunk::Chunk;
+use sunrise_sim::motion::PlayerMotion;
 
 fn end_game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
@@ -36,7 +36,8 @@ fn end_game<'a>(
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let res = &*resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         res,
@@ -77,8 +78,11 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
         game.tick_fight();
     }
     let id = game.dragon.as_ref().expect("the fight's dragon").id;
-    let (mut hub, near, _far) =
-        sunrise_gameplay::game::server_side::lan_particles::tests::test_hub("DragonBossBarNameTest", Vec::new(), None);
+    let (mut hub, near, _far) = sunrise_gameplay::game::server_side::lan_particles::tests::test_hub(
+        "DragonBossBarNameTest",
+        Vec::new(),
+        None,
+    );
     hub.guests.update(0, |guest| {
         guest.dimension = "minecraft:the_end".into();
         guest.position = [0.5, 128.0, 0.5];

@@ -1,8 +1,8 @@
 //! Production residency regressions for projectile ownership.
 #![cfg(test)]
-use sunrise_gameplay_common::game::SideGame;
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::SideGame;
 use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
 };

@@ -40,7 +40,11 @@ impl LifecycleFixture {
         self.walk(true, |_| {});
     }
 
-    fn walk(self, singleton: bool, mut observe: impl FnMut(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+    fn walk(
+        self,
+        singleton: bool,
+        mut observe: impl FnMut(&mut sunrise_gameplay::game::ServerGame<'_>),
+    ) {
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
             let mut ids = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
                 observe(game);
@@ -115,7 +119,8 @@ impl LifecycleFixture {
                 game.entity_chunks(&[(0, 0)].into_iter().collect(), true);
                 assert_eq!(ids(game), active, "selected versus unselected chunk unload");
             }
-            game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+                .unwrap();
             assert!(
                 ids(game).is_empty(),
                 "new dimension inherited the active owners"
@@ -125,11 +130,14 @@ impl LifecycleFixture {
             let parked_ids = if singleton { vec![201] } else { vec![201, 202] };
             (self.seed)(game, parked);
             assert_eq!(ids(game), parked_ids);
-            game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
+                .unwrap();
             assert_eq!(ids(game), active, "active owner restore");
-            game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+                .unwrap();
             assert_eq!(ids(game), parked_ids, "parked owner restore");
-            game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
+            game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
+                .unwrap();
             assert_eq!(ids(game), active, "second active restore");
             if let Some(_remote) = self.remote {
                 // Client-side remote lifecycle steps run on a `ClientGame` via
@@ -201,23 +209,32 @@ fn lifecycle_fixture_walks_other_owners() {
         seed: |game, entries| {
             game.server.others.0.clear();
             for &(id, at) in entries {
-                game.server.others.0.push(sunrise_gameplay_common::game::commands_common::OtherEntity {
-                    size_answer: None,
-                    attachment_lifetime: Default::default(),
-                    knot_check: None,
-                    eye: None,
-                    join: Default::default(),
-                    id,
-                    kind: "minecraft:marker".into(),
-                    position: sunrise_core::geometry::Vec3::new(at[0], at[1], at[2]),
-                    yaw: 0.0,
-                    pitch: 0.0,
-                    item_transformation: None,
-                    interaction: None,
-                });
+                game.server.others.0.push(
+                    sunrise_gameplay_common::game::commands_common::OtherEntity {
+                        size_answer: None,
+                        attachment_lifetime: Default::default(),
+                        knot_check: None,
+                        eye: None,
+                        join: Default::default(),
+                        id,
+                        kind: "minecraft:marker".into(),
+                        position: sunrise_core::geometry::Vec3::new(at[0], at[1], at[2]),
+                        yaw: 0.0,
+                        pitch: 0.0,
+                        item_transformation: None,
+                        interaction: None,
+                    },
+                );
             }
         },
-        ids: |game| game.server.others.0.iter().map(|entity| entity.id).collect(),
+        ids: |game| {
+            game.server
+                .others
+                .0
+                .iter()
+                .map(|entity| entity.id)
+                .collect()
+        },
         target: sunrise_gameplay_common::game::commands_common::Target::Other,
         unloads_with_chunk: true,
         remote: None,
@@ -242,7 +259,13 @@ fn data_merge_preserves_two_distinct_other_joins_for_every_runtime_kind() {
             for (tag, x) in [("first", 1), ("second", 8)] {
                 assert!(game.run_command(&format!("summon {kind} {x} 80 1 {{Tags:[\"{tag}\"]}}")));
             }
-            let expected: Vec<_> = game.server.others.0.iter().map(|e| (e.id, e.join)).collect();
+            let expected: Vec<_> = game
+                .server
+                .others
+                .0
+                .iter()
+                .map(|e| (e.id, e.join))
+                .collect();
             assert_eq!(expected.len(), 2, "{kind}");
             assert_ne!(expected[0].1, expected[1].1);
             assert_ne!(expected[0].1, sunrise_sim::join_seq::JoinSeq::UNJOINED);
@@ -274,7 +297,11 @@ fn data_merge_preserves_two_distinct_other_joins_for_every_runtime_kind() {
 #[test]
 #[ignore = "daily"]
 fn mob_tick_restores_spawn_buffer_before_multiple_survivors_without_renumbering() {
-    fn seed(game: &mut sunrise_gameplay::game::ServerGame<'_>, ids: std::ops::RangeInclusive<u32>, x: f64) {
+    fn seed(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        ids: std::ops::RangeInclusive<u32>,
+        x: f64,
+    ) {
         for (index, id) in ids.enumerate() {
             let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
             let mut mob = sunrise_sim::mobs::Mob::new(

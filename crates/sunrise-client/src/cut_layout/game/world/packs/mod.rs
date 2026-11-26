@@ -1,12 +1,10 @@
-
-
 #![cfg(test)]
 use crate::packs;
+use std::path::Path;
+use std::path::PathBuf;
 use sunrise_client_gameplay::game::client_side::packs::{
     OVERLAY_HOLD, PackReload, ReloadKind, StageResult, reload_waits, startup_root,
 };
-use std::path::Path;
-use std::path::PathBuf;
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(crate) mod tests {
@@ -73,7 +71,8 @@ pub(crate) mod tests {
             )]
             .into(),
             || {
-                let root = sunrise_gameplay_common::game::mods::content_root(&vanilla, &sources).unwrap();
+                let root =
+                    sunrise_gameplay_common::game::mods::content_root(&vanilla, &sources).unwrap();
                 super::super::native_entity_refs::tests::with_game_role_client(
                     root.prepared().to_path_buf(),
                     sunrise_gameplay_common::game::execution_role::ExecutionRole::Client,

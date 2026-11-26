@@ -1,10 +1,10 @@
 //! A block's parts decide what a tool makes of it (`tool_modified_state`); whether a player
 //! breaking it destroyed it (`on_destroyed_by_player`) is in `player_destroy_tests.rs`.
-use {sunrise_gameplay_common::game::Hit, sunrise_gameplay::game::native_guest_turn_tests};
 use mod_api::{BlockHit, Hand};
 use std::sync::Arc;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
+use {sunrise_gameplay::game::native_guest_turn_tests, sunrise_gameplay_common::game::Hit};
 
 fn hit_on(pos: [i32; 3]) -> Hit {
     Hit {
@@ -65,7 +65,9 @@ fn a_block_part_allows_replaces_or_denies_a_tool_action_and_a_preview_changes_no
             game.world
                 .set(pos[0], pos[1], pos[2], state(block))
                 .unwrap();
-            let at = |game: &sunrise_gameplay::game::ServerGame<'_>| game.world.block(pos[0], pos[1], pos[2]);
+            let at = |game: &sunrise_gameplay::game::ServerGame<'_>| {
+                game.world.block(pos[0], pos[1], pos[2])
+            };
             // The preview answers as the action will, and changes nothing.
             let native = BlockHit::new(hit_on(pos).point, [0, 1, 0], false);
             let preview = level.block_transform(

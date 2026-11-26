@@ -1,17 +1,20 @@
-use sunrise_gameplay_common::game::GameGameExt1;
+use super::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
-use super::*;
-use sunrise_gameplay_common::game::commands_common::Target;
-use {sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use sunrise_core::nbt::parse_snbt;
 use sunrise_core::position::ChunkPos;
-use sunrise_sim::save::uuid_text;
 use sunrise_gameplay::game::server_side::persist::ChunkKey;
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::commands_common::Target;
 #[cfg(test)]
 use sunrise_sim::entity_nbt;
+use sunrise_sim::save::uuid_text;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::prepare_entity_ticking_neighborhood,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 struct WitnessCase {
     kind: String,
@@ -173,7 +176,9 @@ fn load_witness_26_3() -> (i32, i32, Vec<WitnessCase>) {
     (x0, z0, cases)
 }
 
-fn collect_projectile_uuids(game: &sunrise_gameplay::game::ServerGame<'_>) -> HashMap<String, (usize, u32)> {
+fn collect_projectile_uuids(
+    game: &sunrise_gameplay::game::ServerGame<'_>,
+) -> HashMap<String, (usize, u32)> {
     let mut by_uuid = HashMap::new();
     for (idx, p) in game.creatures.projectiles.iter().enumerate() {
         let ints = game

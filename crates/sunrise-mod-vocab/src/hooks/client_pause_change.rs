@@ -2,7 +2,8 @@
 
 pub trait Hooks {
     /// NeoForge's `ClientPauseChangeEvent.Pre`: cancel a proposed pause change.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::client_pause_change::ClientGame<'_>::native_client_pause_change_pre", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::client_pause_change::ClientGame<'_>::native_client_pause_change_pre",
         dispatch = "flat",
         side = "client",
         contract = "cancel",
@@ -12,7 +13,8 @@ pub trait Hooks {
     )]
     fn client_pause_change_pre(paused: bool, cancel: &mut bool);
     /// NeoForge's `ClientPauseChangeEvent.Post`: the pause state changed.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::client_pause_change::ClientGame<'_>::native_client_pause_change_post", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::client_pause_change::ClientGame<'_>::native_client_pause_change_post",
         dispatch = "flat",
         side = "client",
         contract = "listen",

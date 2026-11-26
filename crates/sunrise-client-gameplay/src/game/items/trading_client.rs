@@ -1,11 +1,11 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::stations_common::{INPUT, Kind, RESULT, Station};
-use sunrise_gameplay_common::game::trading_common::{MerchantState, merchant_display_name};
 use sunrise_client::{
     hud::HudBatch,
     widgets::{Cursor, request_cursor},
 };
 use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::stations_common::{INPUT, Kind, RESULT, Station};
+use sunrise_gameplay_common::game::trading_common::{MerchantState, merchant_display_name};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::merchant::{self, MerchantOffer, TradeContext};
 
@@ -14,7 +14,12 @@ impl ClientGame<'_> {
     pub fn draw_merchant(&mut self, batch: &mut HudBatch) -> bool {
         let (ox, oy) = self.inventory_origin(batch);
         let local = (self.client.cursor.0 - ox, self.client.cursor.1 - oy);
-        let Some(m) = self.common.station.as_ref().and_then(|s| s.merchant.as_ref()) else {
+        let Some(m) = self
+            .common
+            .station
+            .as_ref()
+            .and_then(|s| s.merchant.as_ref())
+        else {
             return false;
         };
         let (progress, custom) = (m.progress(), m.name.clone());
@@ -268,7 +273,12 @@ impl ClientGame<'_> {
     /// Clicks on the offer list; true when one was hit. A press on the
     /// scroller holds it (`MerchantScreen.mouseClicked`).
     pub(in crate::game::client_side) fn merchant_click(&mut self, local: (f32, f32)) -> bool {
-        let Some(m) = self.common.station.as_mut().and_then(|s| s.merchant.as_mut()) else {
+        let Some(m) = self
+            .common
+            .station
+            .as_mut()
+            .and_then(|s| s.merchant.as_mut())
+        else {
             return false;
         };
         m.dragging = on_scroller(local, m.session.offers.len());
@@ -284,7 +294,12 @@ impl ClientGame<'_> {
                 && i + m.scroll < m.session.offers.len()
             {
                 let index = i + m.scroll;
-                if let Some(m) = self.common.station.as_mut().and_then(|s| s.merchant.as_mut()) {
+                if let Some(m) = self
+                    .common
+                    .station
+                    .as_mut()
+                    .and_then(|s| s.merchant.as_mut())
+                {
                     m.focused = Some(i);
                 }
                 self.client
@@ -308,10 +323,16 @@ impl ClientGame<'_> {
         else {
             return false;
         };
-        let (_, oy) =
-            self.inventory_origin(&HudBatch::new(size, self.client.settings.gui_scale_inputs()));
+        let (_, oy) = self.inventory_origin(&HudBatch::new(
+            size,
+            self.client.settings.gui_scale_inputs(),
+        ));
         let y = self.client.cursor.1 - oy;
-        if let Some(m) = self.common.station.as_mut().and_then(|s| s.merchant.as_mut())
+        if let Some(m) = self
+            .common
+            .station
+            .as_mut()
+            .and_then(|s| s.merchant.as_mut())
             && m.dragging
         {
             m.scroll = drag_scroll(y, m.session.offers.len());
@@ -331,7 +352,12 @@ impl ClientGame<'_> {
         if !matches!(key, KeyCode::Enter | KeyCode::NumpadEnter | KeyCode::Space) {
             return false;
         }
-        let Some(m) = self.common.station.as_ref().and_then(|s| s.merchant.as_ref()) else {
+        let Some(m) = self
+            .common
+            .station
+            .as_ref()
+            .and_then(|s| s.merchant.as_ref())
+        else {
             return false;
         };
         // Buttons past the last offer are hidden, and a hidden button is inactive.
@@ -351,7 +377,12 @@ impl ClientGame<'_> {
     }
     /// The offer buttons a controller can focus (GUI origin relative).
     pub(in crate::game::client_side) fn merchant_targets(&self) -> Vec<[f32; 4]> {
-        let Some(m) = self.common.station.as_ref().and_then(|s| s.merchant.as_ref()) else {
+        let Some(m) = self
+            .common
+            .station
+            .as_ref()
+            .and_then(|s| s.merchant.as_ref())
+        else {
             return Vec::new();
         };
         (0..7)
@@ -393,7 +424,8 @@ impl ClientGame<'_> {
         let variant = format!("minecraft:{}", variant.trim_start_matches("minecraft:"));
         let level = level.clamp(1, 5);
         let origin = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map_or([0.0; 3], |p| [p.position.x, p.position.y, p.position.z]);
         let mut offers = Vec::new();
@@ -431,11 +463,7 @@ impl ClientGame<'_> {
         });
     }
     /// A server's trading window (no mob here: the server keeps it).
-    pub fn open_remote_merchant(
-        &mut self,
-        session: merchant::Session,
-        name: Option<Text>,
-    ) {
+    pub fn open_remote_merchant(&mut self, session: merchant::Session, name: Option<Text>) {
         self.open_merchant_state_client(MerchantState {
             session: Box::new(session),
             scroll: 0,
@@ -452,7 +480,12 @@ impl ClientGame<'_> {
             Some(true)
         });
         if self.client.remote.is_some() {
-            if let Some(m) = self.common.station.as_mut().and_then(|s| s.merchant.as_mut()) {
+            if let Some(m) = self
+                .common
+                .station
+                .as_mut()
+                .and_then(|s| s.merchant.as_mut())
+            {
                 m.session.selection_hint = index;
             }
             self.send(sunrise_protocol::packets::play::Serverbound::SelectTrade(

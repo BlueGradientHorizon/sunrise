@@ -4,7 +4,7 @@ use mod_api::{Authority, LifecycleContext, ServerTickPhase, TickId, WorldEpoch};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 pub trait NativeLifecycleCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-     fn finish_world_closed_common(&mut self) {
+    fn finish_world_closed_common(&mut self) {
         self.attachment_indexes.clear();
         self.passages.retire_world();
         self.resident_entities.table.get_mut().reset();
@@ -12,20 +12,19 @@ pub trait NativeLifecycleCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         self.clear_world_parts();
     }
 
-     fn native_lifecycle_open_started(&mut self) {
+    fn native_lifecycle_open_started(&mut self) {
         self.side_lifecycle_open_started();
     }
 
-     fn native_lifecycle_world_ready(&mut self) {
+    fn native_lifecycle_world_ready(&mut self) {
         self.side_lifecycle_world_ready();
     }
 
-     fn native_lifecycle_world_closed(&mut self) {
+    fn native_lifecycle_world_closed(&mut self) {
         self.side_lifecycle_world_closed();
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeLifecycleCommonGameExt1<'__sg> for G {}
-
 
 /// Epoch allocation spans server and client `Game` instances and client level
 /// replacements, so the counter is process-wide.
@@ -207,10 +206,7 @@ impl NativeLifecycle {
     }
 
     /// Pairs the last start; an errored tick never reaches it.
-    pub fn server_tick_end(
-        &mut self,
-        paused: bool,
-    ) -> Option<(LifecycleContext, ServerTickPhase)> {
+    pub fn server_tick_end(&mut self, paused: bool) -> Option<(LifecycleContext, ServerTickPhase)> {
         let attempt = self.attempt.as_mut()?;
         if paused || attempt.session != OpenState::Ready || !attempt.tick_open {
             return None;

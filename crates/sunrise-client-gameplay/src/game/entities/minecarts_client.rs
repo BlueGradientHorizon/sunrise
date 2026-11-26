@@ -1,4 +1,11 @@
 use crate::game::ClientGame;
+use std::collections::HashMap;
+use sunrise_client::{
+    mesher::Vertex,
+    mobs::Part,
+    sound_engine::{CartSound, PlayResult, SoundInstance, Sounds},
+};
+use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::minecarts::CartKind;
 use sunrise_gameplay_common::game::minecarts::HEIGHT;
 use sunrise_gameplay_common::game::minecarts::TNT_PRIME_EVENT;
@@ -11,13 +18,6 @@ use sunrise_gameplay_common::game::{
     api_values::TryIntoApi, cart_rails::dispatch_cart_rail_direction,
     native_level_signals::ReadLevel,
 };
-use std::collections::HashMap;
-use sunrise_client::{
-    mesher::Vertex,
-    mobs::Part,
-    sound_engine::{CartSound, PlayResult, SoundInstance, Sounds},
-};
-use sunrise_core::geometry::Vec3;
 use sunrise_level::random_source;
 use sunrise_sim::mobs::anim::Poses;
 use sunrise_world::registry::BlockStateId;
@@ -244,17 +244,26 @@ impl ClientGame<'_> {
         state: BlockStateId,
         external_light: u32,
     ) -> u32 {
-        let emissive = self.common.pack.assets.registry.state(state).is_some_and(|st| {
-            let name = st.name.strip_prefix("minecraft:").unwrap_or(&st.name);
-            name == "magma_block"
-                || (matches!(name, "sculk_sensor" | "calibrated_sculk_sensor")
-                    && st.properties.get("sculk_sensor_phase").map(String::as_str)
-                        == Some("active"))
-        });
+        let emissive = self
+            .common
+            .pack
+            .assets
+            .registry
+            .state(state)
+            .is_some_and(|st| {
+                let name = st.name.strip_prefix("minecraft:").unwrap_or(&st.name);
+                name == "magma_block"
+                    || (matches!(name, "sculk_sensor" | "calibrated_sculk_sensor")
+                        && st.properties.get("sculk_sensor_phase").map(String::as_str)
+                            == Some("active"))
+            });
         let (block_sky, block_em) = if emissive {
             (15 * 16, 15 * 16)
         } else {
-            (0, u32::from(self.common.res.facts().get(state).emission) * 16)
+            (
+                0,
+                u32::from(self.common.res.facts().get(state).emission) * 16,
+            )
         };
         let sky = (external_light & 0xFF).max(block_sky);
         let block = ((external_light >> 8) & 0xFF).max(block_em);
@@ -313,7 +322,12 @@ impl ClientGame<'_> {
         let tint = self.default_block_tint(state);
         let mut normals = sunrise_client::item_render::FaceNormals::new(pose.to_glam());
         for &slot in slots.iter() {
-            let model = self.client.client_pack.render.model_catalog.baked_model(slot);
+            let model = self
+                .client
+                .client_pack
+                .render
+                .model_catalog
+                .baked_model(slot);
             for face in &model.faces {
                 let Some(name) = self.client.client_pack.layer_names.get(&face.layer) else {
                     continue;
@@ -463,7 +477,10 @@ impl ClientGame<'_> {
                 continue;
             }
             let entity_start = out.len();
-            self.mark_motion(entity_start, sunrise_gameplay_common::game::MOTION_OBJECT | u64::from(c.id));
+            self.mark_motion(
+                entity_start,
+                sunrise_gameplay_common::game::MOTION_OBJECT | u64::from(c.id),
+            );
             // The per-entity jitter (offsetSeed) that keeps stacked carts from z-fighting.
             let seed = i64::from(c.id).wrapping_mul(493_286_711);
             let seed = seed
@@ -631,7 +648,8 @@ impl ClientGame<'_> {
             return;
         }
         if let Some(i) = self
-            .common.carts
+            .common
+            .carts
             .iter()
             .position(|c| c.id == id as u32 && c.kind == CartKind::Tnt)
         {
@@ -681,12 +699,11 @@ impl ClientGame<'_> {
     /// joined the level since the last tick, and `LocalPlayer.startRiding`'s
     /// two inside sounds when the player got in one; then what the sound
     /// instances read this tick (the ridden cart and every cart).
-    pub fn start_cart_sounds(
-        &mut self,
-    ) -> (Option<u32>, Vec<CartSound>) {
+    pub fn start_cart_sounds(&mut self) -> (Option<u32>, Vec<CartSound>) {
         let improved = self.minecart_improvements();
         let carts: Vec<CartSound> = self
-            .common.carts
+            .common
+            .carts
             .iter()
             .map(|c| CartSound {
                 id: c.id,
@@ -709,7 +726,10 @@ impl ClientGame<'_> {
                 }
             }
         }
-        let vehicle = self.common.riding.filter(|id| carts.iter().any(|c| c.id == *id));
+        let vehicle = self
+            .common
+            .riding
+            .filter(|id| carts.iter().any(|c| c.id == *id));
         if vehicle != self.client.riding_cart_sounds
             && let Some(cart) = carts.iter().find(|c| Some(c.id) == vehicle)
         {

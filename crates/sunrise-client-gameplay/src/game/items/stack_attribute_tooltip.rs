@@ -85,7 +85,8 @@ impl ClientGame<'_> {
 
     /// `Player.getAttributeBaseValue`: the attribute's default where the player has none.
     fn player_attribute_base(&self, name: &str, default: f64) -> f64 {
-        self.common.player
+        self.common
+            .player
             .as_ref()
             .and_then(|player| {
                 let key = player.attributes.key(name)?;

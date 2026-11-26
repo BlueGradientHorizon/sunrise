@@ -1,28 +1,30 @@
-
-
 #![cfg(test)]
 use sunrise_sim::mobs::Mob;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use mod_api::{AgeableGroup, EquipmentSlot, Identifier, SpawnGroup, UnspawnedMobError, UnspawnedMobRef};
+    use mod_api::{
+        AgeableGroup, EquipmentSlot, Identifier, SpawnGroup, UnspawnedMobError, UnspawnedMobRef,
+    };
 
-use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::{KeptGoalMod, pumpkin};
+    use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::{
+        KeptGoalMod, pumpkin,
+    };
 
-use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::AT;
+    use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::AT;
 
-use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::id;
+    use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::id;
 
-type Listen = dyn Fn(&dyn Host, &mut FinalizeSpawnEvent<'_>) -> Flow + Send + Sync;
-/// Answers `finalize_spawn` with the test's closure.
+    type Listen = dyn Fn(&dyn Host, &mut FinalizeSpawnEvent<'_>) -> Flow + Send + Sync;
+    /// Answers `finalize_spawn` with the test's closure.
     struct Listener(Box<Listen>);
-#[mod_api::__subscriptions]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for Listener {
         fn finalize_spawn(&self, host: &dyn Host, event: &mut FinalizeSpawnEvent<'_>) -> Flow {
             (self.0)(host, event)
         }
     }
-fn listening<R>(
+    fn listening<R>(
         listen: impl Fn(&dyn Host, &mut FinalizeSpawnEvent<'_>) -> Flow + Send + Sync + 'static,
         run: impl FnOnce() -> R,
     ) -> R {
@@ -33,21 +35,21 @@ fn listening<R>(
         )
     }
 
-use sunrise_gameplay::game::server_side::native_unspawned_mob::tests::spawn_pig;
+    use sunrise_gameplay::game::server_side::native_unspawned_mob::tests::spawn_pig;
 
-use sunrise_gameplay_common::game::commands_common::Target;
+    use sunrise_gameplay_common::game::commands_common::Target;
 
-use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::with_game;
 
-use super::*;
+    use super::*;
 
-use mod_api::{FinalizeSpawnEvent, Flow, Host};
+    use mod_api::{FinalizeSpawnEvent, Flow, Host};
 
-use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex};
 
-use sunrise_sim::mobs::finalize::{self, Attr};
+    use sunrise_sim::mobs::finalize::{self, Attr};
 
-/// What a listener edits through the editor is on the mob that joins the
+    /// What a listener edits through the editor is on the mob that joins the
     /// level, and the handle reads the edits back inside the call.
     #[test]
     #[ignore = "daily"]
@@ -114,7 +116,7 @@ use sunrise_sim::mobs::finalize::{self, Attr};
             },
         );
     }
-/// A mod's base written through the editor stays in the attribute's range, as documented.
+    /// A mod's base written through the editor stays in the attribute's range, as documented.
     #[test]
     #[ignore = "daily"]
     fn a_base_written_through_the_editor_stays_in_range() {
@@ -138,7 +140,7 @@ use sunrise_sim::mobs::finalize::{self, Attr};
             },
         );
     }
-/// A handle kept past its hook reads `Expired`, and the next call's
+    /// A handle kept past its hook reads `Expired`, and the next call's
     /// editor refuses it the same way: it reaches only its own lend.
     #[test]
     #[ignore = "daily"]
@@ -173,7 +175,7 @@ use sunrise_sim::mobs::finalize::{self, Attr};
         let kept = kept.lock().unwrap();
         assert_ne!(kept[0], kept[1], "each call lends anew");
     }
-/// `Flow::Cancel` skips finalization and keeps the listener's edits on
+    /// `Flow::Cancel` skips finalization and keeps the listener's edits on
     /// the mob that still joins; `spawn_cancelled` adds no mob at all.
     #[test]
     #[ignore = "daily"]
@@ -218,7 +220,7 @@ use sunrise_sim::mobs::finalize::{self, Attr};
             },
         );
     }
-/// Every live site hands `group` over empty today; group data a listener
+    /// Every live site hands `group` over empty today; group data a listener
     /// leaves there is what finalization reads: an ageable group whose later
     /// members are all babies makes this pig one.
     #[test]
@@ -249,7 +251,7 @@ use sunrise_sim::mobs::finalize::{self, Attr};
         );
         assert_eq!(*given.lock().unwrap(), [None]);
     }
-/// A listener that panics still ends its lend: the handle is withdrawn
+    /// A listener that panics still ends its lend: the handle is withdrawn
     /// and the mob in the caller's slot is the one that was lent, mod goal
     /// and all, not a copy (whose mod goal would have no goal) or a default.
     #[test]

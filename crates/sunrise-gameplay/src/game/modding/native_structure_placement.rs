@@ -56,7 +56,11 @@ impl crate::game::ServerGame<'_> {
                 let entry = self
                     .template_entry(&id)
                     .ok_or_else(|| format!("the game has no structure template `{id}`"))?;
-                StructureTemplate::from_nbt(&entry.tag, self.common.pack.assets.registry, transforms)
+                StructureTemplate::from_nbt(
+                    &entry.tag,
+                    self.common.pack.assets.registry,
+                    transforms,
+                )
             }
             StructureTemplateSource::Nbt(bytes) => {
                 template_from_nbt(bytes, self.common.pack.assets.registry, transforms)?

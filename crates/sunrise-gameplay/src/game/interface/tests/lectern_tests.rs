@@ -21,7 +21,10 @@ fn lectern(
         .properties
         .insert("has_book".into(), has_book.to_string());
     let state = registry.id(&state).unwrap();
-    game.common.world.set(pos[0], pos[1], pos[2], state).unwrap();
+    game.common
+        .world
+        .set(pos[0], pos[1], pos[2], state)
+        .unwrap();
     game.common.world.block_entities.insert(
         (pos[0], pos[1], pos[2]),
         BlockEntity::Lectern(Lectern { book, page: 0 }),

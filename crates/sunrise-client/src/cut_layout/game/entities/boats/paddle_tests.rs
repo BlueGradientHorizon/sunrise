@@ -1,7 +1,7 @@
+use super::*;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::boats_common::Boat;
-use super::*;
 
 /// `AbstractBoat.controlBoat` pushes along Mth's sine table at the float angle, in the order
 /// vanilla evaluates it. The expected bits are the table's entries for yaw 31 (the paddle turned

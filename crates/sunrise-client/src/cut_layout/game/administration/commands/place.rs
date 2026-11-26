@@ -1,19 +1,20 @@
-
-
 #![cfg(test)]
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
 #[cfg(test)]
 pub(crate) mod live_dungeon_spawner_tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
-use super::*;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
+    use super::*;
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};
+    use sunrise_gameplay_common::game::GameGameExt1;
     use sunrise_level::{chunk::Chunk, containers::BlockEntity};
     use sunrise_sim::{
         mobs::spawner::{SpawnDataExt, SpawnerExt},
         motion::PlayerMotion,
+    };
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
     };
     fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -37,7 +38,8 @@ use super::*;
             std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                 .join(format!("h173-{:?}", std::thread::current().id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         sunrise_gameplay_common::game::growth_features::install_live_features(
             &loaded.resources,
             &loaded.pack,
@@ -212,14 +214,13 @@ use super::*;
 }
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
-
 #[cfg(test)]
 pub(crate) mod source_tests {
-    use sunrise_core::nbt::{self, Limits, Tag};
-    use sunrise_world::compression::Compression;
-    use sunrise_gameplay::game::server_side::commands::place::read_template_data;
     use std::{io::Write, path::PathBuf};
     use sunrise_assets::resource_source::{Resource, ResourceSource};
+    use sunrise_core::nbt::{self, Limits, Tag};
+    use sunrise_gameplay::game::server_side::commands::place::read_template_data;
+    use sunrise_world::compression::Compression;
 
     #[test]
     fn template_tags_read_archives_below_saved_world_structures() {

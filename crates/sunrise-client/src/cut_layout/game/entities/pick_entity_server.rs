@@ -1,14 +1,12 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::pick_entity_common::PickEntityCommonGameExt1;
-use sunrise_gameplay_common::game::commands_common::Target;
+    use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::commands_common::Target;
     use sunrise_gameplay_common::game::creatures::SpawnSite;
     use sunrise_gameplay_common::game::dragon_common::dragon_part_id;
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-    use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::pick_entity_common::PickEntityCommonGameExt1;
     use sunrise_items::items::ItemStack;
     use sunrise_sim::motion::PlayerMotion;
 
@@ -65,7 +63,11 @@ use sunrise_gameplay_common::game::commands_common::Target;
 
                     // Exercise the real PickItemFromEntity server packet handler through a creative guest.
                     let (mut hub, _rx, _other) =
-                        sunrise_gameplay::game::server_side::lan_particles::tests::test_hub("PickEntity", Vec::new(), None);
+                        sunrise_gameplay::game::server_side::lan_particles::tests::test_hub(
+                            "PickEntity",
+                            Vec::new(),
+                            None,
+                        );
                     let gi = hub.guests.connection_index(1).unwrap();
                     hub.guests.update(gi, |g| {
                         g.game_mode = 1;
@@ -75,7 +77,9 @@ use sunrise_gameplay_common::game::commands_common::Target;
                         g.inventory[0] = None;
                         g.selected = 0;
                     });
-                    game.server.lan = Some(sunrise_gameplay::game::server_side::lan::LanHost::for_test(hub));
+                    game.server.lan = Some(
+                        sunrise_gameplay::game::server_side::lan::LanHost::for_test(hub),
+                    );
 
                     for (id, expected) in [
                         (far_knot as i32, None),
@@ -83,10 +87,16 @@ use sunrise_gameplay_common::game::commands_common::Target;
                         (explicit_knot as i32, Some("minecraft:lead")),
                         (body_part_id, Some("minecraft:ender_dragon_spawn_egg")),
                     ] {
-                        game.server.lan.as_mut().unwrap().hub.guests.update(gi, |g| {
-                            g.inventory[0] = None;
-                            g.selected = 0;
-                        });
+                        game.server
+                            .lan
+                            .as_mut()
+                            .unwrap()
+                            .hub
+                            .guests
+                            .update(gi, |g| {
+                                g.inventory[0] = None;
+                                g.selected = 0;
+                            });
                         game.lan_guest_packet(
                             1,
                             sunrise_protocol::packets::play::Serverbound::PickItemFromEntity(

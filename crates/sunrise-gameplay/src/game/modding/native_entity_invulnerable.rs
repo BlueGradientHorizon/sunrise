@@ -87,12 +87,15 @@ impl crate::game::ServerGame<'_> {
     /// keeps no such field yet), the other kinds in the saved `Invulnerable`
     /// tag of their entity data (#916) — the tag the item damage path
     /// already refuses by.
-    pub fn entity_permanently_invulnerable(
-        &self,
-        entity: EntityRef,
-    ) -> Option<bool> {
+    pub fn entity_permanently_invulnerable(&self, entity: EntityRef) -> Option<bool> {
         match self.native_entity_target(entity)? {
-            Target::Mob(id) => Some(self.common.mobs.iter().find(|m| m.id == id)?.invulnerable_flag),
+            Target::Mob(id) => Some(
+                self.common
+                    .mobs
+                    .iter()
+                    .find(|m| m.id == id)?
+                    .invulnerable_flag,
+            ),
             t @ (Target::Player | Target::Guest(_)) => {
                 Some(self.native_player_body(t)?.health.permanently_invulnerable)
             }
@@ -103,11 +106,7 @@ impl crate::game::ServerGame<'_> {
     /// [`entity_permanently_invulnerable`](Self::entity_permanently_invulnerable):
     /// a mob's flag (saved with it), a player's body, the saved tag for the
     /// other kinds. False where the entity is gone.
-    pub fn entity_set_invulnerable(
-        &mut self,
-        entity: EntityRef,
-        invulnerable: bool,
-    ) -> bool {
+    pub fn entity_set_invulnerable(&mut self, entity: EntityRef, invulnerable: bool) -> bool {
         match self.native_entity_target(entity) {
             Some(Target::Mob(id)) => match self.common.mobs.iter_mut().find(|m| m.id == id) {
                 Some(m) => {
@@ -161,7 +160,13 @@ impl crate::game::ServerGame<'_> {
     /// zero. None for a stale handle or a kind that keeps none.
     pub fn entity_invulnerable_time(&self, entity: EntityRef) -> Option<i32> {
         match self.native_entity_target(entity)? {
-            Target::Mob(id) => Some(self.common.mobs.iter().find(|m| m.id == id)?.invulnerable_time),
+            Target::Mob(id) => Some(
+                self.common
+                    .mobs
+                    .iter()
+                    .find(|m| m.id == id)?
+                    .invulnerable_time,
+            ),
             t @ (Target::Player | Target::Guest(_)) => {
                 Some(self.native_player_body(t)?.health.invulnerable_time)
             }
@@ -171,11 +176,7 @@ impl crate::game::ServerGame<'_> {
     /// `Entity.setInvulnerableTime` (#916): the write side of
     /// [`native_entity_invulnerable_time`](Self::native_entity_invulnerable_time).
     /// False where the entity is gone or keeps no such field.
-    pub fn entity_set_invulnerable_time(
-        &mut self,
-        entity: EntityRef,
-        ticks: i32,
-    ) -> bool {
+    pub fn entity_set_invulnerable_time(&mut self, entity: EntityRef, ticks: i32) -> bool {
         let ticks = ticks.max(0);
         match self.native_entity_target(entity) {
             Some(Target::Mob(id)) => match self.common.mobs.iter_mut().find(|m| m.id == id) {
@@ -260,7 +261,12 @@ impl crate::game::ServerGame<'_> {
                 entity_type,
                 sunrise_items::items::EntityTypeTags::FALL_DAMAGE_IMMUNE,
             ),
-            source_has_tag: |tag| self.common.health_resources.damage.immunity_tag(source, tag),
+            source_has_tag: |tag| {
+                self.common
+                    .health_resources
+                    .damage
+                    .immunity_tag(source, tag)
+            },
         }
         .vanilla()
     }
@@ -360,11 +366,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `Entity.isInvulnerableTo` asked of `mob` outside a hit, for a source of `damage_type`:
     /// the vanilla answer, which `entity_invulnerability_check` listeners may change.
-    pub fn mob_query_invulnerable(
-        &self,
-        mob: &sunrise_sim::mobs::Mob,
-        damage_type: &str,
-    ) -> bool {
+    pub fn mob_query_invulnerable(&self, mob: &sunrise_sim::mobs::Mob, damage_type: &str) -> bool {
         let source = Damage::of(Self::damage_kind(
             &self.common.health_resources.damage,
             damage_type,
@@ -395,7 +397,8 @@ impl crate::game::ServerGame<'_> {
             direct: attacker,
             position: None,
         };
-        let vanilla = self.saved_refuses_damage(id, "minecraft:player_attack", self.common.creative);
+        let vanilla =
+            self.saved_refuses_damage(id, "minecraft:player_attack", self.common.creative);
         self.native_nonliving_invulnerable(id, kind, source, vanilla)
     }
 
@@ -424,7 +427,8 @@ impl crate::game::ServerGame<'_> {
         Some(match t {
             Target::Player => self.player_team(),
             Target::Guest(conn) => self
-                .common.score
+                .common
+                .score
                 .board
                 .players_team(&self.command_guest(conn)?.name),
             Target::Mob(id) => self.mob_team(id),
@@ -442,7 +446,13 @@ impl crate::game::ServerGame<'_> {
         entity: EntityRef,
     ) -> Option<bool> {
         match self.native_entity_target(entity)? {
-            Target::Mob(id) => Some(self.common.mobs.iter().find(|m| m.id == id)?.is_invulnerable()),
+            Target::Mob(id) => Some(
+                self.common
+                    .mobs
+                    .iter()
+                    .find(|m| m.id == id)?
+                    .is_invulnerable(),
+            ),
             t @ (Target::Player | Target::Guest(_)) => {
                 let p = self.native_player_body(t)?;
                 Some(p.health.permanently_invulnerable || p.health.invulnerable_time > 0)
@@ -469,11 +479,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Sets `LivingEntity.damageCooldownTime`, as mods do to let rapid hits
     /// through (0). Mobs and players.
-    pub fn entity_set_damage_cooldown_time(
-        &mut self,
-        entity: EntityRef,
-        ticks: i32,
-    ) -> bool {
+    pub fn entity_set_damage_cooldown_time(&mut self, entity: EntityRef, ticks: i32) -> bool {
         let Some(t) = self.native_entity_target(entity) else {
             return false;
         };

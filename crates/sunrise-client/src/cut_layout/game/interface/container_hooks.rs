@@ -1,24 +1,24 @@
-
-
 #![cfg(test)]
-use sunrise_client_gameplay::game::client_side::container_hooks::BUILT;
 use sunrise_client::hud::HudBatch;
+use sunrise_client_gameplay::game::client_side::container_hooks::BUILT;
 use sunrise_items::items::ItemStack;
 use winit::event::MouseButton;
 use winit::keyboard::KeyCode;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
+    use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
 
-use super::*;
+    use super::*;
 
-use sunrise_gameplay_common::game::Screen;
+    use sunrise_gameplay_common::game::Screen;
 
-use crate::game::native_entity_refs::tests::with_client_game;
+    use crate::game::native_entity_refs::tests::with_client_game;
 
-use sunrise_hooks::containers::{Button, Click, Container, ContainerHooks, SlotId, engine::with_registrants};
-use sunrise_hooks::hud;
+    use sunrise_hooks::containers::{
+        Button, Click, Container, ContainerHooks, SlotId, engine::with_registrants,
+    };
+    use sunrise_hooks::hud;
 
     /// Takes every press, drag and key.
     struct Take;
@@ -79,8 +79,7 @@ use sunrise_hooks::hud;
     impl ContainerHooks for Pass {}
     static PASS: Pass = Pass;
 
-
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_hooks_click_goes_through_the_menu() {
         with_client_game(|game| {
@@ -95,7 +94,7 @@ use sunrise_hooks::hud;
             assert!(game.inventory[9].is_none());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_taken_press_keeps_its_release_from_vanilla() {
         with_client_game(|game| {
@@ -117,7 +116,7 @@ use sunrise_hooks::hud;
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_release_taken_from_vanillas_press_ends_its_drag_unclicked() {
         with_client_game(|game| {
@@ -129,7 +128,7 @@ use sunrise_hooks::hud;
             assert!(game.client.inv_drag.is_none());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_slot_outside_the_open_menu_reads_nothing() {
         with_client_game(|game| {
@@ -145,7 +144,7 @@ use sunrise_hooks::hud;
             assert_eq!(reads(), 2, "the draw view reads nothing there either");
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_key_is_not_dispatched_while_the_recipe_search_is_focused() {
         with_client_game(|game| {
@@ -161,7 +160,7 @@ use sunrise_hooks::hud;
             assert_eq!(BUILT.with(|n| n.get()), 0);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn no_view_is_built_without_a_registrant_or_a_held_button() {
         with_client_game(|game| {

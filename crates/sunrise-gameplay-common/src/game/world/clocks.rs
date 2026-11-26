@@ -90,12 +90,10 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait ClocksGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-
-     fn sync_hub_clocks(&mut self) {
+    fn sync_hub_clocks(&mut self) {
         self.side_sync_hub_clocks();
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> ClocksGameExt1<'__sg> for G {}
-
 
 use crate::game::side_ops::presentation::PresentationSideGameExt as _;

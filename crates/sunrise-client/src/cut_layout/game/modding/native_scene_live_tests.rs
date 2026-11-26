@@ -3,13 +3,22 @@
 //! game's resources) the block-only fast path, a lit furnace's particles replayed, paused,
 //! stepped and caught up, the live particle cap, the budget's last state, entity refusals
 //! and two mods' scenes of the same id.
-use {sunrise_client_gameplay::game::client_side::native_scene::SceneBlock, sunrise_client_gameplay::game::client_side::native_scene::scene_matrix, sunrise_client_gameplay::game::client_side::native_scene_live::LiveScenes, sunrise_client_gameplay::game::client_side::native_scene_live::check, sunrise_client_gameplay::game::client_side::native_scene_live::facing_viewer, sunrise_client_gameplay::game::client_side::native_scene_live::lives, sunrise_client_gameplay::game::client_side::native_scene_live::scene_key, sunrise_client_gameplay::game::client_side::native_scene_live::ticks_to_run};
 use glam::Vec3;
 use mod_api::{
     Compound, GuiEntity, SCENE_CATCH_UP, SCENE_MAX_ANIMATING, SCENE_MAX_ENTITIES,
     SCENE_MAX_PARTICLES, Scene, SceneClock, SceneEntity, SceneError, SceneParticle, SceneView,
 };
 use sunrise_world::registry::BlockStateId;
+use {
+    sunrise_client_gameplay::game::client_side::native_scene::SceneBlock,
+    sunrise_client_gameplay::game::client_side::native_scene::scene_matrix,
+    sunrise_client_gameplay::game::client_side::native_scene_live::LiveScenes,
+    sunrise_client_gameplay::game::client_side::native_scene_live::check,
+    sunrise_client_gameplay::game::client_side::native_scene_live::facing_viewer,
+    sunrise_client_gameplay::game::client_side::native_scene_live::lives,
+    sunrise_client_gameplay::game::client_side::native_scene_live::scene_key,
+    sunrise_client_gameplay::game::client_side::native_scene_live::ticks_to_run,
+};
 
 fn cow(pos: [f64; 3]) -> SceneEntity {
     SceneEntity::new(GuiEntity::kind("minecraft:cow"), pos)
@@ -186,8 +195,10 @@ fn draw(
 ) -> (Result<(), SceneError>, usize) {
     let mut batch = sunrise_client::hud::HudBatch::scratch([320, 240]);
     let result =
-        sunrise_client_gameplay::game::client_side::api_values_client::aggregates::scene_blocks(&scene.blocks)
-            .and_then(|prepared| game.native_draw_scene(&mut batch, RECT, &prepared, scene, view));
+        sunrise_client_gameplay::game::client_side::api_values_client::aggregates::scene_blocks(
+            &scene.blocks,
+        )
+        .and_then(|prepared| game.native_draw_scene(&mut batch, RECT, &prepared, scene, view));
     (result, batch.vertices.len())
 }
 
@@ -430,7 +441,9 @@ fn two_mods_scenes_of_the_same_id_keep_their_own_state() {
     crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
         let blocks = vec![mod_api::SceneBlock::new([0, 0, 0], lit_furnace(game), None)];
         let scene = Scene::new(blocks.clone()).with_clock(SceneClock::new(1, 0, 0.0));
-        let as_mod = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: &'static str, ticks: Vec<u64>| {
+        let as_mod = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                      id: &'static str,
+                      ticks: Vec<u64>| {
             let _guard = enter_native_mod(ModCall {
                 id,
                 hook: "menu_screen_draw",

@@ -9,9 +9,9 @@ use super::{
     commands::{Target, entity_pitch},
     vehicle_teleport::TeleportMotion,
 };
-use sunrise_gameplay_common::game::{collision_source::Mover, move_gate::MoveWho};
 use mod_api::{EntityRef, MoveCause};
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::{collision_source::Mover, move_gate::MoveWho};
 use sunrise_world::entity_move::MoverType;
 
 /// `Level.isInSpawnableBounds` and `/tp`'s limits: 30,000,000 blocks out,
@@ -133,7 +133,8 @@ impl crate::game::ServerGame<'_> {
         delta: [f64; 3],
         cause: MoveCause,
     ) -> Option<[f64; 3]> {
-        if !self.common.is_logical_server() || !sunrise_sim::move_gate::valid_mod_move_delta(delta) {
+        if !self.common.is_logical_server() || !sunrise_sim::move_gate::valid_mod_move_delta(delta)
+        {
             return None;
         }
         let mover = sunrise_sim::move_gate::mover_of(cause)?;
@@ -434,7 +435,7 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
     #[test]
     #[ignore = "daily"]
     fn moves_and_pushes_a_live_mob() {

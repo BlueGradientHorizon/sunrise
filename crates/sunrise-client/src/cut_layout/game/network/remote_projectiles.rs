@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(feature = "client")]
 #[cfg(test)]
@@ -12,7 +10,11 @@ pub(crate) mod entity_tick_tests {
 
     /// A server's `AddEntity` of an arrow, through the packet path that tracks it: a listener's
     /// handle for a client entity resolves only for one the server told this client of.
-    fn add_arrow(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: i32, position: [f64; 3]) {
+    fn add_arrow(
+        game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+        id: i32,
+        position: [f64; 3],
+    ) {
         let kind = game
             .client
             .remote

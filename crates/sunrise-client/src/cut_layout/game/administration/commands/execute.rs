@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 #[path = "execute_facing_tests.rs"]
@@ -7,11 +5,15 @@ pub(crate) mod execute_facing_tests;
 
 #[cfg(test)]
 pub(crate) mod terminal_fork_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::{Settings, load_resources}};
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_level::chunk::Chunk;
+    use {
+        crate::game::{Settings, load_resources},
+        sunrise_gameplay_common::game::Options,
+        sunrise_gameplay_common::game::Progress,
+    };
 
     #[allow(unused_imports)]
 pub(crate) use sunrise_gameplay::game::server_side::commands_server::execute::terminal_fork_tests::capture;
@@ -37,7 +39,8 @@ pub(crate) use sunrise_gameplay::game::server_side::commands_server::execute::te
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
         options.game_dir = Some(std::env::current_dir().unwrap().join("game"));
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -133,8 +136,8 @@ pub(crate) use sunrise_gameplay::game::server_side::commands_server::execute::te
 
 #[cfg(test)]
 pub(crate) mod score_condition_tests {
+    use sunrise_gameplay::game::game_tests::tests::server_game;
     use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay::game::game_tests::tests::server_game;
 
     pub(crate) fn game(
         resources: &mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,

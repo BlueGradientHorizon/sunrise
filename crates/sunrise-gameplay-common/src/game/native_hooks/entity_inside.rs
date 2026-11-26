@@ -22,7 +22,7 @@ impl HitLevel<'_> {
 pub mod sweep_tests {
     use super::*;
 
-/// The `entity_inside` part the player's sweep tests install: it draws the
+    /// The `entity_inside` part the player's sweep tests install: it draws the
     /// level's random once a contact (vanilla's order), queues a push and a wither
     /// effect around the freeze, and can kill or panic on later contacts.
     #[derive(Clone, Default)]
@@ -31,11 +31,10 @@ pub mod sweep_tests {
         pub wither: std::sync::Arc<std::sync::Mutex<Option<mod_api::EffectKey>>>,
         pub speed: std::sync::Arc<std::sync::Mutex<Option<mod_api::EffectKey>>>,
         pub hurt_after: Option<(usize, f32)>,
-        pub generic:
-            std::sync::Arc<std::sync::Mutex<Option<mod_api::DamageTypeKey>>>,
+        pub generic: std::sync::Arc<std::sync::Mutex<Option<mod_api::DamageTypeKey>>>,
         pub panic_after: Option<usize>,
     }
-#[mod_api::sunrise_part]
+    #[mod_api::sunrise_part]
     impl mod_api::BlockPart for InsidePart {
         fn entity_inside(
             &self,
@@ -88,8 +87,8 @@ pub mod sweep_tests {
             }
         }
     }
-pub(in crate::game) struct InsideMod(pub(in crate::game) InsidePart);
-#[mod_api::__subscriptions]
+    pub(in crate::game) struct InsideMod(pub(in crate::game) InsidePart);
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for InsideMod {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
             *self.0.generic.lock().unwrap() = Some(r.damage_type_key("minecraft:generic"));
@@ -107,49 +106,12 @@ pub(in crate::game) struct InsideMod(pub(in crate::game) InsidePart);
     /// The part's mods, installed with their parts as a game's open does, before
     /// `with_game`: the game that opens then publishes the block index itself (the
     /// #824 parts-resolution order).
-    pub fn install_inside_mod(
-        name: &'static str,
-        part: &InsidePart,
-    ) -> mod_api::Mods {
+    pub fn install_inside_mod(name: &'static str, part: &InsidePart) -> mod_api::Mods {
         let entry =
             |part: &InsidePart| mod_api::ModEntry::new(name, Box::new(InsideMod(part.clone())));
         crate::game::api_values::install_parts(&[entry(part)]).unwrap();
         vec![entry(part)].into()
     }
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
-
-    
 
     /// An arrow for the sweep tests: an arrow state, its move recorded.
     pub fn arrow_shot(
@@ -171,4 +133,3 @@ pub(in crate::game) struct InsideMod(pub(in crate::game) InsidePart);
         shot
     }
 }
-

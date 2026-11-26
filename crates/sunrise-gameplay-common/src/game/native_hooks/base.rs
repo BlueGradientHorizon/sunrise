@@ -1005,16 +1005,17 @@ pub trait BaseGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The server-owned holders' attachments; `TYPE.get(host, holder)` reads
     /// one. On a client it is the copy of what the server synced: `set` and
     /// `remove` change only the copy.
-     fn attachments(&mut self) -> &mut dyn AttachmentStore {
+    fn attachments(&mut self) -> &mut dyn AttachmentStore {
         <Self::State as crate::game::Side>::attachment_store(self)
     }
     /// Whether the player left mod `mod_id` on in Options > Mods. A mod
     /// turned off does nothing (check this first in each hook) until the
     /// launcher's next build leaves it out.
-     fn on(&self, mod_id: &str) -> bool {
-        !self
-            .mods
-            .code_disabled(&crate::game::Side::mods_list(self.side_state()).disabled, mod_id)
+    fn on(&self, mod_id: &str) -> bool {
+        !self.mods.code_disabled(
+            &crate::game::Side::mods_list(self.side_state()).disabled,
+            mod_id,
+        )
     }
     /// The recipes of type `kind` (`minecraft:smelting`, `mymod:crusher`), vanilla's
     /// types and mods' own alike, from `data/<namespace>/recipe/*.json` of vanilla,
@@ -1031,10 +1032,7 @@ pub trait BaseGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// single-player window included, sees vanilla's and the content mods' recipes,
     /// not the world's data packs', unless a mod had the server send it the type
     /// (`native_datapack_sync`).
-     fn recipes_of_type(
-        &self,
-        kind: &str,
-    ) -> crate::game::api_values::RecipeListing {
+    fn recipes_of_type(&self, kind: &str) -> crate::game::api_values::RecipeListing {
         if self.outside_world() {
             return Default::default();
         }
@@ -1051,7 +1049,7 @@ pub trait BaseGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// whether a stack fits. Items the game doesn't know are left out; None
     /// for missing tags, invalid inputs or when no named item is known, and
     /// outside a world. Existing-empty tags retain an empty ingredient.
-     fn recipe_ingredient(
+    fn recipe_ingredient(
         &self,
         json: &str,
     ) -> Result<Option<Ingredient>, mod_api::RecipeJsonError> {
@@ -1088,10 +1086,7 @@ pub trait BaseGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `minecraft:`), `count` (1 by default, up to 99) and `components`. None
     /// without an `id`, for an item the game doesn't know or a count outside
     /// that, and outside a world.
-     fn recipe_result(
-        &self,
-        json: &str,
-    ) -> Result<Option<ItemStack>, mod_api::RecipeJsonError> {
+    fn recipe_result(&self, json: &str) -> Result<Option<ItemStack>, mod_api::RecipeJsonError> {
         if self.outside_world() {
             return Ok(None);
         }
@@ -1106,7 +1101,6 @@ pub trait BaseGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> BaseGameExt1<'__sg> for G {}
-
 
 pub fn startup_setting(mod_id: &str, key: &str) -> Option<String> {
     if crate::game::another_mods(mod_id) {

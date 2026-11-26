@@ -1,6 +1,6 @@
-use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use crate::game::remote::passage_cross_tests::scene;
 use crate::game::remote::passage_cross_tests::sent;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use mod_api::{PassageCrossError, PassageId};
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::packets::play::{self, Clientbound as C, Serverbound as S, relative};

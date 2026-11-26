@@ -7,7 +7,11 @@ use sunrise_sim::recipe_book::{
 };
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn send_guest_mod_book_placement(&self, conn: u32, frame: sync::Frame) {
-        if let Some(guest) = self.server.lan.as_ref().and_then(|host| host.hub.guest(conn))
+        if let Some(guest) = self
+            .server
+            .lan
+            .as_ref()
+            .and_then(|host| host.hub.guest(conn))
             && let Some(data) = settings_codec::encode(&Message::Placement(frame))
         {
             guest.send(&C::CustomPayload(CustomPayload {
@@ -25,13 +29,15 @@ impl crate::game::ServerGame<'_> {
         match frame {
             sync::Frame::Hello { epoch, schema } => {
                 let actual = self
-                    .common.native_net
+                    .common
+                    .native_net
                     .book_connections
                     .get(&conn)
                     .and_then(|connection| connection.authority.as_ref())
                     .map(|authority| authority.epoch);
                 let response = if actual == Some(epoch) {
-                    self.common.native_net
+                    self.common
+                        .native_net
                         .placement
                         .servers
                         .entry(conn)

@@ -1,8 +1,12 @@
 //! `FishingHook.getOpenWaterTypeForBlock` tests `!state.isAir()`, and `isAir()` covers
 //! cave_air and void_air: a hook over a source under a cave's air is open water, so its
 //! catch can be treasure. (A stone block is not air, so it is not open water either.)
-use {sunrise_gameplay::game::server_side::fishing::FISHING_TABLE, sunrise_gameplay::game::server_side::fishing::fishing_loot, sunrise_gameplay::game::server_side::fishing::hook_params};
 use sunrise_world::loot::LootStack;
+use {
+    sunrise_gameplay::game::server_side::fishing::FISHING_TABLE,
+    sunrise_gameplay::game::server_side::fishing::fishing_loot,
+    sunrise_gameplay::game::server_side::fishing::hook_params,
+};
 
 #[test]
 #[ignore = "daily"]

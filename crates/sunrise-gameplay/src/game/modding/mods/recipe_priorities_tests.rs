@@ -20,7 +20,10 @@ fn jar(store: &Path, id: &str, digit: char, files: &[(String, Vec<u8>)]) -> JarR
     let mut archive = sunrise_assets::zip::ZipWriter::new(std::fs::File::create(path).unwrap());
     for (path, bytes) in files {
         archive
-            .start_file(path, sunrise_assets::zip::write::SimpleFileOptions::default())
+            .start_file(
+                path,
+                sunrise_assets::zip::write::SimpleFileOptions::default(),
+            )
             .unwrap();
         archive.write_all(bytes).unwrap();
     }

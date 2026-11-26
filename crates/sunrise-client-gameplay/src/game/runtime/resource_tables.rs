@@ -1,5 +1,3 @@
-
-
 #[cfg(feature = "client")]
 #[cfg(any(test, feature = "test-support"))]
 thread_local! {
@@ -9,10 +7,7 @@ thread_local! {
 
 #[cfg(feature = "client")]
 #[cfg(any(test, feature = "test-support"))]
-pub fn with_dynamic_texture_pool_override<R>(
-    pool: bool,
-    f: impl FnOnce() -> R,
-) -> R {
+pub fn with_dynamic_texture_pool_override<R>(pool: bool, f: impl FnOnce() -> R) -> R {
     struct Restore(Option<bool>);
     impl Drop for Restore {
         fn drop(&mut self) {

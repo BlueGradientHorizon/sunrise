@@ -10,10 +10,7 @@ use crate::game::creatures::projectiles_120_124_tests::*;
 use std::collections::BTreeMap;
 use sunrise_core::random::{LegacyRandom, RandomSource};
 
-pub(crate) fn alive_124(
-    game: &sunrise_gameplay::game::ServerGame<'_>,
-    t: Target124,
-) -> bool {
+pub(crate) fn alive_124(game: &sunrise_gameplay::game::ServerGame<'_>, t: Target124) -> bool {
     match t {
         Target124::Boat(id) => game.boats.iter().any(|b| b.id == id),
         Target124::Cart(id) => game.carts.iter().any(|c| c.id == id),

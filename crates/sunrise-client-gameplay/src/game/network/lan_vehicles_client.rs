@@ -1,6 +1,6 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::lan_common::corners;
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_gameplay_common::game::lan_common::corners;
 
 impl ClientGame<'_> {
     /// The box of a boat, minecart, armor stand, item frame, painting or general row, and
@@ -54,7 +54,8 @@ impl ClientGame<'_> {
         }
         if !self.common.persist.removals.is_empty()
             && self
-                .common.persist
+                .common
+                .persist
                 .removals
                 .contains(&sunrise_gameplay_common::game::commands_common::Target::General(id))
         {

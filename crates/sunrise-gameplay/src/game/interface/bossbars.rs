@@ -30,11 +30,7 @@ impl BossState {
     /// What a viewer was last sent for a bar: progress, color, overlay and
     /// the darken, music and fog flags.
     #[cfg(any(test, feature = "test-support"))]
-    pub fn sent_state(
-        &self,
-        viewer: u128,
-        bar: u128,
-    ) -> Option<(f32, i32, i32, bool, bool, bool)> {
+    pub fn sent_state(&self, viewer: u128, bar: u128) -> Option<(f32, i32, i32, bool, bool, bool)> {
         let o = self.sent.get(&viewer)?.get(&bar)?;
         Some((o.progress, o.color, o.overlay, o.darken, o.music, o.fog))
     }
@@ -256,9 +252,15 @@ impl crate::game::ServerGame<'_> {
                 Ok(self.server.bosses.bars.bars.len() as i32)
             }
             "bossbar.get" => {
-                let b = self.server.bosses.bars.get(&bar).cloned().unwrap_or_else(|| {
-                    sunrise_game_data::bossbar::BossBar::new(&bar, sb::literal(&bar))
-                });
+                let b = self
+                    .server
+                    .bosses
+                    .bars
+                    .get(&bar)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        sunrise_game_data::bossbar::BossBar::new(&bar, sb::literal(&bar))
+                    });
                 let s = b.display_name();
                 Ok(match last.as_str() {
                     "value" => {
@@ -561,12 +563,17 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn update_dragon_bar_name(&mut self) {
         // `EnderDragon.aiStep` calls `updateDragon` only while it has AI (and
         // is alive); `kill`/`tickDeath` call it too, so a dead dragon updates.
-        let ticks = self.common.dragon.as_ref().is_some_and(|d| !d.alive() || !d.no_ai);
+        let ticks = self
+            .common
+            .dragon
+            .as_ref()
+            .is_some_and(|d| !d.alive() || !d.no_ai);
         if !ticks || !self.is_fight_dragon() {
             return;
         }
         let custom = self
-            .common.dragon
+            .common
+            .dragon
             .as_ref()
             .filter(|d| d.id != 0)
             .and_then(|d| self.common.persist_raw(d.id))
@@ -646,7 +653,8 @@ impl crate::game::ServerGame<'_> {
         if viewer.here {
             let range = f64::from(10.min(viewer.view_chunks.max(0)) * 16);
             for m in self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .filter(|m| m.species() == Species::Wither && m.alive() && !m.removed)
             {
@@ -869,8 +877,6 @@ pub mod audience_tests {
         let index = guests.iter().position(|g| g.uuid == 2).unwrap();
         guests.update(index, |g| g.position = [0.0, 100.0, 0.0]);
     }
-
-    
 }
 
 #[cfg(test)]
@@ -933,4 +939,3 @@ pub(in crate::game) mod listing_tests {
 }
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
-

@@ -11,7 +11,8 @@ pub trait Hooks {
     /// longer hold (a machine that is gone), and they stop forcing their
     /// chunks. A callback's removals are visible to that callback immediately,
     /// but are discarded if it panics or incurs a phase refusal. Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::validate_tickets::ServerGame<'_>::native_validate_tickets", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::validate_tickets::ServerGame<'_>::native_validate_tickets",
         dispatch = "flat",
         side = "server",
         contract = "listen",

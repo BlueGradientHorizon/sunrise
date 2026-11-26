@@ -1,20 +1,16 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use sunrise_core::nbt::Tag;
+    use sunrise_core::nbt::Tag;
 
-pub fn flt(v: f32) -> Tag {
+    pub fn flt(v: f32) -> Tag {
         Tag::Float(v.to_bits())
     }
-#[cfg(any(test, feature = "test-support"))]
-#[derive(Clone)]
-    pub struct FoodEffectMod(
-        pub std::sync::Arc<std::sync::atomic::AtomicBool>,
-    );
-#[cfg(any(test, feature = "test-support"))]
-#[mod_api::__subscriptions]
+    #[cfg(any(test, feature = "test-support"))]
+    #[derive(Clone)]
+    pub struct FoodEffectMod(pub std::sync::Arc<std::sync::atomic::AtomicBool>);
+    #[cfg(any(test, feature = "test-support"))]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for FoodEffectMod {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
             for id in ["test:comfort", "test:nourishment"] {
@@ -36,8 +32,8 @@ pub fn flt(v: f32) -> Tag {
             }
         }
     }
-#[cfg(any(test, feature = "test-support"))]
-#[mod_api::sunrise_part]
+    #[cfg(any(test, feature = "test-support"))]
+    #[mod_api::sunrise_part]
     impl mod_api::MobEffectPart for FoodEffectMod {
         fn should_apply_effect_tick_this_tick(
             &self,
@@ -80,18 +76,18 @@ pub fn flt(v: f32) -> Tag {
             }
         }
     }
-#[cfg(any(test, feature = "test-support"))]
-pub struct OtherEffectMod;
-#[cfg(any(test, feature = "test-support"))]
-#[mod_api::__subscriptions]
+    #[cfg(any(test, feature = "test-support"))]
+    pub struct OtherEffectMod;
+    #[cfg(any(test, feature = "test-support"))]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for OtherEffectMod {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
             let effect = r.effect_key("other-mod:foreign");
             r.mob_effect_part(&effect, OtherEffectMod).unwrap();
         }
     }
-#[cfg(any(test, feature = "test-support"))]
-#[mod_api::sunrise_part]
+    #[cfg(any(test, feature = "test-support"))]
+    #[mod_api::sunrise_part]
     impl mod_api::MobEffectPart for OtherEffectMod {
         fn should_apply_effect_tick_this_tick(
             &self,
@@ -108,5 +104,4 @@ pub struct OtherEffectMod;
             panic!("another mod's apply listener must not run");
         }
     }
-
 }

@@ -11,7 +11,9 @@ impl crate::game::ClientGame<'_> {
             .ghost
             .iter()
             .filter_map(|ghost| {
-                let slot = sunrise_gameplay_common::game::inventory_slots::container_slot_index(ghost.slot)?;
+                let slot = sunrise_gameplay_common::game::inventory_slots::container_slot_index(
+                    ghost.slot,
+                )?;
                 let (x, y) = self.native_screen_slot(slot)?;
                 let (x, y) = (ox + x, oy + y);
                 // Clip in floating-point screen space before the shared integer

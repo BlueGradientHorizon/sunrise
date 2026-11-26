@@ -2,8 +2,8 @@
 //! their binding is down and counting its presses for `consume_click`. Keys reach them on one
 //! route with `input_key`, from the window and the control socket alike; mouse buttons from the
 //! window and the control socket's `mouse`.
-use crate::game::ClientGame;
 use super::key_codes::{gameplay_has_keyboard, glfw_modifiers};
+use crate::game::ClientGame;
 use mod_api::{ClientModifiers, KeyConflictContext, MappingError, ModKeyMappingRef, ModKeyRefusal};
 use sunrise_client::keymapping::{KeyAction, MappingContext, ModBinding, ModKeySlot};
 use sunrise_game_data::text::Text;
@@ -144,7 +144,9 @@ impl ClientGame<'_> {
     /// settings are saved as Controls saves them.
     fn mod_keys_changed(&mut self) {
         self.bind_mod_mappings();
-        self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+        self.client
+            .settings
+            .save(&sunrise_gameplay_common::game::options_path());
     }
     /// One key event, the window's after it handled it or the control socket's: the mods'
     /// mappings bound to it hear it (`KeyMapping.set`, `KeyMapping.click`), then `input_key`
@@ -213,7 +215,9 @@ impl ClientGame<'_> {
         };
         let screen_open = self.mod_mappings_screen_open();
         let held = glfw_modifiers(self.client.modifiers);
-        self.client.mod_keys.button(button, action, screen_open, held);
+        self.client
+            .mod_keys
+            .button(button, action, screen_open, held);
     }
     fn mod_mappings_input(&mut self, input: &str, action: KeyAction, mouse: bool) {
         let screen_open = self.mod_mappings_screen_open();

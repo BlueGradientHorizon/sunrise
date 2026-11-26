@@ -1,35 +1,33 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
-use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1;
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
-use sunrise_gameplay_common::game::server_side::native_scoreboard::tests::guest;
+    use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1;
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
+    use sunrise_gameplay_common::game::server_side::native_scoreboard::tests::guest;
+    use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
 
-use sunrise_gameplay::game::server_side::native_scoreboard::tests::open_lan;
+    use sunrise_gameplay::game::server_side::native_scoreboard::tests::open_lan;
 
-use sunrise_gameplay::game::lan::LanSettings;
+    use sunrise_gameplay::game::lan::LanSettings;
 
-use super::super::native_entity_refs::tests::with_game;
+    use super::super::native_entity_refs::tests::with_game;
 
-use super::*;
+    use super::*;
 
-use mod_api::{TeamColor, prelude::ScoreboardServerHost, text::TextStyle};
+    use mod_api::{TeamColor, prelude::ScoreboardServerHost, text::TextStyle};
 
-use mod_api::ObjectiveRenderType;
+    use mod_api::ObjectiveRenderType;
 
-use mod_api::ObjectiveError;
+    use mod_api::ObjectiveError;
 
-use mod_api::ScoreHolder;
+    use mod_api::ScoreHolder;
 
-use mod_api::DisplaySlot;
+    use mod_api::DisplaySlot;
 
-use sunrise_game_data::scoreboard as sb;
+    use sunrise_game_data::scoreboard as sb;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn objectives_are_written_synced_saved_and_stale_once_removed() {
         with_game(|game| {

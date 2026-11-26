@@ -1,12 +1,15 @@
-
-
 #[cfg(test)]
 mod tests {
-    use {crate::game::api_values::block_edit::*, sunrise_gameplay_common::game::api_values::block_edit::{BlockInput, BlockStateId, block_metadata_table, column_palette, compile_filter, prepare}};
     use mod_api::{StateConstraint, StatePredicate, StatePredicateRecord, StatePredicateTarget};
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use std::collections::{HashMap, HashSet};
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use sunrise_world::registry::BlockRegistry;
+    use {
+        crate::game::api_values::block_edit::*,
+        sunrise_gameplay_common::game::api_values::block_edit::{
+            BlockInput, BlockStateId, block_metadata_table, column_palette, compile_filter, prepare,
+        },
+    };
 
     fn registry() -> BlockRegistry {
         mod_platform::__private::part_tests::install_parts_fixture(&[]).unwrap();

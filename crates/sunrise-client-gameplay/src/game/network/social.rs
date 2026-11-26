@@ -86,7 +86,12 @@ impl crate::game::ClientGame<'_> {
             let (name, skin, removed) = match online(id) {
                 Some(p) => (p.name.clone(), p.skin.clone(), false),
                 None => (
-                    self.client.social.names.get(&id).cloned().unwrap_or_default(),
+                    self.client
+                        .social
+                        .names
+                        .get(&id)
+                        .cloned()
+                        .unwrap_or_default(),
                     sunrise_level::profile_lookup::default_skin(id).to_owned(),
                     true,
                 ),
@@ -152,7 +157,12 @@ impl crate::game::ClientGame<'_> {
         );
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Foreground);
         if let Some(tooltip) = tooltip {
-            sunrise_client::ui::tooltip(batch, &self.client.gui.atlas, &[tooltip], self.client.cursor);
+            sunrise_client::ui::tooltip(
+                batch,
+                &self.client.gui.atlas,
+                &[tooltip],
+                self.client.cursor,
+            );
         }
     }
     pub(in crate::game::client_side) fn social_click(&mut self) -> bool {
@@ -183,7 +193,13 @@ impl crate::game::ClientGame<'_> {
             }
             Action::Hide(id) | Action::Show(id) => {
                 let hiding = matches!(action, Action::Hide(_));
-                let name = self.client.social.names.get(&id).cloned().unwrap_or_default();
+                let name = self
+                    .client
+                    .social
+                    .names
+                    .get(&id)
+                    .cloned()
+                    .unwrap_or_default();
                 if hiding {
                     self.client.social.hidden.insert(id);
                 } else {

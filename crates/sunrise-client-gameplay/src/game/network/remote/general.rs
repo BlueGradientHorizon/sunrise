@@ -1,20 +1,16 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use crate::game::{
-        client_side::remote_client::general::{RemoteGeneral, tick_remote_general},
-    };
+    use crate::game::client_side::remote_client::general::{RemoteGeneral, tick_remote_general};
 
-use sunrise_gameplay_common::game::remote::Lerp;
+    use sunrise_gameplay_common::game::remote::Lerp;
 
-use indexmap::IndexMap;
+    use indexmap::IndexMap;
 
-use std::collections::HashMap;
+    use std::collections::HashMap;
 
-#[cfg(test)]
-#[test]
+    #[cfg(test)]
+    #[test]
     fn a_move_is_reached_in_three_ticks_and_each_tick_keeps_the_one_before() {
         let row = RemoteGeneral::new(
             0,
@@ -44,7 +40,7 @@ use std::collections::HashMap;
         // Reached: it stays, and only ages.
         assert_eq!(seen[3], (3.0, 3.0, [90.0, 30.0], 4));
     }
-/// The ids of the rows present on the window.
+    /// The ids of the rows present on the window.
     pub fn row_ids(game: &crate::game::ClientGame<'_>) -> Vec<i32> {
         let mut ids: Vec<i32> = game
             .client
@@ -59,9 +55,7 @@ use std::collections::HashMap;
         ids.sort_unstable();
         ids
     }
-pub fn rows(
-        game: &crate::game::ClientGame<'_>,
-    ) -> IndexMap<i32, RemoteGeneral> {
+    pub fn rows(game: &crate::game::ClientGame<'_>) -> IndexMap<i32, RemoteGeneral> {
         game.client.remote.as_ref().unwrap().general.rows.clone()
     }
 }

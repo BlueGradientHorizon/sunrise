@@ -1,5 +1,3 @@
-
-
 #[cfg(feature = "client")]
 #[inline(always)]
 pub(in crate::game) fn native_add_client_reload_listeners(

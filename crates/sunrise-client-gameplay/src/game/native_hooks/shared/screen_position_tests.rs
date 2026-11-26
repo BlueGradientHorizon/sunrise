@@ -1,5 +1,10 @@
-use {crate::game::native_hooks::*, sunrise_gameplay_common::game::native_hooks::{ScreenOpening, Tag, Text, mod_api, screen_opening}};
 use std::sync::{Arc, Mutex};
+use {
+    crate::game::native_hooks::*,
+    sunrise_gameplay_common::game::native_hooks::{
+        ScreenOpening, Tag, Text, mod_api, screen_opening,
+    },
+};
 
 #[derive(Debug, PartialEq)]
 pub struct Frame {

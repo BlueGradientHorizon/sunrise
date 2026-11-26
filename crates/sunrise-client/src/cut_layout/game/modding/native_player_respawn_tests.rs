@@ -1,8 +1,8 @@
 //! `PlayerRef::respawn` through the public handle: the Respawn button for a dead player, and
 //! each refusal by name.
-use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use mod_api::{Hooks, PlayerRespawnedEvent, RespawnRefusal, ServerHost, prelude::*};
 use std::sync::{Arc, Mutex};
+use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 
 fn set_dead(game: &mut sunrise_gameplay::game::ServerGame<'_>, conn: u32, dead: bool) {
     game.server
@@ -126,7 +126,9 @@ fn each_respawn_refusal_has_its_own_name_and_changes_nothing() {
 
         // The world's own player has none either.
         {
-            let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(game, false);
+            let _serving = sunrise_gameplay::game::server_side::integrated::tests::install_serving(
+                game, false,
+            );
             game.level.player_uuid = Some([0, 0, 0, 99]);
             let mut body = PlayerMotion::new(game.motion, Vec3::new(0.0, 64.0, 0.0)).unwrap();
             body.entity_id = 99;

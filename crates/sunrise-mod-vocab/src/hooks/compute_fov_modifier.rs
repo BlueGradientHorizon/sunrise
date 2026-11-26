@@ -4,7 +4,8 @@ pub trait Hooks {
     /// Player FOV scale, once per client tick with a player, after vanilla
     /// effects and before zoom and easing.
     /// Invalid values or values outside 0.01..=10 revert to base.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::compute_fov_modifier::ClientGame<'_>::native_compute_fov_modifier", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::compute_fov_modifier::ClientGame<'_>::native_compute_fov_modifier",
         receiver = "read",
         dispatch = "flat",
         side = "client",

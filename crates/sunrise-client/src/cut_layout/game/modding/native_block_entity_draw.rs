@@ -1,14 +1,12 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_client_gameplay::game::client_side::native_block_entity_draw::tests::draw;
+    use sunrise_client_gameplay::game::client_side::native_block_entity_draw::tests::draw;
 
-use super::*;
+    use super::*;
 
-/// A mod registers a layer (`register_layer_definitions`) at start: the game bakes it by its
+    /// A mod registers a layer (`register_layer_definitions`) at start: the game bakes it by its
     /// id and draws it, before and after a resource reload, beside vanilla's layers. The cube's
     /// south face, (0, 0, 1) to (1, 1, 1) in its part's frame, sits a block east of the part's
     /// origin and then the frame's 10.
@@ -67,8 +65,10 @@ use super::*;
                 assert_eq!(drawn(game), face);
                 assert!(game.bake_layer("golem_mod:other#main").is_none());
                 assert!(game.bake_layer("minecraft:zombie#main").is_some());
-                game.spawn_pack_reload(sunrise_client_gameplay::game::client_side::packs::ReloadKind::Selection)
-                    .unwrap();
+                game.spawn_pack_reload(
+                    sunrise_client_gameplay::game::client_side::packs::ReloadKind::Selection,
+                )
+                .unwrap();
                 let started = std::time::Instant::now();
                 while game.client.pack_reload.0.is_some() {
                     assert!(

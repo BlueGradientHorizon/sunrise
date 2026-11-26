@@ -1,11 +1,14 @@
 //! A mod's world pickup and placement of fluid in a real game: decided at the call, its block
 //! kept by the transaction, its updates, drops and effects at the outermost commit, nothing of
 //! it after an abort.
-use {sunrise_gameplay::game::dispense_fixture, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{FluidStack, HostTransaction, LevelRef, ServerHost, TransactionError};
 use std::sync::Arc;
 use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 use sunrise_world::registry::BlockStateId;
+use {
+    sunrise_gameplay::game::dispense_fixture,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 const AT: [i32; 3] = [2, 65, 2];
 
@@ -341,9 +344,9 @@ fn a_later_write_that_puts_the_block_back_keeps_its_block_entity_at_the_commit()
 #[test]
 #[ignore = "daily"]
 fn journal_level_host_stages_block_entity_random_and_effect_changes() {
-    use sunrise_gameplay::game::journal_level_write::JournalLevelWrite;
     use mod_api::{BlockPos, BlockUpdateFlags, LevelWriteHost};
     use sunrise_core::{position::ChunkPos, ticks::TickTypeId};
+    use sunrise_gameplay::game::journal_level_write::JournalLevelWrite;
     use sunrise_world::fluid::FluidKind;
 
     with_level(|game, level| {
@@ -458,8 +461,8 @@ fn journalled_removal_keeps_fluid_and_restores_a_block_entity_on_abort() {
 #[test]
 #[ignore = "daily"]
 fn journal_level_host_retains_neighbour_updates_from_earlier_writes() {
-    use sunrise_gameplay::game::journal_level_write::JournalLevelWrite;
     use mod_api::{BlockUpdateFlags, LevelHost, LevelWriteHost};
+    use sunrise_gameplay::game::journal_level_write::JournalLevelWrite;
 
     with_level(|game, level| {
         let lamp_pos = [AT[0] + 1, AT[1], AT[2]];
@@ -518,8 +521,8 @@ fn journal_level_host_retains_neighbour_updates_from_earlier_writes() {
 #[test]
 #[ignore = "daily"]
 fn staged_copper_chest_weathering_keeps_its_inventory() {
-    use sunrise_gameplay::game::journal_level_write::JournalLevelWrite;
     use mod_api::{LevelHost, LevelWriteHost};
+    use sunrise_gameplay::game::journal_level_write::JournalLevelWrite;
     use sunrise_items::items::ItemStack;
     with_level(|game, level| {
         let copper = state(game, "minecraft:copper_chest");
@@ -620,7 +623,9 @@ impl mod_api::Hooks for LiquidPart {
     }
 }
 
-fn with_liquid_part(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, LevelRef, &LiquidCalls)) {
+fn with_liquid_part(
+    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, LevelRef, &LiquidCalls),
+) {
     let calls = Arc::new(LiquidCalls::default());
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "liquid_container",
@@ -639,8 +644,8 @@ fn with_liquid_part(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_
 #[test]
 #[ignore = "daily"]
 fn liquid_part_accepts_nonwater_from_bucket_and_predicts_the_same_target() {
-    use sunrise_gameplay_common::game::Hit;
     use sunrise_core::{geometry::Vec3, position::BlockPos};
+    use sunrise_gameplay_common::game::Hit;
     use sunrise_world::{fluid::FluidKind, level::BucketContent};
     with_liquid_part(|game, _, calls| {
         let mut player = sunrise_sim::motion::PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
@@ -785,9 +790,7 @@ fn declining_liquid_part_writes_never_reach_the_next_part_or_commit() {
     mod_platform::testing::with_mods(mods, || {
         with_level(|game, level| {
             let dandelion = state(game, "minecraft:dandelion");
-            game.world
-                .set(AT[0], AT[1], AT[2], dandelion)
-                .unwrap();
+            game.world.set(AT[0], AT[1], AT[2], dandelion).unwrap();
             game.storage_transaction(|game, tx| {
                 assert_eq!(
                     game.level_place_fluid(level, AT, key("minecraft:water"), None, true, tx),
@@ -856,9 +859,7 @@ fn liquid_hosts_read_the_same_comparator_signal_without_unpacking_loot() {
             Some(&pending)
         );
         let dandelion = state(game, "minecraft:dandelion");
-        game.world
-            .set(AT[0], AT[1], AT[2], dandelion)
-            .unwrap();
+        game.world.set(AT[0], AT[1], AT[2], dandelion).unwrap();
         let _ = game.storage_transaction(|game, tx| {
             assert_eq!(
                 game.level_place_fluid(level, AT, key("minecraft:water"), None, true, tx),

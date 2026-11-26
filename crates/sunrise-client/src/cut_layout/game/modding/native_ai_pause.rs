@@ -1,14 +1,12 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
-use super::super::native_entity_refs::tests::{bind_local_player, with_game};
+    use super::super::native_entity_refs::tests::{bind_local_player, with_game};
     use mod_api::{EntityRef, MobAiPauseRefusal, MobRef, WorldEpoch};
     use std::sync::Arc;
     use sunrise_core::{geometry::Vec3, nbt::Tag};
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::mobs::{Damage, DamageKind, Mob, Who};
     use sunrise_sim::motion::PlayerMotion;
@@ -37,7 +35,12 @@ use super::super::native_entity_refs::tests::{bind_local_player, with_game};
         bind_local_player(game, 20, 123);
     }
 
-    fn add(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32, name: &str, at: Vec3) -> MobRef {
+    fn add(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        id: u32,
+        name: &str,
+        at: Vec3,
+    ) -> MobRef {
         let kind = game.res.mob_types().get(name).unwrap().clone();
         let mut m = Mob::new(id, kind, at, 0.0);
         m.ground.on_ground = true;
@@ -50,7 +53,10 @@ use super::super::native_entity_refs::tests::{bind_local_player, with_game};
         game.mobs.iter().find(|m| m.id == id).unwrap()
     }
 
-    fn mob_mut<'a>(game: &'a mut sunrise_gameplay::game::ServerGame<'_>, handle: MobRef) -> &'a mut Mob {
+    fn mob_mut<'a>(
+        game: &'a mut sunrise_gameplay::game::ServerGame<'_>,
+        handle: MobRef,
+    ) -> &'a mut Mob {
         let id = handle.entity().id();
         game.mobs.iter_mut().find(|m| m.id == id).unwrap()
     }
@@ -420,16 +426,17 @@ use super::super::native_entity_refs::tests::{bind_local_player, with_game};
     #[test]
     #[ignore = "daily"]
     fn each_refusal_is_named_and_changes_nothing() {
-        use sunrise_gameplay_common::game::execution_role::ExecutionRole;
         use sunrise_gameplay_common::game::dragon_common::Dragon;
+        use sunrise_gameplay_common::game::execution_role::ExecutionRole;
         with_game(|game| {
             level(game);
             let pig = add(game, 40, "minecraft:pig", Vec3::new(3.5, 65.0, 3.5));
             let epoch = pig.entity().epoch();
-            let refused = |game: &mut sunrise_gameplay::game::ServerGame<'_>, handle: MobRef, why| {
-                assert_eq!(handle.set_ai_paused(game, true), Err(why), "{why:?}");
-                assert_eq!(handle.ai_paused(game), None, "{why:?}");
-            };
+            let refused =
+                |game: &mut sunrise_gameplay::game::ServerGame<'_>, handle: MobRef, why| {
+                    assert_eq!(handle.set_ai_paused(game, true), Err(why), "{why:?}");
+                    assert_eq!(handle.ai_paused(game), None, "{why:?}");
+                };
 
             let stale = MobRef::new(EntityRef::new(WorldEpoch::new(999), 40));
             refused(game, stale, MobAiPauseRefusal::Stale);

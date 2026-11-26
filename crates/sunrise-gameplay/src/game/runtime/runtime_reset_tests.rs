@@ -1,5 +1,8 @@
-use {sunrise_gameplay_common::game::advancements_common::AdvState, crate::game::server_side::game_server::reset_world_progress};
 use sunrise_gameplay_common::stats::Stats;
+use {
+    crate::game::server_side::game_server::reset_world_progress,
+    sunrise_gameplay_common::game::advancements_common::AdvState,
+};
 
 #[test]
 fn world_entry_invalidates_loaded_progress() {

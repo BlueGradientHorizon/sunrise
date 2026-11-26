@@ -3,7 +3,6 @@
 //! draws), entity damage with exposure and knockback, block interaction with
 //! merged drops and TNT chain priming, and optional fire.
 use super::entity::{Blast, Entity, EntityHandle, with_entity, with_entity_mut};
-use sunrise_gameplay_common::game::collider_rays::ColliderRays;
 use mod_api::ExplosionStart;
 use std::{cmp::Ordering, collections::HashSet};
 use sunrise_core::{
@@ -12,6 +11,7 @@ use sunrise_core::{
     random::{LegacyRandom, RandomSource},
 };
 use sunrise_game_data::{Result, text::Text};
+use sunrise_gameplay_common::game::collider_rays::ColliderRays;
 use sunrise_items::{blocks::Fluid, items::ItemStack};
 use sunrise_level::collisions::SceneCollisions;
 use sunrise_sim::health::DamageLevel;
@@ -253,7 +253,8 @@ pub(in crate::game::server_side) fn client_float() -> f32 {
 
 impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn explosion_entity_name(&self, id: u32, kind: &str) -> Text {
-        self.common.persist_raw(id)
+        self.common
+            .persist_raw(id)
             .and_then(|r| r.get("CustomName"))
             .map_or_else(
                 || Text::translate(&format!("entity.{}", kind.replace(':', ".")), &[]),
@@ -268,7 +269,8 @@ impl crate::game::ServerGame<'_> {
     fn explosion_cause_resolves(&self, cause: &ExplosionCause) -> bool {
         if !cause.player {
             return self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .any(|m| m.id == cause.entity.0 && !m.removed);
         }
@@ -410,14 +412,16 @@ impl crate::game::ServerGame<'_> {
             // `PrimedTnt.getOwner` is an `EntityReference`: a removed owner
             // does not resolve, though the TNT still saves its UUID.
             return self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .any(|m| m.id == *id && !m.removed)
                 .then_some(Who::Mob(*id));
         }
         if let Some(id) = self.server.combat.0.explosion_owner {
             return self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .any(|m| m.id == id && !m.removed)
                 .then_some(Who::Mob(id));
@@ -690,7 +694,8 @@ impl crate::game::ServerGame<'_> {
         // Blast protection: `EXPLOSION_KNOCKBACK_RESISTANCE` (0.15 per level and
         // piece, so two Blast Protection IV pieces cancel it).
         let resistance = self
-            .common.player
+            .common
+            .player
             .as_mut()
             .and_then(|p| p.attribute("minecraft:explosion_knockback_resistance").ok())
             .unwrap_or(0.0);
@@ -1071,7 +1076,8 @@ impl crate::game::ServerGame<'_> {
         let blast = Blast {
             vehicles_ignore: matches!(self.blast_indirect_source(), Some(Who::Mob(_)))
                 && !self
-                    .common.ui
+                    .common
+                    .ui
                     .rules
                     .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING),
             items_ignore: items_ignore_explosion(self.blast_griefs(), interaction),
@@ -1355,12 +1361,14 @@ impl crate::game::ServerGame<'_> {
                 };
                 match handle {
                     EntityHandle::Item(_) | EntityHandle::Orb(_) if destroyed => {}
-                    EntityHandle::Cart(i) => {
-                        self.common.carts.update(i, |cart| cart.push_from_explosion(push))
-                    }
-                    EntityHandle::Boat(i) => {
-                        self.common.boats.update(i, |boat| boat.push_from_explosion(push))
-                    }
+                    EntityHandle::Cart(i) => self
+                        .common
+                        .carts
+                        .update(i, |cart| cart.push_from_explosion(push)),
+                    EntityHandle::Boat(i) => self
+                        .common
+                        .boats
+                        .update(i, |boat| boat.push_from_explosion(push)),
                     other => with_entity_mut!(self, other, e => e.push_from_explosion(push)),
                 }
             }
@@ -1415,10 +1423,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Decoration hurt checks use the damage source's cause (`instanceof Mob`),
     /// unlike vehicles, which use the explosion's indirect source.
-    pub fn blast_spares_decorations(
-        &self,
-        interaction: BlockInteraction,
-    ) -> bool {
+    pub fn blast_spares_decorations(&self, interaction: BlockInteraction) -> bool {
         blast_spares_decorations(
             self.blast_griefs(),
             interaction,
@@ -1437,7 +1442,8 @@ impl crate::game::ServerGame<'_> {
         // No listener and the rule on: no mob is refused, and no cause is looked up.
         if !crate::game::ServerGame::grief_hooked(self)
             && self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
         {
@@ -1497,7 +1503,9 @@ impl crate::game::ServerGame<'_> {
             let a = &self.common.armor_stands[i];
             let p = a.position;
             if !super::armor_stands::spared_by_blast(a)
-                && !self.common.target_removed(&super::commands::Target::Stand(a.id))
+                && !self
+                    .common
+                    .target_removed(&super::commands::Target::Stand(a.id))
                 && self.server.combat.0.visits(a.id)
                 && blast_reaches(center, diameter, [p.x, p.y, p.z])
             {
@@ -1524,17 +1532,30 @@ impl crate::game::ServerGame<'_> {
                     continue;
                 }
                 // The invulnerability callback can move or remove the stand.
-                let index = if self.common.armor_stands.get(i).is_some_and(|stand| stand.id == id) {
+                let index = if self
+                    .common
+                    .armor_stands
+                    .get(i)
+                    .is_some_and(|stand| stand.id == id)
+                {
                     Some(i)
                 } else {
-                    self.common.armor_stands.iter().position(|stand| stand.id == id)
+                    self.common
+                        .armor_stands
+                        .iter()
+                        .position(|stand| stand.id == id)
                 };
                 if let Some(index) = index {
                     self.break_armor_stand_by_anything(index, damage_type, causing);
                 }
                 // An accepted removal advances the list under us. If the row
                 // stayed, advance the cursor ourselves, even after a refusal.
-                if self.common.armor_stands.get(i).is_some_and(|stand| stand.id == id) {
+                if self
+                    .common
+                    .armor_stands
+                    .get(i)
+                    .is_some_and(|stand| stand.id == id)
+                {
                     i += 1;
                 }
             } else {
@@ -1780,7 +1801,8 @@ impl crate::game::ServerGame<'_> {
     /// bottom centre of the block, with its spawn animation.
     pub(in crate::game::server_side) fn spawn_infestation(&mut self, pos: [i32; 3]) {
         if !self
-            .common.ui
+            .common
+            .ui
             .rules
             .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS)
         {
@@ -1822,7 +1844,12 @@ impl crate::game::ServerGame<'_> {
         } else if interaction != BlockInteraction::Keep {
             // Util.shuffle(list, level.random)
             for i in (2..=targets.len()).rev() {
-                let swap = self.common.world.random.next_int_bound(i as i32).unwrap_or(0) as usize;
+                let swap = self
+                    .common
+                    .world
+                    .random
+                    .next_int_bound(i as i32)
+                    .unwrap_or(0) as usize;
                 targets.swap(i - 1, swap);
             }
             let mut drops = Vec::new();
@@ -1839,11 +1866,13 @@ impl crate::game::ServerGame<'_> {
             for &pos in targets.iter() {
                 if self.common.world.random.next_int_bound(3).unwrap_or(1) == 0
                     && self
-                        .common.res
+                        .common
+                        .res
                         .facts()
                         .is_air(self.common.world.block(pos[0], pos[1], pos[2]))
                     && self
-                        .common.res
+                        .common
+                        .res
                         .facts()
                         .get(self.common.world.block(pos[0], pos[1] - 1, pos[2]))
                         .solid_render
@@ -1883,7 +1912,9 @@ impl crate::game::ServerGame<'_> {
                     .command_guest(conn)
                     .is_some_and(|g| !g.creative() && !g.spectator()),
                 None => {
-                    self.server.combat.0.blast_owner_player && !self.common.creative && !self.common.spectator()
+                    self.server.combat.0.blast_owner_player
+                        && !self.common.creative
+                        && !self.common.spectator()
                 }
             };
             self.creaking_heart_broken_by(pos, award);
@@ -1895,7 +1926,8 @@ impl crate::game::ServerGame<'_> {
         // creeper, a wither skull, a wither or a TNT minecart come out.
         if is_hive && self.server.combat.0.hive_emptying_blast {
             let facing = self
-                .common.pack
+                .common
+                .pack
                 .assets
                 .registry
                 .state(state)
@@ -1919,11 +1951,15 @@ impl crate::game::ServerGame<'_> {
         // player (a primed TNT's owner, not a mob's): ores, sculk and spawners
         // sample their experience then, and pop it while blocks drop.
         if drops && self.server.combat.0.blast_owner_player {
-            let xp = sunrise_world::level::removal::break_experience(&mut self.common.world.random, &name)
-                .unwrap_or(0);
+            let xp = sunrise_world::level::removal::break_experience(
+                &mut self.common.world.random,
+                &name,
+            )
+            .unwrap_or(0);
             if xp > 0
                 && self
-                    .common.ui
+                    .common
+                    .ui
                     .rules
                     .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS)
             {
@@ -1934,14 +1970,18 @@ impl crate::game::ServerGame<'_> {
             // Capture the entity the admitted roll actually sees. Spill, on removal below,
             // uses the stored slots rather than the serializer's output.
             if let Some(saved) = self.loot_block_entity(pos, &name) {
-                self.common.pending.record_from(&self.common.world, pos, saved);
+                self.common
+                    .pending
+                    .record_from(&self.common.world, pos, saved);
             }
             let dynamic = self.common.pending.dynamic(pos);
             // LootContextParams.EXPLOSION_RADIUS under DESTROY_WITH_DECAY: the
             // tables' survives_explosion and explosion_decay draw from their
             // random sequence.
             let decay = (interaction == BlockInteraction::DestroyWithDecay).then_some(radius);
-            let place = self.common.loot_place_at(pos.map(|v| f64::from(v) + 0.5), None);
+            let place = self
+                .common
+                .loot_place_at(pos.map(|v| f64::from(v) + 0.5), None);
             // `Explosion.getDirectSourceEntity`.
             let entity = self.server.combat.0.explosion_direct.or(self
                 .server
@@ -1978,7 +2018,8 @@ impl crate::game::ServerGame<'_> {
         // getRandomShortFuse(80); no game event.
         if is_tnt
             && self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
         {
@@ -2047,10 +2088,7 @@ impl crate::game::ServerGame<'_> {
 #[cfg(any(test, feature = "test-support"))]
 impl crate::game::ServerGame<'_> {
     /// Exercise the real explosion entity walk on an empty, headless world.
-    pub fn run_explosion_items_fixture(
-        &mut self,
-        directory: &std::path::Path,
-    ) -> Result<()> {
+    pub fn run_explosion_items_fixture(&mut self, directory: &std::path::Path) -> Result<()> {
         #[derive(serde::Deserialize)]
         struct Case {
             name: String,
@@ -2092,7 +2130,8 @@ impl crate::game::ServerGame<'_> {
                     ExplosionSource::default(),
                 );
                 let mut remaining: Vec<_> = self
-                    .common.dropped
+                    .common
+                    .dropped
                     .iter()
                     .map(|item| (item.stack.item.to_string(), item.stack.count, item.health))
                     .collect();
@@ -2172,12 +2211,12 @@ fn blast_resistance(base: f32, cap: Option<f32>, kept: bool) -> f32 {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-use sunrise_gameplay_common::game::server_side::explosion::tests::zombie_type;
+    use sunrise_gameplay_common::game::server_side::explosion::tests::zombie_type;
 
     use super::*;
 
     #[cfg(test)]
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn explosion_loot_merges_and_joins_without_block_drops() {
         use crate::game::native_entity_refs::tests::with_game;
@@ -2333,7 +2372,7 @@ use sunrise_gameplay_common::game::server_side::explosion::tests::zombie_type;
     }
 
     #[cfg(test)]
-/// Loot modifiers run before the normal prepared drop event on a mob break;
+    /// Loot modifiers run before the normal prepared drop event on a mob break;
     /// canceling the event also suppresses an infested block's silverfish.
     #[test]
     #[ignore = "daily"]
@@ -2522,14 +2561,8 @@ use sunrise_gameplay_common::game::server_side::explosion::tests::zombie_type;
         set.entries().map(|(k, _)| k.0).collect()
     }
 
-    
-
-    
-
-    
-
     #[cfg(test)]
-/// A dangerous wither skull's blast treats a block as at most 0.8 harder to
+    /// A dangerous wither skull's blast treats a block as at most 0.8 harder to
     /// break, but a `#wither_immune` block keeps its own resistance and any
     /// other blast is unchanged.
     #[test]
@@ -2541,7 +2574,7 @@ use sunrise_gameplay_common::game::server_side::explosion::tests::zombie_type;
     }
 
     #[cfg(test)]
-/// A dropped item survives a mob's blast untouched while `mobGriefing` is
+    /// A dropped item survives a mob's blast untouched while `mobGriefing` is
     /// off, and is thrown and hurt as usual by one that destroys blocks or by
     /// any blast with the rule back on.
     #[test]
@@ -2556,7 +2589,7 @@ use sunrise_gameplay_common::game::server_side::explosion::tests::zombie_type;
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn blasts_reach_entities_within_their_diameter() {
         // A TNT blast: radius 4, so the entity pass reaches 8 blocks out.
         let center = [0.5, 64.0, 0.5];
@@ -2565,10 +2598,8 @@ use sunrise_gameplay_common::game::server_side::explosion::tests::zombie_type;
         assert!(!blast_reaches(center, 8.0, [8.6, 64.0, 0.5]));
     }
 
-    
-
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_mob_that_refuses_the_hit_is_still_pushed() {
         let mut test_level = sunrise_sim::health::TestLevel::new(0);
         let level = &mut test_level.level();
@@ -2616,7 +2647,7 @@ use sunrise_gameplay_common::game::server_side::explosion::tests::zombie_type;
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn mob_griefing_off_spares_decorations_from_kept_and_mob_blasts() {
         use BlockInteraction::{Destroy, DestroyWithDecay, Keep};
         // mobGriefing on: every blast breaks them, a creeper's included.
@@ -2649,7 +2680,7 @@ use sunrise_gameplay_common::game::server_side::explosion::tests::zombie_type;
     }
 
     #[cfg(test)]
-/// The type a blast hurts with and the attacker its death message names
+    /// The type a blast hurts with and the attacker its death message names
     /// come from one cause (`DamageSources.explosion`): `player_explosion`
     /// "blown up by" that mob, or `explosion` with no one when it has none.
     fn blast_hurt(
@@ -2668,7 +2699,7 @@ use sunrise_gameplay_common::game::server_side::explosion::tests::zombie_type;
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_caused_blast_names_its_cause_under_player_explosion() {
         let creeper = Text::translate("entity.minecraft.creeper", &[]);
         let ghast = Text::translate("entity.minecraft.ghast", &[]);
@@ -2714,7 +2745,7 @@ use sunrise_gameplay_common::game::server_side::explosion::tests::zombie_type;
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn block_pos_hash_matches_vec3i() {
         // Vec3i.hashCode: (y + z * 31) * 31 + x
         assert_eq!(Key([1, 2, 3]).java_hash(), (2 + 3 * 31) * 31 + 1);
@@ -2730,7 +2761,7 @@ use sunrise_gameplay_common::game::server_side::explosion::tests::zombie_type;
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn drops_merge_up_to_sixteen() {
         let stack = |item: &str| ItemStack {
             item: item.into(),
@@ -2755,7 +2786,7 @@ use sunrise_gameplay_common::game::server_side::explosion::tests::zombie_type;
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn unstackable_drops_stay_separate() {
         let sword = ItemStack {
             item: "minecraft:diamond_sword".into(),
@@ -2772,7 +2803,7 @@ use sunrise_gameplay_common::game::server_side::explosion::tests::zombie_type;
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn drops_with_different_damage_stay_separate() {
         let pick = |damage| ItemStack {
             item: "minecraft:iron_pickaxe".into(),
@@ -2788,7 +2819,7 @@ use sunrise_gameplay_common::game::server_side::explosion::tests::zombie_type;
     }
 
     #[cfg(test)]
-/// A blast and a burst of wind cast their rays at, and push from the eyes of,
+    /// A blast and a burst of wind cast their rays at, and push from the eyes of,
     /// the mob as it stands: a baby's and a size-4 slime's own box and eye
     /// height, not the adult kind's (`Entity.getBoundingBox`, `getEyeHeight`).
     #[test]

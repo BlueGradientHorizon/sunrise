@@ -5,10 +5,7 @@ use super::*;
 
 impl crate::game::ServerGame<'_> {
     /// `Consumable.startConsuming` on the server for a held consumable.
-    pub fn server_start_eating(
-        &mut self,
-        info: &sunrise_items::items::ItemInfo,
-    ) -> bool {
+    pub fn server_start_eating(&mut self, info: &sunrise_items::items::ItemInfo) -> bool {
         let Some(stack) = self.common.held().cloned() else {
             return false;
         };
@@ -93,7 +90,12 @@ impl crate::game::ServerGame<'_> {
         // `isSameItem(getItemInHand(hand), useItem)`: another item stops the use
         // of the stack it began with, without a release. The same item goes on;
         // only the item is compared, so the start's stack is kept as it was.
-        if let Some(item) = self.common.use_start.item.take_if(|item| item.item != stack.item) {
+        if let Some(item) = self
+            .common
+            .use_start
+            .item
+            .take_if(|item| item.item != stack.item)
+        {
             self.stop_using_item(&item);
             return;
         }
@@ -254,7 +256,8 @@ impl crate::game::ServerGame<'_> {
     /// the use's slot there is nothing to vibrate, but the use still ends.
     pub fn stop_active_item_use(&mut self) {
         match self.common.use_start.item.clone().or_else(|| {
-            self.common.using
+            self.common
+                .using
                 .and_then(|(slot, _)| self.common.stack_in(slot))
                 .cloned()
         }) {
@@ -280,10 +283,18 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let new = stack.map(|s| &s.item);
-        if let Some(item) = self.common.use_start.item.take_if(|item| Some(&item.item) != new) {
+        if let Some(item) = self
+            .common
+            .use_start
+            .item
+            .take_if(|item| Some(&item.item) != new)
+        {
             self.stop_using_item(&item);
         } else if self.common.use_start.item.is_none()
-            && self.common.stack_in(slot).is_some_and(|s| Some(&s.item) != new)
+            && self
+                .common
+                .stack_in(slot)
+                .is_some_and(|s| Some(&s.item) != new)
         {
             self.stop_active_item_use();
         }

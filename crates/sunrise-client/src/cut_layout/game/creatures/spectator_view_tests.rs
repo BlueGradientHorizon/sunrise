@@ -1,6 +1,5 @@
 //! `Entity.isInvisibleTo`: a spectator sees an invisible body as the translucent
 //! one (`LivingEntityRenderer.submit`'s `forceTransparent`), anyone else not at all.
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role};
 use crate::game::{Audio, Settings, load_resources};
 use std::sync::Arc;
 use sunrise_command::args::GameMode;
@@ -11,6 +10,10 @@ use sunrise_protocol::{
     packets::play::{self, Clientbound as C},
 };
 use sunrise_sim::mobs::{Mob, MobTypes};
+use {
+    sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    sunrise_gameplay_common::game::execution_role,
+};
 
 /// The prepared vanilla resources.
 fn root() -> std::path::PathBuf {
@@ -59,7 +62,10 @@ fn game<'a>(
         crate::game::profile_resolver,
     )
     .unwrap();
-    let server = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(&mut game);
+    let server =
+        sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(
+            &mut game,
+        );
     // The atlas the game bakes at startup: `mob_geometry` finds a body's texture in it.
     game.client.gui.atlas = sunrise_client::hud::HudAtlas::build(
         &sunrise_assets::resource_source::ResourceSource::directory(root.clone()),

@@ -1,5 +1,3 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
     use mod_api::__private::game::*;
@@ -9,10 +7,6 @@ pub mod tests {
     };
     use std::sync::{Arc, Mutex};
     use sunrise_items::items::ItemStack;
-
-    
-
-    
 
     /// Asks the player query for a different state from a `player_harvest_check` listener.
     pub struct Asker(pub Arc<Mutex<Vec<(PlayerRef, Option<bool>)>>>);
@@ -28,8 +22,6 @@ pub mod tests {
             self.0.lock().unwrap().push((player, asked));
         }
     }
-
-    
 
     /// Asks the destroy-progress query from inside each hook the query runs, and records the
     /// answer: every one is None, so the hook cannot run itself again without bound.
@@ -85,9 +77,4 @@ pub mod tests {
             r.block_part(stone, RecursivePart(Arc::clone(&self.0)));
         }
     }
-
-    
 }
-
-
-

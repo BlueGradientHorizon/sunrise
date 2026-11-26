@@ -32,7 +32,8 @@ data) draws the missing texture through the mask, so the mistake shows. A key no
 the stack as holding none and is logged once for that item. The hook is
 client-only; the server keeps the fluid in the stack's own data, through `ITEM_FLUIDS` and the item's
 components, as before."##]
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::contained_fluid::ClientGame<'_>::native_contained_fluid", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::contained_fluid::ClientGame<'_>::native_contained_fluid",
         receiver = "read",
         dispatch = "flat",
         side = "client",

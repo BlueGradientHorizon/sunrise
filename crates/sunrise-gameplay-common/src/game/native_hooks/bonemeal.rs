@@ -1,4 +1,3 @@
-
 /// The hook points. Each does nothing in Sunrise.
 pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// `BonemealEvent`: bone meal from `stack` used on the block `state` at
@@ -8,7 +7,7 @@ pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// own bone meal Parts and the meal's use: `growCrop` then answers
     /// `successful` (`setSuccessful`), which is `false` unless a mod sets it.
     /// Fired on both sides; changes to `stack` stay.
-     fn native_bonemeal(&mut self, call: super::fire::BonemealCall<'_>) {
+    fn native_bonemeal(&mut self, call: super::fire::BonemealCall<'_>) {
         crate::game::native_hooks::fire::FireHooks::fire_bonemeal(self, call);
     }
 }

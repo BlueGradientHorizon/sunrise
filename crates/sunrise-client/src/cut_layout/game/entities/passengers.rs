@@ -1,15 +1,17 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
-use sunrise_sim::mobs::riders;
 use sunrise_core::random::LegacyRandom;
 use sunrise_sim::mobs::Species;
+use sunrise_sim::mobs::riders;
 #[cfg(test)]
 pub(crate) mod off_level_tests {
     use super::*;
-    use {sunrise_gameplay_common::game::boats_common::Boat, sunrise_gameplay_common::game::entity_memory::OffLevel, sunrise_gameplay::game::server_side::minecarts_server::CartHit};
     use sunrise_sim::mobs::Mob;
+    use {
+        sunrise_gameplay::game::server_side::minecarts_server::CartHit,
+        sunrise_gameplay_common::game::boats_common::Boat,
+        sunrise_gameplay_common::game::entity_memory::OffLevel,
+    };
 
     #[test]
     #[ignore = "daily"]
@@ -199,11 +201,12 @@ pub(crate) mod off_level_tests {
                     game.options.dedicated = Some(Vec::new());
                     let at = Vec3::new(10.0, 200.0, 20.0);
                     if cart {
-                        game.carts.push(sunrise_gameplay_common::game::minecarts::Minecart::new(
-                            71,
-                            sunrise_gameplay_common::game::minecarts::CartKind::Rideable,
-                            at,
-                        ));
+                        game.carts
+                            .push(sunrise_gameplay_common::game::minecarts::Minecart::new(
+                                71,
+                                sunrise_gameplay_common::game::minecarts::CartKind::Rideable,
+                                at,
+                            ));
                     } else {
                         game.boats.push(Boat::new(71, "oak".into(), at, 0.0));
                     }
@@ -368,27 +371,29 @@ pub(crate) mod off_level_tests {
 
 #[cfg(test)]
 pub(crate) mod nested_vehicle_discard_tests {
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5;
-use sunrise_gameplay_common::game::server_side::passengers::nested_vehicle_discard_tests::VEHICLE_VALUE;
-use crate::game::server_side::native_entity_refs::tests::{collect_all_entities, collect_entities_in};
+    use crate::game::server_side::native_entity_refs::tests::{
+        collect_all_entities, collect_entities_in,
+    };
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5;
+    use sunrise_gameplay_common::game::server_side::passengers::nested_vehicle_discard_tests::VEHICLE_VALUE;
 
     #[cfg(test)]
-struct CancelUntilAllowed {
+    struct CancelUntilAllowed {
         cancel: Arc<AtomicBool>,
         calls: Arc<AtomicUsize>,
     }
 
     #[cfg(test)]
-struct CancelPlayerDismount {
+    struct CancelPlayerDismount {
         cancel: Arc<AtomicBool>,
         calls: Arc<AtomicUsize>,
     }
 
     #[cfg(test)]
-struct RemovalBoundaryObserver {
+    struct RemovalBoundaryObserver {
         kind: &'static str,
         cancel: Arc<AtomicBool>,
         mounts: Arc<AtomicUsize>,
@@ -397,28 +402,28 @@ struct RemovalBoundaryObserver {
     }
 
     #[cfg(test)]
-#[derive(Default)]
+    #[derive(Default)]
     struct SpillJoins {
         vehicle: AtomicUsize,
         items: AtomicUsize,
     }
 
     #[cfg(test)]
-struct ObserveDestroyedVehicle {
+    struct ObserveDestroyedVehicle {
         kind: &'static str,
         calls: Arc<AtomicUsize>,
     }
 
     #[cfg(test)]
-struct CancelLive {
+    struct CancelLive {
         count: Arc<AtomicUsize>,
         cross_level: bool,
     }
 
-#[cfg(test)]
-struct DiscardVehicleOnDismount(Arc<AtomicUsize>);
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    struct DiscardVehicleOnDismount(Arc<AtomicUsize>);
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for DiscardVehicleOnDismount {
         fn entity_mount(
             &self,
@@ -436,8 +441,8 @@ struct DiscardVehicleOnDismount(Arc<AtomicUsize>);
             mod_api::Flow::Cancel
         }
     }
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for CancelUntilAllowed {
         fn entity_mount(
             &self,
@@ -453,10 +458,10 @@ struct DiscardVehicleOnDismount(Arc<AtomicUsize>);
             mod_api::Flow::Continue
         }
     }
-#[cfg(test)]
-struct CancelPassengerTick(Arc<AtomicBool>);
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    struct CancelPassengerTick(Arc<AtomicBool>);
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for CancelPassengerTick {
         fn entity_tick_listened(
             &self,
@@ -475,8 +480,8 @@ struct CancelPassengerTick(Arc<AtomicBool>);
             }
         }
     }
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for CancelPlayerDismount {
         fn entity_mount(
             &self,
@@ -492,10 +497,10 @@ struct CancelPassengerTick(Arc<AtomicBool>);
             mod_api::Flow::Continue
         }
     }
-#[cfg(test)]
-struct RepositionCanceledPassenger(Arc<AtomicUsize>);
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    struct RepositionCanceledPassenger(Arc<AtomicUsize>);
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for RepositionCanceledPassenger {
         fn entity_mount(
             &self,
@@ -516,7 +521,7 @@ struct RepositionCanceledPassenger(Arc<AtomicUsize>);
             mod_api::Flow::Continue
         }
     }
-pub fn vehicle_attachment_count(host: &dyn mod_api::Host) -> usize {
+    pub fn vehicle_attachment_count(host: &dyn mod_api::Host) -> usize {
         let query = host
             .attachment_query("vehicle_boundary", "value")
             .unwrap()
@@ -525,7 +530,7 @@ pub fn vehicle_attachment_count(host: &dyn mod_api::Host) -> usize {
         let mut rows = query.iter();
         std::iter::from_fn(|| rows.try_next().unwrap()).count()
     }
-pub fn assert_vehicle_queries_hidden(host: &mut dyn mod_api::ServerHost, kind: &str) {
+    pub fn assert_vehicle_queries_hidden(host: &mut dyn mod_api::ServerHost, kind: &str) {
         assert!(host.entity(71).is_none());
         assert!(
             host.entity(73).is_some(),
@@ -552,8 +557,8 @@ pub fn assert_vehicle_queries_hidden(host: &mut dyn mod_api::ServerHost, kind: &
         );
         assert_eq!(vehicle_attachment_count(host), 0);
     }
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for RemovalBoundaryObserver {
         fn register(
             &self,
@@ -608,10 +613,10 @@ pub fn assert_vehicle_queries_hidden(host: &mut dyn mod_api::ServerHost, kind: &
             self.destroys.fetch_add(1, Ordering::Relaxed);
         }
     }
-#[cfg(test)]
-struct ObserveSpillItem(Arc<SpillJoins>);
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    struct ObserveSpillItem(Arc<SpillJoins>);
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for ObserveSpillItem {
         fn entity_join_level(
             &self,
@@ -639,8 +644,8 @@ struct ObserveSpillItem(Arc<SpillJoins>);
             mod_api::Flow::Continue
         }
     }
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for ObserveDestroyedVehicle {
         fn register(
             &self,
@@ -670,8 +675,8 @@ struct ObserveSpillItem(Arc<SpillJoins>);
             mod_api::Flow::Continue
         }
     }
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for CancelLive {
         fn entity_mount(
             &self,
@@ -694,10 +699,10 @@ struct ObserveSpillItem(Arc<SpillJoins>);
             mod_api::Flow::Cancel
         }
     }
-#[cfg(test)]
-struct ReparentLater(Arc<AtomicUsize>);
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    struct ReparentLater(Arc<AtomicUsize>);
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for ReparentLater {
         fn entity_mount(
             &self,
@@ -716,10 +721,10 @@ struct ReparentLater(Arc<AtomicUsize>);
             mod_api::Flow::Continue
         }
     }
-#[cfg(test)]
-struct ReparentSelf(Arc<AtomicUsize>);
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    struct ReparentSelf(Arc<AtomicUsize>);
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for ReparentSelf {
         fn entity_mount(
             &self,
@@ -736,10 +741,10 @@ struct ReparentSelf(Arc<AtomicUsize>);
             mod_api::Flow::Continue
         }
     }
-#[cfg(test)]
-struct ReviewKillOnMount;
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    struct ReviewKillOnMount;
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for ReviewKillOnMount {
         fn entity_mount(
             &self,
@@ -753,25 +758,22 @@ struct ReviewKillOnMount;
         }
     }
 
+    use sunrise_gameplay::game::server_side::passengers::nested_vehicle_discard_tests::set_vehicle_test_attachment;
 
-use sunrise_gameplay::game::server_side::passengers::nested_vehicle_discard_tests::set_vehicle_test_attachment;
+    use super::*;
 
-use super::*;
+    use crate::game::{boats_common::Boat, entity_memory::OffLevel};
 
-use crate::game::{
-        boats_common::Boat, entity_memory::OffLevel,
-    };
+    use sunrise_gameplay::game::server_side::minecarts_server::CartHit;
 
-use sunrise_gameplay::game::server_side::minecarts_server::CartHit;
-
-use std::sync::{
+    use std::sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     };
 
-use sunrise_sim::mobs::Mob;
+    use sunrise_sim::mobs::Mob;
 
-fn discard_during_dismount(cart: bool) {
+    fn discard_during_dismount(cart: bool) {
         let count = Arc::new(AtomicUsize::new(0));
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "discard_vehicle_on_dismount",
@@ -783,11 +785,12 @@ fn discard_during_dismount(cart: bool) {
                 game.options.dedicated = Some(Vec::new());
                 let at = Vec3::new(10.0, 200.0, 20.0);
                 if cart {
-                    game.carts.push(sunrise_gameplay_common::game::minecarts::Minecart::new(
-                        71,
-                        sunrise_gameplay_common::game::minecarts::CartKind::Rideable,
-                        at,
-                    ));
+                    game.carts
+                        .push(sunrise_gameplay_common::game::minecarts::Minecart::new(
+                            71,
+                            sunrise_gameplay_common::game::minecarts::CartKind::Rideable,
+                            at,
+                        ));
                 } else {
                     game.boats.push(Boat::new(71, "oak".into(), at, 0.0));
                 }
@@ -828,17 +831,17 @@ fn discard_during_dismount(cart: bool) {
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn nested_vehicle_discard_notifies_a_boat_dismount_once() {
         discard_during_dismount(false);
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn nested_vehicle_discard_notifies_a_cart_dismount_once() {
         discard_during_dismount(true);
     }
-fn with_vehicle_tree(
+    fn with_vehicle_tree(
         cart: bool,
         rejected: bool,
         test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
@@ -852,11 +855,12 @@ fn with_vehicle_tree(
             game.server.world_root = game.options.game_dir.as_ref().unwrap().join("world");
             let at = Vec3::new(10.0, 200.0, 20.0);
             if cart {
-                game.carts.push(sunrise_gameplay_common::game::minecarts::Minecart::new(
-                    71,
-                    sunrise_gameplay_common::game::minecarts::CartKind::Rideable,
-                    at,
-                ));
+                game.carts
+                    .push(sunrise_gameplay_common::game::minecarts::Minecart::new(
+                        71,
+                        sunrise_gameplay_common::game::minecarts::CartKind::Rideable,
+                        at,
+                    ));
             } else {
                 game.boats.push(Boat::new(71, "oak".into(), at, 0.0));
             }
@@ -878,7 +882,7 @@ fn with_vehicle_tree(
             test(game);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn removed_vehicle_resident_retry_requires_an_eligible_uncanceled_entity_tick() {
         for cart in [false, true] {
@@ -959,7 +963,7 @@ fn with_vehicle_tree(
             });
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn removed_vehicle_is_owned_by_canceled_player_until_player_leaves() {
         for cart in [false, true] {
@@ -1009,7 +1013,7 @@ fn with_vehicle_tree(
             });
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn guest_vehicle_tick_retries_canceled_removed_vehicle_without_losing_edge() {
         for cart in [false, true] {
@@ -1050,13 +1054,16 @@ fn with_vehicle_tree(
                     cancel.store(false, Ordering::Relaxed);
                     game.guest_vehicle_tick(1);
                     assert_eq!(calls.load(Ordering::Relaxed), 3);
-                    assert_eq!(game.server.lan.as_ref().unwrap().hub.guests[0].vehicle, None);
+                    assert_eq!(
+                        game.server.lan.as_ref().unwrap().hub.guests[0].vehicle,
+                        None
+                    );
                     assert!(!game.persist.removed_vehicles.contains_key(&71));
                 });
             });
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn canceled_dismount_keeps_callback_reposition_for_later_removed_vehicle_dismount() {
         for cart in [false, true] {
@@ -1095,7 +1102,7 @@ fn with_vehicle_tree(
             });
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn every_vehicle_removal_boundary_hides_queries_and_retires_once() {
         // Damage, burning TNT, command kill, and deferred native removal
@@ -1131,8 +1138,9 @@ fn with_vehicle_tree(
                     game.build_registries();
                     game.set_allow_commands(true);
                     if mode == 2 {
-                        game.carts
-                            .update(0, |cart| cart.kind = sunrise_gameplay_common::game::minecarts::CartKind::Tnt);
+                        game.carts.update(0, |cart| {
+                            cart.kind = sunrise_gameplay_common::game::minecarts::CartKind::Tnt
+                        });
                     }
                     set_vehicle_test_attachment(game);
                     let vehicle = game.entity(71).unwrap();
@@ -1227,7 +1235,7 @@ fn with_vehicle_tree(
             });
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn retained_destroyed_vehicle_spills_contents_exactly_once() {
         for cart in [false, true] {
@@ -1258,7 +1266,8 @@ fn with_vehicle_tree(
                         ))];
                         if cart {
                             game.carts.update(0, |vehicle| {
-                                vehicle.kind = sunrise_gameplay_common::game::minecarts::CartKind::Chest;
+                                vehicle.kind =
+                                    sunrise_gameplay_common::game::minecarts::CartKind::Chest;
                                 vehicle.items = items;
                             });
                         } else {
@@ -1311,7 +1320,7 @@ fn with_vehicle_tree(
             }
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn destroyed_vehicle_is_already_invisible_inside_dismount_callback() {
         for cart in [false, true] {
@@ -1344,7 +1353,7 @@ fn with_vehicle_tree(
             });
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn retained_vehicle_is_not_visible_to_selectors_or_attachment_queries() {
         for cart in [false, true] {
@@ -1385,7 +1394,7 @@ fn with_vehicle_tree(
             });
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn destroyed_vehicles_preserve_canceled_rejected_edges_until_explicit_dismount() {
         for mode in 0..3 {
@@ -1410,8 +1419,9 @@ fn with_vehicle_tree(
                     } else if mode == 1 {
                         game.hurt_cart(0, 5.0, false, false, CartHit::default());
                     } else {
-                        game.carts
-                            .update(0, |cart| cart.kind = sunrise_gameplay_common::game::minecarts::CartKind::Tnt);
+                        game.carts.update(0, |cart| {
+                            cart.kind = sunrise_gameplay_common::game::minecarts::CartKind::Tnt
+                        });
                         game.arrow_hits_cart(0, 1.0, Vec3::ZERO, true, false, None, None);
                     }
                     assert_eq!(calls.load(Ordering::Relaxed), 1);
@@ -1453,7 +1463,7 @@ fn with_vehicle_tree(
             });
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn removed_vehicle_dismount_snaps_each_recursive_multiseat_passenger() {
         for cart in [false, true] {
@@ -1503,7 +1513,7 @@ fn with_vehicle_tree(
             });
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn resident_passenger_can_later_leave_removed_vehicle_via_native_handle() {
         for cart in [false, true] {
@@ -1541,7 +1551,7 @@ fn with_vehicle_tree(
             });
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn kill_and_discard_notify_rejected_edges_once_without_changing_membership() {
         for cart in [false, true] {
@@ -1590,7 +1600,7 @@ fn with_vehicle_tree(
             }
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn destruction_preserves_later_rider_reparenting_without_an_extra_notification() {
         for mode in 0..5 {
@@ -1610,11 +1620,15 @@ fn with_vehicle_tree(
                     let kind = game.res.mob_types().get("minecraft:cow").unwrap().clone();
                     game.mobs.push(Mob::new(74, kind, Vec3::ZERO, 0.0));
                     match mode {
-                        0 => game.kill_target_in_level(sunrise_gameplay_common::game::commands_common::Target::Boat(71)),
+                        0 => game.kill_target_in_level(
+                            sunrise_gameplay_common::game::commands_common::Target::Boat(71),
+                        ),
                         1 => {
                             assert!(game.hurt_boat(0, 5.0, false));
                         }
-                        2 => game.kill_target_in_level(sunrise_gameplay_common::game::commands_common::Target::Cart(71)),
+                        2 => game.kill_target_in_level(
+                            sunrise_gameplay_common::game::commands_common::Target::Cart(71),
+                        ),
                         3 => game.hurt_cart(0, 5.0, false, false, CartHit::default()),
                         _ => {
                             game.carts.update(0, |cart| {
@@ -1638,7 +1652,7 @@ fn with_vehicle_tree(
             });
         }
     }
-fn live_cancels(cross_level: bool) {
+    fn live_cancels(cross_level: bool) {
         let count = Arc::new(AtomicUsize::new(0));
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
             "live_cancel",
@@ -1680,25 +1694,27 @@ fn live_cancels(cross_level: bool) {
                             .size(),
                         38.0
                     );
-                    game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+                    game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+                        .unwrap();
                     assert!(game.persist.mount_notifications.is_empty());
-                    game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
+                    game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
+                        .unwrap();
                     assert!(game.persist.mount_notifications.is_empty());
                 }
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn independent_live_cancellations_both_notify_and_retain_the_relationship() {
         live_cancels(false);
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn scoped_cross_level_callbacks_restore_context_and_clear_notification_keys() {
         live_cancels(true);
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn review_cycle_through_retained_object_is_refused() {
         with_vehicle_tree(false, true, |game| {
@@ -1715,7 +1731,7 @@ fn live_cancels(cross_level: bool) {
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn dismount_preserves_its_own_riders_callback_replacement() {
         let count = Arc::new(AtomicUsize::new(0));
@@ -1742,7 +1758,7 @@ fn live_cancels(cross_level: bool) {
             })
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn review_mount_callback_must_not_link_removed_vehicle() {
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
@@ -1764,7 +1780,6 @@ fn live_cancels(cross_level: bool) {
         });
     }
 }
-
 
 #[cfg(test)]
 pub(crate) mod content_seat_tests {
@@ -1794,11 +1809,11 @@ pub(crate) mod content_seat_tests {
 #[cfg(test)]
 pub(crate) mod trap_scatter_tests {
 
-use sunrise_core::random::RandomSource;
-use super::*;
-use sunrise_gameplay::game::server_side::passengers::trap_horse_scatter;
+    use super::*;
+    use sunrise_core::random::RandomSource;
+    use sunrise_gameplay::game::server_side::passengers::trap_horse_scatter;
 
-/// `SkeletonTrapGoal.tick`: springing a skeleton trap draws the three
+    /// `SkeletonTrapGoal.tick`: springing a skeleton trap draws the three
     /// additional horses' horizontal velocity scatter from the original trap
     /// horse's own `random` after each rider is created.
     #[test]
@@ -1844,7 +1859,7 @@ use sunrise_gameplay::game::server_side::passengers::trap_horse_scatter;
             assert!(h.extra.rider.is_some());
         }
     }
-/// `EnchantmentsByCostWithDifficulty.enchant` reads the stack the mob
+    /// `EnchantmentsByCostWithDifficulty.enchant` reads the stack the mob
     /// holds: an empty slot draws nothing from the world's random.
     #[test]
     #[ignore = "daily"]

@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
@@ -12,24 +10,26 @@ pub(crate) mod portal_spawn_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay::game::server_side::nether_portal::tests::portal_cooldown_keeps_the_process;
+    use sunrise_gameplay::game::server_side::nether_portal::tests::portal_cooldown_keeps_the_process;
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
 
-use sunrise_gameplay::game::server_side::server_travel::TravelCause;
+    use sunrise_gameplay::game::server_side::server_travel::TravelCause;
 
-use super::*;
-use sunrise_gameplay::game::server_side::nether_portal::{Plan, TransferredArrivalState, arrival_from_tag};
-use sunrise_sim::nether_portal::ENTITY_DELAY;
+    use super::*;
+    use sunrise_gameplay::game::server_side::nether_portal::{
+        Plan, TransferredArrivalState, arrival_from_tag,
+    };
+    use sunrise_sim::nether_portal::ENTITY_DELAY;
 
-use std::sync::{
+    use std::sync::{
         Arc, Mutex,
         atomic::{AtomicU32, Ordering},
     };
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn portal_capture_preserves_rejected_objects_and_reverses_admission() {
         with_gate(|game, _, _| {
@@ -83,9 +83,10 @@ use std::sync::{
             let target = game.server.portals.arrivals[0].plan.approximate;
             for z in (target.z >> 4) - 1..=(target.z >> 4) + 1 {
                 for x in (target.x >> 4) - 1..=(target.x >> 4) + 1 {
-                    game.server
-                        .streaming
-                        .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(x, z));
+                    game.server.streaming.insert_remote(
+                        &mut game.common.world,
+                        sunrise_level::chunk::Chunk::empty(x, z),
+                    );
                 }
             }
             game.resolve_arrivals();
@@ -101,7 +102,10 @@ use std::sync::{
             assert!(game.mobs.iter().any(|m| m.id == new_child));
             assert!(game.mobs_below_off_level().contains(&new_child));
             assert!(game.mobs_below_off_level().contains(&new_leaf));
-            assert_eq!(game.server.portals.entities[&new_root].cooldown, ENTITY_DELAY);
+            assert_eq!(
+                game.server.portals.entities[&new_root].cooldown,
+                ENTITY_DELAY
+            );
             assert!(
                 game.persist_raw(new_root)
                     .unwrap()
@@ -110,8 +114,8 @@ use std::sync::{
             );
         });
     }
-#[cfg(test)]
-/// Cancels the travel of the entity whose id `spare` holds, and logs each
+    #[cfg(test)]
+    /// Cancels the travel of the entity whose id `spare` holds, and logs each
     /// (entity, dimension, cause) it is asked.
     struct Gate {
         spare: Arc<AtomicU32>,
@@ -119,7 +123,7 @@ use std::sync::{
         discard: bool,
     }
 
-#[mod_api::__subscriptions]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for Gate {
         fn entity_mount(
             &self,
@@ -176,7 +180,7 @@ use std::sync::{
         }
     }
 
-/// Runs `test` with a `Gate` installed, on a server with guests 12 and 13.
+    /// Runs `test` with a `Gate` installed, on a server with guests 12 and 13.
     fn with_gate(
         test: impl FnOnce(
             &mut sunrise_gameplay::game::ServerGame<'_>,
@@ -186,7 +190,7 @@ use std::sync::{
     ) {
         with_gate_mode(false, test);
     }
-fn with_gate_mode(
+    fn with_gate_mode(
         discard: bool,
         test: impl FnOnce(
             &mut sunrise_gameplay::game::ServerGame<'_>,
@@ -212,21 +216,23 @@ fn with_gate_mode(
             });
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn portal_cooldown_follows_the_class_then_the_first_passenger() {
         sunrise_gameplay::game::native_guest_turn_tests::with_guests(|game| {
-            game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(
-                101,
-                Arc::from("oak"),
-                Vec3::ZERO,
-                0.0,
-            ));
-            game.carts.push(sunrise_gameplay_common::game::minecarts::Minecart::new(
-                103,
-                sunrise_gameplay_common::game::minecarts::CartKind::Rideable,
-                Vec3::ZERO,
-            ));
+            game.boats
+                .push(sunrise_gameplay_common::game::boats_common::Boat::new(
+                    101,
+                    Arc::from("oak"),
+                    Vec3::ZERO,
+                    0.0,
+                ));
+            game.carts
+                .push(sunrise_gameplay_common::game::minecarts::Minecart::new(
+                    103,
+                    sunrise_gameplay_common::game::minecarts::CartKind::Rideable,
+                    Vec3::ZERO,
+                ));
             let mob = |name: &str, id| {
                 let kind = game.res.mob_types().get(name).unwrap().clone();
                 sunrise_sim::mobs::Mob::new(id, kind, Vec3::ZERO, 0.0)
@@ -272,7 +278,7 @@ fn with_gate_mode(
             }
         });
     }
-/// `EntityTravelToDimensionEvent` for server players: both are asked with
+    /// `EntityTravelToDimensionEvent` for server players: both are asked with
     /// their own id, the target level and the cause; the spared one stays, the
     /// other may go.
     #[test]
@@ -296,7 +302,7 @@ fn with_gate_mode(
             );
         });
     }
-/// The same for two dropped items at a Nether portal: the spared one is
+    /// The same for two dropped items at a Nether portal: the spared one is
     /// still in the level and waits for no arrival, the other has left it for
     /// one.
     #[test]
@@ -328,7 +334,7 @@ fn with_gate_mode(
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn discarded_item_does_not_travel() {
         with_gate_mode(true, |game, _, heard| {
@@ -351,7 +357,7 @@ fn with_gate_mode(
             assert!(game.dropped.is_empty());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn discarded_mob_and_tnt_do_not_travel() {
         with_gate_mode(true, |game, _, heard| {
@@ -372,7 +378,7 @@ fn with_gate_mode(
             assert_eq!(heard.lock().unwrap().len(), 2);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn refused_mob_passenger_stays_behind() {
         with_gate(|game, spare, heard| {
@@ -401,7 +407,7 @@ fn with_gate_mode(
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn passenger_callbacks_cannot_revisit_ancestors_or_discarded_siblings() {
         for attack in [1004, 1001, 1002] {
@@ -437,7 +443,7 @@ fn with_gate_mode(
             });
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn mixed_passengers_follow_boarding_not_connection_order() {
         with_gate(|game, _, heard| {
@@ -457,10 +463,15 @@ fn with_gate_mode(
                 game.mobs.push(mob);
             }
             for (conn, order) in [(12, 30), (13, 10)] {
-                game.server.lan.as_mut().unwrap().hub.update_guest(conn, |g| {
-                    g.vehicle = Some(101);
-                    g.vehicle_order = order;
-                });
+                game.server
+                    .lan
+                    .as_mut()
+                    .unwrap()
+                    .hub
+                    .update_guest(conn, |g| {
+                        g.vehicle = Some(101);
+                        g.vehicle_order = order;
+                    });
             }
             assert!(game.entity_may_travel(101, Dim::Nether, TravelCause::Teleport));
             assert_eq!(
@@ -474,7 +485,7 @@ fn with_gate_mode(
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn portal_arrivals_keep_the_live_opt_out_without_writing_a_waiting_entity() {
         mod_platform::testing::with_mods(Default::default(), || {
@@ -533,7 +544,6 @@ fn with_gate_mode(
         });
     }
 }
-
 
 #[cfg(test)]
 #[path = "tests/portal_cooldown_tests.rs"]

@@ -1,5 +1,4 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::advancements_common::{RemoteNode, RemoteTree, text_of};
 use crate::game::client_side::advancement_toast::{Toast, toast_label};
 use serde_json::Value;
 use std::sync::Arc;
@@ -7,6 +6,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use sunrise_client::{hud::HudBatch, toasts::Slide};
 use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::advancements_common::{RemoteNode, RemoteTree, text_of};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::advancements::{self as adv, Frame, Progress, Tree};
 
@@ -15,13 +15,7 @@ pub(in crate::game) mod icons;
 
 impl ClientGame<'_> {
     /// The `AdvancementToast` or `RecipeToast` in its slot at `y`.
-    pub fn draw_advancement_toast(
-        &self,
-        batch: &mut HudBatch,
-        t: &Toast,
-        y: f32,
-        multiplier: f64,
-    ) {
+    pub fn draw_advancement_toast(&self, batch: &mut HudBatch, t: &Toast, y: f32, multiplier: f64) {
         let x = batch.width - 160.0 * t.slide.portion;
         let fully_for = t.slide.fully_for;
         let (title, frame, icon) = (&t.title, t.frame, &t.icon);
@@ -79,14 +73,14 @@ impl ClientGame<'_> {
         self.draw_item(batch, icon, x + 8.0, y + 8.0);
     }
     /// `ClientAdvancements.update`: update the tree before applying progress.
-    pub fn remote_advancements(
-        &mut self,
-        p: sunrise_protocol::packets::play::UpdateAdvancements,
-    ) {
+    pub fn remote_advancements(&mut self, p: sunrise_protocol::packets::play::UpdateAdvancements) {
         if p.reset {
             self.common.adv.progress = Progress::default();
         }
-        if self.common.adv.remote_tree.is_none() || p.reset || !p.removed.is_empty() || !p.added.is_empty()
+        if self.common.adv.remote_tree.is_none()
+            || p.reset
+            || !p.removed.is_empty()
+            || !p.added.is_empty()
         {
             self.update_remote_advancement_tree(p.reset, &p.removed, p.added);
         }
@@ -325,7 +319,8 @@ pub(in crate::game) mod tests {
                         game.add_advancement_toast(advancement("cancel"));
                         assert!(game.client.toast_manager.queued.is_empty());
                         game.add_advancement_toast(advancement("untouched"));
-                        let QueuedToast::Advancement(original) = &game.client.toast_manager.queued[0]
+                        let QueuedToast::Advancement(original) =
+                            &game.client.toast_manager.queued[0]
                         else {
                             panic!("expected advancement toast")
                         };

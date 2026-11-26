@@ -1,10 +1,13 @@
 //! `player_login_profile` on the server thread: a login's properties as the mods leave them
 //! go back to its connection, and a list the login packet can't carry is refused whole.
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{AccountProfileProperty, Hooks, ModEntry, PlayerLoginProfileEvent, ServerHost};
 use std::sync::mpsc::sync_channel;
 use sunrise_core::profile::AccountProperty;
 use sunrise_sim::lan::login_profile::LoginProfileRequest;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 /// Replaces the textures with its own, and adds one property per name it is given.
 struct Skin(usize);

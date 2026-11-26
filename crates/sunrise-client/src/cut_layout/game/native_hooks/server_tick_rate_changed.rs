@@ -1,21 +1,19 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 #[cfg(any())]
 pub(crate) mod server_tick_rate_changed_tests {
 
-use sunrise_gameplay_common::game::native_hooks::server_tick_rate_changed::server_tick_rate_changed_tests::Scheduler;
+    use sunrise_gameplay_common::game::native_hooks::server_tick_rate_changed::server_tick_rate_changed_tests::Scheduler;
 
-use crate::game::native_guest_turn_tests::with_guests;
+    use crate::game::native_guest_turn_tests::with_guests;
 
-use mod_api::{Hooks, ModEntry, ServerHost, ServerTickRateChangedEvent};
+    use mod_api::{Hooks, ModEntry, ServerHost, ServerTickRateChangedEvent};
 
-use mod_platform::testing::with_mods;
+    use mod_platform::testing::with_mods;
 
-use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex};
 
-pub(crate) fn with_scheduler(
+    pub(crate) fn with_scheduler(
         retune: Option<&'static str>,
         check: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &dyn Fn() -> Vec<f32>),
     ) {

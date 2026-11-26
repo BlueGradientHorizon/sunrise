@@ -7,7 +7,8 @@ impl ServerGame<'_> {
     /// Sets the stack of `id` for an item place. A caller that already has a
     /// validated resident slot uses `journal_set_item_entity_at` instead.
     pub(in crate::game) fn journal_set_item_entity(&mut self, id: u32, stack: ItemStack) -> bool {
-        self.common.dropped
+        self.common
+            .dropped
             .iter()
             .position(|item| item.id == id)
             .is_some_and(|index| self.journal_set_item_entity_at(index, stack))
@@ -46,7 +47,8 @@ impl ServerGame<'_> {
     ) {
         let item = &mut self.common.dropped[index];
         let kept = self
-            .common.transactions
+            .common
+            .transactions
             .level_frame(self.common.dim)
             .map(|level| level.item_entities.entry(item.join).or_default());
         (item, kept)

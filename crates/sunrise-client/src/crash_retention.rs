@@ -1,5 +1,9 @@
 use std::path::Path;
-use sunrise_telemetry::{Item, Payload, Source, outbox, payload::{Crash, System}, scrub::Scrubber};
+use sunrise_telemetry::{
+    Item, Payload, Source, outbox,
+    payload::{Crash, System},
+    scrub::Scrubber,
+};
 
 /// The details of a crash report that say what the game was doing, and only those: not the
 /// world, the server or the resource packs.

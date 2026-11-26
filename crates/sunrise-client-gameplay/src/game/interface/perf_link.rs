@@ -1,6 +1,5 @@
 //! `profile` against the server this window is connected to (docs/perf-platform.md §4.2): the request over `sunrise:perf`, its answer, and the warnings a refusal leaves in the client's capture.
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::profile_capture_common::{reply_text, reports_dir, shown};
 use std::fs::File;
 use std::io::Write;
 use std::path::PathBuf;
@@ -10,6 +9,7 @@ use sunrise_client::client_perf::request::{
     Failed, GpuSwitch, ProfileSide, StartOptions, Started, Stopped,
 };
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::profile_capture_common::{reply_text, reports_dir, shown};
 use sunrise_perf_format::{FieldSender, PartMerger, RawSend, files, v1::WarningCode};
 use sunrise_protocol::packets::{configuration::CustomPayload, play::Serverbound as S};
 use sunrise_sim::perf_net::{CHANNEL, Outcome, Refusal, Reply, Request, Unsent, Wanted};
@@ -204,7 +204,12 @@ impl ClientGame<'_> {
         }
         let waiting = self.client.profile.server_reply.take();
         let joined = self.client.profile.server_joined;
-        match self.client.profile.server_link.answer(reply, Instant::now()) {
+        match self
+            .client
+            .profile
+            .server_link
+            .answer(reply, Instant::now())
+        {
             Outcome::Started {
                 path,
                 seconds,
@@ -213,10 +218,11 @@ impl ClientGame<'_> {
                 if joined {
                     let t = self.client.profile.perf.now();
                     self.client.profile.perf.mark(t, MARK_SERVER_STARTED);
-                    self.client.profile.server_sink = self.client.profile.perf.join().map(|j| Sink {
-                        sender: j.sender,
-                        origin: j.origin,
-                    });
+                    self.client.profile.server_sink =
+                        self.client.profile.perf.join().map(|j| Sink {
+                            sender: j.sender,
+                            origin: j.origin,
+                        });
                 }
                 if let Some(waiting) = waiting {
                     let _ = waiting.send(reply_text(&Started {
@@ -253,7 +259,9 @@ impl ClientGame<'_> {
                     self.client.profile.server_joined = false;
                     self.profiler_client_only(&refusal_text(why));
                 }
-                if self.client.profile.incoming.is_some() || self.client.profile.server_sink.is_some() {
+                if self.client.profile.incoming.is_some()
+                    || self.client.profile.server_sink.is_some()
+                {
                     self.client.profile.server_reply = waiting;
                     self.abandon_part();
                     return;

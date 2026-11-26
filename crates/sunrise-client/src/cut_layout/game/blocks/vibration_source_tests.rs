@@ -3,19 +3,21 @@
 //! as `source` (and a projectile owner's as `projectile_owner`), so a sculk
 //! sensor's saved listener names its source, even one that is not loaded
 //! (tools/test_vibration_source_parity.py measures the same on vanilla 26.3).
-#[cfg(test)]
-use sunrise_gameplay_common::game::execution_role;
 use super::*;
-use std::sync::Arc;
-use sunrise_core::position::ChunkPos;
-use sunrise_level::chunk::Chunk;
-use sunrise_gameplay_common::game::Resources;
 use crate::game::load_resources;
 use crate::settings::Settings;
-use sunrise_gameplay_common::game::resource_load::Progress;
+use std::sync::Arc;
+use sunrise_core::position::ChunkPos;
 use sunrise_gameplay_common::game::Options;
+use sunrise_gameplay_common::game::Resources;
+#[cfg(test)]
+use sunrise_gameplay_common::game::execution_role;
+use sunrise_gameplay_common::game::resource_load::Progress;
+use sunrise_level::chunk::Chunk;
 
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::game::ServerGame<'_> {
+fn game(
+    resources: &mut Option<std::sync::Arc<Resources>>,
+) -> sunrise_gameplay::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),

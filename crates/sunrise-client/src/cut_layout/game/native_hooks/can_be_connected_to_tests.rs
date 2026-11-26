@@ -1,11 +1,11 @@
 //! `can_be_connected_to` answered by the block a fence, wall or pane connects to: a lantern's
 //! part makes a fence and a wall connect to it, a stone's part refuses its sturdy face, a
 //! panicking part keeps vanilla's answer, and a connector's own `connects_to` has the last word.
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{BlockPart, CanBeConnectedToEvent, ConnectsToEvent, Hooks, LevelHost, Registrar};
 use std::sync::Arc;
 use sunrise_core::{connection_kind::ConnectionKind, geometry::Direction, position::BlockPos};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::GameGameExt1;
 
 /// The answer of a target block's part, panicking for `None`.
 #[derive(Clone)]

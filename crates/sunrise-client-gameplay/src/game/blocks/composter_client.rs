@@ -4,10 +4,7 @@ use sunrise_core::{position::BlockPos, random::RandomSource};
 use sunrise_items::items::ItemStack;
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
-fn composter_level(
-    game: &crate::game::ClientGame<'_>,
-    pos: [i32; 3],
-) -> Option<i32> {
+fn composter_level(game: &crate::game::ClientGame<'_>, pos: [i32; 3]) -> Option<i32> {
     let state = game.world.block(pos[0], pos[1], pos[2]);
     let s = game.pack.assets.registry.state(state)?;
     if &*s.name != "minecraft:composter" {
@@ -25,7 +22,8 @@ impl ClientGame<'_> {
     ) -> bool {
         composter_level(self, pos).is_some_and(|level| level < 8)
             && held.is_some_and(|stack| {
-                self.common.res
+                self.common
+                    .res
                     .items()
                     .get(&stack.item)
                     .is_some_and(|i| i.compostable.is_some())

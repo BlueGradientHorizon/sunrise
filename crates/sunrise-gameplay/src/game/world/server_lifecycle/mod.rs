@@ -105,11 +105,7 @@ impl ServerGame<'_> {
     /// fires; only the saves read the exclusion. When that is the single-player owner, or the hub is lost
     /// (`crashed` and no hub, or an interrupted turn and no hub), `level.dat` is written without
     /// a new player file, keeping a legacy `Data.Player`.
-    pub fn exclude_interrupted_players(
-        &mut self,
-        crashed: bool,
-        warn: impl Fn(&str),
-    ) {
+    pub fn exclude_interrupted_players(&mut self, crashed: bool, warn: impl Fn(&str)) {
         let mut conns = self.server.interrupted_turns.clone();
         conns.extend(self.server.lan_guest_swaps.iter().copied());
         conns.extend(self.server.lan_acting);
@@ -153,11 +149,7 @@ impl ServerGame<'_> {
     /// open must never overwrite a world the server did not successfully adopt.
     /// The session lock is not that marker: it is installed before the prepared
     /// level, so tag reads work, and a save in that gap would write the placeholder.
-    pub fn finish_server_save(
-        &mut self,
-        crashed: bool,
-        run_error: Option<&str>,
-    ) -> Result<()> {
+    pub fn finish_server_save(&mut self, crashed: bool, run_error: Option<&str>) -> Result<()> {
         let before = self.server.save.0.record_save_failures();
         // IntegratedServer.teardownPublishedState must happen even if an
         // earlier callback panicked; otherwise lan_close only unpublishes a

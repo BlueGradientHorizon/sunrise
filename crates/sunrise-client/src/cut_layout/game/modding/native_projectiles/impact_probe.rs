@@ -1,5 +1,4 @@
 //! Shared listener and resource fixture for independent projectile impact tests.
-use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{Flow, Hooks, HostTransaction, ServerHost, TransactionError};
 use std::sync::{
     Arc, Mutex,
@@ -9,6 +8,10 @@ use sunrise_core::{geometry::Vec3, position::ChunkPos};
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::bind_local_player,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 /// The listener action exercised by a tick.
 #[derive(Clone, Copy)]

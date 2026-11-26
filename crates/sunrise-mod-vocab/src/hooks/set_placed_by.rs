@@ -9,7 +9,8 @@ pub trait Hooks {
     /// code placement. `LevelRef::set_placed_by` also reaches this part, without
     /// firing the item notice. Writes through the `ServerHost` participate in the
     /// current transaction, if one is open.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::set_placed_by::ServerGame<'_>::native_set_placed_by", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::set_placed_by::ServerGame<'_>::native_set_placed_by",
         dispatch = "flat",
         side = "server",
         contract = "listen",

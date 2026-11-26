@@ -1,12 +1,15 @@
-use sunrise_gameplay_common::game::commands_common::Target;
-use {sunrise_gameplay::game::entity_residency::SlotAccess, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
 use std::{
     num::NonZeroU32,
     sync::{Arc, Mutex},
 };
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_sim::join_seq::residency::table::EntityLookup;
 use sunrise_sim::join_seq::residency::{Kind, Source};
+use {
+    sunrise_gameplay::game::entity_residency::SlotAccess,
+    sunrise_gameplay::game::native_guest_turn_tests::with_guests,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -198,11 +201,9 @@ fn owned_hooks_keep_their_own_uuid_and_source_across_nested_actor_loans() {
         let first = [101, 102, 103, 104];
         let second = [201, 202, 203, 204];
         game.as_guest(12, |outer| {
-            outer.install_fishing_hook(sunrise_gameplay_common::game::fishing_common::Hook::remote(
-                900,
-                Vec3::ZERO,
-                first,
-            ));
+            outer.install_fishing_hook(
+                sunrise_gameplay_common::game::fishing_common::Hook::remote(900, Vec3::ZERO, first),
+            );
             assert!(matches!(
                 outer.server_resident_entity(900),
                 EntityLookup::Found {
@@ -215,11 +216,13 @@ fn owned_hooks_keep_their_own_uuid_and_source_across_nested_actor_loans() {
                 .as_guest(13, |inner| {
                     assert_eq!(inner.server_resident_entity(900), EntityLookup::Taken);
                     assert_eq!(inner.uuid_for(900), first);
-                    inner.install_fishing_hook(sunrise_gameplay_common::game::fishing_common::Hook::remote(
-                        901,
-                        Vec3::ZERO,
-                        second,
-                    ));
+                    inner.install_fishing_hook(
+                        sunrise_gameplay_common::game::fishing_common::Hook::remote(
+                            901,
+                            Vec3::ZERO,
+                            second,
+                        ),
+                    );
                     assert_eq!(inner.uuid_for(901), second);
                     assert!(inner.fishing_hook_by_id(900).is_none());
                 })
@@ -424,7 +427,10 @@ fn actual_dragon_admits_exactly_eight_checked_parts_with_independent_uuids() {
         game.options.dedicated = Some(Vec::new());
         game.native_level_opened(game.dim);
         let parent = game
-            .spawn_dragon_spawned([0.0; 3], sunrise_gameplay_common::game::creatures::SpawnSite::Plain)
+            .spawn_dragon_spawned(
+                [0.0; 3],
+                sunrise_gameplay_common::game::creatures::SpawnSite::Plain,
+            )
             .unwrap();
         let uuids = std::array::from_fn::<_, 8, _>(|i| game.dragon.as_ref().unwrap().parts[i].3);
         let parts: Vec<_> = game
@@ -495,7 +501,8 @@ fn actual_dragon_admits_exactly_eight_checked_parts_with_independent_uuids() {
             .set(game, mod_api::Holder::Entity(parent + 1), 7)
             .unwrap();
         let home = game.dim;
-        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+            .unwrap();
         game.prune_entity_attachments();
         game.prune_entity_memory();
         for id in parent + 1..=parent + 8 {
@@ -545,7 +552,11 @@ fn dragon_part_registrations_retire_on_replacement_command_and_chunk_unload() {
         sync: false,
     };
     let install_dragon = |game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32| {
-        let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::new(1.0, 80.0, 1.0), 0.0, 0);
+        let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(
+            Vec3::new(1.0, 80.0, 1.0),
+            0.0,
+            0,
+        );
         dragon.id = id;
         game.replace_resident_dragon(dragon);
     };
@@ -629,7 +640,8 @@ fn parked_mob_attachment_values_survive_other_level_cleanup() {
             )
             .unwrap();
         VALUE.set(game, mod_api::Holder::Entity(id), 73).unwrap();
-        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+            .unwrap();
         game.prune_entity_attachments();
         game.prune_entity_memory();
         assert!(game.entity_attachments.contains_key(&id));

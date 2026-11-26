@@ -3,8 +3,6 @@
 //! through the game: the answers each part gets, starting from vanilla's, and what the game does
 //! with what it leaves. Each test installs process-wide parts: run alone with the prepared
 //! resources (`SUNRISE_TEST_RESOURCES`).
-use sunrise_client_gameplay::game::native_hooks::enchantments::EnchantmentsGameExt1;
-use sunrise_items::items::ItemStack;
 use super::*;
 use mod_api::{
     ApplyEnchantmentsEvent, Hooks, IsNotReplaceableByPickActionEvent, IsPrimaryItemForEvent,
@@ -12,7 +10,9 @@ use mod_api::{
 };
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use sunrise_client_gameplay::game::native_hooks::enchantments::EnchantmentsGameExt1;
 use sunrise_core::random::LegacyRandom;
+use sunrise_items::items::ItemStack;
 
 const SHARPNESS: &str = "minecraft:sharpness";
 const FIXTURE_ITEMS: [&str; 4] = [
@@ -181,7 +181,10 @@ fn with_parts(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &An
 }
 
 /// `available_results` at value 30 over `[sharpness]` for `item`.
-fn sharpness_at_30(game: &sunrise_gameplay::game::ServerGame<'_>, item: &str) -> Vec<(String, u32)> {
+fn sharpness_at_30(
+    game: &sunrise_gameplay::game::ServerGame<'_>,
+    item: &str,
+) -> Vec<(String, u32)> {
     game.stations()
         .enchantments
         .available_results(game.items(), 30, item, &[SHARPNESS.into()])
@@ -242,7 +245,14 @@ fn a_client_refresh_keeps_and_a_world_close_retires_the_servers_answers() {
         // A client sharing this Resources snapshot neither asks nor clears the server's answers.
         #[cfg(feature = "client")]
         {
-            use {crate::game::{Audio, Settings, load_resources}, sunrise_client_gameplay::game::ClientGame, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::fixture_root};
+            use {
+                crate::game::{Audio, Settings, load_resources},
+                sunrise_client_gameplay::game::ClientGame,
+                sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+                sunrise_gameplay_common::game::Options,
+                sunrise_gameplay_common::game::Progress,
+                sunrise_gameplay_common::game::execution_role::ExecutionRole,
+            };
             let root = fixture_root();
             let saves = tempfile::tempdir().unwrap();
             let settings = Settings::default();
@@ -391,8 +401,11 @@ fn pick_asks_each_hotbar_stack_until_one_may_be_replaced() {
 #[ignore = "daily"]
 fn support_snapshot_reaches_both_anvils_and_enchant_without_dispatching_inside_them() {
     use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-    use {sunrise_gameplay_common::game::stations_common::Kind as StationKind, sunrise_gameplay_common::game::stations_common::Station};
     use sunrise_sim::menu::{Kind as MenuKind, Menu};
+    use {
+        sunrise_gameplay_common::game::stations_common::Kind as StationKind,
+        sunrise_gameplay_common::game::stations_common::Station,
+    };
     with_parts(|game, answers| {
         let registered = game.stations().enchantments.list.len();
         let per_install = FIXTURE_ITEMS.len() * registered;
@@ -419,30 +432,31 @@ fn support_snapshot_reaches_both_anvils_and_enchant_without_dispatching_inside_t
         );
         game.build_registries();
         let sharpness = [(Arc::<str>::from(SHARPNESS), 1)];
-        let check_anvils = |game: &mut sunrise_gameplay::game::ServerGame<'_>, item: &str, allowed: bool| {
-            let mut book = ItemStack::new("minecraft:enchanted_book", 1);
-            book.set_crafting_enchantments(sharpness.to_vec());
-            let input = ItemStack::new(item, 1);
-            let mut menu = Menu::new(MenuKind::Anvil);
-            let env = game.menu_env();
-            menu.set_slot(&env, 0, Some(input.clone()));
-            menu.set_slot(&env, 1, Some(book.clone()));
-            menu.settle(&env);
-            assert_eq!(menu.slot(2).is_some(), allowed, "client-lib anvil: {item}");
-            if allowed {
-                assert_eq!(menu.slot(2).unwrap().crafting_enchantments(), sharpness);
-            }
-            let mut station = Station::new(StationKind::Anvil, [0, 64, 0]);
-            station.inputs[0] = Some(input);
-            station.inputs[1] = Some(book);
-            game.station = Some(station);
-            game.station_changed();
-            let result = &game.station.as_ref().unwrap().result;
-            assert_eq!(result.is_some(), allowed, "game anvil: {item}");
-            if allowed {
-                assert_eq!(result.as_ref().unwrap().crafting_enchantments(), sharpness);
-            }
-        };
+        let check_anvils =
+            |game: &mut sunrise_gameplay::game::ServerGame<'_>, item: &str, allowed: bool| {
+                let mut book = ItemStack::new("minecraft:enchanted_book", 1);
+                book.set_crafting_enchantments(sharpness.to_vec());
+                let input = ItemStack::new(item, 1);
+                let mut menu = Menu::new(MenuKind::Anvil);
+                let env = game.menu_env();
+                menu.set_slot(&env, 0, Some(input.clone()));
+                menu.set_slot(&env, 1, Some(book.clone()));
+                menu.settle(&env);
+                assert_eq!(menu.slot(2).is_some(), allowed, "client-lib anvil: {item}");
+                if allowed {
+                    assert_eq!(menu.slot(2).unwrap().crafting_enchantments(), sharpness);
+                }
+                let mut station = Station::new(StationKind::Anvil, [0, 64, 0]);
+                station.inputs[0] = Some(input);
+                station.inputs[1] = Some(book);
+                game.station = Some(station);
+                game.station_changed();
+                let result = &game.station.as_ref().unwrap().result;
+                assert_eq!(result.is_some(), allowed, "game anvil: {item}");
+                if allowed {
+                    assert_eq!(result.as_ref().unwrap().crafting_enchantments(), sharpness);
+                }
+            };
         for role in [ExecutionRole::IntegratedServer, ExecutionRole::Client] {
             game.options.execution_role = role;
             if role == ExecutionRole::Client {
@@ -605,10 +619,13 @@ fn short_enchantment_item_holders_bind_for_both_selectors() {
 #[test]
 #[ignore = "daily"]
 fn support_resolves_once_against_the_tags_published_by_world_open_and_play_packets() {
-    use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use sunrise_protocol::packets::{
         configuration::{RegistryTags, TagEntry, UpdateTags},
         play::{self, Clientbound as C},
+    };
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game,
     };
 
     let seen = Arc::new(Mutex::new(Vec::new()));

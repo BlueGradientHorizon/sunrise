@@ -1,16 +1,16 @@
+use super::*;
+use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::Screen;
-use sunrise_protocol::packets::Empty;
-use sunrise_protocol::packets::play::Clientbound as C;
-use sunrise_protocol::packets::play::Serverbound as S;
-use sunrise_sim::sprint::Keys;
-use super::*;
 use sunrise_gameplay_common::game::boats_common::Boat;
-use crate::game::server_side::native_entity_refs::tests::with_client_game;
-use sunrise_sim::motion::PlayerMotion;
-use winit::keyboard::KeyCode;
+use sunrise_protocol::packets::Empty;
 #[cfg(test)]
 use sunrise_protocol::packets::play;
+use sunrise_protocol::packets::play::Clientbound as C;
+use sunrise_protocol::packets::play::Serverbound as S;
+use sunrise_sim::motion::PlayerMotion;
+use sunrise_sim::sprint::Keys;
+use winit::keyboard::KeyCode;
 
 #[test]
 #[ignore = "daily"]
@@ -47,9 +47,10 @@ fn a_riders_move_takes_the_look_of_the_tick_and_leaves_it_off_the_ground() {
             remote.entity_id = 42;
             remote.level_load.finish();
             game.client.screen = Screen::Playing;
-            game.client
-                .streaming
-                .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
+            game.client.streaming.insert_remote(
+                &mut game.common.world,
+                sunrise_level::chunk::Chunk::empty(0, 0),
+            );
             let stone = game
                 .pack
                 .assets

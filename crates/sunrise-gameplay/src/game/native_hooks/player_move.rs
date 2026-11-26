@@ -1,5 +1,3 @@
-
-
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
     /// Server player `player` (their UUID) would move from `from` to `to` (or turn from

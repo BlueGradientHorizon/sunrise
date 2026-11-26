@@ -34,7 +34,8 @@ impl crate::game::ServerGame<'_> {
             return Some(Answer::Pass);
         }
         let book = held.filter(|s| {
-            self.common.res
+            self.common
+                .res
                 .items()
                 .item_tags
                 .get("minecraft:bookshelf_books")
@@ -116,7 +117,8 @@ impl crate::game::ServerGame<'_> {
     /// The bookshelf's six slots (made if the block has no block entity yet).
     fn bookshelf_items(&mut self, pos: [i32; 3]) -> Option<&mut [Option<ItemStack>; 6]> {
         if &*self
-            .common.res
+            .common
+            .res
             .facts()
             .get(self.common.world.block(pos[0], pos[1], pos[2]))
             .name
@@ -125,7 +127,8 @@ impl crate::game::ServerGame<'_> {
             return None;
         }
         let entity = self
-            .common.world
+            .common
+            .world
             .block_entities
             .get_or_insert_with((pos[0], pos[1], pos[2]), || {
                 BlockEntity::ChiseledBookshelf(Box::default())
@@ -142,7 +145,8 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn chiseled_bookshelf_update_state(&mut self, pos: [i32; 3], slot: usize) {
         let key = (pos[0], pos[1], pos[2]);
         self.journal_block_entity(key);
-        let Some(BlockEntity::ChiseledBookshelf(b)) = self.common.world.block_entities.get_mut(&key)
+        let Some(BlockEntity::ChiseledBookshelf(b)) =
+            self.common.world.block_entities.get_mut(&key)
         else {
             return;
         };
@@ -171,7 +175,10 @@ impl crate::game::ServerGame<'_> {
         } else {
             self.journal_set_block(pos, new);
         }
-        self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+        self.common
+            .world
+            .modified
+            .insert((pos[0] >> 4, pos[2] >> 4));
         self.post_block_game_event("minecraft:block_change", pos, None, Some(new));
     }
 
@@ -179,11 +186,13 @@ impl crate::game::ServerGame<'_> {
     /// occupancy no longer matches the block state is the one `setItem` or
     /// `removeItem` updated.
     pub(in crate::game) fn chiseled_bookshelf_synced(&mut self, pos: (i32, i32, i32)) {
-        let Some(BlockEntity::ChiseledBookshelf(b)) = self.common.world.block_entities.get(&pos) else {
+        let Some(BlockEntity::ChiseledBookshelf(b)) = self.common.world.block_entities.get(&pos)
+        else {
             return;
         };
         let Some(info) = self
-            .common.pack
+            .common
+            .pack
             .assets
             .registry
             .state(self.common.world.block(pos.0, pos.1, pos.2))

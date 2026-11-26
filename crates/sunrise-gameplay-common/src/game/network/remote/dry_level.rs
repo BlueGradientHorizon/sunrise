@@ -40,7 +40,7 @@ pub trait DryLevelGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Ask for the candidate state without spending the level random or scheduling live ticks.
     /// A directional context's `replace_clicked` is read from the level; a question vanilla
     /// throws on is refused (`Behaviours::state_for_resolved_placement`).
-     fn preview_state_for_placement(
+    fn preview_state_for_placement(
         &mut self,
         block: BlockId,
         context: &PlacementContext,
@@ -55,7 +55,7 @@ pub trait DryLevelGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// Trace the optional initial write and state-level callback off the live world.
     /// Both steps use the same scratch level so the callback sees the write's shape updates.
-     fn preview_set_placed_by(
+    fn preview_set_placed_by(
         &mut self,
         pos: BlockPos,
         state: BlockStateId,
@@ -82,10 +82,9 @@ pub trait DryLevelGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> DryLevelGameExt1<'__sg> for G {}
 
-
 #[cfg(any(test, feature = "test-support"))]
 pub trait DryLevelGameExt2<'__sg>: crate::game::SideGame<'__sg> {
-     fn check_dry_fire_odds_view(
+    fn check_dry_fire_odds_view(
         &mut self,
         stage: impl FnOnce(&sunrise_world::level::Behaviours, &mut dyn LevelAccess, &mut Ticks),
         check: impl FnOnce(&dyn mod_api::LevelHost),
@@ -103,7 +102,6 @@ pub trait DryLevelGameExt2<'__sg>: crate::game::SideGame<'__sg> {
 }
 #[cfg(any(test, feature = "test-support"))]
 impl<'__sg, G: crate::game::SideGame<'__sg>> DryLevelGameExt2<'__sg> for G {}
-
 
 impl sunrise_world::level::BlockEntityNeighbors for DryLevel<'_> {}
 

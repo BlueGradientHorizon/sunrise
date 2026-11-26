@@ -1,13 +1,16 @@
-use sunrise_gameplay_common::game::Dim;
 use super::*;
+use std::sync::Arc;
 use sunrise_gameplay::game::lan_actions::tick::dig_tick_order_tests::DELAYED;
 use sunrise_gameplay::game::lan_actions::tick::dig_tick_order_tests::Event;
 use sunrise_gameplay::game::lan_actions::tick::dig_tick_order_tests::Observe;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
-use std::sync::Arc;
+use sunrise_gameplay_common::game::Dim;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::lan::guest::SPECTATOR;
+use {
+    sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+    sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+};
 
 #[test]
 #[ignore = "daily"]

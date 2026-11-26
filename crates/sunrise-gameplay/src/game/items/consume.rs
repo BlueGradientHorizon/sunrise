@@ -3,13 +3,13 @@
 //! fruit) for players and foxes. The level random stands in for the player's
 //! own, as for every other player draw.
 use super::Dim;
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
-use sunrise_gameplay_common::game::collision_source::Mover;
-use sunrise_gameplay_common::game::item_use_common::{ItemConsumable, USE_ITEM_COMPLETE_EVENT};
 use std::convert::Infallible;
 use sunrise_core::{
     geometry::Vec3, position::BlockPos, random::LegacyRandom, random::RandomSource,
 };
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
+use sunrise_gameplay_common::game::collision_source::Mover;
+use sunrise_gameplay_common::game::item_use_common::{ItemConsumable, USE_ITEM_COMPLETE_EVENT};
 use sunrise_items::items::{ConsumeEffect, ItemInfo, ItemStack};
 use sunrise_sim::mobs::Who;
 use {
@@ -37,7 +37,8 @@ impl crate::game::ServerGame<'_> {
     /// Before a world is published the handle is stale, but the effect still runs.
     pub(in crate::game::server_side) fn consuming_player_entity(&self) -> mod_api::EntityRef {
         mod_api::EntityRef::new(
-            self.common.native_lifecycle
+            self.common
+                .native_lifecycle
                 .epoch()
                 .unwrap_or(mod_api::WorldEpoch::new(0)),
             if self.server.lan_acting.is_some() {
@@ -52,7 +53,9 @@ impl crate::game::ServerGame<'_> {
     /// first, and completes the use itself (eating the food there too).
     pub(in crate::game::server_side) fn send_use_item_complete(&mut self) {
         if self.server.lan_acting.is_some() {
-            self.server.guest_entity_events.push(USE_ITEM_COMPLETE_EVENT);
+            self.server
+                .guest_entity_events
+                .push(USE_ITEM_COMPLETE_EVENT);
         }
     }
     /// Server-side `Consumable.emitParticlesAndSounds`.
@@ -85,16 +88,13 @@ impl crate::game::ServerGame<'_> {
         }
     }
     pub(in crate::game::server_side) fn feet(&self) -> Option<[f64; 3]> {
-        self.common.player
+        self.common
+            .player
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z])
     }
     /// `TeleportRandomlyConsumeEffect.apply` for the local player.
-    pub fn teleport_randomly(
-        &mut self,
-        teleport: &TeleportConsume,
-        consumed: &ItemStack,
-    ) -> bool {
+    pub fn teleport_randomly(&mut self, teleport: &TeleportConsume, consumed: &ItemStack) -> bool {
         if self.common.player.is_none() {
             return false;
         }
@@ -237,7 +237,8 @@ impl crate::game::ServerGame<'_> {
                 }
                 _ => {
                     if let Some(mob) = self
-                        .common.mobs
+                        .common
+                        .mobs
                         .iter_mut()
                         .find(|m| m.id == id && m.alive() && !m.removed)
                     {
@@ -261,7 +262,8 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn finish_mob_drink(&mut self, id: u32, stack: &ItemStack) {
         let usage = MobConsumption::Drink(stack);
         if !self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .any(|mob| mob.id == id && usage.still_valid(mob, mob.position))
         {
@@ -365,7 +367,9 @@ impl crate::game::ServerGame<'_> {
         );
         let blocks = (lo.x..=hi.x)
             .flat_map(|x| (lo.y..=hi.y).flat_map(move |y| (lo.z..=hi.z).map(move |z| (x, y, z))));
-        let states: Vec<_> = blocks.map(|(x, y, z)| self.common.world.block(x, y, z)).collect();
+        let states: Vec<_> = blocks
+            .map(|(x, y, z)| self.common.world.block(x, y, z))
+            .collect();
         let liquid = states
             .iter()
             .any(|&s| self.common.res.facts().get(s).fluid != sunrise_items::blocks::Fluid::None);
@@ -393,7 +397,8 @@ impl crate::game::ServerGame<'_> {
         state: sunrise_world::registry::BlockStateId,
     ) -> bool {
         let name = &self.common.res.facts().get(state).name;
-        self.common.res
+        self.common
+            .res
             .items()
             .block_tags
             .get(tag)
@@ -405,7 +410,8 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         let removed_y = self
-            .common.persist
+            .common
+            .persist
             .removed_vehicles
             .get(&id)
             .map(|vehicle| vehicle.position().y)
@@ -416,14 +422,16 @@ impl crate::game::ServerGame<'_> {
                 if self.common.persist.removals.contains(&boat)
                     || self.common.persist.destroying_vehicles.contains(&boat)
                 {
-                    self.common.boats
+                    self.common
+                        .boats
                         .iter()
                         .find(|vehicle| vehicle.id == id)
                         .map(|vehicle| vehicle.position.y)
                 } else if self.common.persist.removals.contains(&cart)
                     || self.common.persist.destroying_vehicles.contains(&cart)
                 {
-                    self.common.carts
+                    self.common
+                        .carts
                         .iter()
                         .find(|vehicle| vehicle.id == id)
                         .map(|vehicle| vehicle.position.y)
@@ -884,20 +892,17 @@ impl TeleportConsumeWorld for MobTeleporter<'_, '_> {
 #[cfg(any(test, feature = "test-support"))]
 pub mod teleport_hook_tests {
     use super::*;
-    use sunrise_gameplay_common::game::api_values::test_snapshot;
     use crate::game::native_entity_refs::tests::with_game;
     use mod_api::{Flow, Hooks, ItemConsumptionTeleportEvent, ModEntry, ServerHost};
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     };
+    use sunrise_gameplay_common::game::api_values::test_snapshot;
     use sunrise_sim::motion::PlayerMotion;
 
-    
-    
-
-pub struct ConsumptionProbe(pub Arc<Mutex<Vec<mod_api::ItemStack>>>, pub Arc<AtomicBool>);
-#[mod_api::__subscriptions]
+    pub struct ConsumptionProbe(pub Arc<Mutex<Vec<mod_api::ItemStack>>>, pub Arc<AtomicBool>);
+    #[mod_api::__subscriptions]
     impl Hooks for ConsumptionProbe {
         fn item_consumption_teleport(
             &self,
@@ -948,10 +953,6 @@ pub struct ConsumptionProbe(pub Arc<Mutex<Vec<mod_api::ItemStack>>>, pub Arc<Ato
             assert!(heard.lock().unwrap().is_empty());
         });
     }
-
-    
-
-    
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;

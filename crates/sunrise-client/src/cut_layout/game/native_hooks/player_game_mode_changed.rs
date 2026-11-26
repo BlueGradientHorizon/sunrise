@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod player_game_mode_changed_tests {
@@ -60,7 +58,9 @@ mod player_game_mode_changed_tests {
 
     /// Gives guest 13 a channel of its own and returns the values of the game-mode events sent
     /// to it since the last call.
-    fn watch_modes(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> impl Fn() -> Vec<f32> + use<> {
+    fn watch_modes(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    ) -> impl Fn() -> Vec<f32> + use<> {
         let (tx, rx) = std::sync::mpsc::channel();
         game.server
             .lan

@@ -4,10 +4,7 @@ use sunrise_core::random::LegacyRandom;
 pub const SEED: i64 = 2;
 pub const AT: [f64; 3] = [10.0, 64.0, 20.0];
 
-pub fn breed_pair(
-    game: &mut crate::game::ServerGame<'_>,
-    kind: &str,
-) -> (u32, u32, Option<u32>) {
+pub fn breed_pair(game: &mut crate::game::ServerGame<'_>, kind: &str) -> (u32, u32, Option<u32>) {
     breed_pair_credited(game, kind, false)
 }
 
@@ -50,12 +47,7 @@ pub fn breed_pair_credited(
 }
 
 /// A dying cube mob of `kind` and `size` whose own random is `new Random(seed)`.
-pub fn cube(
-    game: &mut crate::game::ServerGame<'_>,
-    kind: &str,
-    size: i32,
-    seed: i64,
-) -> Mob {
+pub fn cube(game: &mut crate::game::ServerGame<'_>, kind: &str, size: i32, seed: i64) -> Mob {
     game.server.next_entity += 1;
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     let mut mob = Mob::new(
@@ -73,12 +65,8 @@ pub fn cube(
     mob
 }
 
-
 /// Two cows bred by the real route; the parent's id ends in `mode`.
-pub fn breed(
-    game: &mut crate::game::ServerGame<'_>,
-    mode: u32,
-) -> (u32, u32, Option<u32>) {
+pub fn breed(game: &mut crate::game::ServerGame<'_>, mode: u32) -> (u32, u32, Option<u32>) {
     game.common.mobs.clear();
     game.server.next_entity = next_parent_id(game, mode) - 1;
     breed_pair(game, "minecraft:cow")

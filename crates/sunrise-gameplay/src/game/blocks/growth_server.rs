@@ -1,7 +1,7 @@
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::growth_features::install_live_features;
 use sunrise_core::{geometry::Direction, position::BlockPos};
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::growth_features::install_live_features;
 use sunrise_items::items::ItemStack;
 use sunrise_world::level::classes::Class;
 
@@ -13,7 +13,12 @@ impl ServerGame<'_> {
         if self.common.res.behaviours().live_features().is_some() {
             return;
         }
-        install_live_features(&self.common.res, &self.common.pack, &self.common.options, &Default::default());
+        install_live_features(
+            &self.common.res,
+            &self.common.pack,
+            &self.common.options,
+            &Default::default(),
+        );
     }
     /// `ShearsItem.useOn` on a growing plant's head below its top age (kelp,
     /// weeping and twisting vines, cave vines): the head goes to

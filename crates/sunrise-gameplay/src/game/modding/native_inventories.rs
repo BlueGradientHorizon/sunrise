@@ -234,9 +234,10 @@ impl crate::game::ServerGame<'_> {
         let items = self.common.res.items();
         let max = |s: &ItemStack| items.get(&s.item).map_or(64, |i| i.max_stack);
         let read = |side: &Side, kind| match side {
-            Side::Live(i) => {
-                guest_slots(&self.server.lan.as_ref().expect("live").hub.guests[*i], kind)
-            }
+            Side::Live(i) => guest_slots(
+                &self.server.lan.as_ref().expect("live").hub.guests[*i],
+                kind,
+            ),
             Side::File(level) => level_slots(level, kind),
         };
         let mut src = read(&a, from_kind);

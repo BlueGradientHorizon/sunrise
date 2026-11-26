@@ -1,10 +1,7 @@
 //! The real controllers (the `controllers` feature): gilrs' pads, and the DualSense's own output
 //! over HID: its rumble, adaptive triggers, lights and HD haptics. A build without the feature (the
 //! server build) has the stub in pad.rs instead, and only `sunrise-ctl pad`'s virtual pad.
-use super::{
-    super::Screen,
-    Connection, Pads,
-};
+use super::{super::Screen, Connection, Pads};
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 use sunrise_client::controller_ui::Device;
@@ -446,9 +443,10 @@ impl crate::game::ClientGame<'_> {
                 Some(s) if &*s.item == "minecraft:trident" => {
                     TriggerFeel::Draw(ticks as f32 / 10.0)
                 }
-                Some(s) if &*s.item == "minecraft:crossbow" => {
-                    TriggerFeel::Draw(ticks as f32 / sunrise_gameplay_common::game::CommonGame::charge_ticks(s).max(1) as f32)
-                }
+                Some(s) if &*s.item == "minecraft:crossbow" => TriggerFeel::Draw(
+                    ticks as f32
+                        / sunrise_gameplay_common::game::CommonGame::charge_ticks(s).max(1) as f32,
+                ),
                 Some(s) if self.blocks_attacks(s).is_some() => TriggerFeel::Brace,
                 _ => TriggerFeel::Free,
             },
@@ -471,7 +469,8 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game::client_side) fn idle_use_feel(&self) -> TriggerFeel {
         let gliding = self.common.player.as_ref().is_some_and(|p| p.fall_flying);
         let mount = self
-            .common.riding
+            .common
+            .riding
             .and_then(|id| self.common.mobs.iter().find(|m| m.id == id));
         let mount = mount.map_or("", |m| m.kind.id.as_str());
         let feel = |stack: Option<&sunrise_items::items::ItemStack>| match stack

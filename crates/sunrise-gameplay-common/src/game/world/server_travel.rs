@@ -1,16 +1,14 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod transfer_lifetime_tests {
 
-use super::*;
+    use super::*;
 
-use sunrise_mod_runtime::attachments::{
+    use sunrise_mod_runtime::attachments::{
         AttachmentLifetime, AttachmentType, Attachments, HasAttachmentLifetime, Holder,
         index::AttachmentIndex,
     };
 
-pub static VALUE: AttachmentType<i32> = AttachmentType {
+    pub static VALUE: AttachmentType<i32> = AttachmentType {
         namespace: "test",
         name: "transfer",
         default: || 0,
@@ -20,15 +18,14 @@ pub static VALUE: AttachmentType<i32> = AttachmentType {
     };
 }
 
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod credits_respawn_tests {
 
-use crate::game::Dim;
+    use crate::game::Dim;
 
-use std::sync::{Arc, atomic::AtomicI32, mpsc};
+    use std::sync::{Arc, atomic::AtomicI32, mpsc};
 
-use sunrise_protocol::{
+    use sunrise_protocol::{
         buf::Reader,
         packets::{
             configuration::ClientInformation,
@@ -36,13 +33,13 @@ use sunrise_protocol::{
         },
     };
 
-use sunrise_sim::lan::{
+    use sunrise_sim::lan::{
         Joined, NetConfig, Out, PlayerSender,
         guest::{Guest, InboxItem, SPECTATOR},
         hub::HubConfig,
     };
 
-pub fn received_packets(rx: &mpsc::Receiver<Out>) -> impl Iterator<Item = C> + '_ {
+    pub fn received_packets(rx: &mpsc::Receiver<Out>) -> impl Iterator<Item = C> + '_ {
         rx.try_iter()
             .flat_map(|out| match out {
                 Out::Packet(body) => vec![body],
@@ -54,9 +51,9 @@ pub fn received_packets(rx: &mpsc::Receiver<Out>) -> impl Iterator<Item = C> + '
                 C::decode(reader.varint().ok()?, reader.rest()).ok()
             })
     }
-/// The player's saved point: a respawn anchor in the Nether.
+    /// The player's saved point: a respawn anchor in the Nether.
     pub const ANCHOR: [i32; 3] = [10, 100, 10];
-pub fn placed_guest(conn: u32, dim: Dim, at: [f64; 3]) -> (Guest, mpsc::Receiver<Out>) {
+    pub fn placed_guest(conn: u32, dim: Dim, at: [f64; 3]) -> (Guest, mpsc::Receiver<Out>) {
         let (tx, rx) = mpsc::channel();
         let mut guest = Guest::new(
             Joined {

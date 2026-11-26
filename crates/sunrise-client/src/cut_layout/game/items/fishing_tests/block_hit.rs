@@ -1,10 +1,16 @@
 //! A flying bobber that strikes a block calls its `onProjectileHit`
 //! (`FishingHook.onHitBlock` -> `Projectile.onHitBlock`, #12936): a target
 //! block is powered and a bell rings, both credited to the rod's owner.
-use sunrise_gameplay_common::game::fishing_common::Hook;
-use {crate::game::*, sunrise_gameplay_common::game::{Arc, Instant, ItemStack, Options, PathBuf, PlayerMotion, Progress, Resources, Vec3, execution_role, hit, remote}};
 use sunrise_core::position::ChunkPos;
+use sunrise_gameplay_common::game::fishing_common::Hook;
 use sunrise_level::chunk::Chunk;
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{
+        Arc, Instant, ItemStack, Options, PathBuf, PlayerMotion, Progress, Resources, Vec3,
+        execution_role, hit, remote,
+    },
+};
 
 fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
@@ -29,7 +35,8 @@ fn game<'a>(
     .unwrap();
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let res = resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(
         res,
@@ -72,7 +79,11 @@ fn cast_east(game: &mut sunrise_gameplay::game::ServerGame<'_>, from: Vec3, stat
     }
 }
 
-fn property(game: &sunrise_gameplay::game::ServerGame<'_>, at: [i32; 3], key: &str) -> Option<String> {
+fn property(
+    game: &sunrise_gameplay::game::ServerGame<'_>,
+    at: [i32; 3],
+    key: &str,
+) -> Option<String> {
     let state = game.world.block(at[0], at[1], at[2]);
     game.pack
         .assets

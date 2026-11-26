@@ -170,7 +170,8 @@ impl crate::game::ServerGame<'_> {
         let stack = match t {
             // Include enchantments kept in the mob's gear as well as in the stack.
             Target::Mob(id) => self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == id)
                 .and_then(|m| sunrise_sim::mobs::finalize::item_stack(m, MAINHAND)),
@@ -260,7 +261,8 @@ impl crate::game::ServerGame<'_> {
                 }
                 Target::Mob(id) => {
                     let Some(kind) = self
-                        .common.mobs
+                        .common
+                        .mobs
                         .iter()
                         .find(|m| m.id == id && !m.removed)
                         .map(|m| m.kind.id.clone())

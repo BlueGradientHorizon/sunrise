@@ -1,6 +1,6 @@
 //! Wing contacts exercise the real Game damage/equipment and velocity continuation.
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::motion::PlayerMotion;
 
@@ -79,7 +79,11 @@ fn a_shield_faces_the_dragons_origin_not_the_wing_push() {
         g.selected = 0;
         g.using = Some((0, 20));
         g.yaw = 0.0;
-        let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(Vec3::new(0.0, 0.0, 4.0), 0.0, 1);
+        let mut dragon = sunrise_gameplay_common::game::dragon_common::Dragon::new(
+            Vec3::new(0.0, 0.0, 4.0),
+            0.0,
+            1,
+        );
         dragon.id = 900;
         g.dragon.replace(dragon);
         assert!(

@@ -28,13 +28,7 @@ pub fn level_sound_playable(at: [f64; 3], volume: f32, pitch: f32) -> bool {
 /// Whether a native mod's sound can be sent: a namespaced event, a sound
 /// source, a position inside the world's range and a finite, non-negative
 /// volume and pitch.
-pub fn mod_sound_ok(
-    sound: &str,
-    at: [f64; 3],
-    source: usize,
-    volume: f32,
-    pitch: f32,
-) -> bool {
+pub fn mod_sound_ok(sound: &str, at: [f64; 3], source: usize, volume: f32, pitch: f32) -> bool {
     sound_id(sound)
         && source < sunrise_level::sim_settings::SOUND_SOURCES.len()
         && level_sound_playable(at, volume, pitch)

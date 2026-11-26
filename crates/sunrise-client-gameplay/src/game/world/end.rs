@@ -1,9 +1,7 @@
-
-
 #[cfg(test)]
 pub(crate) mod tests {
 
-/// The eye sprite's atlas region; only its UVs are used here.
+    /// The eye sprite's atlas region; only its UVs are used here.
     pub fn eye_rect() -> sunrise_client::hud::Rect {
         sunrise_client::hud::Rect {
             u0: 0.0,
@@ -15,12 +13,12 @@ pub(crate) mod tests {
         }
     }
 
-use super::*;
+    use super::*;
 
-use crate::game::client_side::end_client::eye_quad;
-use sunrise_gameplay_common::game::end_state::{exact_teleport, flash_pose};
+    use crate::game::client_side::end_client::eye_quad;
+    use sunrise_gameplay_common::game::end_state::{exact_teleport, flash_pose};
 
-#[test]
+    #[test]
     fn a_thrown_eye_is_lifted_by_the_item_ground_transform() {
         let right = glam::Vec3::X * 0.25;
         let up = glam::Vec3::Y * 0.25;
@@ -40,7 +38,7 @@ use sunrise_gameplay_common::game::end_state::{exact_teleport, flash_pose};
         // ThrownItemRenderer draws the eye full-bright.
         assert!(quad.iter().all(|v| v.light == 0xF0F0));
     }
-#[test]
+    #[test]
     fn a_thrown_eye_is_lifted_along_the_cameras_up_axis() {
         // A camera tilted down 45 degrees: its up axis is (0, 1, 1)/sqrt(2), so the lift must
         // move the quad along that axis, not straight up world Y.

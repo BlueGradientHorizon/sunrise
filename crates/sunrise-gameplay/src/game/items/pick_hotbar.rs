@@ -7,11 +7,7 @@ impl crate::game::ServerGame<'_> {
     /// `ServerGamePacketListenerImpl.tryPickItem` for the acting player (the host's own, or a
     /// guest swapped in): picks `stack` into the 36 main slots, `infinite` with infinite
     /// materials (creative). Returns whether anything changed.
-    pub fn pick_into_inventory(
-        &mut self,
-        stack: &ItemStack,
-        infinite: bool,
-    ) -> bool {
+    pub fn pick_into_inventory(&mut self, stack: &ItemStack, infinite: bool) -> bool {
         // With no such part, no player id is made and each hotbar stack costs nothing more.
         let player =
             mod_api::__private::has_part_hook(mod_api::HookId::IsNotReplaceableByPickAction)
@@ -26,7 +22,12 @@ impl crate::game::ServerGame<'_> {
         let Some(picked) = picked else {
             return false;
         };
-        sunrise_sim::pick_item::apply(&mut self.common.inventory[..36], &mut self.common.selected, stack, picked);
+        sunrise_sim::pick_item::apply(
+            &mut self.common.inventory[..36],
+            &mut self.common.selected,
+            stack,
+            picked,
+        );
         true
     }
     /// `ItemStack.isNotReplaceableByPickAction` for `held` in hotbar `slot`: vanilla's answer

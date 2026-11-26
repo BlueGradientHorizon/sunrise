@@ -30,9 +30,11 @@ impl crate::game::ServerGame<'_> {
             }
         } else if let Some(mount) = vehicle {
             match self.native_entity_target(passenger)? {
-                Target::Player => {
-                    Some(self.player_dismount_from_lent_mob(mount, self.common.yaw, self.common.player.as_ref()?))
-                }
+                Target::Player => Some(self.player_dismount_from_lent_mob(
+                    mount,
+                    self.common.yaw,
+                    self.common.player.as_ref()?,
+                )),
                 Target::Guest(conn) => {
                     let guest = self.command_guest(conn)?;
                     Some(self.player_dismount_from_lent_mob(
@@ -67,7 +69,8 @@ impl crate::game::ServerGame<'_> {
             .entity(mount)
             .and_then(|entity| self.native_entity_target(entity))
             .or_else(|| {
-                self.common.mob_object(mount)
+                self.common
+                    .mob_object(mount)
                     .filter(|mob| !mob.removed)
                     .map(|_| Target::Mob(mount))
             });
@@ -224,7 +227,9 @@ impl crate::game::ServerGame<'_> {
         let id = vehicle.id();
         let at = match self.native_entity_target(passenger.entity())? {
             Target::Mob(rider) => self.mob_dismount_point(id, rider),
-            Target::Player => self.player_dismount_point(id, self.common.yaw, self.common.player.as_ref()?),
+            Target::Player => {
+                self.player_dismount_point(id, self.common.yaw, self.common.player.as_ref()?)
+            }
             Target::Guest(conn) => {
                 let guest = self.command_guest(conn)?;
                 self.player_dismount_point(id, guest.yaw, guest.motion.as_deref()?)
@@ -328,7 +333,8 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         let block = self
-            .common.res
+            .common
+            .res
             .facts()
             .get(self.common.world.block(pos[0], pos[1], pos[2]));
         if !self.named_block_in_tag("minecraft:fences", &block.name) {
@@ -363,12 +369,7 @@ impl crate::game::ServerGame<'_> {
             .is_some_and(|target| self.detach_leash(target, drop_lead))
     }
     /// Attempts one mount, shared by handle writes and the ride command.
-    pub fn start_riding_target(
-        &mut self,
-        rider: Target,
-        vehicle: Target,
-        force: bool,
-    ) -> bool {
+    pub fn start_riding_target(&mut self, rider: Target, vehicle: Target, force: bool) -> bool {
         self.try_start_riding_target(rider, vehicle, force).is_ok()
     }
 
@@ -569,20 +570,26 @@ impl crate::game::ServerGame<'_> {
                     return Err(R::CannotRide);
                 }
                 Target::Mob(id)
-                    if self.common.mobs.iter().find(|m| m.id == id).is_none_or(|m| {
-                        m.extra.boarding_cooldown > 0
-                            || matches!(
-                                m.species(),
-                                sunrise_sim::mobs::Species::Warden
-                                    | sunrise_sim::mobs::Species::Wither
-                            )
-                    }) =>
+                    if self
+                        .common
+                        .mobs
+                        .iter()
+                        .find(|m| m.id == id)
+                        .is_none_or(|m| {
+                            m.extra.boarding_cooldown > 0
+                                || matches!(
+                                    m.species(),
+                                    sunrise_sim::mobs::Species::Warden
+                                        | sunrise_sim::mobs::Species::Wither
+                                )
+                        }) =>
                 {
                     return Err(R::CannotRide);
                 }
                 Target::General(id)
                     if self
-                        .common.general_row(id)
+                        .common
+                        .general_row(id)
                         .is_some_and(|row| row.boarding_cooldown > 0) =>
                 {
                     return Err(R::CannotRide);
@@ -593,7 +600,8 @@ impl crate::game::ServerGame<'_> {
         match vehicle {
             Target::Boat(id) => {
                 let index = self
-                    .common.boats
+                    .common
+                    .boats
                     .iter()
                     .position(|b| b.id == id)
                     .ok_or(R::NoEntity)?;
@@ -616,7 +624,8 @@ impl crate::game::ServerGame<'_> {
             }
             Target::Mob(id) => {
                 let mob = self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter()
                     .find(|m| m.id == id && m.alive())
                     .ok_or(R::NoEntity)?;
@@ -713,7 +722,8 @@ impl crate::game::ServerGame<'_> {
     ) {
         let passengers = self.seated_passengers(vehicle);
         let own = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .filter(|_| self.server.lan_acting.is_none())
             .map(|player| player.entity_id as u32);
@@ -748,7 +758,8 @@ impl crate::game::ServerGame<'_> {
 
     pub(in crate::game::server_side) fn dismount_general_passengers(&mut self, vehicle: u32) {
         let mut passengers: Vec<_> = self
-            .common.general_passengers(vehicle)
+            .common
+            .general_passengers(vehicle)
             .map(|row| (row.vehicle_order, row.id))
             .collect();
         passengers.sort_unstable();

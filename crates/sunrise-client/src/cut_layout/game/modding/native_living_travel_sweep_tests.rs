@@ -2,9 +2,9 @@
 //! the move the travel ends in fires `entity_move` beside it - and a NoAI
 //! mob, which never travels, fires nobody. The same file carries the
 //! pipeline checks a replacement and a move veto need.
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{EntityMoveEvent, Flow, Hooks, LivingTravelEvent, LoopContext, TravelMode};
 use std::sync::{Arc, Mutex};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 
 #[derive(Debug, PartialEq, Eq)]
 enum Event {

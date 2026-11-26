@@ -1,14 +1,14 @@
 //! `living_knockback` heard by a trait mod through the game's own bridge: who the hook names
 //! as the attacker, what the attacker holds, what a mod may cancel, and thorns' wearer.
 use super::native_entity_refs::tests::with_game;
-#[cfg(any())]
-use sunrise_gameplay::game::server_side::entity_server::damage_level_of;
 use mod_api::{
     self, HitHost, Hooks, HurtSource, LevelRandomHost, LivingIncomingDamageEvent,
     LivingKnockbackEvent,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+#[cfg(any())]
+use sunrise_gameplay::game::server_side::entity_server::damage_level_of;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::health::{Attack, Hurting, Knock, NO_ATTACK};
 use sunrise_sim::mobs::{Damage, DamageKind, Mob, Who};
@@ -95,7 +95,9 @@ pub(crate) fn heard(
     hear(|log| with_game(|game| test(game, log)))
 }
 
-fn guest_heard(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Mutex<Heard>)) -> Heard {
+fn guest_heard(
+    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Mutex<Heard>),
+) -> Heard {
     hear(|log| super::native_guest_turn_tests::with_guests(|game| test(game, log)))
 }
 
@@ -311,7 +313,11 @@ fn a_sweep_names_the_player_and_the_held_sword() {
             Vec3::new(-1.0, -1.0, -1.0),
             Vec3::new(1.0, 2.0, 2.0),
         );
-        game.sweep_damage(area, sunrise_gameplay::game::server_side::mace::Spared::Nothing, 1.0);
+        game.sweep_damage(
+            area,
+            sunrise_gameplay::game::server_side::mace::Spared::Nothing,
+            1.0,
+        );
     });
     let sword = Some("minecraft:iron_sword".to_string());
     // The hit's own push, then the sweep's 0.4 along the player's yaw.
@@ -453,7 +459,10 @@ fn a_guest_blow_on_a_guest_names_the_attacker_and_the_sword() {
             })
             .unwrap();
             let strike = sunrise_gameplay::game::server_side::lan_pvp::Strike::test_blow(12);
-            let hurt = game.pvp_land(sunrise_gameplay::game::server_side::lan_pvp::Victim::Guest(13), &strike);
+            let hurt = game.pvp_land(
+                sunrise_gameplay::game::server_side::lan_pvp::Victim::Guest(13),
+                &strike,
+            );
             let seen = log.lock().unwrap().incoming_causing.clone();
             assert!(hurt, "not hurt; damage heard from {seen:?}");
             assert_eq!(game.current_attack(), NO_ATTACK);
@@ -740,7 +749,8 @@ fn accepted_wolf_hits_commit_owner_replacement_clearing_and_unresolved_precedenc
         game.as_guest(13, |game| game.remember_mob_player_credit(100))
             .unwrap();
         game.as_guest(12, |game| {
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:iron_sword", 1))
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:iron_sword", 1))
         })
         .unwrap();
         for (owner, strength) in [(Some(12), 0.2), (None, 0.4), (Some(999), 0.4)] {
@@ -796,7 +806,8 @@ fn remembered_player_wins_after_forty_ticks_then_recent_mob_credit_expires_at_on
             .extra
             .set_main_hand_stack(Some(ItemStack::new("minecraft:bone", 1)));
         game.as_guest(12, |game| {
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:iron_sword", 1));
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:iron_sword", 1));
             assert!(game.mob_hits_mob(100, 1.0, Damage::player([1.0, 0.0, 0.0])));
         })
         .unwrap();
@@ -805,7 +816,8 @@ fn remembered_player_wins_after_forty_ticks_then_recent_mob_credit_expires_at_on
         }
         assert_eq!(game.mobs[0].ai.last_hurt_by_player, 60);
         game.as_guest(12, |game| {
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:iron_axe", 1))
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:iron_axe", 1))
         })
         .unwrap();
         assert!(game.mob_hits_mob(100, 1.0, Damage::mob(101, [1.0, 0.0, 0.0])));

@@ -32,7 +32,8 @@ impl crate::game::ServerGame<'_> {
                 && self.server.lan_acting.is_none()
                 && (!alive_only
                     || self
-                        .common.player
+                        .common
+                        .player
                         .as_ref()
                         .is_some_and(|p| p.health.health() > 0.0)) =>
             {
@@ -76,7 +77,12 @@ impl crate::game::ServerGame<'_> {
             Sort::Furthest => out.sort_by(|a, b| b.1.total_cmp(&a.1)),
             Sort::Random => {
                 for i in (1..out.len()).rev() {
-                    let j = self.common.world.random.next_int_bound(i as i32 + 1).unwrap_or(0) as usize;
+                    let j = self
+                        .common
+                        .world
+                        .random
+                        .next_int_bound(i as i32 + 1)
+                        .unwrap_or(0) as usize;
                     out.swap(i, j);
                 }
             }

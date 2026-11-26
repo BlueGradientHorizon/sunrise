@@ -83,11 +83,7 @@ pub struct Flags {
 }
 
 impl Flags {
-    pub fn emergency_save(
-        &self,
-        server: std::thread::ThreadId,
-        timeout: Duration,
-    ) -> bool {
+    pub fn emergency_save(&self, server: std::thread::ThreadId, timeout: Duration) -> bool {
         if std::thread::current().id() == server || self.finished.load(Ordering::Acquire) {
             return true;
         }

@@ -1,4 +1,3 @@
-
 #[cfg(test)]
 mod condition_tests {
     #[test]

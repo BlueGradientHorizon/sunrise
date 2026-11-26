@@ -1,5 +1,3 @@
-
-
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
     /// NeoForge's `PlayerSetSpawnEvent`: a server player's respawn point is about to be

@@ -1,9 +1,12 @@
 //! Scoped persistent-data reads and key edits against real LAN guests, through player handles.
 
-use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use mod_api::{Compound, JavaString, PlayerPersistentDataError, Tag, prelude::*};
+use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 
-fn saved_data<'a>(game: &'a sunrise_gameplay::game::ServerGame<'_>, conn: u32) -> Option<&'a Compound> {
+fn saved_data<'a>(
+    game: &'a sunrise_gameplay::game::ServerGame<'_>,
+    conn: u32,
+) -> Option<&'a Compound> {
     let hub = &game.server.lan.as_ref().unwrap().hub;
     match hub.guest(conn)?.saved.as_ref()?.get("NeoForgeData")? {
         Tag::Compound(data) => Some(data),

@@ -3,17 +3,17 @@
 //! `Animal.mobInteract` gives a tame nautilus at full health the 600-tick love
 //! and the species' eating sound, the zombie nautilus too: `ZombieNautilus`
 //! overrides neither `isFood` nor `mobInteract`.
-#[cfg(test)]
-use sunrise_gameplay_common::game::execution_role;
+use super::super::*;
+use crate::game::load_resources;
 use crate::settings::Settings;
+use std::sync::Arc;
+use sunrise_core::{geometry::Vec3, position::ChunkPos};
 use sunrise_gameplay_common::game::InteractTarget;
 use sunrise_gameplay_common::game::Options;
 use sunrise_gameplay_common::game::Progress;
-use crate::game::load_resources;
+#[cfg(test)]
+use sunrise_gameplay_common::game::execution_role;
 use sunrise_items::items::ItemStack;
-use super::super::*;
-use std::sync::Arc;
-use sunrise_core::{geometry::Vec3, position::ChunkPos};
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::Mob;
 use sunrise_sim::motion::PlayerMotion;

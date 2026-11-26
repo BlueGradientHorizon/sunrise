@@ -1,20 +1,25 @@
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::game::native_hooks::block_entity_on_load::BlockEntityOnLoadGameExt1;
-use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
-    use {sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
     use mod_api::{
         Block, BlockEntityOnLoadEvent, BlockEntityPart, BlockEntitySideScope,
         BlockEntityTicksEvent, BlocksEvent, Hooks, Host, ModEntry, Registrar, RegistrationContext,
     };
     use std::sync::{Arc, Mutex};
+    use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::native_hooks::block_entity_on_load::BlockEntityOnLoadGameExt1;
+    use sunrise_gameplay_common::world_biomes;
     use sunrise_level::{
         chunk::Chunk,
         containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields},
     };
-    use sunrise_gameplay_common::world_biomes;
+    use {
+        sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+        sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+    };
 
     type Log = Arc<Mutex<Vec<(i32, i32)>>>;
     struct Loaded(Log);
@@ -98,8 +103,11 @@ use sunrise_client_gameplay::game::client_side::remote_client::session_state::Re
         .into();
         mod_platform::testing::with_mods(mods.clone(), || {
             sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
-            let root =
-                sunrise_gameplay_common::game::mods::content_root(&fixture_root(), &Default::default()).unwrap();
+            let root = sunrise_gameplay_common::game::mods::content_root(
+                &fixture_root(),
+                &Default::default(),
+            )
+            .unwrap();
             with_game_at(root.prepared().to_path_buf(), |game| {
                 game.options.dedicated = Some(Vec::new());
                 let registry = game.pack.assets.registry;

@@ -66,6 +66,7 @@ use sunrise_gameplay_common::game::remote::snap_target;
 use sunrise_gameplay_common::game::remote::synced_local_use;
 use sunrise_gameplay_common::game::remote::use_ends_click;
 use sunrise_gameplay_common::game::remote::wrap_degrees;
+use sunrise_gameplay_common::game::remote::*;
 use sunrise_gameplay_common::game::villager_client::builtin_registries;
 use sunrise_gameplay_common::game::{item_use_common::ticks_left, level_sounds_common::LevelSound};
 #[allow(unused_imports)]
@@ -100,7 +101,6 @@ use sunrise_sim::{
     motion::{MotionWorld, PlayerMotion},
     sprint::Keys,
 };
-use sunrise_gameplay_common::game::remote::*;
 use {
     sunrise_core::nbt::Tag,
     sunrise_mod_runtime::attachments::Holder,
@@ -741,10 +741,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// `HashedStack.create` with the connection's registries (the client's
     /// `decoratedHashOpsGenerator`).
-    pub fn hashed_stack(
-        &self,
-        s: &Option<ItemStack>,
-    ) -> sunrise_protocol::Result<Option<Hashed>> {
+    pub fn hashed_stack(&self, s: &Option<ItemStack>) -> sunrise_protocol::Result<Option<Hashed>> {
         if s.is_none() {
             return Ok(None);
         }
@@ -935,9 +932,7 @@ impl crate::game::ClientGame<'_> {
         )
     }
     /// Live client `Abilities` (`LocalPlayer.abilities`) when connected to a server.
-    pub fn remote_abilities(
-        &self,
-    ) -> Option<&sunrise_sim::lan::abilities::PlayerAbilities> {
+    pub fn remote_abilities(&self) -> Option<&sunrise_sim::lan::abilities::PlayerAbilities> {
         self.client.remote.as_ref().map(|r| &r.abilities)
     }
     /// The attack clicks queued for the next tick (`KeyMapping.click`, not yet handled).
@@ -1303,9 +1298,7 @@ impl crate::game::ClientGame<'_> {
 
 /// The game as the tick's input sees it.
 #[cfg(feature = "client")]
-pub struct RemoteInputWorld<'g, 'a>(
-    pub &'g mut crate::game::ClientGame<'a>,
-);
+pub struct RemoteInputWorld<'g, 'a>(pub &'g mut crate::game::ClientGame<'a>);
 
 #[cfg(feature = "client")]
 pub struct RemoteUseWorld<'g, 'a>(

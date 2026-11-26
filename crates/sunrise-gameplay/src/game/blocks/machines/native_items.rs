@@ -3,12 +3,12 @@
 //! Side-local slots are numbered from zero. It acts where the world is simulated, never on
 //! a client's copy, and only on the level in place.
 use super::{Insertion, MoveIn};
+use mod_api::{BlockSide, ItemResource, LevelReadError, LevelRef, TransactionContext};
 use sunrise_gameplay_common::game::{
     machine_containers::{Kind, PlacementAttempt, View},
     spill_common::{put_saved_entity, saved_entity},
     transactions::After,
 };
-use mod_api::{BlockSide, ItemResource, LevelReadError, LevelRef, TransactionContext};
 use sunrise_gameplay_common::hoppers::Pos;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::save;
@@ -486,8 +486,8 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::ViewTestSlots as _;
+    use super::*;
     use std::sync::Arc;
     use sunrise_core::geometry::Direction;
     use sunrise_level::containers::ModContainer;

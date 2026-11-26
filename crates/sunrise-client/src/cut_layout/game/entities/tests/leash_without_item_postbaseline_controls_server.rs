@@ -1,7 +1,7 @@
 use super::*;
-use sunrise_gameplay_common::game::InteractTarget;
-use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_gameplay::game::game_tests::tests::server_game;
+use sunrise_gameplay_common::game::InteractTarget;
 use sunrise_sim::motion::PlayerMotion;
 
 /// Added after baseline: an item-unconstrained interaction still dispatches

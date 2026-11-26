@@ -15,14 +15,16 @@ const POSTPROCESS_FLAGS: i32 = 276;
 impl ServerGame<'_> {
     pub(in crate::game::server_side) fn postprocess_chunks(&mut self) -> Result<()> {
         let ready: Vec<(i32, i32)> = self
-            .common.world
+            .common
+            .world
             .chunks
             .iter()
             .filter(|(_, c)| c.lit && !c.postprocess.is_empty())
             .map(|(k, _)| *k)
             .filter(|&(x, z)| {
-                (-1..=1)
-                    .all(|dz| (-1..=1).all(|dx| self.common.world.chunks.contains_key(&(x + dx, z + dz))))
+                (-1..=1).all(|dz| {
+                    (-1..=1).all(|dx| self.common.world.chunks.contains_key(&(x + dx, z + dz)))
+                })
             })
             .collect();
         if ready.is_empty() {

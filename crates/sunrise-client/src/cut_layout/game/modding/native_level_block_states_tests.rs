@@ -1,11 +1,11 @@
 //! `LevelHost::block_states`: a part reads the block-state facts inside a level callback.
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::game::LevelDimension;
 use mod_api::{
     BlockPart, BlockState, Flow, Hooks, HostBlockStates, RandomTickEvent, Registrar, WeatheringAge,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::GameGameExt1;
+use sunrise_gameplay_common::game::LevelDimension;
 
 type Facts = (Option<WeatheringAge>, Option<BlockState>, Option<bool>);
 

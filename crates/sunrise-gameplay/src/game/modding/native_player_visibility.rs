@@ -1,7 +1,7 @@
 //! Whether one player's client is shown another, by the rules the entity tracker follows, and a
 //! block-change acknowledgement and a block shown to one player.
-use sunrise_gameplay_common::game::native_server::PlayerRead;
 use mod_api::{PlayerRef, PlayerWorldRefusal as Refusal};
+use sunrise_gameplay_common::game::native_server::PlayerRead;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_sim::lan::{guest::Guest, player_shown::player_shown};
 use sunrise_world::registry::BlockStateId;

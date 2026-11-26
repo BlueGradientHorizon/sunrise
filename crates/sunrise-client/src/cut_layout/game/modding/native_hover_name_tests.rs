@@ -1,9 +1,9 @@
 //! `ItemsHost::hover_name`: `ItemStack.getHoverName()` as a component, on the server too.
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use mod_api::prelude::{ItemsHost, TextHost};
 use mod_api::{ItemStack, text::TextContent};
 use sunrise_game_data::lang::{Language, scoped};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 
 #[test]
 #[ignore = "daily"]

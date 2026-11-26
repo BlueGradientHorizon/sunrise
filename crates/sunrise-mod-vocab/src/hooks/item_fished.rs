@@ -17,7 +17,8 @@ pub trait Hooks {
     /// `rod_damage` included, and logs a warning naming the hook and the conversion error.
     /// Diverges: Sunrise lets a listener change the drop list itself; the reference lets a
     /// listener change the stacks but not the list.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::item_fished::ServerGame<'_>::native_item_fished", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::item_fished::ServerGame<'_>::native_item_fished",
         dispatch = "flat",
         side = "server",
         version = 3,

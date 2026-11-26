@@ -4,10 +4,16 @@ use sunrise_sim::mobs::{Damage, Who};
 #[test]
 #[ignore = "daily"]
 fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() {
-    use {sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay::game::commands::data::DataRef, crate::game::server_side::native_goal_ticks::live_read_tests::read_borrowed_target, crate::game::server_side::native_living_flags::tests::guest, crate::game::server_side::native_living_flags::tests::guest_server};
     use mod_api::{ExplosionInteraction, ExplosionSettings};
     use sunrise_core::{geometry::Vec3, nbt::Tag, position::BlockPos};
     use sunrise_sim::{mobs::ai, projectiles::ProjectileKind};
+    use {
+        crate::game::server_side::native_goal_ticks::live_read_tests::read_borrowed_target,
+        crate::game::server_side::native_living_flags::tests::guest,
+        crate::game::server_side::native_living_flags::tests::guest_server,
+        sunrise_gameplay::game::commands::data::DataRef,
+        sunrise_gameplay_common::game::commands_common::Target,
+    };
 
     if sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases(
         "game::server_side::commands_server::world_cmds::registered_damage_tests::live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown",
@@ -226,7 +232,12 @@ fn live_damage_and_blast_warden_reactions_follow_source_entities_and_cooldown() 
         assert!(hurt(game, 1.0, Some(Target::Guest(22))));
         assert!(hurt(game, 5.0, Some(Target::Guest(23))));
         assert_eq!(
-            game.server.lan.as_ref().unwrap().mob_players.get(&warden_id),
+            game.server
+                .lan
+                .as_ref()
+                .unwrap()
+                .mob_players
+                .get(&warden_id),
             Some(&23)
         );
         check_target(game, Some(first));

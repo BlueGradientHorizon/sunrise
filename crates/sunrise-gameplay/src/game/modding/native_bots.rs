@@ -121,11 +121,15 @@ impl crate::game::ServerGame<'_> {
         if self.server.lan_acting_uuid == Some(uuid) {
             self.server.lan_acting?;
             let p = self.common.player.as_ref()?;
-            let mut body = (p.health.health() > 0.0 && !p.spectator && self.common.riding.is_none())
-                .then(|| p.clone())?;
+            let mut body =
+                (p.health.health() > 0.0 && !p.spectator && self.common.riding.is_none())
+                    .then(|| p.clone())?;
             body.glider = self.common.glider_worn();
             body.leather_boots = worn_boots::leather_boots(&self.common.armor);
-            let using = self.common.using.and_then(|(slot, _)| self.common.stack_in(slot));
+            let using = self
+                .common
+                .using
+                .and_then(|(slot, _)| self.common.stack_in(slot));
             self.set_bot_item_use(&mut body, using);
             return Some((body, None));
         }
@@ -186,7 +190,8 @@ impl crate::game::ServerGame<'_> {
         &self,
         level: mod_api::LevelRef,
     ) -> Option<(&World, bool)> {
-        self.level_in_place(level).then_some((&self.common.world, false))
+        self.level_in_place(level)
+            .then_some((&self.common.world, false))
     }
 }
 
@@ -246,9 +251,12 @@ mod tests {
     #[ignore = "daily"]
     fn guest_equipment_and_item_use_shape_native_movement() {
         use crate::game::native_entity_refs::tests::with_game;
-        use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, crate::game::server_side::native_item_places::tests::open_to_lan};
         use sunrise_items::items::ItemStack;
         use sunrise_level::chunk::Chunk;
+        use {
+            crate::game::server_side::native_item_places::tests::open_to_lan,
+            sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+        };
 
         with_game(|game| {
             open_to_lan(game);
@@ -325,10 +333,13 @@ mod tests {
     #[ignore = "daily"]
     fn guest_movement_preview_uses_the_guests_damage_immunity() {
         use crate::game::native_entity_refs::tests::with_game;
-        use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, crate::game::server_side::native_item_places::tests::open_to_lan};
         use std::cell::Cell;
         use sunrise_level::chunk::Chunk;
         use sunrise_sim::health::DamageHooks;
+        use {
+            crate::game::server_side::native_item_places::tests::open_to_lan,
+            sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+        };
 
         // The movement result doesn't expose health. Observe committed damage to the
         // simulated body through its game-owned hook table, not through the live guest.

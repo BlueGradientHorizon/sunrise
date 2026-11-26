@@ -204,20 +204,12 @@ impl crate::game::ServerGame<'_> {
     }
     /// Sets the level's natural spawning limits for the rest of the open. False for a
     /// stale handle or on a client.
-    pub fn level_set_spawn_limits(
-        &mut self,
-        level: LevelRef,
-        limits: SpawnLimits,
-    ) -> bool {
+    pub fn level_set_spawn_limits(&mut self, level: LevelRef, limits: SpawnLimits) -> bool {
         self.native_set_spawn_policy(level, |policy| policy.limits = limits)
     }
     /// Sets the level's natural spawning flags for the rest of the open. False as for
     /// `level_set_spawn_limits`.
-    pub fn level_set_spawn_flags(
-        &mut self,
-        level: LevelRef,
-        flags: SpawnFlags,
-    ) -> bool {
+    pub fn level_set_spawn_flags(&mut self, level: LevelRef, flags: SpawnFlags) -> bool {
         self.native_set_spawn_policy(level, |policy| policy.flags = flags)
     }
     fn native_set_spawn_policy(

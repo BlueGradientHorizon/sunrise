@@ -10,16 +10,19 @@
 //! the chunk back from that file. Not covered: LAN guests, a dedicated server process,
 //! and `close_world`'s closing save, which finishes over event-loop stages a test can't
 //! run.
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
-use sunrise_level::containers::BlockEntity;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
-use sunrise_gameplay::game::world_loading::WorldRequest;
 use mod_api::{
     BlocksEvent, FLUIDS, FluidResource, FluidStack, Hooks, LevelRef, ModEntry, ModFluidTanks, Mods,
     Registrar, RegistrationContext,
 };
 use std::path::Path;
 use std::time::{Duration, Instant};
+use sunrise_gameplay::game::world_loading::WorldRequest;
+use sunrise_gameplay_common::game::transactions::TransactionsGameExt;
+use sunrise_level::containers::BlockEntity;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+};
 
 const TANK: &str = "tank_reopen:tank";
 const BRINE: &str = "tank_reopen:brine";
@@ -200,6 +203,5 @@ fn a_committed_mod_tank_survives_a_world_save_close_and_reopen() {
 use sunrise_gameplay_common::game::side_ops::events::EventsSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

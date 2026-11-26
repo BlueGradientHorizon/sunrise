@@ -6,7 +6,12 @@ use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::mobs::{Mob, leash::Holder, transport_items};
 
-use {sunrise_gameplay_common::game::boats_common::Boat, sunrise_gameplay_common::game::minecarts::CartKind, sunrise_gameplay_common::game::minecarts::Minecart, sunrise_gameplay::game::native_entity_refs::tests::with_game};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+    sunrise_gameplay_common::game::boats_common::Boat,
+    sunrise_gameplay_common::game::minecarts::CartKind,
+    sunrise_gameplay_common::game::minecarts::Minecart,
+};
 
 #[derive(Default)]
 struct Observation {
@@ -40,7 +45,9 @@ impl Hooks for Observer {
     }
 }
 
-fn with_observer(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Arc<Mutex<Observation>>)) {
+fn with_observer(
+    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Arc<Mutex<Observation>>),
+) {
     let state = Arc::new(Mutex::new(Observation::default()));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "observer",

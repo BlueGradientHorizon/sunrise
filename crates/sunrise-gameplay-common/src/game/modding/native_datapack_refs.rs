@@ -14,11 +14,7 @@ pub trait NativeDatapackRefsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// The entry ids of a mod's datapack registry as the world last loaded it.
-     fn level_datapack_entries(
-        &self,
-        level: LevelRef,
-        registry: &str,
-    ) -> Option<Vec<String>> {
+    fn level_datapack_entries(&self, level: LevelRef, registry: &str) -> Option<Vec<String>> {
         let entries = self
             .level_datapack_set(level)?
             .entries(registry)
@@ -30,7 +26,7 @@ pub trait NativeDatapackRefsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// Visit the published entry `entry` of `registry`.
-     fn level_datapack_read(
+    fn level_datapack_read(
         &self,
         level: LevelRef,
         registry: &str,
@@ -48,6 +44,5 @@ pub trait NativeDatapackRefsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeDatapackRefsGameExt1<'__sg> for G {}
-
 
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;

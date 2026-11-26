@@ -5,16 +5,16 @@
 use mod_api::__private::game::*;
 
 mod texture_atlases;
-pub(in crate::game) use texture_atlases::{collect_texture_atlases, stage_texture_atlases};
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::packs_common::reload_files;
 use mod_api::{
     __private::reload::{PreparedStep, ReloadStageError, prepare_listeners},
     ClientReloadContext, ClientReloadHost, ClientReloadListener, ClientReloadListenerContext,
     HookId,
 };
 use sunrise_client::settings::Settings;
+use sunrise_gameplay_common::game::packs_common::reload_files;
 use sunrise_level::datapack::DataPack;
+pub(in crate::game) use texture_atlases::{collect_texture_atlases, stage_texture_atlases};
 
 /// One client reload step: a mod's apply action or model publication.
 pub type PreparedClientReload = PreparedStep<()>;
@@ -75,9 +75,7 @@ impl ClientGame<'_> {
     /// Registers a later reload's client listeners through the game
     /// (`native_add_client_reload_listeners`), gated on the hook being
     /// listened to.
-    pub fn register_client_reload_listeners(
-        &self,
-    ) -> mod_api::ClientListenerRegistry {
+    pub fn register_client_reload_listeners(&self) -> mod_api::ClientListenerRegistry {
         let mut listeners = <mod_api::ClientListenerRegistry as mod_api::__private::game::ClientReloadListenersOrder>::new();
         if mod_api::__private::listened(HookId::AddClientReloadListeners) {
             self.native_add_client_reload_listeners(&mut listeners);

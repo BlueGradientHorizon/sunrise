@@ -98,11 +98,7 @@ impl crate::game::ClientGame<'_> {
     /// A physical key event (already in `physical_keys`) before the game's
     /// own handling. Returns true when it is used up (a debug combination,
     /// F3 itself, F3+Escape).
-    pub fn debug_key(
-        &mut self,
-        key: KeyCode,
-        action: KeyAction,
-    ) -> bool {
+    pub fn debug_key(&mut self, key: KeyCode, action: KeyAction) -> bool {
         let Some(name) = keybinds::key_name(key) else {
             return false;
         };
@@ -138,7 +134,8 @@ impl crate::game::ClientGame<'_> {
                 | Screen::BlockEditor
         ) || self.client.sign_edit.is_some()
             || self.client.book.is_some()
-            || (self.client.screen == Screen::Creative && self.client.creative_screen.0.tab().search)
+            || (self.client.screen == Screen::Creative
+                && self.client.creative_screen.0.tab().search)
             || self.recipe_search_focused()
             || self.station_typing()
             || (self.title_input_active()
@@ -282,7 +279,10 @@ impl crate::game::ClientGame<'_> {
             self.send(Serverbound::PingRequest(Ping { time }));
         }
         if has_level
-            && let Some(wanted) = self.client.debug_charts.subscription_request(self.client.debug)
+            && let Some(wanted) = self
+                .client
+                .debug_charts
+                .subscription_request(self.client.debug)
         {
             // `dedicated_server_tick_time` is registry id 0.
             let subscriptions = if wanted { vec![0] } else { vec![] };
@@ -363,11 +363,7 @@ impl crate::game::ClientGame<'_> {
     /// (`debug-profile.json`), at the debug GUI scale, and the charts while
     /// the overlay is open. F1 hides it unless a screen is open. Sunrise paints
     /// it 20 times a second and copies those vertices in between.
-    pub fn draw_debug_overlay_under(
-        &self,
-        batch: &mut HudBatch,
-        size: [u32; 2],
-    ) {
+    pub fn draw_debug_overlay_under(&self, batch: &mut HudBatch, size: [u32; 2]) {
         if !self.debug_overlay_visible() {
             // Nothing reads the server's lines now: it stops computing them each tick.
             if let Some(server) = &self.client.integrated {
@@ -536,7 +532,13 @@ impl crate::game::ClientGame<'_> {
         d.line("Filtering: None");
         d.line(format!(
             "Terrain Rendering: {}",
-            if self.client.renderer.0.as_ref().is_some_and(|r| r.multi_draw) {
+            if self
+                .client
+                .renderer
+                .0
+                .as_ref()
+                .is_some_and(|r| r.multi_draw)
+            {
                 "multidrawindirect"
             } else {
                 "naive"
@@ -695,7 +697,8 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game::client_side) fn reduced_debug_info(&self) -> bool {
         self.client.settings.reduced_debug_info
             || self
-                .common.ui
+                .common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::REDUCED_DEBUG_INFO)
             || self
@@ -727,7 +730,9 @@ impl crate::game::ClientGame<'_> {
             .settings
             .file
             .set(key, sunrise_client::options_file::V::Bool(on));
-        self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+        self.client
+            .settings
+            .save(&sunrise_gameplay_common::game::options_path());
         on
     }
     /// One matching mapping of `handleDebugKeys`; whether it counts.
@@ -847,7 +852,9 @@ impl crate::game::ClientGame<'_> {
             DebugAction::ImprovedTransparency => {
                 self.client.settings.improved_transparency =
                     !self.client.settings.improved_transparency;
-                self.client.settings.save(&sunrise_gameplay_common::game::options_path());
+                self.client
+                    .settings
+                    .save(&sunrise_gameplay_common::game::options_path());
                 self.apply_settings();
                 self.debug_translated(if self.client.settings.improved_transparency {
                     "debug.improvedTransparency.on"
@@ -1000,7 +1007,9 @@ impl crate::game::ClientGame<'_> {
             return;
         };
         let pos = hit.pos;
-        let state = self.common.state_string(self.common.world.block(pos[0], pos[1], pos[2]));
+        let state = self
+            .common
+            .state_string(self.common.world.block(pos[0], pos[1], pos[2]));
         if query {
             // DebugQueryHandler.queryBlockEntityTag: the answer copies it.
             let reply = QueryReply::Block { pos, state };
@@ -1018,7 +1027,8 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         let tag = if add_nbt {
-            self.common.world
+            self.common
+                .world
                 .block_entities
                 .get(&(pos[0], pos[1], pos[2]))
                 .map(|e| {
@@ -1064,7 +1074,8 @@ impl crate::game::ClientGame<'_> {
                 // Entity.position() when the answer comes: where it is now,
                 // else where it was last.
                 let position = self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter()
                     .find(|m| m.id == id)
                     .map_or(position, |m| m.position);
@@ -1106,11 +1117,7 @@ impl crate::game::ClientGame<'_> {
         self.client.clipboard.0.set(text);
     }
     /// The debug renderers' gizmos for a frame (`DebugRenderer.emitGizmos`).
-    pub fn debug_gizmos(
-        &self,
-        alpha: f32,
-        camera: [f64; 3],
-    ) -> Gizmos {
+    pub fn debug_gizmos(&self, alpha: f32, camera: [f64; 3]) -> Gizmos {
         let mut g = Gizmos::default();
         self.bounding_box_gizmos(camera, &mut g);
         self.debug_renderer_gizmos(&mut g);
@@ -1123,7 +1130,11 @@ impl crate::game::ClientGame<'_> {
                 pos[2].floor() as i32,
             ];
             let min_y = self.common.world.bottom_y();
-            g.chunk_borders(block, min_y, min_y + self.common.world.layout().height() - 1);
+            g.chunk_borders(
+                block,
+                min_y,
+                min_y + self.common.world.layout().height() - 1,
+            );
         }
         if !self.debug_entry("entity_hitboxes") {
             return g;
@@ -1201,7 +1212,8 @@ impl crate::game::ClientGame<'_> {
             g.entity_box(min, max, centre, 0.425, false, step_view(p.step()));
         }
         for f in self
-            .common.item_frames
+            .common
+            .item_frames
             .iter()
             .filter(|f| !f.invisible && hide_camera != Some(f.id))
         {
@@ -1244,7 +1256,8 @@ impl crate::game::ClientGame<'_> {
             );
         }
         for a in self
-            .common.armor_stands
+            .common
+            .armor_stands
             .iter()
             .filter(|a| !a.invisible && hide_camera != Some(a.id))
         {
@@ -1269,7 +1282,11 @@ impl crate::game::ClientGame<'_> {
                 continue;
             }
             let h = sunrise_gameplay_common::game::boats_common::HEIGHT as f32;
-            let (size, eye) = sized(b.id, (sunrise_gameplay_common::game::boats_common::WIDTH as f32, h), h);
+            let (size, eye) = sized(
+                b.id,
+                (sunrise_gameplay_common::game::boats_common::WIDTH as f32, h),
+                h,
+            );
             g.hitbox(at(b.previous, b.position), size, eye, false, (0.0, b.yaw));
         }
         for c in &self.common.carts {
@@ -1376,12 +1393,18 @@ impl crate::game::ClientGame<'_> {
             let (size, eye) = sized(r.id, (0.25, 0.25), 0.2125);
             g.hitbox(at(r.previous, r.position), size, eye, false, (pitch, yaw));
         }
-        for h in self.common.hook.iter().map(|h| (h.previous, h.position)).chain(
-            self.client
-                .remote_hooks
-                .iter()
-                .map(|h| (h.previous, h.position)),
-        ) {
+        for h in self
+            .common
+            .hook
+            .iter()
+            .map(|h| (h.previous, h.position))
+            .chain(
+                self.client
+                    .remote_hooks
+                    .iter()
+                    .map(|h| (h.previous, h.position)),
+            )
+        {
             g.hitbox(at(h.0, h.1), (0.25, 0.25), 0.2125, false, (0.0, 0.0));
         }
         for b in &self.common.bolts {
@@ -1394,7 +1417,12 @@ impl crate::game::ClientGame<'_> {
             g.hitbox(c.at, size, eye, false, (0.0, 0.0));
         }
         // The dragon: 16 by 8, a living entity; its parts follow.
-        if let Some(d) = self.common.dragon.as_ref().filter(|d| hide_camera != Some(d.id)) {
+        if let Some(d) = self
+            .common
+            .dragon
+            .as_ref()
+            .filter(|d| hide_camera != Some(d.id))
+        {
             g.hitbox(
                 at(d.previous, d.position),
                 (16.0, 8.0),
@@ -1405,7 +1433,8 @@ impl crate::game::ClientGame<'_> {
         }
         // The dragon's parts.
         for (id, b) in self.common.special_targets() {
-            if (sunrise_gameplay_common::game::dragon_common::SPECIAL..sunrise_gameplay_common::game::dragon_common::SPECIAL + 8)
+            if (sunrise_gameplay_common::game::dragon_common::SPECIAL
+                ..sunrise_gameplay_common::game::dragon_common::SPECIAL + 8)
                 .contains(&id)
             {
                 g.cuboid(

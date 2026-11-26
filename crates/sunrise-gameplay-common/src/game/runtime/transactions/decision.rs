@@ -121,11 +121,7 @@ impl Menu {
 
     /// Journal before granting write access; even an equal or panicking write
     /// advances the epoch. Rollback restores content, never the epoch counter.
-    pub fn edit<H: ActionHost, R>(
-        &self,
-        host: &mut H,
-        f: impl FnOnce(&mut MenuState) -> R,
-    ) -> R {
+    pub fn edit<H: ActionHost, R>(&self, host: &mut H, f: impl FnOnce(&mut MenuState) -> R) -> R {
         host.journal().keep(self);
         let mut inner = self.inner.borrow_mut();
         inner.epoch.advance();

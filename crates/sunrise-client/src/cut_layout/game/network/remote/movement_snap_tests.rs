@@ -1,4 +1,7 @@
-use {sunrise_gameplay_common::game::remote::shape_meets, sunrise_gameplay_common::game::remote::snap_target};
+use {
+    sunrise_gameplay_common::game::remote::shape_meets,
+    sunrise_gameplay_common::game::remote::snap_target,
+};
 
 /// The packet riding graph must retain invisible intermediary entities. A custom
 /// sit plugin can use an area-effect cloud, whose server position stops updating
@@ -6,13 +9,16 @@ use {sunrise_gameplay_common::game::remote::shape_meets, sunrise_gameplay_common
 #[test]
 #[ignore = "daily"]
 fn plugin_player_stack_follows_network_moves_and_local_carriers() {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role::ExecutionRole};
-    use sunrise_client_lib::audio::Audio;
     use crate::game::load_resources;
     use crate::settings::Settings;
+    use sunrise_client_lib::audio::Audio;
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::packets::play::{self, Clientbound as C};
     use sunrise_sim::{motion::PlayerMotion, sprint::Keys};
+    use {
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        sunrise_gameplay_common::game::execution_role::ExecutionRole,
+    };
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
@@ -56,13 +62,14 @@ fn plugin_player_stack_follows_network_moves_and_local_carriers() {
     game.spawn_entity(40, "minecraft:player", [2.0, 64.0, 3.0], [0.0; 3]);
     game.spawn_entity(41, "minecraft:player", [0.0, 64.0, 0.0], [0.0; 3]);
     game.spawn_entity(42, "minecraft:area_effect_cloud", [0.0; 3], [0.0; 3]);
-    let set = |g: &mut sunrise_client_gameplay::game::ClientGame<'_>, vehicle, passengers: Vec<i32>| {
-        g.handle_packet(C::SetPassengers(play::SetPassengers {
-            vehicle,
-            passengers,
-        }))
-        .unwrap();
-    };
+    let set =
+        |g: &mut sunrise_client_gameplay::game::ClientGame<'_>, vehicle, passengers: Vec<i32>| {
+            g.handle_packet(C::SetPassengers(play::SetPassengers {
+                vehicle,
+                passengers,
+            }))
+            .unwrap();
+        };
     set(&mut game, 40, vec![42]);
     set(&mut game, 42, vec![7, 41]);
     let close = |at: Vec3, x: f64, y: f64, z: f64| {
@@ -172,7 +179,11 @@ fn a_block_the_server_puts_back_snaps_the_player_out_of_it() {
 /// is, a teleport from where its interpolation is headed.
 #[test]
 fn a_far_move_snaps_by_the_packets_own_measure() {
-    use {sunrise_gameplay_common::game::remote::movement::MovePacket, sunrise_gameplay_common::game::remote::Path, sunrise_gameplay_common::game::remote::PosRot, sunrise_gameplay_common::game::remote::SteppedInterpolation};
+    use {
+        sunrise_gameplay_common::game::remote::Path, sunrise_gameplay_common::game::remote::PosRot,
+        sunrise_gameplay_common::game::remote::SteppedInterpolation,
+        sunrise_gameplay_common::game::remote::movement::MovePacket,
+    };
     let at = |x: f64| PosRot {
         position: [x, 0.0, 0.0],
         yaw: 0.0,
@@ -196,7 +207,12 @@ fn a_far_move_snaps_by_the_packets_own_measure() {
 /// over the update interval.
 #[test]
 fn a_living_entitys_move_snaps_or_steps() {
-    use {sunrise_gameplay_common::game::remote::movement::MovePacket, sunrise_gameplay_common::game::remote::Path, sunrise_gameplay_common::game::remote::PosRot, sunrise_gameplay_common::game::remote::SteppedInterpolation, sunrise_gameplay_common::game::remote::movement::stepped_move};
+    use {
+        sunrise_gameplay_common::game::remote::Path, sunrise_gameplay_common::game::remote::PosRot,
+        sunrise_gameplay_common::game::remote::SteppedInterpolation,
+        sunrise_gameplay_common::game::remote::movement::MovePacket,
+        sunrise_gameplay_common::game::remote::movement::stepped_move,
+    };
     let at = |x: f64, yaw: f32| PosRot {
         position: [x, 0.0, 0.0],
         yaw,

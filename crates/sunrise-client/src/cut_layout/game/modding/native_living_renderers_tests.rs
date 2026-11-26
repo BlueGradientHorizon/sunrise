@@ -165,7 +165,11 @@ fn quads(out: &[Vertex]) -> Vec<f32> {
 }
 
 /// One frame of the level's mobs with only a mob of `kind`, id `id`, its body turned 30 degrees.
-fn frame(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, kind: &str, id: u32) -> Vec<Vertex> {
+fn frame(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    kind: &str,
+    id: u32,
+) -> Vec<Vertex> {
     let kind = game.res.mob_types().get(kind).unwrap().clone();
     let at = sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5);
     let mut mob = Mob::new(id, kind, at, 30.0);
@@ -185,7 +189,10 @@ fn events(heard: &Shared) -> Vec<String> {
 /// Runs `check` on a client game with prepared resources and the [`Scene`] mod, resolved as the
 /// first load does. In a child process running only `test`: the registrations are kept once per
 /// process.
-fn in_scene(test: &str, check: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &Shared, &Flaky)) {
+fn in_scene(
+    test: &str,
+    check: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &Shared, &Flaky),
+) {
     if std::env::var_os("SUNRISE_LIVING_RENDERERS_CHILD").is_none() {
         let status = std::process::Command::new(std::env::current_exe().unwrap())
             .args([
@@ -343,7 +350,8 @@ fn a_sleeping_or_baby_frame_reads_as_the_model_lays_it() {
         // A baby asleep in a bed facing east.
         villager.extra.age = -24000;
         villager.extra.ints[1] = 4;
-        let state = sunrise_client_gameplay::game::native_mob_draw::entity_render_state(&villager, 94, 0.5);
+        let state =
+            sunrise_client_gameplay::game::native_mob_draw::entity_render_state(&villager, 94, 0.5);
         let living = state.living.unwrap();
         assert_eq!(living.pose, Pose::Sleeping);
         assert_eq!(living.bed_orientation, Some(mod_api::Direction::East));
@@ -373,7 +381,8 @@ fn own_yaw_is_independent_of_body_rotation_across_a_wrap() {
         mob.body_yaw = 50.0;
         mob.previous_head_yaw = 70.0;
         mob.head_yaw = 90.0;
-        let state = sunrise_client_gameplay::game::native_mob_draw::entity_render_state(&mob, 95, 0.5);
+        let state =
+            sunrise_client_gameplay::game::native_mob_draw::entity_render_state(&mob, 95, 0.5);
         assert_eq!(state.yaw, 360.0); // The shortest interpolation reaches 0 degrees modulo 360.
         assert_eq!(state.living.unwrap().body_rot, 40.0);
         assert_eq!(state.living.unwrap().y_rot, 40.0);

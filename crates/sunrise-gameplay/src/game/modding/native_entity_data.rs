@@ -129,13 +129,19 @@ impl crate::game::ServerGame<'_> {
             return Some(false);
         };
         Some(match t {
-            Target::Mob(_) => self.common.mobs.iter().any(|m| m.id == id && m.name_visible),
+            Target::Mob(_) => self
+                .common
+                .mobs
+                .iter()
+                .any(|m| m.id == id && m.name_visible),
             Target::Stand(_) => self
-                .common.armor_stands
+                .common
+                .armor_stands
                 .iter()
                 .any(|a| a.id == id && a.name_visible),
             _ => self
-                .common.persist_raw(id)
+                .common
+                .persist_raw(id)
                 .is_some_and(|r| flag(r, "CustomNameVisible")),
         })
     }
@@ -197,7 +203,8 @@ impl crate::game::ServerGame<'_> {
                 | Target::Spawner(_),
             ) => true,
             Some(_) => self
-                .common.persist
+                .common
+                .persist
                 .live
                 .binary_search_by_key(&entity.id(), |l| l.0)
                 .is_ok(),

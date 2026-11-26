@@ -1,11 +1,16 @@
-use {sunrise_gameplay_common::game::remote::S, sunrise_gameplay_common::game::remote::play};
-use {sunrise_gameplay_common::game::Hit, sunrise_gameplay_common::game::Screen, crate::game::server_side::native_entity_refs::tests::with_client_game, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::sent};
 use mod_api::{ClientHost, ClientItemUseBehavior, Hooks, ItemKey, Registrar, RegistrationContext};
 use std::sync::{Arc, Mutex};
 use sunrise_client::interaction_input::Button;
 use sunrise_core::nbt::{JavaString, Tag};
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
+use {
+    crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in,
+    crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::sent,
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay_common::game::Hit, sunrise_gameplay_common::game::Screen,
+};
+use {sunrise_gameplay_common::game::remote::S, sunrise_gameplay_common::game::remote::play};
 
 pub(crate) const OWNER: &str = "client_use_fixture";
 pub(crate) const SHIELD: &str = "minecraft:shield";

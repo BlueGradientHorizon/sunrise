@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use mod_api::EntityRef;
 use mod_api::ItemEntityRef;
@@ -9,9 +7,9 @@ use sunrise_sim::lan::playerdata::uuid_ints;
 pub(crate) mod tests {
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
-    use sunrise_gameplay_common::game::api_values::test_snapshot;
     use mod_api::WorldEpoch;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::api_values::test_snapshot;
     use sunrise_sim::{entities::ArmorStand, mobs::Mob};
 
     #[test]

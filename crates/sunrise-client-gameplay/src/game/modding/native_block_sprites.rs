@@ -122,7 +122,8 @@ impl ClientGame<'_> {
         let (cx, cz) = (x >> 4, z >> 4);
         std::array::from_fn(|dz| {
             std::array::from_fn(|dx| {
-                self.common.world
+                self.common
+                    .world
                     .chunks
                     .get(&(cx + dx as i32 - 1, cz + dz as i32 - 1))
                     .map(AsRef::as_ref)

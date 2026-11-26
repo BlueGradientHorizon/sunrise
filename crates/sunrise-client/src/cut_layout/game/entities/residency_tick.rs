@@ -1,12 +1,10 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
-use crate::game::server_side::native_entity_refs::tests::with_client_game;
-    use sunrise_gameplay_common::game::residency_tick::ResidencyTickGameExt as _;
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::residency_tick::ResidencyTickGameExt as _;
     use sunrise_sim::mobs::Mob;
 
     #[test]

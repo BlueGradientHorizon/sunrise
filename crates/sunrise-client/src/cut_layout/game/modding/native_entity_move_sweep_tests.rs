@@ -266,9 +266,14 @@ fn every_walk_family_of_the_entity_lists_fires_its_case() {
                 general: ["General"],
             };
             let mut listed = Vec::new();
-            sunrise_gameplay_common::entity_lists!(crate::game::entity::walk_lists, families, family, {
-                listed.push(family);
-            });
+            sunrise_gameplay_common::entity_lists!(
+                crate::game::entity::walk_lists,
+                families,
+                family,
+                {
+                    listed.push(family);
+                }
+            );
             let case_families: std::collections::BTreeSet<&str> =
                 CASES.iter().map(|case| case.family).collect();
             let listed_families: std::collections::BTreeSet<&str> =

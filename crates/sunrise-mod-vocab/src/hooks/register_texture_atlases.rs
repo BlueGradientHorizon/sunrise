@@ -27,7 +27,8 @@ accepts up to 32 atlases and 4096 of their sprites across all mods. The first
 registration of an atlas id wins; an unknown or malformed definition, a
 duplicate atlas and sprites past the budget are logged and skipped. A pack file
 already at a sprite's name wins over the sprite."#]
-    #[hook(target = "sunrise_gameplay_common::game::native_hooks::register_texture_atlases::native_register_texture_atlases", 
+    #[hook(
+        target = "sunrise_gameplay_common::game::native_hooks::register_texture_atlases::native_register_texture_atlases",
         receiver = "associated",
         dispatch = "flat",
         side = "client",

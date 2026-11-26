@@ -1,15 +1,16 @@
-
-
 #![cfg(test)]
 use sunrise_game_data::text::Text;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
     use mod_api::{GameMode, PermissionLevel};
+    use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
     use sunrise_protocol::packets::play::Clientbound as C;
 
-    fn with_command_guests(name: &str, body: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+    fn with_command_guests(
+        name: &str,
+        body: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
+    ) {
         sunrise_gameplay_common::game::in_own_process(
             &format!("game::server_side::native_entity_commands::tests::{name}"),
             || {

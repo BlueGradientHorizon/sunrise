@@ -398,12 +398,12 @@ pub(in crate::game) mod native_dynamic_textures;
 #[cfg(feature = "client")]
 #[path = "modding/native_entity_layers.rs"]
 pub mod native_entity_layers;
-#[cfg(feature = "client")]
-#[path = "modding/native_entity_refs_client.rs"]
-pub mod native_entity_refs_client;
 #[cfg(all(feature = "client", any(test, feature = "test-support")))]
 #[path = "modding/native_entity_refs_fixture_mount.rs"]
 pub mod native_entity_refs;
+#[cfg(feature = "client")]
+#[path = "modding/native_entity_refs_client.rs"]
+pub mod native_entity_refs_client;
 #[cfg(feature = "client")]
 #[path = "modding/native_entity_renderers.rs"]
 pub mod native_entity_renderers;
@@ -1152,8 +1152,7 @@ pub struct ClientState {
     #[cfg(feature = "client")]
     pub(in crate::game::client_side) debug_server_lines:
         RefCell<debug_lines_client::DebugLinesCache>,
-    pub client_res:
-        Arc<std::sync::OnceLock<resource_tables_client::ClientResources>>,
+    pub client_res: Arc<std::sync::OnceLock<resource_tables_client::ClientResources>>,
     pub client_pack: resource_tables_client::ClientPackResources,
     /// The title and menu bundle (GUI atlas, font and panorama).
     pub gui: resource_tables_client::UiResources,
@@ -1265,8 +1264,7 @@ pub struct ClientState {
     /// outlives the window's focus).
     pub(in crate::game::client_side) regrab_on_refocus: bool,
     /// Controller connection notices.
-    pub controller_notice:
-        sunrise_client::controller_notice::NoticeSlot,
+    pub controller_notice: sunrise_client::controller_notice::NoticeSlot,
     pub focused: bool,
     /// The visible window of a game an agent started, until a person clicks into it: its
     /// pointer grab stays inside the game as `--offscreen`'s does, so the person's pointer is
@@ -1323,16 +1321,14 @@ pub struct ClientState {
     pub(in crate::game::client_side) shadow_only_vertices: std::cell::RefCell<Vec<Vertex>>,
     /// Runs of `entity_vertices` by entity, for a shader pack's per-entity draws; recorded only
     /// while `pack_ids` is set (game/interface/shader_packs.rs).
-    pub entity_spans:
-        std::cell::RefCell<Vec<sunrise_client::gfx::pack_draw::EntitySpan>>,
+    pub entity_spans: std::cell::RefCell<Vec<sunrise_client::gfx::pack_draw::EntitySpan>>,
     /// The runs of `entity_geometry`'s ordered pass, kept to reuse their storage.
     pub entity_runs: Vec<entity_client::DrawRun>,
     /// Which entity this frame's entity vertices belong to (`Frame::entity_motion`).
     pub entity_motion: std::cell::RefCell<Vec<(u32, u64)>>,
     /// The GPU-posed vertex count at each of `entity_motion`'s marks (`Frame::entity_motion_posed`).
     pub(in crate::game::client_side) entity_motion_posed: std::cell::RefCell<Vec<u32>>,
-    pub skin_frame:
-        std::cell::RefCell<sunrise_client::gfx::entity_skin::SkinFrame>,
+    pub skin_frame: std::cell::RefCell<sunrise_client::gfx::entity_skin::SkinFrame>,
     /// The glowing entities' silhouettes this frame (game/entities/glowing.rs).
     pub glowing_vertices: std::cell::RefCell<Vec<Vertex>>,
     /// Client mods' sounds (`play_local_sound`): those waiting for the next audio update
@@ -1557,8 +1553,7 @@ pub struct ClientState {
     pub mount_menu: mount_menu::MountMenu,
     /// The other players' hooks a server tracks to this client.
     pub remote_hooks: Vec<fishing_client::RemoteHook>,
-    pub remote_clouds:
-        Vec<sunrise_client_gameplay::remote::projectiles::RemoteCloud>,
+    pub remote_clouds: Vec<sunrise_client_gameplay::remote::projectiles::RemoteCloud>,
     pub(in crate::game::client_side) tick_hit: std::cell::Cell<Option<Option<Hit>>>,
     pub(in crate::game::client_side) tick_mob: Option<Option<(usize, f64, [f64; 3])>>,
     pub(in crate::game::client_side) predicted_equipment_modifiers: Vec<(String, String)>,
@@ -1699,15 +1694,13 @@ pub struct ClientState {
     /// A server's resource packs (game/world/server_packs.rs).
     pub server_packs: ClientOnly<server_packs::ServerPackState>,
     /// The window's inbox for server notices, kept across world disconnects.
-    pub client_reports:
-        ClientOnly<Arc<sunrise_sim::chunk_io::Reports>>,
+    pub client_reports: ClientOnly<Arc<sunrise_sim::chunk_io::Reports>>,
     /// A command the player didn't type, waiting for their answer
     /// (game/network/remote_chat.rs).
     pub command_prompt: ClientOnly<Option<remote_chat::CommandPrompt>>,
     pub(in crate::game::client_side) dialogs: ClientOnly<dialogs::DialogState>,
     /// This game's resource packs (`reload_packs` replaces them).
-    pub pending_initial_models:
-        ClientOnly<Option<Box<initial_client_models::PendingClientStart>>>,
+    pub pending_initial_models: ClientOnly<Option<Box<initial_client_models::PendingClientStart>>>,
     pub(in crate::game::client_side) stitching_block_atlas: ClientOnly<Option<Arc<RenderAssets>>>,
     pub lod: ClientOnly<Option<sunrise_client::lod::Lod>>,
     /// The server's BlueMap far terrain draws from, when the player named one.
@@ -1729,8 +1722,7 @@ pub struct ClientState {
     /// Controllers (Sunrise's own).
     pub pad: ClientShared<pad::Pads>,
     /// Mod screens' living scenes, per mod and clock id (game/modding/native_scene_live.rs).
-    pub live_scenes:
-        ClientOnly<std::cell::RefCell<native_scene_live::LiveScenes>>,
+    pub live_scenes: ClientOnly<std::cell::RefCell<native_scene_live::LiveScenes>>,
     /// `DebugRenderer.renderers`: active mod renderers and their owners, resolved at refresh.
     pub(in crate::game::client_side) debug_renderers:
         ClientOnly<Vec<sunrise_client::debug_entries::ActiveDebugRenderer>>,
@@ -1743,10 +1735,8 @@ pub struct ClientState {
     pub(in crate::game::client_side) creation_job:
         ClientOnly<Option<std::thread::JoinHandle<std::result::Result<(), String>>>>,
     pub title: ClientShared<Option<Title>>,
-    pub armor_stand_assets:
-        ClientOnly<armor_stands_client::ArmorStandAssets>,
-    pub text_displays:
-        ClientOnly<indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>>,
+    pub armor_stand_assets: ClientOnly<armor_stands_client::ArmorStandAssets>,
+    pub text_displays: ClientOnly<indexmap::IndexMap<i32, text_displays::RemoteTextDisplay>>,
     /// Player skin downloads, and which skin each atlas skin slot holds
     /// (least recently shown first).
     pub(in crate::game::client_side) skin_downloads:
@@ -1772,8 +1762,7 @@ pub struct ClientState {
     /// The in-game browser's worker, separate from the cloneable reload inputs.
     pub(in crate::game::client_side) mod_jobs: ClientOnly<mod_browser::Jobs>,
     /// Main-hand input captured by a client mod, independent of living-item use.
-    pub client_item_use:
-        ClientShared<Option<native_claimed_items::ActiveClientItemUse>>,
+    pub client_item_use: ClientShared<Option<native_claimed_items::ActiveClientItemUse>>,
     /// Meshed sections waiting for an upload budget (Sunrise settings).
     pub(in crate::game::client_side) pending_uploads:
         ClientOnly<Vec<sunrise_client::streaming::MeshUpload>>,
@@ -1805,11 +1794,9 @@ pub struct ClientState {
         ClientOnly<std::sync::Arc<[sunrise_client::debug_entries::RegisteredDebugEntry]>>,
     /// `Minecraft.debugEntries`: what the overlay and the debug renderers
     /// show (`debug-profile.json`, F3+F6).
-    pub debug_entries:
-        ClientOnly<sunrise_client::debug_entries::DebugEntries>,
+    pub debug_entries: ClientOnly<sunrise_client::debug_entries::DebugEntries>,
     /// The system clipboard (`KeyboardHandler.clipboardManager`).
-    pub clipboard:
-        ClientOnly<sunrise_client::clipboard::SystemClipboard>,
+    pub clipboard: ClientOnly<sunrise_client::clipboard::SystemClipboard>,
     pub pending_save: ClientOnly<Option<saving::ClosingSave>>,
     /// `Hud.tabList`: the player list's header, footer and heart states.
     pub(in crate::game::client_side) tab_list: ClientOnly<sunrise_client::tab_list::TabList>,
@@ -2389,7 +2376,8 @@ pub(in crate::game) mod key_codes;
 #[cfg(all(feature = "client", any(test, feature = "test-support")))]
 pub mod test_key_codes {
     pub use super::key_codes::{
-        drop_held_behind_dialog, gameplay_has_keyboard, glfw_button, glfw_modifiers, keyboard_button,
+        drop_held_behind_dialog, gameplay_has_keyboard, glfw_button, glfw_modifiers,
+        keyboard_button,
     };
 }
 

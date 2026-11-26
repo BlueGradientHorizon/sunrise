@@ -52,8 +52,10 @@ pub(crate) fn drawn(
     assert_eq!(made.len(), 1, "{command}");
     let queued = made.remove(0);
     if let ServerParticleData::Mod { name, options } = &queued.particle.data {
-        return sunrise_gameplay_common::game::lan_particle_data::decode_mod_particle(name, options)
-            .expect("mod particle decodes");
+        return sunrise_gameplay_common::game::lan_particle_data::decode_mod_particle(
+            name, options,
+        )
+        .expect("mod particle decodes");
     }
     let ty = queued.particle.ty;
     match queued.particle.data {

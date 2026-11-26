@@ -1,11 +1,12 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests as fixture};
     use mod_api::{Hooks, Identifier, Item, ItemsEvent, ModEntry, RegistrationContext};
     use sunrise_protocol::registry::Builtin;
+    use {
+        sunrise_gameplay::game::native_entity_refs::tests as fixture,
+        sunrise_gameplay_common::game::execution_role::ExecutionRole,
+    };
 
     struct Probe;
     #[mod_api::__subscriptions]
@@ -36,7 +37,9 @@ mod tests {
         let mods: mod_api::Mods = vec![ModEntry::new("numbers", Box::new(Probe))].into();
         mod_platform::testing::with_mods(mods.clone(), || {
             sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
-            let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+            let root =
+                sunrise_gameplay_common::game::mods::content_root(&base, &Default::default())
+                    .unwrap();
             crate::game::native_entity_refs::tests::with_game_role_client(
                 root.prepared().to_owned(),
                 ExecutionRole::Client,

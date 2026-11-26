@@ -21,13 +21,14 @@ impl crate::game::ClientGame<'_> {
         // The mods' render hooks: whether any listens this frame, and no entity canceled yet.
         super::native_mob_draw::begin_entity_frame();
         // Spans tell the pack's passes which entities are hidden; without them, nothing changes.
-        self.client.occlusion.0.shadow_casters = match (&self.client.renderer.0, &self.client.pack_ids) {
-            (Some(r), Some(_)) => r.pack_shadow_casters(),
-            // A native pack's shadow pass has no spans to hide entities with: it only needs
-            // the first-person model.
-            (Some(r), None) => (false, r.native_shadow()),
-            _ => (false, false),
-        };
+        self.client.occlusion.0.shadow_casters =
+            match (&self.client.renderer.0, &self.client.pack_ids) {
+                (Some(r), Some(_)) => r.pack_shadow_casters(),
+                // A native pack's shadow pass has no spans to hide entities with: it only needs
+                // the first-person model.
+                (Some(r), None) => (false, r.native_shadow()),
+                _ => (false, false),
+            };
     }
 
     pub(in crate::game::client_side) fn cull_entity_vertices(
@@ -322,21 +323,28 @@ impl crate::game::ClientGame<'_> {
             (at[1] >> 4) - (self.common.world.bottom_y() >> 4),
             at[2] >> 4,
         ));
-        let camera_facts = self.common.res.facts().get(self.common.world.block(at[0], at[1], at[2]));
+        let camera_facts = self
+            .common
+            .res
+            .facts()
+            .get(self.common.world.block(at[0], at[1], at[2]));
         if opaque(camera_facts) {
             self.client.occlusion.0.sync_culler = None;
             self.client.occlusion.0.async_culler = None;
             self.client.occlusion.0.async_failed = false;
             return;
         }
-        self.client.occlusion.0.section_visibility_valid = self.client.settings.sunrise.cave_culling
-            && !camera_facts.solid_render
-            && self.client.occlusion.0.section_camera.is_some();
+        self.client.occlusion.0.section_visibility_valid =
+            self.client.settings.sunrise.cave_culling
+                && !camera_facts.solid_render
+                && self.client.occlusion.0.section_camera.is_some();
 
         let wants_async = entity_mode == EntityCullingMode::Asynchronous;
         let wants_sync = entity_mode == EntityCullingMode::Synchronous;
         if wants_async {
-            if self.client.occlusion.0.async_culler.is_none() && !self.client.occlusion.0.async_failed {
+            if self.client.occlusion.0.async_culler.is_none()
+                && !self.client.occlusion.0.async_failed
+            {
                 match AsyncOcclusionCuller::new() {
                     Ok(culler) => self.client.occlusion.0.async_culler = Some(Box::new(culler)),
                     Err(error) => {

@@ -1,5 +1,3 @@
-
-
 /// The hook points. Each does nothing in Sunrise.
 impl crate::game::ServerGame<'_> {
     /// Two animals bred and the baby they made is about to join the world
@@ -13,10 +11,7 @@ impl crate::game::ServerGame<'_> {
     /// no experience, no `animals_bred` statistic, no advancement and no heart
     /// particles. Not fired for an egg (turtle, frog, sniffer).
     /// Villagers do not post this animal-only event, matching NeoForge's documented `Animal.spawnChildFromBreeding` posting site; a rejected villager join instead leaves the child's bed free. On the server. API 395.
-    pub fn native_baby_entity_spawn(
-        &mut self,
-        call: mod_api::__private::BabyEntitySpawnCall<'_>,
-    ) {
+    pub fn native_baby_entity_spawn(&mut self, call: mod_api::__private::BabyEntitySpawnCall<'_>) {
         self.fire_baby_entity_spawn(call);
     }
 }

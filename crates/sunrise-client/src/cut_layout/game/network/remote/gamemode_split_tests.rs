@@ -1,11 +1,17 @@
 //! Parity tests for Minecraft 26.3 client local-game-mode vs `PlayerInfo` split (Item 3).
 //! Witness recorded into `.local` by `tools/test_gamemode_split_parity.py` (`VanillaClientGameModeSplitOracle`, JDK 25).
-use {crate::game::remote::*, sunrise_gameplay_common::game::remote::{C, Chunk, Empty, ItemStack, Path, S, Screen, Tag, Vec3, abilities, inventory, motion, movement, passengers, play, status, tick}};
-use sunrise_gameplay_common::game_modes::mode_from_id;
 use crate::game::server_side::native_entity_refs::tests::with_client_game;
 use serde_json::Value as JsonValue;
 use sunrise_command::args::GameMode;
+use sunrise_gameplay_common::game_modes::mode_from_id;
 use sunrise_protocol::connection::ConnReader;
+use {
+    crate::game::remote::*,
+    sunrise_gameplay_common::game::remote::{
+        C, Chunk, Empty, ItemStack, Path, S, Screen, Tag, Vec3, abilities, inventory, motion,
+        movement, passengers, play, status, tick,
+    },
+};
 
 pub(crate) const SELF_UUID: u128 = 0xdf71_dcc7_da3b_3506_b229_6d1f_589e_2569;
 pub(crate) const SELF_NAME: &str = "BX0W";
@@ -40,10 +46,7 @@ pub(crate) fn mode_id_from_name(name: &str) -> i32 {
     GameMode::from_name(name).unwrap().id()
 }
 
-pub(crate) fn spawn_info(
-    game_type: i32,
-    previous_game_type: Option<i32>,
-) -> play::SpawnInfo {
+pub(crate) fn spawn_info(game_type: i32, previous_game_type: Option<i32>) -> play::SpawnInfo {
     play::SpawnInfo {
         dimension_type: 0,
         dimension: "minecraft:overworld".into(),
@@ -58,11 +61,7 @@ pub(crate) fn spawn_info(
     }
 }
 
-pub(crate) fn login_packet(
-    player_id: i32,
-    game_type: i32,
-    previous_game_type: Option<i32>,
-) -> C {
+pub(crate) fn login_packet(player_id: i32, game_type: i32, previous_game_type: Option<i32>) -> C {
     C::Login(play::Login {
         player_id,
         hardcore: false,
@@ -1117,12 +1116,18 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                     .settings
                     .keys
                     .set("key.forward", "key.mouse.middle");
-                game.client.settings.keys.set("key.sneak", "key.mouse.middle");
+                game.client
+                    .settings
+                    .keys
+                    .set("key.sneak", "key.mouse.middle");
                 game.client
                     .settings
                     .keys
                     .set("key.attack", "key.mouse.middle");
-                game.client.settings.keys.set("key.drop", "key.mouse.middle");
+                game.client
+                    .settings
+                    .keys
+                    .set("key.drop", "key.mouse.middle");
                 let before = [
                     game.pending_mapping_clicks("key.forward"),
                     game.pending_mapping_clicks("key.sneak"),
@@ -1165,8 +1170,14 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                 // key.forward and not key.attack.
                 game.client.settings.keys.reset_all();
                 game.client.settings.toggle_crouch = false;
-                game.client.settings.keys.set("key.attack", "key.keyboard.r");
-                game.client.settings.keys.set("key.forward", "key.mouse.left");
+                game.client
+                    .settings
+                    .keys
+                    .set("key.attack", "key.keyboard.r");
+                game.client
+                    .settings
+                    .keys
+                    .set("key.forward", "key.mouse.left");
                 let fwd_before = game.pending_mapping_clicks("key.forward");
                 let atk_before = game.pending_mapping_clicks("key.attack");
                 game.control_command("mouse left click", &reply, &NoopLoop)
@@ -1183,9 +1194,15 @@ pub(crate) fn run_split_mode_hud_rendering_reach_miss_inventory_and_input_rules(
                     .keys
                     .set("key.pickItem", "key.keyboard.g");
                 game.client.settings.keys.set("key.drop", "key.keyboard.g");
-                game.client.settings.keys.set("key.forward", "key.keyboard.g");
+                game.client
+                    .settings
+                    .keys
+                    .set("key.forward", "key.keyboard.g");
                 game.client.settings.keys.set("key.sneak", "key.keyboard.g");
-                game.client.settings.keys.set("key.attack", "key.keyboard.g");
+                game.client
+                    .settings
+                    .keys
+                    .set("key.attack", "key.keyboard.g");
                 let key_before = [
                     game.pending_mapping_clicks("key.pickItem"),
                     game.pending_mapping_clicks("key.drop"),
@@ -1274,9 +1291,7 @@ pub(crate) fn spawn_mob(
     mob.extra.set_saddled(saddled);
 }
 
-pub(crate) fn contextual_bar_name(
-    bar: sunrise_client::locator_bar::ContextualBar,
-) -> &'static str {
+pub(crate) fn contextual_bar_name(bar: sunrise_client::locator_bar::ContextualBar) -> &'static str {
     use sunrise_client::locator_bar::ContextualBar;
     match bar {
         ContextualBar::Empty => "empty",
@@ -1380,7 +1395,8 @@ pub(crate) fn run_hud_camera_mounts_match_26_3_oracle() {
                     );
                     let camera = game.camera_player();
                     assert_eq!(
-                        camera != sunrise_client_gameplay::game::remote_camera::CameraPlayer::Absent,
+                        camera
+                            != sunrise_client_gameplay::game::remote_camera::CameraPlayer::Absent,
                         row["camera_is_player"].as_bool().unwrap(),
                         "{label}: camera_is_player"
                     );

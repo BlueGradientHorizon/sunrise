@@ -1,17 +1,15 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod world_spawn_sync_tests {
 
-use super::*;
+    use super::*;
 
-use std::sync::{Arc, atomic::AtomicI32, mpsc};
+    use std::sync::{Arc, atomic::AtomicI32, mpsc};
 
-use sunrise_protocol::packets::play::{self, Clientbound as C};
+    use sunrise_protocol::packets::play::{self, Clientbound as C};
 
-use sunrise_sim::lan::{Joined, Out, PlayerSender, guest::Guest};
+    use sunrise_sim::lan::{Joined, Out, PlayerSender, guest::Guest};
 
-pub fn spawns(rx: &mpsc::Receiver<Out>) -> Vec<play::SetDefaultSpawnPosition> {
+    pub fn spawns(rx: &mpsc::Receiver<Out>) -> Vec<play::SetDefaultSpawnPosition> {
         rx.try_iter()
             .flat_map(|out| match out {
                 Out::Packet(body) => vec![body],

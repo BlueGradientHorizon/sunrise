@@ -65,7 +65,10 @@ fn a_level_sound_leaves_out_the_player_asked() {
             Some(13)
         );
         assert!(play(game, None));
-        assert_eq!(game.server.pending_native_sounds.last().unwrap().except, None);
+        assert_eq!(
+            game.server.pending_native_sounds.last().unwrap().except,
+            None
+        );
         assert_eq!(queued(game), before + 2);
         let gone = mod_api::__private::game::player_ref(
             mod_api::EntityRef::new(
@@ -614,7 +617,10 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 assert!(game.level_global_level_event(level, 1038, pos, 0));
                 assert_eq!(game.server.pending_native_sounds.len(), 2);
                 assert_eq!(game.server.pending_native_sounds[0].entity, None);
-                assert_eq!(game.server.pending_native_sounds[1].entity, Some(entity13_id));
+                assert_eq!(
+                    game.server.pending_native_sounds[1].entity,
+                    Some(entity13_id)
+                );
                 assert_eq!(game.server.pending_particles.len(), 1);
                 assert_eq!(game.server.lan_events.len(), 1);
                 assert_eq!(game.server.lan_global_events.len(), 1);
@@ -1526,9 +1532,9 @@ fn cross_level_sound_listener_block_writes_journal_by_dimension_on_abort_commit_
     in_isolated_process(
         "cross_level_sound_listener_block_writes_journal_by_dimension_on_abort_commit_and_nested_merge",
         || {
-            use sunrise_gameplay_common::game::api_values::TryIntoApi;
             use mod_api::{BlockUpdateFlags, Flow, HostSide};
             use std::sync::atomic::{AtomicUsize, Ordering};
+            use sunrise_gameplay_common::game::api_values::TryIntoApi;
             use sunrise_level::chunk::Chunk;
 
             struct NetherBlockHook {
@@ -2342,9 +2348,9 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
             }
 
             fn item_resource(id: &str) -> ItemResource {
-                ItemResource::of(&sunrise_gameplay_common::game::api_values::test_snapshot(&ItemStack::new(
-                    id, 1,
-                )))
+                ItemResource::of(&sunrise_gameplay_common::game::api_values::test_snapshot(
+                    &ItemStack::new(id, 1),
+                ))
             }
 
             fn replace_fake_slot0(

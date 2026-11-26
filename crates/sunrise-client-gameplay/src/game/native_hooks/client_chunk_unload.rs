@@ -1,5 +1,3 @@
-
-
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// Chunk `chunk` (`[x, z]`, in chunks) of `dimension` is leaving this

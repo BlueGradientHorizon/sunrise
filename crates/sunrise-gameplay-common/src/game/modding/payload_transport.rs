@@ -24,7 +24,7 @@ impl Deferred {
     }
 }
 pub trait PayloadTransportGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-     fn player_send_payload(
+    fn player_send_payload(
         &mut self,
         player: PlayerRef,
         id: &PayloadId,
@@ -37,7 +37,7 @@ pub trait PayloadTransportGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
     /// `player_send_payload` to each of `players`; a refused send is skipped. The caller crossed
     /// the body once; each connection's queue owns its own copy.
-     fn players_send_payload(
+    fn players_send_payload(
         &mut self,
         players: &[PlayerRef],
         id: &PayloadId,
@@ -51,7 +51,7 @@ pub trait PayloadTransportGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             })
             .count() as u32
     }
-     fn queue_current_payload<E: ClientEvent>(
+    fn queue_current_payload<E: ClientEvent>(
         &mut self,
         endpoint: Endpoint<E>,
         id: &PayloadId,
@@ -63,7 +63,7 @@ pub trait PayloadTransportGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             .ok_or(PayloadSendError::NotNegotiated)?;
         self.queue_payload(endpoint, epoch, id, bytes)
     }
-     fn queue_payload<E: ClientEvent>(
+    fn queue_payload<E: ClientEvent>(
         &mut self,
         endpoint: Endpoint<E>,
         epoch: Arc<Epoch>,
@@ -78,11 +78,7 @@ pub trait PayloadTransportGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         Ok(PayloadAccepted::Queued)
     }
     /// Use the receiving endpoint, not a sender resolved from a later guest incarnation.
-     fn run_payload<E: ClientEvent>(
-        &mut self,
-        endpoint: Endpoint<E>,
-        incoming: Incoming,
-    ) {
+    fn run_payload<E: ClientEvent>(&mut self, endpoint: Endpoint<E>, incoming: Incoming) {
         if !incoming.epoch.active() {
             return;
         }
@@ -93,7 +89,8 @@ pub trait PayloadTransportGameExt1<'__sg>: crate::game::SideGame<'__sg> {
                 endpoint: endpoint.clone(),
                 receiver: &incoming.receiver,
                 disconnect: None,
-                failure: None, resource_lifetime: std::marker::PhantomData,
+                failure: None,
+                resource_lifetime: std::marker::PhantomData,
             };
             let result = match incoming.body {
                 Body::Payload(bytes) if incoming.receiver.thread == HandlerThread::Main => {
@@ -151,9 +148,12 @@ struct MainContext<'a, 'resources, S: crate::game::SideGame<'resources>, E: Clie
     endpoint: Endpoint<E>,
     receiver: &'a mod_api::__private::game::PayloadReceiver,
     disconnect: Option<Text>,
-    failure: Option<CallbackFailure>, pub resource_lifetime: std::marker::PhantomData<fn(&'resources ()) -> &'resources ()>,
+    failure: Option<CallbackFailure>,
+    pub resource_lifetime: std::marker::PhantomData<fn(&'resources ()) -> &'resources ()>,
 }
-impl<'__carrier, S: crate::game::SideGame<'__carrier>, E: ClientEvent> IPayloadContext for MainContext<'_, '__carrier, S, E> {
+impl<'__carrier, S: crate::game::SideGame<'__carrier>, E: ClientEvent> IPayloadContext
+    for MainContext<'_, '__carrier, S, E>
+{
     fn player(&self) -> Result<PlayerRef, PayloadContextError> {
         if !self.epoch.active() || self.disconnect.is_some() {
             return Err(PayloadContextError::Disconnected);
@@ -185,7 +185,8 @@ impl<'__carrier, S: crate::game::SideGame<'__carrier>, E: ClientEvent> IPayloadC
         if self.endpoint.side() != Side::Server {
             return Err(PayloadContextError::WrongSide);
         }
-        <S::State as crate::game::Side>::as_server_host_mut(self.game).ok_or(PayloadContextError::WrongSide)
+        <S::State as crate::game::Side>::as_server_host_mut(self.game)
+            .ok_or(PayloadContextError::WrongSide)
     }
     fn client_host(&mut self) -> Result<&mut dyn mod_api::ClientHost, PayloadContextError> {
         if !self.epoch.active() || self.disconnect.is_some() {
@@ -194,7 +195,8 @@ impl<'__carrier, S: crate::game::SideGame<'__carrier>, E: ClientEvent> IPayloadC
         if self.endpoint.side() != Side::Client {
             return Err(PayloadContextError::WrongSide);
         }
-        <S::State as crate::game::Side>::as_client_host_mut(self.game).ok_or(PayloadContextError::WrongSide)
+        <S::State as crate::game::Side>::as_client_host_mut(self.game)
+            .ok_or(PayloadContextError::WrongSide)
     }
     fn reply(
         &mut self,
@@ -316,7 +318,8 @@ impl<'__carrier, S: crate::game::SideGame<'__carrier>, E: ClientEvent> IPayloadC
                 endpoint,
                 receiver,
                 disconnect: None,
-                failure: None, resource_lifetime: std::marker::PhantomData,
+                failure: None,
+                resource_lifetime: std::marker::PhantomData,
             };
             callback(&mut inner, tx).then_some((inner.disconnect, inner.failure))
         })?;

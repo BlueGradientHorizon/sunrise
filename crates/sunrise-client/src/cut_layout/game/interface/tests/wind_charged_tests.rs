@@ -2,13 +2,13 @@
 //! body (`WindChargedMobEffect.onMobRemoved`) and for a silent source no sound
 //! at all (`ServerLevel.explode`'s `playSound`), and vehicles left alone by a
 //! mob's blast with mob griefing off (`VehicleEntity.ignoreExplosion`).
-use sunrise_gameplay_common::game::commands_common::Target;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 use crate::game::load_resources;
 use crate::settings::Settings;
 use std::sync::Arc;
+use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_level::chunk::Chunk;
 use sunrise_world::food::Difficulty;
+use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress};
 
 pub(crate) const BREEZE_BURST: &str = "minecraft:entity.breeze.wind_burst";
 pub(crate) const WIND_CHARGE_BURST: &str = "minecraft:entity.wind_charge.wind_burst";
@@ -37,7 +37,8 @@ pub(crate) fn with_game<R>(
     .ok()?;
     let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
     options.resources = root.clone();
-    options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+    options.execution_role =
+        sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
     let mut resources = None;
     let res = &*resources.insert(loaded.resources);
     let mut game = sunrise_gameplay::game::ServerGame::new(

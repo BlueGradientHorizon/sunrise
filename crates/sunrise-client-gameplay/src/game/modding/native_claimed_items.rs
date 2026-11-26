@@ -1,12 +1,12 @@
 //! Main-hand input captured by an item behavior, and the client host's view raycast.
 use super::Screen;
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use mod_api::{
     __private::{client_item_use, mod_index_on},
     ClientHost, ClientItemUseBehavior, ItemStack,
     content::crash::{ModCall, enter_native_mod},
 };
 use std::sync::Arc;
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 
 /// The farthest a ray along the view reaches, in blocks.
 pub(crate) const RAYCAST_MAX: f32 = 1024.0;
@@ -62,7 +62,8 @@ impl crate::game::ClientGame<'_> {
             && !self.common.spectator()
             && self.client.screen != Screen::Dead
             && self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .is_some_and(|p| p.health.health() > 0.0)
             && self
@@ -77,7 +78,8 @@ impl crate::game::ClientGame<'_> {
         active.slot == self.common.selected
             && self.can_capture_item_use()
             && self
-                .common.stack_in(active.slot)
+                .common
+                .stack_in(active.slot)
                 .is_some_and(|stack| stack.item == active.item_id && stack.count != 0)
     }
 

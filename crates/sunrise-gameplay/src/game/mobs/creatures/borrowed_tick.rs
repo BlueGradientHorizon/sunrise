@@ -1,8 +1,6 @@
-
-
 #[cfg(test)]
 pub(in crate::game) mod hoglin_routing_tests {
-    use {crate::game::creatures::borrowed_tick::*};
+    use crate::game::creatures::borrowed_tick::*;
     use crate::game::server_side::creatures_server::borrowed_tick::route_player_events;
     use sunrise_sim::mobs::{MobEvent, Who};
 

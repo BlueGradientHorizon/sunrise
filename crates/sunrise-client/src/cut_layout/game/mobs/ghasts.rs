@@ -1,9 +1,11 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) fn with_headless_game(run: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, sunrise_gameplay_common::game::execution_role::ExecutionRole, crate::game::load_resources};
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        sunrise_gameplay_common::game::execution_role::ExecutionRole,
+    };
 
     let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let save = tempfile::tempdir().unwrap();
@@ -40,8 +42,8 @@ pub(crate) fn with_headless_game(run: impl FnOnce(&mut sunrise_gameplay::game::S
 #[cfg(test)]
 pub(crate) mod hatch_tests {
     use super::with_headless_game;
-    use sunrise_gameplay_common::game::LevelEvent;
     use sunrise_core::{nbt::Tag, position::BlockPos};
+    use sunrise_gameplay_common::game::LevelEvent;
 
     #[test]
     #[ignore = "daily"]
@@ -53,7 +55,13 @@ pub(crate) mod hatch_tests {
             ] {
                 game.common.level_events.push(LevelEvent::BlockEvent {
                     pos: BlockPos::new(4, 64, 4),
-                    state: game.common.pack.assets.registry.default_state(block).unwrap(),
+                    state: game
+                        .common
+                        .pack
+                        .assets
+                        .registry
+                        .default_state(block)
+                        .unwrap(),
                     kind,
                 });
             }
@@ -77,10 +85,10 @@ pub(crate) mod hatch_tests {
 
 #[cfg(test)]
 pub(crate) mod item_collision_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use super::with_headless_game;
+    use super::with_headless_game;
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_level::chunk::Chunk;
 
     /// An item dropped onto a minecart falls through it to the floor, and one

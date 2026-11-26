@@ -37,10 +37,11 @@ impl Drop for ScratchDirectory {
 }
 
 /// Run each fixture's complete setup and actual action in both dimensions.
-pub fn in_both_dimensions(
-    mut test: impl FnMut(&mut crate::game::ServerGame<'_>, &PassBalance),
-) {
-    for dimension in [sunrise_gameplay_common::game::Dim::Overworld, sunrise_gameplay_common::game::Dim::Nether] {
+pub fn in_both_dimensions(mut test: impl FnMut(&mut crate::game::ServerGame<'_>, &PassBalance)) {
+    for dimension in [
+        sunrise_gameplay_common::game::Dim::Overworld,
+        sunrise_gameplay_common::game::Dim::Nether,
+    ] {
         // with_game isolates the initial SaveDir; newly opened dimensions use
         // world_root instead. Keep that root alive until the Game is dropped.
         let root = ScratchDirectory(std::env::temp_dir().join(format!(
@@ -104,7 +105,9 @@ impl PassBalance {
     fn assert_parked(&self, game: &mut crate::game::ServerGame<'_>) {
         let home = game.dim;
         let away = match home {
-            sunrise_gameplay_common::game::Dim::Overworld => sunrise_gameplay_common::game::Dim::Nether,
+            sunrise_gameplay_common::game::Dim::Overworld => {
+                sunrise_gameplay_common::game::Dim::Nether
+            }
             _ => sunrise_gameplay_common::game::Dim::Overworld,
         };
         game.enter_level(away).unwrap();

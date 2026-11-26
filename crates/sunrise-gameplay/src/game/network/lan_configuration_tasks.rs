@@ -250,7 +250,9 @@ impl crate::game::ServerGame<'_> {
                     id: dimension,
                     generation: self.server.levels.0.runtime.generation_of(dimension),
                 };
-                let rotation = saved.rotation.unwrap_or(self.common.level.world_spawn_angle);
+                let rotation = saved
+                    .rotation
+                    .unwrap_or(self.common.level.world_spawn_angle);
                 if let Some(position) = saved.position {
                     let prepared = PreparedSpawn {
                         level,

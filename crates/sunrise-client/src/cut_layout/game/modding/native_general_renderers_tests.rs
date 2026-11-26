@@ -2,8 +2,6 @@
 //! resolves to its catalog slot, a type with none is named; each row shown on the window is drawn
 //! by its type's renderer at the frame's interpolated pose, with its synced attachments; a renderer that fails is dropped until resources reload; a type
 //! with no renderer draws nothing.
-use sunrise_client_gameplay::game::client_side::native_entity_renderers::EntityRendererTable;
-use sunrise_gameplay_common::game::general::GeneralTypeCatalog;
 use mod_api::{
     AttachmentCodec, AttachmentError, AttachmentType, BlockEntityDrawContext, EntityRenderState,
     EntityRenderer,
@@ -16,7 +14,9 @@ use std::{
     },
 };
 use sunrise_client::mesher::Vertex;
+use sunrise_client_gameplay::game::client_side::native_entity_renderers::EntityRendererTable;
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::game::general::GeneralTypeCatalog;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 
 fn declaration(id: &str) -> mod_api::__private::GeneralEntityTypeDeclaration {
@@ -253,7 +253,10 @@ fn frame(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, alpha: f64) -
 /// rows shown: `test:missile`
 /// (id 5) going from (0, 321, 0) to (4, 321, 0) with fuel 7, `test:bomb` (6) and `test:plain` (7).
 /// In a child process running only `test`: the registrations are kept once per process.
-fn in_scene(test: &str, check: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &Scene)) {
+fn in_scene(
+    test: &str,
+    check: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &Scene),
+) {
     if super::native_entity_refs::tests::run_fresh_cases(
         &format!("game::client_side::native_general_renderers_tests::{test}"),
         "SUNRISE_GENERAL_RENDERERS_CHILD",
@@ -431,10 +434,11 @@ fn general_submission_keeps_lookup_order_across_removal_and_reentry() {
                     data: 0,
                 })
             };
-            game.client.pack_ids = Some(sunrise_client_gameplay::game::client_side::shader_packs::PackIds::with_entity_ids([(
-                "test:missile",
-                77,
-            )]));
+            game.client.pack_ids = Some(
+                sunrise_client_gameplay::game::client_side::shader_packs::PackIds::with_entity_ids(
+                    [("test:missile", 77)],
+                ),
+            );
             for packet in [
                 vanilla(71, "minecraft:armor_stand"),
                 spawn(12, "test:missile", [6.0, 321.0, 0.0]),
@@ -622,7 +626,10 @@ fn spawn_row(server: &mut sunrise_gameplay::game::ServerGame<'_>, position: [f64
 /// with no injected client packets, and the renderer's quad, whose width is the fuel, is in the
 /// frame's entity pass, before and after a resource reload that leaves the row in place.
 #[cfg(any())]
-fn integrated_scene(test: &str, place: fn(&mut sunrise_gameplay::game::ServerGame<'_>, [f64; 3]) -> u32) {
+fn integrated_scene(
+    test: &str,
+    place: fn(&mut sunrise_gameplay::game::ServerGame<'_>, [f64; 3]) -> u32,
+) {
     const CASE: &str = "SUNRISE_GENERAL_RENDERER_TARGET";
     if super::native_entity_refs::tests::run_fresh_cases(
         &format!("game::client_side::native_general_renderers_tests::{test}"),
@@ -704,7 +711,9 @@ fn integrated_scene(test: &str, place: fn(&mut sunrise_gameplay::game::ServerGam
                     assert_eq!(x.fold(f32::NEG_INFINITY, f32::max), 7.0);
                 };
                 check_quad(game);
-                sunrise_client_gameplay::game::client_side::model_baking_completed_tests::reload(game);
+                sunrise_client_gameplay::game::client_side::model_baking_completed_tests::reload(
+                    game,
+                );
                 assert!(ready(game), "resource reload must preserve the tracked row");
                 check_quad(game);
                 game.leave_server(None).unwrap();

@@ -1,8 +1,8 @@
 //! A mod's `teleport_to_level` into another level, kind by kind
 //! (`Entity.teleportCrossDimension`): what each kind keeps, and a kind it cannot move.
-use sunrise_gameplay_common::game::Dim;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use sunrise_gameplay_common::game::Dim;
 
 /// A mod's `teleport_to_level` into another level carries an item and an arrow there as
 /// vanilla's `Entity.teleportCrossDimension` does: recreated with their stack, thrower, owner
@@ -302,7 +302,9 @@ pub(crate) fn run_portal_arrival_effects_explicit_tnt_teleports_protect_portals(
             assert_eq!(game.tnts.len(), 1);
             assert_ne!(game.tnts[0].id, old);
             assert!(game.tnts[0].used_portal);
-            crate::game::server_side::nether_portal::arrival_effects_tests::assert_tnt_blast(game, true);
+            crate::game::server_side::nether_portal::arrival_effects_tests::assert_tnt_blast(
+                game, true,
+            );
             game.summon_with_nbt(
                 "minecraft:tnt",
                 [8.5, 70.0, 8.5],
@@ -310,7 +312,9 @@ pub(crate) fn run_portal_arrival_effects_explicit_tnt_teleports_protect_portals(
             )
             .unwrap();
             assert!(!game.tnts[0].used_portal);
-            crate::game::server_side::nether_portal::arrival_effects_tests::assert_tnt_blast(game, false);
+            crate::game::server_side::nether_portal::arrival_effects_tests::assert_tnt_blast(
+                game, false,
+            );
         });
     }
 }

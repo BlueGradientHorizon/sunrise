@@ -13,7 +13,8 @@ impl crate::game::ClientGame<'_> {
         };
         let atlas = &self.client.gui.atlas;
         let key_is_cart = self
-            .common.container
+            .common
+            .container
             .is_some_and(|k| k.1 == sunrise_gameplay_common::game::minecarts::CART_KEY_Y);
         let (texture, height, key, fallback) = match screen {
             Screen::Hopper if key_is_cart => (

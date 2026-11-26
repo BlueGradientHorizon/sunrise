@@ -235,11 +235,7 @@ impl ClientGame<'_> {
         )
     }
     /// `Camera.calculateHudFov`: the first-person hand's field of view.
-    pub fn hud_fov_degrees(
-        &self,
-        partial: f32,
-        camera: [f64; 3],
-    ) -> f32 {
+    pub fn hud_fov_degrees(&self, partial: f32, camera: [f64; 3]) -> f32 {
         self.client.view.calculate_hud_fov(
             partial,
             self.fov_effect_scale(),

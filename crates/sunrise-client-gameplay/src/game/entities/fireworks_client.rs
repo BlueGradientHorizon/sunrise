@@ -1,10 +1,10 @@
 use super::item_draw::owner_at;
-#[cfg(test)]
-use sunrise_gameplay_common::game::fireworks::FIREWORK_EXPLODE_EVENT;
-use sunrise_gameplay_common::game::fireworks::Rocket;
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{block_entity_render::vertex_light, mesher::Vertex};
 use sunrise_core::random::RandomSource;
+#[cfg(test)]
+use sunrise_gameplay_common::game::fireworks::FIREWORK_EXPLODE_EVENT;
+use sunrise_gameplay_common::game::fireworks::Rocket;
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
 impl crate::game::ClientGame<'_> {
@@ -59,7 +59,10 @@ impl crate::game::ClientGame<'_> {
                 p.z.floor() as i32,
             );
             // Frame generation and temporal upscaling follow its own flight.
-            self.mark_motion(out.len(), sunrise_gameplay_common::game::MOTION_OBJECT | u64::from(r.id));
+            self.mark_motion(
+                out.len(),
+                sunrise_gameplay_common::game::MOTION_OBJECT | u64::from(r.id),
+            );
             self.submit_item_world(&state, pose, vertex_light(light), out);
         }
         self.mark_motion(out.len(), 0);

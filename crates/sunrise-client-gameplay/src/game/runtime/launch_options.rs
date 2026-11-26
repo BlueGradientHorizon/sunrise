@@ -1,9 +1,7 @@
-
-
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use std::time::Duration;
-    use {crate::game::launch_options::*, sunrise_gameplay_common::game::launch_options::{Options}};
+    use {crate::game::launch_options::*, sunrise_gameplay_common::game::launch_options::Options};
 
     fn limit(args: &[&str]) -> Option<Duration> {
         crate::game::client_side::launch_options_client::time_limit(

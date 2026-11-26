@@ -88,7 +88,7 @@ impl PlayerSectionScope {
 }
 
 pub trait PlayerGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-     fn player_section_scope(&self) -> Option<PlayerSectionScope> {
+    fn player_section_scope(&self) -> Option<PlayerSectionScope> {
         let scope = self.entity_section_scope()?;
         let id = u32::try_from(self.own_entity_id())
             .ok()
@@ -103,7 +103,6 @@ pub trait PlayerGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> PlayerGameExt1<'__sg> for G {}
-
 
 use crate::game::entity_sections::EntitySectionsGameExt1 as _;
 

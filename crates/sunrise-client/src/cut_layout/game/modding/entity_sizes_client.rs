@@ -1,24 +1,22 @@
-
-
 #![cfg(test)]
 #[cfg(any())]
 pub(crate) mod tests {
 
-use sunrise_client_gameplay::game::client_side::entity_sizes_client::tests::white_outline;
+    use sunrise_client_gameplay::game::client_side::entity_sizes_client::tests::white_outline;
 
-use sunrise_gameplay::game::server_side::entity_sizes::tests::add_entity;
+    use sunrise_gameplay::game::server_side::entity_sizes::tests::add_entity;
 
-use sunrise_gameplay::game::server_side::entity_sizes::tests::doubled;
+    use sunrise_gameplay::game::server_side::entity_sizes::tests::doubled;
 
-use sunrise_gameplay::game::server_side::entity_sizes::tests::entity_data;
+    use sunrise_gameplay::game::server_side::entity_sizes::tests::entity_data;
 
-use sunrise_gameplay::game::server_side::entity_sizes::tests::in_fresh_process;
+    use sunrise_gameplay::game::server_side::entity_sizes::tests::in_fresh_process;
 
-use sunrise_gameplay::game::server_side::entity_sizes::tests::with_loopback_client;
+    use sunrise_gameplay::game::server_side::entity_sizes::tests::with_loopback_client;
 
-use mod_api::Pose;
+    use mod_api::Pose;
 
-/// A client's copies of entities that aren't mobs ask too: a minecart's box, the
+    /// A client's copies of entities that aren't mobs ask too: a minecart's box, the
     /// crosshair's pick, its F3+B outline and the box mods read take the answer; an armor stand
     /// asks again when it turns small; a display asks from its constructor.
     #[test]

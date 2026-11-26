@@ -1,22 +1,22 @@
-
-
 #![cfg(test)]
 use mod_api::ExplosionStart;
-use sunrise_gameplay::game::server_side::explosion::{BlockInteraction, ExplicitBlastSource, ExplosionCause, ExplosionSource};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::BlockPos;
 use sunrise_game_data::text::Text;
+use sunrise_gameplay::game::server_side::explosion::{
+    BlockInteraction, ExplicitBlastSource, ExplosionCause, ExplosionSource,
+};
 use sunrise_items::items::ItemStack;
 use sunrise_world::registry::BlockStateId;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_core::random::RandomSource;
-use sunrise_gameplay::game::server_side::explosion::tests::exploded_positions_stepwise;
+    use sunrise_core::random::RandomSource;
+    use sunrise_gameplay::game::server_side::explosion::tests::exploded_positions_stepwise;
 
-use super::*;
+    use super::*;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn rays_reusing_their_last_block_explode_what_each_step_did() {
         let mut resources = None;
@@ -65,12 +65,12 @@ use super::*;
             assert_eq!(got, expected, "radius {radius}, {resists:?}");
         }
     }
-#[test]
+    #[test]
     #[ignore = "requires prepared resources; tools/test_explosion_items_parity.py"]
     fn explosion_items_parity_fixture() {
         run_explosion_items_parity_fixture();
     }
-pub(crate) fn run_explosion_items_parity_fixture() {
+    pub(crate) fn run_explosion_items_parity_fixture() {
         let directory = std::env::var_os("SUNRISE_EXPLOSION_ITEMS_FIXTURE")
             .expect("set SUNRISE_EXPLOSION_ITEMS_FIXTURE to the fixture directory");
         sunrise_gameplay::game::native_entity_refs::tests::with_game(|game| {
@@ -84,7 +84,6 @@ pub(crate) fn run_explosion_items_parity_fixture() {
         });
     }
 }
-
 
 #[cfg(test)]
 #[path = "explosion/explosion_part_tests.rs"]
@@ -324,7 +323,12 @@ mod explicit_source_tests {
                     ));
                     assert!(game.server.combat.0.explicit_explosion_direct.is_some());
                     assert_eq!(
-                        game.server.combat.0.blast_owner.as_ref().map(|owner| owner.0),
+                        game.server
+                            .combat
+                            .0
+                            .blast_owner
+                            .as_ref()
+                            .map(|owner| owner.0),
                         Some(99)
                     );
                     assert_eq!(game.server.combat.0.blast_guest, Some(17));

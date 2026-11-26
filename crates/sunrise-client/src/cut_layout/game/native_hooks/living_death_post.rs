@@ -1,12 +1,9 @@
-
-
 #![cfg(test)]
 use sunrise_sim::mobs::Damage;
 use sunrise_sim::mobs::Who;
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
-    use {crate::game::native_hooks::living_death_post::*};
+    use crate::game::native_hooks::living_death_post::*;
     use mod_api::{
         Flow, Hooks, LivingDeathEvent, LivingDeathPostEvent, LivingDropsEvent,
         LivingExperienceDropEvent, MobKilledEvent, ModEntry, ServerHost,
@@ -15,6 +12,7 @@ pub(crate) mod tests {
         Arc, Mutex,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     };
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_sim::mobs::DamageKind;
 
     #[derive(Default)]
@@ -166,7 +164,9 @@ pub(crate) use sunrise_gameplay::game::server_side::native_hooks_server::living_
                 mob.health = 20.0;
                 game.mobs.last_mut().unwrap().health = 20.0;
                 // `/kill` replaces the earlier damage source with generic_kill.
-                game.kill_target(sunrise_gameplay_common::game::commands_common::Target::Mob(mob.id));
+                game.kill_target(sunrise_gameplay_common::game::commands_common::Target::Mob(
+                    mob.id,
+                ));
                 assert_eq!(*heard.lock().unwrap(), ["death", "loot", "post"]);
                 assert_eq!(
                     post.lock().unwrap().damage_type.as_deref(),

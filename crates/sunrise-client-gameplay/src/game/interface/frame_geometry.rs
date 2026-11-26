@@ -3,9 +3,9 @@
 //! `first_person_arm`) and the rain and snow around the camera (`weather_geometry`).
 use super::{weather::precipitation_at, *};
 use crate::game::client_side::item_use_client::use_pose;
+use sunrise_client::{gfx::CelestialBody, mobs::ModelNormals};
 use sunrise_gameplay_common::game::maps::map_id;
 use sunrise_gameplay_common::game::native_hooks::camera_math::hand_pose_matrix;
-use sunrise_client::{gfx::CelestialBody, mobs::ModelNormals};
 
 impl crate::game::ClientGame<'_> {
     /// Stored local and remote display positions, keeping the furthest stage on each cell.
@@ -35,10 +35,7 @@ impl crate::game::ClientGame<'_> {
 
     /// `renderBlockDestroyAnimation`: eligible cells within 32 blocks of the camera,
     /// with each stage sprite's atlas origin. No hook is asked during extraction.
-    pub fn cracks(
-        &self,
-        camera: glam::DVec3,
-    ) -> Vec<([i32; 3], [f32; 2])> {
+    pub fn cracks(&self, camera: glam::DVec3) -> Vec<([i32; 3], [f32; 2])> {
         let names = crack_stage_names(self.client.settings.improved_transparency);
         self.crack_stages()
             .into_iter()
@@ -82,7 +79,8 @@ impl crate::game::ClientGame<'_> {
         ];
         let phase = phases[(self.view_day_time() / 24000).rem_euclid(8) as usize];
         let moon = format!("environment/celestial/moon/{phase}");
-        let (out, bodies) = celestial_bodies(&self.client.gui.atlas.sprites, sky, &moon, body_color);
+        let (out, bodies) =
+            celestial_bodies(&self.client.gui.atlas.sprites, sky, &moon, body_color);
         // SkyRenderer.renderStars: the static star buffer on the same frame.
         let stars = (sky.star_brightness > 0.0)
             .then(|| (celestial_frame(sky.star_angle), sky.star_brightness));
@@ -186,7 +184,8 @@ impl crate::game::ClientGame<'_> {
                 self.common.spectator(),
                 self.camera_subject().is_some_and(|c| c.is_sleeping),
                 self.client.camera_type.is_first_person(),
-                self.common.player
+                self.common
+                    .player
                     .as_ref()
                     .is_some_and(|p| !p.health.dead_or_dying()),
                 self.client.screen == Screen::Dead,
@@ -195,9 +194,13 @@ impl crate::game::ClientGame<'_> {
             return (out, runs);
         }
         let a = alpha as f32;
-        let interpolated_pitch = self.client.player_model.as_ref().map_or(self.common.pitch, |model| {
-            model.previous_head_pitch + a * (self.common.pitch - model.previous_head_pitch)
-        });
+        let interpolated_pitch = self
+            .client
+            .player_model
+            .as_ref()
+            .map_or(self.common.pitch, |model| {
+                model.previous_head_pitch + a * (self.common.pitch - model.previous_head_pitch)
+            });
         // FirstPersonHandsAndItemsRenderer: the swing goes to the hand that
         // swings; each hand has its inverse arm height (the swap scale is 1
         // for every item but spears).
@@ -222,7 +225,8 @@ impl crate::game::ClientGame<'_> {
         let shown = self.hands_shown();
         let used_hand = self.common.used_hand();
         let spinning = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .is_some_and(|p| p.auto_spin_attack_ticks > 0);
         let items = self.visible_hand_items();
@@ -247,7 +251,8 @@ impl crate::game::ClientGame<'_> {
                 continue;
             }
             let scale = item.as_ref().map_or(1.0, |stack| {
-                self.common.pack
+                self.common
+                    .pack
                     .item_models
                     .swap_animation_scale(&sunrise_sim::item_models::stack_view(stack))
             });
@@ -321,7 +326,8 @@ impl crate::game::ClientGame<'_> {
                 // the map, unless the player is invisible.
                 if !self.own_invisible() {
                     runs.push((out.len() as u32, 0));
-                    for (arm, pose) in map_arm_poses(hold, left, self.common.pitch, inverse_height, attack)
+                    for (arm, pose) in
+                        map_arm_poses(hold, left, self.common.pitch, inverse_height, attack)
                     {
                         self.first_person_arm(arm, to_world * pose, packed, a, &mut out);
                     }
@@ -359,8 +365,8 @@ impl crate::game::ClientGame<'_> {
             let using = owner.using_this_item && owner.use_item_remaining_ticks > 0;
             let ticks_used =
                 owner.use_duration as f32 - (owner.use_item_remaining_ticks as f32 - a + 1.0);
-            use sunrise_gameplay_common::game::item_use_common::ItemUseState;
             use sunrise_client::first_person::ItemPose;
+            use sunrise_gameplay_common::game::item_use_common::ItemUseState;
             let state = using.then(|| self.item_use_state(&stack));
             use sunrise_core::use_animation::UseAnimation;
             let pose = match state {
@@ -399,7 +405,8 @@ impl crate::game::ClientGame<'_> {
                 _ if spinning => ItemPose::SpinAttack,
                 // ItemInHandRenderer: a STAB swing of this hand jabs.
                 _ if self
-                    .common.swing
+                    .common
+                    .swing
                     .current
                     .is_some_and(|c| c.hand == hand && c.animation.kind == 2) =>
                 {

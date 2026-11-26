@@ -32,10 +32,7 @@ impl crate::game::ServerGame<'_> {
     /// way `Minecraft.hitResult` does. `native_entity_interact_specific` and
     /// `native_interact_entity` hear it first; a claim swings the hand and
     /// ends the click.
-    pub fn interact_entity(
-        &mut self,
-        target: Option<InteractTarget>,
-    ) -> Result<bool> {
+    pub fn interact_entity(&mut self, target: Option<InteractTarget>) -> Result<bool> {
         // Native mods, where Player.interactOn starts: before the entity's
         // own interact and the item's interactLivingEntity. The entity is the
         // one the packet named, or the one the crosshair picked.

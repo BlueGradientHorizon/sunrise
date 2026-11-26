@@ -1,4 +1,3 @@
-
 #[cfg(feature = "client")]
 #[allow(unused_variables)]
 impl SideOps for crate::game::client_side::ClientState {
@@ -74,11 +73,7 @@ impl SideOps for crate::game::client_side::ClientState {
             game.client_play_player_bound_sound(event, source, volume, pitch, except_actor);
         }
     }
-    fn side_player_equipped(
-        game: &mut Self::Game<'_>,
-        slot: &str,
-        new: Option<&ItemStack>,
-    ) {
+    fn side_player_equipped(game: &mut Self::Game<'_>, slot: &str, new: Option<&ItemStack>) {
         {
             game.client_player_equipped(slot, new);
         }
@@ -114,12 +109,7 @@ impl SideOps for crate::game::client_side::ClientState {
     ) -> Vec<mod_api::EntityWrite> {
         game.client_body_step_on(entity, footprint, ground, velocity)
     }
-    fn side_item_fall_on(
-        game: &mut Self::Game<'_>,
-        id: u32,
-        on: BlockPos,
-        distance: f64,
-    ) {
+    fn side_item_fall_on(game: &mut Self::Game<'_>, id: u32, on: BlockPos, distance: f64) {
         {
             game.client_item_fall_on(id, on, distance);
         }
@@ -131,11 +121,7 @@ impl SideOps for crate::game::client_side::ClientState {
     ) -> bool {
         game.client_item_post_move_contacts(item, client)
     }
-    fn side_boat_collision_root(
-        game: &Self::Game<'_>,
-        id: u32,
-        target: Target,
-    ) -> Option<u32> {
+    fn side_boat_collision_root(game: &Self::Game<'_>, id: u32, target: Target) -> Option<u32> {
         game.client_boat_collision_root(id, target)
     }
     fn side_vehicle_solids(
@@ -148,10 +134,7 @@ impl SideOps for crate::game::client_side::ClientState {
             game.client_vehicle_solids(mover, solids, each);
         }
     }
-    fn side_resident_dragon_part_index(
-        game: &Self::Game<'_>,
-        id: u32,
-    ) -> Option<usize> {
+    fn side_resident_dragon_part_index(game: &Self::Game<'_>, id: u32) -> Option<usize> {
         game.client_resident_dragon_part_index(id)
     }
     fn side_entity_in(game: &Self::Game<'_>, room: Aabb) -> bool {
@@ -172,22 +155,22 @@ impl SideOps for crate::game::client_side::ClientState {
         game.client_game_side_fields()
     }
 }
-use sunrise_gameplay_common::game::side_ops::mobs_rest::SideOps;
-use sunrise_gameplay_common::game::minecarts;
-use sunrise_gameplay_common::game::boats_common::Boat;
-use sunrise_gameplay_common::game::collision_source::Mover;
-use sunrise_gameplay_common::game::commands_common::Target;
 use std::cell::Ref;
 use std::collections::HashMap;
 use sunrise_core::geometry::Aabb;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::boats_common::Boat;
+use sunrise_gameplay_common::game::collision_source::Mover;
+use sunrise_gameplay_common::game::commands_common::Target;
+use sunrise_gameplay_common::game::minecarts;
+use sunrise_gameplay_common::game::side_ops::mobs_rest::SideOps;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::entities::ItemEntity;
 use sunrise_sim::entity_solids::Candidate;
 use sunrise_sim::entity_solids::Solids;
-use sunrise_sim::motion::BodyRestitution;
 use sunrise_sim::join_seq::JoinList;
 use sunrise_sim::mobs::Mob;
+use sunrise_sim::motion::BodyRestitution;
 use sunrise_world::ground_support::GroundState;
 use sunrise_world::registry::BlockStateId;

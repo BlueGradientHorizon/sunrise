@@ -1,5 +1,3 @@
-
-
 impl crate::game::ServerGame<'_> {
     /// `player` touches the ground item entity `item`
     /// (`ItemEntity.playerTouch`), before its pickup delay and target are

@@ -18,7 +18,8 @@ impl ClientGame<'_> {
     pub(in crate::game::client_side) fn tick_book_snapshot_retry(&mut self) {
         self.check_mod_book_placement_timeout();
         if self
-            .common.native_net
+            .common
+            .native_net
             .book_retry_at
             .is_some_and(|at| std::time::Instant::now() >= at)
         {
@@ -163,7 +164,11 @@ impl ClientGame<'_> {
             return;
         }
         let previous_epoch = self.common.native_net.book_view.epoch;
-        if !self.common.native_net.book_view.receive(message, &registered())
+        if !self
+            .common
+            .native_net
+            .book_view
+            .receive(message, &registered())
             && !self.common.native_net.book_view.ready
             && let Some(data) = settings_codec::encode(&Message::Resnapshot)
         {

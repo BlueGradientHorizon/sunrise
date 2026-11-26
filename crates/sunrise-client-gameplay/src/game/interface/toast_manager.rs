@@ -1,4 +1,3 @@
-
 use super::{mod_toasts, tutorial};
 use crate::game::client_side::advancement_toast;
 use std::{cell::RefCell, collections::VecDeque};

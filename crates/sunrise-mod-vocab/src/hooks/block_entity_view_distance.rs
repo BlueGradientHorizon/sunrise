@@ -8,7 +8,8 @@ pub trait Hooks {
     /// the first time this client draws block entities, and kept: never per frame. A value
     /// that isn't finite and above 0 is ignored. Beyond NeoForge: the renderer's own method,
     /// no event.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::block_entity_view_distance::ClientGame<'_>::native_block_entity_view_distance", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::block_entity_view_distance::ClientGame<'_>::native_block_entity_view_distance",
         receiver = "read",
         dispatch = "flat",
         side = "client",

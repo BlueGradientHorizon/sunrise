@@ -6,7 +6,10 @@ impl crate::game::ClientGame<'_> {
         self.shown_native_screen()?.menu.pos
     }
     /// Applies the `sunrise:menu_extra` payload sent before `OpenScreen`, or disconnects on error.
-    pub(in crate::game) fn receive_menu_extra(&mut self, data: &[u8]) -> sunrise_gameplay_common::game::Result<()> {
+    pub(in crate::game) fn receive_menu_extra(
+        &mut self,
+        data: &[u8],
+    ) -> sunrise_gameplay_common::game::Result<()> {
         match sunrise_protocol::menu_extra::decode(data) {
             Ok(extra) => {
                 if let Some(r) = self.client.remote.as_mut() {

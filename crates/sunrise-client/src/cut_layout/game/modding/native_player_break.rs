@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use mod_api::PlayerRef;
 #[cfg(test)]
@@ -13,7 +11,10 @@ mod tests {
 
     /// A server's game with its own player in survival standing at the
     /// origin chunk, holding `held`: their handle.
-    fn with_player(game: &mut sunrise_gameplay::game::ServerGame<'_>, held: ItemStack) -> PlayerRef {
+    fn with_player(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        held: ItemStack,
+    ) -> PlayerRef {
         // The shared fixture does not open a server or register a ticking chunk.
         game.options.dedicated = Some(Vec::new());
         let _ = game
@@ -100,27 +101,28 @@ mod tests {
             game.offhand = None;
             game.hand = sunrise_sim::first_person_sim::Hand::Main;
             let (lower, upper) = ([6, 64, 4], [6, 65, 4]);
-            let door = |game: &mut sunrise_gameplay::game::ServerGame<'_>, half: &str, pos: [i32; 3]| {
-                let state = game
-                    .pack
-                    .assets
-                    .registry
-                    .resolve(&sunrise_world::chunk::BlockState {
-                        name: "minecraft:iron_door".into(),
-                        properties: [
-                            ("facing", "north"),
-                            ("half", half),
-                            ("hinge", "left"),
-                            ("open", "false"),
-                            ("powered", "false"),
-                        ]
-                        .into_iter()
-                        .map(|(k, v)| (k.into(), v.into()))
-                        .collect(),
-                    })
-                    .unwrap();
-                game.world.set(pos[0], pos[1], pos[2], state).unwrap();
-            };
+            let door =
+                |game: &mut sunrise_gameplay::game::ServerGame<'_>, half: &str, pos: [i32; 3]| {
+                    let state = game
+                        .pack
+                        .assets
+                        .registry
+                        .resolve(&sunrise_world::chunk::BlockState {
+                            name: "minecraft:iron_door".into(),
+                            properties: [
+                                ("facing", "north"),
+                                ("half", half),
+                                ("hinge", "left"),
+                                ("open", "false"),
+                                ("powered", "false"),
+                            ]
+                            .into_iter()
+                            .map(|(k, v)| (k.into(), v.into()))
+                            .collect(),
+                        })
+                        .unwrap();
+                    game.world.set(pos[0], pos[1], pos[2], state).unwrap();
+                };
             door(game, "lower", lower);
             door(game, "upper", upper);
             assert!(game.player_destroy_block(player, upper, false));
@@ -171,7 +173,8 @@ mod tests {
             assert_eq!(carried(game, "minecraft:stone"), 1);
             assert!(!popped(game, "minecraft:stone"));
 
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:diamond_pickaxe", 1));
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:diamond_pickaxe", 1));
             place(game, ore, "minecraft:diamond_ore");
             assert!(game.player_destroy_block(player, ore, true));
             assert_eq!(carried(game, "minecraft:diamond"), 1);

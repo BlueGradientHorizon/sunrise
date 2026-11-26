@@ -1,5 +1,3 @@
-
-
 #[cfg(test)]
 #[path = "interaction_event_tests_server.rs"]
 pub(crate) mod interaction_event_tests;

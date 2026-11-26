@@ -3,9 +3,7 @@
 //! buttons, paged to the panel's height, under a title and a back button.
 //! The mod hears clicks on their slots, their action buttons, the back
 //! button and page turns.
-use super::{
-    native_panel::{Layout, Owner, browser_stack, inside, wheel_turn},
-};
+use super::native_panel::{Layout, Owner, browser_stack, inside, wheel_turn};
 use mod_api::Stack as BrowserStack;
 use std::time::Instant;
 use sunrise_client::hud::{HudBatch, rgba};

@@ -3,19 +3,21 @@
 //! unknown one fails the command with `argument.dimension.invalid` before
 //! anything is cloned (tools/test_clone_dimensions_parity.py measures the
 //! same on vanilla 26.3).
-#[cfg(test)]
-use sunrise_gameplay_common::game::execution_role;
-use sunrise_gameplay_common::game::Dim;
 use super::*;
-use std::sync::Arc;
-use sunrise_core::position::ChunkPos;
-use sunrise_level::chunk::Chunk;
-use sunrise_gameplay_common::game::{Options, Progress, Resources};
 #[cfg(test)]
 use crate::game::load_resources;
 use crate::settings::Settings;
+use std::sync::Arc;
+use sunrise_core::position::ChunkPos;
+use sunrise_gameplay_common::game::Dim;
+#[cfg(test)]
+use sunrise_gameplay_common::game::execution_role;
+use sunrise_gameplay_common::game::{Options, Progress, Resources};
+use sunrise_level::chunk::Chunk;
 
-fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> sunrise_gameplay::game::ServerGame<'_> {
+fn game(
+    resources: &mut Option<std::sync::Arc<Resources>>,
+) -> sunrise_gameplay::game::ServerGame<'_> {
     let root = std::path::PathBuf::from(
         std::env::var_os("SUNRISE_TEST_RESOURCES")
             .expect("set SUNRISE_TEST_RESOURCES to prepared resources"),
@@ -122,7 +124,12 @@ fn load_chunk_in(game: &mut sunrise_gameplay::game::ServerGame<'_>, dim: Dim, ba
     assert_eq!(game.dim, back, "back in the first level");
 }
 
-fn block_in(game: &mut sunrise_gameplay::game::ServerGame<'_>, dim: &str, at: &str, block: &str) -> bool {
+fn block_in(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    dim: &str,
+    at: &str,
+    block: &str,
+) -> bool {
     run(game, &format!("execute in {dim} if block {at} {block}")).0
 }
 

@@ -1,10 +1,8 @@
-
-
 #![cfg(test)]
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
 mod tests {
-    use {crate::game::native_hooks::entity_interact_specific::*};
+    use crate::game::native_hooks::entity_interact_specific::*;
     use std::sync::{Arc, Mutex};
     struct Probe {
         pub name: &'static str,

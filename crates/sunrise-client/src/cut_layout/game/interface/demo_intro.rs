@@ -1,12 +1,8 @@
-
-
 #![cfg(test)]
 use sunrise_game_data::text::Text;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sunrise_gameplay_common::game::Screen;
-    use {sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game, crate::game::remote::tests::connect_menu_test, crate::game::remote::tests::spawn_menu_test};
     use mod_api::{ClientHost, Hooks, ModEntry, ScreenOpening, ScreenOpeningEvent};
     use serde_json::json;
     use std::sync::{
@@ -14,8 +10,14 @@ mod tests {
         atomic::{AtomicBool, Ordering},
     };
     use sunrise_client::chat::{ChatAbilities, ChatVisibility};
+    use sunrise_gameplay_common::game::Screen;
     use sunrise_narrator::{GameNarrator, Sink, Status};
     use sunrise_protocol::packets::play::{Clientbound, GameEvent, PlayerPosition};
+    use {
+        crate::game::remote::tests::connect_menu_test, crate::game::remote::tests::spawn_menu_test,
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_gameplay_common::game::in_own_process,
+    };
 
     struct Narration(Arc<Mutex<Vec<(String, bool)>>>);
     impl Sink for Narration {
@@ -90,7 +92,8 @@ mod tests {
                         ] {
                             game.client.settings.keys.set(mapping, key);
                         }
-                        let send = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, param| {
+                        let send = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                                    param| {
                             game.handle_packet(Clientbound::GameEvent(GameEvent {
                                 event: 5,
                                 param,
@@ -134,7 +137,11 @@ mod tests {
                             assert!(game.demo_intro_click());
                             assert_eq!(game.client.screen, Screen::ConfirmLink);
                             game.close_confirm_link();
-                            assert_eq!(game.client.screen, Screen::Playing, "Buy returns to the HUD");
+                            assert_eq!(
+                                game.client.screen,
+                                Screen::Playing,
+                                "Buy returns to the HUD"
+                            );
                             assert!(
                                 !game.client.agent_pointer,
                                 "closing the link confirmation requests capture"
@@ -184,7 +191,10 @@ mod tests {
                             let count = game.client.remote.as_ref().unwrap().chat_received;
                             send(game, phase);
                             assert_eq!(game.client.screen, Screen::Playing);
-                            assert_eq!(game.client.remote.as_ref().unwrap().chat_received, count + 1);
+                            assert_eq!(
+                                game.client.remote.as_ref().unwrap().chat_received,
+                                count + 1
+                            );
                             let expected = json!({"translate": key, "with": args.iter().map(|label| json!({"text": label.to_string()})).collect::<Vec<_>>()});
                             assert_eq!(game.client.chat_ui.chat.recent_components(1), [expected]);
                             let chat = game.client.chat_ui.chat.recent_lines(1).pop().unwrap();
@@ -212,7 +222,10 @@ mod tests {
                         }
                         sunrise_narrator::set_status(Status::Chat);
                         send(game, 102.0);
-                        assert_eq!(game.client.remote.as_ref().unwrap().chat_received, count + 1);
+                        assert_eq!(
+                            game.client.remote.as_ref().unwrap().chat_received,
+                            count + 1
+                        );
                         assert!(
                             spoken.lock().unwrap().is_empty(),
                             "a demo hint is system narration, not chat narration"

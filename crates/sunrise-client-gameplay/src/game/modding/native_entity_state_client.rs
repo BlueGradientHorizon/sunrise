@@ -50,7 +50,8 @@ impl crate::game::ClientGame<'_> {
         let left = match target {
             Target::Player => self.client.settings.main_hand_left,
             Target::Mob(id) => self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == id && !m.removed)?
                 .main_arm_left(),
@@ -72,13 +73,19 @@ impl crate::game::ClientGame<'_> {
         if let Some(target) = self.native_client_entity_target(entity) {
             let (grant, ticks) = match target {
                 Target::Mob(id) => {
-                    let Some(mob) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
+                    let Some(mob) = self
+                        .common
+                        .mobs
+                        .iter_mut()
+                        .find(|m| m.id == id && !m.removed)
+                    else {
                         return false;
                     };
                     (&mut mob.mod_fire_immune, &mut mob.fire_ticks)
                 }
                 Target::Stand(id) => {
-                    let Some(stand) = self.common.armor_stands.iter_mut().find(|s| s.id == id) else {
+                    let Some(stand) = self.common.armor_stands.iter_mut().find(|s| s.id == id)
+                    else {
                         return false;
                     };
                     (&mut stand.mod_fire_immune, &mut stand.fire_ticks)

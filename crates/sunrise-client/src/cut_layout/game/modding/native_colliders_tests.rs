@@ -1,13 +1,13 @@
 //! Moving colliders on a real game: set, read, refused, saved and loaded back, and solid to a
 //! falling item.
-use sunrise_gameplay_common::game::Dim;
-use sunrise_gameplay_common::game::native_collider_state::SAVE_KEY;
 use mod_api::{Collider, ColliderBox, ColliderError, EntityRef};
 use std::sync::Arc;
 use sunrise_core::{
     geometry::Vec3,
     nbt::{Compound, Tag},
 };
+use sunrise_gameplay_common::game::Dim;
+use sunrise_gameplay_common::game::native_collider_state::SAVE_KEY;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::entities::ItemEntity;
@@ -27,7 +27,10 @@ fn stand(game: &mut sunrise_gameplay::game::ServerGame<'_>, at: [f64; 3]) -> Ent
     stand_with_id(game, at).1
 }
 
-fn stand_with_id(game: &mut sunrise_gameplay::game::ServerGame<'_>, at: [f64; 3]) -> (u32, EntityRef) {
+fn stand_with_id(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    at: [f64; 3],
+) -> (u32, EntityRef) {
     let nbt: Compound = [
         ("NoGravity".into(), Tag::Byte(1)),
         ("NoAI".into(), Tag::Byte(1)),
@@ -109,13 +112,21 @@ fn a_collider_is_set_read_refused_saved_and_loaded() {
         // Saved with the entity, and read back by the entity that loads it.
         let id = entity.id();
         let mut tag = Tag::Compound(Compound::new());
-        sunrise_gameplay::game::server_side::persist::write_attachments(&mut tag, id, &game.entity_attachments);
+        sunrise_gameplay::game::server_side::persist::write_attachments(
+            &mut tag,
+            id,
+            &game.entity_attachments,
+        );
         assert!(tag.get(SAVE_KEY).is_some(), "the save holds the collider");
         let want = entity.collider(game);
         assert_eq!(entity.set_collider(game, None), Ok(()));
         assert_eq!(entity.collider(game), None);
         let mut cleared = Tag::Compound(Compound::new());
-        sunrise_gameplay::game::server_side::persist::write_attachments(&mut cleared, id, &game.entity_attachments);
+        sunrise_gameplay::game::server_side::persist::write_attachments(
+            &mut cleared,
+            id,
+            &game.entity_attachments,
+        );
         assert!(cleared.get(SAVE_KEY).is_none(), "none is not saved");
         game.load_saved_collider(id, &tag);
         assert_eq!(entity.collider(game), want);
@@ -502,19 +513,20 @@ fn two_hundred_items_over_a_capped_collider_rest_and_the_tick_is_timed() {
                 })
                 .collect()
         };
-        let time =
-            |game: &mut sunrise_gameplay::game::ServerGame<'_>,
-             ticks: usize,
-             mut each: Option<&mut dyn FnMut(&mut sunrise_gameplay::game::ServerGame<'_>)>| {
-                let start = Instant::now();
-                for _ in 0..ticks {
-                    if let Some(each) = each.as_mut() {
-                        each(game);
-                    }
-                    tick_level(game);
+        let time = |game: &mut sunrise_gameplay::game::ServerGame<'_>,
+                    ticks: usize,
+                    mut each: Option<
+            &mut dyn FnMut(&mut sunrise_gameplay::game::ServerGame<'_>),
+        >| {
+            let start = Instant::now();
+            for _ in 0..ticks {
+                if let Some(each) = each.as_mut() {
+                    each(game);
                 }
-                start.elapsed().as_secs_f64() * 1000.0 / ticks as f64
-            };
+                tick_level(game);
+            }
+            start.elapsed().as_secs_f64() * 1000.0 / ticks as f64
+        };
         // No collider: the items fall in the open.
         let before = items(game);
         let open = time(game, 40, None);

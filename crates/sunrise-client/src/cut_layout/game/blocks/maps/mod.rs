@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_core::nbt::Tag;
 use sunrise_gameplay_common::game::maps::MapData;
@@ -10,18 +8,21 @@ pub(crate) mod live_frame_tests;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use super::*;
+    use super::*;
 
-/// `ItemStack.useOn` / `MapItem.useOn`: in adventure mode, a map whose
+    /// `ItemStack.useOn` / `MapItem.useOn`: in adventure mode, a map whose
     /// `can_place_on` component includes the banner block toggles that banner's
     /// marker, while one without does not.
     #[test]
     #[ignore = "daily"]
     fn map_on_banner_in_adventure_mode_honours_can_place_on() {
-        use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::game::Settings, crate::game::load_resources};
         use std::sync::Arc;
         use sunrise_command::args::GameMode;
         use sunrise_level::chunk::Chunk;
+        use {
+            crate::game::Settings, crate::game::load_resources,
+            sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+        };
 
         let Some(root) = std::env::var_os("SUNRISE_TEST_RESOURCES") else {
             return;
@@ -43,7 +44,8 @@ use super::*;
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -118,7 +120,6 @@ use super::*;
         assert!(game.map(map_id).unwrap().banners.is_empty());
     }
 }
-
 
 #[cfg(test)]
 pub(crate) mod command_exploration_map_test_file;

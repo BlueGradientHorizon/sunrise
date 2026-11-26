@@ -82,7 +82,7 @@ pub fn toast_label(frame: Frame) -> (&'static str, u32) {
 mod tests {
     use super::*;
 
-pub fn recipes(n: usize) -> Toast {
+    pub fn recipes(n: usize) -> Toast {
         Toast::recipe(
             (0..n)
                 .map(|i| {
@@ -92,14 +92,9 @@ pub fn recipes(n: usize) -> Toast {
                 .collect(),
         )
     }
-/// Drives a toast frame by frame (every `step` ms) and returns the slide
+    /// Drives a toast frame by frame (every `step` ms) and returns the slide
     /// portions at the given times and when it finished.
-    pub fn run(
-        toast: &mut Toast,
-        step: i64,
-        until: i64,
-        at: &[i64],
-    ) -> (Vec<f32>, Option<i64>) {
+    pub fn run(toast: &mut Toast, step: i64, until: i64, at: &[i64]) -> (Vec<f32>, Option<i64>) {
         let mut slide = Slide::default();
         let mut seen = Vec::new();
         for now in (0..=until).step_by(step as usize) {

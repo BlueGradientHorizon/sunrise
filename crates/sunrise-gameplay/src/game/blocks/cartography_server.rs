@@ -5,10 +5,7 @@ use sunrise_items::items::ItemStack;
 
 impl crate::game::ServerGame<'_> {
     /// The maps of `stacks` (loaded as needed) for a menu over this level.
-    pub fn level_maps<'s>(
-        &mut self,
-        stacks: impl IntoIterator<Item = &'s ItemStack>,
-    ) -> LevelMaps {
+    pub fn level_maps<'s>(&mut self, stacks: impl IntoIterator<Item = &'s ItemStack>) -> LevelMaps {
         let ids: Vec<i32> = stacks.into_iter().filter_map(map_id).collect();
         let mut states = HashMap::new();
         for id in ids {

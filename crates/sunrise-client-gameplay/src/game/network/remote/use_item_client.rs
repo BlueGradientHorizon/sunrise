@@ -20,9 +20,11 @@ impl crate::game::ClientGame<'_> {
         let offhand = slot == sunrise_gameplay_common::game::held_items::OFFHAND_SLOT;
         let hand_slot = if offhand { slot } else { self.common.selected };
         let Some(stack) = self
-            .common.stack_in(hand_slot)
+            .common
+            .stack_in(hand_slot)
             .filter(|stack| {
-                self.common.use_start
+                self.common
+                    .use_start
                     .item
                     .as_ref()
                     .is_some_and(|active| stack.item == active.item)

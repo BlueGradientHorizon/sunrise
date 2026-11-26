@@ -24,7 +24,11 @@ impl crate::game::ServerGame<'_> {
             return custom_count + self.award_recipes(&recipes) as i32;
         }
         let index = &server_world_stations!(self).recipe_index;
-        let removed = self.common.level.recipe_book.remove_recipes(index, &recipes);
+        let removed = self
+            .common
+            .level
+            .recipe_book
+            .remove_recipes(index, &recipes);
         let count = custom_count + removed.len() as i32;
         if count != 0 {
             self.invalidate_mod_book_placement_knowledge();
@@ -52,7 +56,9 @@ impl crate::game::ServerGame<'_> {
                     .unwrap_or(options.ty.name())
                     .to_owned();
                 let particle =
-                    sunrise_gameplay_common::game::lan_particle_data::server_particle_from_options(&options, None);
+                    sunrise_gameplay_common::game::lan_particle_data::server_particle_from_options(
+                        &options, None,
+                    );
                 (name, particle)
             }
             Some(Arg::Str(spec)) => {
@@ -175,7 +181,8 @@ impl crate::game::ServerGame<'_> {
         } else {
             let acting = self.server.lan_acting;
             let guests = self.server.lan.iter().flat_map(|h| h.hub.online_players());
-            self.common.player
+            self.common
+                .player
                 .as_ref()
                 .filter(|_| !self.server.lan_acting_fake)
                 .map(|_| Target::Player)
@@ -602,17 +609,15 @@ impl crate::game::ServerGame<'_> {
     /// `DamageCommand.damage`: retain the accepted hit's player context and run
     /// `Zombie.hurtServer`'s reinforcement requests before the command returns.
     /// Health-changing hits also raise their damage vibration before return.
-    pub fn command_damage_mob(
-        &mut self,
-        id: u32,
-        amount: f32,
-        damage: Damage,
-    ) -> bool {
+    pub fn command_damage_mob(&mut self, id: u32, amount: f32, damage: Damage) -> bool {
         let Some(index) = self.common.mob_index.find(&self.common.mobs, id) else {
             return false;
         };
-        let plan =
-            self.prepare_knockback_credit(id as i32, damage.attacker, self.server.combat.0.attack());
+        let plan = self.prepare_knockback_credit(
+            id as i32,
+            damage.attacker,
+            self.server.combat.0.attack(),
+        );
         let attack = self.server.combat.0.attack();
         let mut credit = plan.lend(&mut self.server.last_hurt_by_player);
         let mob = &mut self.common.mobs[index];
@@ -690,12 +695,14 @@ impl crate::game::ServerGame<'_> {
             || registry.in_tag(kind, "minecraft:is_explosion");
         let entity_kind = match target {
             Target::Boat(_) => self
-                .common.boats
+                .common
+                .boats
                 .iter()
                 .find(|b| b.id == id)
                 .map(|b| b.entity_type()),
             Target::Cart(_) => self
-                .common.carts
+                .common
+                .carts
                 .iter()
                 .find(|c| c.id == id)
                 .map(|c| c.kind.id().to_owned()),
@@ -707,9 +714,8 @@ impl crate::game::ServerGame<'_> {
         let entity_id = |target| match target {
             Some(Target::Player) => self.own_entity_id(),
             Some(Target::Guest(conn)) => self.command_guest(conn).map_or(0, |g| g.entity_id),
-            Some(target) => {
-                sunrise_gameplay_common::game::commands_common::target_id(target).map_or(0, |id| id as i32)
-            }
+            Some(target) => sunrise_gameplay_common::game::commands_common::target_id(target)
+                .map_or(0, |id| id as i32),
             None => 0,
         };
         let source = sunrise_sim::health::HurtSource {
@@ -732,19 +738,25 @@ impl crate::game::ServerGame<'_> {
         }
         match target {
             Target::Boat(_) => self
-                .common.boats
+                .common
+                .boats
                 .iter()
                 .position(|b| b.id == id)
                 .is_some_and(|i| self.hurt_boat_result(i, amount, creative).is_some()),
-            Target::Cart(_) => self.common.carts.iter().position(|c| c.id == id).is_some_and(|i| {
-                self.hurt_cart_result(
-                    i,
-                    amount,
-                    creative,
-                    ignites,
-                    CartHit::command(direct, causing),
-                )
-            }),
+            Target::Cart(_) => self
+                .common
+                .carts
+                .iter()
+                .position(|c| c.id == id)
+                .is_some_and(|i| {
+                    self.hurt_cart_result(
+                        i,
+                        amount,
+                        creative,
+                        ignites,
+                        CartHit::command(direct, causing),
+                    )
+                }),
             _ => false,
         }
     }
@@ -761,8 +773,12 @@ impl crate::game::ServerGame<'_> {
         {
             let mob = self.common.mobs.iter_mut().find(|m| m.id == id)?;
             if mob.extra.armor_attributes.is_none() {
-                mob.extra.armor_attributes =
-                    self.common.motion.attributes.create(&mob.kind.id).map(Box::new);
+                mob.extra.armor_attributes = self
+                    .common
+                    .motion
+                    .attributes
+                    .create(&mob.kind.id)
+                    .map(Box::new);
             }
             return mob.extra.armor_attributes.as_deref_mut();
         }
@@ -831,7 +847,12 @@ impl crate::game::ServerGame<'_> {
                     _ => None,
                 });
                 let attacker_species = match attacker {
-                    Some(Who::Mob(i)) => self.common.mobs.iter().find(|m| m.id == i).map(|m| m.species()),
+                    Some(Who::Mob(i)) => self
+                        .common
+                        .mobs
+                        .iter()
+                        .find(|m| m.id == i)
+                        .map(|m| m.species()),
                     _ => None,
                 };
                 let damage = Damage {
@@ -1000,8 +1021,6 @@ pub mod datapack_damage_tests {
         pig.no_ai = true;
         game.mobs.push(pig);
     }
-
-    
 }
 
 #[cfg(any(test, feature = "test-support"))]

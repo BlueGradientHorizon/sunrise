@@ -23,9 +23,7 @@ pub(in crate::game) struct GameHive<'g, 'a> {
     pub(in crate::game) stay: std::cell::Cell<Option<bool>>,
 }
 impl<'g, 'a> GameHive<'g, 'a> {
-    pub(in crate::game::server_side) fn new(
-        game: &'g mut crate::game::ServerGame<'a>,
-    ) -> Self {
+    pub(in crate::game::server_side) fn new(game: &'g mut crate::game::ServerGame<'a>) -> Self {
         Self {
             game,
             stay: Default::default(),
@@ -55,7 +53,8 @@ impl crate::game::ServerGame<'_> {
             return false;
         }
         let is_brain = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .find(|mob| mob.id == id)
             .is_some_and(|mob| sunrise_sim::mobs::ai::brain_target(mob).is_some());
@@ -137,7 +136,8 @@ impl crate::game::ServerGame<'_> {
         let Some((honey, facing)) = self.common.hive_state(at) else {
             return;
         };
-        let Some((lease, BlockEntity::Beehive(mut hive))) = self.common.world.block_entities.take(&key)
+        let Some((lease, BlockEntity::Beehive(mut hive))) =
+            self.common.world.block_entities.take(&key)
         else {
             return;
         };
@@ -151,7 +151,10 @@ impl crate::game::ServerGame<'_> {
         ]
         .iter()
         .any(|d| {
-            let state = self.common.world.block(at[0] + d[0], at[1] + d[1], at[2] + d[2]);
+            let state = self
+                .common
+                .world
+                .block(at[0] + d[0], at[1] + d[1], at[2] + d[2]);
             &*self.common.res.facts().get(state).name == "minecraft:fire"
         });
         let mut host = GameHive::new(self);
@@ -159,7 +162,8 @@ impl crate::game::ServerGame<'_> {
             hive.release_all(at, facing, honey, Release::Emergency, &mut host);
         }
         hive.server_tick(at, facing, honey, &mut host);
-        self.common.world
+        self.common
+            .world
             .block_entities
             .put(lease, BlockEntity::Beehive(hive));
     }
@@ -168,7 +172,8 @@ impl crate::game::ServerGame<'_> {
     pub fn bee_enter_hive(&mut self, mob: u32, at: [i32; 3]) {
         let key = (at[0], at[1], at[2]);
         if !self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .any(|m| m.id == mob && m.alive() && !m.removed)
         {
@@ -185,18 +190,25 @@ impl crate::game::ServerGame<'_> {
             self.entity_eject_passengers(entity);
         }
         self.break_leash(mob, true, false);
-        let Some(i) = self.common.mobs.iter().position(|m| m.id == mob && !m.removed) else {
+        let Some(i) = self
+            .common
+            .mobs
+            .iter()
+            .position(|m| m.id == mob && !m.removed)
+        else {
             return;
         };
         let tag = self.mob_own_nbt(i);
         let flower = bee::get(&self.common.mobs[i]).and_then(|b| b.flower);
         let kind = self.common.mobs[i].kind.id.clone();
-        let Some((lease, BlockEntity::Beehive(mut hive))) = self.common.world.block_entities.take(&key)
+        let Some((lease, BlockEntity::Beehive(mut hive))) =
+            self.common.world.block_entities.take(&key)
         else {
             return;
         };
         let stored = hive.add_occupant(at, tag, flower, &mut GameHive::new(self));
-        self.common.world
+        self.common
+            .world
             .block_entities
             .put(lease, BlockEntity::Beehive(hive));
         if stored {
@@ -208,7 +220,8 @@ impl crate::game::ServerGame<'_> {
                 Some(state),
             );
             let block = self
-                .common.res
+                .common
+                .res
                 .facts()
                 .get(self.common.world.block(at[0], at[1], at[2]))
                 .name
@@ -225,12 +238,14 @@ impl crate::game::ServerGame<'_> {
         status: Release,
     ) {
         let key = (at[0], at[1], at[2]);
-        let Some((lease, BlockEntity::Beehive(mut hive))) = self.common.world.block_entities.take(&key)
+        let Some((lease, BlockEntity::Beehive(mut hive))) =
+            self.common.world.block_entities.take(&key)
         else {
             return;
         };
         hive.release_all(at, facing, None, status, &mut GameHive::new(self));
-        self.common.world
+        self.common
+            .world
             .block_entities
             .put(lease, BlockEntity::Beehive(hive));
     }
@@ -254,7 +269,8 @@ impl crate::game::ServerGame<'_> {
         let sedated = beehive::smokey(&self.mob_world_base(&[]), at);
         if let Some(p) = self.player_view().map(|p| p.position) {
             let ids: Vec<u32> = self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .filter(|m| released.contains(&m.id) && m.distance_sqr(p) <= 16.0)
                 .map(|m| m.id)
@@ -275,11 +291,7 @@ impl crate::game::ServerGame<'_> {
     /// the honeycombs and a glass bottle a honey bottle from a full hive
     /// (honey level 5), then the honey level resets and, unless a campfire
     /// smokes the hive, the bees come out angry. True when it took the click.
-    pub fn use_beehive(
-        &mut self,
-        pos: [i32; 3],
-        held: Option<&ItemStack>,
-    ) -> Result<bool> {
+    pub fn use_beehive(&mut self, pos: [i32; 3], held: Option<&ItemStack>) -> Result<bool> {
         let Some(held) = held else { return Ok(false) };
         let shears = self.stack_shears(held, ability::SHEARS_HARVEST);
         if !shears && &*held.item != "minecraft:glass_bottle" {
@@ -293,7 +305,8 @@ impl crate::game::ServerGame<'_> {
             return Ok(false);
         }
         let prop = |key: &str| {
-            self.common.pack
+            self.common
+                .pack
                 .assets
                 .registry
                 .state(state)
@@ -304,7 +317,8 @@ impl crate::game::ServerGame<'_> {
         }
         let facing = beehive::facing_step(prop("facing").as_deref());
         let at = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map(|p| [p.position.x, p.position.y, p.position.z]);
         if shears {
@@ -365,12 +379,14 @@ impl crate::game::ServerGame<'_> {
                 Release::Emergency,
                 &mut GameHive::new(self),
             );
-            self.common.world
+            self.common
+                .world
                 .block_entities
                 .put(lease, BlockEntity::Beehive(hive));
             if let Some(p) = self.player_view().map(|p| p.position) {
                 let ids: Vec<u32> = self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter()
                     .filter(|m| released.contains(&m.id) && m.distance_sqr(p) <= 16.0)
                     .map(|m| m.id)
@@ -426,7 +442,8 @@ impl crate::game::ServerGame<'_> {
         for i in bees {
             // Util.getRandom over the players.
             let pick = self
-                .common.world
+                .common
+                .world
                 .random
                 .next_int_bound(players.len() as i32)
                 .unwrap_or(0) as usize;

@@ -8,7 +8,8 @@ pub trait Hooks {
     /// that is not a number is ignored). Canceling leaves the entity where it is; the command
     /// still reports success. `entity_teleport` and `player_teleported` hear it after.
     /// Server-side. Diverges from upstream: new hook.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::teleport_command::ServerGame<'_>::native_teleport_command", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::teleport_command::ServerGame<'_>::native_teleport_command",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

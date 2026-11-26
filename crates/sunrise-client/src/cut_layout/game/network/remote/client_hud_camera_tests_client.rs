@@ -1,4 +1,3 @@
-use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 use crate::game::remote::tests::client_hud_camera_tests::LOCAL;
 use crate::game::remote::tests::client_hud_camera_tests::MOB;
 use crate::game::remote::tests::client_hud_camera_tests::WATCHED;
@@ -9,8 +8,8 @@ use crate::game::remote::tests::client_hud_camera_tests::id;
 use crate::game::remote::tests::client_hud_camera_tests::mount;
 use crate::game::remote::tests::client_hud_camera_tests::num;
 use crate::game::remote::tests::client_hud_camera_tests::spawn;
-use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
 use sunrise_client::level_loading::Reason;
+use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::{
@@ -20,13 +19,20 @@ use sunrise_protocol::{
     packets::play::{self, Clientbound as C, SpawnInfo},
 };
 use sunrise_sim::motion::PlayerMotion;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle,
+};
 
 /// `Hud.getPlayerVehicleWithHealth` and `Hud.getAirBubbleYLine`: the watched rider can
 /// ride the dragon or the local player, but a boat leaves the food and air rows unchanged.
 #[test]
 #[ignore = "daily"]
 fn a_watched_rider_gets_hearts_for_the_dragon_and_local_player_but_not_a_boat() {
-    use {sunrise_gameplay_common::game::Screen, sunrise_gameplay_common::game::in_own_process, sunrise_client_gameplay::game::remote_camera::CameraPlayer};
+    use {
+        sunrise_client_gameplay::game::remote_camera::CameraPlayer,
+        sunrise_gameplay_common::game::Screen, sunrise_gameplay_common::game::in_own_process,
+    };
 
     in_own_process(
         "game::client_side::remote_client::tests::client_hud_camera_tests::a_watched_rider_gets_hearts_for_the_dragon_and_local_player_but_not_a_boat",

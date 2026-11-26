@@ -1,5 +1,3 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
     use std::sync::{
@@ -44,9 +42,4 @@ pub mod tests {
         }
         out
     }
-
-    
-
-    
 }
-

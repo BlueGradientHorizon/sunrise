@@ -1,20 +1,18 @@
-
-
 #![cfg(test)]
 use sunrise_gameplay_common::game::client_side::client_reload::texture_atlases::tests::Maps;
 
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::client_side::client_reload::texture_atlases::tests::maps;
+    use sunrise_gameplay_common::game::client_side::client_reload::texture_atlases::tests::maps;
 
-use sunrise_gameplay_common::game::client_side::client_reload::texture_atlases::tests::player;
+    use sunrise_gameplay_common::game::client_side::client_reload::texture_atlases::tests::player;
 
-use sunrise_gameplay_common::game::client_side::client_reload::texture_atlases::tests::presets;
+    use sunrise_gameplay_common::game::client_side::client_reload::texture_atlases::tests::presets;
 
-use super::*;
+    use super::*;
 
-/// The registered atlas's sprite is in the GUI atlas at its own size after the first load,
+    /// The registered atlas's sprite is in the GUI atlas at its own size after the first load,
     /// drawable by its name, and gone after a reload that no longer registers it.
     #[test]
     #[ignore = "daily"]
@@ -46,8 +44,10 @@ use super::*;
                         Some([8, 8])
                     );
                 }
-                game.spawn_pack_reload(sunrise_client_gameplay::game::client_side::packs::ReloadKind::Selection)
-                    .unwrap();
+                game.spawn_pack_reload(
+                    sunrise_client_gameplay::game::client_side::packs::ReloadKind::Selection,
+                )
+                .unwrap();
                 let started = std::time::Instant::now();
                 while game.client.pack_reload.0.is_some() {
                     assert!(

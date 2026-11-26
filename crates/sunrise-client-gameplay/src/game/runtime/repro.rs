@@ -15,10 +15,9 @@
 //!   world/                single player only: the world when it started
 //!   README.txt
 //! ```
+use super::Screen;
 use super::event_loop::EventLoopCtl;
 use super::input_trace::{InputOrigin, TraceEvent, TraceKind};
-use super::Screen;
-use sunrise_gameplay_common::game::owner_link::{ControlRequest, OwnerRequest};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{
@@ -32,6 +31,7 @@ use std::{
 use sunrise_client::{gamepad::Button, keybinds, title::world_management};
 use sunrise_core::geometry::Vec3;
 use sunrise_game_data::{Result, text::Text};
+use sunrise_gameplay_common::game::owner_link::{ControlRequest, OwnerRequest};
 use sunrise_system::scrub::Scrubber;
 use winit::{
     dpi::PhysicalPosition,
@@ -417,7 +417,10 @@ impl crate::game::ClientGame<'_> {
         }
         if ticking && elapsed.is_multiple_of(ENTITIES_TICKS) {
             let entities = self.entities_value(48.0, None);
-            self.client.repro.0.record_entities(self.common.ticks, entities);
+            self.client
+                .repro
+                .0
+                .record_entities(self.common.ticks, entities);
         }
         let too_many = inputs.saturating_sub(start_inputs) >= MAX_INPUT_EVENTS;
         let too_long = started.elapsed().as_secs() >= MAX_RECORDING_SECS;

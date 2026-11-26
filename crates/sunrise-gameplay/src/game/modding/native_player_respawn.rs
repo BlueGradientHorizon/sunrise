@@ -1,9 +1,9 @@
 //! A server mod's respawn of a dead player (`PlayerRef::respawn`): the Respawn button, pressed
 //! for them; and where a player would respawn (`PlayerRef::respawn_target`), without it.
 use super::{Dim, respawn_anchor::RespawnConfig};
-use sunrise_gameplay_common::game::native_server::PlayerRead;
 use mod_api::{PlayerRef, RespawnRefusal, RespawnTarget, RespawnTargetUnavailable};
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::native_server::PlayerRead;
 
 impl crate::game::ServerGame<'_> {
     /// The Respawn button for a dead player (`handleClientCommand`'s `PERFORM_RESPAWN`), outside
@@ -15,7 +15,8 @@ impl crate::game::ServerGame<'_> {
         if !self.common.is_logical_server() {
             return Err(RespawnRefusal::Client);
         }
-        if self.server.lan_acting.is_some() || !self.common.player_state.cloning_players.is_empty() {
+        if self.server.lan_acting.is_some() || !self.common.player_state.cloning_players.is_empty()
+        {
             return Err(RespawnRefusal::InPlayerHook);
         }
         let (conn, has_health, won_game) = match self.player_handle_read(player) {
@@ -88,7 +89,8 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<Result<T, RespawnTargetUnavailable>> {
         let dim = dim?;
         if dim != self.common.dim
-            && (self.server.lan_acting.is_some() || !self.common.player_state.cloning_players.is_empty())
+            && (self.server.lan_acting.is_some()
+                || !self.common.player_state.cloning_players.is_empty())
         {
             return Some(Err(RespawnTargetUnavailable::InPlayerHook));
         }

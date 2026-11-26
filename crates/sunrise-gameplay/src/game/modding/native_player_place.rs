@@ -1,12 +1,12 @@
 //! Placement-state reads, placement writes and the `Block.setPlacedBy` step.
-use sunrise_gameplay_common::game::{
-    api_values::block_state::block_listens, native_server::PlayerRead,
-};
 use mod_api::{
     BlockKey, BlockUpdateFlags, HookId, LevelRef, LevelWriteError, PlacementStateError, PlayerRef,
     PlayerWorldRefusal as Refusal,
 };
 use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_gameplay_common::game::{
+    api_values::block_state::block_listens, native_server::PlayerRead,
+};
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
 use sunrise_world::{
@@ -40,7 +40,8 @@ impl crate::game::ServerGame<'_> {
         }
         let dead = match self.player_handle_read(player).ok_or(Refusal::Stale)? {
             PlayerRead::Acting { .. } => self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .is_none_or(|p| p.health.health() <= 0.0),
             PlayerRead::Guest(g) => g.dead,
@@ -100,7 +101,9 @@ impl crate::game::ServerGame<'_> {
             return Err(PlacementStateError::Unavailable);
         }
         let BlockPos { x, y, z } = context.pos;
-        let Some(source) = sunrise_gameplay_common::game::api_values::placement_source_into_engine(context.source) else {
+        let Some(source) =
+            sunrise_gameplay_common::game::api_values::placement_source_into_engine(context.source)
+        else {
             return Ok(None);
         };
         if !context.hit.iter().all(|n| n.is_finite())
@@ -110,7 +113,10 @@ impl crate::game::ServerGame<'_> {
         {
             return Ok(None);
         }
-        let Some(block) = sunrise_gameplay_common::game::api_values::behavior_block(block, self.common.res.behaviours()) else {
+        let Some(block) = sunrise_gameplay_common::game::api_values::behavior_block(
+            block,
+            self.common.res.behaviours(),
+        ) else {
             return Ok(None);
         };
         let item = match context.item {
@@ -192,7 +198,12 @@ impl crate::game::ServerGame<'_> {
                 || self
                     .preview_set_placed_by(at, state, write_flags.map(|flags| flags.bits()))
                     .keys()
-                    .any(|p| self.common.world.carrier_fences.locks_cell(&[p.x, p.y, p.z]))
+                    .any(|p| {
+                        self.common
+                            .world
+                            .carrier_fences
+                            .locks_cell(&[p.x, p.y, p.z])
+                    })
             {
                 return Ok(false);
             }

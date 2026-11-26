@@ -1,7 +1,9 @@
-use sunrise_gameplay_common::game::native_config_file_services::{FileRoot, list, read, remove, stat, write};
 use mod_api::{ConfigEntry, ConfigFileError, ConfigFiles, ConfigPath, ConfigStat};
 #[cfg(test)]
 use std::fs;
+use sunrise_gameplay_common::game::native_config_file_services::{
+    FileRoot, list, read, remove, stat, write,
+};
 
 impl crate::game::ServerGame<'_> {
     #[inline(always)]
@@ -25,9 +27,7 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-fn world_root(
-    game: &crate::game::ServerGame<'_>,
-) -> Result<FileRoot, ConfigFileError> {
+fn world_root(game: &crate::game::ServerGame<'_>) -> Result<FileRoot, ConfigFileError> {
     if game.server.world_root.as_os_str().is_empty() {
         return Err(ConfigFileError::NoWorld);
     }
@@ -62,23 +62,15 @@ impl ConfigFiles for crate::game::ServerGame<'_> {
 
 #[cfg(any())]
 mod tests {
-use sunrise_gameplay_common::game::server_side::native_config_files::tests::as_mod;
+    use sunrise_gameplay_common::game::server_side::native_config_files::tests::as_mod;
 
-use sunrise_gameplay_common::game::server_side::native_config_files::tests::path;
+    use sunrise_gameplay_common::game::server_side::native_config_files::tests::path;
 
     use super::*;
     use mod_api::{CONFIG_FILE_MAX, ConfigEntryKind, DATA_FILE_MAX};
     use std::io::Read;
     use std::sync::atomic::Ordering;
     use sunrise_level::crash::{ModCall, enter_native_mod};
-
-    
-    
-    
-
-    
-
-    
 
     #[test]
     fn a_mod_writes_reads_lists_and_stats_its_own_files() {
@@ -196,8 +188,6 @@ use sunrise_gameplay_common::game::server_side::native_config_files::tests::path
             Err(ConfigFileError::NoCallingMod)
         );
     }
-
-    
 
     #[cfg(unix)]
     #[test]
@@ -453,7 +443,8 @@ use sunrise_gameplay_common::game::server_side::native_config_files::tests::path
             game.side.world_root.clear();
             as_mod("fd", || {
                 assert_eq!(
-                    crate::game::ServerGame::world_data_files(game).read(&path("tiles/nether/0.bin")),
+                    crate::game::ServerGame::world_data_files(game)
+                        .read(&path("tiles/nether/0.bin")),
                     Err(ConfigFileError::NoWorld)
                 );
             });
@@ -524,4 +515,3 @@ use sunrise_gameplay_common::game::server_side::native_config_files::tests::path
         });
     }
 }
-

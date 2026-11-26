@@ -1,12 +1,12 @@
 //! Headless passenger-order regression through the real remote client paths.
 use super::Keys;
-use sunrise_gameplay_common::game::boats_common::Boat;
 use serde::Deserialize;
 use serde_json::json;
 use std::path::Path;
 use sunrise_client::held::Source;
 use sunrise_core::geometry::Vec3;
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::boats_common::Boat;
 use sunrise_protocol::{connection::Pipe, packets::play::Serverbound};
 use sunrise_sim::motion::PlayerMotion;
 use winit::keyboard::KeyCode;
@@ -30,7 +30,10 @@ impl crate::game::ClientGame<'_> {
         let (client, peer) = Pipe::pair();
         self.connect_local(client, "BoatSeatFixture")?;
         self.client.remote.as_mut().unwrap().entity_id = 1;
-        self.common.player = Some(PlayerMotion::new(self.common.motion, Vec3::new(0.0, 100.0, 0.0))?);
+        self.common.player = Some(PlayerMotion::new(
+            self.common.motion,
+            Vec3::new(0.0, 100.0, 0.0),
+        )?);
         self.spawn_entity(2, "minecraft:marker", [0.0, 100.0, 0.0], [0.0; 3]);
         self.spawn_entity(3, "minecraft:oak_boat", [0.0, 100.0, 0.0], [0.0; 3]);
 

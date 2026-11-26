@@ -91,7 +91,7 @@ impl LevelAccess for RainView<'_> {
 
 pub trait NativeRainReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `Level.getSkyDarken` for an active or parked level, without switching dimensions.
-     fn level_get_sky_darken(&self, level: LevelRef) -> Option<i32> {
+    fn level_get_sky_darken(&self, level: LevelRef) -> Option<i32> {
         let world = self.native_level_read_world(level)?;
         if level.dimension() == self.native_level_key() {
             return Some(self.sky_darken());
@@ -100,10 +100,7 @@ pub trait NativeRainReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// Dimension shape of a loaded server level, including parked levels.
-     fn level_dimension_shape(
-        &self,
-        level: LevelRef,
-    ) -> Option<LevelDimensionShape> {
+    fn level_dimension_shape(&self, level: LevelRef) -> Option<LevelDimensionShape> {
         let shape = self.native_level_world(level)?.shape;
         Some(LevelDimensionShape::new(
             shape.min_y,
@@ -115,10 +112,7 @@ pub trait NativeRainReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// The level's dimension type with its gameplay attributes, from the facts the game uses.
-     fn level_dimension_type(
-        &self,
-        level: LevelRef,
-    ) -> Option<LevelDimensionType> {
+    fn level_dimension_type(&self, level: LevelRef) -> Option<LevelDimensionType> {
         use sunrise_world::dimension_type::{CardinalLight, Skybox};
         use sunrise_world::worldgen::value_provider::IntProvider;
         self.native_level_read_world(level)?;
@@ -176,7 +170,7 @@ pub trait NativeRainReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `getThunderLevel` at partial tick 1.0): both 0 in a level with no weather.
     /// Reads any open server level or the client's current synchronized level;
     /// None for a stale handle, an unavailable level or a client not logged in.
-     fn level_weather(&self, level: LevelRef) -> Option<(f32, f32)> {
+    fn level_weather(&self, level: LevelRef) -> Option<(f32, f32)> {
         let world = self.native_level_read_world(level)?;
         Some(weather_for_world(
             world,
@@ -186,9 +180,8 @@ pub trait NativeRainReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeRainReadGameExt1<'__sg> for G {}
 
-
-use crate::game::weather::WeatherGameExt as _;
 use crate::game::GameGameExt1 as _;
+use crate::game::weather::WeatherGameExt as _;
 
 use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 

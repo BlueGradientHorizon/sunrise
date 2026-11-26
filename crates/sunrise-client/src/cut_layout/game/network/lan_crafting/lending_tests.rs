@@ -1,21 +1,21 @@
-use sunrise_items::items::ItemStack;
-use sunrise_level::containers::BlockEntity;
-use sunrise_level::containers::ModMenuType;
-use sunrise_sim::lan::menu::Slots;
-use sunrise_sim::menu::place::PostPlace;
 use super::*;
 use std::sync::{
     Arc,
     atomic::{AtomicI32, AtomicUsize, Ordering},
     mpsc,
 };
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
+use sunrise_level::containers::ModMenuType;
 use sunrise_level::containers::{
     Furnace, FurnaceKind, ModBlockEntity, ModBlockEntityFields, ModCrafting, ModLinks,
 };
 use sunrise_protocol::packets::configuration::ClientInformation;
+use sunrise_sim::lan::menu::Slots;
 use sunrise_sim::lan::{
     Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig, menu::Menu as HubMenu,
 };
+use sunrise_sim::menu::place::PostPlace;
 
 const STATION: (i32, i32, i32) = (4, 200, 4);
 const CHEST: (i32, i32, i32) = (32, 200, 4);

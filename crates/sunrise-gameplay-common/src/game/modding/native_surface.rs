@@ -45,8 +45,7 @@ pub struct HitBorrows<'a> {
     pub player_effects: &'a sunrise_level::effects::PlayerEffects,
     pub player_uuid: Option<u128>,
     pub player_attachments: &'a mod_api::Attachments,
-    pub entity_attachments:
-        &'a sunrise_level::fast_hash::FxHashMap<u32, mod_api::Attachments>,
+    pub entity_attachments: &'a sunrise_level::fast_hash::FxHashMap<u32, mod_api::Attachments>,
 }
 
 impl sunrise_sim::motion::SideLevel for GameSide<'_> {
@@ -326,12 +325,10 @@ fn query_friction(
     )
 }
 
-impl crate::game::CommonGame<'_> {
-
-}
+impl crate::game::CommonGame<'_> {}
 
 pub trait NativeSurfaceGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-     fn level_friction(
+    fn level_friction(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -356,7 +353,10 @@ pub trait NativeSurfaceGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             side: &GameSide {
                 dim: Dim::from_id(level.dimension_id()),
                 level: Some(level),
-                ..game_side!(self, crate::game::side_ops::world::WorldSideGameExt::side_game_side_meta(self))
+                ..game_side!(
+                    self,
+                    crate::game::side_ops::world::WorldSideGameExt::side_game_side_meta(self)
+                )
             },
             coefficient: &|id| facts.states.get(id.0 as usize).map(|facts| facts.friction),
         };
@@ -364,7 +364,6 @@ pub trait NativeSurfaceGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeSurfaceGameExt1<'__sg> for G {}
-
 
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 
@@ -379,13 +378,7 @@ use crate::game::native_world_read_common::NativeWorldReadGameExt1 as _;
 pub trait BoatFrictionGameExt<'g>: crate::game::SideGame<'g> {
     /// The friction of `state` at `pos` under the boat `b` (`AbstractBoat.getGroundFriction`,
     /// `Leashable.angularFriction`), from `own`, the block's value.
-    fn boat_friction(
-        &self,
-        b: &Boat,
-        pos: BlockPos,
-        state: BlockStateId,
-        own: f32,
-    ) -> f32 {
+    fn boat_friction(&self, b: &Boat, pos: BlockPos, state: BlockStateId, own: f32) -> f32 {
         if !block_state::block_listens(mod_api::HookId::Friction, state) {
             return own;
         }
@@ -394,7 +387,10 @@ pub trait BoatFrictionGameExt<'g>: crate::game::SideGame<'g> {
             world: &self.world,
             registry: self.pack.assets.registry,
             context: &self.loop_context,
-            side: &game_side!(self, crate::game::side_ops::world::WorldSideGameExt::side_game_side_meta(self)),
+            side: &game_side!(
+                self,
+                crate::game::side_ops::world::WorldSideGameExt::side_game_side_meta(self)
+            ),
             coefficient: &|id| facts.states.get(id.0 as usize).map(|facts| facts.friction),
         };
         read_friction(level, Some((b.id, b.entity_type_name())), pos, state, own).unwrap_or(own)

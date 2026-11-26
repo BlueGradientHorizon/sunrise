@@ -1,9 +1,13 @@
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::Progress, crate::game::server_side::native_entity_refs::tests::with_uncached_client_game as with_client_game, sunrise_client_gameplay::game::packs::stage_pack};
 use std::sync::Arc;
 use sunrise_level::environment::Sample;
 use sunrise_protocol::{
     connection::Pipe,
     packets::play::{self, Clientbound as C},
+};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_uncached_client_game as with_client_game,
+    sunrise_client_gameplay::game::packs::stage_pack, sunrise_gameplay_common::game::Dim,
+    sunrise_gameplay_common::game::Progress,
 };
 
 /// The prepared resources' dimension type `name`, as a data pack writes it, with its
@@ -66,7 +70,10 @@ pub(in crate::game) fn send_types(
 }
 
 /// The `Login` packet a server sends, into `entered`.
-pub(in crate::game) fn login(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, entered: play::SpawnInfo) {
+pub(in crate::game) fn login(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    entered: play::SpawnInfo,
+) {
     game.handle_packet(C::Login(play::Login {
         player_id: 7,
         hardcore: false,
@@ -100,7 +107,10 @@ pub(in crate::game) fn join(
     server
 }
 
-pub(in crate::game) fn respawn(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, spawn: play::SpawnInfo) {
+pub(in crate::game) fn respawn(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    spawn: play::SpawnInfo,
+) {
     game.handle_packet(C::Respawn(play::Respawn { spawn, keep: 0 }))
         .unwrap();
 }

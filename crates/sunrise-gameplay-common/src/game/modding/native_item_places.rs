@@ -1,28 +1,26 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use mod_api::ServerHost;
+    use mod_api::ServerHost;
 
-use mod_api::{
+    use mod_api::{
         CraftedByError, ENTITY_AUTOMATION, ENTITY_ITEMS, ItemPlace, ItemPlaceEditError,
         ItemResource, MenuRef, TransactionError,
     };
 
-use std::sync::{Arc, atomic::AtomicI32, mpsc};
+    use std::sync::{Arc, atomic::AtomicI32, mpsc};
 
-use sunrise_core::geometry::Direction;
+    use sunrise_core::geometry::Direction;
 
-use sunrise_items::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
-use crate::game::api_values::TryIntoApi;
+    use crate::game::api_values::TryIntoApi;
 
-use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_protocol::packets::configuration::ClientInformation;
 
-use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
+    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
-/// A placed guest on connection `conn`, with UUID and entity id `conn + 122` and
+    /// A placed guest on connection `conn`, with UUID and entity id `conn + 122` and
     /// `conn + 19`.
     pub fn guest(conn: u32) -> Guest {
         let (tx, _rx) = mpsc::channel();
@@ -46,24 +44,24 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
         guest.placed = true;
         guest
     }
-/// One player's offer in a trade: inventory index `.0` must still hold exactly `.1`.
+    /// One player's offer in a trade: inventory index `.0` must still hold exactly `.1`.
     pub(in crate::game) type Offer = (usize, ItemStack);
-pub fn offers() -> ([Offer; 1], [Offer; 1]) {
+    pub fn offers() -> ([Offer; 1], [Offer; 1]) {
         (
             [(0, ItemStack::new("minecraft:diamond", 3))],
             [(0, ItemStack::new("minecraft:emerald", 5))],
         )
     }
-#[cfg(any(test, feature = "test-support"))]
-/// A mod's `ENTITY_AUTOMATION` handler: one slot of up to 64 items, with the sides it was
+    #[cfg(any(test, feature = "test-support"))]
+    /// A mod's `ENTITY_AUTOMATION` handler: one slot of up to 64 items, with the sides it was
     /// asked for.
     #[derive(Clone, Default)]
     pub struct Bin {
         pub held: Arc<std::sync::Mutex<Option<(String, u32)>>>,
         pub sides: Arc<std::sync::Mutex<Vec<Option<Direction>>>>,
     }
-#[cfg(any(test, feature = "test-support"))]
-impl mod_api::ResourceHandler<ItemResource> for Bin {
+    #[cfg(any(test, feature = "test-support"))]
+    impl mod_api::ResourceHandler<ItemResource> for Bin {
         fn size(&self, _: &mut dyn ServerHost) -> usize {
             1
         }

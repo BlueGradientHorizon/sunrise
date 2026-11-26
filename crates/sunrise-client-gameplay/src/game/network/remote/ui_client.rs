@@ -126,7 +126,8 @@ impl crate::game::ClientGame<'_> {
         // after baseDamageScaleFactor runs LocalPlayer.crit, this client's
         // own CRIT emitter beside the one the server's Animate brings.
         // magicBoost is 0 on a client, so no ENCHANTED_HIT one.
-        if damage * (0.2 + strength * strength * 0.8) > 0.0 && self.common.critical_attack(strength) {
+        if damage * (0.2 + strength * strength * 0.8) > 0.0 && self.common.critical_attack(strength)
+        {
             use sunrise_level::particle_options::{ParticleOptions, ParticleType};
             let m = &self.common.mobs[mob];
             self.client.particles.0.tracking_emitter(

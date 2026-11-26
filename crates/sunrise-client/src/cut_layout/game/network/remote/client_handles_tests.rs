@@ -183,13 +183,16 @@ fn client_handles_reach_a_custom_level() {
 #[test]
 #[ignore = "daily"]
 fn client_handle_reads_answer_from_the_clients_copy() {
-    use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
     use mod_api::{EntityRef, EquipmentSlot, GlobalPos};
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::{
         connection::Pipe,
         packets::play::{self, Clientbound as C, SpawnInfo},
+    };
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_gameplay::game::native_entity_refs::tests::with_game,
     };
     use {
         sunrise_client::level_loading::Reason, sunrise_level::chunk::Chunk,

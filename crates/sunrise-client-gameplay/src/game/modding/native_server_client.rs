@@ -1,10 +1,10 @@
 use super::Dim;
-use sunrise_gameplay_common::game::native_server::PlayerRead;
 use mod_api::__private::game::*;
 use mod_api::LevelRef;
 use mod_api::PlayerRef;
 use std::{collections::HashMap, sync::Arc};
 use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::native_server::PlayerRead;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::lan::abilities::PlayerAbilities;
 
@@ -158,7 +158,9 @@ impl crate::game::ClientGame<'_> {
         pos: [i32; 3],
     ) -> Option<mod_api::BlockEntityRef> {
         let world = self.client_level_view_world(level)?;
-        sunrise_gameplay_common::game::native_block_entity_read::world_block_entity(world, level, pos)
+        sunrise_gameplay_common::game::native_block_entity_read::world_block_entity(
+            world, level, pos,
+        )
     }
 
     pub(in crate::game) fn client_signal_block_entity_data(
@@ -194,7 +196,8 @@ impl crate::game::ClientGame<'_> {
         Some(sunrise_gameplay_common::game::native_rain_read::rain_at(
             world,
             self.common.res.facts(),
-            self.common.world_biomes
+            self.common
+                .world_biomes
                 .as_deref()
                 .unwrap_or_else(|| self.common.res.biomes()),
             self.common.res.behaviours(),

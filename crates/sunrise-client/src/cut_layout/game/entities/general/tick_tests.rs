@@ -3,8 +3,6 @@
 //! per-entity store) and records the callback trace; the tests pin the
 //! acceptance matrix's ordering, residency and containment rows against the
 //! pass's own contract, with the vanilla orderings cited where they hold.
-use {crate::game::general::*, sunrise_gameplay_common::game::general::{Entity, GeneralEntityRecord, GeneralTypeEnvelope, Target, Vec3, format, record_from_compound}};
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{
     AttachmentCodec, AttachmentError, AttachmentType, EntityPart, EntityTickListenedEvent,
     EntityTickPreEvent, Flow, GeneralEntityCategory, GeneralEntityTickEvent, GeneralSavePolicy,
@@ -13,6 +11,14 @@ use mod_api::{
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 use sunrise_core::nbt::{Compound, Tag};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+use {
+    crate::game::general::*,
+    sunrise_gameplay_common::game::general::{
+        Entity, GeneralEntityRecord, GeneralTypeEnvelope, Target, Vec3, format,
+        record_from_compound,
+    },
+};
 
 /// The fixture counter: an attachment with a codec, so a saved row resumes
 /// its count and a quarantined record keeps it in its bytes.
@@ -341,7 +347,11 @@ fn counter(game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32) -> i32 {
 }
 
 /// One robot row, its counter already at `value`.
-fn seeded_row(game: &mut sunrise_gameplay::game::ServerGame<'_>, uuid: [i32; 4], value: i32) -> u32 {
+fn seeded_row(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    uuid: [i32; 4],
+    value: i32,
+) -> u32 {
     let id = spawn_tree(game, uuid, [0.5, 64.0, 0.5], Vec::new());
     COUNTER.set(game, Holder::Entity(id), value).unwrap();
     id
@@ -661,7 +671,8 @@ fn a_reloaded_row_resumes_the_counter_and_refuses_its_old_handle() {
 fn a_parked_level_holds_the_counter_until_it_returns() {
     with_counter(|game, l| {
         let id = seeded_row(game, [1, 2, 3, 4], 41);
-        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+            .unwrap();
         for _ in 0..10 {
             tick(game);
         }
@@ -669,7 +680,8 @@ fn a_parked_level_holds_the_counter_until_it_returns() {
         // The row's counter reads through its own level's routing, so read it
         // once its level is back in place: ten parked ticks left it, and the
         // first tick after the return takes it.
-        game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
+            .unwrap();
         assert_eq!(counter(game, id), 41, "the parked level's rows do not tick");
         tick(game);
         assert_eq!(counter(game, id), 42);
@@ -1014,13 +1026,20 @@ fn summon_answers_a_target_with_a_network_id() {
         let rows = &game.resident_entities.general.rows;
         assert_eq!(rows.len(), 1);
         let id = rows[0].id;
-        assert_eq!(target, sunrise_gameplay_common::game::commands_common::Target::General(id));
         assert_eq!(
-            game.network_entity_id(sunrise_gameplay_common::game::commands_common::Target::General(id)),
+            target,
+            sunrise_gameplay_common::game::commands_common::Target::General(id)
+        );
+        assert_eq!(
+            game.network_entity_id(
+                sunrise_gameplay_common::game::commands_common::Target::General(id)
+            ),
             Some(id as i32)
         );
         assert_eq!(
-            game.target_position(sunrise_gameplay_common::game::commands_common::Target::General(id)),
+            game.target_position(
+                sunrise_gameplay_common::game::commands_common::Target::General(id)
+            ),
             Some([0.5, 64.0, 0.5])
         );
     });

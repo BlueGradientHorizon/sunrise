@@ -3,7 +3,6 @@
 //! filling glass bottles (`BottleItem`), the per-tick effect application,
 //! effect attribute modifiers and the HUD effect icons (`Hud.extractEffects`).
 use super::{Screen, item_draw::owner_at};
-use sunrise_gameplay_common::game::potions_common::{PotionState, ThrownPotion};
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{
     block_entity_render::vertex_light, hud::HudBatch, hud_layout, hud_overlays, inventory_effects,
@@ -13,6 +12,7 @@ use sunrise_client::{
 use sunrise_core::{geometry::Aabb, nbt::Tag};
 use sunrise_core::{geometry::Vec3, random::LegacyRandom};
 use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::potions_common::{PotionState, ThrownPotion};
 use sunrise_items::items::ItemStack;
 use sunrise_level::effects::PlayerEffects;
 #[cfg(test)]
@@ -66,7 +66,10 @@ impl crate::game::ClientGame<'_> {
     /// server removes them. Their modifiers and flags move the predicted
     /// player.
     pub fn tick_client_effects(&mut self) {
-        client_tick_effects(&mut self.common.potions.effects, &mut self.client.darkness_blend);
+        client_tick_effects(
+            &mut self.common.potions.effects,
+            &mut self.client.darkness_blend,
+        );
         self.apply_effect_status();
     }
     /// `ThrowableProjectile.tick` on a server's client: it falls and moves
@@ -162,7 +165,9 @@ impl crate::game::ClientGame<'_> {
     ) -> bool {
         let (ox, image_width) = match self.client.screen {
             Screen::Inventory
-                if self.common.container.is_none() && self.common.craft_size == 2 && !self.mount_active() =>
+                if self.common.container.is_none()
+                    && self.common.craft_size == 2
+                    && !self.mount_active() =>
             {
                 (self.inventory_origin(batch).0, 176)
             }
@@ -181,7 +186,8 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         let icons: Vec<hud_overlays::EffectIcon> = self
-            .common.potions
+            .common
+            .potions
             .effects
             .list
             .iter()
@@ -225,7 +231,8 @@ impl crate::game::ClientGame<'_> {
         let mut lines = inventory_effects::tooltip(hovered);
         if mod_api::__private::listened(mod_api::HookId::GatherEffectScreenTooltips) {
             let view = self.screen_view(batch, self.client.screen);
-            let effect = sunrise_gameplay_common::game::native_living_body::active_effect(panel.effect);
+            let effect =
+                sunrise_gameplay_common::game::native_living_body::active_effect(panel.effect);
             self.native_gather_effect_screen_tooltips(&view, &effect, &mut lines);
         }
         lines
@@ -343,13 +350,7 @@ pub(in crate::game::client_side) fn client_tick_effects(
 
 /// `handleAddEntity` for a thrown potion or bottle on a server's client:
 /// drawn where the server says (its item comes in its entity data).
-pub fn add_remote_thrown(
-    potions: &mut PotionState,
-    id: u32,
-    kind: &str,
-    at: Vec3,
-    velocity: Vec3,
-) {
+pub fn add_remote_thrown(potions: &mut PotionState, id: u32, kind: &str, at: Vec3, velocity: Vec3) {
     potions.thrown.retain(|t| t.id != id);
     let item = match kind {
         "minecraft:lingering_potion" | "minecraft:experience_bottle" => kind,
@@ -408,32 +409,9 @@ pub(in crate::game) fn remove_remote_thrown(potions: &mut PotionState, id: u32) 
 pub(in crate::game) mod tests {
     use super::super::sculk::darkness_blend_added;
     use super::*;
+    use sunrise_client::screen_effects::nausea_blend_added;
     use sunrise_gameplay_common::game::dragon_common::Breath;
     use sunrise_gameplay_common::game::potions_common::{CloudSettings, PotionCloud};
-    use sunrise_client::screen_effects::nausea_blend_added;
-
-    
-
-    
-
-    
-
-    
-
-    
-    
-    
-    
-    
-    
-
-    
-
-    
-
-    
-
-    
 
     /// #5876: a potion thrown straight up from inside its thrower's box does
     /// not hit them while it climbs out, then hits them on the way down;
@@ -541,10 +519,6 @@ pub(in crate::game) mod tests {
         let infinite = EffectInstance::new("nausea", -1, 0);
         assert_eq!(nausea_blend_added(&infinite, false), (1.0, 1.0));
     }
-
-    
-
-    
 
     /// Real panel painting/hover selection dispatches even for a fully visible
     /// widget. Both inventories retain vanilla lines, suppression and layout rules.
@@ -769,4 +743,3 @@ pub(in crate::game) mod tests {
 }
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
-

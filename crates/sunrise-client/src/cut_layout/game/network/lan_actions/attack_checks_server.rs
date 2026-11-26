@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::Serverbound as S;
@@ -7,13 +5,16 @@ use sunrise_protocol::text::translatable;
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use sunrise_gameplay_common::game::lan_actions::attack_checks::tests::disconnects;
-    use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_core::position::ChunkPos;
+    use sunrise_gameplay_common::game::lan_actions::attack_checks::tests::disconnects;
     use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::{configuration::ClientInformation, play};
     use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
+    use {
+        crate::game::load_resources, crate::settings::Settings,
+        sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress,
+    };
 
     /// handleAttack disconnects a player who attacks a dropped item, an experience orb,
     /// themselves, an arrow or a thrown trident (`invalid_entity_attacked`); a pig is
@@ -42,7 +43,8 @@ pub(crate) mod tests {
         options.game_dir = Some(
             std::env::temp_dir().join(format!("sunrise-attack-checks-unit-{}", std::process::id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,

@@ -1,10 +1,10 @@
-use mod_api::AttachmentHolder;
-use std::sync::Arc;
-use sunrise_gameplay_common::game::Dim;
 use super::*;
-use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
+use mod_api::AttachmentHolder;
 use mod_api::{AttachmentAccess, ServerHost};
+use std::sync::Arc;
 use sunrise_core::nbt::{Compound, Tag};
+use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
+use sunrise_gameplay_common::game::Dim;
 use sunrise_mod_runtime::attachments::Holder;
 use sunrise_mod_runtime::attachments::{AttachmentCodec, AttachmentError, AttachmentType};
 
@@ -44,7 +44,11 @@ fn saved_placement_respawn_removal_and_reconnect_publish_player_rows() {
         VALUE
             .set(guests.attachments_mut(12).unwrap(), Holder::Level, 31)
             .unwrap();
-        sunrise_sim::lan::playerdata::save(&guests[0], &game.server.world_root, &Default::default());
+        sunrise_sim::lan::playerdata::save(
+            &guests[0],
+            &game.server.world_root,
+            &Default::default(),
+        );
         guests.update_all(|g| g.placed = false);
         game.lan_guest_joined(12, &[], [0.5, 64.0, 0.5], None);
         game.lan_guest_joined(13, &[], [0.5, 64.0, 0.5], None);
@@ -86,7 +90,13 @@ fn saved_placement_respawn_removal_and_reconnect_publish_player_rows() {
         replacement.conn = 99;
         replacement.entity_id = 199;
         replacement.placed = false;
-        game.server.lan.as_mut().unwrap().hub.guests.push(replacement);
+        game.server
+            .lan
+            .as_mut()
+            .unwrap()
+            .hub
+            .guests
+            .push(replacement);
         game.lan_guest_joined(99, &[], [0.5, 64.0, 0.5], None);
         removed.attachments.retire();
         assert!(!current.unregister());

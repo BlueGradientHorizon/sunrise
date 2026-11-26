@@ -1,12 +1,12 @@
-use std::sync::Arc;
-use sunrise_gameplay_common::game::Hit;
-use sunrise_items::items::ItemStack;
 use super::*;
 use crate::game::cauldron_interactions::tests::{
     POS, Seen, TestMod, events, fixture, fixture_mods_client, setup_common, unchanged,
 };
-use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
+use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
+use sunrise_gameplay_common::game::Hit;
+use sunrise_items::items::ItemStack;
 use sunrise_sim::cauldron::Outcome;
 
 #[test]
@@ -29,7 +29,10 @@ fn cauldron_client_skips_custom_prediction() {
     )]
     .into();
     fixture_mods_client(mods, |game| {
-        let _server = sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(game);
+        let _server =
+            sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client(
+                game,
+            );
         setup_common(game, "minecraft:cauldron", None, "test:syrup_bottle", 2);
         game.client.audio.0.capture = Some(Vec::new());
         let held = game.inventory[0].clone();

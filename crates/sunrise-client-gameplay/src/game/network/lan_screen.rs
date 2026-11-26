@@ -6,8 +6,6 @@
 //! Restrictions opens RestrictionsScreen.
 //! Parity reference: https://mcsrc.dev/2/26.3/net/minecraft/client/gui/screens/WorldOptionsScreen
 use super::Screen;
-use sunrise_gameplay_common::game::integrated_link::ServerOptions;
-use sunrise_gameplay_common::game::owner_link::OwnerRequest;
 use sunrise_client::{
     font::Font,
     game_rules_screen::{Exit, RulesScreen},
@@ -16,6 +14,8 @@ use sunrise_client::{
     widgets::{self, Narratable, join_for_narration},
 };
 use sunrise_game_data::text::{Text, named_color};
+use sunrise_gameplay_common::game::integrated_link::ServerOptions;
+use sunrise_gameplay_common::game::owner_link::OwnerRequest;
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 use winit::keyboard::KeyCode;
 
@@ -592,14 +592,17 @@ impl crate::game::ClientGame<'_> {
         }
     }
     #[cfg(any(test, feature = "test-support"))]
-    pub fn test_open_remote_rules(
-        &mut self,
-        entries: Vec<play::GameRuleEntry>,
-    ) -> bool {
+    pub fn test_open_remote_rules(&mut self, entries: Vec<play::GameRuleEntry>) -> bool {
         self.client.world_options.0 = Some(options(true, false));
         self.client.world_options.0.as_mut().unwrap().view = View::GameRules;
         self.remote_world_options_rules(entries);
-        self.client.world_options.0.as_ref().unwrap().rules.is_some()
+        self.client
+            .world_options
+            .0
+            .as_ref()
+            .unwrap()
+            .rules
+            .is_some()
     }
 
     pub(in crate::game::client_side) fn remote_world_options_rules(
@@ -801,7 +804,15 @@ impl crate::game::ClientGame<'_> {
             }
             View::Restrictions => self.draw_restrictions(batch),
             View::GameRules => {
-                if self.client.world_options.0.as_ref().unwrap().rules.is_some() {
+                if self
+                    .client
+                    .world_options
+                    .0
+                    .as_ref()
+                    .unwrap()
+                    .rules
+                    .is_some()
+                {
                     self.client
                         .world_options
                         .0

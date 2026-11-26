@@ -14,7 +14,8 @@ pub trait Hooks {
     /// `message` is `None`. Invalid paths (including symlinks) report screenshot
     /// failure; parent folders are created. HDR copies follow the final name
     /// with `-hdr.png`. Agent captures and world icons do not fire this hook.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::screenshot::ClientGame<'_>::native_screenshot", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::screenshot::ClientGame<'_>::native_screenshot",
         dispatch = "flat",
         side = "client",
         contract = "cancel",

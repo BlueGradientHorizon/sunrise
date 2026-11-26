@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 use mod_api::PlayerRef;
 #[cfg(test)]

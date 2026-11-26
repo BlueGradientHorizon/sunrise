@@ -13,7 +13,7 @@ impl crate::game::CommonGame<'_> {
 // Native mods use these; nothing in Sunrise does.
 pub trait EnchantmentsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Registered enchantments, in registry order.
-     fn enchantments(&self) -> Vec<EnchantmentInfo> {
+    fn enchantments(&self) -> Vec<EnchantmentInfo> {
         let enchantments = self.item_enchantments();
         enchantments
             .list
@@ -30,13 +30,13 @@ pub trait EnchantmentsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             .collect()
     }
     /// `Enchantment.getMinCost(level)`: the enchanting power needed, or None for an unknown id.
-     fn enchantment_min_cost(&self, id: &str, level: u32) -> Option<i32> {
+    fn enchantment_min_cost(&self, id: &str, level: u32) -> Option<i32> {
         self.item_enchantments()
             .get(id)
             .map(|e| e.min_cost.calculate(level))
     }
     /// Whether enchantment `id` can go on `item` (`Enchantment.isSupportedItem`).
-     fn enchantment_supports(&self, id: &str, item: mod_api::ItemKey) -> bool {
+    fn enchantment_supports(&self, id: &str, item: mod_api::ItemKey) -> bool {
         let Some(item) = mod_api::__private::item_key_id(item) else {
             return false;
         };
@@ -46,6 +46,5 @@ pub trait EnchantmentsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> EnchantmentsGameExt1<'__sg> for G {}
-
 
 use crate::game::tables::GameItems as _;

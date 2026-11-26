@@ -1,7 +1,7 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::{frames_common::center, maps::map_id};
 use sunrise_assets::{bake::bake_model, item_model::OwnerState, resolve::ModelLibrary};
 use sunrise_client::mesher::Vertex;
+use sunrise_gameplay_common::game::{frames_common::center, maps::map_id};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::entities::ItemFrame;
 
@@ -88,12 +88,7 @@ fn visual_rotation_y_degrees(f: &ItemFrame) -> f32 {
 
 impl ClientGame<'_> {
     /// ItemFrameRenderer: the frame model, then the item half size on its face.
-    pub fn frame_geometry(
-        &mut self,
-        camera: glam::DVec3,
-        alpha: f64,
-        out: &mut Vec<Vertex>,
-    ) {
+    pub fn frame_geometry(&mut self, camera: glam::DVec3, alpha: f64, out: &mut Vec<Vertex>) {
         let sprites = &self.client.gui.atlas.sprites;
         // Each with its frame's type: a pack tells a glow frame and what it holds apart by its
         // `entityId` (`glow_item_frame` in entity.properties), the item drawn within its frame.
@@ -132,7 +127,10 @@ impl ClientGame<'_> {
                 continue;
             }
             let entity_start = out.len();
-            self.mark_motion(entity_start, sunrise_gameplay_common::game::MOTION_OBJECT | u64::from(f.id));
+            self.mark_motion(
+                entity_start,
+                sunrise_gameplay_common::game::MOTION_OBJECT | u64::from(f.id),
+            );
             if let Some(resolved) = super::native_entity_renderers::item_frame_renderer(f.glow) {
                 let step = f.step().map(f64::from);
                 let at = glam::DVec3::new(

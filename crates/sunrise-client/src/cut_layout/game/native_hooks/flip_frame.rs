@@ -1,15 +1,16 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
-    use sunrise_client_gameplay::game::native_hooks::particle_count_tests::frame_scene;
     use mod_api::{
         ClientHost, FlipFrameEvent, Hooks, ModEntry, RenderFramePostEvent, RenderFramePreEvent,
     };
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
+    use sunrise_client_gameplay::game::native_hooks::particle_count_tests::frame_scene;
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    };
 
     struct Moments(Arc<Mutex<Vec<&'static str>>>);
     #[mod_api::__subscriptions]
@@ -38,7 +39,9 @@ mod tests {
             with_client_game(|game| {
                 let _event_loop = frame_scene(game);
                 let elapsed = Duration::from_millis(16);
-                let frame = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, shown, moments: &[&str]| {
+                let frame = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                             shown,
+                             moments: &[&str]| {
                     game.extras_frame(elapsed);
                     assert_eq!(game.render_and_flip(elapsed).unwrap(), shown);
                     assert_eq!(*heard.lock().unwrap(), moments);

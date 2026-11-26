@@ -6,15 +6,15 @@
 //! Each test runs again in a child process of its own: the game fixture loads the resources
 //! in-process and installs process-wide tables (the cauldron contents among them).
 
-use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-use sunrise_gameplay::game::server_side::lan::LanSettings;
-use sunrise_gameplay::game::server_side::native_singleplayer_owner::SingleplayerProfile;
 use mod_api::{Hooks, ModEntry, PlayerRef, ServerHost, prelude::*};
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicI32, AtomicUsize},
 };
 use sunrise_core::profile::AccountProperty;
+use sunrise_gameplay::game::server_side::lan::LanSettings;
+use sunrise_gameplay::game::server_side::native_singleplayer_owner::SingleplayerProfile;
+use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_sim::lan::{
     Joined, NetConfig, OwnerProfile, PlayerSender, guest::Guest, hub::HubConfig,
@@ -104,7 +104,12 @@ fn open_hub(game: &mut sunrise_gameplay::game::ServerGame<'_>, role: ExecutionRo
 }
 
 /// A player joins as `name` with `uuid` and returns their handle.
-fn join(game: &mut sunrise_gameplay::game::ServerGame<'_>, conn: u32, uuid: u128, name: &str) -> PlayerRef {
+fn join(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    conn: u32,
+    uuid: u128,
+    name: &str,
+) -> PlayerRef {
     let (tx, _rx) = std::sync::mpsc::channel();
     let mut guest = Guest::new(
         Joined {

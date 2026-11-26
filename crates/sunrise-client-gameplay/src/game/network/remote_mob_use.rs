@@ -125,7 +125,8 @@ impl ClientGame<'_> {
             // taming items, a tame one is fed, mounted or opens its screen.
             Species::Nautilus | Species::ZombieNautilus => {
                 let taming: Vec<String> = self
-                    .common.res
+                    .common
+                    .res
                     .items()
                     .item_tags
                     .get("minecraft:nautilus_taming_items")
@@ -136,7 +137,8 @@ impl ClientGame<'_> {
             // Dolphin.mobInteract: a #minecraft:fishes item is SUCCESS on both
             // sides (the server feeds it), so the client swings and keeps the fish.
             Species::Dolphin => self
-                .common.res
+                .common
+                .res
                 .items()
                 .item_tags
                 .get("minecraft:fishes")

@@ -8,7 +8,8 @@ impl crate::game::ServerGame<'_> {
         };
         server.clear();
         if let Some(epoch) = self
-            .common.native_net
+            .common
+            .native_net
             .book_connections
             .get(&conn)
             .and_then(|connection| connection.authority.as_ref())
@@ -19,7 +20,14 @@ impl crate::game::ServerGame<'_> {
     }
     #[allow(dead_code)]
     pub(in crate::game) fn server_invalidate_mod_book_placement_catalogues(&mut self) {
-        let connections: Vec<_> = self.common.native_net.placement.servers.keys().copied().collect();
+        let connections: Vec<_> = self
+            .common
+            .native_net
+            .placement
+            .servers
+            .keys()
+            .copied()
+            .collect();
         for conn in connections {
             self.invalidate_mod_book_placement_connection(conn);
         }

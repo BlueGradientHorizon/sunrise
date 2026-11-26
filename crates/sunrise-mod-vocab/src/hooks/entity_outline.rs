@@ -14,7 +14,8 @@ pub trait Hooks {
     /// level join order, interleaved with general entity renderer submissions. Projectile queries
     /// run in a later pass. General entities, the dragon and end crystals add no outline queries.
     /// API @API:entity_outline@.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::entity_outline::ClientGame<'_>::native_entity_outline", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::entity_outline::ClientGame<'_>::native_entity_outline",
         receiver = "read",
         dispatch = "flat",
         side = "client",

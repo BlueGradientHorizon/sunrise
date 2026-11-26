@@ -1,9 +1,11 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod player_status_tests {
-    use crate::game::client_side::shader_packs::player_status_tests::{rain_on_the_player, stand_player};
-    use sunrise_level::effects::EffectInstance;
+    use crate::game::client_side::shader_packs::player_status_tests::{
+        rain_on_the_player, stand_player,
+    };
     use sunrise_gameplay_common::game_side;
+    use sunrise_level::effects::EffectInstance;
     use sunrise_sim::motion::MotionWorld;
 
     /// The player booleans only custom uniforms read follow the window's player (spec 3.4):

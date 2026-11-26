@@ -1,4 +1,3 @@
-
 impl crate::game::ServerGame<'_> {
     /// `ServerPlayer.die` → `Entity.awardKillScore` on the entity the dying
     /// guest's combat record credits (`LivingEntity.getKillCredit`): the

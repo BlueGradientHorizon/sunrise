@@ -3,7 +3,8 @@
 pub trait Hooks {
     /// After the client replaces its player on respawn or dimension change
     /// (NeoForge's `ClientPlayerNetworkEvent.Clone`). Client-side.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::client_player_clone::ClientGame<'_>::native_client_player_clone", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::client_player_clone::ClientGame<'_>::native_client_player_clone",
         dispatch = "flat",
         side = "client",
         contract = "listen",

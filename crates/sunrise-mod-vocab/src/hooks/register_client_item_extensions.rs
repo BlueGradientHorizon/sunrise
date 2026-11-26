@@ -10,7 +10,8 @@ pub trait Hooks {
     /// A panic or phase refusal discards that listener's models, textures and item providers
     /// together. Do not retain references from a discarded registration. Server-only packages
     /// cannot listen.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::register_client_item_extensions::native_register_client_item_extensions", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::register_client_item_extensions::native_register_client_item_extensions",
         receiver = "associated",
         dispatch = "flat",
         side = "client",

@@ -8,7 +8,9 @@ use sunrise_sim::lan::playerdata::{ints_uuid, uuid_ints};
 
 impl ServerGame<'_> {
     pub fn boss_bar_state(&self, bar: BossBarRef) -> Option<&BossBar> {
-        if !self.common.is_logical_server() || self.common.native_lifecycle.epoch() != Some(bar.fields().epoch) {
+        if !self.common.is_logical_server()
+            || self.common.native_lifecycle.epoch() != Some(bar.fields().epoch)
+        {
             return None;
         }
         self.server

@@ -1,11 +1,16 @@
 //! Pushes that no melee path starts still carry their owner as `living_knockback`'s kill
 //! credit: owned evoker fangs, a harming splash potion and a harming area cloud, each heard by
 //! a real listener, with the credit it received and the motion it left.
-use {crate::game::server_side::native_knockback_tests::assert_sword_credit_reached_the_push, crate::game::server_side::native_knockback_tests::credit_pig, crate::game::server_side::native_knockback_tests::heard, crate::game::server_side::native_knockback_tests::sword_evoker};
-use sunrise_gameplay::game::server_side::potions_server::PotionOwner;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::server_side::potions_server::PotionOwner;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::Who;
+use {
+    crate::game::server_side::native_knockback_tests::assert_sword_credit_reached_the_push,
+    crate::game::server_side::native_knockback_tests::credit_pig,
+    crate::game::server_side::native_knockback_tests::heard,
+    crate::game::server_side::native_knockback_tests::sword_evoker,
+};
 
 fn credited_push(hit: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     let mut pushed = Vec3::ZERO;

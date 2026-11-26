@@ -1,17 +1,15 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
-    use sunrise_gameplay_common::game::tables::GameItems;
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use mod_api::{
         ArmorHurtEvent, DamageItemEvent, Flow, HitHost, Hooks, ItemPart, LivingIncomingDamageEvent,
         Registrar, RegistrationContext, ServerHost,
     };
     use std::sync::{Arc, Mutex};
     use sunrise_core::{equipment_slot::EquipmentSlot, geometry::Vec3};
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1;
+    use sunrise_gameplay_common::game::tables::GameItems;
     use sunrise_items::items::ItemStack;
     use sunrise_sim::motion::PlayerMotion;
 
@@ -95,7 +93,11 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
         });
     }
     /// A new player in `helmet`, and a log with no answers: a hit of 8 wears 2 points.
-    fn start(game: &mut sunrise_gameplay::game::ServerGame<'_>, log: &Mutex<Log>, helmet: Option<ItemStack>) {
+    fn start(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        log: &Mutex<Log>,
+        helmet: Option<ItemStack>,
+    ) {
         game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
         game.armor[0] = helmet;
         game.apply_equipment();

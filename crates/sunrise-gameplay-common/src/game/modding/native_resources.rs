@@ -15,7 +15,10 @@ pub trait NativeResourceReads<'g>: crate::game::SideGame<'g> {
     fn resource_stack_sources<'__loan>(
         &'__loan self,
         pack_type: PackType,
-    ) -> Option<(&'static str, Vec<&ResourceSource>)> where 'g: '__loan {
+    ) -> Option<(&'static str, Vec<&ResourceSource>)>
+    where
+        'g: '__loan,
+    {
         Some(if pack_type == PackType::ClientResources {
             if !self.options.execution_role.is_client() {
                 return None;
@@ -35,22 +38,14 @@ pub trait NativeResourceReads<'g>: crate::game::SideGame<'g> {
     }
 
     /// `ResourceManager.getResource`: the winning bytes of `identifier` in `pack_type`'s stack.
-    fn resource(
-        &self,
-        pack_type: PackType,
-        identifier: &Identifier,
-    ) -> Option<Vec<u8>> {
+    fn resource(&self, pack_type: PackType, identifier: &Identifier) -> Option<Vec<u8>> {
         let (top, sources) = self.resource_stack_sources(pack_type)?;
         let name = format!("{top}/{}/{}", identifier.namespace(), identifier.path());
         read_winning_resource(&sources, &name, mod_api::MAX_RESOURCE_BYTES)
     }
 
     /// `ResourceManager.getResourceStack`: every copy of `identifier`, lowest first.
-    fn resource_stack(
-        &self,
-        pack_type: PackType,
-        identifier: &Identifier,
-    ) -> Vec<Vec<u8>> {
+    fn resource_stack(&self, pack_type: PackType, identifier: &Identifier) -> Vec<Vec<u8>> {
         let Some((top, sources)) = self.resource_stack_sources(pack_type) else {
             return Vec::new();
         };

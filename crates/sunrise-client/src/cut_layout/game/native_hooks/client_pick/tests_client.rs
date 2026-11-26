@@ -1,4 +1,3 @@
-use sunrise_gameplay_common::game::GameGameExt1;
 use super::*;
 use crate::game::native_hooks::client_pick::tests::First;
 use crate::game::native_hooks::client_pick::tests::Last;
@@ -8,15 +7,19 @@ use crate::game::native_hooks::client_pick::tests::finish_login;
 use crate::game::native_hooks::client_pick::tests::ranged_stack;
 use mod_api::CrosshairTarget;
 use std::sync::{Arc, Mutex};
+use sunrise_gameplay_common::game::GameGameExt1;
 
 #[test]
 #[ignore = "daily"]
 fn frame_pick_is_shared_ordered_and_refuses_stale_or_invalid_output() {
-    use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use sunrise_core::geometry::Vec3;
     use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::play::{self, Clientbound as C};
     use sunrise_sim::motion::PlayerMotion;
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client,
+    };
     let policy = Arc::new(Mutex::new(Policy::default()));
     let mods = vec![
         mod_api::ModEntry::new("a_pick", Box::new(First)),
@@ -172,10 +175,13 @@ fn frame_pick_is_shared_ordered_and_refuses_stale_or_invalid_output() {
 #[test]
 #[ignore = "daily"]
 fn frame_pick_without_listeners_keeps_the_vanilla_result() {
-    use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use sunrise_core::geometry::Vec3;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client,
+    };
     mod_platform::testing::with_mods(Vec::new().into(), || {
         with_client_game(|game| {
             let mut server = sunrise_protocol::connection::Connection::local(logged_client(game));
@@ -266,7 +272,10 @@ fn rider_pick_rejects_shared_passengers_unless_their_part_allows_them() {
                 }
                 let capacity = game.client.client_pick.rider_candidates.capacity();
                 game.refresh_client_pick(1.0);
-                assert_eq!(game.client.client_pick.rider_candidates.capacity(), capacity);
+                assert_eq!(
+                    game.client.client_pick.rider_candidates.capacity(),
+                    capacity
+                );
 
                 game.remote_set_passengers(32, vec![]);
                 game.refresh_client_pick(1.0);
@@ -303,13 +312,19 @@ fn rider_pick_rejects_shared_passengers_unless_their_part_allows_them() {
 pub(crate) fn with_pick_game(
     kind: &str,
     x: f64,
-    run: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &mut sunrise_protocol::connection::Connection),
+    run: impl FnOnce(
+        &mut sunrise_client_gameplay::game::ClientGame<'_>,
+        &mut sunrise_protocol::connection::Connection,
+    ),
 ) {
-    use {sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, crate::game::server_side::native_entity_refs::tests::with_client_game};
     use sunrise_core::geometry::Vec3;
     use sunrise_level::chunk::Chunk;
     use sunrise_protocol::packets::play::{self, Clientbound as C};
     use sunrise_sim::motion::PlayerMotion;
+    use {
+        crate::game::server_side::native_entity_refs::tests::with_client_game,
+        sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client,
+    };
     with_client_game(|game| {
         let mut server = sunrise_protocol::connection::Connection::local(logged_client(game));
         server

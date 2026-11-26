@@ -8,15 +8,15 @@
 //! player's places, queued as `NativeMenuEvent::PlacesChanged` and taken after the write), and
 //! only slots whose stack changed are written. A menu no mod backed never reaches this module's
 //! work: `GuestMenus::slot_places` stays `None` and every path below returns first.
-use crate::game::ServerGame;
-use sunrise_gameplay_common::game::api_values::TryIntoEngine;
 use super::native_menus::native_menu_inventory_slot;
-use sunrise_gameplay_common::game::native_menu_values::MenuSlotPlaces;
+use crate::game::ServerGame;
 use mod_api::__private::game::*;
 use mod_api::{
     Hand, ItemPlace, ItemResource, MenuContainer, MenuRef, MenuSlotBackRefusal, MenuSlotPlace,
     ServerHost,
 };
+use sunrise_gameplay_common::game::api_values::TryIntoEngine;
+use sunrise_gameplay_common::game::native_menu_values::MenuSlotPlaces;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::lan::{
     guest::Guest,
@@ -47,7 +47,11 @@ impl ServerGame<'_> {
         hand: Hand,
     ) -> (usize, Option<&'a ItemStack>) {
         let (selected, inventory, offhand) = match self.server.lan_acting == Some(guest.conn) {
-            true => (self.common.selected, &self.common.inventory, &self.common.offhand),
+            true => (
+                self.common.selected,
+                &self.common.inventory,
+                &self.common.offhand,
+            ),
             false => (guest.selected, &guest.inventory, &guest.offhand),
         };
         match hand {
@@ -156,16 +160,20 @@ impl ServerGame<'_> {
             }
         }
         if transactional && !acting {
-            self.after_commit(sunrise_gameplay_common::game::transactions::After::BackedMenuClick(
-                conn, uuid, menu, window,
-            ));
+            self.after_commit(
+                sunrise_gameplay_common::game::transactions::After::BackedMenuClick(
+                    conn, uuid, menu, window,
+                ),
+            );
             return Ok(());
         }
         if acting {
             // Slots cleared above reach the client through the container sync after the turn.
-            self.after_commit(sunrise_gameplay_common::game::transactions::After::MenuPlacesNotice(
-                conn, uuid, window,
-            ));
+            self.after_commit(
+                sunrise_gameplay_common::game::transactions::After::MenuPlacesNotice(
+                    conn, uuid, window,
+                ),
+            );
             return Ok(());
         }
         if count > 0 {
@@ -313,9 +321,11 @@ impl ServerGame<'_> {
         if let Some(conn) = self.native_conn(uuid)
             && let Some(window) = self.menu_places_of(conn).map(|(window, ..)| window)
         {
-            self.after_commit(sunrise_gameplay_common::game::transactions::After::MenuPlacesNotice(
-                conn, uuid, window,
-            ));
+            self.after_commit(
+                sunrise_gameplay_common::game::transactions::After::MenuPlacesNotice(
+                    conn, uuid, window,
+                ),
+            );
         }
     }
 
@@ -414,46 +424,45 @@ impl ServerGame<'_> {
         let inventory = native_menu_inventory_slot(size, slot);
         // The held backpack's own slot takes no click, so it can't go into itself.
         let applied = if inventory.is_none() || inventory != locked {
-            let accepts = |game: &crate::game::ServerGame<'_>,
-                           slot,
-                           resource: &ItemResource,
-                           amount| {
-                if locked.is_some() && native_menu_inventory_slot(size, slot as i32) == locked {
-                    return (false, false, 0);
-                }
-                let Some(guest) = game.server.lan.as_ref().and_then(|lan| lan.hub.guest(conn)) else {
-                    return (false, false, 0);
+            let accepts =
+                |game: &crate::game::ServerGame<'_>, slot, resource: &ItemResource, amount| {
+                    if locked.is_some() && native_menu_inventory_slot(size, slot as i32) == locked {
+                        return (false, false, 0);
+                    }
+                    let Some(guest) = game.server.lan.as_ref().and_then(|lan| lan.hub.guest(conn))
+                    else {
+                        return (false, false, 0);
+                    };
+                    let Some(open) = guest.menu.as_ref() else {
+                        return (false, false, 0);
+                    };
+                    if !game.listens(&open.registry_id) {
+                        return (true, true, u32::MAX);
+                    }
+                    let Some(stack) = resource
+                        .to_stack(amount)
+                        .and_then(|stack| stack.try_into_engine(game.items()).ok())
+                    else {
+                        return (true, true, u32::MAX);
+                    };
+                    apply_menu_slot_rules(
+                        Some(game),
+                        &open.registry_id,
+                        native_menu_inventory_slot(size, slot as i32).unwrap_or(slot),
+                        &stack,
+                        SlotContext::blockless(
+                            guest,
+                            open.pos.map(|(x, y, z)| [x, y, z]),
+                            if slot < size {
+                                MenuContainer::Main
+                            } else {
+                                MenuContainer::Player
+                            },
+                        ),
+                        (true, true, u32::MAX),
+                        item_max_stack(game.items(), &stack),
+                    )
                 };
-                let Some(open) = guest.menu.as_ref() else {
-                    return (false, false, 0);
-                };
-                if !game.listens(&open.registry_id) {
-                    return (true, true, u32::MAX);
-                }
-                let Some(stack) = resource
-                    .to_stack(amount)
-                    .and_then(|stack| stack.try_into_engine(game.items()).ok())
-                else {
-                    return (true, true, u32::MAX);
-                };
-                apply_menu_slot_rules(
-                    Some(game),
-                    &open.registry_id,
-                    native_menu_inventory_slot(size, slot as i32).unwrap_or(slot),
-                    &stack,
-                    SlotContext::blockless(
-                        guest,
-                        open.pos.map(|(x, y, z)| [x, y, z]),
-                        if slot < size {
-                            MenuContainer::Main
-                        } else {
-                            MenuContainer::Player
-                        },
-                    ),
-                    (true, true, u32::MAX),
-                    item_max_stack(game.items(), &stack),
-                )
-            };
             if pickup {
                 click_pickup(self, menu, at, button == 1, accepts)
             } else {
@@ -463,9 +472,11 @@ impl ServerGame<'_> {
             true
         };
         if applied {
-            self.after_commit(sunrise_gameplay_common::game::transactions::After::BackedMenuClick(
-                conn, uuid, menu, window,
-            ));
+            self.after_commit(
+                sunrise_gameplay_common::game::transactions::After::BackedMenuClick(
+                    conn, uuid, menu, window,
+                ),
+            );
         } else {
             self.reply_menu_click(conn, ClickReply::Resend(window));
         }
@@ -482,7 +493,10 @@ impl ServerGame<'_> {
         if self.menu(uuid, window) == Some(menu)
             && (self.menu_places_of(conn).is_none() || self.refresh_menu_places(conn, uuid, menu))
         {
-            self.reply_menu_click(conn, sunrise_gameplay_common::game::lan_menu_data::ClickReply::Resend(window));
+            self.reply_menu_click(
+                conn,
+                sunrise_gameplay_common::game::lan_menu_data::ClickReply::Resend(window),
+            );
         }
     }
 }
@@ -494,12 +508,7 @@ fn click_pickup(
     menu: MenuRef,
     slot: usize,
     right: bool,
-    accepts: impl Fn(
-        &crate::game::ServerGame<'_>,
-        usize,
-        &ItemResource,
-        u32,
-    ) -> (bool, bool, u32),
+    accepts: impl Fn(&crate::game::ServerGame<'_>, usize, &ItemResource, u32) -> (bool, bool, u32),
 ) -> bool {
     let cursor = menu.cursor();
     let at = ItemPlace::MenuSlot { menu, slot };
@@ -568,12 +577,7 @@ fn click_quick_move(
     size: usize,
     player_slots: usize,
     count: usize,
-    accepts: impl Fn(
-        &crate::game::ServerGame<'_>,
-        usize,
-        &ItemResource,
-        u32,
-    ) -> (bool, bool, u32),
+    accepts: impl Fn(&crate::game::ServerGame<'_>, usize, &ItemResource, u32) -> (bool, bool, u32),
 ) -> bool {
     let from = ItemPlace::MenuSlot { menu, slot: at };
     let Some(resource) = from.resource(game) else {

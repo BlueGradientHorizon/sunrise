@@ -1,4 +1,3 @@
-
 #![cfg(test)]
 #[cfg(test)]
 mod tests {
@@ -7,8 +6,8 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn explicit_deadline_exits_the_live_idle_path_without_frame_limit() {
-        use sunrise_client_gameplay::game::event_loop::EventLoopCtl;
         use std::cell::Cell;
+        use sunrise_client_gameplay::game::event_loop::EventLoopCtl;
         use winit::event_loop::ControlFlow;
 
         struct TestLoop(Cell<bool>);

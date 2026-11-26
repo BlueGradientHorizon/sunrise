@@ -1,6 +1,6 @@
 use super::*;
 use mod_api::{BlockEntityRef, Compound};
-use {sunrise_gameplay_common::game::creatures::world_view::*};
+use sunrise_gameplay_common::game::creatures::world_view::*;
 use sunrise_gameplay_common::game::side_ops::{
     modapi_modding::ModapiModdingSideGameExt as _, world::WorldSideGameExt as _,
 };

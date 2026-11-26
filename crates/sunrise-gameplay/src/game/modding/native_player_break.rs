@@ -85,12 +85,18 @@ impl ServerGame<'_> {
         if self
             .server
             .lan_acting_spawn_protection
-            .is_some_and(|radius| self.common.spawn_protects(radius, self.common.dim.id(), pos))
+            .is_some_and(|radius| {
+                self.common
+                    .spawn_protects(radius, self.common.dim.id(), pos)
+            })
         {
             return false;
         }
         // A break inside another's hook keeps where the outer one's drops go.
-        let outer = std::mem::replace(&mut self.server.break_collect, into_inventory.then(Vec::new));
+        let outer = std::mem::replace(
+            &mut self.server.break_collect,
+            into_inventory.then(Vec::new),
+        );
         let broke = self.player_break_block(pos).unwrap_or_else(|e| {
             log::warn!("a mod's break at {pos:?} failed: {e}");
             false

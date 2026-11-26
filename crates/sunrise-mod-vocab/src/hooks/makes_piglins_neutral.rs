@@ -14,7 +14,8 @@ pub trait Hooks {
     /// function of `stack` and `wearer`. An item with no such part costs one table lookup.
     /// Server-side. The contract beyond the method's name and parameters is Sunrise's reading,
     /// not checked against NeoForge's.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::makes_piglins_neutral::ServerGame<'_>::native_makes_piglins_neutral", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::makes_piglins_neutral::ServerGame<'_>::native_makes_piglins_neutral",
         receiver = "read",
         dispatch = "flat",
         side = "server",

@@ -1,13 +1,11 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay_common::game::boats_common::BoatStatusGameExt;
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-/// A tick discards vehicles below each dimension's own floor, even when
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::boats_common::BoatStatusGameExt;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    /// A tick discards vehicles below each dimension's own floor, even when
     /// its chunk storage extends lower, and spills the container's contents.
     /// Vehicles on the line or above it survive this tick.
     #[test]
@@ -54,12 +52,12 @@ use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
             });
         }
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn saved_deep_end_boat_loads_then_is_discarded_and_extreme_scans_terminate() {
-        use sunrise_gameplay_common::game::boats_common::Boat;
         use sunrise_core::geometry::Vec3;
         use sunrise_core::nbt::Tag;
+        use sunrise_gameplay_common::game::boats_common::Boat;
         use sunrise_level::chunk::Chunk;
         use sunrise_sim::motion::PlayerMotion;
         for min_y in [-64, 0] {

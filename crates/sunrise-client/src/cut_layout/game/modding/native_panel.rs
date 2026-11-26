@@ -1,22 +1,20 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_client_gameplay::game::client_side::native_panel::tests::frame;
+    use sunrise_client_gameplay::game::client_side::native_panel::tests::frame;
 
-use sunrise_client_gameplay::game::client_side::native_panel::tests::search_as;
+    use sunrise_client_gameplay::game::client_side::native_panel::tests::search_as;
 
-use sunrise_client_gameplay::game::client_side::native_panel::tests::HEARD;
+    use sunrise_client_gameplay::game::client_side::native_panel::tests::HEARD;
 
-use sunrise_client_gameplay::game::client_side::native_panel::tests::Listener;
+    use sunrise_client_gameplay::game::client_side::native_panel::tests::Listener;
 
-use sunrise_client_gameplay::game::client_side::native_panel::tests::heard;
+    use sunrise_client_gameplay::game::client_side::native_panel::tests::heard;
 
-use sunrise_client_gameplay::game::client_side::native_panel::tests::stack;
+    use sunrise_client_gameplay::game::client_side::native_panel::tests::stack;
 
-/// `panel_search` in a game: only the owner's own call counts, and the
+    /// `panel_search` in a game: only the owner's own call counts, and the
     /// owner hears its text through the typing event on the first frame that
     /// draws its box, on the first page; never in the call, never from
     /// input before that frame, never on a frame without room for the box,

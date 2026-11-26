@@ -205,7 +205,10 @@ fn a_write_while_the_local_ender_chest_is_open_survives_closing_it() {
         game.server.ender_items = vec![None; 27];
         game.server.ender_items[3] = Some(old);
         game.open_ender_chest(key);
-        assert!(game.slot_set(&sunrise_gameplay::game::commands::items::Slot::Ender(3), Some(new.clone())));
+        assert!(game.slot_set(
+            &sunrise_gameplay::game::commands::items::Slot::Ender(3),
+            Some(new.clone())
+        ));
         let Some(BlockEntity::Chest(open)) = game.world.block_entities.get(&key) else {
             panic!("the open copy")
         };
@@ -305,23 +308,24 @@ fn an_item_use_opens_the_players_own_ender_chest_and_its_clicks_keep_every_stack
                     .map(|s| s.count)
                     .sum::<u32>()
             };
-            let click = |game: &mut sunrise_gameplay::game::ServerGame<'_>, slot: i16, input: i32| {
-                game.lan_guest_packet(
-                    12,
-                    Serverbound::ContainerClick(ContainerClick {
-                        container: window,
-                        state: 0,
-                        slot,
-                        button: 0,
-                        input,
-                        changed: Vec::new(),
-                        carried: None,
-                    }),
-                );
-                assert_eq!(count(game, "minecraft:stone"), 10);
-                assert_eq!(count(game, "minecraft:diamond"), 2);
-                assert_eq!(count(game, "minecraft:dirt"), 0);
-            };
+            let click =
+                |game: &mut sunrise_gameplay::game::ServerGame<'_>, slot: i16, input: i32| {
+                    game.lan_guest_packet(
+                        12,
+                        Serverbound::ContainerClick(ContainerClick {
+                            container: window,
+                            state: 0,
+                            slot,
+                            button: 0,
+                            input,
+                            changed: Vec::new(),
+                            carried: None,
+                        }),
+                    );
+                    assert_eq!(count(game, "minecraft:stone"), 10);
+                    assert_eq!(count(game, "minecraft:diamond"), 2);
+                    assert_eq!(count(game, "minecraft:dirt"), 0);
+                };
             // Shift-click the stone into the inventory, take the diamonds, put them in slot 9.
             click(game, 0, 1);
             click(game, 4, 0);

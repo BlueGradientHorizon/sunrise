@@ -113,7 +113,13 @@ impl crate::game::ClientGame<'_> {
         if !self.pad_action_glyphs_on() {
             return Vec::new();
         }
-        let focus = self.client.pad.0.menu.focus.filter(|_| self.pad_focus_mode());
+        let focus = self
+            .client
+            .pad
+            .0
+            .menu
+            .focus
+            .filter(|_| self.pad_focus_mode());
         let atlas = &self.client.gui.atlas;
         let glyph = |job| self.menu_glyph(job);
         let width = |glyph: Glyph| pad_glyph::width(atlas, glyph);

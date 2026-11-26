@@ -1,9 +1,9 @@
-use sunrise_core::random::RandomSource;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::LegacyRandom;
+use sunrise_core::random::RandomSource;
 use sunrise_gameplay_common::game::fishing_common::Hook;
-use sunrise_gameplay_common::game::fishing_common::State;
 use sunrise_gameplay_common::game::fishing_common::HookLerp;
+use sunrise_gameplay_common::game::fishing_common::State;
 use sunrise_items::items::ItemStack;
 // Included as fishing's child so fixtures can construct its private hook state.
 use super::*;

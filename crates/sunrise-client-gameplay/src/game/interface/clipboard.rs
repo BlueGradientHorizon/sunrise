@@ -23,7 +23,8 @@ impl crate::game::ClientGame<'_> {
     /// so no mod reads the clipboard without the player doing something, and None on a
     /// server.
     pub(in crate::game) fn clipboard_text(&self) -> Option<String> {
-        (self.common.native_window() && self.client.user_input.get()).then(|| self.client.clipboard.0.text())
+        (self.common.native_window() && self.client.user_input.get())
+            .then(|| self.client.clipboard.0.text())
     }
     /// Puts `text` on the clipboard (`KeyboardHandler.setClipboard`) on the same terms as
     /// `clipboard_text` reads it. False, with nothing copied, at any other moment or
@@ -74,7 +75,8 @@ impl crate::game::ClientGame<'_> {
         if cfg!(target_os = "macos") {
             self.client.modifiers.super_key() || held([KeyCode::SuperLeft, KeyCode::SuperRight])
         } else {
-            self.client.modifiers.control_key() || held([KeyCode::ControlLeft, KeyCode::ControlRight])
+            self.client.modifiers.control_key()
+                || held([KeyCode::ControlLeft, KeyCode::ControlRight])
         }
     }
     /// Whether the held keys let a key's text through to the focused field
@@ -101,8 +103,12 @@ impl crate::game::ClientGame<'_> {
         self.mounted_widget_captures_input()
             || (self.client.screen == Screen::Chat && self.client.title.0.is_none())
             || self.client.sign_edit.is_some()
-            || matches!(self.client.book, Some(super::books::BookScreen::Edit { .. }))
-            || (self.client.screen == Screen::Creative && self.client.creative_screen.0.tab().search)
+            || matches!(
+                self.client.book,
+                Some(super::books::BookScreen::Edit { .. })
+            )
+            || (self.client.screen == Screen::Creative
+                && self.client.creative_screen.0.tab().search)
             || self.recipe_search_focused()
             || self.station_typing()
             || self.dialog_typing()

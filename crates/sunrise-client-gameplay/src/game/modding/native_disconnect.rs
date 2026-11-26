@@ -20,9 +20,11 @@ impl ClientGame<'_> {
         reason: Option<Text>,
     ) -> std::result::Result<(), DisconnectError> {
         let epoch = self.common.native_lifecycle.epoch();
-        let (Some(epoch), Some(_), None) =
-            (epoch, self.client.remote.as_ref(), &self.client.pending_save.0)
-        else {
+        let (Some(epoch), Some(_), None) = (
+            epoch,
+            self.client.remote.as_ref(),
+            &self.client.pending_save.0,
+        ) else {
             return Err(DisconnectError::Unavailable);
         };
         self.client.native_leave = Some(LeaveRequest { epoch, reason });
@@ -42,7 +44,9 @@ impl ClientGame<'_> {
         let Some(request) = self.client.native_leave.take() else {
             return Ok(());
         };
-        if self.client.remote.is_none() || self.common.native_lifecycle.epoch() != Some(request.epoch) {
+        if self.client.remote.is_none()
+            || self.common.native_lifecycle.epoch() != Some(request.epoch)
+        {
             return Ok(());
         }
         let left = match request.reason {

@@ -4,18 +4,21 @@
 //! (`SignText.hasEditableText`). See `SignBlock.openTextEdit`,
 //! `SignBlock.otherPlayerIsEditingSign`, `SignBlockEntity.tick` and
 //! `SignBlockEntity.updateSignText`.
-use sunrise_level::containers::BlockEntity;
-use sunrise_protocol::packets::play::{self, Serverbound as S};
 use super::*;
-use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay::game::lan::LanHost};
 use crate::game::{Settings, load_resources};
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_core::position::ChunkPos;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
+use sunrise_level::containers::BlockEntity;
 use sunrise_level::signs_data::SignData;
+use sunrise_protocol::packets::play::{self, Serverbound as S};
 use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
 use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest, hub::HubConfig};
+use {
+    sunrise_gameplay::game::lan::LanHost, sunrise_gameplay_common::game::Options,
+    sunrise_gameplay_common::game::Progress,
+};
 
 const A: u32 = 2;
 const B: u32 = 3;
@@ -58,7 +61,8 @@ impl<'a> Edits<'a> {
         .unwrap();
         let mut options = Options::parse(std::iter::empty()).unwrap().unwrap();
         options.resources = root.clone();
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let res = &*resources.insert(loaded.resources);
         let mut game = sunrise_gameplay::game::ServerGame::new(
             res,

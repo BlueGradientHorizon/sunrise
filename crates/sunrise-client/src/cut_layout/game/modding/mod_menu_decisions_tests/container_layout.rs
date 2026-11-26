@@ -1,16 +1,22 @@
 //! A block-backed menu lays out all its declared slots before the first write.
-use sunrise_gameplay_common::game::GameGameExt1;
 use super::{container_click, register_test_menu};
-use {sunrise_gameplay_common::game::api_values, sunrise_gameplay_common::game::lan_actions::MenuOpen, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_guest_turn_tests::with_guests_at};
 use mod_api::{
     BlockEntityPart, BlockUpdateFlags, Flow, Hooks, MenuQuickMoveEvent, ModContainer, ModEntry,
     Mods, Registrar,
 };
 use std::{cell::Cell, sync::Arc};
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{chunk::Chunk, containers};
 use sunrise_sim::save;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_guest_turn_tests::with_guests_at,
+    sunrise_gameplay_common::game::api_values,
+    sunrise_gameplay_common::game::lan_actions::MenuOpen,
+};
 
 const BLOCK: &str = "layout_test:machine";
 const MENU: &str = "layout_test:menu";
@@ -76,7 +82,8 @@ fn six_slot_menu_shift_click_uses_hotbar_zero_before_any_container_write() {
         api_values::install_parts(&mods).unwrap();
         mod_api::__private::mark_game_thread();
         let base = fixture_root();
-        let root = sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
+        let root =
+            sunrise_gameplay_common::game::mods::content_root(&base, &Default::default()).unwrap();
         containers::with_mod_menu_types(
             [(
                 MENU.into(),

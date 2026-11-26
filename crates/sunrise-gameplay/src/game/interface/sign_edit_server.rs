@@ -1,6 +1,4 @@
-use super::{
-    commands::{Target, execute::Source},
-};
+use super::commands::{Target, execute::Source};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use {
     sunrise_items::items::ItemStack, sunrise_level::containers::BlockEntity,
@@ -21,7 +19,8 @@ impl crate::game::ServerGame<'_> {
         held: Option<&ItemStack>,
     ) -> bool {
         let hanging_sign = held.is_some_and(|s| {
-            self.common.res
+            self.common
+                .res
                 .behaviours()
                 .item_binding(&s.item)
                 .is_some_and(|i| i.kind == sunrise_world::level::ItemKind::HangingSign)
@@ -32,7 +31,8 @@ impl crate::game::ServerGame<'_> {
         }
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
         let Some(form) = self
-            .common.res
+            .common
+            .res
             .facts()
             .get(state)
             .sign_form()
@@ -42,7 +42,8 @@ impl crate::game::ServerGame<'_> {
         };
         let free_side = if form.wall {
             let Some(facing) = self
-                .common.pack
+                .common
+                .pack
                 .assets
                 .registry
                 .state(state)
@@ -243,7 +244,8 @@ impl crate::game::ServerGame<'_> {
         }
         let item = &*stack.item;
         let dye = if item.ends_with("_dye") {
-            self.common.res
+            self.common
+                .res
                 .items()
                 .get(&stack.item)
                 .and_then(|i| i.dye.clone())
@@ -344,11 +346,13 @@ impl crate::game::ServerGame<'_> {
         {
             return;
         }
-        self.common.world
+        self.common
+            .world
             .block_entities
             .set_sign_editor(edit.pos, Some(guest_uuid));
         if let Some(host) = self.server.lan.as_mut() {
-            host.hub.send_authoritative_block(conn, &self.common.world, pos);
+            host.hub
+                .send_authoritative_block(conn, &self.common.world, pos);
             host.hub.send_to(
                 conn,
                 &C::OpenSignEditor(play::OpenSignEditor {
@@ -448,9 +452,10 @@ impl crate::game::ServerGame<'_> {
     }
     #[inline(always)]
     pub(in crate::game) fn open_sign_editor_server(&mut self, pos: (i32, i32, i32), front: bool) {
-        if let (Some(player), Some(name)) =
-            (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
-        {
+        if let (Some(player), Some(name)) = (
+            self.server.lan_acting_uuid,
+            self.server.lan_acting_name.clone(),
+        ) {
             self.native_player_open_sign(player, &name, [pos.0, pos.1, pos.2], front);
         }
     }
@@ -497,7 +502,8 @@ impl crate::game::ServerGame<'_> {
     ) -> bool {
         let at = [pos.0, pos.1, pos.2];
         let me = self
-            .common.level
+            .common
+            .level
             .player_uuid
             .map(sunrise_sim::lan::playerdata::ints_uuid);
         if me == Some(who) && self.common.player.is_some() {
@@ -536,8 +542,13 @@ impl crate::game::ServerGame<'_> {
     /// editor only while that player is here and within the block interaction
     /// range plus four blocks of it.
     pub(in crate::game) fn tick_sign_editors(&mut self) {
-        let held: Vec<(i32, i32, i32)> =
-            self.common.world.block_entities.sign_editors().copied().collect();
+        let held: Vec<(i32, i32, i32)> = self
+            .common
+            .world
+            .block_entities
+            .sign_editors()
+            .copied()
+            .collect();
         for pos in held {
             match self.common.world.block_entities.sign_editor(&pos) {
                 Some(who) if self.sign_editor_in_range(who, pos) => {}

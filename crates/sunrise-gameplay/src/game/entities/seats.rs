@@ -5,9 +5,9 @@
 //! default passenger attachment and gets off on sneak, as vanilla's `Entity` does for a vehicle that
 //! overrides neither.
 use super::Keys;
-use sunrise_gameplay_common::game::seats_common::{Seat, could_accept_passenger};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::game::seats_common::{Seat, could_accept_passenger};
 
 /// The box height of an entity Sunrise keeps as its compound, from its type's `EntityDimensions` (the
 /// passenger attachment sits on top of it): displays and markers are `sized(0, 0)`, an interaction is as

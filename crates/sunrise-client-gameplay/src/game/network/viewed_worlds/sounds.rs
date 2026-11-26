@@ -4,8 +4,10 @@
 //! which volume and pitch. Nothing plays it otherwise, and nothing of it reaches the player's
 //! level's own sound hooks.
 use super::routing::RouteError;
-use sunrise_gameplay_common::game::{level_sounds_common::LevelSound, native_hooks::level_sound_playable};
 use mod_api::{HookId, Identifier, LevelRef, SoundSource};
+use sunrise_gameplay_common::game::{
+    level_sounds_common::LevelSound, native_hooks::level_sound_playable,
+};
 use sunrise_protocol::{
     packets::play::{self, Clientbound as C},
     viewed_levels::ViewedLevelsError,
@@ -113,11 +115,7 @@ impl crate::game::ClientGame<'_> {
     /// level, with the volume and pitch the listeners left and the server's seed. None when they
     /// left `play_at` None, or left a position that is not finite, or a volume or pitch that is
     /// not finite and at least 0 (`level_sound_playable`).
-    pub fn ask_viewed_level_sound(
-        &mut self,
-        level: i32,
-        p: ViewedSound<'_>,
-    ) -> Option<ViewedPlay> {
+    pub fn ask_viewed_level_sound(&mut self, level: i32, p: ViewedSound<'_>) -> Option<ViewedPlay> {
         let name = self
             .remote_sound_name(p.sound)
             .filter(|name| !self.pvp_mutes_sound(name))?;

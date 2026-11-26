@@ -2,11 +2,7 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::GameGameExt1;
-use super::super::native_entity_refs::tests as fixture;
-    use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
-    use sunrise_gameplay_common::game::{Dim, Hit};
+    use super::super::native_entity_refs::tests as fixture;
     use mod_api::{
         BlockPart, BlockToolModificationEvent, CanBeHydratedEvent, DispenseMethodEvent, Dispensed,
         Flow, Hooks, Host, LevelWriteHost, Registrar, RegistrationContext, ServerHost,
@@ -17,6 +13,10 @@ use super::super::native_entity_refs::tests as fixture;
         atomic::{AtomicUsize, Ordering},
     };
     use sunrise_core::{position::BlockPos, ticks::TickPriority};
+    use sunrise_gameplay_common::game::GameGameExt1;
+    use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::{Dim, Hit};
     use sunrise_items::items::ItemStack;
     use sunrise_level::chunk::Chunk;
     use sunrise_world::{
@@ -305,7 +305,11 @@ use super::super::native_entity_refs::tests as fixture;
         .into();
         mod_platform::testing::with_mods(mods.clone(), || {
             crate::game::api_values::install_test_platform();
-            sunrise_gameplay_common::game::api_values::install_packages(sources.native.packages(), &[]).unwrap();
+            sunrise_gameplay_common::game::api_values::install_packages(
+                sources.native.packages(),
+                &[],
+            )
+            .unwrap();
             sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
             mod_api::__private::mark_game_thread();
             let base =
@@ -612,10 +616,11 @@ use super::super::native_entity_refs::tests as fixture;
     }
 
     pub(crate) const DISPENSER: BlockPos = BlockPos::new(POS.x - 1, POS.y, POS.z);
-    pub(crate) const DISPENSER_SLOT: (i32, i32, i32) =
-        (DISPENSER.x, DISPENSER.y, DISPENSER.z);
+    pub(crate) const DISPENSER_SLOT: (i32, i32, i32) = (DISPENSER.x, DISPENSER.y, DISPENSER.z);
 
-    pub(crate) fn place_dispenser(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> BlockStateId {
+    pub(crate) fn place_dispenser(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    ) -> BlockStateId {
         let base = game
             .pack
             .assets

@@ -1,13 +1,13 @@
 //! A mod presses vanilla gameplay mappings with `VanillaKeyMappingRef::set_down` and
 //! `VanillaKeyMappingRef::click`. The client tick's key step acts on them with its checks
 //! and sends the packets the player's own keys send.
-use sunrise_gameplay_common::game::Screen;
 use super::*;
 use mod_api::prelude::ClientInputClientHost;
 use mod_api::{
     ClientHost, InteractionKeyMappingTriggeredEvent, MappingError, VanillaKeyMappingRef,
 };
 use std::sync::OnceLock;
+use sunrise_gameplay_common::game::Screen;
 
 #[path = "input_burst_tests.rs"]
 pub(crate) mod input_burst_tests;
@@ -48,7 +48,11 @@ impl Hooks for Heard {
 /// A survival player on a server's client, playing with nothing open, the tick's first packets
 /// (the held slot) sent: `test` gets the game, the packets sent since and the hands triggered.
 pub(crate) fn with_pressing_game(
-    test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, &Mutex<Vec<String>>, &Mutex<Vec<Hand>>),
+    test: impl FnOnce(
+        &mut sunrise_client_gameplay::game::ClientGame<'_>,
+        &Mutex<Vec<String>>,
+        &Mutex<Vec<Hand>>,
+    ),
 ) {
     with_callback_game(false, |game, packets, triggered, _| {
         test(game, packets, triggered);

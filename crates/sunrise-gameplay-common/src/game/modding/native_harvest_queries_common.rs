@@ -5,7 +5,7 @@ use sunrise_world::registry::BlockStateId;
 
 pub trait NativeHarvestQueriesCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `BlockBehaviour.getDestroyProgress(state, player, level, pos)` for a supplied state.
-     fn player_destroy_progress(
+    fn player_destroy_progress(
         &mut self,
         player: PlayerRef,
         level: LevelRef,
@@ -20,7 +20,7 @@ pub trait NativeHarvestQueriesCommonGameExt1<'__sg>: crate::game::SideGame<'__sg
     }
 
     /// `Player.hasCorrectToolForDrops(state, level, pos)` and `canHarvestBlock`.
-     fn player_has_correct_tool_for_drops(
+    fn player_has_correct_tool_for_drops(
         &mut self,
         player: PlayerRef,
         level: LevelRef,
@@ -36,6 +36,5 @@ pub trait NativeHarvestQueriesCommonGameExt1<'__sg>: crate::game::SideGame<'__sg
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeHarvestQueriesCommonGameExt1<'__sg> for G {}
-
 
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;

@@ -1,9 +1,7 @@
-use super::super::{
-    entity::{Entity, with_entity},
-};
-use sunrise_gameplay_common::game::creatures::pufferfish_player::PUFFER_FISH_STING;
+use super::super::entity::{Entity, with_entity};
 use sunrise_core::geometry::Vec3;
 use sunrise_game_data::scoreboard::teams_allow_damage;
+use sunrise_gameplay_common::game::creatures::pufferfish_player::PUFFER_FISH_STING;
 use sunrise_protocol::packets::play::{Clientbound, GameEvent};
 use sunrise_sim::mobs::Species;
 
@@ -14,11 +12,17 @@ impl crate::game::ServerGame<'_> {
         if self.common.spectator() {
             return;
         }
-        let Some(player) = self.common.player.as_ref().filter(|p| !p.health.dead_or_dying()) else {
+        let Some(player) = self
+            .common
+            .player
+            .as_ref()
+            .filter(|p| !p.health.dead_or_dying())
+        else {
             return;
         };
         let mut fish = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter(|m| m.species() == Species::Pufferfish && m.alive() && m.extra.size > 0)
             .peekable();

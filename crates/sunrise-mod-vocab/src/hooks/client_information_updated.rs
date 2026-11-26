@@ -9,7 +9,8 @@ pub trait Hooks {
     /// `old` the defaults (`ClientInformation.createDefault`) and `new` what the
     /// client joined with, as NeoForge fires it when `ServerPlayer` first sets
     /// it. The player is not swapped in. Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::client_information_updated::ServerGame<'_>::native_client_information_updated", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::client_information_updated::ServerGame<'_>::native_client_information_updated",
         dispatch = "flat",
         side = "server",
         contract = "listen",

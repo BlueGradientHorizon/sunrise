@@ -1,9 +1,14 @@
-use {crate::game::minecarts::*, sunrise_gameplay_common::game::minecarts::{Arc, CartKind, InteractTarget, Keys, Minecart, SEAT, Vec3}};
 use std::sync::Mutex;
-use sunrise_items::items::ItemStack;
 use sunrise_core::nbt::Tag;
+use sunrise_items::items::ItemStack;
 use sunrise_mod_runtime::attachments::{
     AttachmentType, Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
+};
+use {
+    crate::game::minecarts::*,
+    sunrise_gameplay_common::game::minecarts::{
+        Arc, CartKind, InteractTarget, Keys, Minecart, SEAT, Vec3,
+    },
 };
 
 #[test]
@@ -35,11 +40,7 @@ fn lifecycle_carts_keep_registrations_through_commands_unload_park_and_remote() 
     }
     .run_with(|game| {
         let epoch = game.native_lifecycle.epoch().unwrap();
-        identities.observe(
-            &mut game.carts,
-            epoch,
-            |cart| cart.id,
-        )
+        identities.observe(&mut game.carts, epoch, |cart| cart.id)
     });
     run_remote_lifecycle(
         |game, entries| {
@@ -162,9 +163,7 @@ impl mod_api::Hooks for CancelCartDismount {
     }
 }
 
-pub(crate) struct TeleportPlayerOnCartDismount(
-    pub(crate) Arc<std::sync::atomic::AtomicUsize>,
-);
+pub(crate) struct TeleportPlayerOnCartDismount(pub(crate) Arc<std::sync::atomic::AtomicUsize>);
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for TeleportPlayerOnCartDismount {
     fn entity_mount(
@@ -320,7 +319,8 @@ fn a_bound_ticked_cart_publishes_its_moved_position_before_pushing() {
 #[ignore = "daily"]
 fn a_bound_tnt_cart_passes_interaction_without_priming() {
     bound_cart_case(CartKind::Tnt, |game| {
-        game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:fire_charge", 1));
+        game.common.inventory[game.common.selected] =
+            Some(ItemStack::new("minecraft:fire_charge", 1));
         // MinecartTNT inherits Entity.interact (PASS), even with a fire charge.
         assert!(!game.interact_cart(Some(InteractTarget {
             id: 71,

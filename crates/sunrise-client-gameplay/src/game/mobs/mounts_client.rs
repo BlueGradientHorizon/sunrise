@@ -5,7 +5,12 @@ use sunrise_sim::mobs::Species;
 impl ClientGame<'_> {
     /// `LocalPlayer.jumpableVehicle`: controlled vehicle when it can jump now.
     pub(in crate::game) fn jumpable_mount(&self) -> Option<u32> {
-        if !self.client.remote.as_ref().is_some_and(|r| r.first_passenger) {
+        if !self
+            .client
+            .remote
+            .as_ref()
+            .is_some_and(|r| r.first_passenger)
+        {
             return None;
         }
         let mount = &self.common.mobs[self.common.mount_index()?];
@@ -29,7 +34,8 @@ impl ClientGame<'_> {
                 && (matches!(m.species(), Species::Camel | Species::CamelHusk)
                     || sunrise_sim::mobs::nautilus::is_nautilus(m.species())),
         );
-        let draws = sunrise_client::hud_overlays::jump_bar(w, h, cooldown, self.common.mount.jump_scale);
+        let draws =
+            sunrise_client::hud_overlays::jump_bar(w, h, cooldown, self.common.mount.jump_scale);
         sunrise_client::hud_layout::paint(batch, &self.client.gui.atlas, &draws);
     }
     /// `willPrioritizeJumpInfo`: charging a jump or recharging.

@@ -1,9 +1,4 @@
-use sunrise_client::hud::HudBatch;
-use sunrise_gameplay_common::game::Screen;
-use mod_api::ScreenOpening;
 use super::*;
-use sunrise_client_gameplay::input_trace::InputOrigin;
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use crate::game::native_hooks::base::screen_widgets_tests::DropCounter;
 use crate::game::native_hooks::base::screen_widgets_tests::NoLoop;
 use crate::game::native_hooks::base::screen_widgets_tests::move_mouse;
@@ -11,6 +6,7 @@ use crate::game::native_hooks::base::screen_widgets_tests::send_key_control;
 use crate::game::native_hooks::base::screen_widgets_tests::send_mouse_button;
 use crate::game::native_hooks::base::screen_widgets_tests::send_scroll;
 use crate::game::native_hooks::base::screen_widgets_tests::take_log;
+use mod_api::ScreenOpening;
 use mod_api::client::widgets::{Button, TextField};
 use mod_api::{
     ClientHost, DrawContext, Flow, Hooks, ModEntry, ScreenCharTypedPostEvent,
@@ -27,12 +23,19 @@ use std::sync::{
     Arc, Mutex,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
+use sunrise_client::hud::HudBatch;
+use sunrise_client_gameplay::input_trace::InputOrigin;
+use sunrise_gameplay_common::game::Screen;
 use winit::dpi::PhysicalSize;
 use winit::event::{
     DeviceId, ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent,
 };
 use winit::event_loop::EventLoop;
 use winit::keyboard::KeyCode;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+};
 
 #[path = "screen_widgets_input_tests_client.rs"]
 pub(crate) mod input_routing;
@@ -43,7 +46,8 @@ pub(crate) mod input_routing;
 pub(crate) fn attach_offscreen_window(
     game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
 ) -> (EventLoop<()>, winit::window::WindowId) {
-    let (event_loop, window) = sunrise_client_gameplay::game::native_entity_refs::tests::test_window([640, 480]);
+    let (event_loop, window) =
+        sunrise_client_gameplay::game::native_entity_refs::tests::test_window([640, 480]);
     let id = window.id();
     game.options.offscreen = true;
     game.client.settings.gui_scale = 1;
@@ -935,7 +939,9 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
                 widgets::end_frame(1);
                 let stock = render_hud(&stock, &game.client.gui.atlas, SIZE).unwrap();
                 assert!(game.mod_screen_open("sprite_fixture"));
-                let frame = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>, at, serial| {
+                let frame = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+                             at,
+                             serial| {
                     game.client.cursor = at;
                     let mut batch = HudBatch::scratch(SIZE);
                     batch.image_patches.push(patch.clone());
@@ -1022,8 +1028,8 @@ fn mounted_widgets_draw_as_the_games_own() {
     ) {
         return;
     }
-    use sunrise_client_gameplay::game::screen_widgets::MountedWidgetKind;
     use std::time::{Duration, Instant};
+    use sunrise_client_gameplay::game::screen_widgets::MountedWidgetKind;
     const LONG: &str = "a long name that does not fit in sixty pixels";
     struct StockWidgets;
     #[mod_api::__subscriptions]
@@ -2280,7 +2286,10 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
             assert!(game.dialog_key(KeyCode::Escape, None).unwrap());
             assert_eq!(game.dialog_status()["screen"], "warning");
             assert_eq!(game.client.screen_state.0.screen_instance, instance);
-            assert_eq!(game.client.screen_state.0.widgets.focused_id(), Some(warning));
+            assert_eq!(
+                game.client.screen_state.0.widgets.focused_id(),
+                Some(warning)
+            );
             assert_eq!(take_log(&log), ["opening:dialog->dialog"]);
             veto_dialog.store(false, Ordering::SeqCst);
             assert!(game.dialog_key(KeyCode::Escape, None).unwrap());
@@ -2650,7 +2659,10 @@ fn text_field_editing_ime_and_double_click_word_selection() {
             move_mouse(game, win_id, 400.0, 400.0);
             send_mouse_button(game, win_id, MouseButton::Left, true);
             send_mouse_button(game, win_id, MouseButton::Left, false);
-            assert_eq!(game.client.screen_state.0.widgets.focused_id(), Some(focused));
+            assert_eq!(
+                game.client.screen_state.0.widgets.focused_id(),
+                Some(focused)
+            );
             assert!(!game.text_field_focused());
             game.ime_preedit("go", Some((0, 2)));
             assert_eq!(take_log(&preedit_posts), vec!["mod:go"]);

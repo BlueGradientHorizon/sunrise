@@ -1,8 +1,12 @@
 //! `ItemPart::item_name` (`Item.getName(ItemStack)`) behind every place the game names a stack.
-use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{Hooks, ItemNameEvent, ItemPart, LoopContext, Registrar, RegistrationContext};
 use sunrise_core::nbt::Tag;
 use sunrise_items::items::ItemStack;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 const NAME: &str = "game::item_name_tests::a_part_names_its_stacks_everywhere_the_game_names_them";
 const RENAME_BOX: &str =
@@ -202,7 +206,10 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
             run(game, "kill @e[type=zombie]");
 
             // The screen uses the same comparison before sending the rename packet.
-            let mut station = sunrise_gameplay_common::game::stations_common::Station::new(sunrise_gameplay_common::game::stations_common::Kind::Anvil, [0; 3]);
+            let mut station = sunrise_gameplay_common::game::stations_common::Station::new(
+                sunrise_gameplay_common::game::stations_common::Kind::Anvil,
+                [0; 3],
+            );
             station.inputs[0] = Some(named);
             station.name = KEY.into();
             assert_eq!(game.anvil_item_name(&station), "");
@@ -253,8 +260,12 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
 #[test]
 #[ignore = "daily"]
 fn a_client_anvil_click_fills_the_rename_box_with_the_parts_name() {
-    use {sunrise_gameplay_common::game::stations_common::INPUT, sunrise_gameplay_common::game::stations_common::Kind, sunrise_gameplay_common::game::stations_common::Station};
     use sunrise_sim::menu::Input;
+    use {
+        sunrise_gameplay_common::game::stations_common::INPUT,
+        sunrise_gameplay_common::game::stations_common::Kind,
+        sunrise_gameplay_common::game::stations_common::Station,
+    };
     if run_fresh_cases(RENAME_BOX, "SUNRISE_ITEM_NAME_RENAME_BOX_CHILD", &["names"]) {
         return;
     }
@@ -268,8 +279,9 @@ fn a_client_anvil_click_fills_the_rename_box_with_the_parts_name() {
             game.connect_local(client, "AnvilTest").unwrap();
             game.remote_set_menu(Some((1, "minecraft:anvil".into())), None);
             game.open_station_client(Station::new_kind(Kind::Anvil, [0, 64, 0]));
-            let rename_box =
-                |game: &sunrise_client_gameplay::game::ClientGame<'_>| game.station_rename_box_for_test();
+            let rename_box = |game: &sunrise_client_gameplay::game::ClientGame<'_>| {
+                game.station_rename_box_for_test()
+            };
             // One left click on the input slot: puts the carried stack in, or takes it out.
             let click = |game: &mut sunrise_client_gameplay::game::ClientGame<'_>| {
                 assert!(game.remote_menu_ops(&[(Some(INPUT), 0, Input::Pickup)]));

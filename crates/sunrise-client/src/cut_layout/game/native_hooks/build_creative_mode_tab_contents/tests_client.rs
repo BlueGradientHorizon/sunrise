@@ -1,9 +1,4 @@
-use mod_api::LogicalSide;
-use mod_api::{CreativeModeTabs, CreativeTabEditError, CreativeTabList, CreativeTabPermissions, CreativeTabReadError, CreativeTabVisibility};
-use std::sync::Arc;
 use super::*;
-use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-use {sunrise_gameplay::game::native_entity_refs::tests::fixture_root, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game_role};
 use crate::game::native_hooks::build_creative_mode_tab_contents::tests::Edit;
 use crate::game::native_hooks::build_creative_mode_tab_contents::tests::Observe;
 use crate::game::native_hooks::build_creative_mode_tab_contents::tests::Seen;
@@ -12,15 +7,27 @@ use crate::game::native_hooks::build_creative_mode_tab_contents::tests::replace_
 use crate::game::native_hooks::build_creative_mode_tab_contents::tests::stack;
 use crate::game::native_hooks::build_creative_mode_tab_contents::tests::stone_key;
 use crate::game::native_hooks::build_creative_mode_tab_contents::tests::*;
+use mod_api::LogicalSide;
 use mod_api::ModEntry;
 use mod_api::prelude::ItemsHost;
+use mod_api::{
+    CreativeModeTabs, CreativeTabEditError, CreativeTabList, CreativeTabPermissions,
+    CreativeTabReadError, CreativeTabVisibility,
+};
+use std::sync::Arc;
 use std::sync::Mutex;
+use sunrise_gameplay_common::game::execution_role::ExecutionRole;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_role,
+};
 
 #[test]
 #[ignore = "daily"]
 fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
-    use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
     use sunrise_client::creative::Creative;
+    use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;
     let row = |item: &str, visibility: &str| {
         serde_json::json!({
             "kind":"stack", "snbt":format!(r#"{{id:"{item}",count:1}}"#), "visibility":visibility,

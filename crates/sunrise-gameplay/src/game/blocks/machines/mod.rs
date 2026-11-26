@@ -4,11 +4,11 @@
 //! comparator signals (`AbstractContainerMenu.getRedstoneSignalFromContainer`).
 pub(in crate::game) mod loot_access;
 use crate::game::ServerGame;
+use sunrise_core::nbt::Tag;
 use sunrise_gameplay_common::game::machine_containers::{
     Containers, Kind, PlacementAttempt, PlacementQuery, View, bone_meal_stack,
 };
 use sunrise_gameplay_common::game::spill_common as spill;
-use sunrise_core::nbt::Tag;
 pub mod cauldron_contents;
 pub(in crate::game) mod crafter;
 pub(in crate::game) mod native_energy;
@@ -137,11 +137,7 @@ impl ServerGame<'_> {
                 PlacementQuery::Offer(&mut PlacementAttempt::default()),
             )
     }
-    pub fn slot_mut_at(
-        &mut self,
-        view: &View,
-        slot: usize,
-    ) -> Option<&mut Option<ItemStack>> {
+    pub fn slot_mut_at(&mut self, view: &View, slot: usize) -> Option<&mut Option<ItemStack>> {
         let (pos, i) = view.locate(slot)?;
         let entity = self.common.world.block_entities.get_mut(&pos)?;
         // A mod's slots grow to its container's count when first used.
@@ -185,7 +181,12 @@ impl ServerGame<'_> {
             && let Some(level) = self.native_level_here()
         {
             let at = BlockPos::new(pos.0, pos.1, pos.2);
-            self.native_contents_changed(level, at, self.common.world.block(pos.0, pos.1, pos.2), None);
+            self.native_contents_changed(
+                level,
+                at,
+                self.common.world.block(pos.0, pos.1, pos.2),
+                None,
+            );
         }
         self.container_changed_without_hook(pos);
     }
@@ -270,7 +271,9 @@ impl ServerGame<'_> {
                 self.journal_block_loot_random();
                 if let Some(tag) = self.pot_tag(at) {
                     spill::put_saved_entity(&mut self.common.world, at, tag);
-                    self.after_commit(sunrise_gameplay_common::game::transactions::After::Changed(pos));
+                    self.after_commit(sunrise_gameplay_common::game::transactions::After::Changed(
+                        pos,
+                    ));
                 }
             }
         }
@@ -371,7 +374,8 @@ impl ServerGame<'_> {
         let recipes = server_world_recipes!(self);
         if filled_empty
             && let Some((pos, 0)) = view.locate(slot)
-            && let Some(BlockEntity::Furnace(furnace)) = self.common.world.block_entities.get_mut(&pos)
+            && let Some(BlockEntity::Furnace(furnace)) =
+                self.common.world.block_entities.get_mut(&pos)
         {
             use sunrise_sim::furnace::FurnaceCooking;
             let input = furnace.items[0].take();
@@ -379,7 +383,8 @@ impl ServerGame<'_> {
         }
         if success && was_empty && view.kind == Kind::Hopper {
             let dest = view.parts[0].0;
-            let from_ticked = from_hopper.and_then(|p| self.server.hoppers.get(&p).map(|h| h.ticked));
+            let from_ticked =
+                from_hopper.and_then(|p| self.server.hoppers.get(&p).map(|h| h.ticked));
             let state = self.server.hoppers.entry(dest).or_default();
             if state.cooldown <= 8 {
                 let skip = i32::from(from_ticked.is_some_and(|t| state.ticked >= t));
@@ -537,7 +542,8 @@ impl ServerGame<'_> {
         // hopper is about to move, not on every tick it waits.
         let hopper = sunrise_game_data::block_entity_types::factory_block(
             &self
-                .common.res
+                .common
+                .res
                 .facts()
                 .get(self.common.world.block(pos.0, pos.1, pos.2))
                 .name,
@@ -593,7 +599,13 @@ impl ServerGame<'_> {
         let Some(view) = c.view(pos, false) else {
             return false;
         };
-        if self.server.hoppers.get(&pos).is_some_and(|h| h.cooldown > 0) || !enabled {
+        if self
+            .server
+            .hoppers
+            .get(&pos)
+            .is_some_and(|h| h.cooldown > 0)
+            || !enabled
+        {
             return false;
         }
         self.native_prepare_hopper_transfer([pos.0, pos.1, pos.2]);
@@ -762,7 +774,12 @@ impl ServerGame<'_> {
     /// `tryMoveItems(…, () -> addItem(hopper, itemEntity))`; true when the
     /// item entity was taken whole.
     pub(in crate::game::server_side) fn hopper_take_item(&mut self, pos: Pos, i: usize) -> bool {
-        if self.server.hoppers.get(&pos).is_some_and(|h| h.cooldown > 0) {
+        if self
+            .server
+            .hoppers
+            .get(&pos)
+            .is_some_and(|h| h.cooldown > 0)
+        {
             return false;
         }
         let state = self.common.world.block(pos.0, pos.1, pos.2);
@@ -1017,11 +1034,18 @@ impl ServerGame<'_> {
         if x == i32::MAX - 15 && y == super::minecarts::CART_KEY_Y {
             let id = z as u32;
             let at = self
-                .common.carts
+                .common
+                .carts
                 .iter()
                 .find(|c| c.id == id)
                 .map(|c| c.position)
-                .or_else(|| self.common.boats.iter().find(|b| b.id == id).map(|b| b.position));
+                .or_else(|| {
+                    self.common
+                        .boats
+                        .iter()
+                        .find(|b| b.id == id)
+                        .map(|b| b.position)
+                });
             if let Some(p) = at {
                 return [p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32];
             }
@@ -1054,13 +1078,7 @@ impl ServerGame<'_> {
         cancel
     }
     /// The rest of `HopperBlockEntity.ejectItems`: one item into `target`.
-    pub fn eject_into(
-        &mut self,
-        pos: Pos,
-        hopper: &View,
-        target: &View,
-        face: Direction,
-    ) -> bool {
+    pub fn eject_into(&mut self, pos: Pos, hopper: &View, target: &View, face: Direction) -> bool {
         self.unpack_inventory_slot(hopper, 0);
         if self.inventory_is_full(target, face) {
             return false;
@@ -1096,7 +1114,8 @@ impl ServerGame<'_> {
         let above_state = self.common.world.block(above.0, above.1, above.2);
         let blocked = self.common.res.facts().get(above_state).full_collision
             && !self
-                .common.res
+                .common
+                .res
                 .behaviours()
                 .tag("minecraft:does_not_block_hoppers")
                 .is_some_and(|t| t.contains(self.common.res.behaviours().block(above_state)));
@@ -1131,12 +1150,7 @@ impl ServerGame<'_> {
     /// there, from a container entity whose box meets the one around `at`
     /// (`getSourceContainerOrHandler`). `None` when there is no container. A capability part
     /// above takes the container's place.
-    pub fn suck_from_container(
-        &mut self,
-        above: Pos,
-        at: [f64; 3],
-        hopper: &View,
-    ) -> Option<bool> {
+    pub fn suck_from_container(&mut self, above: Pos, at: [f64; 3], hopper: &View) -> Option<bool> {
         let (x, y, z) = hopper.parts[0].0;
         if let Some(part) = self.item_part_at(above, Direction::Down) {
             let above = [above.0, above.1, above.2];
@@ -1186,7 +1200,10 @@ impl ServerGame<'_> {
             self.with_level(|b, level, ticks| b.composter_empty(level, ticks, at));
             let moved = self.add_item(None, hopper, bone_meal, None).is_none();
             self.with_level(|b, level, ticks| b.composter_empty(level, ticks, at));
-            self.common.world.modified.insert((above.0 >> 4, above.2 >> 4));
+            self.common
+                .world
+                .modified
+                .insert((above.0 >> 4, above.2 >> 4));
             return Some(moved);
         }
         let source_hopper = (source.kind == Kind::Hopper).then_some(above);
@@ -1248,7 +1265,8 @@ impl ServerGame<'_> {
                 && hi.z > at[2] - 0.5
         };
         let mut found: Vec<u32> = self
-            .common.carts
+            .common
+            .carts
             .iter()
             .filter(|c| {
                 matches!(
@@ -1259,7 +1277,8 @@ impl ServerGame<'_> {
             .map(|c| c.id)
             .collect();
         found.extend(
-            self.common.boats
+            self.common
+                .boats
                 .iter()
                 .filter(|b| b.chest && meets(b.bounds()))
                 .map(|b| b.id),
@@ -1272,7 +1291,12 @@ impl ServerGame<'_> {
         if len == 0 {
             return None;
         }
-        let pick = self.common.world.random.next_int_bound(len as i32).unwrap_or(0);
+        let pick = self
+            .common
+            .world
+            .random
+            .next_int_bound(len as i32)
+            .unwrap_or(0);
         Some(pick as usize)
     }
     /// The entity item automation reaches around `at` from `side`, through `ENTITY_AUTOMATION`: one of
@@ -1349,11 +1373,15 @@ impl ServerGame<'_> {
                 sunrise_gameplay_common::game::container_loot_level::LootTarget::Cart(id),
                 None,
             );
-            self.common.carts.update(i, |c| std::mem::take(&mut c.items))
+            self.common
+                .carts
+                .update(i, |c| std::mem::take(&mut c.items))
         } else {
             let i = self.common.boats.iter().position(|b| b.id == id)?;
             self.unpack_boat_loot(i, false);
-            self.common.boats.update(i, |b| std::mem::take(&mut b.items))
+            self.common
+                .boats
+                .update(i, |b| std::mem::take(&mut b.items))
         };
         let key = (i32::MAX - 15, super::minecarts::CART_KEY_Y, id as i32);
         let (view, open) = self.lend_items(key, &mut items);
@@ -1380,7 +1408,8 @@ impl ServerGame<'_> {
             self.common.world.block_entities.insert(key, slots);
         }
         let size = self
-            .common.world
+            .common
+            .world
             .block_entities
             .get(&key)
             .map_or(0, |e| e.slots().len());
@@ -1498,10 +1527,7 @@ impl ServerGame<'_> {
     /// entities over it or touching it, each tick without a cooldown.
     /// `consumedItemThisFrame` in 26.3 caps a tick at one item: the tick tries
     /// once, and `makeStepAlongTrack` may try again, but only one succeeds.
-    pub fn hopper_cart_suck(
-        &mut self,
-        cart: &mut super::minecarts::Minecart,
-    ) {
+    pub fn hopper_cart_suck(&mut self, cart: &mut super::minecarts::Minecart) {
         if !self.unpack_ticked_cart_loot(cart) {
             return;
         }
@@ -1543,11 +1569,7 @@ impl ServerGame<'_> {
     // ---- dispensers and droppers ----
 
     /// `DispenserBlock.dispenseFrom` / `DropperBlock.dispenseFrom`.
-    pub fn dispense_from(
-        &mut self,
-        pos: BlockPos,
-        state: BlockStateId,
-    ) -> Result<()> {
+    pub fn dispense_from(&mut self, pos: BlockPos, state: BlockStateId) -> Result<()> {
         let key = (pos.x, pos.y, pos.z);
         let name = self.common.res.facts().get(state).name.clone();
         if &*name == "minecraft:crafter" {
@@ -1652,7 +1674,9 @@ impl ServerGame<'_> {
             if let Some(entry) = self.slot_mut_at(&view, slot) {
                 *entry = remaining;
                 if dropper {
-                    self.after_commit(sunrise_gameplay_common::game::transactions::After::Changed(key));
+                    self.after_commit(sunrise_gameplay_common::game::transactions::After::Changed(
+                        key,
+                    ));
                 } else {
                     self.after_holder_changed(holder);
                 }

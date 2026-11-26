@@ -1,5 +1,3 @@
-
-
 #![cfg(test)]
 #[cfg(feature = "client")]
 #[cfg(test)]
@@ -151,7 +149,11 @@ mod tests {
     }
 
     /// A column of stone at `x, z` with a chest at (3, 70, 5) in it, which its packet lists.
-    fn column_with_a_chest(game: &sunrise_client_gameplay::game::ClientGame<'_>, x: i32, z: i32) -> C {
+    fn column_with_a_chest(
+        game: &sunrise_client_gameplay::game::ClientGame<'_>,
+        x: i32,
+        z: i32,
+    ) -> C {
         let chest = game
             .pack
             .assets
@@ -287,7 +289,10 @@ mod tests {
     }
 
     /// The diamonds of the chest at `pos` in the player's world, if it has them.
-    fn diamonds_at(game: &sunrise_client_gameplay::game::ClientGame<'_>, pos: (i32, i32, i32)) -> Option<u32> {
+    fn diamonds_at(
+        game: &sunrise_client_gameplay::game::ClientGame<'_>,
+        pos: (i32, i32, i32),
+    ) -> Option<u32> {
         let chest = game.world.block_entities.get(&pos).expect("a chest");
         let item = chest.slots()[3].as_ref()?;
         assert_eq!(item.item.as_ref(), "minecraft:diamond");

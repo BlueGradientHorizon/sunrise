@@ -4,11 +4,11 @@
 //! cancelled guest walk 69 steps with no rollback — the threshold let every
 //! small cancel through. Built on the real hub: a hosted guest, a packet in
 //! its inbox, the hub's own collide path.
-use sunrise_gameplay::game::game_tests::tests::server_game;
 use mod_api::{EntityMoveEvent, Flow, Hooks, LoopContext};
 use std::sync::Arc;
 use std::sync::atomic::AtomicI32;
 use sunrise_core::position::ChunkPos;
+use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_protocol::packets::configuration::ClientInformation;
 use sunrise_protocol::packets::play::{Clientbound as C, Serverbound as S};
 use sunrise_sim::lan::guest::{InboxItem, SURVIVAL};
@@ -47,7 +47,11 @@ fn hosted_guest<R>(
     net: &str,
     boat: bool,
     mods: mod_api::Mods,
-    body: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, std::sync::mpsc::Receiver<Out>, [f64; 3]) -> R,
+    body: impl FnOnce(
+        &mut sunrise_gameplay::game::ServerGame<'_>,
+        std::sync::mpsc::Receiver<Out>,
+        [f64; 3],
+    ) -> R,
 ) -> R {
     hosted_guest_starting(net, [0.5, 100.0, 0.5], SURVIVAL, boat, mods, body)
 }
@@ -61,7 +65,11 @@ fn hosted_guest_starting<R>(
     mode: i32,
     boat: bool,
     mods: mod_api::Mods,
-    body: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, std::sync::mpsc::Receiver<Out>, [f64; 3]) -> R,
+    body: impl FnOnce(
+        &mut sunrise_gameplay::game::ServerGame<'_>,
+        std::sync::mpsc::Receiver<Out>,
+        [f64; 3],
+    ) -> R,
 ) -> R {
     mod_platform::testing::with_mods(mods, || {
         let mut resources = None;

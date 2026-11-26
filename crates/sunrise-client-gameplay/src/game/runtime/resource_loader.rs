@@ -3,10 +3,19 @@
 //! `LoaderMsg`), the world's rest loader and a pending world entry, the ordinary launch
 //! (`run_loading`) and the smoke run's report (`write_report`).
 use super::*;
-use sunrise_gameplay_common::game::integrated_link::{ProfileResolverFactory, RunComponentHarness, Serve};
-use {crate::game::client_side::armor_stands_client, crate::game::client_side::boats_client, crate::game::client_side::frames_client, crate::game::client_side::resource_tables_client::ClientPackResources, crate::game::client_side::resource_tables_client::ClientResources, crate::game::client_side::resource_tables_client::UiResources, sunrise_gameplay_common::game::resource_load::WorldRestLoader};
+use sunrise_gameplay_common::game::integrated_link::{
+    ProfileResolverFactory, RunComponentHarness, Serve,
+};
 use sunrise_gameplay_common::painting_variants::PaintingVariants;
 use sunrise_sim::lan::SessionVerifier;
+use {
+    crate::game::client_side::armor_stands_client, crate::game::client_side::boats_client,
+    crate::game::client_side::frames_client,
+    crate::game::client_side::resource_tables_client::ClientPackResources,
+    crate::game::client_side::resource_tables_client::ClientResources,
+    crate::game::client_side::resource_tables_client::UiResources,
+    sunrise_gameplay_common::game::resource_load::WorldRestLoader,
+};
 
 #[test]
 fn worker_prepares_owned_models_and_inventory_before_handoff() {
@@ -516,9 +525,7 @@ pub enum PendingWorldEntry {
 }
 
 #[cfg(feature = "client")]
-pub(in crate::game) fn write_report(
-    game: &crate::game::ClientGame<'_>,
-) -> Result<()> {
+pub(in crate::game) fn write_report(game: &crate::game::ClientGame<'_>) -> Result<()> {
     if let Some(path) = &game.options.report {
         let report = serde_json::json!({
             "frames": game.client.frames,

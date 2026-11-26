@@ -3,19 +3,19 @@
 //! gives each visible adult hoglin the nearer of its current target and the
 //! new one (`setAttackTargetIfCloserThanCurrent`)
 //! (tools/test_hoglin_repeat_attack_parity.py measures the same on vanilla 26.3).
+use super::*;
+use crate::game::load_resources;
 use crate::settings::Settings;
+use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
+use sunrise_core::position::ChunkPos;
 use sunrise_gameplay_common::game::Dim;
 use sunrise_gameplay_common::game::Options;
-use crate::game::load_resources;
-use sunrise_gameplay_common::game::resource_load::Progress;
 #[cfg(test)]
 use sunrise_gameplay_common::game::commands_common::Target;
 #[cfg(test)]
 use sunrise_gameplay_common::game::execution_role;
-use super::*;
-use std::sync::Arc;
-use sunrise_core::position::ChunkPos;
+use sunrise_gameplay_common::game::resource_load::Progress;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::motion::PlayerMotion;
 
@@ -351,8 +351,8 @@ impl mod_api::Hooks for BroadcastTargetListener {
 #[test]
 #[ignore = "daily"]
 fn hoglin_broadcast_obeys_target_cancellation_and_redirection() {
-    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use sunrise_sim::mobs::{Mob, MobEvent, Who};
 
     let state = Arc::new(std::sync::Mutex::new((0, None, None)));
@@ -412,7 +412,10 @@ fn hoglin_broadcast_obeys_target_cancellation_and_redirection() {
             assert_eq!(state.lock().unwrap().0, 2);
             assert_eq!(game.mobs[0].ai.target, None);
 
-            use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};
+            use {
+                sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan,
+                sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
+            };
             open_to_lan(game);
             for conn in [12, 13] {
                 let mut placed = guest(conn);
@@ -423,7 +426,12 @@ fn hoglin_broadcast_obeys_target_cancellation_and_redirection() {
             let attacker_id = game.guest_identity(12).unwrap().1;
             let attacker = mod_api::LivingRef::new(mod_api::EntityRef::new(epoch, attacker_id));
             game.mobs[0].extra.ints[0] = 0;
-            game.server.lan.as_mut().unwrap().mob_players.insert(9001, 13);
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .mob_players
+                .insert(9001, 13);
             let broadcast_player = || {
                 vec![MobEvent::HoglinAttackTarget {
                     mob: 9001,
@@ -474,7 +482,12 @@ fn hoglin_broadcast_obeys_target_cancellation_and_redirection() {
             assert_eq!(state.lock().unwrap().0, before + 2);
             assert_eq!(game.mobs[0].ai.target, Some(Who::Player));
             assert_eq!(game.server.lan.as_ref().unwrap().mob_players[&9001], 13);
-            game.server.lan.as_mut().unwrap().mob_players.insert(9001, 12);
+            game.server
+                .lan
+                .as_mut()
+                .unwrap()
+                .mob_players
+                .insert(9001, 12);
             game.handle_mob_events(broadcast_nearer_player()).unwrap();
             assert_eq!(state.lock().unwrap().0, before + 3);
             assert_eq!(game.server.lan.as_ref().unwrap().mob_players[&9001], 13);
@@ -502,7 +515,10 @@ fn broadcast(
     game.handle_mob_events(vec![event]).unwrap();
 }
 
-fn target_of(game: &sunrise_gameplay::game::ServerGame<'_>, id: u32) -> Option<sunrise_sim::mobs::Who> {
+fn target_of(
+    game: &sunrise_gameplay::game::ServerGame<'_>,
+    id: u32,
+) -> Option<sunrise_sim::mobs::Who> {
     game.mobs.iter().find(|m| m.id == id).unwrap().ai.target
 }
 
@@ -653,7 +669,12 @@ fn a_guest_broadcast_is_placed_as_the_guest() {
     assert_eq!(bound(&game), None);
     // From a hoglin bound to the guest: the guest is nearer, and the receiver
     // now sees that guest.
-    game.server.lan.as_mut().unwrap().mob_players.insert(from, 2);
+    game.server
+        .lan
+        .as_mut()
+        .unwrap()
+        .mob_players
+        .insert(from, 2);
     broadcast(&mut game, receiver, from, Who::Player);
     assert_eq!(
         target_of(&game, receiver),

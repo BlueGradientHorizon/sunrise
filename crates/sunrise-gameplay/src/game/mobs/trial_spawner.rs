@@ -112,7 +112,8 @@ impl crate::game::ServerGame<'_> {
             return Ok(());
         };
         let result = self.server_tick_trial_spawner(key, &mut spawner, current, ominous);
-        self.common.world
+        self.common
+            .world
             .block_entities
             .put(lease, BlockEntity::TrialSpawner(spawner));
         result
@@ -147,7 +148,8 @@ impl crate::game::ServerGame<'_> {
     /// The trial spawner block at `key`: its state and ominous flag.
     pub(in crate::game) fn trial_spawner_block(&self, key: Pos) -> Option<(TrialState, bool)> {
         let block = self
-            .common.pack
+            .common
+            .pack
             .assets
             .registry
             .state(self.common.world.block(key.0, key.1, key.2))?;
@@ -280,8 +282,13 @@ impl crate::game::ServerGame<'_> {
                 }
                 TrialEvent::TrialOmen(uuid) => self.bad_omen_to_trial_omen(uuid),
                 TrialEvent::Discard(uuid) => {
-                    if let Some((&id, _)) = self.common.persist.uuids.iter().find(|(_, u)| **u == uuid)
-                        && let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed)
+                    if let Some((&id, _)) =
+                        self.common.persist.uuids.iter().find(|(_, u)| **u == uuid)
+                        && let Some(m) = self
+                            .common
+                            .mobs
+                            .iter_mut()
+                            .find(|m| m.id == id && !m.removed)
                     {
                         let at = m.position;
                         let drops = sunrise_sim::mobs::drops::drop_preserved_equipment(m);
@@ -333,7 +340,8 @@ impl crate::game::ServerGame<'_> {
         // MobEffect.onEffectAdded plays at the player's feet.
         let feet = if self.acting_uuid() == uuid {
             let added = transform_bad_omen(&mut self.common.potions.effects);
-            self.common.player
+            self.common
+                .player
                 .as_ref()
                 .filter(|_| added)
                 .map(|p| [p.position.x, p.position.y, p.position.z])
@@ -357,7 +365,8 @@ impl crate::game::ServerGame<'_> {
     }
     /// `sendBlockUpdated` of a block entity: the clients load its new update tag.
     pub fn mark_block_entity_updated(&mut self, key: Pos) {
-        self.common.world
+        self.common
+            .world
             .path_type_block_updated(sunrise_core::position::BlockPos::new(key.0, key.1, key.2));
         if let Some(log) = self.common.world.block_log.as_mut() {
             log.push(key);
@@ -408,10 +417,14 @@ mod omen_tests {
     #[test]
     #[ignore = "daily"]
     fn ominous_item_target_uses_the_reloaded_player_table() {
-        use {crate::game::native_entity_refs::tests::with_game, crate::game::native_living_flags::tests::guest_server, sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest};
         use std::sync::Arc;
         use sunrise_core::nbt::parse_snbt;
         use sunrise_level::chunk::Chunk;
+        use {
+            crate::game::native_entity_refs::tests::with_game,
+            crate::game::native_living_flags::tests::guest_server,
+            sunrise_gameplay_common::game::server_side::native_sound_refs::tests::guest,
+        };
 
         with_game(|game| {
             guest_server(game, false, false);

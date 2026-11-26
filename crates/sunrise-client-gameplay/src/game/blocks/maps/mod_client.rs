@@ -1,11 +1,11 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::maps::{
-    Decoration, Key, MapData, decoration_pose, decoration_pose_at, decoration_sprite, map_id,
-    packed_rgba, shown_on_frame,
-};
 use sunrise_client::{
     hud::{HudBatch, Rect, map_slot_sprite},
     mesher::Vertex,
+};
+use sunrise_gameplay_common::game::maps::{
+    Decoration, Key, MapData, decoration_pose, decoration_pose_at, decoration_sprite, map_id,
+    packed_rgba, shown_on_frame,
 };
 
 impl ClientGame<'_> {
@@ -84,7 +84,8 @@ impl ClientGame<'_> {
         });
         let dimension = self.common.dim.id();
         let map = self
-            .common.maps
+            .common
+            .maps
             .data
             .entry(p.map_id)
             .or_insert_with(|| MapData::fresh(0.0, 0.0, p.scale.max(0) as u8, dimension));
@@ -195,7 +196,12 @@ impl ClientGame<'_> {
             ],
             out,
         );
-        let decorations = self.common.maps.data.get(&id).map_or(&[][..], |m| &m.decorations);
+        let decorations = self
+            .common
+            .maps
+            .data
+            .get(&id)
+            .map_or(&[][..], |m| &m.decorations);
         let mut count = 0;
         for d in decorations {
             if show_only_frame && !shown_on_frame(d.sprite) {
@@ -293,7 +299,8 @@ impl ClientGame<'_> {
     /// The maps the player carries, for `status`: how many of their pixels
     /// are drawn, and their decorations.
     pub(in crate::game::client_side) fn maps_status(&self) -> Vec<serde_json::Value> {
-        self.common.inventory
+        self.common
+            .inventory
             .iter()
             .chain(std::iter::once(&self.common.offhand))
             .flatten()
@@ -352,7 +359,11 @@ impl ClientGame<'_> {
         use sunrise_core::geometry::trig::Mth;
         let deg = |d: f32| d.to_radians();
         let base = to_world
-            * sunrise_client::first_person::two_handed_map_base(self.common.pitch, inverse_height, attack);
+            * sunrise_client::first_person::two_handed_map_base(
+                self.common.pitch,
+                inverse_height,
+                attack,
+            );
         let swing = (attack.sqrt() * std::f32::consts::PI).msin();
         let m = base
             * glam::Mat4::from_rotation_x(deg(swing * 20.0))

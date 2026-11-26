@@ -1,15 +1,18 @@
 //! The native travel decision affects real player reports and sends vanilla corrections.
-use sunrise_protocol::packets::play::Clientbound as C;
 use super::*;
-use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-use {sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::with_game_role};
-use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest as online_guest;
 use mod_api::{EntityMoveEvent, Flow, Hooks, LivingTravelEvent, LoopContext, MoveCause};
 use std::sync::atomic::{AtomicUsize, Ordering};
+use sunrise_gameplay_common::game::execution_role::ExecutionRole;
+use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest as online_guest;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::packets::play;
+use sunrise_protocol::packets::play::Clientbound as C;
 use sunrise_protocol::packets::play::Serverbound as S;
 use sunrise_sim::lan::{NetConfig, Out, hub::HubConfig};
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_role,
+};
 
 pub(crate) const START: [f64; 3] = [3.0, 64.0, 5.0];
 pub(crate) const ACCEPTED: [f64; 3] = [3.25, 64.0, 5.0];
@@ -80,7 +83,9 @@ pub(crate) fn with_player(
         {
             let (common, server) =
                 sunrise_gameplay_common::game::SideGame::common_and_state_mut(&mut *game);
-            server.streaming.insert_remote(&mut common.world, Chunk::empty(0, 0));
+            server
+                .streaming
+                .insert_remote(&mut common.world, Chunk::empty(0, 0));
         }
         let mut guest = online_guest(1);
         guest.loaded = true;

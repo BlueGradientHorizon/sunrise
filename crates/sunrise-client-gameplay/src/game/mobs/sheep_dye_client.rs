@@ -1,5 +1,5 @@
-use crate::game::ClientGame;
 use super::level_sounds_common::LevelSound;
+use crate::game::ClientGame;
 use mod_api::SoundSource;
 use sunrise_sim::first_person_sim::Hand;
 use sunrise_sim::mobs::sheep_dye;

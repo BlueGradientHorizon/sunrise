@@ -1,5 +1,4 @@
 use crate::game::remote::tests::dig_abort_tests::CountActions;
-use {sunrise_gameplay_common::game::Hit, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use mod_api::ModEntry;
 use mod_platform::testing::with_mods;
 use std::sync::{
@@ -10,6 +9,10 @@ use sunrise_core::geometry::Vec3;
 use sunrise_level::chunk::Chunk;
 use sunrise_protocol::connection::Pipe;
 use sunrise_sim::motion::PlayerMotion;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay_common::game::Hit,
+};
 
 #[test]
 #[ignore = "daily"]

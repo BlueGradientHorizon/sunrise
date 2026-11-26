@@ -1,13 +1,16 @@
-use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
-use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle};
 use mod_api::ClientHost;
 use sunrise_client::level_loading::Reason;
+use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 use sunrise_core::geometry::Vec3;
 use sunrise_protocol::{
     connection::Pipe,
     packets::play::{self, Clientbound as C, SpawnInfo},
 };
 use sunrise_sim::motion::PlayerMotion;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycle,
+};
 
 #[test]
 #[ignore = "run by tools/test_camera_parity.py"]
@@ -19,7 +22,9 @@ fn a_named_mob_the_server_camera_is_attached_to_shows_no_name_tag() {
 #[ignore = "daily"]
 fn client_camera_entity_returns_to_player_after_removal() {
     with_client_game(|game| {
-        let camera = |game: &sunrise_client_gameplay::game::ClientGame<'_>| (game as &dyn ClientHost).camera_entity();
+        let camera = |game: &sunrise_client_gameplay::game::ClientGame<'_>| {
+            (game as &dyn ClientHost).camera_entity()
+        };
         assert!(camera(game).is_none(), "the fixture has no player");
         game.native_lifecycle = NativeLifecycle::default();
         let (client, _server) = Pipe::pair();

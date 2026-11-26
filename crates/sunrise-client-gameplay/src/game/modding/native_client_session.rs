@@ -1,8 +1,8 @@
 //! Read-only projections of the connected client's existing state.
 
+use crate::game::client_side::remote_client::Remote;
 use mod_api::{BlockBreakingState, BlockPos, ClientFrameStats, ClientServer, PlayerRef};
 use std::sync::Arc;
-use crate::game::client_side::remote_client::Remote;
 
 impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn native_session(&self) -> Option<&Remote> {
@@ -183,12 +183,12 @@ fn tab_list(
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
+    use super::super::native_entity_refs::tests::with_client_game;
+    use super::*;
     #[cfg(test)]
     use mod_api::prelude::*;
     #[cfg(test)]
     use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1;
-    use super::super::native_entity_refs::tests::with_client_game;
-    use super::*;
 
     #[cfg(test)]
     /// The Tab overlay's names, order, cap, header and footer, as `client_tab_list` reads them.
@@ -435,10 +435,12 @@ pub mod tests {
     /// Lists this client's own player with `latency`, as the server's player info update does.
     #[cfg(test)]
     fn list_self(remote: &mut Remote, latency: i32) {
-        let mut me = sunrise_level::profile_lookup::TabPlayer::new(remote.profile, "SessionReadTest");
+        let mut me =
+            sunrise_level::profile_lookup::TabPlayer::new(remote.profile, "SessionReadTest");
         me.latency = latency;
         remote.tab_players.insert(remote.profile, me);
-        remote.tab_game_modes
+        remote
+            .tab_game_modes
             .entry(remote.profile)
             .or_insert_with(|| Arc::new(std::sync::atomic::AtomicI32::new(0)));
     }

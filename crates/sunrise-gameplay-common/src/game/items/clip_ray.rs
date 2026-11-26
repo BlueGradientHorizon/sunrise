@@ -3,7 +3,7 @@ use super::*;
 
 pub trait ClipRayGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `clip_ray`; with `fluids`, the first fluid block a hit too, at its near face (`ClipContext.Fluid.ANY`).
-     fn clip_ray_fluids(
+    fn clip_ray_fluids(
         &self,
         origin: [f64; 3],
         dir: [f64; 3],
@@ -173,7 +173,6 @@ pub trait ClipRayGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> ClipRayGameExt1<'__sg> for G {}
-
 
 /// `VoxelShape.clip`'s inside case: the start point nudged along the ray lies in
 /// one of the outline's boxes, so the hit is there, facing the look.

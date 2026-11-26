@@ -527,15 +527,17 @@ fn console_output_is_logged_and_broadcast_once() {
             with_operators(|game, receivers| {
                 chats(game, receivers);
                 set_rules(game, true, true);
-                let console = |game: &mut sunrise_gameplay::game::ServerGame<'_>, rcon: bool, line: &str| {
-                    game.server.console_broadcast = Some(true);
-                    game.server.rcon_source = rcon;
-                    let logged =
-                        sunrise_gameplay::game::dedicated::capture_log(|| game.console_dispatch(line));
-                    game.server.console_broadcast = None;
-                    game.server.rcon_source = false;
-                    logged
-                };
+                let console =
+                    |game: &mut sunrise_gameplay::game::ServerGame<'_>, rcon: bool, line: &str| {
+                        game.server.console_broadcast = Some(true);
+                        game.server.rcon_source = rcon;
+                        let logged = sunrise_gameplay::game::dedicated::capture_log(|| {
+                            game.console_dispatch(line)
+                        });
+                        game.server.console_broadcast = None;
+                        game.server.rcon_source = false;
+                        logged
+                    };
                 let nobody = vec![
                     (SOURCE, Vec::new()),
                     (TARGET, Vec::new()),

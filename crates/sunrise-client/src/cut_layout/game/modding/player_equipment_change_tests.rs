@@ -6,8 +6,8 @@ use std::sync::{Arc, Mutex};
 use mod_api::{self, Hooks, LivingEquipmentChangeEvent, LivingEquipmentListenedEvent, ServerHost};
 use sunrise_items::items::ItemStack;
 
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
+use sunrise_gameplay_common::game::api_values::TryIntoApi;
 
 /// What each call saw: the entity, its kind, the slot, and the stacks before and after.
 type Heard = Vec<(
@@ -46,7 +46,10 @@ impl Hooks for Counter {
     }
 }
 
-fn with_counter(listens: bool, test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Mutex<Heard>)) {
+fn with_counter(
+    listens: bool,
+    test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, &Mutex<Heard>),
+) {
     let heard = Arc::new(Mutex::new(Heard::new()));
     let counter = Counter {
         heard: heard.clone(),

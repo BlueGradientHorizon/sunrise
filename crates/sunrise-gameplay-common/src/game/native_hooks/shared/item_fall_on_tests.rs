@@ -5,9 +5,7 @@ use std::sync::{Arc, Mutex};
 /// What the part on stone heard of a landing: entity, kind, block, fall and damage. It
 /// asks for the block to be destroyed.
 #[derive(Clone, Default)]
-pub struct Lands(
-    pub Arc<Mutex<Vec<(i32, String, BlockPos, f64, f32)>>>,
-);
+pub struct Lands(pub Arc<Mutex<Vec<(i32, String, BlockPos, f64, f32)>>>);
 #[mod_api::sunrise_part]
 impl BlockPart for Lands {
     fn fall_on(&self, _: &mut dyn LevelRandomHost, event: &mut FallOnEvent<'_>) {

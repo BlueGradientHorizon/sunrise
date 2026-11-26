@@ -59,7 +59,8 @@ pub trait Hooks {
     /// `item_crafted` or `item_smelted`, which keep their meaning: a result
     /// slot that gives experience, unlocks a recipe or consumes inputs does it
     /// here through the host. Nothing is asked when no part listens for `menu`.
-    #[hook(target = "sunrise_gameplay_common::game::native_hooks::menu_slot_take::native_menu_slot_take", 
+    #[hook(
+        target = "sunrise_gameplay_common::game::native_hooks::menu_slot_take::native_menu_slot_take",
         receiver = "associated",
         dispatch = "flat",
         side = "server",

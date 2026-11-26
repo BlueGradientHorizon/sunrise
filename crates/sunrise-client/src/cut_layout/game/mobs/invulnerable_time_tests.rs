@@ -2,12 +2,17 @@
 //! a `/data` edit keeps it; `invulnerable_time` is `Entity.invulnerableTime`,
 //! another field (tools/test_invulnerable_time_parity.py measures the same on
 //! vanilla 26.3).
-use {crate::game::*, sunrise_gameplay_common::game::{Instant, Mob, Options, PathBuf, Progress, Resources, entity, execution_role, hit}};
-use std::sync::Arc;
 use crate::game::load_resources;
 use crate::settings::Settings;
+use std::sync::Arc;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
+use {
+    crate::game::*,
+    sunrise_gameplay_common::game::{
+        Instant, Mob, Options, PathBuf, Progress, Resources, entity, execution_role, hit,
+    },
+};
 
 const EDIT: &str = "00006095-0000-0000-0000-000000000002";
 
@@ -70,7 +75,9 @@ fn health(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> f32 {
         .target_with_uuid(sunrise_sim::save::uuid_from_text(EDIT).unwrap())
         .unwrap();
     match target {
-        sunrise_gameplay_common::game::commands_common::Target::Mob(id) => game.mobs.iter().find(|m| m.id == id).unwrap().health,
+        sunrise_gameplay_common::game::commands_common::Target::Mob(id) => {
+            game.mobs.iter().find(|m| m.id == id).unwrap().health
+        }
         other => panic!("{other:?}"),
     }
 }

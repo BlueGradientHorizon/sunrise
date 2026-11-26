@@ -117,7 +117,8 @@ impl crate::game::ServerGame<'_> {
         };
         let (block, native) = match slots {
             Slots::Block(pos) => {
-                let Some(BlockEntity::Mod(block)) = self.common.world.block_entities.get(&pos) else {
+                let Some(BlockEntity::Mod(block)) = self.common.world.block_entities.get(&pos)
+                else {
                     return Err(Refusal::Unavailable);
                 };
                 (
@@ -210,7 +211,8 @@ impl crate::game::ServerGame<'_> {
         };
         match slots {
             Slots::Block(pos) => {
-                let Some(BlockEntity::Mod(block)) = self.common.world.block_entities.get(&pos) else {
+                let Some(BlockEntity::Mod(block)) = self.common.world.block_entities.get(&pos)
+                else {
                     return false;
                 };
                 before.native.is_none()

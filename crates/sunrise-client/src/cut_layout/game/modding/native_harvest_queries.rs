@@ -1,25 +1,25 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::server_side::native_harvest_queries::tests::{Asker, RecursiveAsker};
+    use sunrise_gameplay_common::game::server_side::native_harvest_queries::tests::{
+        Asker, RecursiveAsker,
+    };
 
-use mod_api::__private::game::Fields;
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
-use sunrise_gameplay_common::game::native_harvest_queries_common::NativeHarvestQueriesCommonGameExt1;
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
-use sunrise_gameplay_common::game::native_block_tables::BlockTables;
+    use mod_api::__private::game::Fields;
+    use sunrise_gameplay_common::game::native_block_tables::BlockTables;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1;
+    use sunrise_gameplay_common::game::native_harvest_queries_common::NativeHarvestQueriesCommonGameExt1;
+    use sunrise_gameplay_common::game::native_server::NativeServerGameExt1;
 
-use super::super::native_guest_turn_tests::with_guests;
+    use super::super::native_guest_turn_tests::with_guests;
 
-use mod_api::__private::game::player_ref;
+    use mod_api::__private::game::player_ref;
 
-use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex};
 
-use sunrise_items::items::ItemStack;
+    use sunrise_items::items::ItemStack;
 
-/// A stack is the correct tool by its own rules only; a player is by their selected slot
+    /// A stack is the correct tool by its own rules only; a player is by their selected slot
     /// (never the offhand), and a block that needs no tool is harvested by an empty hand.
     #[test]
     #[ignore = "daily"]
@@ -100,7 +100,7 @@ use sunrise_items::items::ItemStack;
             assert_eq!(ask(game, stale, stone), None);
         });
     }
-/// A supplied state answers the dig's own math for that state, not the block at the
+    /// A supplied state answers the dig's own math for that state, not the block at the
     /// position, and an unknown state asks nothing.
     #[test]
     #[ignore = "daily"]
@@ -142,7 +142,7 @@ use sunrise_items::items::ItemStack;
             );
         })
     }
-/// Two fake players answer from their own selected slots and run the ordinary hooks.
+    /// Two fake players answer from their own selected slots and run the ordinary hooks.
     /// From inside those hooks the query refuses even a different state.
     #[test]
     #[ignore = "daily"]
@@ -191,7 +191,7 @@ use sunrise_items::items::ItemStack;
             });
         });
     }
-/// The query refuses from every hook it would otherwise run again: the two harvest hooks
+    /// The query refuses from every hook it would otherwise run again: the two harvest hooks
     /// and the break-speed hook.
     #[test]
     #[ignore = "daily"]

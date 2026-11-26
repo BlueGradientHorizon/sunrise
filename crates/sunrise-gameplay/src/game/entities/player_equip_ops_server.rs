@@ -10,7 +10,8 @@ impl ServerGame<'_> {
         }
         self.native_on_equip(slot, new);
         let Some(at) = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .filter(|_| self.acting_in_level_in_place())
             .map(|p| p.position)

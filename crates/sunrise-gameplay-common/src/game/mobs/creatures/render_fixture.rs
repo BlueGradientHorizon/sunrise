@@ -4,13 +4,7 @@ use sunrise_sim::mobs::{Anim, Brain, Mob, MobType, Species};
 
 /// A mob of `species` with the box of its vanilla type, built without the
 /// prepared resources a test machine may not have.
-pub fn mob(
-    id: u32,
-    entity: &str,
-    species: Species,
-    width: f64,
-    height: f64,
-) -> Mob {
+pub fn mob(id: u32, entity: &str, species: Species, width: f64, height: f64) -> Mob {
     let kind = MobType {
         type_key: Default::default(),
         id: entity.into(),

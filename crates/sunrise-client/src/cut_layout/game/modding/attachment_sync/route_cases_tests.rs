@@ -1,9 +1,7 @@
 //! More of step 4a's acceptance list over LAN TCP, from a server in the dedicated role: a
 //! negotiated peer that does not see the holder is sent nothing, and a message keeps its
 //! place among the player's held gameplay packets.
-use super::transport_tests::{
-    Route, VALUE, peer, store, sync_packets_within, values_until,
-};
+use super::transport_tests::{Route, VALUE, peer, store, sync_packets_within, values_until};
 use std::time::{Duration, Instant};
 use sunrise_core::nbt::Tag;
 use sunrise_mod_runtime::attachments::{AttachmentSync, Holder};

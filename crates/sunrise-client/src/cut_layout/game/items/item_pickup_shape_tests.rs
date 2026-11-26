@@ -1,11 +1,11 @@
 #![cfg(test)]
-use sunrise_core::random::RandomSource;
-use sunrise_items::items::ItemStack;
 use super::*;
 use mod_api::{Flow, Hooks, ItemPickedUpEvent, ModEntry, ServerHost};
 use mod_platform::testing::with_mods;
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
+use sunrise_core::random::RandomSource;
+use sunrise_items::items::ItemStack;
 use sunrise_sim::join_seq::{
     Joined as _,
     residency::{Journal, Kind, Owner, table::EntityTable},
@@ -79,7 +79,10 @@ fn indexed_pickup_keeps_bound_survivors_and_processes_shifted_tail() {
     .into();
     with_mods(mods, || {
         let mut loaded = 0;
-        for dimension in [sunrise_gameplay_common::game::Dim::Overworld, sunrise_gameplay_common::game::Dim::Nether] {
+        for dimension in [
+            sunrise_gameplay_common::game::Dim::Overworld,
+            sunrise_gameplay_common::game::Dim::Nether,
+        ] {
             let scratch = std::path::PathBuf::from(
                 std::env::var_os("SUNRISE_HOME")
                     .expect("pickup fixture requires an isolated SUNRISE_HOME"),

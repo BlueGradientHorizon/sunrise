@@ -1,20 +1,18 @@
-
-
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
 
-use super::*;
+    use super::*;
 
-use std::sync::{Arc, mpsc};
+    use std::sync::{Arc, mpsc};
 
-use sunrise_protocol::{
+    use sunrise_protocol::{
         buf::Reader,
         packets::play::{self, Clientbound as C, Serverbound as S},
     };
 
-use sunrise_sim::lan::{Out, PlayerSender};
+    use sunrise_sim::lan::{Out, PlayerSender};
 
-/// The packets sent since the last call.
+    /// The packets sent since the last call.
     pub fn sent(rx: &mpsc::Receiver<Out>) -> Vec<C> {
         rx.try_iter()
             .flat_map(|out| match out {
@@ -29,6 +27,6 @@ use sunrise_sim::lan::{Out, PlayerSender};
             })
             .collect()
     }
-/// The content menu type shared by the mod-menu fixtures.
+    /// The content menu type shared by the mod-menu fixtures.
     pub const MOD_MENU: &str = "listen:status";
 }

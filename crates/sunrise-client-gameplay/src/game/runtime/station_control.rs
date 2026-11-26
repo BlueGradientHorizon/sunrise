@@ -1,10 +1,10 @@
 //! Control-socket commands for menus and item components, so scripts can
 //! drive the workstation screens (`sunrise-ctl click-slot 600`, ...).
 use super::Screen;
-use sunrise_gameplay_common::game::integrated_link::NO_ANSWER;
-use sunrise_gameplay_common::game::owner_link::{ControlRequest, OwnerRequest};
 use serde_json::{Value, json};
 use sunrise_game_data::Result;
+use sunrise_gameplay_common::game::integrated_link::NO_ANSWER;
+use sunrise_gameplay_common::game::owner_link::{ControlRequest, OwnerRequest};
 use sunrise_items::items::ItemStack;
 
 pub(in crate::game) const HELP: &[&str] = &[
@@ -129,11 +129,15 @@ impl crate::game::ClientGame<'_> {
                     return Err(format!("cannot place {name}").into());
                 }
                 if let Some(entity) = sunrise_level::containers::BlockEntity::for_block(&name) {
-                    self.common.world
+                    self.common
+                        .world
                         .block_entities
                         .insert((pos[0], pos[1], pos[2]), entity);
                 }
-                self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
+                self.common
+                    .world
+                    .modified
+                    .insert((pos[0] >> 4, pos[2] >> 4));
                 ok()
             }
             "use" => {
@@ -257,7 +261,9 @@ impl crate::game::ClientGame<'_> {
             "mount-menu" => {
                 let eye = self.common.eye_position().ok_or("no player")?;
                 let index = (0..self.common.mobs.len())
-                    .filter(|&i| sunrise_sim::mobs::equine::is_equine(self.common.mobs[i].species()))
+                    .filter(|&i| {
+                        sunrise_sim::mobs::equine::is_equine(self.common.mobs[i].species())
+                    })
                     .min_by(|&a, &b| {
                         let d = |i: usize| {
                             let c = self.common.mobs[i].center();

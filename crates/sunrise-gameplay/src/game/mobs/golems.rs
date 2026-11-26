@@ -31,7 +31,12 @@ impl ServerGame<'_> {
         head: [i32; 3],
         base: bool,
     ) -> Option<(&'static str, Vec<[i32; 3]>, [i32; 3])> {
-        let air = |p: [i32; 3]| self.common.res.facts().is_air(self.common.world.block(p[0], p[1], p[2]));
+        let air = |p: [i32; 3]| {
+            self.common
+                .res
+                .facts()
+                .is_air(self.common.world.block(p[0], p[1], p[2]))
+        };
         let snow = |c: char, p: [i32; 3]| match c {
             '^' => self.is_golem_head(p),
             _ => self.golem_block(p) == "minecraft:snow_block",
@@ -61,7 +66,8 @@ impl ServerGame<'_> {
     pub(in crate::game) fn copper_golem_base(&self, head: [i32; 3]) -> bool {
         let below = [head[0], head[1] - 1, head[2]];
         let name = self.golem_block(below);
-        self.common.res
+        self.common
+            .res
             .items()
             .block_tags
             .get("minecraft:copper")
@@ -139,10 +145,11 @@ impl ServerGame<'_> {
         });
         if let Some(chest) = chest {
             self.with_level(|b, level, ticks| b.set_block(level, ticks, pos, chest, 2));
-            if let Some(entity) =
-                sunrise_level::containers::BlockEntity::for_block(&self.common.res.facts().get(chest).name)
-            {
-                self.common.world
+            if let Some(entity) = sunrise_level::containers::BlockEntity::for_block(
+                &self.common.res.facts().get(chest).name,
+            ) {
+                self.common
+                    .world
                     .block_entities
                     .insert((below[0], below[1], below[2]), entity);
             }
@@ -238,7 +245,8 @@ impl ServerGame<'_> {
             let state = self.common.world.block(p[0], p[1], p[2]);
             let pos = sunrise_core::position::BlockPos::new(p[0], p[1], p[2]);
             self.with_level(|b, level, ticks| b.set_block(level, ticks, pos, air, 2));
-            self.common.level_events
+            self.common
+                .level_events
                 .push(sunrise_world::level::LevelEvent::LevelEvent {
                     id: 2001,
                     pos,

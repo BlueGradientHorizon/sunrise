@@ -8,7 +8,8 @@ pub trait Hooks {
     /// same. Wind bursts too, except dragons and end crystals. End crystals
     /// are also omitted from ordinary blasts: Sunrise removes them without a
     /// velocity to change. Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::explosion_knockback::ServerGame<'_>::native_explosion_knockback", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::explosion_knockback::ServerGame<'_>::native_explosion_knockback",
         dispatch = "flat",
         side = "server",
         contract = "collect",

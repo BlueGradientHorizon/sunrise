@@ -21,10 +21,7 @@ pub(in crate::game) type RecipeUpdate =
     Result<(Vec<(String, serde_json::Value)>, Vec<String>), String>;
 impl IncomingRecipes {
     /// Take one part; the finished update on the last.
-    pub fn push(
-        &mut self,
-        part: sunrise_sim::lan::recipes::ContentPart,
-    ) -> Option<RecipeUpdate> {
+    pub fn push(&mut self, part: sunrise_sim::lan::recipes::ContentPart) -> Option<RecipeUpdate> {
         if self.refused.is_none() {
             self.refused = part.refused;
         }
@@ -91,10 +88,7 @@ impl RecipeTables {
 
 #[cfg(any(test, feature = "test-support"))]
 impl RecipeTables {
-    pub fn install_test_recipes(
-        &mut self,
-        recipes: sunrise_sim::crafting::Recipes,
-    ) {
+    pub fn install_test_recipes(&mut self, recipes: sunrise_sim::crafting::Recipes) {
         self.synced = Some(recipes);
     }
 }

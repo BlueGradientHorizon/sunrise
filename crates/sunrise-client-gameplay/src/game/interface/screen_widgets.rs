@@ -4,7 +4,6 @@
 
 #[cfg(feature = "client")]
 use crate::game::host::draw::GameDrawContext;
-use sunrise_gameplay_common::game::api_values::TryIntoEngine;
 use mod_api::{
     __private::game::CallbackOwner,
     ScreenView, ScreenWidget, ScreenWidgetId, ScreenWidgets,
@@ -24,6 +23,7 @@ use sunrise_client::{
     widgets::{self, Kind, Narratable, Target},
 };
 use sunrise_game_data::text::{DARK_GRAY, Style, Text};
+use sunrise_gameplay_common::game::api_values::TryIntoEngine;
 use winit::keyboard::KeyCode;
 
 pub(in crate::game) struct MountedWidgetsInner {
@@ -172,10 +172,7 @@ impl MountedWidgetEntry {
     }
 
     #[cfg(feature = "client")]
-    pub(in crate::game) fn press_button(
-        &mut self,
-        game: &mut crate::game::ClientGame<'_>,
-    ) -> bool {
+    pub(in crate::game) fn press_button(&mut self, game: &mut crate::game::ClientGame<'_>) -> bool {
         let MountedWidgetKind::Button { state, on_press } = &mut self.kind else {
             return false;
         };
@@ -510,7 +507,12 @@ impl crate::game::ClientGame<'_> {
             }
             // IDs issued to a failed listener are never reused.
         });
-        self.client.screen_state.0.widgets.next_id.set(mount.next_id);
+        self.client
+            .screen_state
+            .0
+            .widgets
+            .next_id
+            .set(mount.next_id);
         let initial_focus =
             initial_focus.and_then(|id| entries.iter().position(|entry| entry.id == id));
         let mut inner = self.client.screen_state.0.widgets.inner.borrow_mut();
@@ -562,7 +564,13 @@ impl crate::game::ClientGame<'_> {
         }
         sunrise_client::preedit::reset();
         self.client.ime_area = None;
-        self.client.screen_state.0.widgets.inner.borrow_mut().focused = target;
+        self.client
+            .screen_state
+            .0
+            .widgets
+            .inner
+            .borrow_mut()
+            .focused = target;
         if let Some(old_idx) = previous {
             let disabled = {
                 let mut inner = self.client.screen_state.0.widgets.inner.borrow_mut();
@@ -658,7 +666,13 @@ impl crate::game::ClientGame<'_> {
         if entry.disabled || !entry.owner.is_enabled() {
             entry.disabled = true;
             self.client.screen_state.0.widgets.clear_links_for(idx);
-            self.client.screen_state.0.widgets.inner.borrow_mut().entries[idx] = Some(entry);
+            self.client
+                .screen_state
+                .0
+                .widgets
+                .inner
+                .borrow_mut()
+                .entries[idx] = Some(entry);
             return None;
         }
         let result = f(self, &mut entry);
@@ -696,11 +710,7 @@ impl crate::game::ClientGame<'_> {
         self.draw_mounted_screen_widgets_at(batch, Instant::now());
     }
 
-    pub fn draw_mounted_screen_widgets_at(
-        &self,
-        batch: &mut HudBatch,
-        now: Instant,
-    ) {
+    pub fn draw_mounted_screen_widgets_at(&self, batch: &mut HudBatch, now: Instant) {
         let len = self
             .client
             .screen_state
@@ -983,8 +993,13 @@ impl crate::game::ClientGame<'_> {
                         && self.client.screen_state.0.widgets.generation() == generation
                     {
                         self.set_mounted_widget_focus(Some(idx));
-                        self.client.screen_state.0.widgets.inner.borrow_mut().dragging =
-                            Some((idx, button));
+                        self.client
+                            .screen_state
+                            .0
+                            .widgets
+                            .inner
+                            .borrow_mut()
+                            .dragging = Some((idx, button));
                     }
                     return true;
                 }
@@ -1032,8 +1047,13 @@ impl crate::game::ClientGame<'_> {
                     if handled && self.client.screen_state.0.widgets.generation() == generation {
                         self.set_mounted_widget_focus(Some(idx));
                         if button == 0 {
-                            self.client.screen_state.0.widgets.inner.borrow_mut().dragging =
-                                Some((idx, button));
+                            self.client
+                                .screen_state
+                                .0
+                                .widgets
+                                .inner
+                                .borrow_mut()
+                                .dragging = Some((idx, button));
                         }
                     }
                     return id.is_none() || handled;
@@ -1057,7 +1077,13 @@ impl crate::game::ClientGame<'_> {
         if drag_button != button {
             return false;
         }
-        self.client.screen_state.0.widgets.inner.borrow_mut().dragging = None;
+        self.client
+            .screen_state
+            .0
+            .widgets
+            .inner
+            .borrow_mut()
+            .dragging = None;
         if self.client.screen_state.0.widgets.focused_index() != Some(idx) {
             return false;
         }
@@ -1089,7 +1115,8 @@ impl crate::game::ClientGame<'_> {
         else {
             return false;
         };
-        if drag_button != button || self.client.screen_state.0.widgets.focused_index() != Some(idx) {
+        if drag_button != button || self.client.screen_state.0.widgets.focused_index() != Some(idx)
+        {
             return false;
         }
         self.with_mounted_widget(idx, |game, entry| match &mut entry.kind {
@@ -1318,11 +1345,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Dispatch a key release to the focused mounted custom widget.
-    pub fn mounted_widget_key_released(
-        &mut self,
-        key: KeyCode,
-        modifiers: u32,
-    ) -> bool {
+    pub fn mounted_widget_key_released(&mut self, key: KeyCode, modifiers: u32) -> bool {
         let Some(idx) = self.client.screen_state.0.widgets.focused_index() else {
             return false;
         };
@@ -1349,11 +1372,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     /// Dispatch a typed or IME-committed character to the focused mounted widget.
-    pub fn mounted_widget_char_typed(
-        &mut self,
-        c: char,
-        modifiers: u32,
-    ) -> bool {
+    pub fn mounted_widget_char_typed(&mut self, c: char, modifiers: u32) -> bool {
         let Some(idx) = self.client.screen_state.0.widgets.focused_index() else {
             return false;
         };
@@ -1436,10 +1455,7 @@ impl crate::game::ClientGame<'_> {
     /// Read and optionally apply a `TextEdit` rewrite from
     /// `screen_char_typed_pre` for a focused mounted built-in `TextField`.
     /// Custom `ScreenWidget`s own their own state and return `None`.
-    pub fn mounted_focused_text_edit(
-        &mut self,
-        edited: Option<&TextEdit>,
-    ) -> Option<TextEdit> {
+    pub fn mounted_focused_text_edit(&mut self, edited: Option<&TextEdit>) -> Option<TextEdit> {
         let idx = self.client.screen_state.0.widgets.focused_index()?;
         self.with_mounted_widget(idx, |game, entry| match &mut entry.kind {
             MountedWidgetKind::TextField {

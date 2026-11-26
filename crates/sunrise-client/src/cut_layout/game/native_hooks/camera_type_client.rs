@@ -1,14 +1,12 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod camera_type_tests {
-    use sunrise_gameplay_common::game::native_hooks::camera_type::camera_type_tests::Calls;
-    use sunrise_gameplay_common::game::native_hooks::camera_type::camera_type_tests::NoFront;
-    use sunrise_gameplay_common::game::native_hooks::camera_type::camera_type_tests::SharedCamera;
     use mod_api::{CameraType, ModEntry};
     use mod_platform::testing::with_mods;
     use std::sync::{Arc, Mutex};
+    use sunrise_gameplay_common::game::native_hooks::camera_type::camera_type_tests::Calls;
+    use sunrise_gameplay_common::game::native_hooks::camera_type::camera_type_tests::NoFront;
+    use sunrise_gameplay_common::game::native_hooks::camera_type::camera_type_tests::SharedCamera;
 
     /// `key.togglePerspective`: the mod hears each cycle with vanilla's next type and its
     /// answer is the new type; setting the type does not cycle, and without a listener F5
@@ -40,10 +38,16 @@ pub(crate) mod camera_type_tests {
                 assert_eq!(game.camera_type(), FirstPerson, "the front view is skipped");
                 game.set_camera_type(ThirdPersonFront);
                 assert_eq!(game.camera_type(), ThirdPersonFront);
-                assert_eq!(game.client.camera_type, FirstPerson, "the request is pending");
+                assert_eq!(
+                    game.client.camera_type, FirstPerson,
+                    "the request is pending"
+                );
                 assert_eq!(heard.lock().unwrap().len(), 2, "setting is not a cycle");
                 game.cycle_camera();
-                assert_eq!(game.client.camera_type, FirstPerson, "F5's final choice wins");
+                assert_eq!(
+                    game.client.camera_type, FirstPerson,
+                    "F5's final choice wins"
+                );
             });
         });
         use CameraType::*;

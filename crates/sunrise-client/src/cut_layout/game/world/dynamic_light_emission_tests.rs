@@ -3,15 +3,24 @@
 //! state's light, an answer above 15 is stored as 15, a bulk replacement and a reload of the
 //! chunk keep or ask again as the cells' states say, and `check_light` and a server's light
 //! update ask again.
-use {sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::SideGame, sunrise_gameplay_common::game::LevelDimension};
-use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_role, crate::game::server_side::native_entity_refs::tests::with_game_role_client};
 use mod_api::*;
-use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;
 use std::sync::{
     Arc, Mutex,
     atomic::{AtomicU8, Ordering},
 };
+use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;
 use sunrise_level::chunk::Chunk;
+use {
+    crate::game::server_side::native_entity_refs::tests::with_game_role_client,
+    sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client,
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_role,
+    sunrise_gameplay_common::game::execution_role::ExecutionRole,
+};
+use {
+    sunrise_gameplay_common::game::Dim, sunrise_gameplay_common::game::LevelDimension,
+    sunrise_gameplay_common::game::SideGame,
+};
 
 const LAMP: &str = "lights:lamp";
 const PLAIN: &str = "lights:plain";
@@ -188,8 +197,20 @@ fn with_lights_server(
 
 fn with_lights_sides(
     name: &str,
-    server_test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>, LevelRef, States, Depth, &AtomicU8),
-    client_test: impl FnOnce(&mut sunrise_client_gameplay::game::ClientGame<'_>, LevelRef, States, Depth, &AtomicU8),
+    server_test: impl FnOnce(
+        &mut sunrise_gameplay::game::ServerGame<'_>,
+        LevelRef,
+        States,
+        Depth,
+        &AtomicU8,
+    ),
+    client_test: impl FnOnce(
+        &mut sunrise_client_gameplay::game::ClientGame<'_>,
+        LevelRef,
+        States,
+        Depth,
+        &AtomicU8,
+    ),
 ) {
     const CHILD: &str = "SUNRISE_DYNAMIC_LIGHT_CHILD";
     if run_fresh_cases(name, CHILD, &["server", "client"]) {

@@ -2,7 +2,6 @@
 //! hooks: the damage container each hit fills, the hit's level host, and the mob and dragon
 //! hits that fire them.
 use super::native_entity_refs::tests::{bind_local_player, with_game};
-use {sunrise_gameplay_common::game::dragon_common::Dragon, sunrise_gameplay_common::game::dragon_common::SPECIAL};
 use mod_api::{
     self, HitHost, Hooks, HurtSource, LivingDamagePostEvent, LivingDamagePreEvent,
     LivingIncomingDamageEvent, LivingShieldBlockEvent, Reduction,
@@ -13,6 +12,10 @@ use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::{Damage, DamageKind, Mob};
 use sunrise_sim::motion::PlayerMotion;
+use {
+    sunrise_gameplay_common::game::dragon_common::Dragon,
+    sunrise_gameplay_common::game::dragon_common::SPECIAL,
+};
 
 const SLEEPING_BED: [i32; 3] = [4, 100, 4];
 
@@ -656,8 +659,8 @@ fn a_cancelled_deaths_post_fires_once_after_the_death_hooks() {
 #[test]
 #[ignore = "daily"]
 fn guest_strike_posts_before_returning_from_the_authoritative_death() {
-    use sunrise_gameplay::game::native_player_death::tests::add_guest;
     use std::sync::atomic::Ordering::Relaxed;
+    use sunrise_gameplay::game::native_player_death::tests::add_guest;
     let trace = Arc::new(DeathOrder::default());
     trace.cancel.store(true, Relaxed);
     trace.revive.store(true, Relaxed);
@@ -733,7 +736,8 @@ fn a_sweep_finishes_its_lethal_hit_before_the_next_hit() {
             let mut player = PlayerMotion::new(game.motion, Vec3::ZERO).unwrap();
             player.entity_id = 7;
             game.player = Some(player);
-            game.common.inventory[game.common.selected] = Some(ItemStack::new("minecraft:iron_sword", 1));
+            game.common.inventory[game.common.selected] =
+                Some(ItemStack::new("minecraft:iron_sword", 1));
             let mut first = mob(game, 225031, "minecraft:pig");
             first.health = 0.5;
             let second = mob(game, 225032, "minecraft:pig");
@@ -743,7 +747,11 @@ fn a_sweep_finishes_its_lethal_hit_before_the_next_hit() {
                 Vec3::new(-1.0, -1.0, -1.0),
                 Vec3::new(1.0, 2.0, 2.0),
             );
-            game.sweep_damage(area, sunrise_gameplay::game::server_side::mace::Spared::Nothing, 1.0);
+            game.sweep_damage(
+                area,
+                sunrise_gameplay::game::server_side::mace::Spared::Nothing,
+                1.0,
+            );
             assert_eq!(
                 *trace.heard.lock().unwrap(),
                 [
@@ -786,9 +794,10 @@ fn projectile_killing_hit_posts_before_its_follow_up() {
     mod_platform::testing::with_mods(mods, || {
         with_game(|game| {
             game.build_registries();
-            game.server
-                .streaming
-                .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
+            game.server.streaming.insert_remote(
+                &mut game.common.world,
+                sunrise_level::chunk::Chunk::empty(0, 0),
+            );
             let center = Vec3::new(4.5, 80.0, 4.5);
             let (direct, blast) = (225034, 225035);
             let mut target = mob(game, direct, "minecraft:pig");
@@ -1234,9 +1243,10 @@ fn borrowed_pufferfish_posts_before_poison_and_the_next_sting() {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.build_registries();
-            game.server
-                .streaming
-                .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
+            game.server.streaming.insert_remote(
+                &mut game.common.world,
+                sunrise_level::chunk::Chunk::empty(0, 0),
+            );
             // Same chunk/section, in the order the contact query visits them.
             let mut puffer = mob(game, fish, "minecraft:pufferfish");
             puffer.position = Vec3::new(1.5, 80.0, 1.5);
@@ -1393,9 +1403,10 @@ fn borrowed_bee_posts_at_both_server_ai_hurts() {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.build_registries();
-            game.server
-                .streaming
-                .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
+            game.server.streaming.insert_remote(
+                &mut game.common.world,
+                sunrise_level::chunk::Chunk::empty(0, 0),
+            );
             let water = game
                 .pack
                 .assets
@@ -1556,8 +1567,8 @@ fn borrowed_base_tick_damage_settles_before_the_next_mob_tick() {
 #[cfg(any())]
 fn borrowed_mod_effect_posts_before_the_next_action() {
     use super::native_entity_refs::tests::run_fresh_cases;
-    use sunrise_gameplay_common::game::client_side::potions::tests::effect_test_mod;
     use std::sync::atomic::Ordering::Relaxed;
+    use sunrise_gameplay_common::game::client_side::potions::tests::effect_test_mod;
 
     if run_fresh_cases(
         "game::server_side::native_damage_tests::borrowed_mod_effect_posts_before_the_next_action",
@@ -1607,7 +1618,9 @@ fn borrowed_mod_effect_posts_before_the_next_action() {
         let pig = game.mobs.iter().find(|m| m.id == 225046).unwrap();
         assert_eq!(pig.health, 4.0, "revived to 5, lost 2, healed once for 1");
         assert_eq!(
-            sunrise_gameplay_common::game::creatures::source_damage_type(pig.last_damage.unwrap().0),
+            sunrise_gameplay_common::game::creatures::source_damage_type(
+                pig.last_damage.unwrap().0
+            ),
             "minecraft:indirect_magic"
         );
         assert_eq!(pig.extra.effects[0].duration, 9);
@@ -1841,9 +1854,10 @@ fn borrowed_mob_landing_posts_before_the_travel_tail() {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.build_registries();
-            game.server
-                .streaming
-                .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
+            game.server.streaming.insert_remote(
+                &mut game.common.world,
+                sunrise_level::chunk::Chunk::empty(0, 0),
+            );
             let registry = game.pack.assets.registry;
             let block = registry
                 .default_state(if farmland {
@@ -2012,9 +2026,10 @@ fn a_dolphin_goal_move_posts_before_the_next_goal() {
         with_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.build_registries();
-            game.server
-                .streaming
-                .insert_remote(&mut game.common.world, sunrise_level::chunk::Chunk::empty(0, 0));
+            game.server.streaming.insert_remote(
+                &mut game.common.world,
+                sunrise_level::chunk::Chunk::empty(0, 0),
+            );
             let stone = game
                 .pack
                 .assets
@@ -2025,7 +2040,12 @@ fn a_dolphin_goal_move_posts_before_the_next_goal() {
 
             if !breath {
                 let at = Vec3::new(3.5, 80.0, 1.5);
-                let mut boat = sunrise_gameplay_common::game::boats_common::Boat::new(225049, "oak".into(), at, 0.0);
+                let mut boat = sunrise_gameplay_common::game::boats_common::Boat::new(
+                    225049,
+                    "oak".into(),
+                    at,
+                    0.0,
+                );
                 boat.velocity.x = 0.2;
                 game.riding = Some(boat.id);
                 game.boats.push(boat);

@@ -1,18 +1,16 @@
-
-
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
 
-use super::*;
+    use super::*;
 
-use mod_api::{ClientHost, FireworkExplosion, FireworkShape};
+    use mod_api::{ClientHost, FireworkExplosion, FireworkShape};
 
-use mod_api::FireworksRequest;
+    use mod_api::FireworksRequest;
 
-use sunrise_client::particles::ParticleLevel;
+    use sunrise_client::particles::ParticleLevel;
 
-/// A client mod's fireworks burst either way, and blast and twinkle only when audible,
+    /// A client mod's fireworks burst either way, and blast and twinkle only when audible,
     /// as a rocket that isn't silent; a server draws nothing.
     #[test]
     #[ignore = "daily"]

@@ -504,9 +504,7 @@ pub(in crate::game) fn gameplay_tables(
 /// value (`AttributeSupplier.getValue`, the base inside its range; the spawn and reset bases
 /// stay the raw ones). The read answers only a registered entity type's: a declaration for a
 /// type no mod registered stays unread.
-pub fn publish_entity_type_defaults(
-    catalog: &sunrise_world::attributes::entity::Catalog,
-) {
+pub fn publish_entity_type_defaults(catalog: &sunrise_world::attributes::entity::Catalog) {
     mod_api::__private::publish_entity_type_defaults(
         catalog
             .entities()
@@ -678,8 +676,7 @@ pub struct PreparedCore {
     pub motion: MotionResources,
     pub environment: Environment,
     pub collision: Arc<BlockCollisionRegistry<'static>>,
-    pub spawner_types:
-        HashMap<String, sunrise_sim::mobs::spawner::SpawnerTypeFacts>,
+    pub spawner_types: HashMap<String, sunrise_sim::mobs::spawner::SpawnerTypeFacts>,
 }
 
 pub fn prepare_core(

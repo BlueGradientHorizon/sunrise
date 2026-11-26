@@ -3,14 +3,16 @@
 //! player takes the seat after the player (`Entity.addPassenger` puts a player
 //! first), and getting off follows the vehicle's own
 //! `getDismountLocationForPassenger`.
+use super::*;
 use sunrise_core::geometry::Aabb;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::server_side::mounts::{
+    DISMOUNT_POSES, DismountWorld, Mount, Rider, dismount_location,
+};
 use sunrise_sim::mobs::Species;
 use sunrise_sim::motion::PlayerMotion;
 use sunrise_sim::pose::Pose;
 use sunrise_world::living_air::escape_vector;
-use sunrise_gameplay::game::server_side::mounts::{DISMOUNT_POSES, DismountWorld, Mount, Rider, dismount_location};
-use super::*;
 
 /// A stone floor whose top is y 64, and the blocks listed above it.
 struct Ground {
@@ -150,7 +152,8 @@ fn ghast(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> u32 {
 #[ignore = "daily"]
 fn a_ride_mount_keeps_the_players_view() {
     let mut resources = None;
-    let mut game = crate::game::server_side::mounts::tests::server_game(&mut resources).expect(RESOURCES);
+    let mut game =
+        crate::game::server_side::mounts::tests::server_game(&mut resources).expect(RESOURCES);
     scene(&mut game);
     let id = ghast(&mut game);
     game.yaw = 90.0;
@@ -166,7 +169,8 @@ fn a_ride_mount_keeps_the_players_view() {
 #[ignore = "daily"]
 fn a_click_on_a_harnessed_ghast_keeps_the_players_view() {
     let mut resources = None;
-    let mut game = crate::game::server_side::mounts::tests::server_game(&mut resources).expect(RESOURCES);
+    let mut game =
+        crate::game::server_side::mounts::tests::server_game(&mut resources).expect(RESOURCES);
     scene(&mut game);
     let id = ghast(&mut game);
     let index = game
@@ -190,7 +194,8 @@ fn a_click_on_a_harnessed_ghast_keeps_the_players_view() {
 #[ignore = "daily"]
 fn a_mob_that_boards_a_happy_ghast_after_its_player_takes_the_next_seat() {
     let mut resources = None;
-    let mut game = crate::game::server_side::mounts::tests::server_game(&mut resources).expect(RESOURCES);
+    let mut game =
+        crate::game::server_side::mounts::tests::server_game(&mut resources).expect(RESOURCES);
     scene(&mut game);
     let id = ghast(&mut game);
     assert!(game.run_command(&format!("ride @s mount {GHAST}")));
@@ -230,7 +235,8 @@ fn ride_pigs(game: &mut sunrise_gameplay::game::ServerGame<'_>, count: u32) {
 #[ignore = "daily"]
 fn a_click_on_a_full_happy_ghast_seats_no_fifth_rider() {
     let mut resources = None;
-    let mut game = crate::game::server_side::mounts::tests::server_game(&mut resources).expect(RESOURCES);
+    let mut game =
+        crate::game::server_side::mounts::tests::server_game(&mut resources).expect(RESOURCES);
     scene(&mut game);
     let id = ghast(&mut game);
     ride_pigs(&mut game, 4);
@@ -254,7 +260,8 @@ fn a_click_on_a_full_happy_ghast_seats_no_fifth_rider() {
 #[ignore = "daily"]
 fn a_mob_on_a_ghastling_sits_at_the_scaled_seat() {
     let mut resources = None;
-    let mut game = crate::game::server_side::mounts::tests::server_game(&mut resources).expect(RESOURCES);
+    let mut game =
+        crate::game::server_side::mounts::tests::server_game(&mut resources).expect(RESOURCES);
     scene(&mut game);
     assert!(game.run_command(
         "summon minecraft:happy_ghast 8.5 64 8.5 {Tame:1b,NoAI:1b,Age:-24000,UUID:[I;51774,0,0,7]}"

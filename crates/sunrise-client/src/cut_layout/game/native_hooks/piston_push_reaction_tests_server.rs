@@ -1,14 +1,18 @@
-use sunrise_gameplay_common::game::GameGameExt1;
 use crate::game::native_hooks::piston_push_reaction_tests::PayloadUser;
 use crate::game::native_hooks::piston_push_reaction_tests::state;
-use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_role};
 use mod_api::*;
 use std::{collections::HashMap, sync::Arc};
 use sunrise_core::{
     geometry::Direction,
     position::{BlockPos, ChunkPos},
 };
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_world::level::LevelAccess;
+use {
+    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game_role,
+    sunrise_gameplay_common::game::execution_role::ExecutionRole,
+};
 
 #[test]
 #[ignore = "daily"]
@@ -167,9 +171,10 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                 game.world.set_block_entity_extras(from, extras);
             }
             if case == "hopper" || case == "same-scope" {
-                game.server
-                    .hoppers
-                    .insert(from, sunrise_gameplay_common::hoppers::HopperState::with_cooldown(40));
+                game.server.hoppers.insert(
+                    from,
+                    sunrise_gameplay_common::hoppers::HopperState::with_cooldown(40),
+                );
             }
             game.server.lid_openers.insert(from, 2);
             game.world.chest_openers.insert(from, (2, 4.0));
@@ -194,7 +199,8 @@ fn piston_push_reaction_position_state_opens_ticks_and_saves() {
                 });
                 assert_eq!(game.hopper_cooldown(far), 40);
                 assert!(
-                    !game.server.hoppers.contains_key(&from) && !game.server.hoppers.contains_key(&to)
+                    !game.server.hoppers.contains_key(&from)
+                        && !game.server.hoppers.contains_key(&to)
                 );
                 assert!(
                     matches!(game.world.block_entities.get(&far),Some(BlockEntity::Chest(after)) if after==&slots)

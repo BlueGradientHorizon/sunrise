@@ -7,10 +7,11 @@ impl crate::game::ServerGame<'_> {
         modified: &[std::sync::Arc<sunrise_level::chunk::Chunk>],
     ) -> Result<usize> {
         sunrise_level::spans::time("save_chunks", || {
-            self.server
-                .save
-                .0
-                .save_later(modified, self.common.pack.assets.registry, world_biomes!(self))
+            self.server.save.0.save_later(
+                modified,
+                self.common.pack.assets.registry,
+                world_biomes!(self),
+            )
         })
     }
     pub(in crate::game) fn server_clear_lod(&mut self) {}
@@ -25,7 +26,10 @@ impl crate::game::ServerGame<'_> {
         self.update_world_server(dim);
         self.server.streaming.hold_unknown_tickets();
         let plan = sunrise_level::spans::time("streaming_plan", || {
-            let mut step = self.server.streaming.begin_plan_update(&mut self.common.world);
+            let mut step = self
+                .server
+                .streaming
+                .begin_plan_update(&mut self.common.world);
             loop {
                 match step {
                     sunrise_level::chunk_streamer::ChunkPlanStep::Ready(plan) => break plan,
@@ -40,11 +44,16 @@ impl crate::game::ServerGame<'_> {
                 }
             }
         });
-        let (commit, protos) = self.server.streaming.prepare_commit(&mut self.common.world, plan);
+        let (commit, protos) = self
+            .server
+            .streaming
+            .prepare_commit(&mut self.common.world, plan);
         self.native_proto_snapshots(&protos);
         self.server.streaming.submit_protos(protos);
         let unloaded = sunrise_level::spans::time("streaming", || {
-            self.server.streaming.complete_commit(&mut self.common.world, commit)
+            self.server
+                .streaming
+                .complete_commit(&mut self.common.world, commit)
         });
         self.server.streaming.extra.truncate(areas);
         let dirty: Vec<_> = unloaded
@@ -77,7 +86,8 @@ impl crate::game::ServerGame<'_> {
                     self.common.world.block_entities.unload_column(column);
                 }
             });
-            self.common.world
+            self.common
+                .world
                 .block_names
                 .retain(|p, _| !gone.contains(&(p.0 >> 4, p.2 >> 4)));
         }

@@ -504,7 +504,12 @@ impl crate::game::ServerGame<'_> {
         let snapshot = menu.snapshot();
         // A take listener edits the transient slots through the Host: the menu reads them back.
         let refresh = |game: &crate::game::ServerGame<'_>, menu: &mut Menu| {
-            let Some(guest) = game.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+            let Some(guest) = game
+                .server
+                .lan
+                .as_ref()
+                .and_then(|host| host.hub.guest(conn))
+            else {
                 return false;
             };
             if !live(guest) {
@@ -854,97 +859,104 @@ impl crate::game::ServerGame<'_> {
         };
         // The write-back to the block's storage and its effects: inside the click's decision, so
         // an outer abort restores them with the cursor and the slots.
-        let write_back = |game: &mut crate::game::ServerGame<'_>,
-                          menu: &mut Menu,
-                          changed: bool| {
-            game.journal_block_entity(pos);
-            if let Some((_, links)) = &linked {
-                for &at in links {
-                    game.journal_block_entity(at);
-                }
-            }
-            let mut linked_after = Vec::new();
-            match game.common.world.block_entities.get_mut(&pos) {
-                Some(BlockEntity::Furnace(f)) => {
-                    for k in 0..3 {
-                        f.items[k] = menu.slot(k).cloned();
-                    }
-                    // AbstractFurnaceBlockEntity.setItem: only a new input restarts cooking.
-                    f.input_clicked(&game.common.loop_context, server_world_recipes!(game), items[0].clone());
-                }
-                // BrewingStandBlockEntity.serverTick notices a new ingredient itself.
-                Some(BlockEntity::Brewing(b)) => {
-                    for k in 0..5 {
-                        b.items[k] = menu.slot(k).cloned();
+        let write_back =
+            |game: &mut crate::game::ServerGame<'_>, menu: &mut Menu, changed: bool| {
+                game.journal_block_entity(pos);
+                if let Some((_, links)) = &linked {
+                    for &at in links {
+                        game.journal_block_entity(at);
                     }
                 }
-                // The mod's items past its menu's slots stay as they were.
-                Some(BlockEntity::Mod(m)) => {
-                    let n = items.len();
-                    if m.items.len() < n {
-                        m.items.resize(n, None);
+                let mut linked_after = Vec::new();
+                match game.common.world.block_entities.get_mut(&pos) {
+                    Some(BlockEntity::Furnace(f)) => {
+                        for k in 0..3 {
+                            f.items[k] = menu.slot(k).cloned();
+                        }
+                        // AbstractFurnaceBlockEntity.setItem: only a new input restarts cooking.
+                        f.input_clicked(
+                            &game.common.loop_context,
+                            server_world_recipes!(game),
+                            items[0].clone(),
+                        );
                     }
-                    let mut after = menu.container_items();
-                    // Linked slots go back to their containers, never into the
-                    // block entity.
-                    if let Some((l, _)) = &linked {
-                        linked_after = l
-                            .slots()
-                            .filter_map(|k| after.get_mut(k).map(Option::take))
-                            .collect();
+                    // BrewingStandBlockEntity.serverTick notices a new ingredient itself.
+                    Some(BlockEntity::Brewing(b)) => {
+                        for k in 0..5 {
+                            b.items[k] = menu.slot(k).cloned();
+                        }
                     }
-                    for (slot, stack) in m.items.iter_mut().zip(after) {
-                        *slot = stack;
+                    // The mod's items past its menu's slots stay as they were.
+                    Some(BlockEntity::Mod(m)) => {
+                        let n = items.len();
+                        if m.items.len() < n {
+                            m.items.resize(n, None);
+                        }
+                        let mut after = menu.container_items();
+                        // Linked slots go back to their containers, never into the
+                        // block entity.
+                        if let Some((l, _)) = &linked {
+                            linked_after = l
+                                .slots()
+                                .filter_map(|k| after.get_mut(k).map(Option::take))
+                                .collect();
+                        }
+                        for (slot, stack) in m.items.iter_mut().zip(after) {
+                            *slot = stack;
+                        }
                     }
+                    // CrafterBlockEntity.setItem: filling a disabled slot enables it.
+                    Some(BlockEntity::Crafter(c)) => {
+                        for k in 0..9 {
+                            c.items[k] = menu.slot(k).cloned();
+                            c.disabled[k] = menu.data[k] == 1;
+                        }
+                    }
+                    _ => {}
                 }
-                // CrafterBlockEntity.setItem: filling a disabled slot enables it.
-                Some(BlockEntity::Crafter(c)) => {
-                    for k in 0..9 {
-                        c.items[k] = menu.slot(k).cloned();
-                        c.disabled[k] = menu.data[k] == 1;
-                    }
-                }
-                _ => {}
-            }
-            // FurnaceResultSlot.checkTakeAchievements and its observable effects may run
-            // only after the click, including any outer menu decision, is committed, and only for
-            // actual takes (`onTake` / `onQuickCraft`), never direct `Slot.set` edits.
-            let smelted = std::mem::take(&mut menu.item_smelted);
-            let extracted = if furnace {
-                let mut takes = std::mem::take(&mut menu.furnace_extracted);
-                takes.pop().map(|(stack, last)| {
-                    let total = takes.into_iter().map(|(_, n)| n).sum::<u32>() + last;
-                    (stack, total)
-                })
-            } else {
-                None
-            };
-            if (!smelted.is_empty() || extracted.is_some())
-                && let Some(guest) = game.server.lan.as_ref().and_then(|host| host.hub.guest(conn))
-            {
-                let effects = FurnaceMenuEffects {
-                    uuid: guest.uuid,
-                    entity_id: guest.entity_id,
-                    pos,
-                    at: guest.position,
-                    smelted,
-                    extracted,
+                // FurnaceResultSlot.checkTakeAchievements and its observable effects may run
+                // only after the click, including any outer menu decision, is committed, and only for
+                // actual takes (`onTake` / `onQuickCraft`), never direct `Slot.set` edits.
+                let smelted = std::mem::take(&mut menu.item_smelted);
+                let extracted = if furnace {
+                    let mut takes = std::mem::take(&mut menu.furnace_extracted);
+                    takes.pop().map(|(stack, last)| {
+                        let total = takes.into_iter().map(|(_, n)| n).sum::<u32>() + last;
+                        (stack, total)
+                    })
+                } else {
+                    None
                 };
-                game.after_commit(After::FurnaceMenu(Box::new(effects)));
-            }
-            // Slot.setChanged on a changed container slot: BlockEntity.setChanged,
-            // so the chunk is saved and comparators read the block again.
-            if changed {
-                game.after_commit(After::Changed(pos));
-            }
-            if let Some((l, links)) = &linked {
-                let bound = linked_slot_count(&game.world, links).min(l.count);
-                linked_after.truncate(bound);
-                for at in write_links(&mut game.world, links, linked_after) {
-                    game.after_commit(After::Changed(at));
+                if (!smelted.is_empty() || extracted.is_some())
+                    && let Some(guest) = game
+                        .server
+                        .lan
+                        .as_ref()
+                        .and_then(|host| host.hub.guest(conn))
+                {
+                    let effects = FurnaceMenuEffects {
+                        uuid: guest.uuid,
+                        entity_id: guest.entity_id,
+                        pos,
+                        at: guest.position,
+                        smelted,
+                        extracted,
+                    };
+                    game.after_commit(After::FurnaceMenu(Box::new(effects)));
                 }
-            }
-        };
+                // Slot.setChanged on a changed container slot: BlockEntity.setChanged,
+                // so the chunk is saved and comparators read the block again.
+                if changed {
+                    game.after_commit(After::Changed(pos));
+                }
+                if let Some((l, links)) = &linked {
+                    let bound = linked_slot_count(&game.world, links).min(l.count);
+                    linked_after.truncate(bound);
+                    for at in write_links(&mut game.world, links, linked_after) {
+                        game.after_commit(After::Changed(at));
+                    }
+                }
+            };
         if heard {
             let host = self.server.lan.as_ref().unwrap();
             let before: Vec<_> = (0..menu.slot_count())
@@ -1505,7 +1517,12 @@ impl crate::game::ServerGame<'_> {
     /// grid, a crafting table's, or a mod crafting menu's over its block
     /// entity with its recipe sources. None when that window is none of them
     /// (the window must be the one the guest has open, as for a transfer).
-    pub fn lan_check_recipe(&mut self, gi: usize, container: i32, id: &str) -> Option<TransferCheck> {
+    pub fn lan_check_recipe(
+        &mut self,
+        gi: usize,
+        container: i32,
+        id: &str,
+    ) -> Option<TransferCheck> {
         let conn = self.server.lan.as_ref()?.hub.guests[gi].conn;
         let menu = if let Some((pos, t)) = self.lan_mod_crafting_window(gi, container) {
             let Some(BlockEntity::Mod(m)) = self.common.world.block_entities.get(&pos) else {

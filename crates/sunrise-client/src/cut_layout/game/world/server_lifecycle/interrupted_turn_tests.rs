@@ -1,9 +1,12 @@
 //! #2704: a crash save never writes the half-done turn of a player a panic interrupted.
 
-use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use {
+    sunrise_gameplay::game::native_guest_turn_tests::with_guests,
+    sunrise_gameplay_common::game::execution_role::ExecutionRole,
+};
 
 /// Records who each `player_logged_out` listener call is for.
 struct Logouts(std::sync::Arc<Mutex<Vec<u128>>>);
@@ -94,12 +97,13 @@ fn scenario(interruption: Interruption) {
         let (before_12, before_13) = (read(12), read(13));
         // Guest 12 rides a boat alone; a save would move it into the player file.
         let boat = 700;
-        game.boats.push(sunrise_gameplay_common::game::boats_common::Boat::new(
-            boat,
-            "oak".into(),
-            sunrise_core::geometry::Vec3::ZERO,
-            0.0,
-        ));
+        game.boats
+            .push(sunrise_gameplay_common::game::boats_common::Boat::new(
+                boat,
+                "oak".into(),
+                sunrise_core::geometry::Vec3::ZERO,
+                0.0,
+            ));
         game.server
             .lan
             .as_mut()

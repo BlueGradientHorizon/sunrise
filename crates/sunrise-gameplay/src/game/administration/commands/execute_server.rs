@@ -46,14 +46,20 @@ impl crate::game::ServerGame<'_> {
             let p = self
                 .coords(c, "pos")
                 .map(|co| co.block(self.source_position(), self.source_rotation()));
-            let dimension = self.server.command_source.map_or(self.common.dim, |s| s.dimension);
+            let dimension = self
+                .server
+                .command_source
+                .map_or(self.common.dim, |s| s.dimension);
             return Ok(flag(
                 dimension == self.common.dim
                     && p.is_some_and(|p| self.command_chunk_loaded(p[0] >> 4, p[2] >> 4)),
             ));
         }
         if c.has("dimension") {
-            let dimension = self.server.command_source.map_or(self.common.dim, |s| s.dimension);
+            let dimension = self
+                .server
+                .command_source
+                .map_or(self.common.dim, |s| s.dimension);
             return Ok(flag(matches!(c.get("dimension"), Some(Arg::Resource(d))
                 if d.as_str() == dimension.id())));
         }
@@ -160,7 +166,8 @@ impl crate::game::ServerGame<'_> {
                 // OwnableEntity.getOwner → EntityReference.getLivingEntity:
                 // a marker or a display with that UUID is not an owner.
                 Target::Mob(id) => self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter()
                     .find(|m| m.id == id)
                     .and_then(|m| m.extra.owner)
@@ -183,18 +190,20 @@ impl crate::game::ServerGame<'_> {
             // Leashable.getLeashHolder: the server's resolved holder, not a
             // saved UUID that is still waiting for tickLeash to restore it.
             Some("leasher") => {
-                let leash =
-                    match entity {
-                        Target::Mob(id) => self.common.mobs.iter().find(|m| m.id == id).and_then(|m| {
+                let leash = match entity {
+                    Target::Mob(id) => {
+                        self.common.mobs.iter().find(|m| m.id == id).and_then(|m| {
                             m.extra.leash.map(|holder| (holder, m.extra.leash_player))
-                        }),
-                        Target::Boat(id) => self
-                            .common.boats
-                            .iter()
-                            .find(|b| b.id == id)
-                            .and_then(|b| b.leash.map(|holder| (holder, b.leash_player))),
-                        _ => None,
-                    };
+                        })
+                    }
+                    Target::Boat(id) => self
+                        .common
+                        .boats
+                        .iter()
+                        .find(|b| b.id == id)
+                        .and_then(|b| b.leash.map(|holder| (holder, b.leash_player))),
+                    _ => None,
+                };
                 leash
                     .and_then(|(holder, player)| match holder {
                         // The player who tied it (the host's when unrecorded).
@@ -213,7 +222,8 @@ impl crate::game::ServerGame<'_> {
             // item, who summoned a vex.
             Some("origin") => match entity {
                 Target::Projectile(id) => self
-                    .common.creatures
+                    .common
+                    .creatures
                     .projectiles
                     .iter()
                     .find(|p| p.id == id)
@@ -242,7 +252,8 @@ impl crate::game::ServerGame<'_> {
                     .into_iter()
                     .collect(),
                 Target::Item(id) => self
-                    .common.dropped
+                    .common
+                    .dropped
                     .iter()
                     .find(|d| d.id == id)
                     .and_then(|d| d.thrower)
@@ -255,7 +266,8 @@ impl crate::game::ServerGame<'_> {
                     .into_iter()
                     .collect(),
                 Target::Mob(id) => self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter()
                     .find(|m| m.id == id && m.kind.id == "minecraft:vex")
                     .map(|m| m.extra.counter2 as u32)
@@ -272,7 +284,8 @@ impl crate::game::ServerGame<'_> {
                 // not modeled; retain the existing mob collection order here.
                 if let Target::Mob(id) | Target::Boat(id) = entity {
                     passengers.extend(
-                        self.common.mobs
+                        self.common
+                            .mobs
                             .iter()
                             .filter(|m| m.extra.mount == Some(id) && m.alive() && !m.removed)
                             .map(|m| Target::Mob(m.id)),
@@ -280,7 +293,8 @@ impl crate::game::ServerGame<'_> {
                 }
                 if let Some(id) = self.resident_target_id(entity) {
                     passengers.extend(
-                        self.common.bolts
+                        self.common
+                            .bolts
                             .iter()
                             .filter(|b| b.mount == Some(id))
                             .map(|b| Target::Bolt(b.id)),
@@ -289,7 +303,13 @@ impl crate::game::ServerGame<'_> {
                 passengers
             }
             Some("controller") => match entity {
-                Target::Mob(id) if self.common.mobs.iter().any(|m| m.id == id && m.rider.is_some()) => {
+                Target::Mob(id)
+                    if self
+                        .common
+                        .mobs
+                        .iter()
+                        .any(|m| m.id == id && m.rider.is_some()) =>
+                {
                     vec![Target::Player]
                 }
                 _ => Vec::new(),
@@ -298,7 +318,8 @@ impl crate::game::ServerGame<'_> {
                 let attacker = c.literals.last().is_some_and(|l| l == "attacker");
                 match entity {
                     Target::Mob(id) => self
-                        .common.mobs
+                        .common
+                        .mobs
                         .iter()
                         .find(|m| m.id == id)
                         .and_then(|m| {
@@ -319,9 +340,9 @@ impl crate::game::ServerGame<'_> {
                                     let conn = if attacker {
                                         // `getLastHurtByMob`: the player who hit it,
                                         // not whichever client is reading it.
-                                        self.server.last_hurt_by_player.get(&id).and_then(|credit| {
-                                            self.resolve_player_credit(*credit).flatten()
-                                        })
+                                        self.server.last_hurt_by_player.get(&id).and_then(
+                                            |credit| self.resolve_player_credit(*credit).flatten(),
+                                        )
                                     } else {
                                         None
                                     };
@@ -355,7 +376,8 @@ impl crate::game::ServerGame<'_> {
     pub fn run_chain(&mut self, root: &Context, ctx: &Context) -> R<i32> {
         self.server.exec.0.commands += 1;
         let limit = self
-            .common.ui
+            .common
+            .ui
             .rules
             .int_at(sunrise_game_data::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
             .max(1) as u32;
@@ -441,7 +463,8 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn run_execute(&mut self, ctx: &Context) -> R<i32> {
         // BuildContexts: a modifier may not bring the sources to this many.
         let fork_limit = self
-            .common.ui
+            .common
+            .ui
             .rules
             .int_at(sunrise_game_data::gamerules::vanilla::MAX_COMMAND_FORKS)
             as usize;
@@ -679,11 +702,7 @@ impl crate::game::ServerGame<'_> {
     /// Evaluate `f` with `source` as the command source, in the source's
     /// level (`CommandSourceStack.getLevel`): a server puts that level in
     /// place for it.
-    pub fn with_source<T>(
-        &mut self,
-        source: Source,
-        f: impl FnOnce(&mut Self) -> T,
-    ) -> T {
+    pub fn with_source<T>(&mut self, source: Source, f: impl FnOnce(&mut Self) -> T) -> T {
         let previous = self.server.command_source.replace(source);
         let back = self.enter_command_level(source.dimension);
         let out = f(self);
@@ -720,10 +739,7 @@ pub mod terminal_fork_tests {
 #[cfg(any(test, feature = "test-support"))]
 pub mod score_condition_tests {
 
-    pub fn say(
-        game: &mut crate::game::ServerGame<'_>,
-        command: &str,
-    ) -> (bool, Vec<String>) {
+    pub fn say(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Vec<String>) {
         game.server.chat_capture = Some(Vec::new());
         let ok = game.run_command(command);
         let said = game.server.chat_capture.take().unwrap_or_default();

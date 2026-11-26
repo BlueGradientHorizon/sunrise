@@ -99,7 +99,9 @@ fn a_forget_packet_keeps_published_light_beside_a_loaded_column() {
             let mut layers = vec![(None, None); SECTIONS + 2];
             layers[s + 1] = (Some(vec![0x66; 2048]), Some(vec![0x99; 2048]));
             sunrise_level::light::light_from_layers(&mut chunk, &layers, true);
-            game.client.streaming.insert_remote(&mut game.common.world, chunk);
+            game.client
+                .streaming
+                .insert_remote(&mut game.common.world, chunk);
         }
         game.apply_packet(Clientbound::ForgetLevelChunk(ForgetLevelChunk {
             pos: [1, 0],

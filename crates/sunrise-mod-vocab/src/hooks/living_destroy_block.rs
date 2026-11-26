@@ -9,7 +9,8 @@ pub trait Hooks {
     /// `pos` the block and `state` its state. Canceling keeps the block (an
     /// enderman then holds nothing). Asked once per block, only while a mod is
     /// loaded. Server-side.
-    #[hook(target = "sunrise_gameplay::game::native_hooks::living_destroy_block::ServerGame<'_>::native_living_destroy_block", 
+    #[hook(
+        target = "sunrise_gameplay::game::native_hooks::living_destroy_block::ServerGame<'_>::native_living_destroy_block",
         dispatch = "flat",
         side = "server",
         contract = "cancel",

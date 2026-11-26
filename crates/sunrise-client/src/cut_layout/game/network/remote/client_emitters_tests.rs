@@ -1,7 +1,10 @@
-use {sunrise_gameplay_common::game::remote::C, sunrise_gameplay_common::game::remote::play};
-use {crate::game::server_side::native_entity_refs::tests::with_client_game, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in};
 use sunrise_level::particle_options::ParticleType::{Crit, EnchantedHit};
 use sunrise_protocol::entity_data::{Value, serializer};
+use {
+    crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in,
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+};
+use {sunrise_gameplay_common::game::remote::C, sunrise_gameplay_common::game::remote::play};
 
 pub(in crate::game) fn with_isolated_client(name: &str, body: impl FnOnce()) {
     let (_, module) = module_path!().split_once("::").unwrap();
@@ -45,14 +48,21 @@ pub(in crate::game) fn add_entity(
     })
 }
 
-pub(in crate::game) fn deliver(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, packet: C) {
+pub(in crate::game) fn deliver(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    packet: C,
+) {
     let bytes = packet.encode();
     let mut reader = sunrise_protocol::buf::Reader::new(&bytes);
     game.handle_packet(C::decode(reader.varint().unwrap(), reader.rest()).unwrap())
         .unwrap();
 }
 
-pub(in crate::game) fn animate(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, id: i32, action: u8) {
+pub(in crate::game) fn animate(
+    game: &mut sunrise_client_gameplay::game::ClientGame<'_>,
+    id: i32,
+    action: u8,
+) {
     deliver(game, C::Animate(play::Animate { id, action }));
 }
 

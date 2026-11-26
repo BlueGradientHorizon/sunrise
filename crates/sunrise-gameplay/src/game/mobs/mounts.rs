@@ -3,11 +3,11 @@
 //! (`LocalPlayer.aiStep`'s riding jump), positioning, dismounting, and the
 //! mount's health and jump bar on the HUD.
 use crate::game::ServerGame;
-use sunrise_gameplay_common::game::mounts_common::steering_item;
 use sunrise_core::{
     geometry::{Aabb, Vec3, VoxelShape},
     random::RandomSource,
 };
+use sunrise_gameplay_common::game::mounts_common::steering_item;
 use sunrise_world::living_air::escape_vector;
 use {
     sunrise_items::blocks::Fluid, sunrise_items::items::EntityTypeTags,
@@ -66,10 +66,7 @@ pub(in crate::game::server_side) fn eating(
 }
 /// `EntityTypeTags.DISMOUNTS_UNDERWATER` (`Entity.dismountsUnderwater`): the mounts that throw their
 /// riders off when the rider's eyes are in water.
-pub fn dismounts_underwater(
-    tags: &EntityTypeTags,
-    mount: &Mob,
-) -> bool {
+pub fn dismounts_underwater(tags: &EntityTypeTags, mount: &Mob) -> bool {
     tags.has_bit(
         mount.kind.flags.entity_tag_slot,
         EntityTypeTags::DISMOUNTS_UNDERWATER,
@@ -148,7 +145,8 @@ impl ServerGame<'_> {
         let id = m.id;
         if !matches!(species, Species::Camel | Species::CamelHusk)
             && self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .any(|p| p.extra.mount == Some(id) && !p.removed && p.alive())
         {
@@ -258,7 +256,8 @@ impl ServerGame<'_> {
                 let pos = self.common.mobs[index].position;
                 self.mob_equip_event(id, [pos.x, pos.y, pos.z], true);
             }
-            self.common.world
+            self.common
+                .world
                 .modified
                 .insert((at[0].floor() as i32 >> 4, at[2].floor() as i32 >> 4));
             return true;
@@ -303,7 +302,8 @@ impl ServerGame<'_> {
             let id = self.common.mobs[index].id;
             let pos = self.common.mobs[index].position;
             self.mob_equip_event(id, [pos.x, pos.y, pos.z], true);
-            self.common.world
+            self.common
+                .world
                 .modified
                 .insert((at[0].floor() as i32 >> 4, at[2].floor() as i32 >> 4));
             return true;
@@ -354,7 +354,8 @@ impl ServerGame<'_> {
             || self.ridden_by_guest(id)
             || equine::is_vehicle(m)
             || self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .any(|r| r.alive() && !r.removed && r.extra.mount == Some(id))
         {
@@ -402,7 +403,8 @@ impl ServerGame<'_> {
     }
     /// `AbstractHorse.handleEating`.
     pub(in crate::game::server_side) fn feed_mount(&mut self, index: usize, item: &str) -> bool {
-        let Some((heal, age_up, temper, love)) = eating(self.common.mobs[index].species(), item) else {
+        let Some((heal, age_up, temper, love)) = eating(self.common.mobs[index].species(), item)
+        else {
             return false;
         };
         let m = &mut self.common.mobs[index];
@@ -487,10 +489,18 @@ impl ServerGame<'_> {
             return false;
         };
         let (bx, by, bz) = (x.floor() as i32, y.floor() as i32, z.floor() as i32);
-        if &*self.common.res.facts().get(self.common.world.block(bx, by, bz)).name == "minecraft:bubble_column" {
+        if &*self
+            .common
+            .res
+            .facts()
+            .get(self.common.world.block(bx, by, bz))
+            .name
+            == "minecraft:bubble_column"
+        {
             return false;
         }
-        self.common.fluid_height_of(bx, by, bz, Some(Fluid::Water))
+        self.common
+            .fluid_height_of(bx, by, bz, Some(Fluid::Water))
             .is_some_and(|(height, _)| f64::from(by) + f64::from(height) > y)
     }
     /// The rider's input for this tick; returns false when not on a mount.
@@ -508,7 +518,11 @@ impl ServerGame<'_> {
                 && self.rider_eyes_in_water())
         {
             self.dismount_mount();
-            let Some(i) = self.common.mount_index().filter(|&i| self.common.mobs[i].alive()) else {
+            let Some(i) = self
+                .common
+                .mount_index()
+                .filter(|&i| self.common.mobs[i].alive())
+            else {
                 return true;
             };
             i
@@ -564,7 +578,8 @@ impl ServerGame<'_> {
         let blocked = self.mobs_below_off_level();
         let tags = &self.items().entity_type_tags;
         let swimmers: Vec<u32> = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .filter(|m| !blocked.contains(&m.id) && m.alive() && m.fluids.eye_in_water)
             .filter_map(|m| {
@@ -704,7 +719,8 @@ impl ServerGame<'_> {
             self.mob_event_particles(mob, 7);
         }
         if let Some(view) = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .find(|m| m.id == mob)
             .map(|m| self.mob_entity(m))
@@ -712,7 +728,8 @@ impl ServerGame<'_> {
             self.trigger_entity("minecraft:tame_animal", "entity", &view);
         }
         if let Some(kind) = self
-            .common.mobs
+            .common
+            .mobs
             .iter()
             .find(|m| m.id == mob)
             .map(|m| m.kind.id.clone())
@@ -782,7 +799,8 @@ impl ServerGame<'_> {
                     self.as_guest(conn, |g| g.stop_riding());
                 }
                 let riders: Vec<u32> = self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter()
                     .filter(|m| m.extra.mount == Some(mob))
                     .map(|m| m.id)
@@ -818,7 +836,8 @@ impl ServerGame<'_> {
             if player {
                 if self.common.riding == Some(mob)
                     && self
-                        .common.player
+                        .common
+                        .player
                         .as_ref()
                         .is_some_and(|p| p.entity_id as u32 == id)
                 {
@@ -945,8 +964,7 @@ pub struct Rider {
     pub main_arm_left: bool,
 }
 /// `Player.getDismountPoses`: standing, crouching, then crawling.
-pub const DISMOUNT_POSES: [Pose; 3] =
-    [Pose::Standing, Pose::Crouching, Pose::Swimming];
+pub const DISMOUNT_POSES: [Pose; 3] = [Pose::Standing, Pose::Crouching, Pose::Swimming];
 /// The rider's box in each dismount pose, at their `minecraft:scale`.
 pub(in crate::game::server_side) fn rider_poses(p: &PlayerMotion) -> Vec<(Pose, Dimensions)> {
     // EntityDimensions.scale: every player pose scales alike, so the
@@ -1227,15 +1245,15 @@ pub(in crate::game) fn start_riding_jump(
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-use sunrise_gameplay_common::game::test_server_load;
+    use sunrise_gameplay_common::game::test_server_load;
 
-#[cfg(test)]
-/// A lava sea up to y 30 with full blocks placed in it; air above.
+    #[cfg(test)]
+    /// A lava sea up to y 30 with full blocks placed in it; air above.
     pub(in crate::game) struct Sea {
         pub(in crate::game) blocks: HashMap<[i32; 3], ()>,
     }
-#[cfg(test)]
-impl Sea {
+    #[cfg(test)]
+    impl Sea {
         pub(in crate::game::server_side) fn with(blocks: &[[i32; 3]]) -> Self {
             Self {
                 blocks: blocks.iter().map(|&b| (b, ())).collect(),
@@ -1245,8 +1263,8 @@ impl Sea {
             self.blocks.contains_key(&p)
         }
     }
-#[cfg(test)]
-impl DismountWorld for Sea {
+    #[cfg(test)]
+    impl DismountWorld for Sea {
         fn lava(&self, p: [i32; 3]) -> bool {
             p[1] <= 30 && !self.solid(p)
         }
@@ -1267,9 +1285,9 @@ impl DismountWorld for Sea {
             })
         }
     }
-/// The top of a lava source at y 30 (`FlowingFluid.getOwnHeight`, 8/9).
+    /// The top of a lava source at y 30 (`FlowingFluid.getOwnHeight`, 8/9).
     pub const SURFACE: f64 = 30.0 + 8.0 / 9.0;
-pub fn rider(yaw: f32) -> Rider {
+    pub fn rider(yaw: f32) -> Rider {
         Rider {
             yaw,
             width: 0.6,
@@ -1280,22 +1298,22 @@ pub fn rider(yaw: f32) -> Rider {
             main_arm_left: false,
         }
     }
-/// What one feeding made the level show.
+    /// What one feeding made the level show.
     #[derive(Debug)]
     pub struct Shown {
         pub sounds: Vec<(String, [f64; 3], f32, f32)>,
         pub events: Vec<(&'static str, [f64; 3], Option<Who>)>,
     }
 
-use sunrise_gameplay_common::game::server_side::mounts::tests::block_of;
+    use sunrise_gameplay_common::game::server_side::mounts::tests::block_of;
 
-use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
+    use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
 
     use super::*;
     use std::collections::HashMap;
 
     #[cfg(test)]
-/// `ZombieHorse.isFood` is `#minecraft:zombie_horse_food`, which holds only
+    /// `ZombieHorse.isFood` is `#minecraft:zombie_horse_food`, which holds only
     /// the red mushroom, and `AbstractHorse.isFood` is `#minecraft:horse_food`,
     /// which holds none (#8593). A skeleton horse inherits the horse food tag.
     #[test]
@@ -1335,12 +1353,8 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
         );
     }
 
-    
-
-    
-
     #[cfg(test)]
-/// `handlePlayerCommand` START_RIDING_JUMP reaches the ridden vehicle's
+    /// `handlePlayerCommand` START_RIDING_JUMP reaches the ridden vehicle's
     /// `handleStartJump`: a saddled horse rears, slides on the rider's keys and
     /// its jump sound is played at 0.4; a donkey and a mule have their own
     /// sound; a camel dashes with its dash sound at 1.0. An unsaddled mount
@@ -1399,7 +1413,7 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
     }
 
     #[cfg(test)]
-/// `Camel.handleStartJump`: the dash sound, then DASH, which starts the
+    /// `Camel.handleStartJump`: the dash sound, then DASH, which starts the
     /// cooldown; a sitting camel refuses to move and cannot jump
     /// (`Camel.canJump`).
     #[test]
@@ -1429,7 +1443,7 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
     }
 
     #[cfg(test)]
-/// `AbstractNautilus.onPlayerJump` through `handlePlayerCommand`
+    /// `AbstractNautilus.onPlayerJump` through `handlePlayerCommand`
     /// START_RIDING_JUMP: the scale the rider's own bar charged reaches the
     /// mount, and its next travel dashes with it. A nautilus in its dash
     /// cooldown takes no jump (the pending scale is left alone), and there is
@@ -1484,7 +1498,7 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn steering_accepts_the_correct_item_in_either_hand() {
         let carrot = "minecraft:carrot_on_a_stick";
         let fungus = "minecraft:warped_fungus_on_a_stick";
@@ -1495,12 +1509,8 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
         assert!(!steering_item(Species::Horse, Some(carrot), Some(fungus)));
     }
 
-    
-    
-    
-    
     #[cfg(test)]
-/// A strider (0.9 by 1.7) standing on the lava at x, z, facing south.
+    /// A strider (0.9 by 1.7) standing on the lava at x, z, facing south.
     pub(in crate::game::server_side) fn strider_at(x: f64, z: f64) -> Mount {
         Mount {
             species: Species::Strider,
@@ -1513,11 +1523,9 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
             yaw: 0.0,
         }
     }
-    
-    
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_strider_in_open_lava_puts_its_rider_on_its_back() {
         // #3513: getting off in a lava sea used to put the player beside the
         // strider, in the lava; with no floor in reach vanilla puts the rider
@@ -1530,7 +1538,7 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_strider_by_the_shore_puts_its_rider_on_the_shore() {
         // Netherrack 45 degrees to the right of a rider facing south (+z);
         // the straight-ahead and 22.5 degree columns are lava.
@@ -1541,7 +1549,7 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
     }
 
     #[cfg(test)]
-#[test]
+    #[test]
     fn a_low_ceiling_on_the_shore_makes_the_rider_crawl_off() {
         let sea = Sea::with(&[[0, 30, 1], [0, 32, 1]]);
         let (at, pose) = dismount_location(&strider_at(0.5, 0.5), &rider(0.0), &sea);
@@ -1549,18 +1557,9 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
         assert_eq!(pose, Some(Pose::Swimming));
     }
 
-    
-
-    
-
-    
-
     /// Feeds `item` to mob 0 and collects the sounds and the `minecraft:eat`
     /// game events it made.
-    pub fn feed(
-        game: &mut crate::game::ServerGame<'_>,
-        item: &str,
-    ) -> (bool, Shown) {
+    pub fn feed(game: &mut crate::game::ServerGame<'_>, item: &str) -> (bool, Shown) {
         game.common.inventory[game.common.selected] = Some(ItemStack::new(item, 2));
         game.start_audio_capture();
         crate::game::sculk_server::TEST_POSTED_EVENTS
@@ -1601,16 +1600,9 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
         game.mobs.push(m);
     }
 
-    
-
-    
-
     /// Equips `item` on mob 0 and collects the sounds and the `minecraft:equip`
     /// game events it made.
-    pub fn equip(
-        game: &mut crate::game::ServerGame<'_>,
-        item: &str,
-    ) -> (bool, Shown) {
+    pub fn equip(game: &mut crate::game::ServerGame<'_>, item: &str) -> (bool, Shown) {
         game.common.inventory[game.common.selected] = Some(ItemStack::new(item, 2));
         game.start_audio_capture();
         crate::game::sculk_server::TEST_POSTED_EVENTS
@@ -1632,10 +1624,6 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
         });
         (used, Shown { sounds, events })
     }
-
-    
-
-    
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;

@@ -12,7 +12,10 @@ impl crate::game::ServerGame<'_> {
                 if self.common.level.saved_mods.is_none() {
                     return;
                 }
-                let mismatches = self.common.level.mod_mismatches(&level_mods::Loaded::now().mods());
+                let mismatches = self
+                    .common
+                    .level
+                    .mod_mismatches(&level_mods::Loaded::now().mods());
                 let mut resolved = Vec::new();
                 self.native_mod_mismatch(&mismatches, &mut resolved);
                 (mismatches, resolved)

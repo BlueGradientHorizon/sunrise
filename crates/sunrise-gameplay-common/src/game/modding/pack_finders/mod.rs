@@ -30,10 +30,7 @@ impl Registry {
         }
     }
 
-    pub fn register_listener(
-        &mut self,
-        listen: &mut dyn FnMut(&mut dyn PackFinders) -> bool,
-    ) {
+    pub fn register_listener(&mut self, listen: &mut dyn FnMut(&mut dyn PackFinders) -> bool) {
         let checkpoint = self.packs.len();
         if !listen(self) {
             self.packs.truncate(checkpoint);

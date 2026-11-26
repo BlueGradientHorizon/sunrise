@@ -129,7 +129,8 @@ impl ClientGame<'_> {
                 && m.alive()
                 && &*m.kind.id == "minecraft:player"
                 && self
-                    .common.res
+                    .common
+                    .res
                     .facts()
                     .get(self.common.world.block(feet[0], feet[1], feet[2]))
                     .fluid_level
@@ -171,12 +172,14 @@ impl ClientGame<'_> {
         };
         let support = match target {
             Target::Player => self
-                .common.player
+                .common
+                .player
                 .as_ref()
                 .and_then(|p| p.ground.supporting_block)
                 .map(|p| [p.x, p.y, p.z]),
             Target::Mob(id) => self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == id)
                 .and_then(|m| m.ground.supporting_block)
@@ -194,7 +197,13 @@ impl ClientGame<'_> {
             max[0] - min[0],
             |game| {
                 let random = match mob {
-                    Some(id) => &mut game.common.mob_index.get_mut(&mut game.common.mobs, id)?.random,
+                    Some(id) => {
+                        &mut game
+                            .common
+                            .mob_index
+                            .get_mut(&mut game.common.mobs, id)?
+                            .random
+                    }
                     None => game.client.particles.0.random(),
                 };
                 Some((random.next_double(), random.next_double()))

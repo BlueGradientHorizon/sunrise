@@ -14,7 +14,8 @@ impl ServerGame<'_> {
     fn read_test_environment_json(&self, id: &str) -> Option<Json> {
         let (ns, path) = id.split_once(':').unwrap_or(("minecraft", id));
         let file = self
-            .common.options
+            .common
+            .options
             .resources
             .join("data")
             .join(ns)

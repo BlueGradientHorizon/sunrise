@@ -1,8 +1,8 @@
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::ominous_item_spawner_common::{ROTATION_SPEED, TICKS_SCALING};
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{block_entity_render::vertex_light, item_render, mesher::Vertex};
 use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::ominous_item_spawner_common::{ROTATION_SPEED, TICKS_SCALING};
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
 impl ClientGame<'_> {
@@ -35,8 +35,8 @@ impl ClientGame<'_> {
             let pose = glam::Mat4::from_translation((at - camera).as_vec3())
                 * glam::Mat4::from_scale(glam::Vec3::splat(scale))
                 * glam::Mat4::from_rotation_y(spin.to_radians());
-            let seed =
-                i64::from(self.common.item_number(&s.item.item).unwrap_or(0)) + i64::from(s.item.damage);
+            let seed = i64::from(self.common.item_number(&s.item.item).unwrap_or(0))
+                + i64::from(s.item.damage);
             for copy in item_render::cluster_poses(
                 &state,
                 pose,
@@ -69,8 +69,15 @@ impl ClientGame<'_> {
     }
     /// `OminousItemSpawner.tick` on a client: advances tickCount and emits particles every 5 ticks.
     pub fn tick_remote_ominous_item_spawners(&mut self) {
-        let at: Vec<[f64; 3]> = self.common.ominous_spawners.iter().map(|s| s.position).collect();
-        self.common.ominous_spawners.for_each_mut(|s| s.tick_count += 1);
+        let at: Vec<[f64; 3]> = self
+            .common
+            .ominous_spawners
+            .iter()
+            .map(|s| s.position)
+            .collect();
+        self.common
+            .ominous_spawners
+            .for_each_mut(|s| s.tick_count += 1);
         if self.common.world.game_time % 5 == 0 {
             for position in at {
                 self.ominous_spawner_particles(position);

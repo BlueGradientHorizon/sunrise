@@ -52,7 +52,8 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let changed: Vec<(i32, i32, i32)> = self
-            .common.world
+            .common
+            .world
             .block_log
             .as_ref()
             .map_or(&[][..], |log| log.get(logged..).unwrap_or(&[]))
@@ -72,7 +73,10 @@ impl crate::game::ServerGame<'_> {
                 let at = [f64::from(x) + 0.5, f64::from(y) + 0.5, f64::from(z) + 0.5];
                 let state = self.common.world.block(x, y, z);
                 let place = mod_api::BlockSoundCause::Place;
-                let name = self.common.block_sound_type([x, y, z], state, placer, place).place;
+                let name = self
+                    .common
+                    .block_sound_type([x, y, z], state, placer, place)
+                    .place;
                 (at, name.trim_start_matches("minecraft:").to_owned())
             })
             .collect();
@@ -95,7 +99,10 @@ impl crate::game::ServerGame<'_> {
         let behaviours = self.common.res.behaviours();
         let hand_operated = !changed.is_empty()
             && changed.iter().all(|&(x, y, z)| {
-                sunrise_gameplay_common::game::remote::hand_operated(behaviours, self.common.world.block(x, y, z))
+                sunrise_gameplay_common::game::remote::hand_operated(
+                    behaviours,
+                    self.common.world.block(x, y, z),
+                )
             });
         if hand_operated && self.server.audio_capture_active {
             let capture = &mut self.server.pending_sounds;

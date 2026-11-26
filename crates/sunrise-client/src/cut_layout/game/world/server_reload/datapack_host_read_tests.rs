@@ -1,9 +1,9 @@
 use super::*;
-use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
 use mod_api::{
     DatapackEntry, DatapackField, DatapackFieldKind, DatapackReadError as E, DatapackRegistrySync,
     LevelRef, Registrar, RegistrationContext, WorldEpoch,
 };
+use sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases;
 struct SyncedRegistryMod;
 #[mod_api::__subscriptions]
 impl Hooks for SyncedRegistryMod {

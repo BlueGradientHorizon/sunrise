@@ -1,16 +1,19 @@
 //! `on_block_state_change` heard by a block Part at the end of `Level.setBlock`: after the
 //! neighbours' shapes settled, where `block_changed` hears the write before them, and on a
 //! client for each block the server sends and each write of a piston's replay.
-use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
-use {crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use mod_api::{
     BlockChangedEvent, BlockPart, BlockState, BlockUpdateFlags, Hooks, LevelHost, LevelSide,
     OnBlockStateChangeEvent, Registrar,
 };
 use std::sync::{Arc, Mutex};
+use sunrise_client_gameplay::game::client_side::remote_client::session_state::RemoteDimensionEntry;
 use sunrise_core::{geometry::Direction, position::BlockPos};
+use sunrise_gameplay_common::game::GameGameExt1;
 use sunrise_world::level::{LevelAccess, flags};
+use {
+    crate::game::server_side::native_entity_refs::tests::with_client_game,
+    sunrise_gameplay::game::native_entity_refs::tests::with_game,
+};
 
 /// One notice: the side, the position, the state asked, old, new, and whether the fence west
 /// of the position showed an east side then.

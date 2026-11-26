@@ -87,7 +87,11 @@ impl Hooks for Probe {
 /// Runs `hit` in a game with the probe installed: the attacker (a player or a mob) is the one
 /// the listener draws on. Checks the two queued sounds, the seeds against a stream seeded
 /// independently, the attacker's stream and the level's random.
-fn check(attacker: i32, expected_at: [f64; 3], hit: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+fn check(
+    attacker: i32,
+    expected_at: [f64; 3],
+    hit: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>),
+) {
     let handles = Arc::new(Mutex::new(Handles::default()));
     let mods: mod_api::Mods = vec![mod_api::ModEntry::new(
         "probe",

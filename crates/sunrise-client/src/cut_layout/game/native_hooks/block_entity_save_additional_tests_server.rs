@@ -1,8 +1,6 @@
 #![cfg(test)]
 #[cfg(test)]
 pub(crate) mod tests {
-    use sunrise_gameplay_common::game::GameGameExt1;
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     use crate::game::native_hooks::block_entity_save_additional_tests::tests::BreakObserver;
     use crate::game::native_hooks::block_entity_save_additional_tests::tests::Mod;
     use crate::game::native_hooks::block_entity_save_additional_tests::tests::SaveItemsMod;
@@ -14,6 +12,8 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
         nbt::{Compound, Limits, Tag, read_named},
         position::ChunkPos,
     };
+    use sunrise_gameplay::game::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::GameGameExt1;
     use sunrise_level::{
         chunk::Chunk,
         containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields},
@@ -110,7 +110,11 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
     #[test]
     #[ignore = "daily"]
     fn save_edits_slotless_items_but_keeps_declared_slots_after_a_skipped_tick() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
+        use {
+            sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+            sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
+            sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+        };
         const NAME: &str = "game::server_side::native_hooks_server::block_entity_save_additional_tests::tests::save_edits_slotless_items_but_keeps_declared_slots_after_a_skipped_tick";
         if run_fresh_cases(NAME, "SUNRISE_SAVE_ITEMS_CHILD", &["save"]) {
             return;
@@ -118,8 +122,11 @@ use sunrise_gameplay::game::native_entity_refs::tests::with_game;
         let mods: mod_api::Mods = vec![ModEntry::new("save_items", Box::new(SaveItemsMod))].into();
         mod_platform::testing::with_mods(mods.clone(), || {
             sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
-            let root =
-                sunrise_gameplay_common::game::mods::content_root(&fixture_root(), &Default::default()).unwrap();
+            let root = sunrise_gameplay_common::game::mods::content_root(
+                &fixture_root(),
+                &Default::default(),
+            )
+            .unwrap();
             with_game_at(root.prepared().to_path_buf(), |game| {
                 game.options.dedicated = Some(Vec::new());
                 let registry = game.pack.assets.registry;

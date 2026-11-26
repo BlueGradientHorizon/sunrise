@@ -1,5 +1,5 @@
-use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_core::geometry::Vec3;
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 
 #[test]
 #[ignore = "daily"]
@@ -40,7 +40,8 @@ fn an_item_teleported_into_another_level_arrives_there_still() {
             "execute in minecraft:the_nether run tp @e[type=minecraft:item] 1.5 70 1.5"
         ));
         assert!(game.dropped.is_empty());
-        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+            .unwrap();
         assert_eq!(game.dropped.len(), 1);
         let item = &game.dropped[0];
         assert_eq!(
@@ -70,19 +71,22 @@ pub(crate) fn run_portal_arrival_effects_command_items_merge_immediately() {
         game.dropped[0].age = 7;
         game.dropped[0].pickup_delay = 30;
         let incoming_uuid = game.uuid_for(game.dropped[0].id);
-        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+            .unwrap();
         game.spawn_item_own(
             sunrise_items::items::ItemStack::new("minecraft:stick", 3),
             [1.5, 70.0, 1.5],
             10,
         );
         game.dropped[0].age = 41;
-        game.enter_level(sunrise_gameplay_common::game::Dim::Overworld).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Overworld)
+            .unwrap();
         assert!(game.run_command(
             "execute in minecraft:the_nether run tp @e[type=minecraft:item] 1.5 70 1.5"
         ));
         assert!(game.dropped.is_empty());
-        game.enter_level(sunrise_gameplay_common::game::Dim::Nether).unwrap();
+        game.enter_level(sunrise_gameplay_common::game::Dim::Nether)
+            .unwrap();
         assert_eq!(game.dropped.len(), 1);
         let item = &game.dropped[0];
         assert_eq!((item.stack.count, item.age, item.pickup_delay), (8, 7, 30));

@@ -25,7 +25,8 @@ impl ClientGame<'_> {
         if matches!(self.client.be_anims.ticker(state.0), Some(Ticker::Conduit))
             && let Some(&owner) = self.client.be_anims.owners.get(&pos)
             && self
-                .common.world
+                .common
+                .world
                 .block_entities
                 .generation(&(pos[0], pos[1], pos[2]))
                 != Some(owner)
@@ -67,7 +68,10 @@ impl ClientGame<'_> {
         let state = self.common.world.block(pos[0], pos[1], pos[2]).0;
         let time = self.common.world.game_time;
         // PotentSulfurBlock.triggerEvent.
-        if self.common.potent_sulfur_eruption_event((pos[0], pos[1], pos[2])) {
+        if self
+            .common
+            .potent_sulfur_eruption_event((pos[0], pos[1], pos[2]))
+        {
             return;
         }
         self.claim_anim(pos);
@@ -120,7 +124,8 @@ impl ClientGame<'_> {
     /// Bind animation state at `pos` to the current block entity generation.
     pub(in crate::game) fn claim_anim(&mut self, pos: [i32; 3]) {
         if let Some(generation) = self
-            .common.world
+            .common
+            .world
             .block_entities
             .generation(&(pos[0], pos[1], pos[2]))
         {

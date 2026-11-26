@@ -1,14 +1,12 @@
-
-
 #![cfg(test)]
 use sunrise_core::position::BlockPos;
 #[cfg(test)]
 mod landing_crossing_tests {
-    use {crate::game::native_hooks::block_landing::*};
-    use sunrise_gameplay_common::game::native_hooks::HitLevel;
-    use sunrise_gameplay_common::game::api_values::TryIntoApi;
+    use crate::game::native_hooks::block_landing::*;
     use mod_api::{BlockPart, FallOnEvent, Hooks, LevelRandomHost, ModEntry, Registrar};
     use std::sync::{Arc, Mutex};
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::native_hooks::HitLevel;
 
     #[derive(Clone, Default)]
     struct LandingPart(Arc<Mutex<Option<(mod_api::BlockState, bool)>>>);
@@ -62,16 +60,18 @@ mod landing_crossing_tests {
                     let mut multiplier = 1.0;
                     let mut writes = original.clone();
                     let mut level = sunrise_sim::health::TestLevel::new(0);
-                    HitLevel(level.level()).native_fall_on(sunrise_gameplay_common::game::native_hooks::fire::FallOnCall {
-                        dimension: "minecraft:overworld",
-                        entity: 1,
-                        kind: "minecraft:player",
-                        state: stone,
-                        pos: BlockPos::new(1, 64, 1),
-                        distance: &mut distance,
-                        damage_multiplier: &mut multiplier,
-                        writes: &mut writes,
-                    });
+                    HitLevel(level.level()).native_fall_on(
+                        sunrise_gameplay_common::game::native_hooks::fire::FallOnCall {
+                            dimension: "minecraft:overworld",
+                            entity: 1,
+                            kind: "minecraft:player",
+                            state: stone,
+                            pos: BlockPos::new(1, 64, 1),
+                            distance: &mut distance,
+                            damage_multiplier: &mut multiplier,
+                            writes: &mut writes,
+                        },
+                    );
                     if invalid {
                         assert_eq!(
                             (distance, multiplier),

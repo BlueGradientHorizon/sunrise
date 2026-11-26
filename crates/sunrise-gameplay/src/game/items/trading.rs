@@ -3,9 +3,9 @@
 //! buttons, payment slots, the result slot's `onTake`, villager experience and
 //! level-ups with new offers from the next trade set.
 use crate::game::ServerGame;
+use sunrise_game_data::text::Text;
 use sunrise_gameplay_common::game::stations_common::{Kind, Station};
 use sunrise_gameplay_common::game::trading_common::MerchantState;
-use sunrise_game_data::text::Text;
 use sunrise_items::{items::ItemStack, random_sequences::RandomSequences};
 use sunrise_sim::merchant::{self, MerchantOffer, TradeContext, TradeFeedback};
 use sunrise_sim::mobs::{
@@ -155,7 +155,10 @@ impl ServerGame<'_> {
             return Vec::new();
         };
         self.journal_trade_sequences();
-        let mut random = self.server.rand_sequences.lend(&sequence, self.common.level.seed);
+        let mut random = self
+            .server
+            .rand_sequences
+            .lend(&sequence, self.common.level.seed);
         let next_map = self.peek_map_id();
         let tag = |t: &str| self.structure_tag(t);
         let maps = GameMaps {
@@ -232,11 +235,7 @@ impl ServerGame<'_> {
     }
     /// `Villager.mobInteract` / `WanderingTrader.mobInteract`: shake the
     /// head without offers, else open the trading screen.
-    pub fn interact_trader(
-        &mut self,
-        index: usize,
-        item: &str,
-    ) -> sunrise_game_data::Result<bool> {
+    pub fn interact_trader(&mut self, index: usize, item: &str) -> sunrise_game_data::Result<bool> {
         let m = &self.common.mobs[index];
         let species = m.species();
         if !matches!(species, Species::Villager | Species::WanderingTrader)
@@ -320,7 +319,10 @@ impl ServerGame<'_> {
                 &session.profession,
                 level,
             ) {
-                let r = self.server.rand_sequences.lend(&seq, self.common.level.seed);
+                let r = self
+                    .server
+                    .rand_sequences
+                    .lend(&seq, self.common.level.seed);
                 session.sequences.insert(seq, r);
             }
         }
@@ -376,7 +378,8 @@ impl ServerGame<'_> {
         let variant = format!("minecraft:{}", variant.trim_start_matches("minecraft:"));
         let level = level.clamp(1, 5);
         let origin = self
-            .common.player
+            .common
+            .player
             .as_ref()
             .map_or([0.0; 3], |p| [p.position.x, p.position.y, p.position.z]);
         let mut offers = Vec::new();
@@ -424,7 +427,8 @@ impl ServerGame<'_> {
     #[allow(dead_code)]
     pub(in crate::game) fn merchant_sync_out(&mut self, session: Box<merchant::Session>) {
         let mob = self
-            .common.station
+            .common
+            .station
             .as_ref()
             .and_then(|s| s.merchant.as_ref())
             .and_then(|m| m.mob);
@@ -439,14 +443,24 @@ impl ServerGame<'_> {
                         .is_none()
             })
         {
-            if let Some(m) = self.common.station.as_mut().and_then(|s| s.merchant.as_mut()) {
+            if let Some(m) = self
+                .common
+                .station
+                .as_mut()
+                .and_then(|s| s.merchant.as_mut())
+            {
                 m.session = session;
             }
             return;
         }
         let (mut session, traded) = self.merchant_apply(session, mob, TradeFeedback::Current);
         self.merchant_traded(mob, &mut session.offers, &traded);
-        if let Some(m) = self.common.station.as_mut().and_then(|s| s.merchant.as_mut()) {
+        if let Some(m) = self
+            .common
+            .station
+            .as_mut()
+            .and_then(|s| s.merchant.as_mut())
+        {
             m.session = session;
         }
     }
@@ -529,9 +543,11 @@ impl ServerGame<'_> {
         };
         if matches!(feedback, TradeFeedback::AtHurt(_)) && !self.merchant_take_active() {
             if !silent {
-                self.play_immediate_level_sound(sunrise_gameplay_common::game::level_sounds_common::LevelSound::new(
-                    sound, at, 1.0, pitch,
-                ));
+                self.play_immediate_level_sound(
+                    sunrise_gameplay_common::game::level_sounds_common::LevelSound::new(
+                        sound, at, 1.0, pitch,
+                    ),
+                );
             }
         } else {
             self.merchant_sound(sound, at, pitch);
@@ -556,7 +572,8 @@ impl ServerGame<'_> {
             // TradeWithVillagerEvent: on the server, in the player's turn.
             if let (Some(id), Some(_)) = (mob, self.server.lan_acting)
                 && let Some(kind) = self
-                    .common.mobs
+                    .common
+                    .mobs
                     .iter()
                     .find(|m| m.id == id)
                     .map(sunrise_gameplay_common::game::native_hooks::mob_kind)
@@ -577,7 +594,8 @@ impl ServerGame<'_> {
             self.journal_merchant_mob(id);
             self.villager_trade_pending(id);
             if let Some(villager) = self
-                .common.mobs
+                .common
+                .mobs
                 .iter()
                 .find(|m| m.id == id)
                 .map(|m| self.mob_entity(m))
@@ -588,7 +606,12 @@ impl ServerGame<'_> {
     }
     #[allow(dead_code)]
     pub(in crate::game) fn merchant_scroll(&mut self, d: f32) -> bool {
-        let Some(m) = self.common.station.as_mut().and_then(|s| s.merchant.as_mut()) else {
+        let Some(m) = self
+            .common
+            .station
+            .as_mut()
+            .and_then(|s| s.merchant.as_mut())
+        else {
             return false;
         };
         if m.session.offers.len() > 7 {
@@ -628,11 +651,6 @@ pub(in crate::game) mod tests {
         assert_eq!(scrolled(0, 5, 1.0), 0, "clamped at the top");
         assert_eq!(scrolled(5, 5, -1.0), 5, "clamped at the bottom");
     }
-
-    
-    
-
-    
 }
 
 #[cfg(test)]

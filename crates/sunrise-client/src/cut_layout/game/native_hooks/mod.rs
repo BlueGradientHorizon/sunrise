@@ -1,5 +1,3 @@
-
-
 #[cfg(test)]
 pub(crate) mod animate_tick_tests;
 #[cfg(test)]
@@ -43,9 +41,9 @@ pub(crate) mod play_hit_sound_tests;
 pub(crate) mod registered_potions_tests;
 #[cfg(test)]
 pub(crate) mod remove_block_tests;
+pub(crate) mod tick_target_millis;
 #[cfg(test)]
 pub(crate) mod trident_family_tests;
-pub(crate) mod tick_target_millis;
 
 include!("shared.rs");
 

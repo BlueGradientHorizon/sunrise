@@ -1,66 +1,62 @@
-
-
 #![cfg(test)]
 use sunrise_core::geometry::Vec3;
 #[cfg(test)]
 pub(crate) mod tests {
 
-use sunrise_gameplay_common::game::equip_answers::EquipAnswersGameExt1;
-use sunrise_gameplay_common::game::tables::GameItems;
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay::dispense_rules::{CLICK, FAIL, Slot};
-use sunrise_core::geometry::Direction;
-use sunrise_gameplay::game::server_side::dispenser::mod_dispensed;
-use sunrise_items::items::ItemStack;
+    use sunrise_core::geometry::Direction;
+    use sunrise_gameplay::dispense_rules::{CLICK, FAIL, Slot};
+    use sunrise_gameplay::game::server_side::dispenser::mod_dispensed;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::equip_answers::EquipAnswersGameExt1;
+    use sunrise_gameplay_common::game::tables::GameItems;
+    use sunrise_items::items::ItemStack;
 
-use sunrise_gameplay::game::server_side::dispenser::tests::dispense_at_guest;
+    use sunrise_gameplay::game::server_side::dispenser::tests::dispense_at_guest;
 
-use sunrise_gameplay::game::server_side::dispenser::tests::dress;
+    use sunrise_gameplay::game::server_side::dispenser::tests::dress;
 
-use super::*;
+    use super::*;
 
-use sunrise_sim::mobs::Mob;
+    use sunrise_sim::mobs::Mob;
 
-use std::sync::{Arc, atomic::AtomicI32, mpsc};
+    use std::sync::{Arc, atomic::AtomicI32, mpsc};
 
-use sunrise_protocol::packets::configuration::ClientInformation;
+    use sunrise_protocol::packets::configuration::ClientInformation;
 
-use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
+    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
 
-#[cfg(test)]
-/// What a dispense probe part heard: which part, and the dispenser it was for.
+    #[cfg(test)]
+    /// What a dispense probe part heard: which part, and the dispenser it was for.
     #[derive(Clone, Default)]
     pub(in crate::game) struct Heard(
         pub(in crate::game) std::sync::Arc<std::sync::Mutex<Vec<(&'static str, [i32; 3], u32)>>>,
     );
-#[cfg(test)]
-impl Heard {
-        pub(crate) fn record(
-            &self,
-            part: &'static str,
-            pos: [i32; 3],
-            state: u32,
-        ) {
+    #[cfg(test)]
+    impl Heard {
+        pub(crate) fn record(&self, part: &'static str, pos: [i32; 3], state: u32) {
             self.0.lock().unwrap().push((part, pos, state));
         }
         pub(crate) fn take(&self) -> Vec<(&'static str, [i32; 3], u32)> {
             std::mem::take(&mut *self.0.lock().unwrap())
         }
     }
-#[cfg(test)]
-/// Answers for the faced block for dirt and cobblestone, whatever the item's own part says.
+    #[cfg(test)]
+    /// Answers for the faced block for dirt and cobblestone, whatever the item's own part says.
     pub(crate) struct Front(pub(crate) Heard);
-#[cfg(test)]
-#[mod_api::sunrise_part]
+    #[cfg(test)]
+    #[mod_api::sunrise_part]
     impl mod_api::BlockPart for Front {
         fn dispense_method(
             &self,
             _: &mut dyn mod_api::ServerHost,
             event: &mut mod_api::DispenseMethodEvent<'_>,
         ) -> Option<mod_api::Dispensed> {
-            let state = sunrise_gameplay_common::game::api_values::TryIntoEngine::try_into_engine(&event.state, &())
-                .unwrap()
-                .0;
+            let state = sunrise_gameplay_common::game::api_values::TryIntoEngine::try_into_engine(
+                &event.state,
+                &(),
+            )
+            .unwrap()
+            .0;
             self.0.record("block", event.pos, state);
             let item = event.stack.item();
             let answers = ["minecraft:dirt", "minecraft:cobblestone"]
@@ -69,11 +65,11 @@ impl Heard {
             answers.then_some((None, FAIL))
         }
     }
-#[cfg(test)]
-/// Answers for the item it is attached to, if the block in front let it.
+    #[cfg(test)]
+    /// Answers for the item it is attached to, if the block in front let it.
     pub(crate) struct Item(pub(crate) Heard);
-#[cfg(test)]
-#[mod_api::sunrise_part]
+    #[cfg(test)]
+    #[mod_api::sunrise_part]
     impl mod_api::ItemPart for Item {
         fn dispense_item(
             &self,
@@ -84,10 +80,10 @@ impl Heard {
             Some((None, CLICK))
         }
     }
-#[cfg(test)]
-pub(crate) struct Probe(pub(crate) Heard);
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    pub(crate) struct Probe(pub(crate) Heard);
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for Probe {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
             let stone = r.block_key("minecraft:stone");
@@ -98,8 +94,8 @@ pub(crate) struct Probe(pub(crate) Heard);
             }
         }
     }
-#[cfg(test)]
-/// Dresses only the entity type it is told to: what the part of an iron helmet answers to
+    #[cfg(test)]
+    /// Dresses only the entity type it is told to: what the part of an iron helmet answers to
     /// `can_equip`, and what it was asked as `(slot, entity, kind, position)`, the position read
     /// from the entity's handle through the read-only `Host`.
     #[derive(Clone)]
@@ -108,8 +104,8 @@ pub(crate) struct Probe(pub(crate) Heard);
         pub(in crate::game) asked:
             Arc<std::sync::Mutex<Vec<(String, u32, String, Option<[f64; 3]>)>>>,
     }
-#[cfg(test)]
-#[mod_api::sunrise_part]
+    #[cfg(test)]
+    #[mod_api::sunrise_part]
     impl mod_api::ItemPart for Fits {
         fn can_equip(&self, host: &dyn mod_api::Host, event: &mut mod_api::CanEquipEvent<'_>) {
             let at = event.entity.entity().position(host);
@@ -118,27 +114,25 @@ pub(crate) struct Probe(pub(crate) Heard);
             event.can_equip = event.kind == *self.accepts.lock().unwrap();
         }
     }
-#[cfg(test)]
-pub(crate) struct Tailor(pub(crate) Fits);
-#[cfg(test)]
-#[mod_api::__subscriptions]
+    #[cfg(test)]
+    pub(crate) struct Tailor(pub(crate) Fits);
+    #[cfg(test)]
+    #[mod_api::__subscriptions]
     impl mod_api::Hooks for Tailor {
         fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {
             let helmet = r.item_key("minecraft:iron_helmet");
             r.item_part(helmet, self.0.clone());
         }
     }
-#[cfg(test)]
-impl Fits {
+    #[cfg(test)]
+    impl Fits {
         pub(crate) fn new(accepts: &'static str) -> Self {
             Self {
                 accepts: Arc::new(std::sync::Mutex::new(accepts)),
                 asked: Arc::default(),
             }
         }
-        pub(crate) fn asked(
-            &self,
-        ) -> Vec<(String, u32, String, Option<[f64; 3]>)> {
+        pub(crate) fn asked(&self) -> Vec<(String, u32, String, Option<[f64; 3]>)> {
             std::mem::take(&mut *self.asked.lock().unwrap())
         }
         /// Runs `test` with a mod whose part of the iron helmet is this one installed.
@@ -150,10 +144,8 @@ impl Fits {
             mod_platform::testing::with_mods(mods, test);
         }
     }
-/// An iron helmet whose `equippable` is removed (`fields` None) or replaced by `fields`.
-    pub fn helmet_with(
-        fields: Option<Vec<(&str, sunrise_core::nbt::Tag)>>,
-    ) -> ItemStack {
+    /// An iron helmet whose `equippable` is removed (`fields` None) or replaced by `fields`.
+    pub fn helmet_with(fields: Option<Vec<(&str, sunrise_core::nbt::Tag)>>) -> ItemStack {
         use sunrise_core::nbt::Tag;
         let mut helmet = ItemStack::new("minecraft:iron_helmet", 1);
         let (id, value) = match fields {
@@ -163,21 +155,20 @@ impl Fits {
         helmet.data_mut().set_other(id, Some(value));
         helmet
     }
-/// A stand of entity id `id` standing at `x`, 200, `z`.
-    pub fn stand_at(
-        id: u32,
-        x: f64,
-        z: f64,
-    ) -> sunrise_sim::entities::ArmorStand {
+    /// A stand of entity id `id` standing at `x`, 200, `z`.
+    pub fn stand_at(id: u32, x: f64, z: f64) -> sunrise_sim::entities::ArmorStand {
         let at = sunrise_core::geometry::Vec3::new(x, 200.0, z);
         sunrise_sim::entities::ArmorStand::new(id, at, 0.0)
     }
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn a_dispenser_drops_an_egg_without_prototype_entity_data() {
-        use {sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
         use std::{fs, path::Path};
+        use {
+            sunrise_gameplay::game::native_entity_refs::tests::fixture_root,
+            sunrise_gameplay::game::native_entity_refs::tests::with_game_at,
+        };
 
         fn link_fixture_source(source: &Path, target: &Path) {
             #[cfg(unix)]
@@ -229,7 +220,7 @@ impl Fits {
             assert_eq!(game.dropped[0].stack, stack);
         });
     }
-/// `IItemExtension.canEquip` at the dispenser: vanilla dresses the zombie, the first in
+    /// `IItemExtension.canEquip` at the dispenser: vanilla dresses the zombie, the first in
     /// front; a part of the iron helmet that accepts only armour stands dresses the stand
     /// instead, and one that accepts only players dresses neither. The part reads where each
     /// one stands through its `Host`. An item with no part is as vanilla, and a handle that
@@ -273,7 +264,7 @@ impl Fits {
             });
         });
     }
-/// The dispenser reads the stack's own `equippable`, with no part installed: a removed
+    /// The dispenser reads the stack's own `equippable`, with no part installed: a removed
     /// component dispenses nothing onto anyone, an override for the feet dresses the zombie's
     /// feet, `allowed_entities` naming only armour stands skips the zombie for the stand, an
     /// explicitly empty list allows nobody, and `dispensable: false` keeps the dispenser out.
@@ -318,7 +309,7 @@ impl Fits {
             );
         });
     }
-/// The LAN guest in front of a dispenser: a part that accepts only players lets the helmet
+    /// The LAN guest in front of a dispenser: a part that accepts only players lets the helmet
     /// on, asked for the guest's own entity at its position; one that accepts only armour stands
     /// keeps it off; and with no part, a stack whose `allowed_entities` leaves the player out is
     /// not dispensed onto them.
@@ -338,7 +329,17 @@ impl Fits {
             ];
             let mut stack = helmet_with(Some(fields));
             assert!(!game.dispense_equipment((8, 201, 8), Direction::Down, &mut stack));
-            assert!(game.server.lan.as_ref().unwrap().hub.guest(2).unwrap().armor[0].is_none());
+            assert!(
+                game.server
+                    .lan
+                    .as_ref()
+                    .unwrap()
+                    .hub
+                    .guest(2)
+                    .unwrap()
+                    .armor[0]
+                    .is_none()
+            );
         }
         let fits = Fits::new("minecraft:armor_stand");
         fits.installed(|| {
@@ -375,7 +376,7 @@ impl Fits {
             assert_eq!(fits.asked(), [(asked.0, asked.1, asked.2, at)]);
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn bucket_ambient_extraction_keeps_the_bound_mob_owner() {
         use std::sync::{Arc, Mutex};
@@ -423,7 +424,7 @@ impl Fits {
             assert_eq!(before[0].entry.read(&VALUE), Ok(&10));
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn dispenser_stack_damage_preserves_break_remainder() {
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -435,13 +436,16 @@ impl Fits {
             assert_eq!(remainder.damage, max);
         });
     }
-/// `IItemExtension.damageItem` on the wear of a tool a dispenser uses: a brush (16 points a
+    /// `IItemExtension.damageItem` on the wear of a tool a dispenser uses: a brush (16 points a
     /// brushing) whose part halves it loses 8, one whose part cancels it keeps its durability, and
     /// the shears, which have no part, lose the whole point.
     #[test]
     #[ignore = "daily"]
     fn a_damage_item_part_changes_the_wear_of_a_dispensed_tool() {
-        use {crate::game::server_side::damage_item_tests::Rule, crate::game::server_side::damage_item_tests::with_wear_part};
+        use {
+            crate::game::server_side::damage_item_tests::Rule,
+            crate::game::server_side::damage_item_tests::with_wear_part,
+        };
         with_wear_part("minecraft:brush", Rule::Halve, |game, wear| {
             let damage = |game: &mut sunrise_gameplay::game::ServerGame<'_>, item: &str, points| {
                 game.hurt_and_break(ItemStack::new(item, 1), points)
@@ -457,7 +461,7 @@ impl Fits {
             assert!(wear.take_asked().is_empty());
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn sulfur_cube_dispenser_replacement_drops_the_full_old_stack() {
         super::super::native_entity_refs::tests::with_game(|game| {
@@ -487,7 +491,7 @@ impl Fits {
             );
         });
     }
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn mod_dispenser_answers_preserve_fallback_and_own_consumption() {
         use sunrise_gameplay_common::game::api_values::{StackReadError, TryIntoApi};
@@ -512,7 +516,7 @@ impl Fits {
             assert_eq!(mod_dispensed((None, 0), game.items()), Ok((None, 0)));
         });
     }
-/// A server with no player of its own, an open hub and one guest (conn 2)
+    /// A server with no player of its own, an open hub and one guest (conn 2)
     /// standing at (8.5, 200, 8.5) on a stone floor.
     pub(crate) fn server_with_guest(
         resources: &mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
@@ -575,7 +579,7 @@ impl Fits {
         game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         game
     }
-/// `EquipmentDispenseItemBehavior`: a server's player, the integrated
+    /// `EquipmentDispenseItemBehavior`: a server's player, the integrated
     /// owner or a guest, takes the piece (a server has no player of its own).
     #[test]
     #[ignore = "daily"]
@@ -602,7 +606,7 @@ impl Fits {
         let guest = game.server.lan.as_ref().unwrap().hub.guest(2).unwrap();
         assert!(guest.armor[3].is_some() && guest.armor[1].is_none());
     }
-/// A spectator is not a target (`canEquipWithDispenser`: `!isSpectator()`).
+    /// A spectator is not a target (`canEquipWithDispenser`: `!isSpectator()`).
     #[test]
     #[ignore = "daily"]
     fn a_dispenser_skips_a_spectator_and_a_dead_player() {
@@ -618,7 +622,7 @@ impl Fits {
             assert_eq!(stack.count, 1);
         }
     }
-/// `ArmorStand.canUseSlot` through `isDisabled`: the first stand in front
+    /// `ArmorStand.canUseSlot` through `isDisabled`: the first stand in front
     /// that can wear the piece gets it. Bit `1 << filterBit` locks a slot
     /// (head 4, chest 3, legs 2, feet 1); a hand needs arms.
     #[test]
@@ -654,7 +658,7 @@ impl Fits {
         assert!(!game.dispense_equipment((8, 201, 8), Direction::Down, &mut stack));
         assert_eq!(stack.count, 1);
     }
-/// A guest whose client is still on its loading screen (joined or
+    /// A guest whose client is still on its loading screen (joined or
     /// respawned, no ServerboundPlayerLoadedPacket yet) is in the level all the
     /// same: `getEntitiesOfClass` finds it and it wears the piece.
     #[test]
@@ -671,7 +675,7 @@ impl Fits {
         let head = guest.armor[0].as_ref().map(|s| &*s.item);
         assert_eq!(head, Some("minecraft:iron_helmet"));
     }
-/// Players are entities of the level: in one section they go in join
+    /// Players are entities of the level: in one section they go in join
     /// order (entity ids) with the mobs and stands, not after them.
     #[test]
     #[ignore = "daily"]
@@ -700,7 +704,7 @@ impl Fits {
             assert_eq!(game.armor_stands[0].equipment[5].is_some(), !guest_first);
         }
     }
-/// `forEachAccessibleNonEmptySection` walks sections before join order:
+    /// `forEachAccessibleNonEmptySection` walks sections before join order:
     /// a stand whose feet are in section x 1 but whose box reaches into block
     /// x 15 comes after one in section x 0, even with the lower id.
     #[test]
@@ -718,7 +722,7 @@ impl Fits {
         assert!(game.armor_stands[0].equipment[5].is_none());
         assert!(game.armor_stands[1].equipment[5].is_some());
     }
-/// `DispenserBlock.getDispenseMethod`: the block the dispenser faces
+    /// `DispenserBlock.getDispenseMethod`: the block the dispenser faces
     /// answers first and wins for any item; with no answer from it the item's
     /// part decides; with neither, vanilla drops one item as before.
     #[test]
@@ -760,7 +764,8 @@ impl Fits {
                         .unwrap()
                         .continue_value()
                         .unwrap();
-                    let events = sunrise_gameplay::game::server_side::dispense_fixture::stop_recording();
+                    let events =
+                        sunrise_gameplay::game::server_side::dispense_fixture::stop_recording();
                     (out, events)
                 };
 
@@ -796,7 +801,6 @@ impl Fits {
         });
     }
 }
-
 
 #[cfg(test)]
 #[path = "dispenser/decision_tests.rs"]

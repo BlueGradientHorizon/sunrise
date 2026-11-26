@@ -47,7 +47,8 @@ impl crate::game::ServerGame<'_> {
         TRANSFORMS
             .get_or_init(|| {
                 let json = std::fs::read_to_string(
-                    self.common.options
+                    self.common
+                        .options
                         .resources
                         .join("worldgen/blocks/structure-blocks.json"),
                 )
@@ -127,7 +128,8 @@ impl crate::game::ServerGame<'_> {
                     return Ok(0);
                 };
                 if !self
-                    .common.ui
+                    .common
+                    .ui
                     .registries
                     .ids("minecraft:worldgen/template_pool")
                     .contains(&pool)
@@ -145,7 +147,8 @@ impl crate::game::ServerGame<'_> {
                 let pos = self.place_pos(ctx, "position")?;
                 self.place_check_loaded([pos[0] >> 4, pos[2] >> 4], [pos[0] >> 4, pos[2] >> 4])?;
                 let terrain = self
-                    .common.end
+                    .common
+                    .end
                     .locator()
                     .ok_or_else(|| err("command.failed", &[]))?;
                 let query = sunrise_world::worldgen::generator::JigsawQuery {
@@ -176,7 +179,8 @@ impl crate::game::ServerGame<'_> {
                     return Ok(0);
                 };
                 if !self
-                    .common.ui
+                    .common
+                    .ui
                     .registries
                     .ids("minecraft:worldgen/structure")
                     .contains(&structure)
@@ -188,7 +192,8 @@ impl crate::game::ServerGame<'_> {
                 // position's chunk with its `biome -> true` predicate, then
                 // placeInChunk for every chunk of the start's box.
                 let terrain = self
-                    .common.end
+                    .common
+                    .end
                     .locator()
                     .ok_or_else(|| err("command.failed", &[]))?;
                 let start = terrain
@@ -262,6 +267,5 @@ impl crate::game::ServerGame<'_> {
         Ok(1)
     }
 }
-
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;

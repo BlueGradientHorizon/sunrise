@@ -8,11 +8,11 @@
 //! loopback address. The joining side is sunrise-friends' (`game`), registered by
 //! sunrise-official.
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::lan_common::LanSettings;
 use std::time::{Duration, Instant};
 use sunrise_client::hud::HudBatch;
 use sunrise_friends::{Host, HostConfig, HostEvent, PathMode, host::DEFAULT_PORT, reach, stun};
 use sunrise_game_data::{Result, lang, text::Text};
+use sunrise_gameplay_common::game::lan_common::LanSettings;
 use sunrise_protocol::{GAME_VERSION, PROTOCOL_VERSION};
 
 #[path = "friends/screen.rs"]

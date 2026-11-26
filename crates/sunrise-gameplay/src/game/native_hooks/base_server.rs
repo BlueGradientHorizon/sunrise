@@ -120,23 +120,13 @@ impl crate::game::ServerGame<'_> {
         self.fire_block_break_progress_update(player, name, pos, progress);
     }
     /// A block finished cooking `item` into `result` at `pos`.
-    pub(crate) fn native_block_cook(
-        &mut self,
-        pos: [i32; 3],
-        item: &str,
-        result: &str,
-    ) {
+    pub(crate) fn native_block_cook(&mut self, pos: [i32; 3], item: &str, result: &str) {
         self.fire_block_cook(pos, item, result);
     }
     /// A server player stopped digging `pos` before the block broke, after
     /// the server cleared the dig and sent the block back to the client.
     /// The player's state is not swapped in.
-    pub(crate) fn native_block_damage_abort(
-        &mut self,
-        player: u128,
-        name: &str,
-        pos: [i32; 3],
-    ) {
+    pub(crate) fn native_block_damage_abort(&mut self, player: u128, name: &str, pos: [i32; 3]) {
         self.fire_block_damage_abort(player, name, pos);
     }
     /// Block `block`'s registered item slots (`WorldlyContainer`), read from
@@ -225,11 +215,7 @@ impl crate::game::ServerGame<'_> {
         self.fire_brewing_fuel(pos, fuel);
     }
     /// A brewing stand at `pos` began brewing `ingredient`, after fuel and the timer were set. Server-side.
-    pub(crate) fn native_brewing_start(
-        &mut self,
-        pos: [i32; 3],
-        ingredient: &str,
-    ) {
+    pub(crate) fn native_brewing_start(&mut self, pos: [i32; 3], ingredient: &str) {
         self.fire_brewing_start(pos, ingredient);
     }
     /// A server player empties a bucket at `pos` (`fluid`: `minecraft:water`,
@@ -252,11 +238,7 @@ impl crate::game::ServerGame<'_> {
         self.fire_bucket_empty(player, name, pos, fluid, cancel);
     }
     /// An item was placed on a campfire at `pos` and began cooking.
-    pub(crate) fn native_campfire_start(
-        &mut self,
-        pos: [i32; 3],
-        item: &str,
-    ) {
+    pub(crate) fn native_campfire_start(&mut self, pos: [i32; 3], item: &str) {
         self.fire_campfire_start(pos, item);
     }
     /// Chunk `chunk` (`[x, z]`, in chunks) of `dimension` came into the world
@@ -522,20 +504,11 @@ impl crate::game::ServerGame<'_> {
     }
     /// A guest's fall flying state changed on the server. The change has
     /// already been applied.
-    pub(crate) fn native_entity_toggle_glide(
-        &mut self,
-        player: u128,
-        name: &str,
-        gliding: bool,
-    ) {
+    pub(crate) fn native_entity_toggle_glide(&mut self, player: u128, name: &str, gliding: bool) {
         self.fire_entity_toggle_glide(player, name, gliding);
     }
     /// An experience bottle broke and its experience was awarded.
-    pub(crate) fn native_exp_bottle(
-        &mut self,
-        pos: [f64; 3],
-        experience: u32,
-    ) {
+    pub(crate) fn native_exp_bottle(&mut self, pos: [f64; 3], experience: u32) {
         self.fire_exp_bottle(pos, experience);
     }
     /// Whether the experience orb `into` takes the orb `from` in (vanilla's
@@ -580,12 +553,7 @@ impl crate::game::ServerGame<'_> {
         self.fire_fill_bucket(stack, pos, canceled);
     }
     /// A firework rocket completed its explosion effects.
-    pub(crate) fn native_firework_explode(
-        &mut self,
-        entity: u32,
-        pos: [f64; 3],
-        bursts: usize,
-    ) {
+    pub(crate) fn native_firework_explode(&mut self, entity: u32, pos: [f64; 3], bursts: usize) {
         self.fire_firework_explode(entity, pos, bursts);
     }
     /// A furnace at `pos` consumed fuel and began or resumed burning it.
@@ -606,21 +574,12 @@ impl crate::game::ServerGame<'_> {
         self.fire_furnace_extract(player, name, pos, item, count);
     }
     /// A furnace finished smelting `item` into `result` at `pos`. Server-side.
-    pub(crate) fn native_furnace_smelt(
-        &mut self,
-        pos: [i32; 3],
-        item: &str,
-        result: &str,
-    ) {
+    pub(crate) fn native_furnace_smelt(&mut self, pos: [i32; 3], item: &str, result: &str) {
         self.fire_furnace_smelt(pos, item, result);
     }
     /// A furnace at `pos` began cooking `item` (its cooking timer advanced
     /// from zero). Server-side.
-    pub(crate) fn native_furnace_start_smelt(
-        &mut self,
-        pos: [i32; 3],
-        item: &str,
-    ) {
+    pub(crate) fn native_furnace_start_smelt(&mut self, pos: [i32; 3], item: &str) {
         self.fire_furnace_start_smelt(pos, item);
     }
     /// A server player places a hanging entity: an item frame
@@ -797,10 +756,7 @@ impl crate::game::ServerGame<'_> {
     /// `listened` (HEAD, `*listened = true`). Without it the game does not read
     /// their equipment each tick and only armor stands are told. A mob or player
     /// counts from empty once it is set. Asked once a tick. Server-side.
-    pub(crate) fn native_living_equipment_listened(
-        &mut self,
-        listened: &mut bool,
-    ) {
+    pub(crate) fn native_living_equipment_listened(&mut self, listened: &mut bool) {
         self.fire_living_equipment_listened(listened);
     }
     /// A server click in a mod menu before the default slot action. A listener sets
@@ -870,21 +826,12 @@ impl crate::game::ServerGame<'_> {
         self.fire_pickup_xp(player, dimension, orb, value, count, canceled);
     }
     /// A guest's arm swing was handled by the server. `hand` is `mainhand`. Server-side.
-    pub(crate) fn native_player_arm_swing(
-        &mut self,
-        player: u128,
-        name: &str,
-        hand: &str,
-    ) {
+    pub(crate) fn native_player_arm_swing(&mut self, player: u128, name: &str, hand: &str) {
         self.fire_player_arm_swing(player, name, hand);
     }
     /// A server player reset their attack strength by swinging (`handlePunch`). The swing and reset
     /// have already happened. The player's state is not swapped in. Server-side.
-    pub(crate) fn native_player_attack_cooldown_reset(
-        &mut self,
-        player: u128,
-        name: &str,
-    ) {
+    pub(crate) fn native_player_attack_cooldown_reset(&mut self, player: u128, name: &str) {
         self.fire_player_attack_cooldown_reset(player, name);
     }
     /// A server player caught a mob in a bucket, after it was removed and the filled bucket was given.
@@ -981,11 +928,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// A server player has slept for 100 ticks in a bed and now counts as deeply asleep for the
     /// night-skip check.
-    pub(crate) fn native_player_deep_sleep(
-        &mut self,
-        player: u128,
-        name: &str,
-    ) {
+    pub(crate) fn native_player_deep_sleep(&mut self, player: u128, name: &str) {
         self.fire_player_deep_sleep(player, name);
     }
     /// A server player's book edit or signing packet is about to be applied. `pages` is its page
@@ -1007,11 +950,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// A server player used a firework rocket to boost while gliding, after the rocket was launched
     /// and consumed. Server-side.
-    pub(crate) fn native_player_elytra_boost(
-        &mut self,
-        player: u128,
-        name: &str,
-    ) {
+    pub(crate) fn native_player_elytra_boost(&mut self, player: u128, name: &str) {
         self.fire_player_elytra_boost(player, name);
     }
     /// A server player's XP orb pickup cooldown changed to `ticks`. It is
@@ -1159,11 +1098,7 @@ impl crate::game::ServerGame<'_> {
     /// `PlayerLoggedInEvent`): placed in the world and listed in
     /// `host.players().server_players()`, so `PlayerRef::send_payload` can reach them.
     /// Once a join, with no player's state swapped in. Server-side.
-    pub(crate) fn native_player_logged_in(
-        &mut self,
-        player: u128,
-        name: &str,
-    ) {
+    pub(crate) fn native_player_logged_in(&mut self, player: u128, name: &str) {
         self.fire_player_logged_in(player, name);
     }
     /// A player whose login the server has accepted (NeoForge's
@@ -1209,12 +1144,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// A server player filled an empty map, after the filled map and its saved data were created.
     /// Server-side.
-    pub(crate) fn native_player_map_filled(
-        &mut self,
-        player: u128,
-        name: &str,
-        map_id: i32,
-    ) {
+    pub(crate) fn native_player_map_filled(&mut self, player: u128, name: &str, map_id: i32) {
         self.fire_player_map_filled(player, name, map_id);
     }
     /// A server player named a mob with a name tag, after its name and persistence changed and the tag
@@ -1255,12 +1185,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// A server player released a drawn bow with `arrow` selected, by the use-item
     /// key or a mod's `LivingRef::release_using_item`. The player's state is swapped in.
-    pub(crate) fn native_player_ready_arrow(
-        &mut self,
-        player: u128,
-        name: &str,
-        arrow: &str,
-    ) {
+    pub(crate) fn native_player_ready_arrow(&mut self, player: u128, name: &str, arrow: &str) {
         self.fire_player_ready_arrow(player, name, arrow);
     }
     /// A server player's recipe book requested a known recipe be placed in
@@ -1331,12 +1256,7 @@ impl crate::game::ServerGame<'_> {
     /// what the server does: a sprint that ends by itself (a hit's knockback,
     /// hunger, a wall) is not reported. The player's state is swapped in, so
     /// the helpers and `native_tell` work. Once for each change, on a server.
-    pub(crate) fn native_player_sprint(
-        &mut self,
-        player: u128,
-        name: &str,
-        sprinting: bool,
-    ) {
+    pub(crate) fn native_player_sprint(&mut self, player: u128, name: &str, sprinting: bool) {
         self.fire_player_sprint(player, name, sprinting);
     }
     /// A client started tracking an entity (NeoForge's
@@ -1409,11 +1329,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// A server player released the use-item key, or a mod's `LivingRef::release_using_item` did,
     /// before the item finished being used. The player's state is swapped in.
-    pub(crate) fn native_player_stop_using_item(
-        &mut self,
-        player: u128,
-        name: &str,
-    ) {
+    pub(crate) fn native_player_stop_using_item(&mut self, player: u128, name: &str) {
         self.fire_player_stop_using_item(player, name);
     }
     /// A server player swapped their main and off hands, after both inventory slots changed.
@@ -1522,21 +1438,11 @@ impl crate::game::ServerGame<'_> {
     }
     /// A server player completed a villager or wandering trader trade. `entity_id` is the merchant
     /// network id. Server-side.
-    pub(crate) fn native_player_trade(
-        &mut self,
-        player: u128,
-        name: &str,
-        entity_id: u32,
-    ) {
+    pub(crate) fn native_player_trade(&mut self, player: u128, name: &str, entity_id: u32) {
         self.fire_player_trade(player, name, entity_id);
     }
     /// A server applied `velocity` to a player, when syncing changed motion to that player's client.
-    pub(crate) fn native_player_velocity(
-        &mut self,
-        player: u128,
-        name: &str,
-        velocity: [f64; 3],
-    ) {
+    pub(crate) fn native_player_velocity(&mut self, player: u128, name: &str, velocity: [f64; 3]) {
         self.fire_player_velocity(player, name, velocity);
     }
     /// A Nether portal was built for a dimension travel, or an End platform
@@ -1646,12 +1552,7 @@ impl crate::game::ServerGame<'_> {
     /// (`resource-pack` in `server.properties`) is answered before the
     /// player has joined, and those answers are not heard. Once for each
     /// answer, on a server.
-    pub(crate) fn native_resource_pack_status(
-        &mut self,
-        player: u128,
-        name: &str,
-        status: i32,
-    ) {
+    pub(crate) fn native_resource_pack_status(&mut self, player: u128, name: &str, status: i32) {
         self.fire_resource_pack_status(player, name, status);
     }
     /// The server is about to open its worlds: nothing of the world is
@@ -1689,11 +1590,7 @@ impl crate::game::ServerGame<'_> {
     /// dimension: which level `self.world` holds here is not defined. A paused
     /// pass fires nothing; a frozen world carries `world_running` false except
     /// during a requested step.
-    pub fn native_server_tick(
-        &mut self,
-        context: &LifecycleContext,
-        phase: ServerTickPhase,
-    ) {
+    pub fn native_server_tick(&mut self, context: &LifecycleContext, phase: ServerTickPhase) {
         self.fire_server_tick(context, phase);
     }
     /// A player finished editing a sign: `ServerGamePacketListenerImpl.updateSignText`
@@ -1711,10 +1608,7 @@ impl crate::game::ServerGame<'_> {
     /// (the editor writes into their world directly), and the sign changes
     /// that are no edit of the text (dyeing, glow ink, waxing, `/data`,
     /// `/setblock`, mods' `native_with_mod_block_entity`).
-    pub(crate) fn native_sign_changed(
-        &mut self,
-        call: mod_api::__private::SignChangedCall<'_>,
-    ) {
+    pub(crate) fn native_sign_changed(&mut self, call: mod_api::__private::SignChangedCall<'_>) {
         self.fire_sign_changed(call);
     }
     /// Enough players slept through the night in level `dimension` and the clock is about to
@@ -1749,12 +1643,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// A projectile hit the target block at `pos`, which now has `strength`
     /// output power. Server-side.
-    pub(crate) fn native_target_hit(
-        &mut self,
-        dimension: &str,
-        pos: [i32; 3],
-        strength: i32,
-    ) {
+    pub(crate) fn native_target_hit(&mut self, dimension: &str, pos: [i32; 3], strength: i32) {
         self.fire_target_hit(dimension, pos, strength);
     }
     /// A server player selected trade `index` from `villager` in the trading menu.
@@ -2569,7 +2458,9 @@ impl crate::game::ServerGame<'_> {
         kind: &str,
         offer: &mut MerchantOffer,
     ) -> Result<bool, sunrise_gameplay_common::game::transactions::decision::InvalidReason> {
-        use sunrise_gameplay_common::game::api_values::{OfferWriteError, TryIntoApi, checked_merchant_offer};
+        use sunrise_gameplay_common::game::api_values::{
+            OfferWriteError, TryIntoApi, checked_merchant_offer,
+        };
         use sunrise_gameplay_common::game::transactions::decision::InvalidReason;
         if !mod_api::__private::listened(mod_api::HookId::TradeWithVillager) {
             return Ok(false);

@@ -5,8 +5,8 @@
 //! witches, mooshroom colours, turtles, burnt items), lightning rods, the sky
 //! flash, the sounds and the branching additive bolt.
 use crate::game::ClientGame;
-use sunrise_gameplay_common::game::lightning_common::Bolt;
 use sunrise_core::random::RandomSource;
+use sunrise_gameplay_common::game::lightning_common::Bolt;
 
 #[cfg(feature = "client")]
 impl ClientGame<'_> {
@@ -94,12 +94,10 @@ impl ClientGame<'_> {
     /// blocks times the view scale of the camera, and past that only its sky
     /// flash and thunder remain. Simulation-order render inputs; seeded
     /// geometry lives in the renderer.
-    pub fn bolt_instances(
-        &self,
-        camera: glam::DVec3,
-    ) -> Vec<sunrise_client::gfx::lightning::Bolt> {
+    pub fn bolt_instances(&self, camera: glam::DVec3) -> Vec<sunrise_client::gfx::lightning::Bolt> {
         let range = 64.0 * self.view_scale();
-        self.common.bolts
+        self.common
+            .bolts
             .iter()
             .filter(|b| {
                 !self.hides_as_camera(b.id) && {
@@ -197,12 +195,6 @@ pub(in crate::game) mod tests {
             assert!(zombified.persistent);
         }
     }
-
-    
-    
-
-    
 }
 
 // A conversion keeps the old mob's state; lives here for the lightning's.
-

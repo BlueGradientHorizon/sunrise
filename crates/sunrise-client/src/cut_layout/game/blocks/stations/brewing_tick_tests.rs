@@ -1,5 +1,5 @@
-use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_game_data::gamerules::Value;
+use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{brewing::BrewingStand, containers::BlockEntity};
 
@@ -19,7 +19,11 @@ fn stand(items: [Option<ItemStack>; 5], brew_time: i32, fuel: i32) -> BlockEntit
     }))
 }
 
-fn place(game: &mut sunrise_gameplay::game::ServerGame<'_>, pos: (i32, i32, i32), entity: BlockEntity) {
+fn place(
+    game: &mut sunrise_gameplay::game::ServerGame<'_>,
+    pos: (i32, i32, i32),
+    entity: BlockEntity,
+) {
     let state = game
         .pack
         .assets

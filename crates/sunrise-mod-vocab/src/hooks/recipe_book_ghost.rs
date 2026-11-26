@@ -12,7 +12,8 @@ pub trait Hooks {
     /// that pushes nothing leaves what arrived. Asked for the open menu's book only, once per
     /// answer, by the part of the menu's type; a menu with none skips the hook.
     /// Client-side, with the `ClientHost`.
-    #[hook(target = "sunrise_client_gameplay::game::native_hooks::recipe_book_ghost::ClientGame<'_>::native_recipe_book_ghost", 
+    #[hook(
+        target = "sunrise_client_gameplay::game::native_hooks::recipe_book_ghost::ClientGame<'_>::native_recipe_book_ghost",
         receiver = "read",
         dispatch = "api_carrier",
         side = "client",

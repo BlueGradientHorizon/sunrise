@@ -1,15 +1,16 @@
-
-
 #![cfg(test)]
 use sunrise_items::items::ItemStack;
 #[cfg(test)]
 pub(crate) mod stand_equip_event_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use {crate::game::{Settings, load_resources}, sunrise_gameplay_common::game::{Options, Progress}};
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_level::{chunk::Chunk, containers::BlockEntity, sculk::Info};
     use sunrise_sim::mobs::Who;
+    use {
+        crate::game::{Settings, load_resources},
+        sunrise_gameplay_common::game::{Options, Progress},
+    };
 
     fn candidate(game: &sunrise_gameplay::game::ServerGame<'_>) -> Option<Info> {
         let Some(BlockEntity::Sculk(sensor)) = game.world.block_entities.get(&(9, 200, 10)) else {
@@ -40,7 +41,8 @@ use {crate::game::{Settings, load_resources}, sunrise_gameplay_common::game::{Op
         options.resources = root.clone();
         options.game_dir =
             Some(std::env::temp_dir().join(format!("sunrise-h130-unit-{}", std::process::id())));
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -108,13 +110,19 @@ use {crate::game::{Settings, load_resources}, sunrise_gameplay_common::game::{Op
 
 #[cfg(test)]
 pub(crate) mod mob_equipment_command_tests {
-    use sunrise_gameplay_common::game::tables::GameItems;
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use {sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay::game::commands::data::DataRef};
-    use {crate::game::{Settings, load_resources}, sunrise_gameplay_common::game::{Options, Progress}};
     use std::sync::Arc;
     use sunrise_core::position::ChunkPos;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
+    use sunrise_gameplay_common::game::tables::GameItems;
     use sunrise_level::chunk::Chunk;
+    use {
+        crate::game::{Settings, load_resources},
+        sunrise_gameplay_common::game::{Options, Progress},
+    };
+    use {
+        sunrise_gameplay::game::commands::data::DataRef,
+        sunrise_gameplay_common::game::commands_common::Target,
+    };
 
     pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
@@ -138,7 +146,8 @@ use {sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay::g
             std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                 .join(format!("h025-{:?}", std::thread::current().id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -243,8 +252,8 @@ use {sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay::g
     #[test]
     #[ignore = "daily"]
     fn saddle_commands_round_trip_existing_model_and_saved_equipment() {
-        use sunrise_gameplay::game::server_side::commands::items::Slot;
         use sunrise_core::nbt::Tag;
+        use sunrise_gameplay::game::server_side::commands::items::Slot;
         with_game(|game| {
             // Pig is the existing species saver; Husk needs the common projection.
             for (n, kind) in [(6, "pig"), (7, "husk")] {
@@ -421,14 +430,20 @@ use {sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay::g
 
 #[cfg(test)]
 pub(crate) mod mob_equipment_stack_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use {sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay::game::commands::data::DataRef};
-    use {crate::game::{Settings, load_resources}, sunrise_gameplay_common::game::{Options, Progress}};
     use std::sync::Arc;
     use sunrise_core::nbt::Tag;
     use sunrise_core::position::ChunkPos;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::mobs::finalize;
+    use {
+        crate::game::{Settings, load_resources},
+        sunrise_gameplay_common::game::{Options, Progress},
+    };
+    use {
+        sunrise_gameplay::game::commands::data::DataRef,
+        sunrise_gameplay_common::game::commands_common::Target,
+    };
     fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
         let root = std::path::PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
         let settings = Settings::default();
@@ -451,7 +466,8 @@ use {sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay::g
             std::path::PathBuf::from(std::env::var_os("SUNRISE_HOME").unwrap())
                 .join(format!("h023-{:?}", std::thread::current().id())),
         );
-        options.execution_role = sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
+        options.execution_role =
+            sunrise_gameplay_common::game::execution_role::ExecutionRole::IntegratedServer;
         let mut game = sunrise_gameplay::game::ServerGame::new(
             &loaded.resources,
             loaded.pack,
@@ -475,7 +491,11 @@ use {sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay::g
         test(&mut game);
     }
 
-    fn actor(game: &mut sunrise_gameplay::game::ServerGame<'_>, kind: &str, n: i32) -> (String, u32) {
+    fn actor(
+        game: &mut sunrise_gameplay::game::ServerGame<'_>,
+        kind: &str,
+        n: i32,
+    ) -> (String, u32) {
         let uuid = format!("00000017-0000-0000-0000-{n:012x}");
         let prev = game.server.chat_capture.replace(Vec::new());
         let ok = game.run_command(&format!(
@@ -616,12 +636,12 @@ use {sunrise_gameplay_common::game::commands_common::Target, sunrise_gameplay::g
 
 #[cfg(test)]
 pub(crate) mod builtin_component_delivery_tests {
-    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
-use sunrise_gameplay::game::lan::LanHost;
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
     use sunrise_core::nbt::Tag;
     use sunrise_core::position::ChunkPos;
     use sunrise_core::vanilla_bytes::Writer;
+    use sunrise_gameplay::game::lan::LanHost;
+    use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1;
     use sunrise_items::items::ItemStack;
     use sunrise_protocol::{
         buf::{Codec, Reader},
@@ -832,7 +852,14 @@ use sunrise_gameplay::game::lan::LanHost;
                     283
                 );
                 assert_eq!(
-                    game.server.lan.as_ref().unwrap().hub.guest(2).unwrap().health,
+                    game.server
+                        .lan
+                        .as_ref()
+                        .unwrap()
+                        .hub
+                        .guest(2)
+                        .unwrap()
+                        .health,
                     20.0
                 );
                 assert_eq!(
@@ -893,15 +920,15 @@ pub(crate) mod component_modifier_tests {
 
 #[cfg(test)]
 pub(crate) mod registered_slot_source_preservation_tests {
-use sunrise_gameplay_common::game::commands_common::Slot;
+    use sunrise_gameplay_common::game::commands_common::Slot;
 
-use sunrise_gameplay::game::server_side::commands::items::registered_slot_source_preservation_tests::count;
+    use sunrise_gameplay::game::server_side::commands::items::registered_slot_source_preservation_tests::count;
 
-use super::*;
+    use super::*;
 
-pub(crate) use crate::game::server_side::commands_server::items::registered_slot_source_preservation_tests::scene;
+    pub(crate) use crate::game::server_side::commands_server::items::registered_slot_source_preservation_tests::scene;
 
-#[test]
+    #[test]
     #[ignore = "daily"]
     fn loaded_snapshot_changes_only_on_existing_reload_with_pack_precedence() {
         let mut resources = None;
@@ -924,7 +951,7 @@ pub(crate) use crate::game::server_side::commands_server::items::registered_slot
         assert_eq!(game.block_entity_nbt([0, 100, 0]).as_ref(), Some(&before));
         assert_eq!(game.world.game_time, clock);
     }
-/// SlotSources.CODEC is a holder codec: a quoted id is the same reference
+    /// SlotSources.CODEC is a holder codec: a quoted id is the same reference
     /// as an unquoted one, and so is a group's single quoted term.
     /// LimitSlotSource's limit is ExtraCodecs.POSITIVE_INT: a string or 0
     /// fails to parse, and the command changes nothing.
@@ -965,7 +992,7 @@ pub(crate) use crate::game::server_side::commands_server::items::registered_slot
         assert_eq!(game.block_entity_nbt([0, 100, 0]).as_ref(), Some(&before));
         assert_eq!(game.world.game_time, clock);
     }
-/// `Codec.INT` gives `limit:1b` and `limit:2.5d` their `Number.intValue()`:
+    /// `Codec.INT` gives `limit:1b` and `limit:2.5d` their `Number.intValue()`:
     /// a read counts that many slots and a write changes that many.
     #[test]
     #[ignore = "daily"]

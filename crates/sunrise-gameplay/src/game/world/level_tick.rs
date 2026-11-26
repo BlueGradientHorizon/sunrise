@@ -11,7 +11,8 @@ impl crate::game::ServerGame<'_> {
         span("mods_joins_flush", || self.native_joins_flush(false, 0));
         span("share_spawn_conditions", || self.share_spawn_conditions());
         sunrise_sim::mobs::sulfur_cube::set_tnt_explodes(
-            self.common.ui
+            self.common
+                .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES),
         );

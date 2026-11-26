@@ -111,15 +111,18 @@ fn reload_conditions_read_candidate_registries_and_bound_tags() {
                 .unwrap();
                 request.save_root = root.to_owned();
                 game.load_world(request).unwrap();
-                let item_tags =
-                    |game: &sunrise_gameplay::game::ServerGame<'_>, tag| mod_api::Tags::items(game, tag);
+                let item_tags = |game: &sunrise_gameplay::game::ServerGame<'_>, tag| {
+                    mod_api::Tags::items(game, tag)
+                };
                 let key = |path: &str| {
                     mod_api::__private::tag_key(
                         &mod_api::Identifier::parse(&format!("reload_conditions:{path}")).unwrap(),
                     )
                     .unwrap()
                 };
-                for (path, _, is_bound) in sunrise_gameplay_common::game::native_tags::PACK_BINDING_CASES {
+                for (path, _, is_bound) in
+                    sunrise_gameplay_common::game::native_tags::PACK_BINDING_CASES
+                {
                     let tag = mod_api::__private::tag_key(
                         &mod_api::Identifier::parse(&format!("binding:{path}")).unwrap(),
                     )

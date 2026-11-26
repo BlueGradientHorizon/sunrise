@@ -1,5 +1,3 @@
-
-
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     /// Read-only client dispatch at the actual mid-setupAnim seam.
