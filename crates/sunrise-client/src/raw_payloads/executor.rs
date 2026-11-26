@@ -1,8 +1,11 @@
 //! NETWORK callbacks have no World borrow. Their replies and main work publish on success.
 use super::{
-    Body, Endpoint, Incoming, MainQueue, Prepared, RawEvent, Side,
+    Body, Endpoint, Incoming, Prepared, Side,
     endpoint::ConfigurationTask,
-    main_queue::{FailedMain, PreparedMain},
+    main_queue::{
+        BundleQueue, ClientEvent, ClientQueue, Direct, FailedMain, HostedEvent, MainRoute,
+        ServerQueue,
+    },
 };
 use mod_api::{
     __private::game::CallbackFailure, HandlerThread, IPayloadContext, PayloadAccepted,
@@ -11,46 +14,55 @@ use mod_api::{
 };
 use std::sync::Arc;
 
-enum After<Ev> {
+enum After<P> {
     Reply(Prepared),
-    Work(PreparedMain<Ev>),
+    Work(P),
 }
 enum FailedPublication<Ev> {
     Reply(PayloadSendError),
     Main(FailedMain<Ev>),
 }
 /// The staged reply container stays small enough to live inline in a handler's turn.
-fn assert_staged_fits<Ev>() {
+fn assert_staged_fits<P>() {
     const {
-        assert!(std::mem::size_of::<After<Ev>>() <= 256);
+        assert!(std::mem::size_of::<After<P>>() <= 256);
     }
 }
 
 /// Called by the physical receiving executor. Main events use its ordinary ordered stream.
-pub fn dispatch<Ev: RawEvent>(incoming: Incoming, endpoint: Endpoint, main: MainQueue<Ev>) {
-    assert_staged_fits::<Ev>();
+pub fn dispatch_client<Ev: ClientEvent>(
+    incoming: Incoming,
+    endpoint: Endpoint,
+    main: ClientQueue<Ev>,
+) {
+    dispatch_on(incoming, endpoint, main);
+}
+
+/// A hosted guest's receiver: its delivery keeps the physical identity main orders on.
+pub fn dispatch_server<Ev: HostedEvent>(
+    incoming: Incoming,
+    endpoint: Endpoint,
+    main: ServerQueue<Ev>,
+) {
+    dispatch_on(incoming, endpoint, main);
+}
+
+fn dispatch_on<Ev, R: MainRoute<Ev>>(incoming: Incoming, endpoint: Endpoint, main: R) {
+    assert_staged_fits::<R::Prepared>();
     let Some(connection) = endpoint.transport().connection.as_ref() else {
         return;
     };
     // Only dedicated configuration/client receivers may park their physical stream.
-    let wait_epoch =
-        (!matches!(main, MainQueue::Server { conn: Some(_), .. })).then(|| incoming.epoch.clone());
+    let wait_epoch = main.parks_stream().then(|| incoming.epoch.clone());
     if let Some(incoming) = connection.queue_payload(incoming) {
-        execute(
-            incoming,
-            &endpoint,
-            &main,
-            None,
-            PreparedMain::publish,
-            |reason| {
-                endpoint.disconnect(reason);
-            },
-        );
+        execute(incoming, &endpoint, &main, None, |reason| {
+            endpoint.disconnect(reason);
+        });
     }
-    dispatch_pending(&endpoint, &main);
+    dispatch_pending_on(&endpoint, &main);
     if let Some(epoch) = wait_epoch {
         while connection.wait_payloads(&epoch) {
-            dispatch_pending(&endpoint, &main);
+            dispatch_pending_on(&endpoint, &main);
         }
     }
 }
@@ -58,24 +70,27 @@ pub fn dispatch<Ev: RawEvent>(incoming: Incoming, endpoint: Endpoint, main: Main
 /// `ClientNetworkRegistry.handleModdedPayload` invokes NETWORK listeners on
 /// the caller, which is already main inside a bundle. The bundle is itself the
 /// ordered main turn; don't enqueue these roots behind work received later.
-pub fn dispatch_bundle<Ev: RawEvent>(incoming: Incoming, endpoint: &Endpoint) -> Vec<Incoming> {
-    let work = Arc::new(std::sync::Mutex::new(Vec::new()));
-    execute(
-        incoming,
-        endpoint,
-        &MainQueue::<Ev>::ClientBundle(work.clone()),
-        None,
-        PreparedMain::publish,
-        |reason| {
-            endpoint.disconnect(reason);
-        },
-    );
+pub fn dispatch_bundle(incoming: Incoming, endpoint: &Endpoint) -> Vec<Incoming> {
+    let (queue, work) = BundleQueue::new();
+    // A bundle holds roots inline and names no caller event type.
+    execute::<(), _>(incoming, endpoint, &queue, None, |reason| {
+        endpoint.disconnect(reason);
+    });
     let mut pending = work.lock().unwrap();
     std::mem::take(&mut *pending)
 }
 
 /// The pooled play receiver calls this from its existing maintenance turn.
-pub fn dispatch_pending<Ev: RawEvent>(endpoint: &Endpoint, main: &MainQueue<Ev>) {
+pub fn dispatch_pending_client<Ev: ClientEvent>(endpoint: &Endpoint, main: &ClientQueue<Ev>) {
+    dispatch_pending_on(endpoint, main);
+}
+
+/// The pooled play receiver calls this from its existing maintenance turn.
+pub fn dispatch_pending_server<Ev: HostedEvent>(endpoint: &Endpoint, main: &ServerQueue<Ev>) {
+    dispatch_pending_on(endpoint, main);
+}
+
+fn dispatch_pending_on<Ev, R: MainRoute<Ev>>(endpoint: &Endpoint, main: &R) {
     let Some(connection) = endpoint.transport().connection.as_ref() else {
         return;
     };
@@ -83,25 +98,17 @@ pub fn dispatch_pending<Ev: RawEvent>(endpoint: &Endpoint, main: &MainQueue<Ev>)
         return;
     }
     while let Some(incoming) = connection.next_payload() {
-        execute(
-            incoming,
-            endpoint,
-            main,
-            None,
-            PreparedMain::publish,
-            |reason| {
-                endpoint.disconnect(reason);
-            },
-        );
+        execute(incoming, endpoint, main, None, |reason| {
+            endpoint.disconnect(reason);
+        });
     }
 }
 
-fn execute<Ev: RawEvent>(
+fn execute<Ev, R: MainRoute<Ev>>(
     mut incoming: Incoming,
     endpoint: &Endpoint,
-    main: &MainQueue<Ev>,
+    main: &R,
     credit: Option<super::ingress::ReceiveLease<Ev>>,
-    mut publish_main: impl FnMut(PreparedMain<Ev>) -> Result<(), FailedMain<Ev>>,
     disconnect: impl FnOnce(Text),
 ) {
     if !incoming.epoch.active() {
@@ -112,21 +119,19 @@ fn execute<Ev: RawEvent>(
         if incoming.receiver.poisoned() {
             return;
         }
-        if let MainQueue::Client(events) = main
-            && matches!(incoming.body, Body::Payload(_))
-        {
+        if matches!(incoming.body, Body::Payload(_)) {
             // This is a wire record on the dedicated client reader, not work
             // staged by a mod. A closed reader leaves the old epoch to main:
             // an already-admitted bundle may still have inline payloads to run.
-            use super::ingress::{Refusal, Refused};
-            if let Err(Refused {
-                reason: Refusal::Pressure,
-                ..
-            }) = events.send_wait(Ev::raw_payload(incoming))
-            {
-                endpoint.disconnect(failure("payload main refused: Pressure"));
+            match main.direct_payload(incoming) {
+                Direct::Taken => return,
+                Direct::Refused(super::ingress::Refusal::Pressure) => {
+                    endpoint.disconnect(failure("payload main refused: Pressure"));
+                    return;
+                }
+                Direct::Refused(super::ingress::Refusal::Closed) => return,
+                Direct::NotDirect(restored) => incoming = restored,
             }
-            return;
         }
         let epoch = incoming.epoch.clone();
         let prepared = match main.prepare(incoming, credit) {
@@ -140,7 +145,7 @@ fn execute<Ev: RawEvent>(
         };
         // The value stays outside the closure if invalidated before publication.
         let mut prepared = Some(prepared);
-        let result = epoch.with_active(|| publish_main(prepared.take().unwrap()));
+        let result = epoch.with_active(|| main.publish(prepared.take().unwrap()));
         drop(prepared);
         if let Some(Err(error)) = result {
             let reason = error.reason();
@@ -184,7 +189,7 @@ fn execute<Ev: RawEvent>(
                 for action in &mut after {
                     match action.take().unwrap() {
                         After::Reply(reply) => reply.publish().map_err(FailedPublication::Reply)?,
-                        After::Work(work) => publish_main(work).map_err(FailedPublication::Main)?,
+                        After::Work(work) => main.publish(work).map_err(FailedPublication::Main)?,
                     }
                 }
                 if reason.is_none()
@@ -244,16 +249,16 @@ pub fn mod_of(id: &PayloadId) -> &str {
 fn failure(message: &str) -> Text {
     Text::translate("disconnect.genericReason", vec![Text::literal(message)])
 }
-struct NetworkContext<'a, Ev> {
+struct NetworkContext<'a, Ev, R: MainRoute<Ev>> {
     incoming: &'a Incoming,
     endpoint: &'a Endpoint,
-    main: &'a MainQueue<Ev>,
-    after: Vec<Option<After<Ev>>>,
+    main: &'a R,
+    after: Vec<Option<After<R::Prepared>>>,
     disconnect: Option<Text>,
     finish_task: Option<(Arc<dyn ConfigurationTask>, usize)>,
     failure: Option<CallbackFailure>,
 }
-impl<Ev: RawEvent> IPayloadContext for NetworkContext<'_, Ev> {
+impl<Ev, R: MainRoute<Ev>> IPayloadContext for NetworkContext<'_, Ev, R> {
     fn player(&self) -> Result<PlayerRef, PayloadContextError> {
         if !self.incoming.epoch.active() || self.disconnect.is_some() {
             return Err(PayloadContextError::Disconnected);

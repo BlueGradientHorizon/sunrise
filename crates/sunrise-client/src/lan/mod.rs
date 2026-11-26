@@ -106,16 +106,7 @@ pub enum NetEvent {
     /// profile replaces the player already in the world.
     Duplicate(u128),
 }
-impl crate::raw_payloads::RawEvent for NetEvent {
-    fn raw_payload(_: crate::raw_payloads::Incoming) -> Self {
-        unreachable!("a hosted server has no client main turn")
-    }
-    fn into_raw_payload(self) -> crate::raw_payloads::Incoming {
-        let Self::RawPayload(delivery) = self else {
-            unreachable!("only a raw payload event is taken back")
-        };
-        delivery.incoming
-    }
+impl crate::raw_payloads::HostedEvent for NetEvent {
     fn delivery(
         conn: Option<u32>,
         endpoint: crate::raw_payloads::Endpoint,
@@ -126,6 +117,12 @@ impl crate::raw_payloads::RawEvent for NetEvent {
             endpoint,
             incoming,
         }))
+    }
+    fn into_incoming(self) -> crate::raw_payloads::Incoming {
+        let Self::RawPayload(delivery) = self else {
+            unreachable!("only a delivery is taken back")
+        };
+        delivery.incoming
     }
 }
 pub struct Joined {

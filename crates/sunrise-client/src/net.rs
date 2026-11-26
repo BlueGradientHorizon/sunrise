@@ -313,33 +313,20 @@ impl crate::raw_payloads::Output for PayloadOutput {
     fn side(&self) -> crate::raw_payloads::Side {
         crate::raw_payloads::Side::Client
     }
-    fn limits(
+    fn admit(
         &self,
         phase: sunrise_protocol::payload_negotiation::Phase,
         id: &mod_api::PayloadId,
-    ) -> Result<(sunrise_protocol::connection::Framing, usize), mod_api::PayloadSendError> {
+    ) -> Result<Box<dyn crate::raw_payloads::Admission>, mod_api::PayloadSendError> {
         if self.configuring.load(Ordering::Acquire)
             != (phase == sunrise_protocol::payload_negotiation::Phase::Configuration)
         {
             return Err(mod_api::PayloadSendError::WrongProtocol(id.clone()));
         }
-        let writer = self.writer.lock().unwrap();
-        let writer = writer
-            .as_ref()
-            .filter(|writer| writer.accepts_packets())
-            .ok_or(mod_api::PayloadSendError::Disconnected)?;
-        Ok((writer.framing(), writer.payload_capacity()))
-    }
-    fn prepare(
-        &self,
-        body: Vec<u8>,
-        id: &mod_api::PayloadId,
-    ) -> Result<Box<dyn crate::raw_payloads::PreparedSend>, mod_api::PayloadSendError> {
         let writer = self.writer.lock().unwrap().as_ref().cloned();
-        writer
-            .ok_or(mod_api::PayloadSendError::Disconnected)?
-            .prepare_payload(body, id)
-            .map(|prepared| Box::new(prepared) as Box<dyn crate::raw_payloads::PreparedSend>)
+        Ok(Box::new(WriterAdmission(
+            writer.ok_or(mod_api::PayloadSendError::Disconnected)?,
+        )))
     }
     fn disconnect(&self, reason: &crate::text::Text) {
         let writer = self.writer.lock().unwrap();
@@ -377,7 +364,29 @@ impl crate::raw_payloads::Output for PayloadOutput {
         })
     }
 }
-impl crate::raw_payloads::RawEvent for Event {
+/// One captured client writer: preflight and the reservation use the same one.
+struct WriterAdmission(QueuedWriter);
+impl crate::raw_payloads::Admission for WriterAdmission {
+    fn framing(&self) -> sunrise_protocol::connection::Framing {
+        self.0.framing()
+    }
+    fn capacity(&self) -> usize {
+        self.0.payload_capacity()
+    }
+    fn accepts_packets(&self) -> bool {
+        self.0.accepts_packets()
+    }
+    fn prepare(
+        self: Box<Self>,
+        body: Vec<u8>,
+        id: &mod_api::PayloadId,
+    ) -> Result<Box<dyn crate::raw_payloads::PreparedSend>, mod_api::PayloadSendError> {
+        self.0
+            .prepare_payload(body, id)
+            .map(|prepared| Box::new(prepared) as Box<dyn crate::raw_payloads::PreparedSend>)
+    }
+}
+impl crate::raw_payloads::ClientEvent for Event {
     fn raw_payload(incoming: crate::raw_payloads::Incoming) -> Self {
         Self::RawPayload(Box::new(incoming))
     }
@@ -386,13 +395,6 @@ impl crate::raw_payloads::RawEvent for Event {
             unreachable!("only a raw payload event is taken back")
         };
         *incoming
-    }
-    fn delivery(
-        _: Option<u32>,
-        _: crate::raw_payloads::Endpoint,
-        _: crate::raw_payloads::Incoming,
-    ) -> Self {
-        unreachable!("a solo client has no hosted guest turn")
     }
 }
 
@@ -419,6 +421,8 @@ pub struct Session {
     pings: PingSamples,
     /// This connection's number, new for each one ([`Session::serial`]).
     serial: u64,
+    /// The one payload output this session shares with every endpoint it hands out.
+    payload_output: std::sync::OnceLock<Arc<dyn crate::raw_payloads::Output>>,
 }
 /// The next [`Session::serial`].
 static NEXT_SERIAL: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -533,6 +537,7 @@ impl Session {
             recorder: Arc::new(Mutex::new(None)),
             pings: Arc::default(),
             serial: next_serial(),
+            payload_output: std::sync::OnceLock::new(),
         }
     }
     fn start(
@@ -636,6 +641,7 @@ impl Session {
             recorder,
             pings,
             serial: next_serial(),
+            payload_output: std::sync::OnceLock::new(),
         }
     }
     /// Validate an untrusted mod packet once, reserve its physical writer credit,
@@ -792,12 +798,15 @@ impl Session {
     }
     /// Physical reply target, preserving this session's ordered event stream.
     pub fn payload_endpoint(&self) -> crate::raw_payloads::Endpoint {
-        crate::raw_payloads::Endpoint::new(PayloadOutput {
-            writer: self.writer.clone(),
-            configuring: self.configuring.clone(),
-            transport: self.payloads.clone(),
-            events: self.payload_events.clone(),
-        })
+        let output = self.payload_output.get_or_init(|| {
+            Arc::new(PayloadOutput {
+                writer: self.writer.clone(),
+                configuring: self.configuring.clone(),
+                transport: self.payloads.clone(),
+                events: self.payload_events.clone(),
+            })
+        });
+        crate::raw_payloads::Endpoint::shared(output.clone())
     }
     /// This physical session's frozen declarations and current epoch.
     pub fn payload_transport(&self) -> &Arc<crate::raw_payloads::Transport> {
@@ -2150,17 +2159,19 @@ fn receive_play(
                 io.handle(PlayIoAction::FarTile(p.data));
             }
             play::Clientbound::CustomPayload(payload) => {
-                let endpoint = crate::raw_payloads::Endpoint::new(PayloadOutput {
-                    writer: shared_writer.clone(),
-                    configuring: configuring.clone(),
-                    transport: payloads.clone(),
-                    events: send.clone(),
-                });
                 if let Some(payload) = receive_application(
-                    &endpoint,
+                    payloads,
                     sunrise_protocol::payload_negotiation::Phase::Play,
                     payload,
                     send,
+                    || {
+                        crate::raw_payloads::Endpoint::new(PayloadOutput {
+                            writer: shared_writer.clone(),
+                            configuring: configuring.clone(),
+                            transport: payloads.clone(),
+                            events: send.clone(),
+                        })
+                    },
                 )? {
                     send.send_wait(Event::Packet(Box::new(play::Clientbound::CustomPayload(
                         payload,
@@ -2177,21 +2188,23 @@ fn receive_play(
     }
 }
 
+/// Classify before building the output: a passthrough payload never allocates one.
 fn receive_application(
-    endpoint: &crate::raw_payloads::Endpoint,
+    payloads: &Arc<crate::raw_payloads::Transport>,
     phase: sunrise_protocol::payload_negotiation::Phase,
     payload: cfg::CustomPayload,
     send: &ingress::Producer<Event>,
+    endpoint: impl FnOnce() -> crate::raw_payloads::Endpoint,
 ) -> Result<Option<cfg::CustomPayload>, Reason> {
-    match crate::raw_payloads::Incoming::classify(endpoint.transport(), phase, payload)
+    match crate::raw_payloads::Incoming::classify(payloads, phase, payload)
         .map_err(|error| Reason::plain(error.to_string()))?
     {
         crate::raw_payloads::Classified::Other(payload) => Ok(Some(payload)),
         crate::raw_payloads::Classified::Application(incoming) => {
-            crate::raw_payloads::dispatch(
+            crate::raw_payloads::dispatch_client(
                 incoming,
-                endpoint.clone(),
-                crate::raw_payloads::MainQueue::Client(send.clone()),
+                endpoint(),
+                crate::raw_payloads::ClientQueue::new(send.clone()),
             );
             Ok(None)
         }
@@ -2314,17 +2327,19 @@ fn configure(
                 datapacks.accept_chunk(&p.data).map_err(Reason::plain)?;
             }
             cfg::Clientbound::CustomPayload(p) => {
-                let endpoint = crate::raw_payloads::Endpoint::new(PayloadOutput {
-                    writer: writer.clone(),
-                    configuring: configuring.clone(),
-                    transport: payloads.clone(),
-                    events: send.clone(),
-                });
                 let Some(p) = receive_application(
-                    &endpoint,
+                    payloads,
                     sunrise_protocol::payload_negotiation::Phase::Configuration,
                     p,
                     send,
+                    || {
+                        crate::raw_payloads::Endpoint::new(PayloadOutput {
+                            writer: writer.clone(),
+                            configuring: configuring.clone(),
+                            transport: payloads.clone(),
+                            events: send.clone(),
+                        })
+                    },
                 )?
                 else {
                     continue;
@@ -4554,6 +4569,7 @@ mod tests {
                 recorder: Arc::new(Mutex::new(None)),
                 pings: Arc::default(),
                 serial: next_serial(),
+                payload_output: std::sync::OnceLock::new(),
             };
             let started = std::time::Instant::now();
             if explicit_disconnect {
@@ -4686,6 +4702,7 @@ mod tests {
             recorder: Arc::new(Mutex::new(None)),
             pings: Arc::default(),
             serial: next_serial(),
+            payload_output: std::sync::OnceLock::new(),
         };
         let (configuring, cookies) = (session.configuring.clone(), session.cookies.clone());
         let recorder = session.recorder.clone();
@@ -5245,6 +5262,7 @@ mod tests {
             recorder: Arc::new(Mutex::new(None)),
             pings: Arc::default(),
             serial: next_serial(),
+            payload_output: std::sync::OnceLock::new(),
         };
         let mut server = Connection::local(server);
         let payload = |size| {
@@ -5306,6 +5324,7 @@ mod tests {
             recorder: Arc::new(Mutex::new(None)),
             pings: Arc::default(),
             serial: next_serial(),
+            payload_output: std::sync::OnceLock::new(),
         };
         let (thread_writer, thread_configuring, thread_recorder) = (
             session.writer.clone(),
@@ -5462,6 +5481,7 @@ mod tests {
             recorder: Arc::new(Mutex::new(None)),
             pings: Arc::default(),
             serial: next_serial(),
+            payload_output: std::sync::OnceLock::new(),
         };
         let (thread_writer, thread_configuring, thread_recorder, thread_cookies) = (
             session.writer.clone(),
@@ -5799,6 +5819,7 @@ mod tests {
             recorder: Arc::new(Mutex::new(None)),
             pings: Arc::default(),
             serial: next_serial(),
+            payload_output: std::sync::OnceLock::new(),
         };
         let recorder = TestRecorder::default();
         session.start_recording(recorder.clone(), |_| {});

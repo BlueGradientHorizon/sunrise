@@ -28,21 +28,13 @@ fn a_raw_channel_reaches_every_declaring_mod_in_load_order() {
         let endpoint = Endpoint::server(sender);
         for incoming in deliveries {
             assert!(incoming.raw);
-            dispatch(
+            dispatch_server(
                 incoming,
                 endpoint.clone(),
-                MainQueue::Server {
-                    events: events.clone(),
-                    endpoint: endpoint.clone(),
-                    conn: Some(1),
-                },
+                ServerQueue::new(events.clone(), endpoint.clone(), Some(1)),
             );
         }
-        let main = MainQueue::Server {
-            events,
-            endpoint: endpoint.clone(),
-            conn: Some(1),
-        };
+        let main = ServerQueue::new(events.clone(), endpoint.clone(), Some(1));
         let mut owners = Vec::new();
         for _ in 0..2 {
             let turn = receiver.take_turn();
@@ -61,7 +53,7 @@ fn a_raw_channel_reaches_every_declaring_mod_in_load_order() {
             }
             // Dropping the main delivery releases its receiving turn. The pooled
             // receiver's maintenance turn, not that drop, dispatches the next one.
-            dispatch_pending(&endpoint, &main);
+            dispatch_pending_server(&endpoint, &main);
         }
         assert!(receiver.take_turn().is_empty());
         assert_eq!(owners, ["voicechat", "voicebridge"]);
@@ -241,11 +233,7 @@ fn network_raw_failures_drop_only_the_failing_copy() {
             let (sender, _) = PlayerSender::payload_executor_test_sender(transport.clone());
             let endpoint = Endpoint::server(sender);
             let (events, _receiver) = crate::lan::event_channel();
-            let queue = || MainQueue::Server {
-                events: events.clone(),
-                endpoint: endpoint.clone(),
-                conn: Some(1),
-            };
+            let queue = || ServerQueue::new(events.clone(), endpoint.clone(), Some(1));
             let deliver = || {
                 let Ok(Classified::Raw(deliveries)) =
                     Incoming::classify(&transport, Phase::Play, serverbound(CHANNEL, 1))
@@ -256,7 +244,7 @@ fn network_raw_failures_drop_only_the_failing_copy() {
                     // Raw registration selects Main. Exercise the physical network executor
                     // with the same per-owner receivers, whose main path has its own test.
                     incoming.receiver.thread = mod_api::HandlerThread::Network;
-                    dispatch(incoming, endpoint.clone(), queue());
+                    dispatch_server(incoming, endpoint.clone(), queue());
                 }
             };
             deliver();

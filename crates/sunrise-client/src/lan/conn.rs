@@ -541,6 +541,14 @@ impl PlayerSender {
             outbox.send(Vec::new(), Some(io_pool::End::Close));
         }
     }
+    /// Retire only the outbox writer, leaving the transport and its epoch live:
+    /// a reservation against it still answers its captured limits first.
+    #[cfg(test)]
+    pub(crate) fn retire_test_writer(&self) {
+        if let To::Pool(outbox, _) = &self.to {
+            outbox.send(Vec::new(), Some(io_pool::End::Close));
+        }
+    }
     fn held(&self) -> std::sync::MutexGuard<'_, Vec<Body>> {
         self.held.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -841,36 +849,74 @@ impl PreparedPayload {
             Err(PayloadSendError::Disconnected)
         }
     }
-    /// Transfer the existing reservation with the framed body into its pairing bundle.
-    #[cfg(test)]
-    pub(crate) fn into_prepared_body(
-        mut self,
-        epoch: Arc<crate::raw_payloads::connection::Epoch>,
-    ) -> Body {
-        let bytes = self.bytes.take().expect("prepared bytes");
-        Body::Prepared(Arc::new(super::body::PairingPayload {
-            bytes,
-            epoch,
-            pending: self.sender.pending.clone(),
-            cost: self.cost,
-        }))
-    }
 }
 impl crate::raw_payloads::PreparedSend for PreparedPayload {
     fn publish(self: Box<Self>) -> Result<(), PayloadSendError> {
         (*self).publish()
     }
+}
+impl crate::raw_payloads::HostedPreparedSend for PreparedPayload {
     fn into_pairing(
         self: Box<Self>,
         epoch: Arc<crate::raw_payloads::connection::Epoch>,
-    ) -> Option<Arc<crate::raw_payloads::PairingPayload>> {
+    ) -> Arc<crate::raw_payloads::PairingPayload> {
         let mut this = *self;
         let bytes = this.bytes.take().expect("prepared bytes");
-        Some(Arc::new(crate::raw_payloads::PairingPayload {
+        Arc::new(crate::raw_payloads::PairingPayload {
             bytes,
             epoch,
             pending: this.sender.pending.clone(),
             cost: this.cost,
+        })
+    }
+}
+/// One captured player outbox: the reservation keeps its prepaid body credit.
+struct SenderAdmission {
+    sender: PlayerSender,
+    framing: sunrise_protocol::connection::Framing,
+    capacity: usize,
+}
+impl crate::raw_payloads::Admission for SenderAdmission {
+    fn framing(&self) -> sunrise_protocol::connection::Framing {
+        self.framing
+    }
+    fn capacity(&self) -> usize {
+        self.capacity
+    }
+    fn accepts_packets(&self) -> bool {
+        true
+    }
+    fn prepare(
+        self: Box<Self>,
+        body: Vec<u8>,
+        id: &PayloadId,
+    ) -> Result<Box<dyn crate::raw_payloads::PreparedSend>, PayloadSendError> {
+        self.sender
+            .prepare_payload(body, id)
+            .map(|prepared| Box::new(prepared) as Box<dyn crate::raw_payloads::PreparedSend>)
+    }
+}
+impl crate::raw_payloads::HostedAdmission for SenderAdmission {
+    fn prepare_hosted(
+        self: Box<Self>,
+        body: Vec<u8>,
+        id: &PayloadId,
+    ) -> Result<Box<dyn crate::raw_payloads::HostedPreparedSend>, PayloadSendError> {
+        self.sender
+            .prepare_payload(body, id)
+            .map(|prepared| Box::new(prepared) as Box<dyn crate::raw_payloads::HostedPreparedSend>)
+    }
+}
+impl crate::raw_payloads::HostedOutput for PlayerSender {
+    fn admit_hosted(
+        &self,
+        _: sunrise_protocol::payload_negotiation::Phase,
+        _: &PayloadId,
+    ) -> Result<Box<dyn crate::raw_payloads::HostedAdmission>, PayloadSendError> {
+        Ok(Box::new(SenderAdmission {
+            sender: self.clone(),
+            framing: self.payload_framing(),
+            capacity: self.payload_capacity(),
         }))
     }
 }
@@ -881,20 +927,16 @@ impl crate::raw_payloads::Output for PlayerSender {
     fn side(&self) -> Side {
         Side::Server
     }
-    fn limits(
+    fn admit(
         &self,
         _: sunrise_protocol::payload_negotiation::Phase,
         _: &PayloadId,
-    ) -> Result<(sunrise_protocol::connection::Framing, usize), PayloadSendError> {
-        Ok((self.payload_framing(), self.payload_capacity()))
-    }
-    fn prepare(
-        &self,
-        body: Vec<u8>,
-        id: &PayloadId,
-    ) -> Result<Box<dyn crate::raw_payloads::PreparedSend>, PayloadSendError> {
-        self.prepare_payload(body, id)
-            .map(|prepared| Box::new(prepared) as Box<dyn crate::raw_payloads::PreparedSend>)
+    ) -> Result<Box<dyn crate::raw_payloads::Admission>, PayloadSendError> {
+        Ok(Box::new(SenderAdmission {
+            sender: self.clone(),
+            framing: self.payload_framing(),
+            capacity: self.payload_capacity(),
+        }))
     }
     fn disconnect(&self, reason: &crate::text::Text) {
         PlayerSender::disconnect(self, super::data::component_nbt(&reason.component()));
@@ -2315,9 +2357,12 @@ fn play(
         .resource_pack
         .as_ref()
         .is_some_and(|p| p.required);
+    // One output for this physical connection: every delivery clones the `Arc`.
+    let payload_endpoint = crate::raw_payloads::Endpoint::shared_server(Arc::new(sender.clone()));
     let session = PlayConn {
         sync: parts.sync,
         payload_sender: sender.clone(),
+        payload_endpoint,
         payload_transport: parts.payload_transport,
         conn,
         shared: shared.clone(),
@@ -2362,6 +2407,8 @@ fn play(
 struct PlayConn {
     sync: Arc<SyncData>,
     payload_sender: PlayerSender,
+    /// The one output this physical connection shares with its deliveries.
+    payload_endpoint: crate::raw_payloads::Endpoint,
     payload_transport: Arc<Transport>,
     conn: u32,
     shared: Arc<Shared>,
@@ -2454,33 +2501,27 @@ impl io_pool::Session for PlayConn {
                             payload,
                         ) {
                             Ok(crate::raw_payloads::Classified::Application(incoming)) => {
-                                let endpoint = crate::raw_payloads::Endpoint::server(
-                                    self.payload_sender.clone(),
-                                );
-                                crate::raw_payloads::dispatch(
+                                crate::raw_payloads::dispatch_server(
                                     incoming,
-                                    endpoint.clone(),
-                                    crate::raw_payloads::MainQueue::Server {
-                                        events: self.shared.events.clone(),
-                                        endpoint,
-                                        conn: Some(self.conn),
-                                    },
+                                    self.payload_endpoint.clone(),
+                                    crate::raw_payloads::ServerQueue::new(
+                                        self.shared.events.clone(),
+                                        self.payload_endpoint.clone(),
+                                        Some(self.conn),
+                                    ),
                                 );
                                 return Verdict::Go;
                             }
                             Ok(crate::raw_payloads::Classified::Raw(deliveries)) => {
                                 for incoming in deliveries {
-                                    let endpoint = crate::raw_payloads::Endpoint::server(
-                                        self.payload_sender.clone(),
-                                    );
-                                    crate::raw_payloads::dispatch(
+                                    crate::raw_payloads::dispatch_server(
                                         incoming,
-                                        endpoint.clone(),
-                                        crate::raw_payloads::MainQueue::Server {
-                                            events: self.shared.events.clone(),
-                                            endpoint,
-                                            conn: Some(self.conn),
-                                        },
+                                        self.payload_endpoint.clone(),
+                                        crate::raw_payloads::ServerQueue::new(
+                                            self.shared.events.clone(),
+                                            self.payload_endpoint.clone(),
+                                            Some(self.conn),
+                                        ),
                                     );
                                 }
                                 return Verdict::Go;
@@ -3893,6 +3934,9 @@ mod tests {
         let mut c = PlayConn {
             sync: Arc::new(SyncData::empty()),
             payload_sender: PlayerSender::disabled(),
+            payload_endpoint: crate::raw_payloads::Endpoint::shared_server(Arc::new(
+                PlayerSender::disabled(),
+            )),
             payload_transport: Transport::empty(),
             conn: 1,
             shared: lan.shared.clone(),
@@ -4032,6 +4076,9 @@ mod tests {
         let conn = |uuid: u128, pending: Option<i64>| PlayConn {
             sync: Arc::new(SyncData::empty()),
             payload_sender: PlayerSender::disabled(),
+            payload_endpoint: crate::raw_payloads::Endpoint::shared_server(Arc::new(
+                PlayerSender::disabled(),
+            )),
             payload_transport: Transport::empty(),
             conn: 1,
             shared: lan.shared.clone(),
@@ -4086,6 +4133,9 @@ mod tests {
         let conn = |uuid: u128| PlayConn {
             sync: Arc::new(SyncData::empty()),
             payload_sender: PlayerSender::disabled(),
+            payload_endpoint: crate::raw_payloads::Endpoint::shared_server(Arc::new(
+                PlayerSender::disabled(),
+            )),
             payload_transport: Transport::empty(),
             conn: 1,
             shared: lan.shared.clone(),
@@ -4280,11 +4330,11 @@ mod outgoing_budget_tests {
                 .unwrap();
             let prepaid = sender.pending.load(Ordering::Relaxed);
             assert!(prepaid > 0);
-            let mut out = vec![
-                vec![0].into(),
-                prepared.into_prepared_body(transport.epoch().unwrap()),
-                vec![0].into(),
-            ];
+            let pairing = crate::raw_payloads::HostedPreparedSend::into_pairing(
+                Box::new(prepared),
+                transport.epoch().unwrap(),
+            );
+            let mut out = vec![vec![0].into(), Body::Prepared(pairing), vec![0].into()];
             assert_eq!(sender.pending.load(Ordering::Relaxed), prepaid);
             if stale {
                 transport.begin_configuration();

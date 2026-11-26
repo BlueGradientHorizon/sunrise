@@ -1483,22 +1483,13 @@ fn prepare_pairing_attachment_sync(
     use mod_api::{PayloadBytes, PayloadId, PayloadSendError};
     let epoch = sender.payload_transport().epoch()?;
     let result = match &snapshot.body {
-        Ok(bytes) => {
-            let endpoint = crate::raw_payloads::Endpoint::server(sender.clone());
-            endpoint
-                .prepare(
-                    &epoch,
-                    &PayloadId(sunrise_protocol::attachment_sync::CHANNEL.into()),
-                    PayloadBytes(bytes.clone()),
-                )
-                .map(|prepared| {
-                    super::Body::Prepared(
-                        prepared
-                            .into_pairing(epoch.clone())
-                            .expect("server endpoint produces a prepared server body"),
-                    )
-                })
-        }
+        Ok(bytes) => crate::raw_payloads::HostedEndpoint::new(sender.clone())
+            .prepare_pairing(
+                &epoch,
+                &PayloadId(sunrise_protocol::attachment_sync::CHANNEL.into()),
+                PayloadBytes(bytes.clone()),
+            )
+            .map(super::Body::Prepared),
         Err(reason) => Err(PayloadSendError::EncodeFailed(reason.clone())),
     };
     match result {

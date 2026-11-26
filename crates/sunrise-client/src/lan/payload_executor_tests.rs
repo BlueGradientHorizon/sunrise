@@ -144,7 +144,7 @@ impl Hooks for Registration {
 fn with_case(
     mode: Mode,
     bytes: usize,
-    run: impl FnOnce(Arc<Probe>, Incoming, Endpoint, Box<dyn Fn() -> Vec<Vec<u8>>>),
+    run: impl FnOnce(Arc<Probe>, Incoming, Endpoint, PlayerSender, Box<dyn Fn() -> Vec<Vec<u8>>>),
 ) {
     let (events, receiver) = if matches!(mode, Mode::Pressure | Mode::PressureWithPanickingDrop) {
         crate::lan::event_channel_with_capacity(
@@ -181,7 +181,7 @@ fn with_case(
             transport.finish_configuration().unwrap();
             *probe.transport.lock().unwrap() = Arc::downgrade(&transport);
             let (sender, out) = PlayerSender::payload_executor_test_sender(transport.clone());
-            let endpoint = Endpoint::server(sender);
+            let endpoint = Endpoint::server(sender.clone());
             let incoming = Incoming::new(
                 &transport,
                 negotiation::Phase::Play,
@@ -191,16 +191,12 @@ fn with_case(
                 },
             )
             .unwrap();
-            run(probe, incoming, endpoint, Box::new(out));
+            run(probe, incoming, endpoint, sender, Box::new(out));
         },
     );
 }
-fn queue(probe: &Probe, endpoint: &Endpoint) -> MainQueue<NetEvent> {
-    MainQueue::Server {
-        events: probe.events.clone(),
-        endpoint: endpoint.clone(),
-        conn: Some(1),
-    }
+fn queue(probe: &Probe, endpoint: &Endpoint) -> ServerQueue<NetEvent> {
+    ServerQueue::new(probe.events.clone(), endpoint.clone(), Some(1))
 }
 
 fn reply_count(snapshot: &dyn Fn() -> Vec<Vec<u8>>) -> usize {
@@ -215,44 +211,48 @@ fn reply_count(snapshot: &dyn Fn() -> Vec<Vec<u8>>) -> usize {
 
 #[test]
 fn queued_work_reserves_before_acceptance_and_keeps_original_credit_until_last_drop() {
-    with_case(Mode::Success, 3 << 20, |probe, incoming, endpoint, out| {
-        let transport = endpoint.transport().clone();
-        let original = Arc::downgrade(&incoming.lease);
-        dispatch(incoming, endpoint.clone(), queue(&probe, &endpoint));
-        assert_eq!(probe.calls.load(Ordering::SeqCst), 1);
-        assert_eq!(probe.events.stats().queued_items, 2);
-        let receiver = probe.receiver.lock().unwrap().take().unwrap();
-        let mut work: Vec<_> = receiver
-            .take_turn()
-            .into_iter()
-            .map(|receipt| receipt.into_parts())
-            .collect();
-        assert_eq!(work.len(), 2);
-        assert!(work.iter().all(|(event, _credit)| matches!(event, NetEvent::RawPayload(delivery) if matches!(&delivery.incoming.body, Body::Work(_)))));
-        assert!(original.upgrade().is_some());
-        assert!(transport.reserve_ingress(14 << 20).is_err());
-        drop(work.pop());
-        assert_eq!(probe.drops.load(Ordering::SeqCst), 1);
-        assert!(original.upgrade().is_some());
-        assert!(transport.reserve_ingress(14 << 20).is_err());
-        drop(work);
-        assert_eq!(probe.drops.load(Ordering::SeqCst), 2);
-        assert!(original.upgrade().is_none());
-        assert_eq!(probe.events.stats().reserved_bytes, 0);
-        drop(
-            transport
-                .reserve_ingress(14 << 20)
-                .expect("last work reference refunds physical credit"),
-        );
-        assert_eq!(reply_count(&*out), 1);
-    });
+    with_case(
+        Mode::Success,
+        3 << 20,
+        |probe, incoming, endpoint, _, out| {
+            let transport = endpoint.transport().clone();
+            let original = Arc::downgrade(&incoming.lease);
+            dispatch_server(incoming, endpoint.clone(), queue(&probe, &endpoint));
+            assert_eq!(probe.calls.load(Ordering::SeqCst), 1);
+            assert_eq!(probe.events.stats().queued_items, 2);
+            let receiver = probe.receiver.lock().unwrap().take().unwrap();
+            let mut work: Vec<_> = receiver
+                .take_turn()
+                .into_iter()
+                .map(|receipt| receipt.into_parts())
+                .collect();
+            assert_eq!(work.len(), 2);
+            assert!(work.iter().all(|(event, _credit)| matches!(event, NetEvent::RawPayload(delivery) if matches!(&delivery.incoming.body, Body::Work(_)))));
+            assert!(original.upgrade().is_some());
+            assert!(transport.reserve_ingress(14 << 20).is_err());
+            drop(work.pop());
+            assert_eq!(probe.drops.load(Ordering::SeqCst), 1);
+            assert!(original.upgrade().is_some());
+            assert!(transport.reserve_ingress(14 << 20).is_err());
+            drop(work);
+            assert_eq!(probe.drops.load(Ordering::SeqCst), 2);
+            assert!(original.upgrade().is_none());
+            assert_eq!(probe.events.stats().reserved_bytes, 0);
+            drop(
+                transport
+                    .reserve_ingress(14 << 20)
+                    .expect("last work reference refunds physical credit"),
+            );
+            assert_eq!(reply_count(&*out), 1);
+        },
+    );
 }
 
 #[test]
 fn provider_pressure_refuses_work_before_acceptance() {
-    with_case(Mode::Pressure, 1, |probe, incoming, endpoint, out| {
+    with_case(Mode::Pressure, 1, |probe, incoming, endpoint, _, out| {
         let original = Arc::downgrade(&incoming.lease);
-        dispatch(incoming, endpoint.clone(), queue(&probe, &endpoint));
+        dispatch_server(incoming, endpoint.clone(), queue(&probe, &endpoint));
         assert!(original.upgrade().is_none());
         assert_eq!(probe.calls.load(Ordering::SeqCst), 1);
         assert_eq!(probe.drops.load(Ordering::SeqCst), 2);
@@ -267,10 +267,10 @@ fn a_panicking_work_destructor_on_refused_enqueue_quarantines_only_its_registrat
     with_case(
         Mode::PressureWithPanickingDrop,
         1,
-        |probe, incoming, endpoint, out| {
+        |probe, incoming, endpoint, _, out| {
             let original = Arc::downgrade(&incoming.lease);
             let receiver = incoming.receiver.clone();
-            dispatch(incoming, endpoint.clone(), queue(&probe, &endpoint));
+            dispatch_server(incoming, endpoint.clone(), queue(&probe, &endpoint));
             assert_eq!(
                 probe.calls.load(Ordering::SeqCst),
                 1,
@@ -289,9 +289,9 @@ fn a_panicking_work_destructor_on_refused_enqueue_quarantines_only_its_registrat
 #[test]
 fn handler_error_or_epoch_cancellation_publishes_no_staged_work_or_replies() {
     for mode in [Mode::Error, Mode::Panic, Mode::Cancel, Mode::Reconfigure] {
-        with_case(mode, 1, |probe, incoming, endpoint, out| {
+        with_case(mode, 1, |probe, incoming, endpoint, _, out| {
             let original = Arc::downgrade(&incoming.lease);
-            dispatch(incoming, endpoint.clone(), queue(&probe, &endpoint));
+            dispatch_server(incoming, endpoint.clone(), queue(&probe, &endpoint));
             assert!(original.upgrade().is_none());
             assert_eq!(probe.calls.load(Ordering::SeqCst), 1);
             assert_eq!(probe.drops.load(Ordering::SeqCst), 2);
@@ -341,7 +341,7 @@ fn main_root_blocks_later_network_delivery_and_keeps_its_ingress_charge() {
         with_case(
             Mode::Success,
             3 << 20,
-            |probe, mut incoming, endpoint, out| {
+            |probe, mut incoming, endpoint, _, out| {
                 let transport = endpoint.transport();
                 let tail = Incoming::new(
                     transport,
@@ -355,10 +355,10 @@ fn main_root_blocks_later_network_delivery_and_keeps_its_ingress_charge() {
                 let head_lease = Arc::downgrade(&incoming.lease);
                 let tail_lease = Arc::downgrade(&tail.lease);
                 incoming.receiver.thread = HandlerThread::Main;
-                dispatch(incoming, endpoint.clone(), queue(&probe, &endpoint));
-                dispatch(tail, endpoint.clone(), queue(&probe, &endpoint));
+                dispatch_server(incoming, endpoint.clone(), queue(&probe, &endpoint));
+                dispatch_server(tail, endpoint.clone(), queue(&probe, &endpoint));
                 let main = queue(&probe, &endpoint);
-                dispatch_pending(&endpoint, &main);
+                dispatch_pending_server(&endpoint, &main);
                 assert_eq!(probe.calls.load(Ordering::SeqCst), 0);
                 assert_eq!(reply_count(&*out), 0);
                 assert_eq!(probe.events.stats().queued_items, 1);
@@ -383,7 +383,7 @@ fn main_root_blocks_later_network_delivery_and_keeps_its_ingress_charge() {
                 let receiver = probe.receiver.lock().unwrap().take().unwrap();
                 drop(receiver.take_turn());
                 assert!(head_lease.upgrade().is_none());
-                dispatch_pending(&endpoint, &main);
+                dispatch_pending_server(&endpoint, &main);
                 assert_eq!(
                     probe.calls.load(Ordering::SeqCst),
                     usize::from(cancel.is_none())
@@ -403,12 +403,12 @@ fn failed_publication_and_remaining_work_drop_outside_epoch_gate() {
     with_case(
         Mode::PublicationClosed,
         1,
-        |probe, incoming, endpoint, out| {
+        |probe, incoming, endpoint, _, out| {
             let original = Arc::downgrade(&incoming.lease);
             let main = queue(&probe, &endpoint);
             let (done, completion) = mpsc::channel();
             let worker = mod_api::testing::inherit_mods(move |_: &()| {
-                dispatch(incoming, endpoint, main);
+                dispatch_server(incoming, endpoint, main);
                 done.send(()).unwrap();
             });
             let thread = std::thread::spawn(move || worker(&()));
@@ -433,11 +433,57 @@ fn failed_publication_and_remaining_work_drop_outside_epoch_gate() {
 }
 
 #[test]
+fn a_retired_writer_is_reported_by_its_reservation_not_before_preflight() {
+    with_case(Mode::Success, 1, |_, _, endpoint, sender, out| {
+        let epoch = endpoint.transport().epoch().expect("a play epoch");
+        let id = PayloadId(CHANNEL.into());
+        // Retire the outbox writer while the connection and its epoch stay live.
+        sender.retire_test_writer();
+        // The captured writer still answers its capacity: a body past it is
+        // refused for its size, not for the retired connection.
+        let oversized = PayloadBytes(vec![0; super::io_pool::MAX_PENDING + 1]);
+        assert!(matches!(
+            endpoint.prepare(&epoch, &id, oversized),
+            Err(PayloadSendError::Backpressure)
+        ));
+        // One that fits reaches the reservation, which is where the close shows.
+        assert!(matches!(
+            endpoint.prepare(&epoch, &id, PayloadBytes(vec![1; 4])),
+            Err(PayloadSendError::Disconnected)
+        ));
+        assert_eq!(sender.pending.load(Ordering::SeqCst), 0);
+        assert!(out().is_empty());
+    });
+}
+
+#[test]
+fn a_hosted_pairing_body_keeps_and_refunds_its_prepaid_reservation() {
+    with_case(Mode::Success, 1, |_, _, endpoint, sender, out| {
+        let epoch = endpoint.transport().epoch().expect("a play epoch");
+        let before = sender.pending.load(Ordering::SeqCst);
+        let pairing = HostedEndpoint::new(sender.clone())
+            .prepare_pairing(&epoch, &PayloadId(CHANNEL.into()), PayloadBytes(vec![7; 4]))
+            .expect("a hosted play sender prepares a pairing body");
+        assert!(
+            sender.pending.load(Ordering::SeqCst) > before,
+            "the pairing body keeps its prepaid outbox credit"
+        );
+        assert!(out().is_empty(), "preparing publishes nothing");
+        drop(pairing);
+        assert_eq!(
+            sender.pending.load(Ordering::SeqCst),
+            before,
+            "dropping an unpublished body refunds its credit"
+        );
+    });
+}
+
+#[test]
 fn disabled_owner_refuses_before_entering_its_native_handler() {
-    with_case(Mode::Success, 1, |probe, incoming, endpoint, out| {
+    with_case(Mode::Success, 1, |probe, incoming, endpoint, _, out| {
         let original = Arc::downgrade(&incoming.lease);
         assert!(mod_api::__private::set_mod_enabled("executor_probe", false));
-        dispatch(incoming, endpoint.clone(), queue(&probe, &endpoint));
+        dispatch_server(incoming, endpoint.clone(), queue(&probe, &endpoint));
         assert!(endpoint.transport().closed());
         assert!(original.upgrade().is_none());
         assert_eq!(probe.calls.load(Ordering::SeqCst), 0);
@@ -585,12 +631,8 @@ fn run_config_finish_case(
             )
             .unwrap();
             let (events, _receiver) = crate::lan::event_channel();
-            let main = MainQueue::Server {
-                events,
-                endpoint: endpoint.clone(),
-                conn: Some(1),
-            };
-            dispatch(incoming, endpoint, main);
+            let main = ServerQueue::new(events, endpoint.clone(), Some(1));
+            dispatch_server(incoming, endpoint, main);
             result = Some((session, transport, handler.calls.load(Ordering::SeqCst)));
         },
     );

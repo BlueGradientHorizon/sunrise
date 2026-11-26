@@ -13,7 +13,10 @@ pub use encode::{encode, encoded_len};
 mod incoming;
 pub use incoming::{Body, Classified, Failure, Incoming};
 mod endpoint;
-pub use endpoint::{ConfigurationTask, Endpoint, Output, Prepared, PreparedSend};
+pub use endpoint::{
+    Admission, ConfigurationTask, Endpoint, HostedAdmission, HostedEndpoint, HostedOutput,
+    HostedPreparedSend, Output, Prepared, PreparedSend,
+};
 mod pairing;
 pub use pairing::PairingPayload;
 mod executor;
@@ -22,9 +25,12 @@ pub mod ingress;
 pub mod staging_probe;
 #[cfg(test)]
 mod typed_schema_tests;
-pub use executor::{dispatch, dispatch_bundle, dispatch_pending, mod_of};
+pub use executor::{
+    dispatch_bundle, dispatch_client, dispatch_pending_client, dispatch_pending_server,
+    dispatch_server, mod_of,
+};
 mod main_queue;
-pub use main_queue::{MainQueue, RawEvent};
+pub use main_queue::{ClientEvent, ClientQueue, HostedEvent, ServerQueue};
 #[cfg(test)]
 pub(crate) mod test_support;
 #[cfg(test)]

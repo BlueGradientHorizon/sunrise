@@ -290,8 +290,8 @@ impl Game<'_> {
         if !io.accepts_bundle() {
             return Ok(());
         }
-        let endpoint = remote.session.payload_endpoint();
-        let negotiated = endpoint.transport().epoch().is_some_and(|epoch| {
+        let payloads = remote.session.payload_transport();
+        let negotiated = payloads.epoch().is_some_and(|epoch| {
             epoch.phase == Phase::Play
                 && epoch
                     .peer
@@ -341,9 +341,16 @@ impl Game<'_> {
                     break;
                 }
                 BundleStep::Payload(payload) => {
+                    let Some(endpoint) = self
+                        .remote
+                        .as_ref()
+                        .map(|remote| remote.session.payload_endpoint())
+                    else {
+                        break;
+                    };
                     match Incoming::classify(endpoint.transport(), Phase::Play, payload) {
                         Ok(Classified::Application(incoming)) => {
-                            for task in dispatch_bundle::<crate::net::Event>(incoming, &endpoint) {
+                            for task in dispatch_bundle(incoming, &endpoint) {
                                 self.run_payload(endpoint.clone(), task);
                             }
                         }

@@ -3,7 +3,7 @@
 use crate::lan::{NetEvent, PlayerSender};
 use crate::raw_payloads::vanilla_peer_support::{CHANNEL, serverbound, with_vanilla_peer};
 use crate::raw_payloads::{
-    Classified, Endpoint, Incoming, MainQueue, connection::test_hooks, dispatch,
+    Classified, Endpoint, Incoming, ServerQueue, connection::test_hooks, dispatch_server,
 };
 use std::{
     sync::{Arc, mpsc},
@@ -27,14 +27,10 @@ fn epoch_end_wakes_a_dedicated_payload_receiver_before_the_main_root_finishes() 
         let endpoint = Endpoint::server(sender);
         let (events, receiver) = crate::lan::event_channel();
 
-        dispatch(
+        dispatch_server(
             first,
             endpoint.clone(),
-            MainQueue::Server {
-                events: events.clone(),
-                endpoint: endpoint.clone(),
-                conn: Some(1),
-            },
+            ServerQueue::new(events.clone(), endpoint.clone(), Some(1)),
         );
         let mut turn = receiver.take_turn().into_iter();
         let (NetEvent::RawPayload(held), _credit) = turn.next().unwrap().into_parts() else {
@@ -46,14 +42,10 @@ fn epoch_end_wakes_a_dedicated_payload_receiver_before_the_main_root_finishes() 
         let (done, result) = mpsc::channel();
         let worker = std::thread::spawn(move || {
             test_hooks::arm(entered);
-            dispatch(
+            dispatch_server(
                 later,
                 endpoint.clone(),
-                MainQueue::Server {
-                    events,
-                    endpoint,
-                    conn: None,
-                },
+                ServerQueue::new(events, endpoint, None),
             );
             let _ = done.send(());
         });
