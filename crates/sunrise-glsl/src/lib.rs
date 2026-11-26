@@ -1485,6 +1485,7 @@ pub fn resources(text: &str) -> Vec<Resource<'_>> {
                 Declared::Block {
                     name,
                     push_constant: true,
+                    ..
                 } => (name, ResourceKind::PushConstantBlock),
                 Declared::Block { name, .. } => (name, ResourceKind::UniformBlock),
                 Declared::TexelBuffer(decl) => (decl.name, ResourceKind::TexelBuffer),
@@ -1502,13 +1503,33 @@ pub fn resources(text: &str) -> Vec<Resource<'_>> {
         .collect()
 }
 
+/// The `in` declarations of a stage's text as `(name, type)`, in the order it declares them (a
+/// name declared twice is listed twice). They are found as [`resources`] finds its own: through
+/// the one declaration classifier, whatever else is on the line, and the text is read as
+/// `rewrite` reads it, with comments gone and includes inlined ([`expand_includes`]).
+pub fn stage_inputs(text: &str) -> Vec<(&str, &str)> {
+    text.lines()
+        .flat_map(declaration_lines)
+        .filter_map(declared)
+        .filter_map(|declared| match declared {
+            Declared::Other(decl) if decl.storage == "in" => Some((decl.name, decl.ty)),
+            _ => None,
+        })
+        .collect()
+}
+
 /// A declaration on one line, classified: the one reading of a line that [`rewrite`] binds from
-/// and [`resources`] lists from.
+/// and [`resources`] and [`stage_inputs`] list from.
 enum Declared<'a> {
     /// A `buffer Name {` block.
     Storage(StorageBlock<'a>),
-    /// A `uniform Name {` block, a push-constant one when its `layout(...)` says so.
-    Block { name: &'a str, push_constant: bool },
+    /// A `uniform Name {` block, a push-constant one when its `layout(...)` says so, with the
+    /// line from its `uniform` token on.
+    Block {
+        name: &'a str,
+        tail: &'a str,
+        push_constant: bool,
+    },
     /// `uniform isamplerBuffer Name;` or `uniform usamplerBuffer Name;`.
     TexelBuffer(Decl<'a>),
     /// `uniform image2D Name;`.
@@ -1525,9 +1546,10 @@ fn declared(line: &str) -> Option<Declared<'_>> {
     if let Some(block) = storage_block(line) {
         return Some(Declared::Storage(block));
     }
-    if let Some(name) = block_name(line) {
+    if let Some((name, tail)) = block_name(line) {
         return Some(Declared::Block {
             name,
+            tail,
             push_constant: is_push_constant_block(line),
         });
     }
@@ -1599,44 +1621,76 @@ fn declaration(line: &str) -> Option<Decl<'_>> {
     })
 }
 
-/// GLSL pack shaders are often minified, with several global declarations on one line.
-/// Keep the line-oriented rewriter simple by separating only declaration statements; ordinary
-/// statements and function bodies remain untouched.
+/// GLSL pack shaders are often minified, with several global declarations on one line, some after
+/// code (`void f() { } uniform sampler2D Late;`). Keep the line-oriented rewriter simple by
+/// separating every declaration statement ([`declared`]) wherever it stands on the line; the
+/// code around them stays as it is, in pieces. A statement ends at a `;` outside braces, and a
+/// declaration may start where the line does or after a `}` that closes a braced body.
 fn declaration_lines(line: &str) -> Vec<&str> {
-    let mut lines = Vec::new();
-    let mut start = 0;
-    while let Some(relative) = line[start..].find(';') {
-        let end = start + relative + 1;
-        if declaration(&line[start..end]).is_some() {
-            lines.push(&line[start..end]);
-            start = end;
-        } else {
-            break;
+    let mut parts = Vec::new();
+    let mut taken = 0;
+    let mut depth = 0usize;
+    let mut starts = vec![0];
+    for (at, c) in line.char_indices() {
+        match c {
+            '{' => depth += 1,
+            '}' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    starts.push(at + 1);
+                }
+            }
+            ';' if depth == 0 => {
+                let end = at + 1;
+                // The latest start wins: `void f() { int x; } uniform sampler2D T;` declares T.
+                if let Some(&start) = starts
+                    .iter()
+                    .rev()
+                    .find(|&&start| declared(&line[start..end]).is_some())
+                {
+                    if taken < start {
+                        parts.push(&line[taken..start]);
+                    }
+                    parts.push(&line[start..end]);
+                    taken = end;
+                }
+                starts = vec![end];
+            }
+            _ => {}
         }
     }
-    if start == 0 {
-        vec![line]
-    } else {
-        if start < line.len() {
-            lines.push(&line[start..]);
-        }
-        lines
+    if parts.is_empty() {
+        return vec![line];
     }
+    if taken < line.len() {
+        parts.push(&line[taken..]);
+    }
+    parts
 }
 
-/// The block a `uniform Name {` line opens, with the line's text before `uniform`.
-fn block_name(line: &str) -> Option<&str> {
-    let at = line.find("uniform")?;
+/// Where the `uniform` keyword stands in `line`: a whole token, never part of an identifier
+/// such as `uniformColor`.
+fn uniform_keyword(line: &str) -> Option<usize> {
+    line.match_indices("uniform").map(|(at, _)| at).find(|&at| {
+        !line[..at].ends_with(is_ident) && !line[at + "uniform".len()..].starts_with(is_ident)
+    })
+}
+
+/// The block a `uniform Name {` line opens, with its name and the line from the `uniform` token
+/// on (what the line's text before `uniform` leaves: the block's `layout(...)` is rewritten).
+fn block_name(line: &str) -> Option<(&str, &str)> {
+    let at = uniform_keyword(line)?;
     let head = line[..at].trim();
     if !(head.is_empty() || head.starts_with("layout")) {
         return None;
     }
-    let rest = line[at + "uniform".len()..].trim();
+    let tail = line[at..].trim();
+    let rest = tail["uniform".len()..].trim();
     let name_end = rest.find(|c: char| !is_ident(c)).unwrap_or(rest.len());
-    let (name, tail) = rest.split_at(name_end);
+    let (name, after) = rest.split_at(name_end);
     // `{` alone, or the whole block on the line (`uniform Day { float daylight; };`).
-    (!name.is_empty() && (tail.trim().is_empty() || tail.trim_start().starts_with('{')))
-        .then_some(name)
+    (!name.is_empty() && (after.trim().is_empty() || after.trim_start().starts_with('{')))
+        .then_some((name, tail))
 }
 
 /// A `[layout(..)] [memory qualifiers] buffer Name {` line: a std430 storage buffer block.
@@ -1691,7 +1745,7 @@ fn storage_block(line: &str) -> Option<StorageBlock<'_>> {
 
 /// Whether the `layout(...)` qualifier before `uniform` names `push_constant`.
 fn is_push_constant_block(line: &str) -> bool {
-    let Some(at) = line.find("uniform") else {
+    let Some(at) = uniform_keyword(line) else {
         return false;
     };
     let head = line[..at].trim();
@@ -1911,6 +1965,7 @@ fn rewrite(
                 }
                 Declared::Block {
                     name,
+                    tail,
                     push_constant,
                 } => {
                     let (set, binding) = if push_constant {
@@ -1931,7 +1986,6 @@ fn rewrite(
                     } else {
                         (0, names.other_binding(name).map_err(at)?)
                     };
-                    let tail = line[line.find("uniform").unwrap_or(0)..].trim();
                     write(
                         &mut out,
                         &format!("layout(std140, set = {set}, binding = {binding}) {tail}\n"),
@@ -2971,12 +3025,57 @@ mod tests {
     /// Only a uniform block's declaration names a block, written over several lines or on one.
     #[test]
     fn block_names_are_read_from_block_declarations_only() {
-        assert_eq!(block_name("layout(std140) uniform Day {"), Some("Day"));
-        assert_eq!(block_name("uniform Day { float daylight; };"), Some("Day"));
-        assert_eq!(block_name("uniform Foo{"), Some("Foo"));
-        assert_eq!(block_name("uniform Globals"), Some("Globals"));
+        let name = |line| block_name(line).map(|(name, _)| name);
+        assert_eq!(name("layout(std140) uniform Day {"), Some("Day"));
+        assert_eq!(name("uniform Day { float daylight; };"), Some("Day"));
+        assert_eq!(name("uniform Foo{"), Some("Foo"));
+        assert_eq!(name("uniform Globals"), Some("Globals"));
+        assert_eq!(
+            block_name("layout(std140) uniform Day {").map(|(_, tail)| tail),
+            Some("uniform Day {")
+        );
         assert_eq!(block_name("uniform float x;"), None);
         assert_eq!(block_name("uniform sampler2D Sampler0;"), None);
+    }
+
+    /// `uniform` is a keyword only as a whole token: `uniformColor` opens no block, and a block
+    /// after code on its line is listed and bound.
+    #[test]
+    fn uniform_is_a_whole_token_and_a_declaration_after_code_is_read() {
+        let kinds = |text| {
+            resources(text)
+                .iter()
+                .map(|r| (r.name, r.kind))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(kinds("vec4 uniformColor = vec4(1.0);"), []);
+        assert_eq!(
+            kinds("layout(location = 0) vec4 uniformColor\n    = vec4(1.0);"),
+            []
+        );
+        assert_eq!(
+            kinds("void f() { } uniform sampler2D Late;"),
+            [("Late", ResourceKind::Sampler2D)]
+        );
+        assert_eq!(
+            kinds("void f() { int x; } uniform Late { vec4 a; };"),
+            [("Late", ResourceKind::UniformBlock)]
+        );
+        // Bound: the sampler gets its texture and sampler globals and `f` stays.
+        let fsh = "#version 330\nvoid f() { } uniform sampler2D Late;\nout vec4 fragColor;\n\
+            void main() { fragColor = texture(Late, vec2(0.5)); f(); }\n";
+        let vsh = "#version 330\nvoid main() { gl_Position = vec4(0.0); }\n";
+        translate_core_with(vsh, fsh, &[], &include, &GLUE, &|name| name == "Late").unwrap();
+    }
+
+    /// The `in` declarations of a stage, name and type in order, whatever else is on the line.
+    #[test]
+    fn stage_inputs_lists_every_in_declaration() {
+        let text = "in vec3 Position; in vec4 Color;\nuniform float u;\nvoid f() { } in vec2 UV0;\nout vec4 o;\n";
+        assert_eq!(
+            stage_inputs(text),
+            [("Position", "vec3"), ("Color", "vec4"), ("UV0", "vec2")]
+        );
     }
 
     /// Only a storage buffer's declaration names a storage block, with its memory qualifiers.
