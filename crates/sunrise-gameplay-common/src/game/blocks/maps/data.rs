@@ -109,9 +109,9 @@ pub(in crate::game) fn block_pos(tag: Option<&Tag>) -> Option<[i32; 3]> {
 /// (down 0, up 1, north 2, south 3, west 4, east 5) and its entity id.
 #[derive(Clone, Copy)]
 pub struct Framed {
-    pub(in crate::game) pos: [i32; 3],
-    pub(in crate::game) facing: u8,
-    pub(in crate::game) id: i32,
+    pub pos: [i32; 3],
+    pub facing: u8,
+    pub id: i32,
 }
 /// `Direction.get2DDataValue` of a 3D data value: south 0, west 1, north 2,
 /// east 3, and -1 for up and down.
@@ -135,7 +135,7 @@ pub(in crate::game) const PLAYER_OFF_LIMITS: &str = "map/decorations/player_off_
 /// A player carrying a map, or seeing it framed
 /// (`MapItemSavedData.HoldingPlayer`): the column sweep's step, and what
 /// changed since the last `ClientboundMapItemDataPacket` it was sent.
-pub(in crate::game) struct Holder {
+pub struct Holder {
     pub(in crate::game) who: u32,
     /// The last tick it carried the map, and saw it framed.
     pub carried: i64,
@@ -645,7 +645,7 @@ impl MapData {
     }
 }
 #[derive(Default)]
-pub(in crate::game) struct Maps {
+pub struct Maps {
     pub data: HashMap<i32, MapData>,
     /// The highest map id handed out (`maps/last_id.dat`), loaded on first use.
     pub last_id: Option<i32>,

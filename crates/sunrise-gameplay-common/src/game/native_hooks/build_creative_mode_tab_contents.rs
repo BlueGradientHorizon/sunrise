@@ -36,7 +36,7 @@ impl BuildKey {
     }
 }
 
-pub(in crate::game) struct Published {
+pub struct Published {
     pub(in crate::game) key: BuildKey,
     pub lists: Contents,
     pub(in crate::game) api: OnceCell<Arc<CreativeModeTabs>>,

@@ -775,7 +775,7 @@ pub(in crate::game::server_side) fn style_index(style: &str) -> i32 {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::game) enum Scope {
+pub enum Scope {
     Global,
     Level(Dim),
 }

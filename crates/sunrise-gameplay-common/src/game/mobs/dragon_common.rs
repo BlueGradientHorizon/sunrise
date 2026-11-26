@@ -303,7 +303,7 @@ pub fn wrap(d: f32) -> f32 {
 #[derive(Clone, Debug)]
 pub struct Crystal {
     /// Entity-owned registration metadata; content clones are detached.
-    pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
+    pub attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     pub join: sunrise_sim::join_seq::JoinSeq,
     /// The entity id a server tracks it by (0 until it is tracked).
     pub id: u32,
@@ -341,8 +341,8 @@ impl Crystal {
 }
 #[derive(Clone, Debug, Default)]
 pub struct Path {
-    pub(in crate::game) nodes: Vec<[i32; 3]>,
-    pub(in crate::game) next: usize,
+    pub nodes: Vec<[i32; 3]>,
+    pub next: usize,
 }
 impl Path {
     pub fn done(&self) -> bool {
@@ -577,7 +577,7 @@ pub(in crate::game) struct DragonResidency {
 
 /// A real sub-entity: geometry, identity and attachment authority move and
 /// retire together with this part, never with a shared parent attachment map.
-pub(in crate::game) struct DragonPart(
+pub struct DragonPart(
     pub Vec3,
     pub Vec3,
     pub(in crate::game) sunrise_mod_runtime::attachments::AttachmentLifetime,
@@ -983,8 +983,8 @@ impl Crystal {
 }
 pub struct Breath {
     /// Entity-owned registration metadata; content clones are detached.
-    pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
-    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
+    pub attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
+    pub join: sunrise_sim::join_seq::JoinSeq,
     /// Its entity id once a server's players track it (0 until then).
     pub id: u32,
     pub at: [f64; 3],

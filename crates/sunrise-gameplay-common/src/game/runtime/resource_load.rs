@@ -262,7 +262,7 @@ impl WorldRestLoader {
 
 /// The world bundle's core tables from one resource root, before
 /// `load_resources` binds them into the pack tables and `WorldCore`.
-pub(in crate::game) struct CoreTables {
+pub struct CoreTables {
     pub(in crate::game) item_data: Arc<sunrise_world::item_defaults::ItemData>,
     pub(in crate::game) item_defaults: Arc<sunrise_world::item_defaults::ItemDefaults>,
     pub(in crate::game) assets: Assets,
@@ -670,19 +670,19 @@ pub fn write_prepared_files(root: PathBuf) {
 }
 
 pub struct PreparedCore {
-    pub(in crate::game) pack: PackResources,
-    pub(in crate::game) facts: BlockFacts,
-    pub(in crate::game) biomes: Arc<Biomes>,
-    pub(in crate::game) item_data: Arc<ItemData>,
-    pub(in crate::game) item_defaults: Arc<ItemDefaults>,
-    pub(in crate::game) assets: Arc<Assets>,
-    pub(in crate::game) visibility: FaceVisibility,
-    pub(in crate::game) behaviour_json: serde_json::Value,
-    pub(in crate::game) gameplay_projection: Vec<sunrise_items::blocks::GameplayProjection>,
-    pub(in crate::game) motion: MotionResources,
-    pub(in crate::game) environment: Environment,
-    pub(in crate::game) collision: Arc<BlockCollisionRegistry<'static>>,
-    pub(in crate::game) spawner_types:
+    pub pack: PackResources,
+    pub facts: BlockFacts,
+    pub biomes: Arc<Biomes>,
+    pub item_data: Arc<ItemData>,
+    pub item_defaults: Arc<ItemDefaults>,
+    pub assets: Arc<Assets>,
+    pub visibility: FaceVisibility,
+    pub behaviour_json: serde_json::Value,
+    pub gameplay_projection: Vec<sunrise_items::blocks::GameplayProjection>,
+    pub motion: MotionResources,
+    pub environment: Environment,
+    pub collision: Arc<BlockCollisionRegistry<'static>>,
+    pub spawner_types:
         HashMap<String, sunrise_sim::mobs::spawner::SpawnerTypeFacts>,
 }
 

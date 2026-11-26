@@ -101,7 +101,7 @@ pub mod tests {
     use std::sync::{Arc, Mutex};
 
     #[derive(Debug, PartialEq)]
-    pub(in crate::game) struct Read {
+    pub struct Read {
         pub(in crate::game) pos: [i32; 3],
         pub(in crate::game) state: mod_api::BlockState,
         pub(in crate::game) tool: Option<String>,

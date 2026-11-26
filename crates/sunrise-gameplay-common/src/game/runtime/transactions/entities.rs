@@ -288,8 +288,8 @@ pub type ArrivalRollback =
 /// lifetime slot: both retire when the root closes, committed or not, since travel is not
 /// undone. Until then the source level's index keeps the rows it had at the take.
 pub struct Departure {
-    pub(in crate::game) lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
-    pub(in crate::game) registration:
+    pub lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
+    pub registration:
         Option<sunrise_mod_runtime::attachments::AttachmentRegistration>,
 }
 

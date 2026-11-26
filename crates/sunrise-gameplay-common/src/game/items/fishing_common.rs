@@ -13,7 +13,7 @@ pub enum State {
 
 pub struct Hook {
     pub uuid: [i32; 4],
-    pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
+    pub attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     pub join: sunrise_sim::join_seq::JoinSeq,
     pub caster: Option<u32>,
     pub caster_generation: sunrise_sim::join_seq::JoinSeq,

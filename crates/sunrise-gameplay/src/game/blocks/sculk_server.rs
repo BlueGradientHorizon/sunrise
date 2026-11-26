@@ -121,7 +121,7 @@ impl SculkState {
 /// An insertion-ordered set of block positions (`Level.blockEntityTickers`
 /// keeps the order block entities were added in).
 #[derive(Default)]
-pub(in crate::game) struct Index {
+pub struct Index {
     pub(in crate::game) order: Vec<(i32, i32, i32)>,
     pub(in crate::game) set: HashSet<(i32, i32, i32)>,
     /// The positions by 32-block cell, each with its rank: ranks only grow,

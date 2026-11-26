@@ -7,7 +7,7 @@ use sunrise_sim::health::AcceptedHit;
 /// `living_death_post`): the accepted hit retained on the body, else the
 /// death's own source, `generic_kill` for `/kill`.
 pub struct FatalSource {
-    pub(in crate::game) accepted: Option<Arc<AcceptedHit>>,
+    pub accepted: Option<Arc<AcceptedHit>>,
     pub damage_type: String,
     pub causing: u32,
 }

@@ -83,7 +83,7 @@ pub fn exact_teleport(entity: Option<&BlockEntity>) -> bool {
 }
 
 #[derive(Default)]
-pub(in crate::game) struct EndState {
+pub struct EndState {
     /// Ticks until the player can use a gateway again (TheEndGatewayBlockEntity cooldown).
     pub gateway_cooldown: u32,
     pub gateways: HashMap<u32, sunrise_sim::end_gateway::Traveller>,
@@ -105,7 +105,7 @@ pub(in crate::game) struct EndState {
 /// EndFlashState: a purple flash in the End sky every 600 ticks that also
 /// lights the world (the lightmap's sky factor).
 #[derive(Default)]
-pub(in crate::game) struct EndFlash {
+pub struct EndFlash {
     pub(in crate::game) seed: Option<i64>,
     pub(in crate::game) offset: i32,
     pub(in crate::game) duration: i32,

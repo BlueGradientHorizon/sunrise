@@ -131,7 +131,7 @@ pub fn teleport_velocity(
 #[derive(Clone, Debug)]
 pub struct OtherEntity {
     /// Entity-owned registration metadata; content clones are detached.
-    pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
+    pub attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     pub join: sunrise_sim::join_seq::JoinSeq,
     pub id: u32,
     pub kind: String,

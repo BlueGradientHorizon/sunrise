@@ -41,7 +41,7 @@ impl Recorded {
     }
 }
 #[derive(Default)]
-pub(in crate::game) struct ScoreState {
+pub struct ScoreState {
     pub board: Scoreboard,
     /// `/data ... storage`.
     pub storage: sunrise_sim::command_storage::CommandStorage,

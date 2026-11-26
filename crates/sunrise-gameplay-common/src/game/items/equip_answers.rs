@@ -9,7 +9,7 @@ use sunrise_sim::mobs::equip::CanEquip;
 /// A stack converted once for the parts of its item, ready for any number of `can_equip`
 /// questions in a synchronous check. `DataOnly` when no part of the item listens (the component's
 /// answer stands and nothing is converted); `Refused` when a listening stack cannot be converted.
-pub(in crate::game) enum EquipStack {
+pub enum EquipStack {
     DataOnly,
     Refused,
     Ready(Box<mod_api::ItemStack>),

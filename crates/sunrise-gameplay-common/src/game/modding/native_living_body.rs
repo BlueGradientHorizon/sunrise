@@ -554,12 +554,12 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> NativeLivingBodyGameExt4<'__sg> for
 /// `LivingEntity.onClimbable` reads the world through `ClimbingWorld`; this
 /// walks the level the flag's entity stands in, at its feet.
 pub struct FlagClimbing<'a> {
-    pub(in crate::game) world: &'a sunrise_level::world::World,
-    pub(in crate::game) context: &'a sunrise_world::native_load_context::LoopContext,
-    pub(in crate::game) entity: u32,
-    pub(in crate::game) position: BlockPos,
-    pub(in crate::game) spectator: bool,
-    pub(in crate::game) gliding: bool,
+    pub world: &'a sunrise_level::world::World,
+    pub context: &'a sunrise_world::native_load_context::LoopContext,
+    pub entity: u32,
+    pub position: BlockPos,
+    pub spectator: bool,
+    pub gliding: bool,
 }
 
 impl ClimbingWorld for FlagClimbing<'_> {

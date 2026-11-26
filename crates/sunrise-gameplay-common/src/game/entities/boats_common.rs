@@ -805,7 +805,7 @@ pub struct Boat {
 /// teleport takes it (`interpolationData`), the steps left, and where the boat
 /// was after the last step (`lastPositionAndRotation`).
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(in crate::game) struct DrivenLerp {
+pub struct DrivenLerp {
     pub target: Vec3,
     pub yaw: f32,
     pub pitch: f32,

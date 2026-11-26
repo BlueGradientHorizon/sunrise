@@ -57,7 +57,7 @@ impl Lid {
 /// The first position of each moving piston in `block_ticks.moving_pistons`
 /// and in `World::moving_pistons`, taken before a tick's pushes.
 #[derive(Default)]
-pub(in crate::game) struct PistonIndex {
+pub struct PistonIndex {
     pub(in crate::game) ticked: sunrise_level::fast_hash::FxHashMap<BlockPos, usize>,
     pub(in crate::game) drawn: sunrise_level::fast_hash::FxHashMap<[i32; 3], usize>,
 }

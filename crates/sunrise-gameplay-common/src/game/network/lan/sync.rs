@@ -203,7 +203,7 @@ pub(in crate::game) struct Synced {
 /// Only damage is bound eagerly for gameplay. Full wire data remains lazy
 /// except when the entering world actually defines damage types.
 #[derive(Default)]
-pub(in crate::game) struct SyncCache {
+pub struct SyncCache {
     pub(in crate::game) data: Option<Synced>,
     pub(in crate::game) damage: Option<FrozenDamage>,
     pub(in crate::game) world_tags: Option<WorldTags>,

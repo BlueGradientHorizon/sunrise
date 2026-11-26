@@ -857,11 +857,11 @@ impl Mining {
 }
 #[derive(Clone, Copy)]
 pub struct TransformContext<'a> {
-    world: &'a World,
-    player: Option<u32>,
-    hand: mod_api::Hand,
-    blocking: bool,
-    simulated: bool,
+    pub world: &'a World,
+    pub player: Option<u32>,
+    pub hand: mod_api::Hand,
+    pub blocking: bool,
+    pub simulated: bool,
 }
 
 /// What a falling block's tick did (`FallingBlockEntity.tick`).
@@ -912,54 +912,54 @@ pub struct InteractTarget {
 
 /// The client world as seen by the vanilla block-behaviour library.
 pub struct GameLevel<'w> {
-    cake_probe: bool,
-    cake_requested: std::cell::Cell<bool>,
-    cake_answer: Option<bool>,
-    api_level: Option<mod_api::LevelRef>,
-    part_state_index: Option<
+    pub cake_probe: bool,
+    pub cake_requested: std::cell::Cell<bool>,
+    pub cake_answer: Option<bool>,
+    pub api_level: Option<mod_api::LevelRef>,
+    pub part_state_index: Option<
         &'w std::sync::Arc<
             std::sync::Mutex<
                 sunrise_mod_runtime::attachments::index::AttachmentIndex<mod_api::AttachmentHolder>,
             >,
         >,
     >,
-    attachment_query_scopes: &'w sunrise_mod_runtime::attachments::AttachmentQueryScopes,
-    positions: piston_carry_common::PositionState<'w>,
-    border: &'w sunrise_core::geometry::border::BorderGeometry,
+    pub attachment_query_scopes: &'w sunrise_mod_runtime::attachments::AttachmentQueryScopes,
+    pub positions: piston_carry_common::PositionState<'w>,
+    pub border: &'w sunrise_core::geometry::border::BorderGeometry,
     pub world: &'w mut World,
     pub command_block_transition:
         Option<sunrise_gameplay_common::command_blocks::CommandBlockTransition>,
-    redstone_experiments: bool,
+    pub redstone_experiments: bool,
     pub facts: &'w BlockFacts,
     /// The block-state facts a part reads through `LevelHost::block_states`.
-    tables: native_block_tables::BlockTables<'w>,
-    collision: &'w BlockCollisionRegistry<'w>,
+    pub tables: native_block_tables::BlockTables<'w>,
+    pub collision: &'w BlockCollisionRegistry<'w>,
     pub events: &'w mut Vec<LevelEvent>,
     pub dimension: LevelDimension,
-    darken: i32,
+    pub darken: i32,
     /// The environment of the level's dimension (`SUN_ANGLE`).
-    environment: &'w Environment,
-    raining: bool,
-    thundering: bool,
+    pub environment: &'w Environment,
+    pub raining: bool,
+    pub thundering: bool,
     /// The world's enabled feature flags as this side knows them (`LevelReader.enabledFeatures`).
-    enabled_features: &'w std::sync::Arc<[String]>,
-    player_box: Option<([f64; 3], [f64; 3])>,
+    pub enabled_features: &'w std::sync::Arc<[String]>,
+    pub player_box: Option<([f64; 3], [f64; 3])>,
     /// The LAN guests in this level who trigger blocks (not spectators).
-    guest_boxes: Vec<([f64; 3], [f64; 3])>,
+    pub guest_boxes: Vec<([f64; 3], [f64; 3])>,
     /// Other players that block placement during a guest turn, including live
     /// ancestor bodies; None outside one, where `guest_boxes` are those players.
-    building_player_boxes: Option<Vec<([f64; 3], [f64; 3])>>,
-    player_collision: Option<PlayerCollision>,
+    pub building_player_boxes: Option<Vec<([f64; 3], [f64; 3])>>,
+    pub player_collision: Option<PlayerCollision>,
     /// Minecart boxes (detector rails).
-    cart_boxes: Vec<([f64; 3], [f64; 3])>,
+    pub cart_boxes: Vec<([f64; 3], [f64; 3])>,
     /// The item frames a comparator reads through a conductor.
-    item_frames: &'w [sunrise_sim::entities::ItemFrame],
+    pub item_frames: &'w [sunrise_sim::entities::ItemFrame],
     /// The minecarts, in `cart_boxes` order, for a detector rail's comparator.
-    carts: &'w mut sunrise_sim::join_seq::JoinList<minecarts::Minecart, false>,
+    pub carts: &'w mut sunrise_sim::join_seq::JoinList<minecarts::Minecart, false>,
     /// Arrow and thrown trident boxes (wooden buttons).
-    arrow_boxes: Vec<([f64; 3], [f64; 3])>,
+    pub arrow_boxes: Vec<([f64; 3], [f64; 3])>,
     /// Every entity on the walk; see `entity::for_each_entity`.
-    other_entities: entity::EntityLists<'w>,
+    pub other_entities: entity::EntityLists<'w>,
     /// End crystals, which aren't on the walk yet.
     pub crystals: &'w [dragon_common::Crystal],
     /// The fishing hooks here, which aren't on the walk either. None ignores
@@ -970,65 +970,65 @@ pub struct GameLevel<'w> {
     /// The lightning bolts here: none ignores block triggers
     /// (`Entity.isIgnoringBlockTriggers`).
     pub trigger_extras: Vec<Aabb>,
-    biomes: &'w Biomes,
+    pub biomes: &'w Biomes,
     /// `BiomeManager`'s zoom over this level's seed, for `biome_name`.
-    biome_zoom: sunrise_core::biome::BiomeZoom,
-    seed: i64,
-    behaviours: &'w Behaviours,
-    items: &'w Items,
+    pub biome_zoom: sunrise_core::biome::BiomeZoom,
+    pub seed: i64,
+    pub behaviours: &'w Behaviours,
+    pub items: &'w Items,
     /// Cooking recipes' experience, which a removed furnace pays out.
-    recipes: &'w sunrise_sim::crafting::Recipes,
+    pub recipes: &'w sunrise_sim::crafting::Recipes,
     /// Container loot tables (`unpackLootTable`).
-    loot: Option<std::sync::Arc<sunrise_world::loot::LootData>>,
-    loot_storage: std::sync::Arc<sunrise_world::loot::copy::StorageData>,
-    registry: &'static sunrise_world::registry::BlockRegistry,
-    block_registries: &'w sunrise_command::args::Registries,
-    rules: sunrise_world::level::GameRules,
+    pub loot: Option<std::sync::Arc<sunrise_world::loot::LootData>>,
+    pub loot_storage: std::sync::Arc<sunrise_world::loot::copy::StorageData>,
+    pub registry: &'static sunrise_world::registry::BlockRegistry,
+    pub block_registries: &'w sunrise_command::args::Registries,
+    pub rules: sunrise_world::level::GameRules,
     /// `Difficulty.getId()` (peaceful 0 .. hard 3).
-    difficulty: i32,
+    pub difficulty: i32,
     /// The feet of the players who keep fire spreading around them: the local
     /// player and the LAN guests in this level, spectators aside.
-    fire_players: Vec<[f64; 3]>,
+    pub fire_players: Vec<[f64; 3]>,
     /// Block loot random sequences (`ServerLevel.getRandomSequence`).
-    rand_sequences: &'w mut sunrise_items::random_sequences::RandomSequences,
-    pending: &'w mut spill_common::Pending,
+    pub rand_sequences: &'w mut sunrise_items::random_sequences::RandomSequences,
+    pub pending: &'w mut spill_common::Pending,
     pub spill: &'w mut spill_common::Spill,
     /// Where the chunk tickets let blocks tick.
-    tickets: sunrise_sim::ticket_levels::Levels,
+    pub tickets: sunrise_sim::ticket_levels::Levels,
     pub random_tick_sections: &'w mut sunrise_sim::random_tick_sections::RandomTickSections,
     /// Players with each chest open (a trapped chest's signal), also what a
     /// recount of the openers replaces (`ContainerOpenersCounter.recheckOpeners`).
-    lid_openers: &'w mut HashMap<(i32, i32, i32), i32>,
+    pub lid_openers: &'w mut HashMap<(i32, i32, i32), i32>,
     /// The containers players have open at this moment, by position: the local
     /// player's and the guests' (`getEntitiesWithContainerOpen`). A double
     /// chest is in it as both halves.
-    open_containers: &'w [(i32, i32, i32)],
+    pub open_containers: &'w [(i32, i32, i32)],
     /// The chests copper golems have open, a double chest as both halves. They
     /// keep their own count (`chest_openers`), so they stay out of `open_containers`.
-    golem_chests: &'w [(i32, i32, i32)],
+    pub golem_chests: &'w [(i32, i32, i32)],
     /// `Level.isClientSide`: a client's copy of the level (a guest of a LAN
     /// world, a window on its server thread, a dedicated server's client).
-    client_side: bool,
+    pub client_side: bool,
     /// Only the integrated or dedicated server dispatches native observations.
     pub native_authoritative: bool,
-    native_player: Option<u128>,
+    pub native_player: Option<u128>,
     /// The acting player's entity id, beside `native_player`.
-    native_player_entity: Option<i32>,
+    pub native_player_entity: Option<i32>,
     /// Direct liquid part writes may not bypass an open Game transaction.
-    liquid_transaction_open: bool,
+    pub liquid_transaction_open: bool,
     /// `Level.isDebug`: `setBlock` changes nothing.
-    debug: bool,
-    native_sounds: &'w mut Vec<creatures::NativeSound>,
-    loop_context: &'w sunrise_world::native_load_context::LoopContext,
-    native_particles: &'w mut Vec<sunrise_sim::lan::server_effects::ServerQueuedParticle>,
-    sound_seeds: Option<&'w sunrise_sim::lan::hub::Hub>,
+    pub debug: bool,
+    pub native_sounds: &'w mut Vec<creatures::NativeSound>,
+    pub loop_context: &'w sunrise_world::native_load_context::LoopContext,
+    pub native_particles: &'w mut Vec<sunrise_sim::lan::server_effects::ServerQueuedParticle>,
+    pub sound_seeds: Option<&'w sunrise_sim::lan::hub::Hub>,
     pub drop_entity: Option<mod_api::EntityRef>,
     /// `LootContextParams.INTERACTING_ENTITY` of a block-interaction drop: the
     /// player whose click `use_without_item` runs for.
     pub interacting: Option<sunrise_world::loot::LootEntity>,
     /// What a location predicate of such a drop reads beyond the level's own
     /// fields (`blocks::location_world`).
-    location: location_world::LocationRefs<'w>,
+    pub location: location_world::LocationRefs<'w>,
     /// The block a mod's machine breaks and the tool it breaks it with
     /// (`native_machine_destroy_block`): `Block.dropResources` rolls that
     /// block's loot with the tool instead of with none. Neighbours that pop
@@ -1042,12 +1042,12 @@ pub struct GameLevel<'w> {
     pub drop_into: Option<Vec<ItemStack>>,
 }
 pub struct PlayerCollision {
-    y: f64,
-    descending: bool,
-    fall_distance: f64,
-    main_hand_item: Arc<str>,
-    main_hand_count: i32,
-    leather_boots: bool,
+    pub y: f64,
+    pub descending: bool,
+    pub fall_distance: f64,
+    pub main_hand_item: Arc<str>,
+    pub main_hand_count: i32,
+    pub leather_boots: bool,
 }
 /// The boxes of the entities that block building, as obstruction candidates.
 pub struct BuildingObstruction(Vec<Aabb>);
@@ -1161,7 +1161,7 @@ pub struct FallingBlock {
     pub state: BlockStateId,
     /// `FallingBlockEntity.fall` and `recreateFromPacket` set `blocksBuilding`;
     /// constructing an entity from NBT leaves the default false.
-    blocks_building: bool,
+    pub blocks_building: bool,
     /// `DATA_START_POS`: spawn position used to select weighted block models.
     pub start_pos: BlockPos,
     pub position: Vec3,
@@ -1298,7 +1298,7 @@ pub struct WorldRest {
 /// resource root's own. Worlds without packs use `Resources.rest` directly.
 pub struct WorldTables {
     pub conditions: sunrise_world::conditions::LoadConditions,
-    pub(in crate::game) suffocation: sunrise_world::suffocation::SuffocationRegistry<'static>,
+    pub suffocation: sunrise_world::suffocation::SuffocationRegistry<'static>,
     /// The pack files the tables were built from (a native mod's among
     /// them), for the advancement tree reload and the loot data.
     pub files: Vec<(String, Vec<Vec<u8>>)>,
@@ -1306,7 +1306,7 @@ pub struct WorldTables {
     pub items: Arc<Items>,
     /// Registry definitions stay frozen at world open, even when tags reload.
     pub packed_registries: Arc<sunrise_sim::lan::data::PackRegistryDefinitions>,
-    pub(in crate::game) providers: Providers,
+    pub providers: Providers,
     pub loot: Arc<sunrise_world::loot::LootData>,
     pub loot_modifier_manager: Arc<mod_api::GlobalLootModifierManager>,
     pub recipes: Recipes,
@@ -1430,8 +1430,8 @@ pub struct WorldIcon {
 pub struct QueuedLevelEvent {
     pub kind: i32,
     pub pos: [i32; 3],
-    data: i32,
-    source: Option<sunrise_world::level::LevelEventPlayer>,
+    pub data: i32,
+    pub source: Option<sunrise_world::level::LevelEventPlayer>,
 }
 
 /// Temporary block-contact collections rebuilt on every server tick. Keeping

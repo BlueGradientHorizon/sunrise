@@ -89,11 +89,11 @@ impl Resources {
 }
 
 pub struct PackParts {
-    pub(in crate::game) assets: Arc<Assets>,
-    pub(in crate::game) biomes: Arc<Biomes>,
-    pub(in crate::game) light: Arc<LightTables>,
-    pub(in crate::game) item_models: Arc<sunrise_assets::item_model::ItemModels>,
-    pub(in crate::game) item_ids: Arc<HashMap<String, i32>>,
+    pub assets: Arc<Assets>,
+    pub biomes: Arc<Biomes>,
+    pub light: Arc<LightTables>,
+    pub item_models: Arc<sunrise_assets::item_model::ItemModels>,
+    pub item_ids: Arc<HashMap<String, i32>>,
 }
 
 impl PackResources {

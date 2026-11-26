@@ -70,14 +70,14 @@ pub(in crate::game) struct Crossing {
 
 /// Where a boundary is: the world open and the level the entity is in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::game) struct Scope {
+pub struct Scope {
     pub epoch: WorldEpoch,
     pub(in crate::game) level: DimensionKey,
 }
 
 /// The section each entity is filed under, and the crossings not told yet.
 #[derive(Default)]
-pub(in crate::game) struct EntitySections {
+pub struct EntitySections {
     /// The world open the table was filled in: another one starts it over.
     pub(in crate::game) epoch: Option<WorldEpoch>,
     /// Each entity's level and section.

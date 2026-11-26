@@ -11,7 +11,7 @@ pub struct PackStack {
     pub enabled: Vec<String>,
     /// The feature flags the stack was selected for: the incoming world's, also on its first
     /// open, before `self.level` holds them (what `neoforge:feature_flags_enabled` reads).
-    pub(in crate::game) features: Vec<String>,
+    pub features: Vec<String>,
 }
 impl PackStack {
     /// The enabled packs in `enabled` (the selected) order, later overriding

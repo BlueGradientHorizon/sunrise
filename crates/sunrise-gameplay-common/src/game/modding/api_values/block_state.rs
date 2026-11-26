@@ -5,7 +5,7 @@ use std::{cell::RefCell, sync::Arc};
 use sunrise_world::registry::{BlockRegistry, BlockStateId};
 
 /// A fully checked index, inert until explicitly installed by the owning game thread.
-pub(crate) struct Index {
+pub struct Index {
     forward: Vec<BlockState>,
     reverse: std::collections::HashMap<mod_api::BlockKey, Vec<Option<BlockStateId>>>,
     /// Each state's block key, shared with the phase views that tell who listens.

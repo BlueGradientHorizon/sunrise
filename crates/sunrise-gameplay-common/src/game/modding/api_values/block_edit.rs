@@ -5,8 +5,8 @@ pub use sunrise_command::args::BlockInput;
 pub use sunrise_world::registry::BlockStateId;
 
 pub struct PreparedBlockEdit {
-    pub(in crate::game) palette: Vec<u32>,
-    pub(in crate::game) filters: Vec<BlockInput>,
+    pub palette: Vec<u32>,
+    pub filters: Vec<BlockInput>,
 }
 
 /// Resolve every palette state and compile every filter before a world mutation is possible.

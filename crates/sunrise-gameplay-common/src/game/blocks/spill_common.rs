@@ -156,9 +156,9 @@ pub struct ItemRandom {
 /// `age`). The default is what `new ItemEntity` starts with.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct DropState {
-    pub(crate) thrower: Option<u128>,
+    pub thrower: Option<u128>,
     pub target: Option<u128>,
-    pub(crate) no_gravity: bool,
+    pub no_gravity: bool,
     pub age: i32,
 }
 
@@ -269,7 +269,7 @@ pub struct BlockItemDrop {
     pub velocity: [f64; 3],
     pub pickup_delay: u32,
     /// The item-entity state a drop hook set.
-    pub(in crate::game) state: DropState,
+    pub state: DropState,
 }
 
 impl BlockItemDrop {
@@ -674,7 +674,7 @@ pub fn set_saved_entity(
 }
 
 /// How to finish the removal after its pre-removal effects have run.
-pub(in crate::game) enum RemovingBlockEntity {
+pub enum RemovingBlockEntity {
     Saved,
     Resident {
         generation: Option<u64>,

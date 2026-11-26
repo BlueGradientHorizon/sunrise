@@ -7,11 +7,11 @@ use sunrise_level::{
 
 /// Mutable position-owned server data borrowed by the level adapter.
 pub struct PositionState<'a> {
-    pub(in crate::game) gateways: &'a mut sunrise_level::fast_hash::FxHashMap<
+    pub gateways: &'a mut sunrise_level::fast_hash::FxHashMap<
         [i32; 3],
         sunrise_level::block_entity_ticks::EndGateway,
     >,
-    pub(in crate::game) hoppers:
+    pub hoppers:
         &'a mut std::collections::HashMap<Pos, sunrise_gameplay_common::hoppers::HopperState>,
 }
 

@@ -3,7 +3,7 @@ use super::*;
 /// The actual read host of a hook fired during a mob's own tick, either the
 /// game or the tick's scoped view of the ticking mob and its snapshot.
 pub struct NativeHookHost<'a> {
-    pub(in crate::game) host: &'a dyn mod_api::Host,
+    pub host: &'a dyn mod_api::Host,
 }
 
 impl NativeHookHost<'_> {

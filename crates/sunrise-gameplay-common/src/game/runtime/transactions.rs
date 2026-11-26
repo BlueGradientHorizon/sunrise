@@ -66,8 +66,8 @@ pub mod scratch;
 
 /// A notice names the container that received the write, not a replacement at its position.
 pub struct QuickMoveNotice {
-    pub(in crate::game) dim: Dim,
-    pub(in crate::game) holder: BlockEntityIdentity,
+    pub dim: Dim,
+    pub holder: BlockEntityIdentity,
 }
 
 pub(in crate::game) struct QuickMoveNotices<'a, 'g, S: crate::game::SideGame<'g> + ?Sized> {
@@ -318,7 +318,7 @@ impl<'g, S: crate::game::SideGame<'g> + ?Sized> Drop for ClosingPhase<'_, 'g, S>
     }
 }
 
-pub(in crate::game) struct KeptBlock {
+pub struct KeptBlock {
     pub state: BlockStateId,
     pub replay: Option<BlockReplay>,
     pub strict: bool,
@@ -335,7 +335,7 @@ pub fn take_replay_row(world: &mut World, pos: Pos) -> Option<RemovedRow> {
         .map(|(row, generation)| (Box::new(row), generation))
 }
 
-pub(in crate::game) struct BlockStep {
+pub struct BlockStep {
     pub pos: Pos,
     pub to: BlockStateId,
     pub replay: BlockReplay,
@@ -354,7 +354,7 @@ pub type StrictBlockSteps = indexmap::IndexMap<Pos, StrictBlockStep>;
 
 #[derive(Clone, Copy)]
 pub struct BlockReplay {
-    pub(in crate::game) state: BlockStateId,
+    pub state: BlockStateId,
     pub flags: i32,
     /// Replay LevelWriteHost writes through the direct host's block-entity creation path.
     pub level_host: bool,
@@ -385,7 +385,7 @@ pub(in crate::game) fn merge_block_update_flags(earlier: i32, later: i32) -> i32
 
 /// Before-images of the fields a general-entity scope wrote, at one depth.
 #[derive(Default)]
-pub(in crate::game) struct KeptGeneralEntity {
+pub struct KeptGeneralEntity {
     pub velocity: Option<Vec3>,
     pub rotation: Option<[f32; 2]>,
     pub fall_distance: Option<f64>,
@@ -1056,7 +1056,7 @@ pub enum StorageSettlement {
 
 /// RAII guard for one open transaction frame. Dropping it without `close` aborts this frame
 /// and any nested frames still open inside it.
-pub(in crate::game) struct StorageScope<'a, 'g, S: crate::game::SideGame<'g> + ?Sized> {
+pub struct StorageScope<'a, 'g, S: crate::game::SideGame<'g> + ?Sized> {
     pub game: &'a mut S,
     pub(in crate::game) frame: Option<TransactionFrame>,
     resource: std::marker::PhantomData<fn(&'g ()) -> &'g ()>,

@@ -126,49 +126,49 @@ pub struct Generation {
 /// Entities of every level by registry id: how many, and the bytes of their records.
 #[derive(Serialize)]
 pub struct Entities {
-    pub(in crate::game) count: usize,
-    pub(in crate::game) total_mb: f64,
+    pub count: usize,
+    pub total_mb: f64,
     /// The `TOP` types holding the most bytes: id, count, megabytes.
-    pub(in crate::game) by_type: Vec<(String, usize, f64)>,
+    pub by_type: Vec<(String, usize, f64)>,
     #[serde(skip)]
-    pub(in crate::game) bytes: usize,
+    pub bytes: usize,
 }
 
 /// The connected players: queues and what each is owed or holds, the biggest first.
 #[derive(Default, Serialize)]
 pub struct Players {
-    pub(in crate::game) count: usize,
-    pub(in crate::game) total_mb: f64,
+    pub count: usize,
+    pub total_mb: f64,
     /// Name, packets and megabytes waiting to be sent.
-    pub(in crate::game) send_queue: Vec<(String, usize, f64)>,
-    pub(in crate::game) chunks_waiting: Vec<(String, usize)>,
-    pub(in crate::game) chunks_sent: Vec<(String, usize)>,
-    pub(in crate::game) tracked_entities: Vec<(String, usize)>,
+    pub send_queue: Vec<(String, usize, f64)>,
+    pub chunks_waiting: Vec<(String, usize)>,
+    pub chunks_sent: Vec<(String, usize)>,
+    pub tracked_entities: Vec<(String, usize)>,
     #[serde(skip)]
-    pub(in crate::game) bytes: usize,
+    pub bytes: usize,
 }
 
 #[derive(Default, Serialize)]
 pub struct Cached {
-    pub(in crate::game) entries: usize,
-    pub(in crate::game) size_mb: f64,
+    pub entries: usize,
+    pub size_mb: f64,
 }
 
 /// What the hub keeps to send chunks: encoded sections, heightmaps and compressed frames.
 #[derive(Default, Serialize)]
 pub struct ChunkSend {
-    pub(in crate::game) total_mb: f64,
-    pub(in crate::game) sections: Cached,
-    pub(in crate::game) heightmaps: Cached,
-    pub(in crate::game) frames: Cached,
+    pub total_mb: f64,
+    pub sections: Cached,
+    pub heightmaps: Cached,
+    pub frames: Cached,
     #[serde(skip)]
-    pub(in crate::game) bytes: usize,
+    pub bytes: usize,
 }
 
 #[derive(Serialize)]
 pub struct Queue {
-    pub(in crate::game) len: usize,
-    pub(in crate::game) size_mb: f64,
+    pub len: usize,
+    pub size_mb: f64,
 }
 
 #[derive(Serialize)]
@@ -191,37 +191,37 @@ pub struct Allocator {
 
 #[derive(Serialize)]
 pub struct FarTiles {
-    pub(in crate::game) active: usize,
-    pub(in crate::game) cached: usize,
-    pub(in crate::game) kept: usize,
-    pub(in crate::game) kept_mb: f64,
+    pub active: usize,
+    pub cached: usize,
+    pub kept: usize,
+    pub kept_mb: f64,
 }
 
 #[derive(Serialize)]
 pub struct Gpu {
-    pub(in crate::game) allocated_mb: f64,
-    pub(in crate::game) reserved_mb: f64,
-    pub(in crate::game) by_label_mb: Vec<(String, f64)>,
+    pub allocated_mb: f64,
+    pub reserved_mb: f64,
+    pub by_label_mb: Vec<(String, f64)>,
 }
 
 #[derive(Serialize)]
 pub struct Renderer {
-    pub(in crate::game) section_arenas_mb: f64,
-    pub(in crate::game) section_vertices_mb: f64,
-    pub(in crate::game) cpu: BTreeMap<String, f64>,
-    pub(in crate::game) gpu: Option<Gpu>,
+    pub section_arenas_mb: f64,
+    pub section_vertices_mb: f64,
+    pub cpu: BTreeMap<String, f64>,
+    pub gpu: Option<Gpu>,
 }
 
 /// A serving game's own parts: columns, generation, entities, players, chunk send caches, queues.
 pub struct ServerSide {
-    pub(in crate::game) chunks: Vec<Arc<Chunk>>,
-    pub(in crate::game) generation: Generation,
-    pub(in crate::game) entities: Entities,
-    pub(in crate::game) players: Players,
-    pub(in crate::game) chunk_send: ChunkSend,
-    pub(in crate::game) light_queue: Queue,
-    pub(in crate::game) generation_queue: Queue,
-    pub(in crate::game) queue_bytes: usize,
+    pub chunks: Vec<Arc<Chunk>>,
+    pub generation: Generation,
+    pub entities: Entities,
+    pub players: Players,
+    pub chunk_send: ChunkSend,
+    pub light_queue: Queue,
+    pub generation_queue: Queue,
+    pub queue_bytes: usize,
 }
 
 impl ServerSide {
@@ -269,9 +269,9 @@ pub struct MemoryReport {
 
 /// Values owned by the game or renderer while copy-on-write handles keep section identities alive.
 pub struct MemoryInputs {
-    pub(in crate::game) render_distance: i32,
-    pub(in crate::game) client: Option<Vec<Arc<Chunk>>>,
-    pub(in crate::game) far: Option<(FarTiles, usize)>,
+    pub render_distance: i32,
+    pub client: Option<Vec<Arc<Chunk>>>,
+    pub far: Option<(FarTiles, usize)>,
 }
 
 impl MemoryInputs {

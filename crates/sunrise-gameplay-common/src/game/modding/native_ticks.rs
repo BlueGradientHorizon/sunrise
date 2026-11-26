@@ -162,17 +162,17 @@ pub struct TickRound {
     pub told: Told,
     /// Whether `entity_entering_section` is listened to on this server: each entity's position
     /// write is filed and told while its tick is still running.
-    pub(in crate::game) sections: bool,
+    pub sections: bool,
     /// The entities about to tick with the family, in order; once the family's Pre is told,
     /// those it let through, for its Post.
-    pub(in crate::game) ticking: Vec<(u32, TickKind)>,
+    pub ticking: Vec<(u32, TickKind)>,
     /// The entities a Pre canceled.
-    pub(in crate::game) canceled: Vec<u32>,
+    pub canceled: Vec<u32>,
     /// Scratch output owned by one hook dispatch, never shared with earlier turns.
-    pub(in crate::game) call_canceled: Vec<u32>,
+    pub call_canceled: Vec<u32>,
     /// The items whose part ended their tick (`on_entity_item_update`): they are not
     /// canceled, so they still hear their Post.
-    pub(in crate::game) halted: Vec<u32>,
+    pub halted: Vec<u32>,
 }
 
 impl TickRound {

@@ -10,7 +10,7 @@ pub struct QueuedChat {
     /// signature an error only acknowledges. Disguised chat has neither.
     pub signature: Option<Signature>,
     /// The player's UUID, 0 for disguised chat (`Util.NIL_UUID`).
-    pub(in crate::game) sender: u128,
+    pub sender: u128,
     pub kind: QueuedChatKind,
 }
 

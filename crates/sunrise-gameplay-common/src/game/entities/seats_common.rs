@@ -9,8 +9,8 @@ pub struct Seat {
     pub position: Vec3,
     pub height: f64,
     pub width: f32,
-    pub(in crate::game) attachment: [f64; 3],
-    pub(in crate::game) yaw: f32,
+    pub attachment: [f64; 3],
+    pub yaw: f32,
 }
 
 impl Seat {

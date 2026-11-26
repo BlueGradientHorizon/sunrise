@@ -21,8 +21,8 @@ static DATA_FILES: GameConfigFiles = GameConfigFiles { bulk: true };
 /// A root selected by the game, never supplied by a mod. Bulk roots bind the
 /// mod's directory implicitly; config keeps its established shared spelling.
 pub struct FileRoot {
-    pub(in crate::game) path: PathBuf,
-    pub(in crate::game) bulk: bool,
+    pub path: PathBuf,
+    pub bulk: bool,
 }
 
 impl FileRoot {

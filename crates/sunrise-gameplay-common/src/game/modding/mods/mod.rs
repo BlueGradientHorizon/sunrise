@@ -1733,7 +1733,7 @@ pub(in crate::game) fn not_built(
     out
 }
 
-pub(in crate::game) struct PreparedLoopContext {
+pub struct PreparedLoopContext {
     pub(in crate::game) game: Arc<sunrise_world::native_load_context::LoopContext>,
     pub(in crate::game) audio: Option<sunrise_world::native_load_context::LoopContext>,
     /// A server's context for the features it generates (`alter_ground`).

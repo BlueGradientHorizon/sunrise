@@ -46,7 +46,7 @@ pub enum OpenState {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::game) struct OpenAttempt {
+pub struct OpenAttempt {
     pub authority: Authority,
     pub(in crate::game) epoch: u64,
     pub session: OpenState,

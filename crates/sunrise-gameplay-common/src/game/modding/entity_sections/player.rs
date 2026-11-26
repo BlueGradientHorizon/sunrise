@@ -14,7 +14,7 @@ use sunrise_sim::motion::{
 };
 
 #[derive(Clone, Copy)]
-pub(in crate::game) struct PlayerSectionScope {
+pub struct PlayerSectionScope {
     scope: Scope,
     id: u32,
     body_id: i32,
@@ -58,7 +58,7 @@ impl PositionObserver for PlayerSectionObserver {
 }
 
 /// Return the table even if the move fails after committing a position.
-pub(in crate::game) struct PlayerSectionPass<'a> {
+pub struct PlayerSectionPass<'a> {
     _motion: PositionObserverScope,
     observer: &'a PlayerSectionObserver,
     sections: &'a mut EntitySections,

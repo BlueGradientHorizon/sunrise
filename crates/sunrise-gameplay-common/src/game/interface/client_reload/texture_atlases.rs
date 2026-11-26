@@ -42,7 +42,7 @@ pub const ICONS: &str = r#"{"sources":[
 #[cfg(test)]
 /// A mod registering an atlas on the first load only: its id and vanilla's
     /// `map_decorations` definition, already in the resources.
-    struct Maps(std::sync::Arc<std::sync::Mutex<(u32, Vec<Option<mod_api::AtlasRegion>>)>>);
+    pub struct Maps(std::sync::Arc<std::sync::Mutex<(u32, Vec<Option<mod_api::AtlasRegion>>)>>);
 pub fn maps() -> TextureAtlasRegistration {
         registration("maps_mod:maps", "minecraft:map_decorations")
     }

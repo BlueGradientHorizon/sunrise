@@ -18,22 +18,22 @@ use sunrise_sim::{
 /// The non-storage effects from one guest menu action.
 #[derive(Default)]
 pub struct GuestMenuEffects {
-    pub(in crate::game) dropped: Vec<ItemStack>,
-    pub(in crate::game) equipped: Vec<(&'static str, Option<ItemStack>)>,
-    pub(in crate::game) brewed: Vec<ItemStack>,
-    pub(in crate::game) brewed_potion_takes: Vec<ItemStack>,
-    pub(in crate::game) crafted: Vec<(String, Vec<Option<ItemStack>>)>,
-    pub(in crate::game) item_crafted: Vec<(String, ItemStack, Vec<Option<ItemStack>>)>,
-    pub(in crate::game) crafted_counts: Vec<(std::sync::Arc<str>, i32)>,
+    pub dropped: Vec<ItemStack>,
+    pub equipped: Vec<(&'static str, Option<ItemStack>)>,
+    pub brewed: Vec<ItemStack>,
+    pub brewed_potion_takes: Vec<ItemStack>,
+    pub crafted: Vec<(String, Vec<Option<ItemStack>>)>,
+    pub item_crafted: Vec<(String, ItemStack, Vec<Option<ItemStack>>)>,
+    pub crafted_counts: Vec<(std::sync::Arc<str>, i32)>,
 }
 
 pub struct FurnaceMenuEffects {
-    pub(in crate::game) uuid: u128,
-    pub(in crate::game) entity_id: i32,
-    pub(in crate::game) pos: (i32, i32, i32),
-    pub(in crate::game) at: [f64; 3],
-    pub(in crate::game) smelted: Vec<(Option<ItemStack>, u32)>,
-    pub(in crate::game) extracted: Option<(ItemStack, u32)>,
+    pub uuid: u128,
+    pub entity_id: i32,
+    pub pos: (i32, i32, i32),
+    pub at: [f64; 3],
+    pub smelted: Vec<(Option<ItemStack>, u32)>,
+    pub extracted: Option<(ItemStack, u32)>,
 }
 
 impl GuestMenuEffects {
@@ -61,9 +61,9 @@ impl GuestMenuEffects {
 
 /// An authoritative click reply, published only once the click's transaction has committed.
 pub struct MenuClickReply {
-    pub(in crate::game) conn: u32,
-    pub(in crate::game) generation: u64,
-    pub(in crate::game) reply: ClickReply,
+    pub conn: u32,
+    pub generation: u64,
+    pub reply: ClickReply,
 }
 
 pub enum ClickReply {
@@ -118,29 +118,29 @@ pub struct GuestMerchant {
 }
 
 pub struct KeptMerchantGuest {
-    pub(in crate::game) merchant: GuestMerchant,
-    pub(in crate::game) stats: Option<Stats>,
-    pub(in crate::game) progress: Progress,
-    pub(in crate::game) changed: BTreeSet<usize>,
-    pub(in crate::game) unlocked: Vec<String>,
-    pub(in crate::game) book: Settings,
+    pub merchant: GuestMerchant,
+    pub stats: Option<Stats>,
+    pub progress: Progress,
+    pub changed: BTreeSet<usize>,
+    pub unlocked: Vec<String>,
+    pub book: Settings,
 }
 
 pub struct KeptMerchantWindow {
-    pub(in crate::game) window: Box<dyn FnOnce(&mut Guest)>,
-    pub(in crate::game) heard: Option<HeardMenu>,
-    pub(in crate::game) owned: Option<(u64, Box<Menu>)>,
+    pub window: Box<dyn FnOnce(&mut Guest)>,
+    pub heard: Option<HeardMenu>,
+    pub owned: Option<(u64, Box<Menu>)>,
 }
 
 pub struct KeptMerchantMob {
-    pub(in crate::game) random: LegacyRandom,
-    pub(in crate::game) timer: i32,
-    pub(in crate::game) trade: Option<Box<Trader>>,
-    pub(in crate::game) trading: bool,
-    pub(in crate::game) profession: ProfessionState,
-    pub(in crate::game) level: i32,
-    pub(in crate::game) variant: u8,
-    pub(in crate::game) villager: Option<Box<Ext>>,
+    pub random: LegacyRandom,
+    pub timer: i32,
+    pub trade: Option<Box<Trader>>,
+    pub trading: bool,
+    pub profession: ProfessionState,
+    pub level: i32,
+    pub variant: u8,
+    pub villager: Option<Box<Ext>>,
 }
 
 #[derive(Default)]

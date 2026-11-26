@@ -16,7 +16,7 @@ pub struct RegisteredExecutor {
 /// The commands the mods registered, as the session's tree holds them.
 pub struct NativeCommands {
     /// Each root's traversal level.
-    pub(in crate::game) levels: HashMap<String, u8>,
+    pub levels: HashMap<String, u8>,
     /// Accepted display data, before filtering roots of a replacement tree.
     pub tree: Value,
     pub arguments: CommandArguments,

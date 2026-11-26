@@ -9,8 +9,8 @@ pub const ROTATION_SPEED: f32 = 40.0;
 
 pub struct OminousItemSpawner {
     /// Entity-owned registration metadata; content clones are detached.
-    pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
-    pub(in crate::game) join: sunrise_sim::join_seq::JoinSeq,
+    pub attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
+    pub join: sunrise_sim::join_seq::JoinSeq,
     /// Its entity id: from the entity counter on the server, the server's on
     /// a client.
     pub id: u32,

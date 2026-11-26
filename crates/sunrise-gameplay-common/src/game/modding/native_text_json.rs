@@ -16,7 +16,7 @@ impl crate::game::CommonGame<'_> {
 }
 
 /// A component, none, or a refusal, crossing to the API as one `Result`.
-pub(super) struct Read(Result<Option<Text>, TextFormError>);
+pub struct Read(Result<Option<Text>, TextFormError>);
 
 impl crate::game::api_values::TryIntoApi for Read {
     type Api = Option<mod_api::Text>;

@@ -44,11 +44,11 @@ pub(in crate::game) fn added(
 /// The player acting, holding the stack in `slot` (`stack_in_mut`'s numbers), as
 /// `ItemUtils.createFilledResult` and the cauldron see them.
 pub struct HeldSlot<'g, 'a, S: crate::game::SideGame<'a>> {
-    pub(in crate::game) game: &'g mut S,
-    pub(in crate::game) slot: usize,
+    pub game: &'g mut S,
+    pub slot: usize,
     /// The UUID of the player a mod's write acts as: what doesn't fit waits for the root
     /// commit of an open transaction. None for the game's own use.
-    pub(in crate::game) dropper: Option<u128>, pub resource_lifetime: std::marker::PhantomData<fn(&'a ()) -> &'a ()>,
+    pub dropper: Option<u128>, pub resource_lifetime: std::marker::PhantomData<fn(&'a ()) -> &'a ()>,
 }
 impl<'__carrier, S: crate::game::SideGame<'__carrier>> cauldron::Player for HeldSlot<'_, '__carrier, S> {
     fn creative(&self) -> bool {

@@ -9,32 +9,32 @@ use sunrise_sim::{
 
 #[derive(Default)]
 pub struct CreditEntity {
-    pub(in crate::game) id: i32,
-    pub(in crate::game) main: Option<ItemStack>,
+    pub id: i32,
+    pub main: Option<ItemStack>,
 }
 
 pub struct CreditPlan {
-    pub(in crate::game) victim: i32,
-    pub(in crate::game) player: Option<(PlayerCredit, CreditEntity)>,
-    pub(in crate::game) existing_player_live: bool,
+    pub victim: i32,
+    pub player: Option<(PlayerCredit, CreditEntity)>,
+    pub existing_player_live: bool,
     /// The mob the victim's hurt memory names, by that recorded id, and the
     /// entity the credit resolves to now (`LivingRef::kill_credit`'s).
-    pub(in crate::game) previous_mob: (u32, CreditEntity),
-    pub(in crate::game) attacking_mob: CreditEntity,
-    pub(in crate::game) responsibility: Option<Option<(PlayerCredit, CreditEntity)>>,
-    pub(in crate::game) responsibility_live: bool,
-    pub(in crate::game) fixed: CreditEntity,
+    pub previous_mob: (u32, CreditEntity),
+    pub attacking_mob: CreditEntity,
+    pub responsibility: Option<Option<(PlayerCredit, CreditEntity)>>,
+    pub responsibility_live: bool,
+    pub fixed: CreditEntity,
     /// Canonical UUIDs of the causing entity for a villager's hurt gossip.
-    pub(in crate::game) hurt_by: Option<HurtBy>,
+    pub hurt_by: Option<HurtBy>,
 }
 
 pub struct HurtBy {
-    pub(in crate::game) player: Option<[i32; 4]>,
-    pub(in crate::game) attacker: Option<(u32, [i32; 4])>,
-    pub(in crate::game) trade_feedback: bool,
+    pub player: Option<[i32; 4]>,
+    pub attacker: Option<(u32, [i32; 4])>,
+    pub trade_feedback: bool,
 }
 
-pub(in crate::game) struct CreditLoan<'a> {
+pub struct CreditLoan<'a> {
     pub(in crate::game) plan: CreditPlan,
     pub(in crate::game) players: &'a mut HashMap<u32, PlayerCredit>,
 }

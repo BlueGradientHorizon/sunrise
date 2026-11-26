@@ -20,7 +20,7 @@ pub struct GearEdits {
     pub trim: bool,
 }
 
-pub(in crate::game) struct PreparedComponentEdit {
+pub struct PreparedComponentEdit {
     fields: EngineStack,
     edits: ItemComponentEdits,
 }

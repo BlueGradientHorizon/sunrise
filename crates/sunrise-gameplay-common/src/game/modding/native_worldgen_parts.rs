@@ -8,7 +8,7 @@ use sunrise_level::api_context::WorldgenReader;
 use sunrise_world::registry::BlockRegistry;
 
 /// The published index and the registry it converts against.
-type Published = (Arc<Index>, &'static BlockRegistry);
+pub type Published = (Arc<Index>, &'static BlockRegistry);
 
 static INDEX: RwLock<Option<Published>> = RwLock::new(None);
 

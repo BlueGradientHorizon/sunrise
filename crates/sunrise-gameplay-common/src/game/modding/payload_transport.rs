@@ -14,7 +14,7 @@ use sunrise_sim::raw_payloads::{
 };
 
 /// Fits the journal-growth allowance already charged by each prepared operation.
-pub(in crate::game) struct Deferred {
+pub struct Deferred {
     epoch: Arc<Epoch>,
     prepared: Prepared,
 }

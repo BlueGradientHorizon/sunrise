@@ -9,7 +9,7 @@ use sunrise_sim::{entity_rules::EntityRules, mobs::Who};
 #[derive(Clone, Debug)]
 pub struct PrimedTnt {
     /// Entity-owned registration metadata; content clones are detached.
-    pub(in crate::game) attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
+    pub attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     /// `Entity.yRot` and `xRot` (`/tp`, `/data get ... Rotation`).
     pub rotation: [f32; 2],
     /// When it joined its list (`sunrise_client::join_seq`); set by the list.
@@ -43,7 +43,7 @@ pub struct PrimedTnt {
     pub block_state: Option<sunrise_world::registry::BlockStateId>,
     /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
     /// the answer while it holds for its vanilla size.
-    pub(in crate::game) size_answer: Option<sunrise_sim::pose::SizeAnswer>,
+    pub size_answer: Option<sunrise_sim::pose::SizeAnswer>,
 }
 impl PrimedTnt {
     /// The live state encoded for each existing save view.

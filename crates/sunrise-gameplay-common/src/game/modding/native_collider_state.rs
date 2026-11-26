@@ -140,7 +140,7 @@ pub struct Placement {
 
 /// The placements of each level's colliders, kept from tick to tick.
 #[derive(Default)]
-pub(in crate::game) struct Placements(pub HashMap<Dim, Placement>);
+pub struct Placements(pub HashMap<Dim, Placement>);
 
 /// The save key of an entity's collider, beside its attachments.
 pub const SAVE_KEY: &str = "SunriseCollider";

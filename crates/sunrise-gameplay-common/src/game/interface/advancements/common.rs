@@ -66,9 +66,9 @@ pub struct RemoteTree {
 
 pub struct RemoteNode {
     pub id: String,
-    pub(in crate::game) parent: Option<usize>,
+    pub parent: Option<usize>,
     pub children: Vec<usize>,
-    pub(in crate::game) displayed: bool,
+    pub displayed: bool,
 }
 
 impl RemoteTree {
@@ -148,16 +148,16 @@ impl RemoteTree {
 #[derive(Clone, Copy)]
 pub struct TagSources<'a> {
     /// The world's packs' tags over the game's own, by registry.
-    pub(in crate::game) pack_tags: Option<
+    pub pack_tags: Option<
         &'a std::collections::HashMap<
             &'static str,
             std::collections::HashMap<String, std::collections::HashSet<String>>,
         >,
     >,
-    pub(in crate::game) items: &'a sunrise_items::items::Items,
-    pub(in crate::game) mob_data: &'a sunrise_sim::mobs::MobData,
-    pub(in crate::game) damage: &'a sunrise_world::damage_source::Catalog,
-    pub(in crate::game) resources: &'a std::path::Path,
+    pub items: &'a sunrise_items::items::Items,
+    pub mob_data: &'a sunrise_sim::mobs::MobData,
+    pub damage: &'a sunrise_world::damage_source::Catalog,
+    pub resources: &'a std::path::Path,
 }
 impl TagSources<'_> {
     pub fn contains(&self, registry: &str, tag: &str, id: &str) -> bool {

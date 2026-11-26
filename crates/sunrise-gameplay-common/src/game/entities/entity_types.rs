@@ -44,11 +44,11 @@ pub enum ThunderHit {
 #[derive(Clone, Copy)]
 pub struct Blast {
     /// `VehicleEntity.ignoreExplosion`: a mob's blast, with mob griefing off.
-    pub(in crate::game) vehicles_ignore: bool,
+    pub vehicles_ignore: bool,
     /// `ItemEntity.ignoreExplosion` (`shouldAffectBlocklikeEntities`).
-    pub(in crate::game) items_ignore: bool,
+    pub items_ignore: bool,
     /// The exploding mob, which `getEntities(source, box)` leaves out.
-    pub(in crate::game) spared: Option<u32>,
+    pub spared: Option<u32>,
 }
 
 /// `EntityType.TRIDENT.getDimensions()`: width, height and eye height.

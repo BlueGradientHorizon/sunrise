@@ -13,7 +13,7 @@ use sunrise_world::{
 
 /// `Level.clip` with `ClipContext.Block.COLLIDER`, no fluids and the
 /// collision context of the entity whose exposure is measured.
-pub(in crate::game) struct ClipData<'a, 'r> {
+pub struct ClipData<'a, 'r> {
     pub facts: &'a sunrise_items::blocks::BlockFacts,
     pub behaviours: &'a sunrise_world::level::Behaviours,
     pub registry: &'r sunrise_world::registry::BlockRegistry,

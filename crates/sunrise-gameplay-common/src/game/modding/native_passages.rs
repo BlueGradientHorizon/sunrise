@@ -28,7 +28,7 @@ pub(in crate::game) const VERTICAL_LIMIT: f64 = 2.0e7;
 /// (`retire_level`, `retire_world`); the numbers go on, so an old one is never reused while
 /// the game runs.
 #[derive(Default)]
-pub(crate) struct Passages {
+pub struct Passages {
     /// The server's passages, by level, then by chunk ([`Passage::chunk`]).
     pub levels: FxHashMap<DimensionKey, LevelPassages>,
     /// Where each of the server's passages is.
@@ -49,7 +49,7 @@ pub(crate) struct Passages {
 }
 
 #[derive(Default)]
-pub(in crate::game) struct LevelPassages {
+pub struct LevelPassages {
     pub count: u32,
     pub chunks: FxHashMap<[i32; 2], Vec<(PassageId, Passage)>>,
 }

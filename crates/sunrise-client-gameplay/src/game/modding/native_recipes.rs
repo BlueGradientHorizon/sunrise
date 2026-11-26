@@ -32,7 +32,7 @@ impl RecipeTables {
 }
 
 /// Item id -> its index in [`Recipes::items`].
-struct Index(HashMap<Arc<str>, u32>);
+pub struct Index(HashMap<Arc<str>, u32>);
 impl Index {
     fn stack(&self, item: &str, count: u32, components: String) -> Option<RecipeStack> {
         Some(RecipeStack {

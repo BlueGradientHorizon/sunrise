@@ -62,7 +62,7 @@ pub struct WorldCommandState {
 }
 
 /// The ids `build_registries` lists from the prepared resources' folders (cached per root).
-pub(in crate::game) struct ResourceIds {
+pub struct ResourceIds {
     pub(in crate::game) recipes: Vec<String>,
     pub(in crate::game) templates: Vec<String>,
     /// `entity-types.json`'s keys, sorted (empty when the file is missing).

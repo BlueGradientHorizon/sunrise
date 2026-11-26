@@ -50,7 +50,7 @@ pub struct View {
     pub parts: Vec<(Pos, usize)>,
     pub kind: Kind,
     /// A mod block's container rules (`Kind::Mod`).
-    pub(in crate::game) container: Option<Arc<ModContainer>>,
+    pub container: Option<Arc<ModContainer>>,
 }
 impl View {
     pub fn len(&self) -> usize {
@@ -101,7 +101,7 @@ impl View {
     }
 }
 
-pub(in crate::game) enum Slots<'a> {
+pub enum Slots<'a> {
     Range(std::ops::Range<usize>),
     Slice(&'static [usize]),
     Mod(&'a [usize]),
@@ -140,13 +140,13 @@ impl ExactSizeIterator for Slots<'_> {}
 /// State-level container queries shared by the game and comparator signals.
 pub struct Containers<'a> {
     pub world: &'a World,
-    pub(in crate::game) behaviours: &'a Behaviours,
-    pub(in crate::game) items: &'a Items,
-    pub(in crate::game) registry: &'static sunrise_world::registry::BlockRegistry,
+    pub behaviours: &'a Behaviours,
+    pub items: &'a Items,
+    pub registry: &'static sunrise_world::registry::BlockRegistry,
     /// Brewing recipes, for what a brewing stand accepts (not needed for signals).
-    pub(in crate::game) brewing: Option<&'a sunrise_level::brewing::Brewing>,
+    pub brewing: Option<&'a sunrise_level::brewing::Brewing>,
     /// The level's mobs, for the cat half of `ChestBlock.isChestBlockedAt`.
-    pub(in crate::game) mobs: &'a [Mob],
+    pub mobs: &'a [Mob],
 }
 /// The API snapshots for one offered stack. The offered count may shrink, and an
 /// accepted write (or its notification) may change what the next slot sees.

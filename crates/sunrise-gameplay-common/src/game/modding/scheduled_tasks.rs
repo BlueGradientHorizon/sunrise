@@ -53,7 +53,7 @@ pub fn report_failure(mod_id: &str, panic: &str) {
 }
 
 #[derive(Default)]
-pub(in crate::game) struct ScheduledTasks {
+pub struct ScheduledTasks {
     /// Ticks advanced since the world opened.
     pub(in crate::game) now: u64,
     /// Waiting tasks by due tick, then id (the order they were scheduled).

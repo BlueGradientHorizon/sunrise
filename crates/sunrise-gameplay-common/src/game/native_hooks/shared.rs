@@ -157,9 +157,9 @@ pub struct NativeRecipeView {
 #[allow(dead_code)]
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct NativeRecipeStack {
-    pub(crate) item: u32,
-    pub(crate) count: u32,
-    pub(crate) components: String,
+    pub item: u32,
+    pub count: u32,
+    pub components: String,
 }
 
 /// The station a recipe is made at.
@@ -182,8 +182,8 @@ pub enum NativeRecipeKind {
 #[derive(Clone, Debug, PartialEq)]
 pub struct NativeRecipe {
     /// `minecraft:oak_planks`.
-    pub(crate) id: String,
-    pub(crate) kind: NativeRecipeKind,
+    pub id: String,
+    pub kind: NativeRecipeKind,
     /// The recipe book's tab (`crafting_building_blocks`, `furnace_food`),
     /// or "".
     pub category: String,
@@ -213,11 +213,11 @@ pub struct NativeRecipe {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct NativeItem {
     /// `minecraft:diamond`, `<mod>:<path>`.
-    pub(crate) id: String,
+    pub id: String,
     /// In the player's language.
-    pub(crate) name: String,
+    pub name: String,
     /// Its item tags, without the `#`.
-    pub(crate) tags: Vec<String>,
+    pub tags: Vec<String>,
 }
 
 /// Every item and recipe the game knows (`native_recipes`): `items` in the
@@ -227,8 +227,8 @@ pub struct NativeItem {
 #[allow(dead_code)]
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct NativeRecipes {
-    pub(crate) items: Vec<NativeItem>,
-    pub(crate) recipes: Vec<NativeRecipe>,
+    pub items: Vec<NativeItem>,
+    pub recipes: Vec<NativeRecipe>,
 }
 
 /// `native_living_use_totem` for the damage code: whether it

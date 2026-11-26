@@ -16,7 +16,7 @@ fn run(
 
 // Observable root-publication labels, independent of the plan representation.
 #[derive(Debug, PartialEq, Eq)]
-enum Published {
+pub enum Published {
     Packet,
     Drop,
     Cost(u32),

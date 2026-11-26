@@ -63,9 +63,9 @@ pub fn decode_registrations(data: &[u8]) -> sunrise_protocol::Result<Dispatcher<
 #[derive(Default)]
 pub struct UseOnOutcome {
     /// The client may run its local item-on-block phase when the block passed or was skipped.
-    pub(super) block_fell_through: bool,
+    pub block_fell_through: bool,
     /// Only a final Pass lets the client continue to air use or the other hand.
-    pub(super) passed: bool,
+    pub passed: bool,
 }
 
 pub fn use_result(receipt: i64, outcome: UseOnOutcome) -> Clientbound {
