@@ -1,5 +1,4 @@
 //! A living entity's absorption amount read for native mods (`LivingEntity.getAbsorptionAmount`).
-use crate::game::CommonGame;
 use mod_api::LivingRef;
 
 pub trait NativeLivingAbsorptionGameExt1<'__sg>: crate::game::SideGame<'__sg> {

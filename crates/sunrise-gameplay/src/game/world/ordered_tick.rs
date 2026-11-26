@@ -590,7 +590,6 @@ mod tests {
     }
 }
 
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
 

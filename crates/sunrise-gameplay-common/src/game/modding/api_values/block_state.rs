@@ -387,4 +387,3 @@ impl<C: ?Sized> TryIntoEngine<C> for BlockState {
     }
 }
 
-use crate::game::tables::WorldTablesExt as _;

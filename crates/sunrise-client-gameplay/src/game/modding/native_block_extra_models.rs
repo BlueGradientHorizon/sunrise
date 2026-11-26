@@ -1,7 +1,5 @@
 
 #[cfg(feature = "client")]
-use crate::game::ClientGame as Game;
-#[cfg(feature = "client")]
 use mod_api::{BlockExtraModelsError, ModelRef};
 
 #[cfg(feature = "client")]

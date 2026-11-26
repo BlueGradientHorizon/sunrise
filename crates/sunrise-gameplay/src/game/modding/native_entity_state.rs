@@ -1145,4 +1145,3 @@ use sunrise_gameplay_common::game::native_entity_state_common::NativeEntityState
 
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
 
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

@@ -49,6 +49,4 @@ pub mod tests {
 
     
 }
-use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
-use crate::game::native_server::NativeServerGameExt1 as _;

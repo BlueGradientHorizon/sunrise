@@ -1,5 +1,4 @@
 //! Bridge the generated game Host implementation to the standalone data fixer.
-use crate::game::CommonGame;
 use mod_api::{Compound, NbtDataType, NbtUpgradeError};
 
 impl crate::game::CommonGame<'_> {

@@ -4,9 +4,6 @@
 //! a mod reaches every area through them and the handles.
 // The generated impls convert error types that are already equal; TODO(#2273): make the generator skip it.
 #![allow(clippy::useless_conversion, clippy::unit_arg)]
-use super::api_values::{ItemBoundary, TryIntoApi, TryIntoEnginePreservingCount};
-use mod_api::__private::game::*;
-use mod_api::*;
 
 pub(in crate::game) mod phase_contexts;
 pub(crate) mod services;

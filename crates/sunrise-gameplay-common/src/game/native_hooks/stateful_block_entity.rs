@@ -1,4 +1,3 @@
-use super::*;
 
 pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// Declare that a registered block entity type uses actual-state creation.

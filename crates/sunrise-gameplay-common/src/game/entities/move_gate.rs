@@ -3,7 +3,6 @@
 //! carries no hook — every decision is `Run` and the tick cost is one branch;
 //! PR 1b fires the `entity_move` hook inside the client `move_gate::arm` this
 //! door calls, with a revision recheck before the kind's physics runs.
-use crate::game::CommonGame;
 use super::entity::{Entity, EntityHandle, with_entity};
 use std::borrow::Cow;
 use sunrise_core::geometry::Vec3;

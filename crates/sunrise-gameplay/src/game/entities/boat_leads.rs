@@ -630,7 +630,6 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::GameGameExt3 as _;
 use sunrise_gameplay_common::game::GameGameExt3 as _;
 
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
 

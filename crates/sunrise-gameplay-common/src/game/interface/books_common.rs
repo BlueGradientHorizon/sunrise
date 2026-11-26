@@ -1,4 +1,3 @@
-use crate::game::CommonGame;
 use sunrise_items::item_data::WrittenBook;
 
 impl crate::game::CommonGame<'_> {

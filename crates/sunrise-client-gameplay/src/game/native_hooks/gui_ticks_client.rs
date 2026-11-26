@@ -1,4 +1,3 @@
-use super::*;
 
 impl crate::game::ClientGame<'_> {
     /// `Hud.getGuiTicks`, independent of the server and visual clocks.

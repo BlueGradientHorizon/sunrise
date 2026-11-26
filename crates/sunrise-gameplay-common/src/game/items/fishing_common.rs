@@ -234,7 +234,6 @@ impl Hook {
     }
 }
 
-use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 #[cfg(any(test, feature = "test-support"))]
 impl Hook {

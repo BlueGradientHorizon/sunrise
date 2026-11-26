@@ -229,8 +229,6 @@ mod tests {
     }
 }
 
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
-use sunrise_gameplay_common::game::mounts_common::MountsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt2 as _;

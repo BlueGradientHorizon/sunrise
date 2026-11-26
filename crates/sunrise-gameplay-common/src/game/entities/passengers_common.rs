@@ -1,5 +1,4 @@
 //! Common passenger attachment and seating helpers shared by server and client.
-use crate::game::CommonGame as Game;
 use crate::game::tnt_common::tnt_seat;
 use std::collections::HashMap;
 use sunrise_core::geometry::Vec3;

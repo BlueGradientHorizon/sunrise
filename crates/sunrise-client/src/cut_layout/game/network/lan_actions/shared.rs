@@ -452,4 +452,3 @@ pub(in crate::game) mod projectile_lifecycle_tests;
 #[cfg(test)]
 #[path = "tests/spawn_protection_tests.rs"]
 pub(in crate::game) mod spawn_protection_tests;
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

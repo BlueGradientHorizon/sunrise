@@ -1,5 +1,4 @@
 //! Save visibility while authoritative rows are lent out.
-use super::*;
 
 impl crate::game::ServerGame<'_> {
     /// Keep a held-out entity inaccessible until its copy has been stored back.

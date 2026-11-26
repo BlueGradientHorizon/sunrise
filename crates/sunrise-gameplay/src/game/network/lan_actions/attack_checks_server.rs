@@ -1,4 +1,3 @@
-use super::*;
 use sunrise_gameplay_common::game::lan_actions::attack_checks::arrow_attackable;
 use sunrise_protocol::text::translatable;
 

@@ -1,6 +1,5 @@
 //! Hidden crafting recipe knowledge for /recipe, without recipe-book displays.
 
-use crate::game::CommonGame;
 
 pub trait ModCraftingCommandsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
      fn change_mod_crafting_recipes(

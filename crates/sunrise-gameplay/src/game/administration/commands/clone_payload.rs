@@ -1,5 +1,5 @@
 //! Snapshot position-owned loot with clone's selected block entities.
-use {crate::game::server_side::commands::*, sunrise_gameplay_common::game::server_side::commands::*};
+use crate::game::server_side::commands::*;
 use sunrise_core::nbt::Tag;
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::save::PendingContainerLoot;

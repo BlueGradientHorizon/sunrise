@@ -1132,11 +1132,8 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
 impl<'__sg, G: crate::game::SideGame<'__sg>> CommandsCommonGameExt2<'__sg> for G {}
 
 
-use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
 
-use crate::game::side_ops::player::PlayerSideGameExt as _;
 
-use crate::game::side_ops::world::WorldSideGameExt as _;
 
 use crate::game::tables::GameItems as _;
 

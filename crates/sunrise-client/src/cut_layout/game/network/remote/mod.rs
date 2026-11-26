@@ -759,7 +759,6 @@ pub(crate) mod player_tick_tests;
 #[cfg(test)]
 pub(crate) mod smoke_source_tests;
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 pub(crate) mod tables;
 

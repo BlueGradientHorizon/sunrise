@@ -1,6 +1,5 @@
 //! Dual-role entity and level handle lookups shared across server and client roles.
 
-use crate::game::CommonGame as Game;
 use crate::game::{
     collider_rays::{ClipData, ColliderRays},
     commands_common::Target,

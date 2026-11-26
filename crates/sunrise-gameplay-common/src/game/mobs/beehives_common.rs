@@ -1,5 +1,4 @@
 //! Common beehive block-state query shared by server ticking and client interaction prediction.
-use crate::game::CommonGame;
 use sunrise_sim::beehive;
 
 impl crate::game::CommonGame<'_> {

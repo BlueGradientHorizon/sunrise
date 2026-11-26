@@ -1202,9 +1202,7 @@ pub(in crate::game) mod menu_still_valid_tests;
 #[cfg(test)]
 #[path = "tests/player_entity_tick_tests.rs"]
 pub(in crate::game) mod player_entity_tick_tests;
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 #[cfg(any(test, feature = "test-support"))]
 #[path = "tests/stop_menu.rs"]

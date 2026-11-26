@@ -7,7 +7,7 @@ use sunrise_gameplay_common::game::side_ops::{
 use sunrise_items::items::Items;
 use sunrise_level::world::World;
 use sunrise_sim::motion::SideLevel;
-use sunrise_world::registry::{BlockRegistry, BlockStateId};
+use sunrise_world::registry::BlockRegistry;
 
 /// The game's own side, for a tick that only reads it: each query builds the borrowed tables.
 impl SideLevel for crate::game::ServerGame<'_> {

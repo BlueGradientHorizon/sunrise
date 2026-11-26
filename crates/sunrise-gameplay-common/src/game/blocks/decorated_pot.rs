@@ -2,7 +2,6 @@
 //! entities): the loot table a trial chamber pot holds, rolled into its item
 //! the first time the item is read (`RandomizableContainer.unpackLootTable`),
 //! and `DecoratedPotBlock.useItemOn` / `useWithoutItem`.
-use crate::game::CommonGame;
 use crate::game::spill_common::saved_entity;
 use sunrise_core::random::LegacyRandom;
 use sunrise_items::random_sequences::RandomSequences;

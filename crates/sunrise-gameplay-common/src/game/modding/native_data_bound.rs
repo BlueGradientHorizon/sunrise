@@ -1,5 +1,4 @@
 //! The notices a side's freshly bound data gives mods, in NeoForge's order.
-use crate::game::CommonGame;
 
 
 pub trait NativeDataBoundGameExt1<'__sg>: crate::game::SideGame<'__sg> {

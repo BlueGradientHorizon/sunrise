@@ -1,5 +1,4 @@
 //! An end crystal's construction and the blocks its tick reads.
-use super::*;
 
 impl crate::game::ServerGame<'_> {
     /// `EndCrystal.tick`'s `applyEffectsFromBlocks` for crystal `i`, which never

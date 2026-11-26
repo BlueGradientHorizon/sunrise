@@ -5,7 +5,6 @@ use super::Dim;
 use sunrise_gameplay::wandering_trader::{TraderLevel, roll};
 use sunrise_sim::save::{read_dat, write_dat};
 
-pub(in crate::game) use sunrise_gameplay::wandering_trader::Spawner;
 
 impl crate::game::ServerGame<'_> {
     fn trader_path(&self) -> std::path::PathBuf {

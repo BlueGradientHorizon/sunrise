@@ -2,7 +2,6 @@
 //! (`sunrise_client::block_entity_item`): the item Pick Block gives, with the
 //! block entity's data on Ctrl in creative, and the data and components a
 //! placed item gives its block entity.
-use crate::game::CommonGame;
 use sunrise_core::nbt::{Compound, JavaString, Tag};
 use sunrise_game_data::block_entity_nbt;
 use sunrise_items::{item_data, items::ItemStack};
@@ -454,4 +453,3 @@ use crate::game::side_ops::blocks::BlocksSideGameExt as _;
 
 use crate::game::tables::GameItems as _;
 
-use crate::game::pick_ray::PickRayGameExt1 as _;

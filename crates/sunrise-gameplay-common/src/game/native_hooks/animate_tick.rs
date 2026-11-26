@@ -1,7 +1,6 @@
 //! `Block.animateTick` for mod blocks: the parts of the blocks `ClientLevel.animateTick` picks,
 //! called inside the pick.
 use super::*;
-use crate::game::api_values::block_state::block_listens;
 use std::cell::RefCell;
 use std::rc::Rc;
 

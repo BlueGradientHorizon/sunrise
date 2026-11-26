@@ -1,7 +1,6 @@
 //! A tool acting on a block (an axe strips, a shovel flattens or douses, a hoe tills): the
 //! block's parts say what the block becomes, then the global hook hears the result.
 
-use crate::game::CommonGame;
 use sunrise_items::items::ItemStack;
 use sunrise_world::registry::BlockStateId;
 

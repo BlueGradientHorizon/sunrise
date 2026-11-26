@@ -4051,33 +4051,19 @@ use sunrise_gameplay_common::{game_side, world_biomes};
 #[cfg(test)]
 #[path = "native_entity_refs/restitution_replay_tests.rs"]
 pub(crate) mod restitution_replay_tests;
-use sunrise_gameplay_common::game::tables::GameItems as _;
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
-use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
 
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
 
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_player_food::NativePlayerFoodGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt3 as _;
 
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
 
 #[path = "native_entity_refs/dragon_query.rs"]
 pub(crate) mod dragon_query;

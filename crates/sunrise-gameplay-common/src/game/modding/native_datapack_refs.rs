@@ -1,5 +1,4 @@
 //! Datapack registry reads through a level handle.
-use crate::game::CommonGame;
 use mod_api::LevelRef;
 
 pub trait NativeDatapackRefsGameExt1<'__sg>: crate::game::SideGame<'__sg> {

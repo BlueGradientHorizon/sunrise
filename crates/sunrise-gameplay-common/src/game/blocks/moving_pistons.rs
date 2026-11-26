@@ -1,7 +1,6 @@
 //! `PistonHeadRenderer`: while a piston moves them, blocks are
 //! `minecraft:moving_piston` block entities (drawn as nothing by the chunk
 //! mesher); this draws each moved block at its interpolated offset.
-use crate::game::CommonGame;
 
 impl crate::game::CommonGame<'_> {
     /// The section holding the block at `p` (`SectionPos.blockToSection`).

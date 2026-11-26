@@ -5,7 +5,6 @@
 //! blocks, attacking and the commands all behave exactly as they do for the
 //! host, and every world change they cause reaches all players through the
 //! block log, the level events and the entity tracker.
-use crate::game::CommonGame as Game;
 #[cfg(test)]
 use super::Mining;
 use sunrise_core::geometry::Aabb;

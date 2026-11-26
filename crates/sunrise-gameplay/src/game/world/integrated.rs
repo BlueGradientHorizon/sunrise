@@ -47,7 +47,6 @@ use sunrise_game_data::Result;
 use sunrise_level::level_loading::{STATUS_RADIUS, Stage};
 use sunrise_level::sim_settings::SimSettings;
 use sunrise_level::spans::startup;
-use sunrise_protocol::connection::Pipe;
 use sunrise_protocol::text::translatable;
 use sunrise_sim::{
     chunk_io::Reports,

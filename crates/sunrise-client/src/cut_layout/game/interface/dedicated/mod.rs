@@ -295,7 +295,6 @@ use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Prog
         assert!(game.server.command_source.is_none());
     }
 }
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 pub(crate) mod report;
 

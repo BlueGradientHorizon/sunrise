@@ -10,7 +10,6 @@
 //! Each entity's position writes are filed for `entity_entering_section`
 //! (`entity_sections.rs`) while its tick is still running: a round keeps its entities while
 //! either hook is listened to.
-use crate::game::CommonGame;
 use std::sync::Arc;
 use sunrise_sim::mobs::MobType;
 

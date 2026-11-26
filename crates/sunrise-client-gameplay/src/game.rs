@@ -1312,29 +1312,17 @@ pub(in crate::game) use client_side::sign_outline_tests;
 #[cfg(feature = "client")]
 pub(in crate::game) use native_client_particles::particle_block_states;
 
-#[cfg(feature = "client")]
-use client_side::raw_backlog;
 
 #[cfg(feature = "client")]
 use client_side::atlas_slots;
 
-#[cfg(feature = "client")]
-use client_side::profile_lines;
 
 #[cfg(feature = "client")]
 use client_side::screen_info;
 
-#[cfg(feature = "client")]
-use client_side::upload_pace;
 
-#[cfg(any(test, feature = "client"))]
-use client_side::key_codes;
 
-#[cfg(feature = "client")]
-use client_side::key_focus;
 
-#[cfg(feature = "client")]
-pub(in crate::game) use client_side::{armor_stands_client, frames_client, minecarts_client};
 use sunrise_gameplay_common::game::SideGame;
 impl<'g> SideGame<'g> for ClientGame<'g> {
     type State = client_side::ClientState;

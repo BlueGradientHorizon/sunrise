@@ -1,6 +1,5 @@
 //! Shape queries for a supplied state without replacing the block in the world.
 
-use crate::game::CommonGame;
 pub use mod_api::BlockShapeKind;
 use sunrise_core::{geometry::VoxelShape, position::BlockPos};
 use sunrise_level::{collisions::SceneCollisions, world::World};

@@ -4,7 +4,6 @@
 //! entries that read the server's level ask the integrated server for their
 //! lines (`ServerDebug`); on another server they show what vanilla shows
 //! there, nothing or `??`.
-use crate::game::CommonGame;
 use std::collections::HashSet;
 
 /// `DebugEntryLookingAt.RANGE`.

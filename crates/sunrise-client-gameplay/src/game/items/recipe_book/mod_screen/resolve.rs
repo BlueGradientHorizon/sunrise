@@ -1,5 +1,4 @@
 //! Resource-backed resolution of mod recipe displays.
-use crate::game::ClientGame as Game;
 use mod_api::{RecipeBookDisplay as Display, RecipeSlotDisplay as Slot};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{crafting::Ingredient, menu::place::Stacked};

@@ -27,6 +27,5 @@ pub mod peaceful_tests {
 
     
 }
-use crate::game::chat_common::ChatCommonGameExt1 as _;
 
 pub mod terrain_cmds;

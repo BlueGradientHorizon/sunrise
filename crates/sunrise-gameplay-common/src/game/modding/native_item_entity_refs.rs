@@ -1,5 +1,4 @@
 //! Dropped-item narrowing entry point for native mods (`EntityRef -> ItemEntityRef`).
-use crate::game::CommonGame;
 use mod_api::{EntityRef, ItemEntityRef};
 
 pub trait NativeItemEntityRefsGameExt1<'__sg>: crate::game::SideGame<'__sg> {

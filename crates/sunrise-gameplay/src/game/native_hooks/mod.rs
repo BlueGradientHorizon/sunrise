@@ -155,7 +155,6 @@ pub(in crate::game) mod grindstone_place;
 pub(in crate::game) mod game_rule_changed;
 
 pub(in crate::game) mod fire;
-pub(in crate::game) use fire::{EntityChangeBlockPreCall, PlayerPongCall};
 
 pub(in crate::game) mod finalize_spawn;
 

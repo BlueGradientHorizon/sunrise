@@ -618,6 +618,4 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
 
-use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

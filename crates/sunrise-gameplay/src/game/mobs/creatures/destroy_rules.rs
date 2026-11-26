@@ -1,6 +1,5 @@
 //! Whether an entity may destroy a block: the block's parts' answer to vanilla's per-block
 //! rule (`canEntityDestroy`), then the mods' veto (`LivingDestroyBlockEvent`).
-use super::*;
 
 impl crate::game::ServerGame<'_> {
     /// `IBlockExtension.canEntityDestroy` of the block at `pos` for the entity `entity`:

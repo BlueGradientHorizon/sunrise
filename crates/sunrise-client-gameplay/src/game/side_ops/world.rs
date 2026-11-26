@@ -123,7 +123,6 @@ use sunrise_core::position::BlockPos;
 use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk_streamer::ChunkState;
-use sunrise_level::chunk_streamer::ChunkStreamer;
 use sunrise_level::environment::Environment;
 use sunrise_level::fast_hash::FxHashMap;
 use sunrise_level::shulker_box::Shulker;

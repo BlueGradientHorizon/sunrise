@@ -1,5 +1,4 @@
 //! Metadata reads use the bootstrap snapshot, never the world's logical side.
-use crate::game::CommonGame;
 
 
 impl crate::game::CommonGame<'_> {

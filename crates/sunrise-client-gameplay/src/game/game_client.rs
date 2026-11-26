@@ -25,7 +25,6 @@ use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_core::{geometry::Aabb, position::BlockPos};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_game_data::Result;
-use sunrise_gameplay_common::game::native_hooks;
 use sunrise_items::blocks::Fluid;
 use sunrise_level::spans::startup;
 use sunrise_level::{containers::BlockEntity, spans};
@@ -5439,6 +5438,5 @@ use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 a
 
 use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_hooks::base::BaseGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::GameHooks as _;

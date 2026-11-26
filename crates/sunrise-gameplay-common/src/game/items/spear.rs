@@ -7,7 +7,6 @@
 //! `Player.stabAttack`). The hit's feedback (`onKineticHit`) reaches the
 //! players around as entity event 2. A left click jabs instead
 //! (`PiercingWeapon.attack`), which Lunge turns into a dash.
-use crate::game::CommonGame;
 use sunrise_core::geometry::Aabb;
 #[allow(unused_imports)]
 pub use sunrise_sim::spear_sim::hits_in_reach;

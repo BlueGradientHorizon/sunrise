@@ -1,4 +1,3 @@
-use crate::game::CommonGame;
 use sunrise_level::containers::{BlockEntity, Crafter};
 
 impl crate::game::CommonGame<'_> {

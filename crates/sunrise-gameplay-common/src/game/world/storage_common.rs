@@ -1,5 +1,4 @@
 //! Common double-chest and container-layout helpers shared by client and server.
-use crate::game::CommonGame;
 use sunrise_gameplay_common::chests::chest_half;
 #[allow(unused_imports)]
 pub use sunrise_gameplay_common::chests::{chest_connected_pos, is_shulker_box};

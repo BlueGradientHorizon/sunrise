@@ -1,6 +1,5 @@
 //! Shared `entity_size` helpers used by both server and client sizing passes.
 
-use crate::game::CommonGame;
 use mod_api::{EntityRef, Pose};
 use sunrise_sim::mobs::Mob;
 use sunrise_sim::pose::{Dimensions, SizeAnswer};

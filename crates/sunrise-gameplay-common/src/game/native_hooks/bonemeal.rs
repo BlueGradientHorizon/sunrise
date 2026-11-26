@@ -1,4 +1,3 @@
-use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
 pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {

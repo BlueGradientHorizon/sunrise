@@ -4,7 +4,6 @@
 use std::sync::Arc;
 use sunrise_core::{
     geometry::Vec3,
-    position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
 use sunrise_gameplay_common::entity_uuids::EntityUuids;

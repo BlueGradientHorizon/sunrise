@@ -1,5 +1,4 @@
 //! Shared API value conversion hooks callable from both server and client roles.
-use crate::game::CommonGame;
 use crate::game::native_hooks::anvil_update::GameHooks as _;
 use super::api_values::{TryIntoApi, TryIntoEngine};
 

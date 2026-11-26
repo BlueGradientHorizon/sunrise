@@ -13,7 +13,7 @@ use std::{
 };
 use sunrise_client::{hud::HudBatch, mobs::render::FrameDraw, mouse::Rotation};
 use sunrise_core::{
-    geometry::{Aabb, Vec3, VoxelShape},
+    geometry::{Vec3, VoxelShape},
     position::BlockPos,
 };
 use sunrise_gameplay_common::game::{

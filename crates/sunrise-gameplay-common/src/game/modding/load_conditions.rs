@@ -1,5 +1,4 @@
 //! Load-scoped registration and per-candidate condition lookup.
-use crate::game::CommonGame;
 use mod_api::__private::game::RegistrationContextNew;
 use std::{collections::BTreeMap, sync::Arc};
 pub(in crate::game) type ConditionTable =

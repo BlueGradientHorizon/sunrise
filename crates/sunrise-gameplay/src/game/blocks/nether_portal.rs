@@ -2348,11 +2348,9 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
 
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;
 
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 

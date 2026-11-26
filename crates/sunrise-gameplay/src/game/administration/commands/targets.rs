@@ -1,6 +1,6 @@
 //! Target dispatch: the level, position and type a command's target names,
 //! by family. Moved out of `mod.rs` unchanged (#2791's discipline).
-use {crate::game::server_side::commands::*, sunrise_gameplay_common::game::server_side::commands::*};
+use crate::game::server_side::commands::*;
 
 /// The network id of a target that is no player: its entity id.
 pub(in crate::game) fn non_player_entity_id(t: Target) -> Option<i32> {

@@ -1,4 +1,4 @@
-use {crate::game::server_side::commands::*, sunrise_gameplay_common::game::server_side::commands::*};
+use crate::game::server_side::commands::*;
 
 impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn cmd_difficulty(&mut self, ctx: &Context) -> R<i32> {

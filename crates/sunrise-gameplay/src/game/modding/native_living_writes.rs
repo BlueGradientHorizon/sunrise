@@ -756,8 +756,6 @@ use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt3 as _;

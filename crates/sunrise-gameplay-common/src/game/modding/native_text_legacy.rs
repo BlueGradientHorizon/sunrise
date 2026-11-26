@@ -1,5 +1,4 @@
 //! `text_from_legacy`: legacy `§` formatting codes read as the font draws them.
-use crate::game::CommonGame;
 use sunrise_game_data::text::Text;
 
 impl crate::game::CommonGame<'_> {

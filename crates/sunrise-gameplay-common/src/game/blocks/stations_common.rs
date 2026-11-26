@@ -1,5 +1,4 @@
 //! Role-neutral workstation state (`Kind`, `Station`) and common `Game` station accessors.
-use crate::game::CommonGame;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::stations::{AnvilResult, EnchantOffers};
 

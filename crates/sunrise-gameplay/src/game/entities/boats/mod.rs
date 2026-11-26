@@ -16,13 +16,7 @@ use sunrise_core::{
     random::RandomSource,
 };
 use sunrise_items::{blocks::Fluid, items::ItemStack};
-use sunrise_sim::{
-    mobs::{
-        leash::{Holder, Pending},
-        riders,
-    },
-    motion::RiddenBoat,
-};
+use sunrise_sim::motion::RiddenBoat;
 
 /// The snowflake `PowderSnowBlock.entityInside` sends for an entity whose known movement is
 /// `known`: none unless it moved horizontally and a coin falls so, then `Mth.randomBetween(-1, 1)`

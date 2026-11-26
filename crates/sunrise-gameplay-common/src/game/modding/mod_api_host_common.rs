@@ -1,6 +1,5 @@
 //! Common `AttachmentHost` impl and shared level-weather helpers across server and client roles.
 
-use crate::game::CommonGame as Game;
 use mod_api::AttachmentAccess;
 
 pub fn weather_for_level(

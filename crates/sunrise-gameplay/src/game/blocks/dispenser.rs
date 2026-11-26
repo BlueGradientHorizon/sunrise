@@ -2499,7 +2499,6 @@ use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1 as _;
 
 use sunrise_gameplay_common::game::cart_rails::CartRailsGameExt1 as _;
 
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
 

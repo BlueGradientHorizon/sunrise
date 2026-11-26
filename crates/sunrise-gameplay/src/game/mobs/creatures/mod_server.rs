@@ -27,7 +27,7 @@ use sunrise_gameplay_common::game::creatures::projectile_targets::{
 };
 use sunrise_gameplay_common::game::creatures::seen;
 use sunrise_gameplay_common::game::creatures::to_loot;
-use {crate::game::creatures::*, sunrise_gameplay_common::game::creatures::*};
+use sunrise_gameplay_common::game::creatures::*;
 use sunrise_gameplay_common::game::level_sounds_common::LevelSound;
 use crate::game::server_side::native_projectiles::{
     Impact, PendingImpact, ProjectileHit, projectile_impact_event,

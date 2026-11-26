@@ -10,7 +10,6 @@
 //! (`native_config_reloading`). A server's configs are dropped when it stops
 //! (`native_config_unloading`).
 
-use crate::game::CommonGame;
 use mod_api::ConfigPath;
 #[allow(unused_imports)]
 pub use mod_api::game::ConfigFile;

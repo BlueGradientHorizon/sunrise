@@ -1,5 +1,4 @@
 //! Copper golem constants and role-neutral item/shearing queries.
-use crate::game::CommonGame;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::{
     Mob,

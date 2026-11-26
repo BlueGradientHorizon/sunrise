@@ -5,7 +5,7 @@
 use super::*;
 use crate::game::api_values::TryIntoApi;
 use std::cell::RefCell;
-use sunrise_sim::menu::{SlotContext, SlotRules};
+use sunrise_sim::menu::SlotContext;
 
 thread_local! {
     static ASKING_SLOT_RULES: RefCell<()> = const { RefCell::new(()) };

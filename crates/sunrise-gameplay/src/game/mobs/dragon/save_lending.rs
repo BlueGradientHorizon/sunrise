@@ -1,5 +1,4 @@
 //! Save visibility while authoritative rows are lent out.
-use super::*;
 
 impl crate::game::ServerGame<'_> {
     /// `EnderDragon.kill` (`/kill`): `Entity.kill` removes the entity, it

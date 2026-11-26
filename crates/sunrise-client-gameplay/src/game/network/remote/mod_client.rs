@@ -100,7 +100,7 @@ use sunrise_sim::{
     motion::{MotionWorld, PlayerMotion},
     sprint::Keys,
 };
-use {crate::game::remote::*, sunrise_gameplay_common::game::remote::*};
+use sunrise_gameplay_common::game::remote::*;
 use {
     sunrise_core::nbt::Tag,
     sunrise_mod_runtime::attachments::Holder,

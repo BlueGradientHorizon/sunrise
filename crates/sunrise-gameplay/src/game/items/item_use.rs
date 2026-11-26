@@ -498,7 +498,6 @@ use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

@@ -549,7 +549,6 @@ pub(in crate::game) use server_side::player_spawn;
 pub(in crate::game) use server_side::postprocess;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::potent_sulfur;
-pub(in crate::game) use server_side::profile_capture_server;
 #[allow(unused_imports)]
 pub(in crate::game) use server_side::projectile_block_impacts;
 #[allow(unused_imports)]
@@ -832,7 +831,7 @@ pub(in crate::game) mod native_resources;
 pub use server_side::entity_server;
 #[cfg(not(any(test, feature = "test-support")))]
 pub(in crate::game) use server_side::entity_server;
-pub(in crate::game) use server_side::{lan_op, minecarts_server};
+pub(in crate::game) use server_side::minecarts_server;
 use sunrise_gameplay_common::game::SideGame;
 impl<'g> SideGame<'g> for ServerGame<'g> {
     type State = server_side::ServerState;

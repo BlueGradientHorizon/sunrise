@@ -1,5 +1,4 @@
 //! Common `OminousItemSpawner` insertion shared by client packets and server tests.
-use crate::game::CommonGame;
 use sunrise_items::items::ItemStack;
 
 /// `OminousItemSpawnerRenderer`: grows over its first 50 ticks, turning 40

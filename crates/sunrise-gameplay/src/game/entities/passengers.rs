@@ -642,10 +642,7 @@ pub(in crate::game) mod trap_scatter_tests {
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
 
 use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;

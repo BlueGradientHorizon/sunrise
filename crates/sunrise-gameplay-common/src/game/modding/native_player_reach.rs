@@ -1,7 +1,6 @@
 //! A player's reach and flight (#3349): whether an entity is within the server's reach rules,
 //! and whether the player may fly (NeoForge's `IPlayerExtension.mayFly`).
 //! A client applies the same rules to its local player and the target's displayed box.
-use crate::game::CommonGame;
 use mod_api::{EntityReach, EntityRef, EquipmentSlot, LivingRef, PlayerRef};
 use sunrise_core::geometry::{Aabb, Vec3};
 

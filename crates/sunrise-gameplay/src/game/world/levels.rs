@@ -2742,7 +2742,6 @@ use sunrise_gameplay_common::game::GameGameExt1 as _;
 use sunrise_gameplay_common::game::GameGameExt3 as _;
 use sunrise_gameplay_common::game::GameGameExt3 as _;
 
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::clocks::ClocksGameExt1 as _;
 
@@ -2754,6 +2753,5 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 
 use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::piston_push::carrying::CarryingGameExt1 as _;

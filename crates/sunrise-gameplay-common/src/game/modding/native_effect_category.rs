@@ -1,5 +1,4 @@
 //! Registered effect metadata reads.
-use crate::game::CommonGame;
 
 impl crate::game::CommonGame<'_> {
     pub fn effect_category(

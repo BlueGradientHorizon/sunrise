@@ -684,7 +684,6 @@ use sunrise_gameplay_common::game::cart_rails::CartRailsGameExt1 as _;
 
 use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;
 

@@ -38,7 +38,6 @@ pub mod player;
 pub(in crate::game) use player::PlayerSectionObserver;
 
 
-use crate::game::CommonGame;
 use mod_api::__private::game::BackendRefOf;
 use mod_api::{DimensionKey, EntityRef, WorldEpoch};
 use std::collections::HashMap;

@@ -1,5 +1,4 @@
 //! Dual-role block collision box scans shared by server and client levels.
-use crate::game::CommonGame;
 use std::io;
 use std::ops::ControlFlow;
 use sunrise_core::geometry::{Aabb, Vec3, VoxelShape};

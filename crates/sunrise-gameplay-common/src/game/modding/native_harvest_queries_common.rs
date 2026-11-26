@@ -1,5 +1,4 @@
 //! Common entry points for `player_destroy_progress` and `player_has_correct_tool_for_drops`.
-use crate::game::CommonGame;
 use crate::game::held_items::{BreakSpeedDispatch, HarvestDispatch};
 use mod_api::{LevelRef, PlayerRef};
 use sunrise_world::registry::BlockStateId;

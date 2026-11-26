@@ -1,4 +1,3 @@
-use crate::game::CommonGame;
 
 pub trait IntegratedCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `Minecraft.hasSingleplayerServer`: a world of this window's own, run on its integrated server.

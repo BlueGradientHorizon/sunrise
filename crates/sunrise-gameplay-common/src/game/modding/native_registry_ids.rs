@@ -1,5 +1,4 @@
 //! Network ids of registry entries for mods (`registry_protocol_id`).
-use crate::game::CommonGame;
 use sunrise_core::identifier::Identifier;
 
 pub trait NativeRegistryIdsGameExt1<'__sg>: crate::game::SideGame<'__sg> {

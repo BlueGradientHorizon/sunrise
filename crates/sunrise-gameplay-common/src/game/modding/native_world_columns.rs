@@ -1,5 +1,4 @@
 //! Shared spike logging for mod column queries.
-use crate::game::CommonGame;
 
 impl crate::game::CommonGame<'_> {
     /// A read's time logged with `SUNRISE_SPIKES`, as an edit's is.

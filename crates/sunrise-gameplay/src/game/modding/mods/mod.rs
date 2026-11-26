@@ -2835,6 +2835,5 @@ pub mod tests {
         )]));
     }
 }
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 pub(in crate::game) mod standalone;

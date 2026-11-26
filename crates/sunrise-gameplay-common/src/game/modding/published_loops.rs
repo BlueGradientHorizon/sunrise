@@ -13,7 +13,6 @@
     dead_code,
     reason = "a mod build's copy of a loop entry uses what the game's own loop does not"
 )]
-use crate::game::CommonGame;
 use std::any::Any;
 use std::marker::PhantomData;
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};

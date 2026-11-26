@@ -1,5 +1,4 @@
 //! The host's persistent text forms, read as `ComponentSerialization.CODEC` takes them.
-use crate::game::CommonGame;
 use mod_api::text::TextFormError;
 use sunrise_command::Registries;
 use sunrise_core::json_nbt::{JsonNbtError, tag_to_json};

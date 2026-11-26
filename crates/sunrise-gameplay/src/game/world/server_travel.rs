@@ -1904,7 +1904,6 @@ use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_t
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
-use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

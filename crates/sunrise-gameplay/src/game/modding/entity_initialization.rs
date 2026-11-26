@@ -8,7 +8,6 @@
 //! attachment before the listeners have set it.
 
 use crate::game::ServerGame;
-pub(in crate::game) use sunrise_gameplay_common::game::entity_initialization_common::EntityInitialization;
 use mod_api::Holder;
 use std::collections::HashSet;
 

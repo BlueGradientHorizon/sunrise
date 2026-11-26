@@ -2767,7 +2767,6 @@ use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
 
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
@@ -2781,7 +2780,6 @@ use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::enchantments::EnchantmentsGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_item_entity_refs::NativeItemEntityRefsGameExt1 as _;
 
 use sunrise_gameplay_common::game::scoreboard_common::CommonGameExt1 as _;
 

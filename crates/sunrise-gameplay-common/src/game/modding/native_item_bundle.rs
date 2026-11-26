@@ -1,6 +1,5 @@
 //! Bundle-backed ITEM_ITEMS and value-level bundle operations; the place handler owns
 //! transactional writes.
-use crate::game::CommonGame;
 use mod_api::{BundleConfig, BundleMetrics, BundleReadError};
 use sunrise_items::bundle::{BundleSpec, CustomBundleContents, CustomBundleError};
 use sunrise_items::items::ItemStack;

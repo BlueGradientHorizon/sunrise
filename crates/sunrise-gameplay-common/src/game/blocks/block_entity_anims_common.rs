@@ -1,5 +1,4 @@
 //! Role-neutral block-entity animation events, ownership tracking, and state reads.
-use crate::game::CommonGame;
 use sunrise_core::nbt::Tag;
 use sunrise_level::block_entity_ticks::EndGateway;
 use sunrise_level::{block_entities::Pos, containers::BlockEntity};

@@ -1,6 +1,5 @@
 //! The track under a minecart: `BaseRailBlock.isRail` and the shape a cart reads,
 //! which the rail's parts may answer (`rail_direction`).
-use crate::game::CommonGame;
 use super::minecarts::{Rail, Shape};
 use mod_api::RailShape;
 use sunrise_core::position::BlockPos;

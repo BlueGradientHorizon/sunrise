@@ -2,7 +2,6 @@
 //! `BrushableBlockEntity`. The block's loot table stays in its saved block
 //! entity (like a decorated pot's) until the first counted stroke rolls it.
 
-use crate::game::CommonGame;
 
 #[allow(unused_imports)]
 pub use sunrise_gameplay_common::brushing::{

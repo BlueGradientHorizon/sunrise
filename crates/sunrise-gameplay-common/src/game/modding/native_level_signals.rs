@@ -395,4 +395,3 @@ use crate::game::tables::WorldTablesExt as _;
 
 use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
-use crate::game::native_world_read_common::NativeWorldReadGameExt1 as _;

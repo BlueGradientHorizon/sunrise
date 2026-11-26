@@ -1333,7 +1333,6 @@ use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
 
 use sunrise_gameplay_common::game::fireworks::FireworksGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
 

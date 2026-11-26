@@ -9,7 +9,6 @@ use sunrise_gameplay_common::game::{
     transactions::After,
 };
 use mod_api::{BlockSide, ItemResource, LevelReadError, LevelRef, TransactionContext};
-use sunrise_core::geometry::Direction;
 use sunrise_gameplay_common::hoppers::Pos;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::save;

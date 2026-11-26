@@ -8,7 +8,6 @@
 //! they return. The contents live in `minecraft:container`, as a shulker box
 //! item keeps them. They hold no world state, so they work on any side.
 
-use crate::game::CommonGame;
 use sunrise_core::nbt::Tag;
 use sunrise_items::items::ItemStack;
 

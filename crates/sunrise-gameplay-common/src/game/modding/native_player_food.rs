@@ -1,5 +1,4 @@
 //! Player food and experience reads for native mods (`PlayerRef`).
-use crate::game::CommonGame;
 use mod_api::{PlayerExperience, PlayerRef};
 use sunrise_sim::entities::Experience;
 

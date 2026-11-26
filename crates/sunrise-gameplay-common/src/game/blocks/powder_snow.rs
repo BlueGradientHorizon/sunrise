@@ -3,7 +3,6 @@
 //! sinking, slowing, climbing and freezing are `PlayerMotion`'s
 //! (`crate::motion`); placing it is the powder snow bucket's `BlockItem.place`.
 
-use crate::game::CommonGame as Game;
 use sunrise_core::random::RandomSource;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::cauldron;

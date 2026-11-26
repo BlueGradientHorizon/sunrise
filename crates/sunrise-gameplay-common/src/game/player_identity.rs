@@ -1,5 +1,4 @@
 //! Common player identity and local-body residency wrappers dispatching via `side_ops::player`.
-use crate::game::CommonGame;
 use mod_api::PlayerRef;
 
 pub trait PlayerIdentityGameExt1<'__sg>: crate::game::SideGame<'__sg> {

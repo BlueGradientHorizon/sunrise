@@ -1,5 +1,4 @@
 use self::block_entity_tick::ResidentBlockEntityAccess;
-use sunrise_gameplay_common::game::GameLevel;
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_gameplay_common::game::native_data_maps_common::DataMapType;
 #[cfg(test)]

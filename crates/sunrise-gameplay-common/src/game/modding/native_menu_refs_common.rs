@@ -1,5 +1,4 @@
 //! Dual-role menu handle reads shared across server and client roles.
-use crate::game::CommonGame;
 use mod_api::{MenuRef, PlayerRef};
 use sunrise_items::items::ItemStack;
 

@@ -1,5 +1,4 @@
 //! Common potent sulfur state/source queries and sound constants.
-use crate::game::CommonGame;
 use sunrise_gameplay_common::potent_sulfur::Geyser;
 pub use sunrise_gameplay_common::potent_sulfur::PassMobs;
 use sunrise_level::block_entities::Pos;

@@ -1,5 +1,4 @@
 //! Item registry numbers shared by API metadata reads and the game's scatter seeds.
-use crate::game::CommonGame;
 
 impl crate::game::CommonGame<'_> {
     pub fn item_registry_id(&self, key: mod_api::ItemKey) -> Option<u32> {

@@ -16,7 +16,6 @@ pub(in crate::game) mod provider_tests;
 pub mod registered_commands;
 
 use super::api_values::TryIntoEngine;
-use crate::game::CommonGame as Game;
 #[allow(unused_imports)]
 pub use argument_kinds::{CommandArguments, command_arguments};
 #[allow(unused_imports)]
@@ -2706,14 +2705,11 @@ use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 
 use crate::game::tables::GameItems as _;
 
-use crate::game::transactions::TransactionsGameExt as _;
 
-use crate::game::chat_common::ChatCommonGameExt1 as _;
 
 use crate::game::game_mode_common::GameModeCommonGameExt1 as _;
 
 use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
-use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
 
 use crate::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

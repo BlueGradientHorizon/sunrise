@@ -38,7 +38,6 @@ use sunrise_world::{
     environment_attributes::{AMBIENT_PARTICLES, Value as AttributeValue, attribute},
     particle_options::{ParticleOptions as PersistentOptions, block_state_id},
     registry::BlockStateId,
-    worldgen::terrain::TerrainBlockStates,
 };
 
 /// `ScreenEffectRenderer.submit`'s block overlays in the order it draws them, which
@@ -1465,6 +1464,5 @@ use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
 
-use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
 use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;

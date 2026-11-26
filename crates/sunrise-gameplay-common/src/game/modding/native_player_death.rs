@@ -10,7 +10,6 @@
 //! is swapped out, and when the player never died. A write needs a living
 //! player (`native_as_player`), so it is refused inside `player_died`, where
 //! the read still works.
-use crate::game::CommonGame;
 use mod_api::{GlobalPos, Identifier, PlayerRef};
 use sunrise_core::position::BlockPos;
 

@@ -1,7 +1,6 @@
 //! Control-socket block commands for scripted tests: `setblock`, `fill`,
 //! `getblock` and `container` (list or put items in a block entity).
 
-use crate::game::CommonGame;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use sunrise_game_data::Result;

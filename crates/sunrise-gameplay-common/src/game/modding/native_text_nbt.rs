@@ -1,6 +1,5 @@
 //! The persistent `ComponentSerialization.CODEC` over NbtOps. The host owns
 //! this conversion: no renderer, text-node preflight or JSON projection.
-use crate::game::CommonGame;
 use mod_api::text::{Text, TextContent, TextFormError as Error, TextNbtSource, TextObject};
 use sunrise_command::Registries;
 use sunrise_core::identifier::Identifier;

@@ -1,4 +1,3 @@
-use super::*;
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod camera_type_tests {

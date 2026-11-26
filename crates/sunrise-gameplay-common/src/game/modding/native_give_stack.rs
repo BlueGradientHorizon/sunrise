@@ -1,5 +1,4 @@
 //! SNBT item parsing for mods (`item_from_snbt`).
-use crate::game::CommonGame;
 use sunrise_items::items::ItemStack;
 
 /// The most SNBT text `item_from_snbt` reads: `NbtAccounter`'s default quota, 2 MiB.

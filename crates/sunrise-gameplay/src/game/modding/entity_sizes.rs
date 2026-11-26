@@ -1096,6 +1096,5 @@ pub(in crate::game) mod tests {
     }
 }
 
-use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
 
 use sunrise_gameplay_common::game::entity_sizes_common::EntitySizesCommonGameExt1 as _;

@@ -11,7 +11,6 @@ use sunrise_gameplay_common::game::native_hooks::{
 };
 #[cfg(feature = "client")]
 use sunrise_gameplay_common::game::native_recipe_tables::IncomingRecipes;
-use sunrise_gameplay_common::game::native_recipe_tables::RecipeTables;
 use mod_api::CreativeGiveError;
 use std::{collections::HashMap, sync::Arc};
 use sunrise_items::items::ItemStack;

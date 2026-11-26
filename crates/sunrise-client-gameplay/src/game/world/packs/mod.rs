@@ -8,7 +8,7 @@ use crate::game::client_side::pack_discovery_client::{data_packs_with_icons, int
 use crate::game::client_side::resource_tables_client::{
     ClientPackResources, ClientResources, UiResources,
 };
-use sunrise_gameplay_common::game::packs_common::{cache_dir, reload_files};
+use sunrise_gameplay_common::game::packs_common::cache_dir;
 use mod_api::__private::game::*;
 use std::{
     path::{Path, PathBuf},
@@ -31,7 +31,6 @@ use sunrise_game_data::lang;
 use sunrise_game_data::text::{Style, Text};
 #[cfg(feature = "client")]
 use sunrise_level::assets::Assets;
-use sunrise_level::datapack::DataPack;
 
 pub fn packs_dir() -> PathBuf {
     std::env::current_dir()

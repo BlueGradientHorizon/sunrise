@@ -121,6 +121,4 @@ pub struct Declare;
 
 use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
 
-use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
-use crate::game::passengers_common::PassengersCommonGameExt1 as _;

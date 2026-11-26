@@ -1,7 +1,6 @@
 //! Which structures contain a position (`StructureManager.getStructureAt`
 //! and `getStructureWithPieceAt`), from the chunk's structure references and
 //! the generator's cached starts.
-use crate::game::CommonGame;
 
 pub(in crate::game) use sunrise_gameplay_common::structures::structures_reaching_in;
 

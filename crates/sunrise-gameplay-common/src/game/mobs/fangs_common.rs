@@ -1,5 +1,4 @@
 //! Common evoker fangs insertion shared by server spawning/loading and remote client packets.
-use crate::game::CommonGame;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::{LegacyRandom, RandomSource};
 

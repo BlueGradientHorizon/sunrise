@@ -1,6 +1,5 @@
 //! The command registries the game keeps in step with what the world's content and data
 //! packs define, outside the one-time build in `chat.rs`.
-use crate::game::CommonGame;
 
 pub trait CommandRegistriesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Active enchantment registry snapshot for command codecs and completions.

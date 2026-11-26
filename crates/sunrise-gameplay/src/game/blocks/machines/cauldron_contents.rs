@@ -1,6 +1,5 @@
 pub(in crate::game) use sunrise_gameplay::cauldron_contents::{
-    CauldronContent, CauldronContents, EMPTY_CAULDRON, current, current_if_built, install,
-    vanilla_block_has_fluids,
+    CauldronContent, CauldronContents, EMPTY_CAULDRON, current,
 };
 
 #[cfg(any(test, feature = "test-support"))]

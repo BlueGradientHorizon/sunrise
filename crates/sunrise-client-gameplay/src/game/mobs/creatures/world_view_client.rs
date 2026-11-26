@@ -13,7 +13,7 @@ use sunrise_items::items::Items;
 use sunrise_level::world::World;
 use sunrise_sim::mobs::{MobWorld, PlayerView, Seen, Species, Vehicle};
 use sunrise_sim::motion::SideLevel;
-use sunrise_world::registry::{BlockRegistry, BlockStateId};
+use sunrise_world::registry::BlockRegistry;
 
 static EMPTY_LID_OPENERS: OnceLock<HashMap<(i32, i32, i32), i32>> = OnceLock::new();
 

@@ -1,5 +1,4 @@
 //! Startup game-event registry reads.
-use crate::game::CommonGame;
 impl crate::game::CommonGame<'_> {
     pub fn game_event_key(&self, id: &str) -> Option<mod_api::GameEventKey> {
         mod_api::__private::game_event_key(id)

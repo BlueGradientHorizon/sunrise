@@ -32,7 +32,6 @@ use sunrise_gameplay_common::game::native_pool_elements;
 use sunrise_gameplay_common::game::native_structure_types;
 use sunrise_gameplay_common::game::options_path;
 use sunrise_gameplay_common::game::pack_discovery::data_packs;
-use sunrise_gameplay_common::game::part_admission;
 use sunrise_gameplay_common::game::preflight_resources;
 use sunrise_gameplay_common::game::resource_load::synchronous_startup;
 #[cfg(feature = "client")]

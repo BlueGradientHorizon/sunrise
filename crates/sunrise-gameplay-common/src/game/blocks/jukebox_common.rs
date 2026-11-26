@@ -1,5 +1,4 @@
 //! Common jukebox helpers shared by server simulation and client playback/prediction.
-use crate::game::CommonGame;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,

@@ -1,7 +1,6 @@
-use super::nether_portal;
 use super::persist::ChunkKey;
 use sunrise_gameplay_common::game::entity::{
-    Entity, EntityHandle, apply_contact_writes, armor_stand_size, entity_lists, entity_lists_of,
+    Entity, EntityHandle, armor_stand_size, entity_lists, entity_lists_of,
     for_each_entity,
 };
 use sunrise_gameplay_common::game::{

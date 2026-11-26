@@ -1,5 +1,4 @@
 //! Common item-stack display name and rarity colour helpers.
-use crate::game::CommonGame;
 use sunrise_items::items::ItemStack;
 
 impl crate::game::CommonGame<'_> {

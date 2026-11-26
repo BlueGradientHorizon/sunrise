@@ -7,7 +7,7 @@
 #[allow(unused_imports)]
 use super::lan_mobs::guest_bounds;
 use sunrise_gameplay_common::game::{
-    boats_common::{Boat, PLAYER_RIDING_OFFSET, boat_pushes, push_impulse},
+    boats_common::{PLAYER_RIDING_OFFSET, boat_pushes, push_impulse},
     commands_common::Target,
 };
 use std::cell::{Cell, Ref, RefCell};

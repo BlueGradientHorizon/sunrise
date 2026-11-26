@@ -3,7 +3,7 @@
 //! sky. The dragon fight itself lives in game/mobs/dragon.rs: the podium is
 //! inactive until the dragon dies.
 use super::Dim;
-use sunrise_gameplay_common::game::end_state::{Arriving, END_SPAWN, EyeOfEnder, GatewayArrival, GatewayJob};
+use sunrise_gameplay_common::game::end_state::{Arriving, END_SPAWN, GatewayArrival, GatewayJob};
 use sunrise_core::{
     geometry::Vec3,
     position::BlockPos,

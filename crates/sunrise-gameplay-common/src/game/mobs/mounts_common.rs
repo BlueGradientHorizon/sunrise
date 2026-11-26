@@ -1,5 +1,4 @@
 //! Role-neutral mount helpers shared by server riding, client HUD/guide, and remote vehicles.
-use crate::game::CommonGame;
 use sunrise_core::geometry::Vec3;
 use sunrise_sim::{
     mobs::{Species, equine},

@@ -1,6 +1,5 @@
 //! Read-only block, tag and fluid queries for native mods.
 
-use crate::game::CommonGame as Game;
 use mod_api::BlockKey;
 use mod_api::{FluidKey, FluidState, LevelRef, LightLayer, UnresolvedFluid};
 use sunrise_core::geometry::Direction;

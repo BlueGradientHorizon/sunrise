@@ -1,5 +1,4 @@
 //! Common loaded-column heightmap queries shared by server block edits and client views.
-use crate::game::CommonGame;
 use mod_api::Heightmap;
 use sunrise_level::world::World;
 use sunrise_world::{

@@ -1,6 +1,5 @@
 use super::GameLevel;
 use super::api_values::{TryIntoApi, TryIntoEngine};
-use mod_api::EntityRef;
 use std::collections::HashMap;
 use sunrise_core::position::BlockPos;
 use sunrise_core::random::RandomSource;
@@ -1312,4 +1311,3 @@ impl GameLevel<'_> {
     }
 }
 
-use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

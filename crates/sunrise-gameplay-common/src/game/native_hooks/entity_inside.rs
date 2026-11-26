@@ -172,4 +172,3 @@ pub(in crate::game) struct InsideMod(pub(in crate::game) InsidePart);
     }
 }
 
-use crate::game::tables::WorldTablesExt as _;

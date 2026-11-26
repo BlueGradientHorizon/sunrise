@@ -1,6 +1,5 @@
 //! Role-neutral piglin item queries shared by server AI and client interaction prediction.
 
-use crate::game::CommonGame;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::piglin::BARTERING_ITEM;
 

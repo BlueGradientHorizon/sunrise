@@ -20,4 +20,3 @@ pub trait ItemContainerGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 impl<'__sg, G: crate::game::SideGame<'__sg>> ItemContainerGameExt1<'__sg> for G {}
 
 
-use crate::game::native_item_container::NativeItemContainerGameExt1 as _;

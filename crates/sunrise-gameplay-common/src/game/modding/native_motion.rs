@@ -1,6 +1,5 @@
 //! The player's motion for mods (docs/modding/src/how-to/native-mods.md, "A player's motion"): a push for the local player, on a
 //! client.
-use crate::game::CommonGame;
 
 /// Each component of a push is clamped to this, in blocks a tick.
 const PUSH_MAX: f32 = 4.0;

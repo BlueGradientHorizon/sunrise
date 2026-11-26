@@ -1,6 +1,5 @@
 //! Common mod pack-finder discovery hook shared across server and client roles.
 
-use crate::game::CommonGame;
 use crate::game::pack_discovery::{DiscoveredPack, Registry};
 use mod_api::{HookId, PackType};
 

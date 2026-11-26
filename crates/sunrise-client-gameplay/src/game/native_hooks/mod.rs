@@ -1,9 +1,6 @@
 
 #[cfg(feature = "client")]
-use super::{
-    native_block_entity_draw::BlockEntityDraw,
-    native_mob_draw::{MobRender, PlayerRender},
-};
+use super::native_block_entity_draw::BlockEntityDraw;
 #[cfg(test)]
 pub(in crate::game) mod camera_pose_tests;
 pub(in crate::game) mod client_narrator;

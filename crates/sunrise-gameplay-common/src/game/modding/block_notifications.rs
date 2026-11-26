@@ -1,5 +1,4 @@
 //! A client block notification is not a save mutation.
-use crate::game::CommonGame;
 
 impl crate::game::CommonGame<'_> {
     pub fn notify_block_clients(&mut self, pos: (i32, i32, i32)) {

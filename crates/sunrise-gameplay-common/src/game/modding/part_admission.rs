@@ -4,4 +4,3 @@ pub fn admit_parts(mods: &[mod_api::ModEntry]) -> sunrise_game_data::Result<()> 
         .map_err(|refused| format!("Mod parts refused:\n{}", refused.join("\n")).into())
 }
 
-use crate::game::tables::WorldTablesExt as _;

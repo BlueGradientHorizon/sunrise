@@ -1,5 +1,4 @@
 //! The host's typed payload token check: what every typed send and reply runs first.
-use crate::game::CommonGame;
 use mod_api::{PayloadSendError, PayloadToken};
 
 impl crate::game::CommonGame<'_> {

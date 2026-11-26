@@ -1,5 +1,4 @@
 //! Common command registries, resource-id caches, permissions, and shared helpers.
-use crate::game::CommonGame;
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},

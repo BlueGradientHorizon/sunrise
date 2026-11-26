@@ -1,5 +1,4 @@
 //! The integrated command inventory shares the frozen custom statistic declarations.
-use crate::game::CommonGame;
 
 impl crate::game::CommonGame<'_> {
     pub(super) fn sync_stat_registries(&mut self) {

@@ -1,7 +1,6 @@
 //! Block state ids and names, and item tags, for native mods:
 //! registry queries with no level, so they answer anywhere a host is given.
 
-use crate::game::CommonGame as Game;
 pub use mod_api::{
     BlockEntityTypeKey, BlockKey, EffectKey, EnchantmentKey, EntityTypeKey, FluidKey, FluidState,
     ItemKey, MenuKey, RegistryName, StateConstraint, StateMatchError,

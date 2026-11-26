@@ -2168,6 +2168,5 @@ pub(in crate::game) mod damage_type_registry_tests {}
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

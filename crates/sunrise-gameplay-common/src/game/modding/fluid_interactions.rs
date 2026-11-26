@@ -3,7 +3,6 @@
 //! (`Registrar::fluid_interaction`) and the files of content mods
 //! (`data/<id>/sunrise/fluid_interaction/`), resolved against the open world's tags and
 //! installed on its behaviours for `LiquidBlock.shouldSpreadLiquid`.
-use crate::game::CommonGame;
 use std::sync::Arc;
 use sunrise_items::items::Items;
 use sunrise_mod_package::content::{

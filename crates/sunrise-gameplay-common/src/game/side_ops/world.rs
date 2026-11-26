@@ -5,7 +5,7 @@ use sunrise_core::position::BlockPos;
 use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{
-    chunk_streamer::{ChunkState, ChunkStreamer},
+    chunk_streamer::ChunkState,
     environment::Environment,
     fast_hash::FxHashMap,
     shulker_box::Shulker,
