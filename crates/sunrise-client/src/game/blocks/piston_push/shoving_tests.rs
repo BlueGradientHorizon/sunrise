@@ -515,7 +515,7 @@ fn an_upward_shove_never_lowers_a_rising_bodys_vertical_speed() {
     let normal = Vec3::new(0.0, 0.6, 0.8);
     // A jumping body hit by a tilted upward shove: the inward part goes, and its vertical speed
     // stays above the collider's rise.
-    let jumping = Vec3::new(0.0, 0.9, -0.4);
+    let jumping = Vec3::new(0.0, 0.9, -0.9);
     let after = cancel_shove_velocity(jumping, normal, 0.6, 0.3);
     let inward = jumping.dot(normal);
     assert!(inward < 0.0);
