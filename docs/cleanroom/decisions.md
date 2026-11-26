@@ -221,9 +221,15 @@ the full list.
     no supported flag is read once, with the macros it had before.
   - What is decided by the lists after the read (the eight shadow colour buffers of `HIGHER_SHADOWCOLOR`) takes the
     lists of the first read, the ones the answers came from, even where the second read would hide or change them.
-  - `IRIS_FEATURE_*` names are Sunrise's answers alone: a pack's own option of such a name (a value option or a
-    switch) is not defined for its property files and doesn't count as on in `program.<name>.enabled`. The pack's
-    program text is read as written: a `#define` of such a name there applies from that line, as any `#define` does.
+  - `IRIS_FEATURE_*` names are Sunrise's answers alone: a pack's line declaring such a name is not an option. It is
+    not listed among the pack's options, not defined for its property files, doesn't count as on in
+    `program.<name>.enabled`, and a saved choice never rewrites it (a commented-out `//#define` stays commented out).
+  - The pack's own uncommented directives are read as written, in its programs and in `shaders.properties` alike: a
+    `#define` or `#undef` of such a name applies from its line to the end of that file, as any directive does. In
+    `shaders.properties` a `#define` there lets the first read reach a list behind it, and an `#undef` hides Sunrise's
+    answer from the file's later lines only, not from the programs.
+  - A flag list set twice is noted as the lists were settled: the note that a later list "counts" comes from the first
+    read for the two flag-list keys, and from the second read for every other key.
   - The same read serves every place that reads a pack's `shaders.properties`: the load, the HDR read made before
     the frame, and the Shader Options page.
   - No setting turns it off: it is the format's answer to what the pack asks.
@@ -237,7 +243,10 @@ the full list.
   `options::tests::flag_lists_are_settled_before_the_answers_are_defined`,
   `options::tests::properties_are_read_with_the_options_then_define_the_features`,
   `options::tests::the_settled_lists_decide_the_shadow_colour_buffers`,
-  `options::tests::a_packs_option_named_as_a_feature_answer_changes_no_answer`, and in `tests/it`
+  `options::tests::a_packs_option_named_as_a_feature_answer_changes_no_answer`,
+  `options::tests::a_saved_choice_never_rewrites_a_feature_answer`,
+  `options::tests::a_packs_own_directive_in_shaders_properties_applies_from_its_line`,
+  `options::tests::a_repeated_flag_list_is_noted_as_the_lists_were_settled`, and in `tests/it`
   `reversed_culling_feature::requested_reversed_culling_loads_and_packs_take_the_path_it_guards` and
   `terrain_fade::fade_feature_negotiation_ignores_case_and_defines_the_written_macro` (`sunrise-shaders`);
   `game::shader_packs::native_pack_tests::the_hdr_read_and_the_options_page_see_the_features_the_pack_lists`

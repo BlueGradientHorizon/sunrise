@@ -8,6 +8,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::Pack;
+use crate::macros::FEATURE_LISTS;
 
 const SOURCES: [&str; 8] = ["vsh", "fsh", "gsh", "csh", "tcs", "tes", "glsl", "inc"];
 
@@ -30,6 +31,9 @@ pub fn switches_on(pack: &Pack) -> BTreeSet<String> {
             };
             let mut words = rest.split_whitespace();
             let Some(name) = words.next() else { continue };
+            if crate::macros::is_feature_answer(name) {
+                continue;
+            }
             match directive {
                 "ifdef" | "ifndef" if !commented => _ = tested.insert(name.to_owned()),
                 "define" if words.next().is_none_or(|w| w.starts_with("//")) => {
@@ -64,7 +68,10 @@ pub fn value_options(pack: &Pack) -> BTreeMap<String, String> {
             let (Some(name), Some(value), None) = (words.next(), words.next(), words.next()) else {
                 continue;
             };
-            if comment.contains('[') && comment.contains(']') {
+            if comment.contains('[')
+                && comment.contains(']')
+                && !crate::macros::is_feature_answer(name)
+            {
                 out.entry(name.to_owned())
                     .or_insert_with(|| value.to_owned());
             }
@@ -74,16 +81,15 @@ pub fn value_options(pack: &Pack) -> BTreeMap<String, String> {
 }
 
 /// `macros` with the pack's options at their defaults: the switches that are on, and the
-/// value options. `shaders.properties` and the program switches test them (3.3, 8.1). An option
-/// named `IRIS_FEATURE_*` is left out: those macros are Sunrise's answers to the flags the pack
-/// lists (`Macros::define_features`, decision D-6), and `macros` keeps them as they are.
+/// value options. `shaders.properties` and the program switches test them (3.3, 8.1). No
+/// `IRIS_FEATURE_*` is among them (`is_feature_answer`): those macros are Sunrise's answers to
+/// the flags the pack lists (`Macros::define_features`, decision D-6).
 pub fn with_options(pack: &Pack, macros: &crate::Macros) -> crate::Macros {
     let mut out = macros.clone();
-    let answer = crate::macros::is_feature_answer;
-    for name in switches_on(pack).into_iter().filter(|n| !answer(n)) {
+    for name in switches_on(pack) {
         out.define(name, "");
     }
-    for (name, value) in value_options(pack).into_iter().filter(|(n, _)| !answer(n)) {
+    for (name, value) in value_options(pack) {
         out.define(name, value);
     }
     out
@@ -110,10 +116,16 @@ pub fn read_properties(
         return (listed, notes);
     }
     let mut properties = crate::Properties::parse(&text, &with_options(pack, macros));
-    for key in crate::macros::FEATURE_LISTS {
+    // The settled lists, and the first read's notes that one of them was set again.
+    let settled = |key: Option<&String>| key.is_some_and(|k| FEATURE_LISTS.contains(&k.as_str()));
+    for key in FEATURE_LISTS {
         properties.entries.retain(|e| e.key != key);
         properties.entries.extend(listed.entry(key).cloned());
     }
+    properties.notes.retain(|n| !settled(n.repeated.as_ref()));
+    let repeated = listed.notes.iter().filter(|n| settled(n.repeated.as_ref()));
+    properties.notes.extend(repeated.cloned());
+    properties.notes.sort_by_key(|n| n.line);
     (properties, notes)
 }
 
@@ -160,7 +172,7 @@ fn declaration(line: &str) -> Option<Declaration<'_>> {
         let mut words = code.split_whitespace();
         let name = words.next()?;
         let value = words.next();
-        if words.next().is_some() {
+        if words.next().is_some() || crate::macros::is_feature_answer(name) {
             return None;
         }
         return Some(Declaration {
@@ -182,6 +194,9 @@ fn declaration(line: &str) -> Option<Declaration<'_>> {
     let (Some(ty), Some(name), None) = (words.next(), words.next(), words.next()) else {
         return None;
     };
+    if crate::macros::is_feature_answer(name) {
+        return None;
+    }
     let value = right.trim().strip_suffix(';')?.trim_end();
     if value.is_empty() || value.contains(char::is_whitespace) {
         return None;
@@ -680,9 +695,14 @@ mod tests {
             ("shaders/composite1.fsh", &composite1),
         ]);
         let pack = Pack::from_zip_bytes("p.zip", bytes).unwrap();
-        // The pack does declare them as options.
-        assert_eq!(value_options(&pack)["IRIS_FEATURE_SSBO"], "0");
-        assert!(switches_on(&pack).contains("IRIS_FEATURE_COMPUTE_SHADERS"));
+        // Written as options, they are none: not found, so never injected.
+        assert!(!value_options(&pack).contains_key("IRIS_FEATURE_SSBO"));
+        assert!(!switches_on(&pack).contains("IRIS_FEATURE_COMPUTE_SHADERS"));
+        assert!(
+            super::options(&pack)
+                .keys()
+                .all(|n| !n.starts_with("IRIS_FEATURE_"))
+        );
         let mut macros = crate::Macros::standard();
         let (read, _) = read_properties(&pack, &mut macros);
         assert_eq!(read.get("ssbo"), Some("1"));
@@ -708,6 +728,109 @@ mod tests {
                 .iter()
                 .any(|u| u.name == "seen_one")
         );
+    }
+
+    /// A saved choice for an `IRIS_FEATURE_*` name changes nothing: such a line is no option, so
+    /// the choice is dropped and the line is never rewritten; a program sees only the answer.
+    #[test]
+    fn a_saved_choice_never_rewrites_a_feature_answer() {
+        let include =
+            "//#define IRIS_FEATURE_SSBO\n#define IRIS_FEATURE_FADE_VARIABLE 0 // [0 1]\n";
+        let fsh = "#version 330\n#include \"/features.glsl\"\nout vec4 c;\n\
+                   #ifdef IRIS_FEATURE_SSBO\nuniform float seen_ssbo;\n#else\n\
+                   const float seen_ssbo = 0.0;\n#endif\n\
+                   void main() { c = vec4(seen_ssbo); }\n";
+        let vsh = "#version 330\nvoid main() { gl_Position = vec4(0.0); }\n";
+        let bytes = crate::pack::tests::zip(&[
+            (
+                "shaders/shaders.properties",
+                "iris.features.optional = CUSTOM_IMAGES\n",
+            ),
+            ("shaders/features.glsl", include),
+            ("shaders/composite.vsh", vsh),
+            ("shaders/composite.fsh", fsh),
+        ]);
+        let saved = parse_chosen("IRIS_FEATURE_SSBO=true\nIRIS_FEATURE_FADE_VARIABLE=1\n");
+        let pack = Pack::from_zip_bytes("p.zip", bytes)
+            .unwrap()
+            .with_chosen(saved.clone());
+        assert_eq!(pack.read_text("features.glsl").unwrap(), include);
+        assert_eq!(apply(include, &saved), include);
+        let mut macros = crate::Macros::standard();
+        let (properties, _) = read_properties(&pack, &mut macros);
+        assert!(!macros.is_defined("IRIS_FEATURE_SSBO"));
+        let post = crate::load_post(
+            &pack,
+            "",
+            &properties,
+            &macros,
+            &crate::GameInputs::default(),
+        );
+        let program = post.programs[0]
+            .program
+            .as_ref()
+            .expect("composite translates");
+        assert!(
+            program
+                .interface
+                .uniforms
+                .iter()
+                .all(|u| u.name != "seen_ssbo")
+        );
+    }
+
+    /// A pack's own `#define` / `#undef` of an `IRIS_FEATURE_*` name inside `shaders.properties`
+    /// is its directive, applying from its line in that file only (decision D-6): a define lets
+    /// the first read reach a list behind it; an undef hides Sunrise's answer from that file's
+    /// later lines, not from the lines above it nor from the programs.
+    #[test]
+    fn a_packs_own_directive_in_shaders_properties_applies_from_its_line() {
+        let text = "#define IRIS_FEATURE_SSBO\n\
+                    #ifdef IRIS_FEATURE_SSBO\niris.features.optional = CUSTOM_IMAGES\n#endif\n\
+                    #ifdef IRIS_FEATURE_CUSTOM_IMAGES\nbefore = 1\n#endif\n\
+                    #undef IRIS_FEATURE_CUSTOM_IMAGES\n\
+                    #ifdef IRIS_FEATURE_CUSTOM_IMAGES\nafter = 1\n#endif\n";
+        let pack = feature_pack(text, &[("seen_images", "CUSTOM_IMAGES")]);
+        let mut macros = crate::Macros::standard();
+        let (properties, _) = read_properties(&pack, &mut macros);
+        assert_eq!(macros.get("IRIS_FEATURE_CUSTOM_IMAGES"), Some("1"));
+        assert!(!macros.is_defined("IRIS_FEATURE_SSBO"));
+        assert_eq!(properties.get("before"), Some("1"));
+        assert_eq!(properties.get("after"), None);
+        assert_eq!(
+            composite_uniforms(&pack, &properties, &macros),
+            ["seen_images"]
+        );
+    }
+
+    /// A flag list set twice: the note says which one counts as the settled lists do. A list the
+    /// second read adds behind an answer doesn't replace the first, and no note says it counts;
+    /// another key set twice keeps the second read's note.
+    #[test]
+    fn a_repeated_flag_list_is_noted_as_the_lists_were_settled() {
+        let text = "iris.features.optional = SSBO\n\
+                    #ifdef IRIS_FEATURE_SSBO\niris.features.optional = HIGHER_SHADOWCOLOR\n\
+                    screen = b\n#endif\nscreen = a\n";
+        let pack = feature_pack(text, &[]);
+        let mut macros = crate::Macros::standard();
+        let (properties, _) = read_properties(&pack, &mut macros);
+        assert_eq!(properties.get("iris.features.optional"), Some("SSBO"));
+        assert!(!macros.is_defined("IRIS_FEATURE_HIGHER_SHADOWCOLOR"));
+        let post = crate::load_post(
+            &pack,
+            "",
+            &properties,
+            &macros,
+            &crate::GameInputs::default(),
+        );
+        assert_eq!(post.shadow_colors, 2);
+        let repeated: Vec<(u32, Option<&str>)> = properties
+            .notes
+            .iter()
+            .map(|n| (n.line, n.repeated.as_deref()))
+            .collect();
+        assert_eq!(repeated, [(6, Some("screen"))]);
+        assert_eq!(properties.get("screen"), Some("a"));
     }
 
     #[test]

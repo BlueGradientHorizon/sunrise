@@ -934,11 +934,7 @@ pub fn load_post(
         folder,
         properties,
         macros,
-        // A switch named as a feature answer is not the pack's to turn on (`with_options`).
-        switches: crate::switches_on(pack)
-            .into_iter()
-            .filter(|s| !crate::macros::is_feature_answer(s))
-            .collect(),
+        switches: crate::switches_on(pack),
         options,
         geometry: None,
         limits: inputs.interface_limits,

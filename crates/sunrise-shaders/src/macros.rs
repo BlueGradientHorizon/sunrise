@@ -41,8 +41,11 @@ pub(crate) const FEATURE_LISTS: [&str; 2] = ["iris.features.optional", "iris.fea
 const FEATURE_MACRO: &str = "IRIS_FEATURE_";
 
 /// Whether `name` is one of the macros that answer a pack's feature flags. Sunrise alone
-/// defines them (`Macros::define_features`): a pack's option of such a name is neither defined
-/// for its property files (`with_options`) nor counted as on in `program.*.enabled`.
+/// answers them (`Macros::define_features`): a pack's line declaring such a name is no option.
+/// It is not found as one (`options`, `switches_on`, `value_options`), so it is never defined for
+/// the pack's property files, never counted as on in `program.*.enabled`, and a saved choice
+/// never rewrites it (`Pack::with_chosen`, `options::apply`). As written, uncommented, it is the
+/// pack's own directive and applies from its line (decision D-6).
 pub(crate) fn is_feature_answer(name: &str) -> bool {
     name.starts_with(FEATURE_MACRO)
 }
