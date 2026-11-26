@@ -10,7 +10,7 @@ pub(in crate::game) type SharedSections = Rc<RefCell<EntitySections>>;
 pub(in crate::game) type SharedObserver = Rc<RefCell<LiveSectionObserver>>;
 
 #[derive(Default)]
-pub(crate) struct ObserverCache {
+pub struct ObserverCache {
     pub(in crate::game) sections: Option<SharedSections>,
     pub(in crate::game) observer: Option<SharedObserver>,
 }

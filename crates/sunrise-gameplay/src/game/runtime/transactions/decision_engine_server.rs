@@ -4,7 +4,7 @@ use sunrise_sim::menu::{Menu as EngineMenu, MutationStamp, Snapshot};
 #[derive(Clone, Copy)]
 pub struct ServerDecisionTarget(Target);
 
-pub(in crate::game) struct EngineReads {
+pub struct EngineReads {
     owner: OwnerStamp,
     value: MutationStamp,
     menu: EngineMenu,
