@@ -7,7 +7,7 @@
 //! uncaptured device error.
 
 use super::mod_pipelines::{
-    ResolvedSet1Entry, create_mod_sampler, sampled_layout_entries, sampled_texture_limit,
+    ResolvedSet1Entry, SamplerLayout, create_mod_sampler, sampled_layout_entries,
 };
 use crate::mod_compute::{BuiltCompute, ComputeSet, Refusal};
 use mod_api::{BindingKind, ComputeDispatchError};
@@ -20,8 +20,8 @@ use wgpu::util::DeviceExt;
 #[derive(Clone, Debug)]
 pub struct RecordedDispatch {
     pub slot: u32,
-    /// Set-1 sampled textures requiring a non-filtering layout, in sampled-texture order.
-    pub layout_mask: u64,
+    /// Sampler layout chosen from the submitted texture formats.
+    pub sampler_layout: SamplerLayout,
     pub entries: Vec<ResolvedSet1Entry>,
     pub inline: Vec<u8>,
     pub texel: Vec<u8>,
@@ -51,12 +51,14 @@ struct CompiledCompute {
     label: String,
 }
 
+type ComputeKey = (u32, SamplerLayout);
+
 /// The compute pipelines built on one device for one load.
 #[derive(Default)]
 pub struct ModCompute {
     generation: u64,
-    /// Base pipelines (zero mask) and lazy variants in the current resource generation.
-    pipelines: HashMap<(u32, u64), Result<CompiledCompute, ComputeDispatchError>>,
+    /// Base pipelines (empty sampler layout) and lazy variants in the current resource generation.
+    pipelines: HashMap<ComputeKey, Result<CompiledCompute, ComputeDispatchError>>,
     /// Slots whose variant preparation or encoding refused a dispatch, logged once per reason.
     warned_variants: HashSet<u32>,
     warned: HashSet<u32>,
@@ -164,13 +166,18 @@ fn check_limits(device: &wgpu::Device, built: &BuiltCompute) -> Result<(), (Refu
             }
         }
     }
-    sampled_texture_limit(textures, &limits).map_err(|why| (Refusal::Invalid, why))?;
     for (what, count, max, limit) in [
         (
             "uniform buffer",
             uniforms,
             limits.max_uniform_buffers_per_shader_stage,
             "max_uniform_buffers_per_shader_stage",
+        ),
+        (
+            "sampled texture",
+            textures,
+            limits.max_sampled_textures_per_shader_stage,
+            "max_sampled_textures_per_shader_stage",
         ),
         (
             "sampler",
@@ -200,13 +207,12 @@ fn check_limits(device: &wgpu::Device, built: &BuiltCompute) -> Result<(), (Refu
     Ok(())
 }
 
-/// The pipeline of `built`. The sampled textures of the entries in the `unfilterable` mask
-/// are declared unfilterable and read through nearest samplers: the
-/// variant a dispatch binding a depth texture needs.
+/// The pipeline of `built`. Sampled textures selected by `sampler_layout` are declared
+/// unfilterable and read through nearest samplers.
 fn compile(
     device: &wgpu::Device,
     built: &Arc<BuiltCompute>,
-    unfilterable: u64,
+    sampler_layout: &SamplerLayout,
 ) -> Result<CompiledCompute, (Refusal, String)> {
     let compute = wgpu::ShaderStages::COMPUTE;
     let mut layout_entries = Vec::new();
@@ -231,7 +237,7 @@ fn compile(
                 next += 1;
             }
             BindingKind::CombinedImageSampler { sampler } => {
-                let nearest = unfilterable & (1 << sampled) != 0;
+                let nearest = sampler_layout.needs_nearest(sampled);
                 sampled += 1;
                 layout_entries.extend(sampled_layout_entries(next, compute, &sampler, nearest));
                 samplers.insert(next, create_mod_sampler(device, &sampler, nearest));
@@ -348,7 +354,8 @@ impl ModCompute {
         self.pipelines.clear();
         for (slot, built) in set.built().iter().enumerate() {
             let Some(built) = built else { continue };
-            let compiled = check_limits(device, built).and_then(|()| compile(device, built, 0));
+            let compiled = check_limits(device, built)
+                .and_then(|()| compile(device, built, &SamplerLayout::EMPTY));
             let result = match compiled {
                 Ok(compiled) => Ok(compiled),
                 Err((reason, error)) => {
@@ -367,7 +374,8 @@ impl ModCompute {
                     }))
                 }
             };
-            self.pipelines.insert((slot as u32, 0), result);
+            self.pipelines
+                .insert((slot as u32, SamplerLayout::EMPTY), result);
         }
         self.generation = set.generation();
         self.warned_variants.clear();
@@ -379,16 +387,15 @@ impl ModCompute {
     fn prepare_dispatch(
         &mut self,
         device: &wgpu::Device,
-        dispatch: &RecordedDispatch,
+        key: &ComputeKey,
     ) -> Result<(), ComputeDispatchError> {
-        let slot = dispatch.slot;
-        let key = (slot, dispatch.layout_mask);
-        if let Some(compiled) = self.pipelines.get(&key) {
+        let (slot, ref sampler_layout) = *key;
+        if let Some(compiled) = self.pipelines.get(key) {
             return compiled.as_ref().map(|_| ()).map_err(|err| *err);
         }
         let recipe = self
             .pipelines
-            .get(&(slot, 0))
+            .get(&(slot, SamplerLayout::EMPTY))
             .ok_or(ComputeDispatchError::Pipeline(
                 mod_api::ComputePipelineError::Invalid,
             ))?
@@ -396,19 +403,19 @@ impl ModCompute {
             .map_err(|err| *err)?
             .recipe
             .clone();
-        let result = compile(device, &recipe, key.1).map_err(|(_, cause)| {
+        let result = compile(device, &recipe, sampler_layout).map_err(|(_, cause)| {
             let error = ComputeDispatchError::VariantBuildFailed;
             if self.warned_variants.insert(slot) {
                 log::warn!(
-                    "Sunrise: compute pipeline {} {error:?} (sampler mask {:#x}): {cause}",
+                    "Sunrise: compute pipeline {} {error:?} (nearest sampler ordinals {:?}): {cause}",
                     recipe.id,
-                    key.1
+                    sampler_layout.ordinals()
                 );
             }
             error
         });
         let prepared = result.as_ref().map(|_| ()).map_err(|err| *err);
-        self.pipelines.insert(key, result);
+        self.pipelines.insert(key.clone(), result);
         prepared
     }
 
@@ -426,7 +433,8 @@ impl ModCompute {
         let mut buffers: Vec<(u32, wgpu::Buffer)> = Vec::new();
         let max_groups = device.limits().max_compute_workgroups_per_dimension;
         for dispatch in dispatches {
-            if let Err(error) = self.prepare_dispatch(device, dispatch) {
+            let key = (dispatch.slot, dispatch.sampler_layout.clone());
+            if let Err(error) = self.prepare_dispatch(device, &key) {
                 if self.warned_variants.insert(dispatch.slot) {
                     log::warn!(
                         "Sunrise: compute pipeline slot {} refused in preparation: {error:?}",
@@ -435,7 +443,7 @@ impl ModCompute {
                 }
                 continue;
             }
-            let compiled = self.pipelines[&(dispatch.slot, dispatch.layout_mask)]
+            let compiled = self.pipelines[&key]
                 .as_ref()
                 .expect("prepared compute variant");
             match &dispatch.kind {
@@ -692,7 +700,7 @@ mod tests {
         });
         let dispatch = |counts| RecordedDispatch {
             slot: 0,
-            layout_mask: 0,
+            sampler_layout: SamplerLayout::EMPTY,
             entries: vec![ResolvedSet1Entry::StorageBuffer {
                 id: 1,
                 buffer: storage.clone(),
@@ -892,7 +900,7 @@ mod tests {
         });
         let image_dispatch = RecordedDispatch {
             slot: 0,
-            layout_mask: 0,
+            sampler_layout: SamplerLayout::EMPTY,
             entries: vec![ResolvedSet1Entry::StorageImage {
                 view_id: 1,
                 view: mip_view,

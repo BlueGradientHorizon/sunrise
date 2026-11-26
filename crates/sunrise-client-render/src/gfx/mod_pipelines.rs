@@ -218,11 +218,82 @@ pub enum ResolvedSet1Entry {
     TransientDepth { target: mod_api::TransientTargetId },
 }
 
+/// The sampled-texture ordinals that need a different sampler layout from the base pipeline.
+/// Empty and sparse layouts are inline regardless of the ordinals; clones share any spill.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SamplerLayout(NearestSamples);
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum NearestSamples {
+    Inline { ordinals: [u32; 4], len: u8 },
+    Spilled(Arc<Vec<u32>>),
+}
+
+impl Default for SamplerLayout {
+    fn default() -> Self {
+        Self::EMPTY
+    }
+}
+
+impl SamplerLayout {
+    pub(super) const EMPTY: Self = Self(NearestSamples::Inline {
+        ordinals: [0; 4],
+        len: 0,
+    });
+
+    /// Record the format of the next sampled texture at submit, in ascending sampled-texture
+    /// ordinal order (excluding uniform buffers, texel buffers and storage resources).
+    pub fn record(
+        &mut self,
+        ordinal: u32,
+        sampler: &Sampler,
+        format: wgpu::TextureFormat,
+        float32_filterable: bool,
+    ) {
+        if !sampler_filtering(sampler)
+            || !(format.has_depth_aspect()
+                || (format == wgpu::TextureFormat::R32Float && !float32_filterable))
+        {
+            return;
+        }
+        match &mut self.0 {
+            NearestSamples::Inline { ordinals, len } => {
+                if let Some(next) = ordinals.get_mut(usize::from(*len)) {
+                    *next = ordinal;
+                    *len += 1;
+                } else {
+                    let mut nearest = Vec::with_capacity(2 * ordinals.len());
+                    nearest.extend_from_slice(ordinals);
+                    nearest.push(ordinal);
+                    self.0 = NearestSamples::Spilled(Arc::new(nearest));
+                }
+            }
+            NearestSamples::Spilled(ordinals) => Arc::make_mut(ordinals).push(ordinal),
+        }
+    }
+
+    /// Whether the base pipeline can serve this layout without a sampler variant.
+    pub fn is_empty(&self) -> bool {
+        self.ordinals().is_empty()
+    }
+
+    pub(super) fn ordinals(&self) -> &[u32] {
+        match &self.0 {
+            NearestSamples::Inline { ordinals, len } => &ordinals[..usize::from(*len)],
+            NearestSamples::Spilled(ordinals) => ordinals,
+        }
+    }
+
+    pub(super) fn needs_nearest(&self, ordinal: u32) -> bool {
+        self.ordinals().binary_search(&ordinal).is_ok()
+    }
+}
+
 /// Resolved set-1 resource bindings for one [`PipelineDraw`] in exact declaration order.
 #[derive(Clone, Debug, Default)]
 pub struct ResolvedDrawBindings {
-    /// Set-1 sampled textures requiring a non-filtering layout, in sampled-texture order.
-    pub layout_mask: u64,
+    /// Sampler layout chosen from the submitted texture formats.
+    pub sampler_layout: SamplerLayout,
     pub entries: Vec<ResolvedSet1Entry>,
     /// Optional push-constant byte range in `Batch::inline_uniforms` / `Batch::oit_inline_uniforms`.
     pub push_constants: Option<std::ops::Range<usize>>,
@@ -245,6 +316,15 @@ pub struct PipelineDraw {
     /// Resolved set-1 resource bindings (`None` when the pipeline has no set-1 layout or push
     /// constants).
     pub bindings: Option<ResolvedDrawBindings>,
+}
+
+impl PipelineDraw {
+    fn sampler_layout(&self) -> &SamplerLayout {
+        static EMPTY: SamplerLayout = SamplerLayout::EMPTY;
+        self.bindings
+            .as_ref()
+            .map_or(&EMPTY, |bindings| &bindings.sampler_layout)
+    }
 }
 
 /// A frame's pipeline draws, as the game queued them: legacy quad runs plus unified
@@ -305,9 +385,8 @@ struct PreparedDraw {
     topology: PrimitiveTopology,
     draw: MeshDraw,
     source: PipelineDrawSource,
-    /// The bound textures wgpu refuses a filtering sampler on; `0` draws
-    /// with the pipeline as compiled, any other mask with its nearest-sampler variant.
-    layout_mask: u64,
+    /// An empty layout draws with the base pipeline; otherwise use its nearest-sampler variant.
+    sampler_layout: SamplerLayout,
     set1_bind_group: Option<(wgpu::BindGroup, Vec<u32>)>,
 }
 
@@ -778,7 +857,7 @@ enum Set1ResourceKey {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 struct Set1CacheKey {
     slot: usize,
-    layout_mask: u64,
+    sampler_layout: SamplerLayout,
     generation: u64,
     resources: Vec<Set1ResourceKey>,
 }
@@ -820,7 +899,7 @@ enum VariantTarget {
     Offscreen(Vec<wgpu::TextureFormat>, Option<wgpu::TextureFormat>),
 }
 
-type VariantKey = (usize, u64, VariantTarget);
+type VariantKey = (usize, SamplerLayout, VariantTarget);
 type DrawVariants = HashMap<VariantKey, Result<Compiled, PipelineDrawError>>;
 
 /// The pipelines and the buffer that draw a [`Batch`].
@@ -928,24 +1007,6 @@ fn filter_mode(filter: SamplerFilter) -> wgpu::FilterMode {
     }
 }
 
-/// Mask of one sampled binding as validated at submission. The index counts only sampled
-/// textures (not buffers or storage images), up to the limit checked when building the layout.
-pub fn unfilterable_sample_bit(
-    index: u32,
-    sampler: &Sampler,
-    format: wgpu::TextureFormat,
-    float32_filterable: bool,
-) -> u64 {
-    if sampler_filtering(sampler)
-        && (format.has_depth_aspect()
-            || (format == wgpu::TextureFormat::R32Float && !float32_filterable))
-    {
-        1 << index
-    } else {
-        0
-    }
-}
-
 /// A sampler and its texture must agree on filtering in both render and compute layouts.
 pub(super) fn sampled_layout_entries(
     binding: u32,
@@ -976,19 +1037,6 @@ pub(super) fn sampled_layout_entries(
             count: None,
         },
     ]
-}
-
-/// The device's sampled texture limit, bounded by the width of a variant's sampled-texture mask.
-pub(super) fn sampled_texture_limit(count: u32, limits: &wgpu::Limits) -> Result<(), String> {
-    let device = limits.max_sampled_textures_per_shader_stage;
-    if count <= device.min(u64::BITS) {
-        Ok(())
-    } else {
-        Err(format!(
-            "sampled texture count ({count}) exceeds the binding layout limit ({}, device max_sampled_textures_per_shader_stage: {device})",
-            device.min(u64::BITS)
-        ))
-    }
 }
 
 /// The device sampler for a mod set-1 [`Sampler`] entry, made once when its pipeline is
@@ -1057,13 +1105,12 @@ fn storage_image_format(built: &Built, binding: u32) -> Option<wgpu::TextureForm
         })
 }
 
-/// The set-1 layout of `built`. The sampled textures of the entries in the `unfilterable` mask
-/// are declared unfilterable and read through a nearest sampler: the
-/// layout of the variant a draw binding a depth texture needs.
+/// The set-1 layout of `built`. Sampled textures selected by `sampler_layout` are declared
+/// unfilterable and read through a nearest sampler.
 fn build_set1_layout(
     device: &wgpu::Device,
     built: &Built,
-    unfilterable: u64,
+    sampler_layout: &SamplerLayout,
 ) -> Result<
     (
         Option<wgpu::BindGroupLayout>,
@@ -1076,15 +1123,6 @@ fn build_set1_layout(
         return Ok((None, Vec::new(), None));
     }
     let limits = device.limits();
-    sampled_texture_limit(
-        built
-            .bind_group_layout
-            .entries
-            .iter()
-            .filter(|e| matches!(e.kind, BindingKind::CombinedImageSampler { .. }))
-            .count() as u32,
-        &limits,
-    )?;
     let mut layout_entries = Vec::new();
     let mut compiled_entries = Vec::new();
     let mut next_binding = 0u32;
@@ -1123,7 +1161,7 @@ fn build_set1_layout(
                 next_binding += 1;
             }
             BindingKind::CombinedImageSampler { sampler } => {
-                let nearest = unfilterable & (1 << texture_count) != 0;
+                let nearest = sampler_layout.needs_nearest(texture_count);
                 texture_count += 1;
                 layout_entries.extend(sampled_layout_entries(
                     next_binding,
@@ -1294,6 +1332,12 @@ fn build_set1_layout(
             limits.max_uniform_buffers_per_shader_stage
         ));
     }
+    if texture_count > limits.max_sampled_textures_per_shader_stage {
+        return Err(format!(
+            "set-1 sampled texture count ({texture_count}) exceeds device max_sampled_textures_per_shader_stage ({})",
+            limits.max_sampled_textures_per_shader_stage
+        ));
+    }
     if texture_count > limits.max_samplers_per_shader_stage {
         return Err(format!(
             "set-1 sampler count ({texture_count}) exceeds device max_samplers_per_shader_stage ({})",
@@ -1324,13 +1368,13 @@ fn compiled_in<'a>(
     pipelines: &'a [Option<Compiled>],
     variants: &'a DrawVariants,
     slot: usize,
-    mask: u64,
+    sampler_layout: &SamplerLayout,
 ) -> Option<&'a Compiled> {
-    if mask == 0 {
+    if sampler_layout.is_empty() {
         pipelines.get(slot)?.as_ref()
     } else {
         variants
-            .get(&(slot, mask, VariantTarget::World))?
+            .get(&(slot, sampler_layout.clone(), VariantTarget::World))?
             .as_ref()
             .ok()
     }
@@ -1339,16 +1383,12 @@ fn compiled_in<'a>(
 fn compiled_mut_in<'a>(
     pipelines: &'a mut [Option<Compiled>],
     variants: &'a mut DrawVariants,
-    slot: usize,
-    mask: u64,
+    key: &VariantKey,
 ) -> Option<&'a mut Compiled> {
-    if mask == 0 {
-        pipelines.get_mut(slot)?.as_mut()
+    if key.1.is_empty() {
+        pipelines.get_mut(key.0)?.as_mut()
     } else {
-        variants
-            .get_mut(&(slot, mask, VariantTarget::World))?
-            .as_mut()
-            .ok()
+        variants.get_mut(key)?.as_mut().ok()
     }
 }
 
@@ -1987,22 +2027,24 @@ impl ModPipelines {
         device: &wgpu::Device,
         source: Arc<PipelineSource>,
         target: &VariantTarget,
-        mask: u64,
+        sampler_layout: &SamplerLayout,
         shared_layout: Option<&Compiled>,
     ) -> Result<Compiled, String> {
         let built = &source.recipe;
-        let (pipeline_layout, set1_layout, set1_entries, push_constant_slot) =
-            if let Some(shared) = shared_layout {
-                (
-                    shared.pipeline_layout.clone(),
-                    shared.set1_layout.clone(),
-                    shared.set1_entries.clone(),
-                    shared.push_constant_slot,
-                )
-            } else {
-                let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
-                let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
-                let layout = build_set1_layout(device, built, mask).map(|(set1, entries, push)| {
+        let (pipeline_layout, set1_layout, set1_entries, push_constant_slot) = if let Some(shared) =
+            shared_layout
+        {
+            (
+                shared.pipeline_layout.clone(),
+                shared.set1_layout.clone(),
+                shared.set1_entries.clone(),
+                shared.push_constant_slot,
+            )
+        } else {
+            let validation = device.push_error_scope(wgpu::ErrorFilter::Validation);
+            let internal = device.push_error_scope(wgpu::ErrorFilter::Internal);
+            let layout =
+                build_set1_layout(device, built, sampler_layout).map(|(set1, entries, push)| {
                     let mut layouts = vec![Some(&source.globals_layout)];
                     if let Some(layout) = &set1 {
                         layouts.push(Some(layout));
@@ -2015,13 +2057,13 @@ impl ModPipelines {
                         });
                     (pipeline_layout, set1, entries, push)
                 });
-                let internal = pollster::block_on(internal.pop());
-                let validation = pollster::block_on(validation.pop());
-                if let Some(error) = internal.or(validation) {
-                    return Err(error.to_string());
-                }
-                layout?
-            };
+            let internal = pollster::block_on(internal.pop());
+            let validation = pollster::block_on(validation.pop());
+            if let Some(error) = internal.or(validation) {
+                return Err(error.to_string());
+            }
+            layout?
+        };
         let frag = if matches!(target, VariantTarget::Pack(..)) {
             source
                 .pack_fragment_shader
@@ -2108,41 +2150,43 @@ impl ModPipelines {
         }
     }
 
-    /// Cache the build result per slot, target and mask. A GPU refusal of one combination
+    /// Cache the build result per slot, target and sampler layout. A GPU refusal of one combination
     /// neither poisons another combination nor invalidates the handle.
     fn ensure_variant(
         &mut self,
         device: &wgpu::Device,
-        key: VariantKey,
+        key: &VariantKey,
     ) -> Result<(), PipelineDrawError> {
-        let (slot, mask, ref target) = key;
-        if let Some(compiled) = self.variants.get(&key) {
+        let (slot, sampler_layout, target) = key;
+        let slot = *slot;
+        let base_world = sampler_layout.is_empty() && matches!(target, VariantTarget::World);
+        if !base_world && let Some(compiled) = self.variants.get(key) {
             return compiled.as_ref().map(|_| ()).map_err(|error| *error);
         }
         let base = self.pipelines.get(slot).and_then(Option::as_ref).ok_or(
             PipelineDrawError::Pipeline(mod_api::RenderPipelineError::Invalid),
         )?;
-        if mask == 0 && matches!(target, VariantTarget::World) {
+        if base_world {
             return Ok(());
         }
         let shared = match target {
             VariantTarget::Pack(..) => Some(
-                compiled_in(&self.pipelines, &self.variants, slot, mask)
+                compiled_in(&self.pipelines, &self.variants, slot, sampler_layout)
                     .ok_or(PipelineDrawError::VariantBuildFailed)?,
             ),
-            _ if mask == 0 => Some(base),
+            _ if sampler_layout.is_empty() => Some(base),
             _ => None,
         };
         let id = base.source.recipe.id.clone();
-        let result = self.compile(device, base.source.clone(), target, mask, shared).map_err(|cause| {
+        let result = self.compile(device, base.source.clone(), target, sampler_layout, shared).map_err(|cause| {
             let error = PipelineDrawError::VariantBuildFailed;
             if self.warned_variants.insert(slot) {
-                log::warn!("Sunrise: mod pipeline {id} {error:?} ({target:?}, sampler mask {mask:#x}): {cause}");
+                log::warn!("Sunrise: mod pipeline {id} {error:?} ({target:?}, nearest sampler ordinals {:?}): {cause}", sampler_layout.ordinals());
             }
             error
         });
         let prepared = result.as_ref().map(|_| ()).map_err(|error| *error);
-        self.variants.insert(key, result);
+        self.variants.insert(key.clone(), result);
         prepared
     }
 
@@ -2159,11 +2203,17 @@ impl ModPipelines {
                 .retain(|(_, _, target), _| !matches!(target, VariantTarget::Pack(..)));
             self.pack_target = Some((format, rgb));
         }
-        // The caches deduplicate these requests, including refusals. Copy only the key out
-        // of each batch entry so variant preparation can borrow the renderer mutably.
+        // The caches deduplicate these requests, including refusals. Each request takes only
+        // the key from the batch entry (sharing any sampler spill) before borrowing the cache.
         for i in 0..self.runs.len() {
             let run = &self.runs[i];
-            self.ensure_pack_variant(device, (format, rgb), run.slot, 0, run.modifier_stack);
+            self.ensure_pack_variant(
+                device,
+                (format, rgb),
+                run.slot,
+                SamplerLayout::EMPTY,
+                run.modifier_stack,
+            );
         }
         for i in 0..self.draws.len() {
             let draw = &self.draws[i];
@@ -2171,7 +2221,7 @@ impl ModPipelines {
                 device,
                 (format, rgb),
                 draw.slot,
-                draw.layout_mask,
+                draw.sampler_layout.clone(),
                 draw.modifier_stack,
             );
         }
@@ -2182,10 +2232,10 @@ impl ModPipelines {
         device: &wgpu::Device,
         (format, rgb): (wgpu::TextureFormat, bool),
         slot: usize,
-        mask: u64,
+        sampler_layout: SamplerLayout,
         variant: u32,
     ) {
-        let key = (slot, mask, VariantTarget::Pack(format, rgb));
+        let key = (slot, sampler_layout, VariantTarget::Pack(format, rgb));
         let idx = variant as usize;
         match self.variants.get(&key) {
             Some(Ok(pack)) => {
@@ -2197,13 +2247,13 @@ impl ModPipelines {
             }
             Some(Err(_)) => return,
             None => {
-                if let Err(error) = self.ensure_variant(device, key.clone()) {
+                if let Err(error) = self.ensure_variant(device, &key) {
                     self.warn_prepare_error(slot, error);
                     return;
                 }
             }
         }
-        let Some((modified, label)) = compiled_in(&self.pipelines, &self.variants, slot, mask)
+        let Some((modified, label)) = compiled_in(&self.pipelines, &self.variants, slot, &key.1)
             .and_then(|world| world.variant_states.get(idx))
             .and_then(Option::as_ref)
         else {
@@ -2267,7 +2317,13 @@ impl ModPipelines {
     ) -> Result<(), String> {
         self.build_with(set, |this, built| {
             let source = this.pipeline_source(device, built, textures)?;
-            this.compile(device, source, &VariantTarget::World, 0, None)
+            this.compile(
+                device,
+                source,
+                &VariantTarget::World,
+                &SamplerLayout::EMPTY,
+                None,
+            )
         })?;
         self.compute.build(device, set.compute());
         Ok(())
@@ -2668,21 +2724,14 @@ impl ModPipelines {
         let mut max_index_quads = 0u32;
         let mut max_fan_verts = 0u32;
         for (submitted_index, cmd) in batch.draws.iter().enumerate() {
-            let mask = cmd
-                .bindings
-                .as_ref()
-                .map_or(0, |bindings| bindings.layout_mask);
             let slot = cmd.slot as usize;
-            if let Err(error) = self.ensure_variant(device, (slot, mask, VariantTarget::World)) {
+            let key = (slot, cmd.sampler_layout().clone(), VariantTarget::World);
+            if let Err(error) = self.ensure_variant(device, &key) {
                 self.warn_prepare_error(slot, error);
                 continue;
             }
-            let Some(compiled) = compiled_mut_in(
-                &mut self.pipelines,
-                &mut self.variants,
-                cmd.slot as usize,
-                mask,
-            ) else {
+            let Some(compiled) = compiled_mut_in(&mut self.pipelines, &mut self.variants, &key)
+            else {
                 continue;
             };
             let (variant, topology) = match batch.modifiers {
@@ -2730,7 +2779,7 @@ impl ModPipelines {
                 topology,
                 draw: cmd.draw.clone(),
                 source: cmd.source.clone(),
-                layout_mask: mask,
+                sampler_layout: key.1,
                 set1_bind_group: None,
             });
         }
@@ -2738,21 +2787,14 @@ impl ModPipelines {
             if cmd.stage >= 3 {
                 continue;
             }
-            let mask = cmd
-                .bindings
-                .as_ref()
-                .map_or(0, |bindings| bindings.layout_mask);
             let slot = cmd.slot as usize;
-            if let Err(error) = self.ensure_variant(device, (slot, mask, VariantTarget::World)) {
+            let key = (slot, cmd.sampler_layout().clone(), VariantTarget::World);
+            if let Err(error) = self.ensure_variant(device, &key) {
                 self.warn_prepare_error(slot, error);
                 continue;
             }
-            let Some(compiled) = compiled_mut_in(
-                &mut self.pipelines,
-                &mut self.variants,
-                cmd.slot as usize,
-                mask,
-            ) else {
+            let Some(compiled) = compiled_mut_in(&mut self.pipelines, &mut self.variants, &key)
+            else {
                 continue;
             };
             if compiled.oit.is_none() {
@@ -2803,7 +2845,7 @@ impl ModPipelines {
                 topology,
                 draw: cmd.draw.clone(),
                 source: cmd.source.clone(),
-                layout_mask: mask,
+                sampler_layout: key.1,
                 set1_bind_group: None,
             });
         }
@@ -2942,12 +2984,8 @@ impl ModPipelines {
         let mut ready = Vec::with_capacity(data.draws.len());
         for cmd in data.draws {
             let slot = cmd.slot as usize;
-            let mask = cmd
-                .bindings
-                .as_ref()
-                .map_or(0, |bindings| bindings.layout_mask);
-            let key = (slot, mask, target.clone());
-            if let Err(error) = self.ensure_variant(device, key.clone()) {
+            let key = (slot, cmd.sampler_layout().clone(), target.clone());
+            if let Err(error) = self.ensure_variant(device, &key) {
                 self.warn_prepare_error(slot, error);
                 continue;
             }
@@ -3270,7 +3308,7 @@ impl ModPipelines {
                         },
                         retained => retained.clone(),
                     },
-                    layout_mask: key.1,
+                    sampler_layout: key.1,
                     set1_bind_group,
                 },
             ));
@@ -3587,8 +3625,6 @@ impl ModPipelines {
             scope: u32,
             prepared_idx: usize,
             slot: usize,
-            /// The draw's submitted sampler layout.
-            mask: u64,
             inline_spans: Vec<(u32, u64)>,
             texel_spans: Vec<(u64, u64)>,
         }
@@ -3601,9 +3637,13 @@ impl ModPipelines {
                               texel_pool: &[u8]| {
             for (idx, prepared) in prepared.iter().enumerate() {
                 let cmd = &cmds[prepared.submitted_index];
-                let mask = prepared.layout_mask;
-                let compiled = compiled_in(&self.pipelines, &self.variants, prepared.slot, mask)
-                    .expect("prepared world variant");
+                let compiled = compiled_in(
+                    &self.pipelines,
+                    &self.variants,
+                    prepared.slot,
+                    &prepared.sampler_layout,
+                )
+                .expect("prepared world variant");
                 if compiled.set1_layout.is_none() {
                     continue;
                 }
@@ -3693,7 +3733,6 @@ impl ModPipelines {
                             scope: if is_oit { 1 + cmd.stage } else { 0 },
                             prepared_idx: idx,
                             slot: cmd.slot as usize,
-                            mask,
                             inline_spans,
                             texel_spans,
                         },
@@ -3773,8 +3812,12 @@ impl ModPipelines {
         self.storage_uses.clear();
         self.storage_conflicts.clear();
         for (sd, bindings) in &staged {
-            let Some(compiled) = compiled_in(&self.pipelines, &self.variants, sd.slot, sd.mask)
-            else {
+            let Some(compiled) = compiled_in(
+                &self.pipelines,
+                &self.variants,
+                sd.slot,
+                &bindings.sampler_layout,
+            ) else {
                 continue;
             };
             for (entry, spec) in bindings.entries.iter().zip(&compiled.set1_entries) {
@@ -3842,8 +3885,12 @@ impl ModPipelines {
         // dropped with the first frame that no longer draws them.
         let mut previous = std::mem::take(&mut self.set1_bind_group_cache);
         for (sd, bindings) in staged {
-            let Some(compiled) = compiled_in(&self.pipelines, &self.variants, sd.slot, sd.mask)
-            else {
+            let Some(compiled) = compiled_in(
+                &self.pipelines,
+                &self.variants,
+                sd.slot,
+                &bindings.sampler_layout,
+            ) else {
                 continue;
             };
             let Some(ref set1_layout) = compiled.set1_layout else {
@@ -3937,7 +3984,7 @@ impl ModPipelines {
 
             let cache_key = Set1CacheKey {
                 slot: sd.slot,
-                layout_mask: sd.mask,
+                sampler_layout: bindings.sampler_layout.clone(),
                 generation: self.generation,
                 resources: key_resources,
             };
@@ -4499,9 +4546,14 @@ impl ModPipelines {
             let compiled = match &pack_target {
                 Some(target) => self
                     .variants
-                    .get(&(cmd.slot, cmd.layout_mask, target.clone()))
+                    .get(&(cmd.slot, cmd.sampler_layout.clone(), target.clone()))
                     .and_then(|entry| entry.as_ref().ok()),
-                None => compiled_in(&self.pipelines, &self.variants, cmd.slot, cmd.layout_mask),
+                None => compiled_in(
+                    &self.pipelines,
+                    &self.variants,
+                    cmd.slot,
+                    &cmd.sampler_layout,
+                ),
             };
             let Some(compiled) = compiled else { continue };
             if compiled.source.recipe.state.depth_stencil.is_none() {
@@ -4550,9 +4602,12 @@ impl ModPipelines {
         cmds: impl Iterator<Item = &'a PreparedDraw>,
     ) {
         for cmd in cmds {
-            let Some(compiled) =
-                compiled_in(&self.pipelines, &self.variants, cmd.slot, cmd.layout_mask)
-            else {
+            let Some(compiled) = compiled_in(
+                &self.pipelines,
+                &self.variants,
+                cmd.slot,
+                &cmd.sampler_layout,
+            ) else {
                 continue;
             };
             let Some(oit) = &compiled.oit else {
@@ -4650,9 +4705,9 @@ impl ModPipelines {
             let compiled = match &pack_target {
                 Some(target) => self
                     .variants
-                    .get(&(run.slot, 0, target.clone()))
+                    .get(&(run.slot, SamplerLayout::EMPTY, target.clone()))
                     .and_then(|entry| entry.as_ref().ok()),
-                None => compiled_in(&self.pipelines, &self.variants, run.slot, 0),
+                None => self.pipelines.get(run.slot).and_then(Option::as_ref),
             };
             let Some(compiled) = compiled else { continue };
             if compiled.source.recipe.state.depth_stencil.is_none() {
@@ -4741,15 +4796,14 @@ mod tests {
             [4, 4],
             mod_api::RenderTargetDepth::Depth32Float,
         );
-        assert_eq!(
-            unfilterable_sample_bit(
-                0,
-                &default,
-                super::super::mod_render_targets::wgpu_depth_format(depth.depth).unwrap(),
-                true
-            ),
-            1
+        let mut layout = SamplerLayout::default();
+        layout.record(
+            0,
+            &default,
+            super::super::mod_render_targets::wgpu_depth_format(depth.depth).unwrap(),
+            true,
         );
+        assert_eq!(layout.ordinals(), [0]);
     }
     use crate::gfx::world_primitives::{self, STAGES, WorldPrimitives};
     use glam::Vec3;
@@ -5072,7 +5126,15 @@ void main() {
         ));
         let result = renderer
             .pipeline_source(&device, &Arc::new(broken), None)
-            .and_then(|source| renderer.compile(&device, source, &VariantTarget::World, 0, None));
+            .and_then(|source| {
+                renderer.compile(
+                    &device,
+                    source,
+                    &VariantTarget::World,
+                    &SamplerLayout::EMPTY,
+                    None,
+                )
+            });
         assert!(result.is_err());
         assert!(set.invalidate(0));
         assert_eq!(set.resolve(&id), Err(mod_api::RenderPipelineError::Invalid));
@@ -6915,7 +6977,7 @@ void main() {
                     index_range: None,
                 },
                 bindings: Some(ResolvedDrawBindings {
-                    layout_mask: 0,
+                    sampler_layout: SamplerLayout::EMPTY,
                     entries: vec![
                         ResolvedSet1Entry::UniformBuffer {
                             id: ubo_id,
@@ -6940,7 +7002,7 @@ void main() {
                     index_range: None,
                 },
                 bindings: Some(ResolvedDrawBindings {
-                    layout_mask: 0,
+                    sampler_layout: SamplerLayout::EMPTY,
                     entries: vec![
                         ResolvedSet1Entry::UniformBuffer {
                             id: ubo_id,
@@ -6991,7 +7053,7 @@ void main() {
                     index_range: None,
                 },
                 bindings: Some(ResolvedDrawBindings {
-                    layout_mask: 0,
+                    sampler_layout: SamplerLayout::EMPTY,
                     entries: vec![
                         ResolvedSet1Entry::UniformBuffer {
                             id: ubo_id,
@@ -7138,7 +7200,7 @@ void main() {
                     index_range: None,
                 },
                 bindings: Some(ResolvedDrawBindings {
-                    layout_mask: 0,
+                    sampler_layout: SamplerLayout::EMPTY,
                     entries: vec![ResolvedSet1Entry::StorageBuffer {
                         id: r.id,
                         buffer: r.buffer,
@@ -7617,7 +7679,7 @@ void main() {
                 index_range: None,
             },
             bindings: Some(ResolvedDrawBindings {
-                layout_mask: 0,
+                sampler_layout: SamplerLayout::EMPTY,
                 entries: vec![ResolvedSet1Entry::Texture {
                     view_id,
                     view,
@@ -7674,6 +7736,20 @@ void main() {
     /// texture, so the engine reads the depth through a nearest sampler instead (#6033): the
     /// draw is not skipped.
     fn sampled_quad_setup(fragment: &str, oit: bool) -> (Pipelines, [PipelineVertex; 4], Sampler) {
+        let sampler = Sampler::new(SamplerFilter::Nearest, SamplerAddress::ClampToEdge);
+        let layout = mod_api::BindGroupLayout::builder()
+            .sampler("DepthTex", sampler)
+            .build()
+            .unwrap();
+        let (set, quad) = sampled_quad_with_layout(fragment, oit, layout);
+        (set, quad, sampler)
+    }
+
+    fn sampled_quad_with_layout(
+        fragment: &str,
+        oit: bool,
+        layout: mod_api::BindGroupLayout,
+    ) -> (Pipelines, [PipelineVertex; 4]) {
         let id = Identifier::parse("mod_c3:depth_tex").unwrap();
         let vsh = "#version 330\n\
             #include <minecraft:projection.glsl>\n\
@@ -7687,7 +7763,6 @@ void main() {
                 gl_Position = vec4(ndc, 0.5, 1.0);\n\
                 vUv = UV0;\n\
             }\n";
-        let sampler = Sampler::new(SamplerFilter::Nearest, SamplerAddress::ClampToEdge);
         let mut p = RenderPipeline::new(
             id.clone(),
             id,
@@ -7698,7 +7773,7 @@ void main() {
             },
             WorldDepth::ThroughWalls,
         )
-        .sampler("DepthTex", sampler);
+        .bind_group_layout(layout);
         if oit {
             p = p.order_independent();
         }
@@ -7731,7 +7806,7 @@ void main() {
             corner(64.0, 64.0, [1.0, 1.0]),
             corner(64.0, 0.0, [1.0, 0.0]),
         ];
-        (set, quad, sampler)
+        (set, quad)
     }
 
     const SAMPLE_DEPTH: &str = "#version 330
@@ -7746,8 +7821,8 @@ void main() {
 ";
 
     fn sampled_quad_draw(
-        entry: ResolvedSet1Entry,
-        mask: u64,
+        entries: Vec<ResolvedSet1Entry>,
+        sampler_layout: SamplerLayout,
         stage: usize,
         vbytes: &[u8],
     ) -> PipelineDraw {
@@ -7761,8 +7836,8 @@ void main() {
                 index_range: None,
             },
             bindings: Some(ResolvedDrawBindings {
-                layout_mask: mask,
-                entries: vec![entry],
+                sampler_layout,
+                entries,
                 push_constants: None,
             }),
         }
@@ -7775,14 +7850,15 @@ void main() {
     ) {
         let (set, quad, sampler) = sampled_quad_setup(SAMPLE_DEPTH, false);
         let vbytes = bytemuck::cast_slice(&quad);
-        let mask = unfilterable_sample_bit(0, &sampler, view.texture().format(), true);
+        let mut sampler_layout = SamplerLayout::default();
+        sampler_layout.record(0, &sampler, view.texture().format(), true);
         let draw = sampled_quad_draw(
-            ResolvedSet1Entry::Texture {
+            vec![ResolvedSet1Entry::Texture {
                 view_id,
                 view,
                 mips: None,
-            },
-            mask,
+            }],
+            sampler_layout,
             4,
             vbytes,
         );
@@ -7821,14 +7897,15 @@ void main() {
         clear_depth_to_a_quarter(device, queue, &view);
         let (set, quad, sampler) = sampled_quad_setup(SAMPLE_DEPTH, false);
         let vbytes = bytemuck::cast_slice(&quad);
-        let mask = unfilterable_sample_bit(0, &sampler, view.texture().format(), true);
+        let mut sampler_layout = SamplerLayout::default();
+        sampler_layout.record(0, &sampler, view.texture().format(), true);
         let draw = sampled_quad_draw(
-            ResolvedSet1Entry::Texture {
+            vec![ResolvedSet1Entry::Texture {
                 view_id,
                 view,
                 mips: None,
-            },
-            mask,
+            }],
+            sampler_layout,
             world_primitives::STAGE_CUSTOM_GEOMETRY,
             vbytes,
         );
@@ -7882,7 +7959,8 @@ void main() {
         recorded.validate_new_pass(&read, false).unwrap();
         let mut pass = RecordedFramePass::from_descriptor(read, None);
         let (set, quad, sampler) = sampled_quad_setup(SAMPLE_DEPTH, false);
-        let mask = unfilterable_sample_bit(
+        let mut sampler_layout = SamplerLayout::default();
+        sampler_layout.record(
             0,
             &sampler,
             super::super::mod_render_targets::wgpu_depth_format(desc.depth).unwrap(),
@@ -7891,8 +7969,8 @@ void main() {
         pass.transient_vertices
             .extend_from_slice(bytemuck::cast_slice(&quad));
         pass.draws.push(sampled_quad_draw(
-            ResolvedSet1Entry::TransientDepth { target: depth },
-            mask,
+            vec![ResolvedSet1Entry::TransientDepth { target: depth }],
+            sampler_layout,
             0,
             &pass.transient_vertices,
         ));
@@ -7964,14 +8042,15 @@ void main() {
 }";
         let (set, quad, sampler) = sampled_quad_setup(FRAGMENT, true);
         let vbytes = bytemuck::cast_slice(&quad);
-        let mask = unfilterable_sample_bit(0, &sampler, view.texture().format(), true);
+        let mut sampler_layout = SamplerLayout::default();
+        sampler_layout.record(0, &sampler, view.texture().format(), true);
         let draw = sampled_quad_draw(
-            ResolvedSet1Entry::Texture {
+            vec![ResolvedSet1Entry::Texture {
                 view_id: id,
                 view,
                 mips: None,
-            },
-            mask,
+            }],
+            sampler_layout,
             Stage::DepthBounds as usize,
             vbytes,
         );
@@ -8127,14 +8206,15 @@ void main() {
                 SAMPLE_DEPTH.replace("texture(DepthTex, vUv)", "textureLod(DepthTex, vUv, 0.25)");
             let (set, quad, sampler) = sampled_quad_setup(&fragment, false);
             let vbytes = bytemuck::cast_slice(&quad);
-            let mask = unfilterable_sample_bit(0, &sampler, texture.format(), filterable);
+            let mut sampler_layout = SamplerLayout::default();
+            sampler_layout.record(0, &sampler, texture.format(), filterable);
             let draw = sampled_quad_draw(
-                ResolvedSet1Entry::Texture {
+                vec![ResolvedSet1Entry::Texture {
                     view_id: 1,
                     view: texture.create_view(&Default::default()),
                     mips: None,
-                },
-                mask,
+                }],
+                sampler_layout,
                 4,
                 vbytes,
             );
@@ -8199,6 +8279,227 @@ void main() {
         slice.map_async(wgpu::MapMode::Read, |result| result.unwrap());
         device.poll(wgpu::PollType::wait_indefinitely()).unwrap();
         slice.get_mapped_range().unwrap()[..N].try_into().unwrap()
+    }
+
+    #[test]
+    #[ignore = "daily"]
+    fn sampler_variants_above_63_draw_and_dispatch_on_a_capable_device() {
+        use super::super::mod_compute::{DispatchKind, RecordedDispatch};
+        use crate::mod_compute::ComputeSet;
+        use mod_api::{BindEntry, BindGroupLayout, ComputePipeline, StorageImageAccess};
+        use std::fmt::Write;
+
+        const PAIRS: u32 = 65;
+        const COLORS: u32 = 60;
+        // Compute has an additional output binding before the sampled pairs.
+        const BINDINGS: u32 = 2 * PAIRS + 1;
+        let _guard = crate::gfx::test_gpu::lock();
+        let Some(adapter) = crate::gfx::test_gpu::adapter() else {
+            return;
+        };
+        let capacity = |limits: wgpu::Limits| {
+            (
+                limits.max_sampled_textures_per_shader_stage,
+                limits.max_samplers_per_shader_stage,
+                limits.max_bindings_per_bind_group,
+                limits.max_storage_textures_per_shader_stage,
+            )
+        };
+        let (textures, samplers, bindings, images) = capacity(adapter.limits());
+        let compute_supported = adapter
+            .get_downlevel_capabilities()
+            .flags
+            .contains(wgpu::DownlevelFlags::COMPUTE_SHADERS);
+        eprintln!(
+            "wide sampler adapter {:?}: sampled textures={textures}, samplers={samplers}, group bindings={bindings}, storage images={images}, compute shaders={compute_supported}",
+            adapter.get_info(),
+        );
+        if textures < PAIRS
+            || samplers < PAIRS
+            || bindings < BINDINGS
+            || images == 0
+            || !compute_supported
+        {
+            eprintln!(
+                "skipped: wide sampler fixture needs {PAIRS} pairs, compute shaders and {BINDINGS} compute bindings including one storage image"
+            );
+            return;
+        }
+        let color_format = wgpu::TextureFormat::Rgba8Unorm;
+        let depth_format = wgpu::TextureFormat::Depth32Float;
+        let color_usage = wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING;
+        let depth_usage =
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING;
+        let output_usage = wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::COPY_SRC;
+        if !crate::gfx::test_gpu::supports_texture_usage(&adapter, depth_format, depth_usage)
+            || !crate::gfx::test_gpu::supports_texture_usage(
+                &adapter,
+                color_format,
+                color_usage | output_usage,
+            )
+        {
+            return;
+        }
+        let gpu = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            required_limits: wgpu::Limits {
+                max_sampled_textures_per_shader_stage: PAIRS,
+                max_samplers_per_shader_stage: PAIRS,
+                max_bindings_per_bind_group: BINDINGS,
+                max_storage_textures_per_shader_stage: 1,
+                ..Default::default()
+            },
+            ..Default::default()
+        }))
+        .expect("request the eligible wide sampler device");
+        let (device, queue) = &gpu;
+        let actual = capacity(device.limits());
+        eprintln!(
+            "wide sampler device (textures, samplers, bindings, storage images) = {actual:?}; features = {:?}",
+            device.features()
+        );
+        assert_eq!(actual, (PAIRS, PAIRS, BINDINGS, 1));
+
+        let texture = |size, mip_level_count, format, usage| {
+            device.create_texture(&wgpu::TextureDescriptor {
+                label: None,
+                size: wgpu::Extent3d {
+                    width: size,
+                    height: size,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format,
+                usage,
+                view_formats: &[],
+            })
+        };
+        let color = texture(2, 2, color_format, color_usage);
+        for (mip, size, green) in [(0, 2, 0), (1, 1, 255)] {
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    mip_level: mip,
+                    ..color.as_image_copy()
+                },
+                &[0, green, 0, 255].repeat((size * size) as usize),
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(size * 4),
+                    rows_per_image: Some(size),
+                },
+                wgpu::Extent3d {
+                    width: size,
+                    height: size,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+        let color = color.create_view(&Default::default());
+        let depth = texture(2, 1, depth_format, depth_usage).create_view(&Default::default());
+        clear_depth_to_a_quarter(device, queue, &depth);
+
+        let sampler = Sampler::new(SamplerFilter::Nearest, SamplerAddress::ClampToEdge);
+        let mut layout = BindGroupLayout::builder();
+        let mut sampler_layout = SamplerLayout::default();
+        let mut entries = Vec::new();
+        let mut declarations = String::new();
+        let mut samples = String::from("float red = 0.0; float green = 0.0;\n");
+        for ordinal in 0..PAIRS {
+            let name = format!("Sample{ordinal}");
+            layout = layout.sampler(&name, sampler);
+            writeln!(declarations, "uniform sampler2D {name};").unwrap();
+            let (view, id, sum, channel) = if ordinal < COLORS {
+                (&color, 1, "green", "g")
+            } else {
+                (&depth, 2, "red", "r")
+            };
+            writeln!(samples, "{sum} += textureLod({name}, uv, 0.25).{channel};").unwrap();
+            sampler_layout.record(ordinal, &sampler, view.texture().format(), false);
+            entries.push(ResolvedSet1Entry::Texture {
+                view_id: id,
+                view: view.clone(),
+                mips: None,
+            });
+        }
+        // All 65 pairs are read, including depth at ordinal 64. The five depth pairs spill
+        // the key; the sixty filterable pairs must keep their vanilla mip blend.
+        let value = format!(
+            "vec4(red / {}.0, green / {COLORS}.0, 0.0, 1.0)",
+            PAIRS - COLORS
+        );
+        let layout = layout.build().unwrap();
+        let fragment = format!(
+            "#version 330\n{declarations}in vec2 vUv;\nout vec4 fragColor;\nvoid main() {{ vec2 uv = vUv; {samples} fragColor = {value}; }}\n"
+        );
+        let (set, quad) = sampled_quad_with_layout(&fragment, false, layout.clone());
+        let vbytes = bytemuck::cast_slice(&quad);
+        let draw = sampled_quad_draw(entries.clone(), sampler_layout.clone(), 4, vbytes);
+        let mut primitives = WorldPrimitives::new(device, (color_format, false));
+        let batch = Batch {
+            set: Some(&set),
+            draws: &[draw],
+            transient_vertices: vbytes,
+            ..Default::default()
+        };
+        for _ in 0..2 {
+            let pixel =
+                render(&gpu, &mut primitives, color_format, batch, STAGES - 1)(SIZE / 2, SIZE / 2);
+            eprintln!("wide sampler raster readback: {pixel:?}");
+            assert_eq!(pixel, [64.0, 64.0, 0.0, 255.0]);
+        }
+
+        let access = StorageImageAccess::WriteOnly;
+        let mut compute_layout = layout;
+        compute_layout.entries.insert(
+            0,
+            BindEntry::new("Out", BindingKind::StorageImage { access }),
+        );
+        let id = Identifier::parse("mod_c3:wide_sampler").unwrap();
+        let compute_shader = format!(
+            "#version 450\nlayout(local_size_x = 1) in;\nlayout(rgba8) writeonly uniform image2D Out;\n{declarations}void main() {{ vec2 uv = vec2(0.5); {samples} imageStore(Out, ivec2({center}), {value}); }}\n",
+            center = SIZE / 2
+        );
+        let set = ComputeSet::build(
+            &[ComputePipeline::builder(id.clone(), id.clone())
+                .bind_group_layout(compute_layout)
+                .build()],
+            2,
+            |_| Ok(Some(compute_shader.clone())),
+        );
+        let compute = &mut primitives.pipelines.compute;
+        compute.build(device, &set);
+        let slot = set
+            .slot(set.resolve(&id).expect("wide compute pipeline is admitted"))
+            .unwrap();
+        let output = texture(SIZE, 1, color_format, output_usage);
+        entries.insert(
+            0,
+            ResolvedSet1Entry::StorageImage {
+                view_id: 3,
+                view: output.create_view(&Default::default()),
+                format: color_format,
+                mips: TargetMips {
+                    texture: 3,
+                    base_mip: 0,
+                    mip_levels: 1,
+                    usage: TargetUse::StorageWriteOnly,
+                },
+            },
+        );
+        let dispatch = RecordedDispatch {
+            slot,
+            sampler_layout,
+            entries,
+            inline: Vec::new(),
+            texel: Vec::new(),
+            kind: DispatchKind::Direct([1, 1, 1]),
+        };
+        let mut encoder = device.create_command_encoder(&Default::default());
+        compute.record(device, &mut encoder, [&dispatch]);
+        let pixel = read_sample::<4>(device, queue, encoder, &output);
+        eprintln!("wide sampler compute readback: {pixel:?}");
+        assert_eq!(pixel, [64, 64, 0, 255]);
     }
 
     /// A depth texture bound through `TextureSource::WorldDepth`: the view the renderer makes
@@ -8437,7 +8738,7 @@ void main() {
                 index_range: None,
             },
             bindings: Some(ResolvedDrawBindings {
-                layout_mask: 0,
+                sampler_layout: SamplerLayout::EMPTY,
                 entries: vec![ResolvedSet1Entry::Texture {
                     view_id,
                     view,
@@ -8689,7 +8990,7 @@ void main() {
                 index_range: None,
             },
             bindings: Some(ResolvedDrawBindings {
-                layout_mask: 0,
+                sampler_layout: SamplerLayout::EMPTY,
                 entries: vec![ResolvedSet1Entry::Texture {
                     view_id: view_id_after_noop,
                     view: rt_view,
@@ -8818,7 +9119,7 @@ void main() {
                 index_range: None,
             },
             bindings: Some(ResolvedDrawBindings {
-                layout_mask: 0,
+                sampler_layout: SamplerLayout::EMPTY,
                 entries: vec![ResolvedSet1Entry::StorageImage {
                     view_id,
                     view,

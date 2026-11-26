@@ -1482,7 +1482,7 @@ mod tests {
                 index_range: None,
             },
             bindings: Some(super::super::mod_pipelines::ResolvedDrawBindings {
-                layout_mask: 0,
+                sampler_layout: Default::default(),
                 entries: vec![ResolvedSet1Entry::TransientColor {
                     target: tmp,
                     attachment: 0,

@@ -678,7 +678,7 @@ impl Game<'_> {
         push_texel: &mut dyn FnMut(&[u8]) -> std::ops::Range<usize>,
     ) -> Result<Option<sunrise_client::gfx::mod_pipelines::ResolvedDrawBindings>, PipelineDrawError>
     {
-        use sunrise_client::gfx::mod_pipelines::unfilterable_sample_bit;
+        use sunrise_client::gfx::mod_pipelines::SamplerLayout;
         use sunrise_client::gfx::mod_render_targets::{wgpu_color_format, wgpu_depth_format};
 
         if layout.is_empty() && pc_size == 0 {
@@ -754,7 +754,7 @@ impl Game<'_> {
             },
         }
         let float32_filterable = gpu.float32_filterable();
-        let mut layout_mask = 0;
+        let mut sampler_layout = SamplerLayout::default();
         let mut sampled = 0;
         let mut staged = Vec::with_capacity(layout.entries.len());
         for decl in &layout.entries {
@@ -900,8 +900,7 @@ impl Game<'_> {
                             )
                         }
                     };
-                    layout_mask |=
-                        unfilterable_sample_bit(sampled, &sampler, format, float32_filterable);
+                    sampler_layout.record(sampled, &sampler, format, float32_filterable);
                     sampled += 1;
                     staged.push(entry);
                 }
@@ -964,7 +963,7 @@ impl Game<'_> {
         }
         // A translated pack program owns its pipeline layout, unlike direct mod draws into
         // pack targets. Refuse only that route and only if the bindings require another layout.
-        if pack_linked && layout_mask != 0 {
+        if pack_linked && !sampler_layout.is_empty() {
             return Err(PipelineDrawError::PackSamplerLayout);
         }
         // One render pass gives a mip level one usage: a draw binds no level both as a storage
@@ -1090,7 +1089,7 @@ impl Game<'_> {
         let push_constants = pc_slice.map(push_inline);
         Ok(Some(
             sunrise_client::gfx::mod_pipelines::ResolvedDrawBindings {
-                layout_mask,
+                sampler_layout,
                 entries: resolved_entries,
                 push_constants,
             },
@@ -1414,6 +1413,7 @@ impl Game<'_> {
     ) -> Result<(), mod_api::ComputeDispatchError> {
         use mod_api::ComputeDispatchError as Refused;
         use sunrise_client::gfx::mod_compute::{DispatchKind, RecordedDispatch};
+        use sunrise_client::gfx::mod_pipelines::ResolvedDrawBindings;
         let dispatches = pass.dispatches.as_mut().ok_or(Refused::Unavailable)?;
         let gpu = self.mod_gpu().ok_or(Refused::Unavailable)?;
         let compute = self.pack.render.mod_pipelines.compute();
@@ -1476,9 +1476,11 @@ impl Game<'_> {
             return Err(Refused::InvalidBinding);
         }
         // A storage image's texture format is the one its shader declares.
-        let entries = resolved
-            .as_ref()
-            .map_or(&[][..], |bound| &bound.entries[..]);
+        let ResolvedDrawBindings {
+            sampler_layout,
+            entries,
+            ..
+        } = resolved.unwrap_or_default();
         for (index, entry) in entries.iter().enumerate() {
             if let sunrise_client::gfx::mod_pipelines::ResolvedSet1Entry::StorageImage {
                 format,
@@ -1492,8 +1494,8 @@ impl Game<'_> {
         }
         dispatches.push(RecordedDispatch {
             slot,
-            layout_mask: resolved.as_ref().map_or(0, |bindings| bindings.layout_mask),
-            entries: resolved.map_or_else(Vec::new, |bindings| bindings.entries),
+            sampler_layout,
+            entries,
             inline,
             texel,
             kind,
