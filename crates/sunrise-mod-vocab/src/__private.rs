@@ -321,6 +321,11 @@ pub fn loaded_mods() -> LoadedMods {
     LoadedMods::new()
 }
 
+/// The packages enabled and admitted at startup, as registration reads them: `ConfigHost::mods`.
+pub fn startup_mods() -> LoadedMods {
+    LoadedMods::enabled_at_startup()
+}
+
 /// The data-pack and resource reloads the game runs.
 pub mod reload {
     include!(concat!(
