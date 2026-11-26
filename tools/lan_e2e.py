@@ -9137,6 +9137,8 @@ def check_fixture_input(host, guest, out, kind, role):
     """Complement seeded rules with real client input and authoritative observations."""
     player = host if role == 'host' else guest
     hx, y, hz = (int(v // 1) for v in pos_of(host))
+    if kind == 'sculk':
+        y += 32  # Keep the listener out of range of drops and mobs in the shared arena.
     x, z = hx + 6, hz + (-8 if role == 'host' else 8)
     sensor, dispenser, button = (x + 3, y, z + 1), (x, y, z + 3), (x, y, z + 2)
     player('command', command='gamemode survival')
