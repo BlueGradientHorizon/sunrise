@@ -2058,3 +2058,34 @@ fn a_general_entitys_base_state_round_trips_through_its_handle_and_record() {
         assert_eq!(blaze.is_on_fire(game), Some(false));
     });
 }
+
+/// A general row's silent and no-gravity flags reach the client as `Entity.DATA_SILENT` and
+/// `DATA_NO_GRAVITY`, beside the shared flags.
+#[test]
+#[ignore = "daily"]
+fn a_general_rows_silent_and_no_gravity_are_tracked_to_clients() {
+    use sunrise_protocol::entity_data::{Value, serializer};
+    with_types(|game| {
+        fixture_resident_column(&mut game.world, (0, 0));
+        let mut tag = record_tag("mymod:robot", [1, 2, 3, 4], b"", Vec::new());
+        if let Tag::Compound(map) = &mut tag {
+            map.insert("Silent".into(), Tag::Byte(1));
+            map.insert("NoGravity".into(), Tag::Byte(1));
+        }
+        game.load_listed("mymod:robot", None, None, tag).unwrap();
+        let mut states = sunrise_client::lan::entity::States::default();
+        game.lan_general_states(&mut states, 0);
+        let [state] = states.as_slice() else {
+            panic!("one row tracked");
+        };
+        for index in [4, 5] {
+            assert!(
+                state
+                    .meta
+                    .contains(&(index, serializer::BOOLEAN, Value::Bool(true))),
+                "{index}: {:?}",
+                state.meta
+            );
+        }
+    });
+}

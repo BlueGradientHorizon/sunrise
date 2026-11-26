@@ -718,7 +718,7 @@ impl Game<'_> {
     /// `DATA_CUSTOM_NAME_VISIBLE` (entries 2 and 3 of the base `Entity` block), never in that payload.
     /// Only these states are marked general: a quarantined record, which keeps its type's key,
     /// is no row and is tracked as an unknown kind (never paired).
-    fn lan_general_states(&self, out: &mut States, after: u32) {
+    pub(in crate::game) fn lan_general_states(&self, out: &mut States, after: u32) {
         let catalog = super::general::general_type_catalog();
         let rows = self.resident_entities.general.rows.iter();
         for row in rows.filter(|row| row.id > after) {
@@ -752,12 +752,23 @@ impl Game<'_> {
             if flags != 0 {
                 e.meta.push((0, serializer::BYTE, Value::Byte(flags as i8)));
             }
+            // `Entity.DATA_SILENT` (4) and `DATA_NO_GRAVITY` (5), sent while set.
+            if row.base.silent {
+                e.meta.push((4, serializer::BOOLEAN, Value::Bool(true)));
+            }
+            if row.base.no_gravity {
+                e.meta.push((5, serializer::BOOLEAN, Value::Bool(true)));
+            }
             e.defaults.push((0, serializer::BYTE, Value::Byte(0)));
             // A name taken away or hidden again is sent as none / false.
             e.defaults
                 .push((2, serializer::OPTIONAL_COMPONENT, Value::OptText(None)));
             e.defaults
                 .push((3, serializer::BOOLEAN, Value::Bool(false)));
+            e.defaults
+                .push((4, serializer::BOOLEAN, Value::Bool(false)));
+            e.defaults
+                .push((5, serializer::BOOLEAN, Value::Bool(false)));
         }
     }
 

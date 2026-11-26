@@ -154,3 +154,23 @@ fn a_leash_knot_keeps_its_base_state_in_its_saved_tags() {
         assert_eq!(tag.get("Fire"), Some(&Tag::Short(40)));
     });
 }
+
+#[test]
+#[ignore = "daily"]
+fn an_end_crystal_keeps_the_fire_ticks_it_was_given() {
+    with_game(|game| {
+        open_chunk(game);
+        game.summon_with_nbt("minecraft:end_crystal", [8.5, 65.0, 8.5], "{}")
+            .unwrap();
+        game.lan_assign_ids();
+        let id = game.crystals[0].id;
+        let entity = game.entity(id).unwrap();
+        assert!(entity.set_remaining_fire_ticks(game, 40_000));
+        assert_eq!(entity.fire_ticks(game), Some(40_000));
+        // The save truncates to a short, as `Entity.saveWithoutId` does.
+        let tag = game
+            .command_target_nbt(crate::game::commands::Target::Crystal(id))
+            .unwrap();
+        assert_eq!(tag.get("Fire"), Some(&Tag::Short(40_000_i32 as i16)));
+    });
+}

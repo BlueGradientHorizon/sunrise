@@ -7,7 +7,7 @@
 //! the local client's live semantic sneak state; fire and underwater reads also
 //! use the client's own cached state.
 //! Ticks lived (`Entity.tickCount`) are read for players, mobs, items, orbs and minecarts.
-use super::{Game, commands::Target};
+use super::{Game, commands::Target, native_entity_base::kind_fire_immune};
 use mod_api::{EntityReadError, EntityRef};
 use std::ops::ControlFlow;
 use sunrise_client::join_seq::residency::table::EntityLookup;
@@ -329,7 +329,8 @@ impl Game<'_> {
     }
 
     /// The immunity of a copy the client only tracks (no body of its own): a player's synced
-    /// grant, a general row's declared `fire_immune`, `false` for any other kind.
+    /// grant, a general row's declared `fire_immune`, a mob type's flag, and the one table of
+    /// [`kind_fire_immune`] the server answers from for every other kind.
     fn client_tracked_fire_immunity(&self, entity: EntityRef) -> Option<bool> {
         if let Some(row) = self.native_client_general(entity) {
             return Some(super::general::general_type_catalog().fire_immune(row.type_slot));
@@ -338,7 +339,14 @@ impl Game<'_> {
         if kind == "minecraft:player" {
             return self.client_tracked_player_fire_immunity(entity);
         }
-        Some(false)
+        Some(
+            kind_fire_immune(kind)
+                || self
+                    .res
+                    .mob_types()
+                    .get(kind)
+                    .is_some_and(|mob| mob.flags.fire_immune),
+        )
     }
 
     fn client_tracked_player_fire_immunity(&self, entity: EntityRef) -> Option<bool> {
@@ -839,9 +847,9 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn mob_setters_update_stored_state() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::with_resident_game;
         use sunrise_core::geometry::Vec3;
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
             let kind = game
                 .res
@@ -881,13 +889,13 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn no_gravity_reads_and_writes_a_live_dropped_item() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::with_resident_game;
         use mod_api::WorldEpoch;
         use sunrise_client::entities::ArmorStand;
         use sunrise_client::items::ItemStack;
         use sunrise_core::geometry::Vec3;
 
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.spawn_item(
                 ItemStack {
@@ -922,9 +930,9 @@ mod tests {
     }
 
     fn with_player(test: impl FnOnce(&mut Game<'_>, EntityRef)) {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::with_resident_game;
         use sunrise_core::geometry::Vec3;
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.dedicated = Some(Vec::new());
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
@@ -1091,14 +1099,14 @@ mod tests {
     fn tick_count_reads_supported_entities_and_refuses_others() {
         use super::super::minecarts::{CartKind, Minecart};
         use super::super::native_entity_refs::tests::bind_local_player;
-        use super::super::native_guest_turn_tests::with_guests;
+        use super::super::native_guest_turn_tests::with_resident_guests;
         use mod_api::WorldEpoch;
         use sunrise_client::entities::ExperienceOrb;
         use sunrise_client::items::ItemStack;
         use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
 
-        with_guests(|game| {
+        with_resident_guests(|game| {
             game.player = Some(PlayerMotion::new(game.motion, Vec3::ZERO).unwrap());
             bind_local_player(game, 20, 123);
             let player = game.entity(20).unwrap();
@@ -1195,7 +1203,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn portal_cooldown_reads_simulated_kinds_and_refuses_others() {
-        use super::super::native_guest_turn_tests::with_guests;
+        use super::super::native_guest_turn_tests::with_resident_guests;
         use super::super::{
             Dim, FallingBlock, boats::Boat, fireworks::Rocket, minecarts::CartKind,
             minecarts::Minecart, trident::ThrownTrident,
@@ -1206,7 +1214,7 @@ mod tests {
         use sunrise_client::projectiles::{Projectile, ProjectileKind};
         use sunrise_core::{geometry::Vec3, position::BlockPos};
 
-        with_guests(|game| {
+        with_resident_guests(|game| {
             // Players keep their own state: in place during their turn, beside the hub otherwise.
             let host = game.lan.as_mut().unwrap();
             host.play.entry(12).or_default().portal.cooldown = 7;
@@ -1370,13 +1378,13 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn portal_cooldown_write_blocks_entry_and_counts_down() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::with_resident_game;
         use std::sync::Arc;
         use sunrise_client::chunk::Chunk;
         use sunrise_client::motion::PlayerMotion;
         use sunrise_core::geometry::Vec3;
 
-        with_game(|game| {
+        with_resident_game(|game| {
             game.world
                 .chunks
                 .insert((0, 0), Arc::new(Chunk::empty(0, 0)));
@@ -1461,9 +1469,9 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn portal_cooldown_write_is_refused_for_an_acting_guest() {
-        use super::super::native_guest_turn_tests::with_guests;
+        use super::super::native_guest_turn_tests::with_resident_guests;
 
-        with_guests(|game| {
+        with_resident_guests(|game| {
             let host = game.lan.as_mut().unwrap();
             host.play.entry(12).or_default().portal.cooldown = 7;
             let guest = game.entity(12).unwrap();
@@ -1487,11 +1495,11 @@ mod tests {
     #[ignore = "daily"]
     fn portal_cooldown_write_is_refused_for_a_falling_block() {
         use super::super::FallingBlock;
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::with_resident_game;
         use sunrise_client::nether_portal::PortalState;
         use sunrise_core::{geometry::Vec3, position::BlockPos};
 
-        with_game(|game| {
+        with_resident_game(|game| {
             let state = game
                 .pack
                 .assets
@@ -1546,11 +1554,11 @@ mod tests {
     #[ignore = "daily"]
     fn portal_cooldown_write_is_refused_on_a_client() {
         use super::super::execution_role::ExecutionRole;
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::with_resident_game;
         use sunrise_core::geometry::Vec3;
         use sunrise_protocol::connection::Pipe;
 
-        with_game(|game| {
+        with_resident_game(|game| {
             game.options.execution_role = ExecutionRole::Client;
             game.options.dedicated = None;
             let (client, _server) = Pipe::pair();
@@ -1576,10 +1584,10 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn portal_cooldown_write_reaches_an_item() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::with_resident_game;
         use sunrise_client::items::ItemStack;
 
-        with_game(|game| {
+        with_resident_game(|game| {
             game.spawn_item(
                 ItemStack {
                     item: "minecraft:stone".into(),
@@ -1600,11 +1608,11 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn portal_cooldown_write_reaches_an_arrow() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::with_resident_game;
         use sunrise_client::projectiles::{Projectile, ProjectileKind};
         use sunrise_core::geometry::Vec3;
 
-        with_game(|game| {
+        with_resident_game(|game| {
             game.add_projectile(Projectile::new(
                 ProjectileKind::Arrow {
                     base_damage: 2.0,
@@ -1623,11 +1631,11 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn portal_cooldown_write_is_refused_for_a_non_portal_projectile() {
-        use super::super::native_entity_refs::tests::with_game;
+        use super::super::native_entity_refs::tests::with_resident_game;
         use sunrise_client::projectiles::{Projectile, ProjectileKind};
         use sunrise_core::geometry::Vec3;
 
-        with_game(|game| {
+        with_resident_game(|game| {
             game.add_projectile(Projectile::new(
                 ProjectileKind::WindCharge,
                 Vec3::ZERO,
@@ -1729,6 +1737,44 @@ mod tests {
                 }
                 let stand = g.entity(15).unwrap();
                 let zombie = g.entity(16).unwrap();
+                // A tracked copy answers `EntityType.fireImmune()` as the server does.
+                for (id, name, immune) in [
+                    (17, "minecraft:tnt", true),
+                    (18, "minecraft:end_crystal", true),
+                    (19, "minecraft:blaze", true),
+                    (20, "minecraft:pig", false),
+                ] {
+                    let kind = g
+                        .remote
+                        .as_ref()
+                        .unwrap()
+                        .builtin
+                        .get("minecraft:entity_type")
+                        .unwrap()
+                        .id(name)
+                        .unwrap();
+                    g.handle_packet(sunrise_protocol::packets::play::Clientbound::AddEntity(
+                        sunrise_protocol::packets::play::AddEntity {
+                            id,
+                            uuid: id as u128,
+                            kind,
+                            position: [0.0; 3],
+                            velocity: [0.0; 3],
+                            pitch: 0,
+                            yaw: 0,
+                            head_yaw: 0,
+                            data: 0,
+                        },
+                    ))
+                    .unwrap();
+                    assert_eq!(
+                        g.entity(id as u32)
+                            .unwrap()
+                            .fire_immune(&*g as &dyn mod_api::ClientHost),
+                        Some(immune),
+                        "{name}"
+                    );
+                }
                 for flag in [1, 0] {
                     for id in [7, 15, 16] {
                         g.handle_packet(
@@ -1793,7 +1839,7 @@ mod tests {
     fn under_water_reads_previous_eye_sample_and_current_contact_on_both_sides() {
         mod_platform::testing::with_mods(Vec::new().into(), || {
             for client in [false, true] {
-                super::super::native_entity_refs::tests::with_game(|g| {
+                super::super::native_entity_refs::tests::with_resident_game(|g| {
                     if client {
                         g.options.execution_role =
                             super::super::execution_role::ExecutionRole::Client;
@@ -1853,7 +1899,7 @@ mod tests {
         use sunrise_protocol::connection::Pipe;
 
         use winit::keyboard::KeyCode;
-        super::super::native_entity_refs::tests::with_game(|game| {
+        super::super::native_entity_refs::tests::with_resident_game(|game| {
             game.options.execution_role = ExecutionRole::Client;
             game.options.dedicated = None;
             let (client, _server) = Pipe::pair();
@@ -2015,7 +2061,7 @@ mod tests {
 
     // `EntityRef::main_arm` (`LivingEntity.getMainArm`) on a client and on a server.
     use super::super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
-    use super::super::native_guest_turn_tests::with_guests;
+    use super::super::native_guest_turn_tests::with_resident_guests;
     use mod_api::MainHand;
     use sunrise_protocol::entity_data::{Value, serializer};
     use sunrise_protocol::packets::play::{self, Clientbound as C};
@@ -2129,7 +2175,7 @@ mod tests {
         ) {
             return;
         }
-        with_guests(|game| {
+        with_resident_guests(|game| {
             let (a, b) = (game.player(12).unwrap(), game.player(13).unwrap());
             let host = game.lan.as_mut().unwrap();
             host.hub.update_guest(12, |g| g.info.main_hand = 0).unwrap();

@@ -106,6 +106,21 @@ pub(in crate::game) struct BaseView {
     owned: u8,
 }
 
+/// `EntityType.fireImmune()` for the kinds that are neither a mob (its type flag), an item (its
+/// stack) nor a general entity (its row): the one table the server's [`Game::read_entity_base`]
+/// and a client's tracked copy both answer from.
+pub(in crate::game) fn kind_fire_immune(kind: &str) -> bool {
+    matches!(
+        kind,
+        "minecraft:tnt"
+            | "minecraft:end_crystal"
+            | "minecraft:ender_dragon"
+            | "minecraft:area_effect_cloud"
+            | "minecraft:wither_skull"
+            | "minecraft:shulker_bullet"
+    )
+}
+
 impl Game<'_> {
     /// The base state of the entity `t` names, or None when its body is gone.
     pub(in crate::game) fn read_entity_base(&self, t: Target) -> Option<BaseView> {
@@ -246,11 +261,11 @@ impl Game<'_> {
                     }
                     None => {
                         base.fire_ticks = p.fire_ticks;
-                        let immune = matches!(
-                            p.kind,
-                            ProjectileKind::WitherSkull { .. }
-                                | ProjectileKind::ShulkerBullet { .. }
-                        );
+                        let immune = kind_fire_immune(match p.kind {
+                            ProjectileKind::WitherSkull { .. } => "minecraft:wither_skull",
+                            ProjectileKind::ShulkerBullet { .. } => "minecraft:shulker_bullet",
+                            _ => "",
+                        });
                         (FIRE | NO_GRAVITY, immune)
                     }
                 }
@@ -261,11 +276,10 @@ impl Game<'_> {
                 base.no_gravity = t.no_gravity;
                 (FIRE | NO_GRAVITY, false)
             }
-            // `EntityType.TNT` is `fireImmune()`.
             Target::Tnt(id) => {
                 let t = self.tnts.iter().find(|t| t.id == id)?;
                 base.no_gravity = t.no_gravity;
-                (NO_GRAVITY, true)
+                (NO_GRAVITY, kind_fire_immune("minecraft:tnt"))
             }
             Target::Falling(id) => {
                 let f = self.falling.iter().find(|f| f.id == id)?;
@@ -273,12 +287,14 @@ impl Game<'_> {
                 base.no_gravity = f.no_gravity;
                 (FIRE | NO_GRAVITY, false)
             }
-            // `EntityType.END_CRYSTAL` is `fireImmune()`.
             Target::Crystal(id) => {
                 let c = self.crystals.iter().find(|c| c.id == id)?;
-                base.fire_ticks = i32::from(c.fire);
+                base.fire_ticks = c.fire;
                 base.invulnerable = c.invulnerable;
-                (FIRE | INVULNERABLE, true)
+                (
+                    FIRE | INVULNERABLE,
+                    kind_fire_immune("minecraft:end_crystal"),
+                )
             }
             Target::Bolt(id) => {
                 let b = self.bolts.iter().find(|b| b.id == id)?;
@@ -301,15 +317,15 @@ impl Game<'_> {
                 base.fire_ticks = f.fire_ticks;
                 (FIRE, false)
             }
-            // `EntityType.ENDER_DRAGON` and `AREA_EFFECT_CLOUD` are `fireImmune()`.
-            Target::Dragon(_) | Target::Cloud(_) => (0, true),
+            Target::Dragon(_) => (0, kind_fire_immune("minecraft:ender_dragon")),
+            Target::Cloud(_) => (0, kind_fire_immune("minecraft:area_effect_cloud")),
             Target::General(id) => {
                 let row = self.resident_entities.general.row(id)?;
                 *base = row.base;
                 (ALL, general_type_catalog().fire_immune(row.type_slot))
             }
-            // The dragon's parts take its type, which is fire immune.
-            Target::DragonPart(_) => (ALL, true),
+            // The dragon's parts take its type.
+            Target::DragonPart(_) => (ALL, kind_fire_immune("minecraft:ender_dragon")),
             // `EntityType.FISHING_BOBBER` is not fire immune; the bobber is never saved.
             Target::Hook(id) => {
                 let (hook, _) = self.fishing_hook_by_id(id)?;
@@ -438,7 +454,7 @@ impl Game<'_> {
                     return false;
                 };
                 self.crystals.update(i, |c| {
-                    c.fire = new.fire_ticks as i16;
+                    c.fire = new.fire_ticks;
                     c.invulnerable = new.invulnerable;
                 });
             }
