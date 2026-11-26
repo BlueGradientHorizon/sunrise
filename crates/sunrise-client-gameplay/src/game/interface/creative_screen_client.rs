@@ -103,7 +103,11 @@ impl crate::game::ClientGame<'_> {
     }
     /// The stack at a resolved display slot on the active item tab, accounting for scroll.
     pub fn creative_display_stack(&self, slot: usize) -> Option<ItemStack> {
-        let shown = self.client.creative_screen.0.display_window(&self.common.pack.names);
+        let shown = self
+            .client
+            .creative_screen
+            .0
+            .display_window(&self.common.pack.names);
         shown.stack(slot).cloned()
     }
     pub fn creative_inventory_open(&self) -> bool {
@@ -355,7 +359,11 @@ impl crate::game::ClientGame<'_> {
             }
             self.draw_hovered_slot_highlight(batch, true, ox, oy);
         } else {
-            let shown = self.client.creative_screen.0.display_window(&self.common.pack.names);
+            let shown = self
+                .client
+                .creative_screen
+                .0
+                .display_window(&self.common.pack.names);
             for (slot, (x, y)) in Creative::display_slots() {
                 let Some(stack) = shown.stack(slot) else {
                     continue;

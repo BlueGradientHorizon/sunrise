@@ -1536,11 +1536,12 @@ mod tests {
             );
             let data = stack.data_packs(Vec::new());
             let enabled: Vec<_> = stack.enabled_packs().collect();
-            let conditions = sunrise_gameplay_common::game::load_conditions::worldgen_load_conditions(
-                &base_conditions,
-                &game.options.resources,
-                &enabled,
-            );
+            let conditions =
+                sunrise_gameplay_common::game::load_conditions::worldgen_load_conditions(
+                    &base_conditions,
+                    &game.options.resources,
+                    &enabled,
+                );
             let (overrides, _) = worldgen_overrides_of(&data, &conditions).unwrap();
             let settings = tempfile::tempdir().unwrap();
             let preset = if debug {

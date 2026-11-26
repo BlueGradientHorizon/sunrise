@@ -266,7 +266,9 @@ fn runtime_table_has_no_artificial_level_cap() {
 #[ignore = "daily"]
 fn a_runtime_checkerboard_resolves_tags_before_admission_and_uses_their_biomes() {
     use sunrise_gameplay_common::game::test_fixtures::run_fresh_cases;
-    use sunrise_world::worldgen::mod_generators::{ChunkAccess, ModChunkGenerator, ModChunkGenerators};
+    use sunrise_world::worldgen::mod_generators::{
+        ChunkAccess, ModChunkGenerator, ModChunkGenerators,
+    };
 
     if run_fresh_cases(
         "game::runtime_levels_tests::a_runtime_checkerboard_resolves_tags_before_admission_and_uses_their_biomes",
@@ -383,7 +385,8 @@ fn a_runtime_checkerboard_resolves_tags_before_admission_and_uses_their_biomes()
             .unwrap();
         for (cx, name) in [(0, "minecraft:forest"), (1, "minecraft:flower_forest")] {
             assert!(
-                game.server.streaming
+                game.server
+                    .streaming
                     .set_forced_loaded(&mut game.common.world, cx, 0, true)
             );
             let chunk = &game.world.chunks[&(cx, 0)];

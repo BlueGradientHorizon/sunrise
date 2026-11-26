@@ -455,8 +455,8 @@ mod give_stack {
 }
 
 mod destroy_carried {
-    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::{logged_in, sent};
+    use crate::game::server_side::native_entity_refs::tests::with_client_game;
     use mod_api::CarriedDestroyError;
     use sunrise_client_gameplay::game::ClientGame;
     use sunrise_command::args::GameMode;
@@ -557,11 +557,9 @@ mod destroy_carried {
                     // Model that state without depending on how ScreenOpening handles a veto.
                     game.client.screen = previous_screen;
                     refuses(game, chest_menu, CarriedDestroyError::ServerOwnedMenu);
-                    game.common.options.execution_role =
-                        ExecutionRole::IntegratedServer;
+                    game.common.options.execution_role = ExecutionRole::IntegratedServer;
                     refuses(game, chest_menu, CarriedDestroyError::Unavailable);
-                    game.common.options.execution_role =
-                        ExecutionRole::Client;
+                    game.common.options.execution_role = ExecutionRole::Client;
                     let packets = sent(&mut reader);
                     assert!(packets.is_empty(), "{packets:?}");
                 });
