@@ -235,8 +235,9 @@ impl RenderPipeline {
         }
     }
 
-    /// Whether this pipeline uses the default single `PositionTexColor` vertex binding
-    /// (compatible with the [`crate::WorldDrawContext::pipeline_quads`] shorthand).
+    /// Whether this pipeline uses the default single vertex binding,
+    /// [`VertexFormat::position_tex_color`] (compatible with the
+    /// [`crate::WorldDrawContext::pipeline_quads`] shorthand).
     pub fn uses_default_vertex_format(&self) -> bool {
         self.vertex_bindings.is_empty()
             || (self.vertex_bindings.len() == 1
