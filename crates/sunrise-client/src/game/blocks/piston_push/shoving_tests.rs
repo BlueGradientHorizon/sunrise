@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::native_client_session::tests::{finish_login, logged_client};
 use crate::game::native_entity_refs::tests::{bind_acting_guest, with_client_game, with_game};
-use mod_api::{Collider, ColliderBox};
+use mod_api::{Collider, ColliderBox, ColliderPose};
 use std::sync::Arc;
 use sunrise_client::{chunk::Chunk, entities::ItemEntity, items::ItemStack, motion::PlayerMotion};
 use sunrise_core::nbt::Tag;
@@ -61,7 +61,10 @@ fn turn(game: &mut Game<'_>, holder: u32, degrees: f32) {
     let half = degrees.to_radians() / 2.0;
     game.entity(holder)
         .unwrap()
-        .set_collider_transform(game, [0.0, half.sin(), 0.0, half.cos()])
+        .set_collider_pose(
+            game,
+            ColliderPose::default().with_rotation([0.0, half.sin(), 0.0, half.cos()]),
+        )
         .unwrap();
     game.carry_pass(&start);
 }
