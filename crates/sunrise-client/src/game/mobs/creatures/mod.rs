@@ -7601,7 +7601,7 @@ impl Game<'_> {
                 }
                 _ => sunrise_client::mobs::DamageKind::Thrown,
             };
-            let hit = |game: &mut Self| {
+            let hit_special = |game: &mut Self| {
                 game.hit_special_full(
                     id,
                     amount,
@@ -7614,9 +7614,9 @@ impl Game<'_> {
             };
             if self.combat.attack().projectile != Some(p.id as i32) {
                 let attack = self.projectile_attack(p);
-                self.with_attack(attack, hit);
+                self.with_attack(attack, hit_special);
             } else {
-                hit(self);
+                hit_special(self);
             }
             if !matches!(
                 p.kind,
