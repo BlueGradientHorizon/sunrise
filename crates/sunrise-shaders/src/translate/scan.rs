@@ -246,6 +246,21 @@ pub(super) fn significant(t: &str) -> bool {
     !t.trim().is_empty()
 }
 
+/// An error at token `at` of `tokens`, the lexed `pp.code`: the output line is the number of line
+/// breaks before it, and [`Preprocessed::error_at_line`] names where that line came from.
+pub(super) fn error_at_token(
+    pp: &Preprocessed,
+    tokens: &[&str],
+    at: usize,
+    message: impl Into<String>,
+) -> Error {
+    let line: usize = tokens[..at.min(tokens.len())]
+        .iter()
+        .map(|t| t.matches('\n').count())
+        .sum();
+    pp.error_at_line(line, message)
+}
+
 /// A layout qualifier's value as `Stage::layout_value` reads it.
 enum LayoutValue {
     Value(u32),
@@ -636,20 +651,7 @@ impl<'p> Stage<'p> {
     }
 
     pub(super) fn error(&self, token: usize, message: &str) -> Error {
-        let line: usize = self.tokens[..token.min(self.tokens.len())]
-            .iter()
-            .map(|t| t.matches('\n').count())
-            .sum();
-        let o = self.pp.lines.get(line).copied().unwrap_or_default();
-        Error::new(
-            self.pp
-                .files
-                .get(o.file as usize)
-                .cloned()
-                .unwrap_or_default(),
-            o.line,
-            message,
-        )
+        error_at_token(self.pp, &self.tokens, token, message)
     }
 
     /// Core names share the compatibility state for geometry, including shadow transforms.

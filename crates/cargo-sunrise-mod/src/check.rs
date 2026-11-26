@@ -382,6 +382,36 @@ pub fn pipeline_shaders(
     files: &BTreeMap<String, Vec<u8>>,
     resources: Option<&Path>,
 ) -> (usize, Vec<String>) {
+    let programs = pair_programs(files);
+    let assets = Assets { files, resources };
+    let mut refused = Vec::new();
+    for program in &programs {
+        if let Err(problems) = check_program(program, &assets) {
+            refused.extend(problems);
+        }
+    }
+    (programs.len(), refused)
+}
+
+/// The fragment stage of a vertex-only file: it only lets the vertex stage be validated.
+const STAND_IN_FRAGMENT: &str =
+    "#version 330\nout vec4 fragColor;\nvoid main() { fragColor = vec4(1.0); }\n";
+
+/// One program [`pipeline_shaders`] checks: the two stage files of a `shaders/core` stem and the
+/// folders their quoted includes are relative to.
+struct Program {
+    vertex_file: String,
+    vertex_dir: String,
+    fragment_file: String,
+    fragment_dir: String,
+    /// The file has no `.fsh`: the fragment stage is [`STAND_IN_FRAGMENT`] (a vertex stage shared
+    /// across pipelines via `.vertex_shader(...)`) and is no OIT program.
+    stand_in: bool,
+}
+
+/// Pairs the `.vsh` and `.fsh` files of `files` by namespace and stem. A fragment-only file takes
+/// `minecraft:core/position_tex_color` as its vertex stage.
+fn pair_programs(files: &BTreeMap<String, Vec<u8>>) -> Vec<Program> {
     let mut stems: BTreeMap<(String, String), (Option<String>, Option<String>)> = BTreeMap::new();
     let folder = sunrise_mod_pipeline::CORE_FOLDER;
     for name in files.keys() {
@@ -399,14 +429,46 @@ pub fn pipeline_shaders(
             stems.entry((ns.to_owned(), stem.to_owned())).or_default().1 = Some(name.clone());
         }
     }
+    stems
+        .into_iter()
+        .map(|((ns, stem), (vsh_file, fsh_file))| {
+            let folder_part = stem.rfind('/').map_or("", |i| &stem[..=i]);
+            let dir = format!("{ns}:{folder}/{folder_part}");
+            let (vertex_file, vertex_dir) = vsh_file.map_or_else(
+                || {
+                    (
+                        "assets/minecraft/shaders/core/position_tex_color.vsh".to_owned(),
+                        "minecraft:shaders/core/".to_owned(),
+                    )
+                },
+                |file| (file, dir.clone()),
+            );
+            Program {
+                stand_in: fsh_file.is_none(),
+                fragment_file: fsh_file.unwrap_or_else(|| vertex_file.clone()),
+                fragment_dir: dir,
+                vertex_file,
+                vertex_dir,
+            }
+        })
+        .collect()
+}
 
-    let read_asset = |asset: &str| -> Result<Option<String>, String> {
-        if let Some(bytes) = files.get(asset) {
+/// Where a program's files and includes come from: the mod's own `files`, then prepared vanilla
+/// `resources`, and finally Sunrise's interface-only stubs for `minecraft:*`.
+struct Assets<'a> {
+    files: &'a BTreeMap<String, Vec<u8>>,
+    resources: Option<&'a Path>,
+}
+
+impl Assets<'_> {
+    fn asset(&self, asset: &str) -> Result<Option<String>, String> {
+        if let Some(bytes) = self.files.get(asset) {
             return std::str::from_utf8(bytes)
                 .map(|s| Some(s.to_owned()))
                 .map_err(|e| format!("{asset}: {e}"));
         }
-        if let Some(dir) = resources {
+        if let Some(dir) = self.resources {
             let path = dir.join(asset);
             match std::fs::read_to_string(&path) {
                 Ok(text) => return Ok(Some(text)),
@@ -421,115 +483,91 @@ pub fn pipeline_shaders(
             return Ok(Some(stub.to_owned()));
         }
         Ok(None)
-    };
+    }
 
-    let include = |id: &str| -> Result<Option<String>, String> {
+    /// The text of an `#include <ns:path>`, `None` when no source has it.
+    fn include(&self, id: &str) -> Result<Option<String>, String> {
         let Some((ns, rest)) = id.split_once(':') else {
             return Ok(None);
         };
-        read_asset(&format!("assets/{ns}/{rest}"))
-    };
+        self.asset(&format!("assets/{ns}/{rest}"))
+    }
 
-    let read_stage = |file: &str| -> Result<String, String> {
-        read_asset(file)?.ok_or_else(|| format!("{file}: not found"))
-    };
-    // A vertex-only file may be shared across pipelines via `.vertex_shader(...)`: it is paired
-    // with a trivial fragment shader so the vertex stage is still validated.
-    const STAND_IN_FRAGMENT: &str =
-        "#version 330\nout vec4 fragColor;\nvoid main() { fragColor = vec4(1.0); }\n";
-    let mut count = 0;
-    let mut refused = Vec::new();
-    for ((ns, stem), (vsh_file, fsh_file)) in stems {
-        count += 1;
-        let folder_part = stem.rfind('/').map_or("", |i| &stem[..=i]);
-        let dir = format!("{ns}:{folder}/{folder_part}");
-        // A fragment-only file takes `minecraft:core/position_tex_color` as its vertex stage.
-        let (vertex_file, vertex_dir) = match vsh_file {
-            Some(file) => (file, dir.clone()),
-            None => (
-                "assets/minecraft/shaders/core/position_tex_color.vsh".to_owned(),
-                "minecraft:shaders/core/".to_owned(),
-            ),
-        };
-        let (fragment_file, fsh_text) = match &fsh_file {
-            Some(file) => match read_stage(file) {
-                Ok(text) => (file.clone(), text),
-                Err(e) => {
-                    refused.push(e);
-                    continue;
-                }
-            },
-            None => (vertex_file.clone(), STAND_IN_FRAGMENT.to_owned()),
-        };
-        let vsh_text = match read_stage(&vertex_file) {
-            Ok(text) => text,
-            Err(e) => {
-                refused.push(e);
-                continue;
-            }
-        };
-        let sources = sunrise_mod_pipeline::ProgramSources {
-            vertex_file: &vertex_file,
-            vertex_dir: &vertex_dir,
-            vertex: &vsh_text,
-            fragment_file: &fragment_file,
-            fragment_dir: &dir,
-            fragment: &fsh_text,
-        };
-        // Whether a pipeline is textured is in the mod's Rust code; the program says so in the
-        // text the translator reads.
-        let program = match sunrise_mod_pipeline::extract_program_bindings(&sources, &[], &include)
-        {
-            Ok(program) => program,
-            Err(e) => {
-                refused.push(e.to_string());
-                continue;
-            }
-        };
-        let is_default = program.vertex_inputs.iter().all(|(n, t)| {
-            sunrise_mod_pipeline::DEFAULT_VERTEX_INPUTS
-                .iter()
-                .any(|(dn, dt)| dn == n && dt == t)
-        });
-        let custom_refs: Vec<(&str, &str)> = program
-            .vertex_inputs
+    /// The text of a stage file, which must exist.
+    fn stage(&self, file: &str) -> Result<String, String> {
+        self.asset(file)?
+            .ok_or_else(|| format!("{file}: not found"))
+    }
+}
+
+/// The vertex inputs a program is checked against: the program's own when one is not among
+/// [`sunrise_mod_pipeline::DEFAULT_VERTEX_INPUTS`] (`PipelineVertexFormat::PositionTexColor`, the
+/// whole format), the default format otherwise.
+fn vertex_inputs_to_check(declared: &[(String, String)]) -> Vec<(&str, &str)> {
+    let defaults = &sunrise_mod_pipeline::DEFAULT_VERTEX_INPUTS;
+    if declared
+        .iter()
+        .all(|(n, t)| defaults.iter().any(|(dn, dt)| dn == n && dt == t))
+    {
+        defaults.to_vec()
+    } else {
+        declared
             .iter()
             .map(|(n, t)| (n.as_str(), t.as_str()))
-            .collect();
-        let mod_bindings: Vec<sunrise_mod_pipeline::ModBinding<'_>> = program
-            .bindings
-            .iter()
-            .map(|(name, kind)| sunrise_mod_pipeline::ModBinding {
-                name: name.as_str(),
-                kind: *kind,
-            })
-            .collect();
-        let options = sunrise_mod_pipeline::Options {
-            textured: program.textured,
-            vertex_inputs: if is_default {
-                &sunrise_mod_pipeline::DEFAULT_VERTEX_INPUTS
-            } else {
-                &custom_refs
-            },
-            mod_bindings: &mod_bindings,
-            push_constant_size: program.push_constant_size,
-            check_backends: true,
-            ..Default::default()
-        };
-        // A program joins the OIT passes by including `oit.glsl`, directly or through another
-        // include: `program.includes` lists every file its stages' expansion read. The stand-in
-        // fragment shader of a vertex-only file is no OIT program.
-        if let Err(problems) = sunrise_mod_pipeline::translate(&sources, &options, &include) {
-            refused.extend(problems.into_iter().map(|p| p.to_string()));
-        } else if fsh_file.is_some()
-            && program.includes.iter().any(|id| id == OIT_INCLUDE)
-            && let Err(problems) =
-                sunrise_mod_pipeline::translate_oit(&sources, &options, false, &include)
-        {
-            refused.extend(problems.into_iter().map(|p| p.to_string()));
-        }
+            .collect()
     }
-    (count, refused)
+}
+
+/// Reads, translates and validates one program, as [`pipeline_shaders`] documents: every refusal
+/// as `<file>[:<line>:<column>]: <message>`.
+fn check_program(program: &Program, assets: &Assets<'_>) -> Result<(), Vec<String>> {
+    let fragment = if program.stand_in {
+        STAND_IN_FRAGMENT.to_owned()
+    } else {
+        assets.stage(&program.fragment_file).map_err(|e| vec![e])?
+    };
+    let vertex = assets.stage(&program.vertex_file).map_err(|e| vec![e])?;
+    let sources = sunrise_mod_pipeline::ProgramSources {
+        vertex_file: &program.vertex_file,
+        vertex_dir: &program.vertex_dir,
+        vertex: &vertex,
+        fragment_file: &program.fragment_file,
+        fragment_dir: &program.fragment_dir,
+        fragment: &fragment,
+    };
+    let include = |id: &str| assets.include(id);
+    // Whether a pipeline is textured is in the mod's Rust code; the program says so in the
+    // text the translator reads.
+    let bindings = sunrise_mod_pipeline::extract_program_bindings(&sources, &[], &include)
+        .map_err(|e| vec![e.to_string()])?;
+    let mod_bindings: Vec<sunrise_mod_pipeline::ModBinding<'_>> = bindings
+        .bindings
+        .iter()
+        .map(|(name, kind)| sunrise_mod_pipeline::ModBinding {
+            name: name.as_str(),
+            kind: *kind,
+        })
+        .collect();
+    let vertex_inputs = vertex_inputs_to_check(&bindings.vertex_inputs);
+    let options = sunrise_mod_pipeline::Options {
+        textured: bindings.textured,
+        vertex_inputs: &vertex_inputs,
+        mod_bindings: &mod_bindings,
+        push_constant_size: bindings.push_constant_size,
+        check_backends: true,
+        ..Default::default()
+    };
+    let refusals = |problems: Vec<sunrise_mod_pipeline::check::Problem>| {
+        problems.iter().map(ToString::to_string).collect::<Vec<_>>()
+    };
+    sunrise_mod_pipeline::translate(&sources, &options, &include).map_err(refusals)?;
+    // A program joins the OIT passes by including `oit.glsl`, directly or through another
+    // include: `bindings.includes` lists every file its stages' expansion read.
+    if !program.stand_in && bindings.includes.iter().any(|id| id == OIT_INCLUDE) {
+        sunrise_mod_pipeline::translate_oit(&sources, &options, false, &include)
+            .map_err(refusals)?;
+    }
+    Ok(())
 }
 
 /// One line per data folder that holds files under 26.2's name for a folder 26.3 reads under
