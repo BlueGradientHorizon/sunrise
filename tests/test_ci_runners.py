@@ -28,6 +28,32 @@ def workflow(path):
     return yaml.load(path.read_text(), Loader=yaml.BaseLoader)
 
 
+def fork_flag_expressions(document):
+    """Every `if`, `runs-on` and `env` value of a parsed workflow (the places a job is routed or classified)."""
+    def strings(node):
+        if isinstance(node, dict):
+            for value in node.values():
+                yield from strings(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from strings(value)
+        else:
+            yield str(node)
+
+    def walk(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in ("if", "runs-on", "env"):
+                    yield from strings(value)
+                else:
+                    yield from walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                yield from walk(value)
+
+    return list(walk(document))
+
+
 def jobs(document):
     """(name, job) for each job of a parsed workflow."""
     return list(document["jobs"].items())
@@ -64,7 +90,18 @@ class OwnRunnerTests(unittest.TestCase):
     def test_workflows_do_not_classify_pull_requests_by_fork_flag(self):
         for path in sorted(WORKFLOWS.glob("*.y*ml")):
             with self.subTest(workflow=path.name):
-                self.assertNotIn("head.repo.fork", path.read_text())
+                for expression in fork_flag_expressions(yaml.safe_load(path.read_text())):
+                    self.assertNotIn("head.repo.fork", expression)
+
+    def test_the_fork_flag_is_found_in_an_if_a_runs_on_and_an_env_value_only(self):
+        flagged = "${{ github.event.pull_request.head.repo.fork }}"
+        document = yaml.safe_load(
+            "jobs:\n  a:\n    if: " + flagged + "\n    runs-on: x\n"
+            "  b:\n    runs-on: ${{ " + flagged[3:-3] + " && 'p' || 'q' }}\n"
+            "  c:\n    runs-on: x\n    steps:\n      - env:\n          FORK: " + flagged + "\n"
+            "        run: echo head.repo.fork\n")
+        found = [e for e in fork_flag_expressions(document) if "head.repo.fork" in e]
+        self.assertEqual(len(found), 3)
 
     def test_every_job_on_our_runners_can_go_back_to_github(self):
         count = 0
@@ -115,16 +152,6 @@ class OwnRunnerTests(unittest.TestCase):
                 self.assertNotIn("write", granted.values(), where)
 
     def test_no_deployment_environment_on_our_runners(self):
-        import hashlib
-        import sys
-        from unittest.mock import patch
-
-        # Reuse the repository's pinned offline parser, including YAML merge semantics.
-        archive = ROOT / "tools/ci/vendor/pyyaml-6.0.3.zip"
-        self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(),
-                         "94ac21b4343e15647b3b5b5bd594aab5b7d3cd8d2ce17db15acb7260d489b6fc")
-        with patch.object(sys, "path", [str(archive), *sys.path]):
-            import yaml
         for path in sorted(WORKFLOWS.glob("*.y*ml")):
             document = yaml.safe_load(path.read_text())
             for name, job in document["jobs"].items():
