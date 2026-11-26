@@ -521,8 +521,9 @@ def sdk_body(index: dict) -> str:
         entry += "  " + ", ".join(f"`{id}`" for id in note["ids"]) + "\n"
         left = len(notes) - shown
         cut = f"\nThe other {left} notes are in {SDK_INDEX}'s `surface.notes`.\n"
-        if len(body) + len(entry) + len(cut) > GITHUB_RELEASE_BODY_LIMIT and left > 1 or \
-                len(body) + len(entry) > GITHUB_RELEASE_BODY_LIMIT:
+        # The last note needs no room for the cut line after it.
+        after = len(cut) if left > 1 else 0
+        if len(body) + len(entry) + after > GITHUB_RELEASE_BODY_LIMIT:
             return body + cut
         body += entry
     return body

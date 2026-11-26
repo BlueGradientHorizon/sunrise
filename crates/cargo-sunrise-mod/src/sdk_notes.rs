@@ -54,6 +54,8 @@ pub(crate) fn chain(
     let mut stopped = None;
     let mut name = newer.name.clone();
     let mut index = index_of(newer)?;
+    // Each build names an older one; one named twice would send the walk round for ever.
+    let mut seen = BTreeSet::from([newer.build.clone()]);
     loop {
         notes.extend(index.surface.notes.drain(..).map(|note| Shipped {
             build: name.clone(),
@@ -63,6 +65,11 @@ pub(crate) fn chain(
             break;
         };
         if older == Some(previous.as_str()) {
+            break;
+        }
+        if !seen.insert(previous.clone()) {
+            let short = previous.get(..7).unwrap_or(&previous);
+            stopped = Some(format!("build {short} is named twice on the chain"));
             break;
         }
         match fetch(&previous).and_then(|build| Ok((index_of(&build)?, build.name))) {
