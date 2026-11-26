@@ -1456,8 +1456,9 @@ pub struct Resource<'a> {
 /// twice is listed twice). It finds them as `rewrite` does when it binds them, so a caller
 /// that needs to know which names a program declares (a static check, which has no layout to ask)
 /// never disagrees with the translator: a declaration is read whatever else is on its line, and
-/// whatever qualifier stands before `uniform`. The text is read as `rewrite` reads it: with
-/// comments gone and includes inlined ([`expand_includes`]).
+/// whatever real GLSL qualifier (interpolation, precision, `invariant`, memory) stands before
+/// `uniform`; any other word before it makes the statement no declaration. The text is read as
+/// `rewrite` reads it: with comments gone and includes inlined ([`expand_includes`]).
 pub fn resources(text: &str) -> Vec<Resource<'_>> {
     text.lines()
         .flat_map(declaration_lines)
@@ -1562,6 +1563,30 @@ struct Decl<'a> {
     name: &'a str,
 }
 
+/// The memory qualifiers of a declaration: before its storage word, or after it
+/// (`uniform readonly image2D img;`).
+const MEMORY_QUALIFIERS: [&str; 5] = ["readonly", "writeonly", "coherent", "volatile", "restrict"];
+
+/// The other qualifiers that may stand before a declaration's `in`, `out` or `uniform`:
+/// interpolation, auxiliary storage, `invariant`/`precise` and precision.
+const LEADING_QUALIFIERS: [&str; 11] = [
+    "flat",
+    "smooth",
+    "noperspective",
+    "centroid",
+    "sample",
+    "patch",
+    "invariant",
+    "precise",
+    "highp",
+    "mediump",
+    "lowp",
+];
+
+/// The declaration `line` is, if it is one: a statement of `layout(...)`, then only real
+/// qualifiers (`LEADING_QUALIFIERS`, `MEMORY_QUALIFIERS`), then `in`, `out` or `uniform`, then
+/// the type and the name. Any other word before the storage word makes it some other statement
+/// (`x = in vec2 y;`, `return out vec4 c;`).
 fn declaration(line: &str) -> Option<Decl<'_>> {
     let mut rest = line.trim();
     let mut location = None;
@@ -1581,14 +1606,16 @@ fn declaration(line: &str) -> Option<Decl<'_>> {
     let storage_at = words
         .iter()
         .position(|w| matches!(*w, "in" | "out" | "uniform"))?;
-    // Memory qualifiers may follow the storage word too: `uniform readonly image2D img;`.
     let mut qualifiers = words[..storage_at].to_vec();
+    if !qualifiers
+        .iter()
+        .all(|w| LEADING_QUALIFIERS.contains(w) || MEMORY_QUALIFIERS.contains(w))
+    {
+        return None;
+    }
     let mut tail = &words[storage_at + 1..];
     while let [word, others @ ..] = tail
-        && matches!(
-            *word,
-            "readonly" | "writeonly" | "coherent" | "volatile" | "restrict"
-        )
+        && MEMORY_QUALIFIERS.contains(word)
     {
         qualifiers.push(*word);
         tail = others;
@@ -3063,6 +3090,50 @@ mod tests {
         assert_eq!(
             stage_inputs(text),
             [("Position", "vec3"), ("Color", "vec4"), ("UV0", "vec2")]
+        );
+    }
+
+    /// Only real GLSL qualifiers may stand before `in`, `out` or `uniform`: a statement that has
+    /// another word there (an assignment, a `return`) is no declaration, and each real
+    /// qualifier form still is one.
+    #[test]
+    fn a_statement_with_junk_before_the_storage_word_is_no_declaration() {
+        let junk = "x = in vec2 y;\nreturn out vec4 c;\nreturn uniform sampler2D s;\n\
+            foo(a) uniform image2D img;\nint k in vec2 z;\n";
+        assert_eq!(resources(junk), []);
+        assert_eq!(stage_inputs(junk), []);
+        let real = "flat in uint a;\nsmooth in vec2 b;\nnoperspective in vec2 c;\n\
+            centroid in vec2 d;\nsample in vec2 e;\ninvariant out vec4 f;\n\
+            precise out vec4 g;\nlayout(location = 2) flat in int h;\n\
+            highp uniform sampler2D S;\nlowp in vec2 i;\nmediump in vec2 j;\n\
+            layout(rgba8) coherent volatile restrict writeonly uniform image2D Img;\n";
+        assert_eq!(
+            stage_inputs(real),
+            [
+                ("a", "uint"),
+                ("b", "vec2"),
+                ("c", "vec2"),
+                ("d", "vec2"),
+                ("e", "vec2"),
+                ("h", "int"),
+                ("i", "vec2"),
+                ("j", "vec2"),
+            ]
+        );
+        assert_eq!(
+            resources(real),
+            [
+                Resource {
+                    name: "S",
+                    kind: ResourceKind::Sampler2D
+                },
+                Resource {
+                    name: "Img",
+                    kind: ResourceKind::StorageImage {
+                        access: ImageAccess::WriteOnly
+                    }
+                },
+            ]
         );
     }
 
