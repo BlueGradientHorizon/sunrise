@@ -13,15 +13,15 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
-        let message = sunrise_client_core::text::Text::translate(
+        let message = sunrise_game_data::text::Text::translate(
             if too_high {
                 "build.tooHigh"
             } else {
                 "build.tooLow"
             },
-            &[sunrise_client_core::text::Text::literal(limit.to_string())],
+            &[sunrise_game_data::text::Text::literal(limit.to_string())],
         )
-        .with_color(sunrise_client_core::text::RED);
+        .with_color(sunrise_game_data::text::RED);
         host.hub.send_to(
             conn,
             &C::SystemChat(play::SystemChat {
@@ -1159,7 +1159,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             };
                             self.game_rule_changed(&rule.name, value, Some(&actor));
                         }
-                        let message = sunrise_client_core::text::Text::tr(
+                        let message = sunrise_game_data::text::Text::tr(
                             "commands.gamerule.set",
                             &[&entry.name, &entry.value],
                         );
@@ -1219,7 +1219,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .ok()
                     .and_then(|index| sunrise_command::args::GameMode::ALL.get(index))
                 {
-                    let name = sunrise_client_core::text::Text::translate(
+                    let name = sunrise_game_data::text::Text::translate(
                         &format!("gameMode.{}", mode.name()),
                         &[],
                     );
@@ -1377,14 +1377,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Some(host) = self.lan.as_ref() else {
             return;
         };
-        let message = sunrise_client_core::text::Text::translate(
+        let message = sunrise_game_data::text::Text::translate(
             "build.spawn_protection",
-            &[sunrise_client_core::text::Text::literal(format!(
+            &[sunrise_game_data::text::Text::literal(format!(
                 "{}, {}, {}",
                 pos[0], pos[1], pos[2]
             ))],
         )
-        .with_color(sunrise_client_core::text::RED);
+        .with_color(sunrise_game_data::text::RED);
         host.hub.send_to(
             conn,
             &C::SystemChat(play::SystemChat {

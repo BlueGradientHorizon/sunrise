@@ -1,6 +1,6 @@
 //! Client-side container menus: chest/shulker titles, slots, rendering, and quick-move.
 use super::Game;
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::{BlockEntity, is_chest_block};
 

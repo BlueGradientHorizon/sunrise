@@ -23,7 +23,7 @@
     "sunrise-game-discovery": "engine",
     "sunrise-bench": "engine",
     "sunrise-client": "engine",
-    "sunrise-client-core": "engine",
+    "sunrise-game-data": "engine",
     "sunrise-client-input": "engine",
     "sunrise-border": "engine",
     "sunrise-client-lib": "engine",
@@ -115,7 +115,7 @@
     "_doc": "docs/layers.md#engine: vanilla's rules and data with no desktop in them, which a port builds on. They depend only on each other, and never on a forbidden library.",
     "crates": [
       "sunrise-assets",
-      "sunrise-client-core",
+      "sunrise-game-data",
       "sunrise-command",
       "sunrise-connected",
       "sunrise-core",

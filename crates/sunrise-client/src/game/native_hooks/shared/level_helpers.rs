@@ -94,7 +94,7 @@ impl GameLevel<'_> {
     /// Sunrise's own. The one place both whole-block write paths make it.
     pub(in crate::game) fn new_block_entity(&self, name: &str) -> Option<BlockEntity> {
         let mut nbt = None;
-        if sunrise_client_core::block_entity_types::type_for(name).is_some() {
+        if sunrise_game_data::block_entity_types::type_for(name).is_some() {
             self.native_block_entity(name, self.registry.default_state(name)?, &mut nbt);
         }
         block_entity_for_block(self.registry, self.facts, name, nbt.unwrap_or_default())
@@ -257,7 +257,7 @@ pub(in crate::game) fn block_entity_for_block(
     name: &str,
     initial: Compound,
 ) -> Option<BlockEntity> {
-    if let Some(kind) = sunrise_client_core::block_entity_types::type_for(name) {
+    if let Some(kind) = sunrise_game_data::block_entity_types::type_for(name) {
         let slots = mod_api::__private::parts_installation::block_container(name)
             .map_or(0, |container| container.slots);
         return Some(BlockEntity::Mod(Box::new(EngineBlockEntity::new(

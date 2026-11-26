@@ -6,9 +6,9 @@
 //! own passes.
 use super::Game;
 use crate::game::published_loops::{Attributed, LoopFlow, LoopMod};
-#[allow(unused_imports)]
-use sunrise_client_core::Result;
 use sunrise_core::position::BlockPos;
+#[allow(unused_imports)]
+use sunrise_game_data::Result;
 use sunrise_gameplay::block_entity_ticks::{block_ticking_at, ticker_name};
 use sunrise_level::block_entity_ticks::Ticker;
 #[allow(unused_imports)]
@@ -175,7 +175,7 @@ impl OwnBlockEntities {
     /// table, or an empty one.
     #[cold]
     pub(in crate::game) fn resolve(ids: &[&str]) -> Option<Box<[bool]>> {
-        let types = sunrise_client_core::block_entity_types::current()?;
+        let types = sunrise_game_data::block_entity_types::current()?;
         if types.numeric_id_bound() == 0 {
             return None;
         }
@@ -903,19 +903,16 @@ pub(in crate::game) mod add_blocks_tests {
                     matches!(game.world.block_entities.get(&(3, 64, 1)), Some(BlockEntity::Mod(entity)) if entity.id() == "add_blocks_test:own")
                 );
                 assert_eq!(
-                    sunrise_client_core::block_entity_types::valid(BLOCK, "minecraft:vault"),
+                    sunrise_game_data::block_entity_types::valid(BLOCK, "minecraft:vault"),
                     Some(true)
                 );
                 assert_eq!(
-                    sunrise_client_core::block_entity_types::valid(BLOCK, "add_blocks_test:extra"),
+                    sunrise_game_data::block_entity_types::valid(BLOCK, "add_blocks_test:extra"),
                     Some(true)
                 );
+                assert_eq!(sunrise_game_data::block_entity_types::type_for(BLOCK), None);
                 assert_eq!(
-                    sunrise_client_core::block_entity_types::type_for(BLOCK),
-                    None
-                );
-                assert_eq!(
-                    sunrise_client_core::block_entity_types::factory_block(BLOCK),
+                    sunrise_game_data::block_entity_types::factory_block(BLOCK),
                     "minecraft:vault"
                 );
             },
@@ -1211,7 +1208,7 @@ pub(in crate::game) mod furnace_changed_tests {
             Some(1),
             true,
             None,
-            Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
+            Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
         )
         .unwrap();
         request.save_root = root.to_owned();
@@ -1765,7 +1762,7 @@ pub(in crate::game) mod own_block_entity_tests {
         with_machines(mods, &placed, |game| {
             // Mod B's entity on mod A's block.
             let d = (9, 64, 1);
-            assert!(sunrise_client_core::block_entity_types::additional_valid(
+            assert!(sunrise_game_data::block_entity_types::additional_valid(
                 A, B
             ));
             place_mod_entity(game, d, A, B);
@@ -1815,10 +1812,10 @@ pub(in crate::game) mod own_block_entity_tests {
                 Some(BlockEntity::DaylightDetector)
             ));
             let d = (5, 64, 1);
-            assert!(sunrise_client_core::block_entity_types::additional_valid(
+            assert!(sunrise_game_data::block_entity_types::additional_valid(
                 DETECTOR, B
             ));
-            assert!(!sunrise_client_core::block_entity_types::additional_valid(
+            assert!(!sunrise_game_data::block_entity_types::additional_valid(
                 DETECTOR, A
             ));
             place_mod_entity(game, d, DETECTOR, B);

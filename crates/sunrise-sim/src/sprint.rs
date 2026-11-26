@@ -18,7 +18,7 @@ impl Keys {
     pub fn direction(self) -> [f32; 2] {
         match self.analog {
             Some(v) => v,
-            None => sunrise_client_core::move_input::keyboard_direction(
+            None => sunrise_game_data::move_input::keyboard_direction(
                 self.forward,
                 self.backward,
                 self.left,

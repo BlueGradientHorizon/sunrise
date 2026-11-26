@@ -8,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-pub use sunrise_client_core::pattern;
+pub use sunrise_game_data::pattern;
 
 /// `PackCompatibility`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

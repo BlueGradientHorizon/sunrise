@@ -5,7 +5,7 @@ use crate::game::commands::extra::num;
 use crate::game::commands::extra::tr_error;
 use crate::game::commands::extra::two_places;
 use std::time::Instant;
-use sunrise_client_core::text::{Style, Text};
+use sunrise_game_data::text::{Style, Text};
 use sunrise_level::profile_lookup::{NameOrId, Resolve, ResolvedProfile};
 use sunrise_protocol::packets::{
     Empty,

@@ -101,7 +101,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         mover: MoverType,
         movement: Vec3,
         auto_jump: bool,
-    ) -> sunrise_client_core::Result<Option<Vec3>> {
+    ) -> sunrise_game_data::Result<Option<Vec3>> {
         self.side_move_local_player(mover, movement, auto_jump)
     }
 
@@ -314,7 +314,7 @@ pub(in crate::game) fn pushed_movement<W>(
     on_ground: bool,
     context: Option<CollisionContext<'_>>,
     entities: &[Aabb],
-) -> sunrise_client_core::Result<Vec3>
+) -> sunrise_game_data::Result<Vec3>
 where
     W: BlockCollisionWorld<Error = std::io::Error> + EntityMovementWorld<Error = std::io::Error>,
 {

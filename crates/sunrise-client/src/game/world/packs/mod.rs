@@ -22,10 +22,10 @@ use sunrise_client::{
     packs::{self, Pack, Position},
 };
 #[cfg(feature = "client")]
-use sunrise_client_core::lang;
-use sunrise_client_core::text::{Style, Text};
-#[cfg(feature = "client")]
 use sunrise_client_render::streaming::WorkerContext;
+#[cfg(feature = "client")]
+use sunrise_game_data::lang;
+use sunrise_game_data::text::{Style, Text};
 #[cfg(feature = "client")]
 use sunrise_level::assets::Assets;
 use sunrise_level::datapack::DataPack;
@@ -98,7 +98,7 @@ pub(in crate::game) fn startup_root(
     selected: &[String],
     server: &[Pack],
     mod_sources: &super::mods::ModsState,
-) -> sunrise_client_core::Result<PackRoots> {
+) -> sunrise_game_data::Result<PackRoots> {
     let mut all = packs::discover(vanilla, &packs_dir());
     all.extend(super::pack_finders::discover(
         mod_api::PackType::ClientResources,
@@ -397,8 +397,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             clear_selection(&mut self.side.settings);
             if self.spawn_pack_reload(ReloadKind::Selection).is_ok() {
                 // addResourcePackLoadFailToast(null), SystemToast.addOrUpdate.
-                let title =
-                    sunrise_client_core::text::Text::translate("resourcePack.load_fail", &[]);
+                let title = sunrise_game_data::text::Text::translate("resourcePack.load_fail", &[]);
                 self.add_or_update_system_toast(
                     super::toast_manager::SystemToastId::PackLoadFailure,
                     sunrise_client::toasts::SystemToast::new(title, None),
@@ -571,7 +570,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn apply_staged_pack(
         &mut self,
         staged: StagedPack,
-    ) -> sunrise_client_core::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         let StagedPack {
             root,
             client_applies,
@@ -810,7 +809,7 @@ pub(in crate::game) fn stage_pack(
     force_unicode: bool,
     japanese: bool,
     progress: &super::Progress,
-) -> sunrise_client_core::Result<StagedPack> {
+) -> sunrise_game_data::Result<StagedPack> {
     let resource_root = startup_root(vanilla_root, selected, server, mod_sources)?.selected?;
     let resource_root = super::client_reload::stage_texture_atlases(resource_root, texture_atlases);
     let root = resource_root.prepared().to_path_buf();
@@ -819,7 +818,7 @@ pub(in crate::game) fn stage_pack(
     let (staged, client_applies) = super::client_reload::stage_client_reload(
         &source,
         client_listeners,
-        || -> sunrise_client_core::Result<_> {
+        || -> sunrise_game_data::Result<_> {
             // The world's models and sprites and the GUI atlas read the same root and nothing of
             // each other: about a second each, side by side.
             let pool = super::resource_tables::dynamic_texture_pool();

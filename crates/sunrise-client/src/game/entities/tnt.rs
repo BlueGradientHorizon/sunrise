@@ -2,12 +2,12 @@
 //! power 4, `TntRenderer` swell and white flash, and `TntBlock.useItemOn`
 //! (flint and steel / fire charge).
 use super::{Game, entity::Entity};
-use sunrise_client_core::{Result, text::Text};
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
+use sunrise_game_data::{Result, text::Text};
 use sunrise_items::items::ItemStack;
 use sunrise_level::collisions::SceneCollisions;
 use sunrise_sim::entity_rules::EntityRules;
@@ -372,7 +372,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
+                .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
     }
     /// Primes TNT a level event announced, or, when the mods refuse, puts
     /// back the block the fire or signal had already taken out.
@@ -590,13 +590,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if !self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
+                .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
             {
                 return Ok(());
             }
             // ExplosionInteraction.TNT: the tnt_explosion_drop_decay rule.
-            let interaction = self
-                .destroy_type(sunrise_client_core::gamerules::vanilla::TNT_EXPLOSION_DROP_DECAY);
+            let interaction =
+                self.destroy_type(sunrise_game_data::gamerules::vanilla::TNT_EXPLOSION_DROP_DECAY);
             self.side.combat.0.explosion_in_water = in_water;
             self.side.combat.0.explosion_direct = Some(id);
             self.set_blast_owner(owner, guest);
@@ -765,7 +765,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
+            .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
         {
             // TntBlock.useItemOn: the rule is off, the acting player's overlay
             // says so, and PASS lets the item's own useOn light a fire there.

@@ -2,8 +2,8 @@
 //! load key and press a hotbar key (`Minecraft.handleKeybinds`).
 use super::Game;
 use sunrise_client::keybinds;
-use sunrise_client_core::text::Text;
 use sunrise_core::nbt::Tag;
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::hotbar;
 

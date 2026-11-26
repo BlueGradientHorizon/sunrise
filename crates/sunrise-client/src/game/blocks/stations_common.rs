@@ -127,7 +127,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             Some(input)
                 if input.custom_name().is_none()
                     && s.name
-                        == sunrise_client_core::lang::returned_to_server(|| {
+                        == sunrise_game_data::lang::returned_to_server(|| {
                             self.stack_hover_name_text(input).plain()
                         }) =>
             {

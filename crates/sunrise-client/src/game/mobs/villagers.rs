@@ -368,7 +368,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let griefing = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING);
+            .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING);
         if self.dropped.is_empty() || (!griefing && !self.grief_hooked()) {
             return;
         }

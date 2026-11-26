@@ -10,7 +10,7 @@ use sunrise_core::{
 };
 use sunrise_world::registry::BlockStateId;
 use {
-    sunrise_client_core::Result, sunrise_level::chunk_map::ChunkMap,
+    sunrise_game_data::Result, sunrise_level::chunk_map::ChunkMap,
     sunrise_level::chunk_map::ChunkMembershipDelta, sunrise_level::containers::BlockEntity,
     sunrise_level::containers::CreakingHeart, sunrise_level::particle_options::ParticleType,
     sunrise_sim::mobs::Mob, sunrise_sim::mobs::MobType, sunrise_sim::mobs::creaking_heart,
@@ -289,7 +289,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
+                .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS)
             {
                 self.spawn_orbs(
                     [
@@ -315,7 +315,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return Ok(());
         };
         let state = self.world.block(key.0, key.1, key.2);
-        if sunrise_client_core::block_entity_types::factory_block(&self.res.facts().get(state).name)
+        if sunrise_game_data::block_entity_types::factory_block(&self.res.facts().get(state).name)
             != "minecraft:creaking_heart"
         {
             // The block is gone: preRemoveSideEffects.
@@ -349,11 +349,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS)
+                .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MONSTERS)
+                .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MONSTERS)
     }
     /// Hearts that came with generated or loaded chunks get their block
     /// entity (`newBlockEntity`) the first time their chunk is seen lit.

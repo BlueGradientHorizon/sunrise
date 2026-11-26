@@ -205,7 +205,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         self.open_social(false);
                     }
                     "key.socialInteractions" => {
-                        let message = sunrise_client_core::text::Text::translate(
+                        let message = sunrise_game_data::text::Text::translate(
                             "multiplayer.socialInteractions.not_available",
                             &[],
                         );

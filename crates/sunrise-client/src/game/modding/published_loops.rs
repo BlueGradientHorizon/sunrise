@@ -17,7 +17,7 @@ use super::Game;
 use std::any::Any;
 use std::marker::PhantomData;
 use std::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 
 /// What a slot answers for the entry the loop is about to run.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

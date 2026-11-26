@@ -466,7 +466,7 @@ pub(in crate::game) mod tests {
                     ]
                     .into_iter()
                     .map(|event| {
-                        sunrise_client_core::sound_source::ServerSound {
+                        sunrise_game_data::sound_source::ServerSound {
                             event: event.into(),
                             position: at,
                             volume: 1.0,

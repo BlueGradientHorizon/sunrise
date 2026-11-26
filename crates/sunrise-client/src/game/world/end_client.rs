@@ -305,7 +305,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let flash = &self.end.flash;
             let instance = sunrise_client::sound_engine::SoundInstance::directional(
                 "minecraft:weather.end_flash",
-                sunrise_client_core::sound_source::WEATHER,
+                sunrise_game_data::sound_source::WEATHER,
                 sunrise_level::random_source::create(),
                 self.side.audio.0.listener,
                 flash.x_angle,

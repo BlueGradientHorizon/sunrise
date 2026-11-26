@@ -1,7 +1,7 @@
 //! Captured level sounds through the production packet builder and protocol codec.
 use std::io::Write;
 use sunrise_client::lan::containers::captured_sound_packet;
-use sunrise_client_core::sound_source::ServerSound;
+use sunrise_game_data::sound_source::ServerSound;
 use sunrise_protocol::{buf::Reader, packets::play::Clientbound as C};
 
 pub fn main() {

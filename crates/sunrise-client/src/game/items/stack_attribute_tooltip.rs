@@ -6,7 +6,7 @@ use sunrise_client::item_tooltip::{
     AttributeStyle, AttributeTooltipContext, AttributeTooltipListener, NoAttributeListener,
     attribute_tooltip,
 };
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_world::attributes::Tooltip;
 

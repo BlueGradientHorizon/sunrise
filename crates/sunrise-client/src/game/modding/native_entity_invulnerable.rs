@@ -405,7 +405,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     ) -> Option<bool> {
         let own = self.native_target_team(self.native_entity_target(entity)?)?;
         let their = self.native_target_team(self.native_entity_target(source)?)?;
-        Some(sunrise_client_core::scoreboard::teams_allow_damage(
+        Some(sunrise_game_data::scoreboard::teams_allow_damage(
             own, their,
         ))
     }
@@ -415,7 +415,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn native_target_team(
         &self,
         t: Target,
-    ) -> Option<Option<&sunrise_client_core::scoreboard::Team>> {
+    ) -> Option<Option<&sunrise_game_data::scoreboard::Team>> {
         Some(match t {
             Target::Player => self.player_team(),
             Target::Guest(conn) => self

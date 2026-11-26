@@ -6,7 +6,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         hit: Option<&Hit>,
         original: &ItemStack,
-    ) -> sunrise_client_core::Result<bool> {
+    ) -> sunrise_game_data::Result<bool> {
         if let Some(hit) = hit {
             self.trigger_block("minecraft:item_used_on_block", hit.pos, original);
         }

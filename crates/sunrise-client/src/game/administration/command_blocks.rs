@@ -11,7 +11,7 @@ use sunrise_client::{
     ui,
 };
 #[allow(unused_imports)]
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 #[allow(unused_imports)]
 use sunrise_level::{
     command_block::{CommandBlock, Mode},

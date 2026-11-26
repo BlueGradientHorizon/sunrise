@@ -76,7 +76,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 .is_none_or(|t| t.elapsed() > Duration::from_millis(2000))
         {
             r.joining_narrated = Some(Instant::now());
-            self.say_system_now(&sunrise_client_core::text::Text::translate(
+            self.say_system_now(&sunrise_game_data::text::Text::translate(
                 "narrator.joining",
                 &[],
             ));
@@ -93,7 +93,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         });
         let atlas = &self.side.gui.atlas;
-        let status = sunrise_client_core::text::Text::untrusted(r.status.as_str());
+        let status = sunrise_game_data::text::Text::untrusted(r.status.as_str());
         sunrise_client::level_loading::draw_connecting(
             batch,
             atlas,

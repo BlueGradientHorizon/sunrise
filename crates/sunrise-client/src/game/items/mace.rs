@@ -102,7 +102,7 @@ pub(in crate::game) struct SmashPush {
     pub(in crate::game) center: Vec3,
     pub(in crate::game) heavy: f64,
     pub(in crate::game) attacker: Option<u32>,
-    pub(in crate::game) team: Option<sunrise_client_core::scoreboard::Team>,
+    pub(in crate::game) team: Option<sunrise_game_data::scoreboard::Team>,
 }
 /// `MaceItem.getKnockbackPower` and the push of one entity at `at`, `heavy`
 /// being 2 after a fall of more than five blocks.
@@ -601,7 +601,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// team) or a creative player flying.
     pub(in crate::game::server_side) fn smash_push_player(&mut self, push: &SmashPush) {
         if self.spectator()
-            || sunrise_client_core::scoreboard::teams_allied(push.team.as_ref(), self.player_team())
+            || sunrise_game_data::scoreboard::teams_allied(push.team.as_ref(), self.player_team())
         {
             return;
         }

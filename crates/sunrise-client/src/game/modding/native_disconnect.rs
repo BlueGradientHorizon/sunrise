@@ -2,7 +2,7 @@
 //! The server half is `native_player_disconnect`.
 use super::Game;
 use mod_api::{DisconnectError, WorldEpoch};
-use sunrise_client_core::{Result, text::Text};
+use sunrise_game_data::{Result, text::Text};
 
 /// A client mod's request to leave, carried out at the end of the frame.
 pub(in crate::game) struct LeaveRequest {

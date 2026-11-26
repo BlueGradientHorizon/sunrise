@@ -60,7 +60,7 @@ pub(in crate::game) fn send_types(
             .map(|(name, json)| {
                 (
                     (*name).into(),
-                    Some(sunrise_client_core::scoreboard::json_to_tag(json)),
+                    Some(sunrise_game_data::scoreboard::json_to_tag(json)),
                 )
             })
             .collect(),
@@ -141,7 +141,7 @@ impl CloudPack {
     pub(in crate::game) fn pack(&self) -> sunrise_client::packs::Pack {
         sunrise_client::packs::pack_for(
             "server/cloud_heights".into(),
-            sunrise_client_core::text::Text::literal("cloud heights"),
+            sunrise_game_data::text::Text::literal("cloud heights"),
             sunrise_client::packs::Source::Dir(self.0.clone()),
             sunrise_client::packs::RESOURCE_FORMAT,
         )

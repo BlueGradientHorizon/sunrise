@@ -13,13 +13,13 @@ use sunrise_client::{
     block_entity_render::vertex_light, hud::HudBatch, hud_layout, hud_overlays, inventory_effects,
     mesher::Vertex,
 };
-#[allow(unused_imports)]
-use sunrise_client_core::text::Text;
 use sunrise_core::nbt::Tag;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::LegacyRandom,
 };
+#[allow(unused_imports)]
+use sunrise_game_data::text::Text;
 #[allow(unused_imports)]
 use sunrise_items::items::ItemStack;
 #[allow(unused_imports)]
@@ -147,7 +147,7 @@ pub(in crate::game) fn potion_cloud_from_nbt(tag: &Tag) -> Option<(Vec3, Breath)
         .and_then(|c| number(c.get("custom_color")))
         .map_or_else(
             || {
-                sunrise_client_core::potions::effects_color(
+                sunrise_game_data::potions::effects_color(
                     effects
                         .iter()
                         .filter(|(id, ..)| !hidden.contains(id))
@@ -301,8 +301,7 @@ pub(in crate::game) fn potion_cloud_to_nbt(c: &Breath, uuid: [i32; 4], raw: Opti
     );
     // Vanilla writes the key only while the contents differ from
     // PotionContents.EMPTY: no effects and the default water colour.
-    if !(potion.effects.is_empty()
-        && potion.color == sunrise_client_core::potions::BASE_POTION_COLOR)
+    if !(potion.effects.is_empty() && potion.color == sunrise_game_data::potions::BASE_POTION_COLOR)
     {
         map.insert("potion_contents".into(), Tag::Compound(contents));
     }

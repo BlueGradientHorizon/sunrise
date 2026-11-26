@@ -21,7 +21,7 @@ use sunrise_client::{
     mesher::Vertex,
     mobs::{ModelNormals, model_layers},
 };
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{
     containers::{BlockEntity, ModRevision},

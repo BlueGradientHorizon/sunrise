@@ -4,7 +4,7 @@
 //! usage text and the vanilla error messages. Argument types live in
 //! [`args`]; the vanilla command tree in [`vanilla`].
 #![forbid(unsafe_code)]
-pub use sunrise_client_core::suggestion::{Range, Suggestion};
+pub use sunrise_game_data::suggestion::{Range, Suggestion};
 pub mod args;
 pub mod block;
 pub mod codec;
@@ -32,7 +32,7 @@ use std::{
     collections::HashMap,
     sync::atomic::{AtomicU64, Ordering},
 };
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 
 /// The command id of a mod's command (`Dispatcher::with_mod_commands`).
 pub const MOD_COMMAND: &str = "mod";
@@ -788,7 +788,7 @@ impl Suggests {
                 for id in &reg.summonable {
                     if args::resource_matches(&contents, id) {
                         let (ns, path) = id.split_once(':').unwrap_or(("minecraft", id));
-                        let name = sunrise_client_core::lang::get(&format!(
+                        let name = sunrise_game_data::lang::get(&format!(
                             "entity.{ns}.{}",
                             path.replace('/', ".")
                         ));

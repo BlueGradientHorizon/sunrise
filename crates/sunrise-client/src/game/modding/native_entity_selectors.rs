@@ -1,7 +1,7 @@
 //! Mods' selector tokens (`@allies`, NeoForge's `EntitySelectorManager`): the frozen base
 //! selections the command registries parse them with.
 use mod_api::SelectorSort;
-use sunrise_client_core::registries::SelectorToken;
+use sunrise_game_data::registries::SelectorToken;
 
 /// The frozen base selections validated when the installed mods registered their tokens.
 pub(in crate::game) fn selector_tokens() -> Vec<SelectorToken> {

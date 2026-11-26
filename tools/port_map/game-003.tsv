@@ -57,12 +57,12 @@ DifficultyInstance.getSpecialMultiplier	port	crates/sunrise-sim/src/mobs/spawnin
 DifficultyInstance.calculateDifficulty	port	crates/sunrise-sim/src/mobs/spawning.rs::LocalDifficulty::new
 InteractionHand.asArm	inline	crates/sunrise-sim/src/mobs/ai.rs::Mob::swing_hand	off_hand != main arm left; the player's first person hand does the same in game/frame_geometry.rs hand_geometry
 InteractionResult.Success.heldItemTransformedTo	skip:java		result builder; Sunrise replaces the held item in place where the item is used
-ItemStackWithSlot.isValidInContainer	port	crates/sunrise-client-core/src/block_entity_nbt.rs::items	slots outside 0..size are dropped when items load
+ItemStackWithSlot.isValidInContainer	port	crates/sunrise-game-data/src/block_entity_nbt.rs::items	slots outside 0..size are dropped when items load
 LockCode.canUnlock	port	crates/sunrise-sim/src/advancements.rs::can_unlock	checked when a container opens (game/interface/advancements/mod.rs container_locked_for from lan_actions.rs): a spectator opens any container, otherwise the main hand must match the lock predicate
 RandomSequences.createSequence	port	crates/sunrise-items/src/random_sequences.rs::create
 RandomSequences.DirtyMarkingRandomSource.nextInt	skip:java		marks the saved data dirty on each draw; Sunrise saves every sequence
 RandomSequences.DirtyMarkingRandomSource.equals	skip:java		wrapper equality
-RandomizableContainer.trySaveLootTable	port	crates/sunrise-client-core/src/block_entity_nbt.rs::Fields::loot_table	saves LootTable and a non-zero seed, no items
+RandomizableContainer.trySaveLootTable	port	crates/sunrise-game-data/src/block_entity_nbt.rs::Fields::loot_table	saves LootTable and a non-zero seed, no items
 SimpleContainer.getItem	port	crates/sunrise-world/src/simple_container.rs::SimpleContainer::get	library port; villager and piglin inventories are plain vectors
 SimpleContainer.removeAllItems	port	crates/sunrise-world/src/simple_container.rs::SimpleContainer::remove_all
 SimpleContainer.removeItemNoUpdate	port	crates/sunrise-world/src/simple_container.rs::SimpleContainer::remove_no_update

@@ -1,12 +1,12 @@
 //! Install the opening's authoritative rules before either early server hook.
 use super::{Game, world_loading::PreparedWorld};
-use sunrise_client_core::gamerules::{GameRules, Value};
+use sunrise_game_data::gamerules::{GameRules, Value};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn prepare_world_and_rules(
         &mut self,
         request: super::world_loading::WorldRequest,
-    ) -> sunrise_client_core::Result<PreparedWorld> {
+    ) -> sunrise_game_data::Result<PreparedWorld> {
         self.join_world_rest()?;
         sunrise_level::spans::startup::arm("world.opening");
         let prepared = request.prepare(
@@ -23,7 +23,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn prepare_early_game_rules(
         &mut self,
         loader: super::world_loading::WorldLoader,
-    ) -> sunrise_client_core::Result<PreparedWorld> {
+    ) -> sunrise_game_data::Result<PreparedWorld> {
         let prepared = loader.finish()?;
         self.load_opening_game_rules(&prepared);
         Ok(prepared)

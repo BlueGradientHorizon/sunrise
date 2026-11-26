@@ -167,7 +167,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             )
         };
         let name = match &state.name {
-            Some(n) => sunrise_client_core::scoreboard::json_to_tag(&n.component()),
+            Some(n) => sunrise_game_data::scoreboard::json_to_tag(&n.component()),
             None => Tag::compound([("translate", Tag::String(key.as_str().into()))]),
         };
         let uuid = state.mob.map_or([0; 4], |id| self.mob_uuid(id));

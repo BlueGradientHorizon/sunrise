@@ -1,10 +1,7 @@
 use super::*;
 
 impl Remote {
-    pub(in crate::game) fn set_menu_title(
-        &mut self,
-        title: Option<sunrise_client_core::text::Text>,
-    ) {
+    pub(in crate::game) fn set_menu_title(&mut self, title: Option<sunrise_game_data::text::Text>) {
         self.menu_title_snapshot = title.try_into_api().ok().flatten().map(Arc::new);
         self.menu_title = title;
     }

@@ -6,7 +6,7 @@ use sunrise_client::{
     hud_layout, keybinds,
     spectator_menu::{Member, Outcome, SpectatorMenu, Team},
 };
-use sunrise_client_core::{
+use sunrise_game_data::{
     scoreboard::{comp_text, team_color_rgb},
     text::Text,
 };

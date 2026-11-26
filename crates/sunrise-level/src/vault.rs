@@ -49,7 +49,7 @@ impl VaultConfig {
             return None;
         };
         let range = |k: &str, default: f64| {
-            sunrise_client_core::nbt_value::float(tag.get(k)).unwrap_or(default)
+            sunrise_game_data::nbt_value::float(tag.get(k)).unwrap_or(default)
         };
         let config = Self {
             loot_table: identifier(tag.get("loot_table"))
@@ -186,7 +186,7 @@ impl Default for Vault {
 /// An `Identifier` (`minecraft` when the namespace is left out).
 fn identifier(t: Option<&Tag>) -> Option<String> {
     match t? {
-        Tag::String(s) => sunrise_client_core::identifier::normalize_id(&s.to_string_lossy()),
+        Tag::String(s) => sunrise_game_data::identifier::normalize_id(&s.to_string_lossy()),
         _ => None,
     }
 }
@@ -194,8 +194,7 @@ fn identifier(t: Option<&Tag>) -> Option<String> {
 fn stack(tag: &Tag) -> Option<ItemStack> {
     let id = identifier(tag.get("id"))?;
     if let Some(count) = tag.get("count")
-        && !sunrise_client_core::nbt_value::number(Some(count))
-            .is_some_and(|c| (1..=99).contains(&c))
+        && !sunrise_game_data::nbt_value::number(Some(count)).is_some_and(|c| (1..=99).contains(&c))
     {
         return None;
     }
@@ -272,8 +271,7 @@ impl Vault {
             let get = |k: &str| server.and_then(|s| s.get(k));
             v.rewarded_players = uuids(get("rewarded_players")).unwrap_or_default();
             v.state_updating_resumes_at =
-                sunrise_client_core::nbt_value::number(get("state_updating_resumes_at"))
-                    .unwrap_or(0);
+                sunrise_game_data::nbt_value::number(get("state_updating_resumes_at")).unwrap_or(0);
             v.items_to_eject = match get("items_to_eject") {
                 Some(Tag::List(list)) => list
                     .iter()
@@ -289,7 +287,7 @@ impl Vault {
             v.display_item = get("display_item").and_then(stack);
             v.connected_players = uuids(get("connected_players")).unwrap_or_default();
             v.connected_particles_range =
-                sunrise_client_core::nbt_value::float(get("connected_particles_range"))
+                sunrise_game_data::nbt_value::float(get("connected_particles_range"))
                     .unwrap_or(DEFAULT_DEACTIVATION_RANGE);
         }
         v

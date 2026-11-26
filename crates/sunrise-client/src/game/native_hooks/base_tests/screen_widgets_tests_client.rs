@@ -924,7 +924,7 @@ fn mounted_button_sprites_keep_their_pixels_and_accessibility() {
                         y,
                         w,
                         h,
-                        &sunrise_client_core::text::Text::literal("iii"),
+                        &sunrise_game_data::text::Text::literal("iii"),
                         i != 1,
                         false,
                     );
@@ -1064,7 +1064,7 @@ fn mounted_widgets_draw_as_the_games_own() {
                     10.0,
                     100.0,
                     20.0,
-                    &sunrise_client_core::text::Text::literal("Done"),
+                    &sunrise_game_data::text::Text::literal("Done"),
                     true,
                     true,
                 );
@@ -2292,7 +2292,7 @@ fn separate_input_pre_post_parity_and_receiving_screen() {
 
             // Only a real Yes/No hit consumes the press while the pack prompt covers gameplay.
             use sunrise_client::confirm_screen::Confirm;
-            use sunrise_client_core::text::Text;
+            use sunrise_game_data::text::Text;
             use sunrise_protocol::packets::configuration::ResourcePackPush;
             game.handle_pack_push(ResourcePackPush {
                 id: 1,

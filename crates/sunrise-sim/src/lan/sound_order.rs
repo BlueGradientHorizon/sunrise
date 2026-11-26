@@ -19,7 +19,7 @@ impl Hub {
     /// those later emitters wait until the remaining sounds have gone out.
     pub fn prepare_captured_sounds(
         &self,
-        sounds: &mut Vec<sunrise_client_core::sound_source::ServerSound>,
+        sounds: &mut Vec<sunrise_game_data::sound_source::ServerSound>,
         entities: &[EntityState],
     ) {
         let present: FxHashSet<i32> = if sounds.iter().any(|sound| sound.entity.is_some()) {

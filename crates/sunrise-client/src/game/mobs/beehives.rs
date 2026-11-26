@@ -2,11 +2,11 @@
 //! their server tick, bees going in, and the bees let out, angry, when a
 //! player breaks the hive or fire reaches it.
 use super::{Game, item_abilities::ability};
-use sunrise_client_core::Result;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,
 };
+use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::{

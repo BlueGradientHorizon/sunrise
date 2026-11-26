@@ -11,13 +11,13 @@ use std::{
     io::Write as _,
     sync::Arc,
 };
-use sunrise_client_core::Result;
 use sunrise_command::args::GameMode;
 use sunrise_core::{
     geometry::{Direction, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
+use sunrise_game_data::Result;
 use sunrise_level::{
     chunk::{Chunk, MIN_Y},
     containers::BlockEntity,
@@ -251,7 +251,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             d(i.pos[1]),
             d(i.pos[2]),
             match i.source {
-                Some(sunrise_client_core::who::EventSource::Entity(id))
+                Some(sunrise_game_data::who::EventSource::Entity(id))
                     if self.level_entity(id as i32).is_some() =>
                 {
                     names.get(&id).cloned().unwrap_or_else(|| format!("e{id}"))
@@ -385,11 +385,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         ] {
             self.ui
                 .rules
-                .set(rule, sunrise_client_core::gamerules::Value::Bool(value));
+                .set(rule, sunrise_game_data::gamerules::Value::Bool(value));
         }
         self.ui.rules.set(
             "random_tick_speed",
-            sunrise_client_core::gamerules::Value::Int(0),
+            sunrise_game_data::gamerules::Value::Int(0),
         );
         use sunrise_world::food::Difficulty;
         let difficulty = match s.difficulty.as_str() {

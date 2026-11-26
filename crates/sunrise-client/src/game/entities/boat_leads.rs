@@ -243,7 +243,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let drops = self
                     .ui
                     .rules
-                    .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS);
+                    .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS);
                 self.release_boat_leash(b, drops);
                 return;
             }

@@ -9,7 +9,7 @@ use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 #[allow(unused_imports)]
 use {
-    sunrise_client_core::text::Text, sunrise_items::firework::FireworkExplosion,
+    sunrise_game_data::text::Text, sunrise_items::firework::FireworkExplosion,
     sunrise_items::items::ItemStack, sunrise_level::collisions::SceneCollisions,
     sunrise_level::random_source, sunrise_sim::mobs::Damage, sunrise_sim::mobs::Species,
     sunrise_sim::mobs::Who, sunrise_sim::projectiles::Hit as ProjectileHit,

@@ -9,7 +9,7 @@ use sunrise_client::{
     ui,
     widgets::{self, Narratable, ScreenInfo},
 };
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_items::{item_data::StackData, items::ItemStack};
 use sunrise_level::containers::BlockEntity;
 use sunrise_protocol::packets::play::{self, Serverbound as S};
@@ -125,7 +125,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         page: &Text,
         left: f32,
-    ) -> Option<sunrise_client_core::text::ClickEvent> {
+    ) -> Option<sunrise_game_data::text::ClickEvent> {
         self.book_style_at(page, left)?.click
     }
     /// `ActiveTextCollector` over the page: the style of the character
@@ -134,7 +134,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         page: &Text,
         left: f32,
-    ) -> Option<sunrise_client_core::text::Style> {
+    ) -> Option<sunrise_game_data::text::Style> {
         let (mx, my) = self.side.cursor;
         let row = ((my - 32.0) / 9.0).floor();
         if row < 0.0 || row >= LINES as f32 {
@@ -158,11 +158,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// (`forcePage`), a web link goes through the confirm-link flow.
     pub(in crate::game::client_side) fn book_follow_link(
         &mut self,
-        link: sunrise_client_core::text::ClickEvent,
+        link: sunrise_game_data::text::ClickEvent,
         count: usize,
         lectern: Option<(i32, i32, i32)>,
     ) {
-        use sunrise_client_core::text::ClickEvent;
+        use sunrise_game_data::text::ClickEvent;
         match link {
             ClickEvent::ChangePage(target) => {
                 let target = (target - 1).clamp(0, count.saturating_sub(1) as i32);
@@ -863,7 +863,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn book_control(
         &mut self,
         action: Option<&str>,
-    ) -> sunrise_client_core::Result<serde_json::Value> {
+    ) -> sunrise_game_data::Result<serde_json::Value> {
         let lectern = match &self.side.book {
             Some(BookScreen::View { lectern, .. }) => *lectern,
             Some(BookScreen::Edit { .. }) => None,
@@ -1583,7 +1583,7 @@ impl BookScreen {
 pub(in crate::game) mod pause_tests {
     use super::BookScreen;
     use sunrise_client::ui;
-    use sunrise_client_core::text::Text;
+    use sunrise_game_data::text::Text;
 
     fn view(lectern: Option<(i32, i32, i32)>) -> BookScreen {
         BookScreen::View {
@@ -1668,7 +1668,7 @@ pub(in crate::game) mod sign_tests {
 pub(in crate::game) mod sign_book_tests;
 
 pub(in crate::game::client_side) fn link_cursor(
-    style: &sunrise_client_core::text::Style,
+    style: &sunrise_game_data::text::Style,
 ) -> Option<sunrise_client::widgets::Cursor> {
     style
         .click
@@ -1680,7 +1680,7 @@ pub(in crate::game::client_side) fn link_cursor(
 pub(in crate::game) mod link_cursor_tests {
     use super::link_cursor;
     use sunrise_client::widgets::Cursor;
-    use sunrise_client_core::text::{ClickEvent, Style, Text};
+    use sunrise_game_data::text::{ClickEvent, Style, Text};
 
     /// `HoveredTextEffects.TOOLTIP_AND_CURSOR`: a clickable word asks for the
     /// pointing hand; a hover event alone only shows its tooltip.

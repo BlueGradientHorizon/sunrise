@@ -50,8 +50,8 @@ VibrationSystem.Ticker.tryReloadVibrationParticle	missing		minor: the travelling
 VibrationSystem.Ticker.receiveVibration	port	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::sculk_receive	gap: minor: the adjacent-chunk hold-back is in Data::tick, not here
 VibrationSystem.Ticker.areAdjacentChunksTicking	inline	crates/sunrise-client/src/game/blocks/sculk_server.rs::Game::tick_sculk_blocks	computes the adjacent flag per sensor from the 3x3 block-ticking chunks
 GameRules.codec	skip:java		codec for the saved game rules; to_nbt and from_nbt do the read and write
-GameRules.get	port	crates/sunrise-client-core/src/gamerules.rs::GameRules::get	returns the rule's value, or None for an unknown rule
-GameRules.set	port	crates/sunrise-client-core/src/gamerules.rs::GameRules::set	gap: minor: the change is not sent to connected clients; GameRuleValues goes out only on a client's request
+GameRules.get	port	crates/sunrise-game-data/src/gamerules.rs::GameRules::get	returns the rule's value, or None for an unknown rule
+GameRules.set	port	crates/sunrise-game-data/src/gamerules.rs::GameRules::set	gap: minor: the change is not sent to connected clients; GameRuleValues goes out only on a client's request
 GameRules.setAll	skip:debug		only the gametest framework copies whole rule sets
 GameRules.visitGameRuleTypes	skip:other		visits rules to build brigadier argument types; sunrise-command builds its own command tree
 GameRules.registerBoolean	skip:data		registry registration of a boolean rule; Sunrise's rules are a fixed table

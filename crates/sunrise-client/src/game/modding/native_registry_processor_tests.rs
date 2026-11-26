@@ -48,7 +48,7 @@ fn generic_processor_and_referencing_pool_accept_pillar_block_properties() {
             Some(1),
             true,
             None,
-            Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
+            Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
         )
         .unwrap();
         request.save_root = scratch.path().to_owned();

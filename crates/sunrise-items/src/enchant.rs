@@ -387,7 +387,7 @@ fn parse_entry(
             // A data pack's entry may name itself with a literal component
             // rather than a translation key.
             if key.is_empty() && !v["description"].is_null() {
-                sunrise_client_core::scoreboard::comp_text(&v["description"]).plain()
+                sunrise_game_data::scoreboard::comp_text(&v["description"]).plain()
             } else {
                 id.trim_start_matches("minecraft:").replace('_', " ")
             }
@@ -758,14 +758,14 @@ impl Enchantments {
     }
     /// `Enchantment.getFullname` as plain text and whether it is a curse (red).
     pub fn full_name(&self, id: &str, level: u32) -> (String, bool) {
-        let language = sunrise_client_core::lang::current();
+        let language = sunrise_game_data::lang::current();
         self.full_name_in(language.as_deref(), id, level)
     }
     /// `Enchantment.getFullname` against `language`; `None` (no language loaded: a
     /// dedicated server, the probes) keeps the English names loaded above.
     pub fn full_name_in(
         &self,
-        language: Option<&sunrise_client_core::lang::Language>,
+        language: Option<&sunrise_game_data::lang::Language>,
         id: &str,
         level: u32,
     ) -> (String, bool) {
@@ -775,7 +775,7 @@ impl Enchantments {
     /// [`Enchantments::full_name_in`] with the level as a number when `numeric`.
     fn full_name_with(
         &self,
-        language: Option<&sunrise_client_core::lang::Language>,
+        language: Option<&sunrise_game_data::lang::Language>,
         id: &str,
         level: u32,
         numeric: bool,
@@ -2379,7 +2379,7 @@ pub mod tests {
     #[test]
     fn names_follow_the_language() {
         struct Mem(HashMap<String, Vec<u8>>);
-        impl sunrise_client_core::lang::ResourceSource for Mem {
+        impl sunrise_game_data::lang::ResourceSource for Mem {
             fn read(&self, path: &str) -> Option<Vec<u8>> {
                 self.0.get(path).cloned()
             }
@@ -2390,7 +2390,7 @@ pub mod tests {
                 .as_bytes()
                 .to_vec(),
         )]));
-        let ru = sunrise_client_core::lang::Language::load(&[&ru], "ru_ru");
+        let ru = sunrise_game_data::lang::Language::load(&[&ru], "ru_ru");
         let e = sample();
         assert_eq!(
             e.full_name_in(Some(&ru), "minecraft:sharpness", 5).0,

@@ -18,7 +18,7 @@ use sunrise_core::random::LegacyRandom;
 
 pub mod hooks;
 
-pub use sunrise_client_core::sound_source::{
+pub use sunrise_game_data::sound_source::{
     AMBIENT, BLOCKS, MASTER, MUSIC, NEUTRAL, PLAYERS, RECORDS, SoundEntityState, UI, WEATHER,
 };
 /// The pool sizes `Library.init` derives from OpenAL Soft's default 255 mono

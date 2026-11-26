@@ -85,7 +85,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         title.finish_preparing();
                         title.failed(format!(
                             "{}: {error}",
-                            sunrise_client_core::lang::get("createWorld.preparing")
+                            sunrise_game_data::lang::get("createWorld.preparing")
                         ));
                     }
                 }
@@ -123,7 +123,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     title.finish_preparing();
                     title.failed(format!(
                         "{}: {e}",
-                        sunrise_client_core::lang::get_or(
+                        sunrise_game_data::lang::get_or(
                             "createWorld.preparing",
                             "Preparing for world creation..."
                         )

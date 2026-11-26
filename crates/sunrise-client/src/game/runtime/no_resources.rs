@@ -24,7 +24,7 @@ struct Missing {
 /// Shows the screen until the player closes it.
 pub(in crate::game) fn show(looked_in: &std::path::Path, settings: &Settings) -> Result<()> {
     // The player's language, from the strings compiled in: there are no prepared ones.
-    sunrise_client_core::lang::set(sunrise_client_core::lang::Language::load(
+    sunrise_game_data::lang::set(sunrise_game_data::lang::Language::load(
         &[],
         &settings.language,
     ));

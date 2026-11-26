@@ -1,7 +1,7 @@
 //! `TestBlockEntity`: the test block's mode, message and powered flag, with
 //! its save format (`saveAdditional` / `loadAdditional`).
-use sunrise_client_core::nbt_value::{number, string, text};
 use sunrise_core::nbt::Tag;
+use sunrise_game_data::nbt_value::{number, string, text};
 
 /// `TestBlockMode`, in id order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

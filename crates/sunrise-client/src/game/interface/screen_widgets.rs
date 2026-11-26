@@ -23,7 +23,7 @@ use sunrise_client::{
     ui::{self, EditBox},
     widgets::{self, Kind, Narratable, Target},
 };
-use sunrise_client_core::text::{DARK_GRAY, Style, Text};
+use sunrise_game_data::text::{DARK_GRAY, Style, Text};
 use winit::keyboard::KeyCode;
 
 pub(in crate::game) struct MountedWidgetsInner {

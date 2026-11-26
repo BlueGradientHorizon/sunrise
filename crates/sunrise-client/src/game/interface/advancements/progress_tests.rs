@@ -165,7 +165,7 @@ fn progress_events_capture_each_players_full_mutation_state() {
                 "reward_hits",
                 "dummy",
                 serde_json::json!({"text":"reward_hits"}),
-                sunrise_client_core::scoreboard::RenderType::Integer,
+                sunrise_game_data::scoreboard::RenderType::Integer,
                 false,
                 None,
             );

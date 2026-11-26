@@ -87,7 +87,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let state = self.world.block(pos[0], pos[1], pos[2]);
         held.is_some()
             && self.pack.assets.registry.state(state).is_some_and(|block| {
-                sunrise_client_core::block_entity_types::factory_block(&block.name)
+                sunrise_game_data::block_entity_types::factory_block(&block.name)
                     == "minecraft:vault"
                     && block.properties.get("vault_state").map(String::as_str) == Some("active")
             })

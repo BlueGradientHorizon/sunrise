@@ -265,7 +265,7 @@ mod tests {
     #[ignore = "daily"]
     fn statistics_restore_updates_live_scores_and_next_request_without_awarding() {
         use serde_json::{Value, json};
-        use sunrise_client_core::scoreboard::{RenderType, literal};
+        use sunrise_game_data::scoreboard::{RenderType, literal};
         use sunrise_protocol::{
             buf::Reader,
             ids::play::clientbound::AWARD_STATS,

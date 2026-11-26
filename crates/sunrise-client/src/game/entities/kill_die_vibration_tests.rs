@@ -44,7 +44,7 @@ pub(in crate::game) fn run(
     (
         ok,
         said.iter()
-            .map(sunrise_client_core::text::Text::plain)
+            .map(sunrise_game_data::text::Text::plain)
             .collect(),
     )
 }
@@ -86,7 +86,7 @@ fn a_killed_stand_keeps_its_source_in_the_sensor() {
         let (event, _) = sensor.vibration.selector.current().unwrap();
         assert_eq!(
             event.source,
-            Some(sunrise_client_core::who::EventSource::Entity(stand))
+            Some(sunrise_game_data::who::EventSource::Entity(stand))
         );
         assert_eq!(event.source_uuid, Some([593, 0, 0, 2]));
     });

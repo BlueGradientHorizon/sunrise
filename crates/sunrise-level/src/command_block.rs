@@ -2,12 +2,12 @@
 //! count comparators read, the output it keeps, and the powered, automatic
 //! and condition flags `CommandBlock.tick` runs on.
 pub use crate::chunk::block_entity::CommandBlock;
-use sunrise_client_core::{
+use sunrise_core::nbt::Tag;
+use sunrise_game_data::{
     nbt_value::{number, text},
     scoreboard,
     text::Text,
 };
-use sunrise_core::nbt::Tag;
 
 /// `CommandBlockEntity.Mode`, in declaration order (the edit screen's mode
 /// button cycles through it).

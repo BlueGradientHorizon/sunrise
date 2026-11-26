@@ -38,7 +38,7 @@ fn request(root: &Path) -> super::world_loading::WorldRequest {
         Some(1),
         true,
         None,
-        Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
+        Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
     )
     .unwrap();
     request.save_root = root.to_owned();

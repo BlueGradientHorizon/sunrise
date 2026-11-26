@@ -1,5 +1,5 @@
 use super::Game;
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerPlayer.sendOverlayMessage`: queue an action-bar `SystemChat` packet.

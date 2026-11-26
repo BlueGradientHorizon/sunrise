@@ -788,7 +788,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-    fn apply_runtime_open(&mut self, id: &str) -> sunrise_client_core::Result<()> {
+    fn apply_runtime_open(&mut self, id: &str) -> sunrise_game_data::Result<()> {
         if self.side.levels.0.runtime.is_erasing(id) {
             return Err("the files of an earlier delete are not all removed".into());
         }
@@ -834,7 +834,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         Ok(())
     }
 
-    fn apply_runtime_unload(&mut self, id: &str) -> sunrise_client_core::Result<()> {
+    fn apply_runtime_unload(&mut self, id: &str) -> sunrise_game_data::Result<()> {
         let dim = Dim::extra(id).ok_or("the level is not open")?;
         if self.level_has_players(dim) {
             return Err("a player came in".into());
@@ -880,11 +880,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
     }
 
-    fn close_to_delete(
-        &mut self,
-        owner: &'static str,
-        id: &str,
-    ) -> sunrise_client_core::Result<()> {
+    fn close_to_delete(&mut self, owner: &'static str, id: &str) -> sunrise_game_data::Result<()> {
         // The request passed this when it was made; the folder is derived from nothing less.
         Self::owned_level_id(owner, id).map_err(|error| format!("{error:?}"))?;
         if !self.side.levels.0.runtime.holds(id) && Dim::exists(id) {

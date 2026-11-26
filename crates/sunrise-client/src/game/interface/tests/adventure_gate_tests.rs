@@ -121,7 +121,7 @@ fn an_adventure_click_primes_tnt_only_with_a_can_break_that_names_it() {
     assert!(
         game.ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
+            .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
     );
     let pos = [2, 4, 2];
     let tnt = game

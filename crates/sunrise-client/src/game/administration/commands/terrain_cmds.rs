@@ -1,8 +1,8 @@
 //! `/forceload`, `/fillbiome`, `/worldborder` and `/loot`.
 use super::{Arg, Context, Game, R, err};
-#[allow(unused_imports)]
-use sunrise_client_core::text::Text;
 use sunrise_core::position::ChunkPos;
+#[allow(unused_imports)]
+use sunrise_game_data::text::Text;
 #[allow(unused_imports)]
 use sunrise_items::items::ItemStack;
 #[allow(unused_imports)]
@@ -241,7 +241,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let limit = self
             .ui
             .rules
-            .int_at(sunrise_client_core::gamerules::vanilla::MAX_BLOCK_MODIFICATIONS);
+            .int_at(sunrise_game_data::gamerules::vanilla::MAX_BLOCK_MODIFICATIONS);
         if volume > i64::from(limit) {
             return Err(err("commands.fillbiome.toobig", &[&limit, &volume]));
         }

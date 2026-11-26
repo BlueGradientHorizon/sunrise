@@ -2,7 +2,7 @@
 use super::Game;
 use std::path::PathBuf;
 use sunrise_client::gfx::{PendingScreenshot, ScreenshotSave};
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 
 pub struct ScreenshotWrite {
     save: ScreenshotSave,

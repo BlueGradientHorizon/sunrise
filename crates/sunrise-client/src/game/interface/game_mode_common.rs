@@ -152,12 +152,12 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 None => true,
                 Some(Tag::String(snbt)) => sunrise_core::nbt::parse_snbt(&snbt.to_string_lossy())
                     .is_ok_and(|(pattern, _)| {
-                        sunrise_client_core::nbt_path::compare_nbt(
+                        sunrise_game_data::nbt_path::compare_nbt(
                             &pattern,
                             self.side_block_entity_nbt(pos).as_ref(),
                         )
                     }),
-                Some(pattern @ Tag::Compound(_)) => sunrise_client_core::nbt_path::compare_nbt(
+                Some(pattern @ Tag::Compound(_)) => sunrise_game_data::nbt_path::compare_nbt(
                     pattern,
                     self.side_block_entity_nbt(pos).as_ref(),
                 ),

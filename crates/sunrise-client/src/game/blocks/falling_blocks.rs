@@ -35,7 +35,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let entity_drops = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS);
+            .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS);
         // Like boats, tick an unbound state clone while the resident owner keeps
         // its slot. Extracting and reinserting every airborne block shifts the
         // whole list tail twice per entity, making a sand-filled cobweb O(n^2).

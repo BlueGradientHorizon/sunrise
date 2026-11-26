@@ -5,11 +5,11 @@
 //! using a charge.
 use super::{Dim, Game};
 use mod_api::client::first_person::Hand;
-use sunrise_client_core::{Result, text::Text};
 use sunrise_core::{
     geometry::{Aabb, Axis, Vec3, VoxelShape},
     position::BlockPos,
 };
+use sunrise_game_data::{Result, text::Text};
 use sunrise_items::{blocks::Fluid, items::ItemStack};
 use sunrise_level::collisions::{SceneCollisions, no_collision_empty};
 use sunrise_sim::{
@@ -358,7 +358,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         water_at: Option<[i32; 3]>,
     ) -> Result<()> {
         let interaction =
-            self.destroy_type(sunrise_client_core::gamerules::vanilla::BLOCK_EXPLOSION_DROP_DECAY);
+            self.destroy_type(sunrise_game_data::gamerules::vanilla::BLOCK_EXPLOSION_DROP_DECAY);
         self.server_explode_as(
             center,
             5.0,

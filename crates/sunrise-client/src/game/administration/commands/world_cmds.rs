@@ -6,7 +6,7 @@ use sunrise_core::random::RandomSource;
 use sunrise_world::attribute_map::ValueKind;
 use sunrise_world::damage_source::Catalog as DamageCatalog;
 use {
-    sunrise_client_core::text::Text, sunrise_level::sim_settings::SOUND_SOURCES,
+    sunrise_game_data::text::Text, sunrise_level::sim_settings::SOUND_SOURCES,
     sunrise_sim::mobs::DamageKind, sunrise_sim::mobs::MobEvent, sunrise_sim::mobs::NamedDamage,
     sunrise_sim::mobs::Who, sunrise_sim::mobs::finalize, sunrise_sim::scoreboard_cmd::Holder,
     sunrise_sim::scoreboard_cmd::Tracker,
@@ -1861,10 +1861,10 @@ pub(in crate::game) mod effect_attribute_tests;
 pub(in crate::game) mod attribute_modifier_command_tests {
     use crate::game::{Options, Progress, Settings, load_resources};
     use std::sync::Arc;
-    use sunrise_client_core::nbt_value::text;
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::Tag;
     use sunrise_core::position::ChunkPos;
+    use sunrise_game_data::nbt_value::text;
     use sunrise_level::chunk::Chunk;
     use sunrise_sim::motion::PlayerMotion;
 

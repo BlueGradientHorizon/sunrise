@@ -54,7 +54,7 @@ mod tests {
     use crate::game::native_entity_refs::tests::with_game;
     use mod_api::{EntityRef, GameEventContext};
     use std::sync::Arc;
-    use sunrise_client_core::who::EventSource;
+    use sunrise_game_data::who::EventSource;
     use sunrise_items::items::ItemStack;
     use sunrise_level::chunk::Chunk;
 

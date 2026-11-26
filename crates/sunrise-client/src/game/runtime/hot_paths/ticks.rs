@@ -1,8 +1,8 @@
 //! The server level's tick over mobs and over hoppers, at two sizes each: a cost that grows
 //! faster than the count shows as a higher cost per entity at the larger size.
 use super::{super::Game, Recorder, world::FLOOR};
-use sunrise_client_core::Result;
 use sunrise_core::random::{LegacyRandom, RandomSource};
+use sunrise_game_data::Result;
 
 /// Ticks run before the measured ones, so one-time work (first paths, grown buffers) is done.
 const WARMUP: u64 = 20;

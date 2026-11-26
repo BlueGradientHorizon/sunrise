@@ -1,6 +1,6 @@
 use super::Game;
-use sunrise_client_core::text::Text;
 use sunrise_core::random::RandomSource;
+use sunrise_game_data::text::Text;
 use sunrise_gameplay_common::chests::facing_step;
 use sunrise_gameplay_common::chests::is_shulker_box;
 use sunrise_level::containers::{BlockEntity, is_chest_block};
@@ -78,7 +78,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         {
             self.server_send_overlay_message(
                 Text::translate("container.spectatorCantOpen", &[])
-                    .with_color(sunrise_client_core::text::RED),
+                    .with_color(sunrise_game_data::text::RED),
             );
             return;
         }
@@ -189,7 +189,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             ),
             _ => sunrise_level::containers::display_name(None, default_key),
         };
-        let title = sunrise_client_core::component::name_text(&title);
+        let title = sunrise_game_data::component::name_text(&title);
         self.server_send_overlay_message(Text::translate("container.isLocked", &[title]));
         let at = match (halves[0], halves[1]) {
             (Some(first), Some(second)) => [

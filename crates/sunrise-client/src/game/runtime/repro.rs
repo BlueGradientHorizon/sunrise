@@ -30,8 +30,8 @@ use std::{
     time::{Duration, Instant, SystemTime},
 };
 use sunrise_client::{gamepad::Button, keybinds, title::world_management};
-use sunrise_client_core::{Result, text::Text};
 use sunrise_core::geometry::Vec3;
+use sunrise_game_data::{Result, text::Text};
 use sunrise_system::scrub::Scrubber;
 use winit::{
     dpi::PhysicalPosition,

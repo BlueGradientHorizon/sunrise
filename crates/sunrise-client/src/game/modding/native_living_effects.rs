@@ -88,7 +88,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         effect: &ActiveEffect,
     ) -> bool {
         let Some(def) = mod_api::__private::effect_index(effect.id)
-            .and_then(sunrise_client_core::potions::effect_by_index)
+            .and_then(sunrise_game_data::potions::effect_by_index)
         else {
             return false;
         };
@@ -147,7 +147,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         effect: EffectKey,
     ) -> bool {
         let Some(def) = mod_api::__private::effect_index(effect)
-            .and_then(sunrise_client_core::potions::effect_by_index)
+            .and_then(sunrise_game_data::potions::effect_by_index)
         else {
             return false;
         };
@@ -264,7 +264,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         effect: EffectKey,
     ) -> Option<ActiveEffect> {
         let def = mod_api::__private::effect_index(effect)
-            .and_then(sunrise_client_core::potions::effect_by_index)?;
+            .and_then(sunrise_game_data::potions::effect_by_index)?;
         let target = self.native_living_read_target(living)?;
         super::native_living_body::body_effect(self.native_living_body(target)?, def.index)
     }
@@ -287,7 +287,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         effect: EffectKey,
     ) -> bool {
         let Some(def) = mod_api::__private::effect_index(effect)
-            .and_then(sunrise_client_core::potions::effect_by_index)
+            .and_then(sunrise_game_data::potions::effect_by_index)
         else {
             return false;
         };

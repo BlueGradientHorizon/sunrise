@@ -29,7 +29,7 @@ Transformation.equals	skip:java		value equality of a Java wrapper
 Transformation.slerp	port	crates/sunrise-client/src/text_display.rs::TextDisplayData::blend	gap: player: only text displays ease their transform; item and block displays have no renderer here, so their transform changes snap
 CharPredicate.and	skip:java		Java functional combinator
 CharPredicate.or	skip:java		Java functional combinator
-ChatFormatting.getByCode	inline	crates/sunrise-client-core/src/text.rs::Text::legacy	colour codes come from COLORS, format codes from the k-o and r arms, both in the legacy parser
+ChatFormatting.getByCode	inline	crates/sunrise-game-data/src/text.rs::Text::legacy	colour codes come from COLORS, format codes from the k-o and r arms, both in the legacy parser
 CrashReport.getDetails	inline	crates/sunrise-level/src/crash.rs::Report::text	the report body (details, system section) is built in Report::text
 CrashReport.getExceptionMessage	port	crates/sunrise-level/src/crash.rs::stack_lines	enhanced stack text for the error
 CrashReport.copyProperties	skip:debug		rebuilds a Throwable for a message rewrite; Rust panics keep their own message

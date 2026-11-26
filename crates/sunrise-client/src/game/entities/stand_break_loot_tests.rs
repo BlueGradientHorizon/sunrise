@@ -155,7 +155,7 @@ fn sticks(game: &mut crate::game::ServerGame<'_>) -> String {
     game.run_command(STICK);
     let said = game.side.chat_capture.take().unwrap_or_default();
     said.iter()
-        .map(sunrise_client_core::text::Text::plain)
+        .map(sunrise_game_data::text::Text::plain)
         .collect()
 }
 

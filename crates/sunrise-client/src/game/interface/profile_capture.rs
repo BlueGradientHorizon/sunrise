@@ -23,8 +23,8 @@ use sunrise_client::client_perf::{
         Started, Status, Stopped, Traced,
     },
 };
-use sunrise_client_core::Result;
 use sunrise_command::{Arg, CommandError, Dispatcher, PROFILER_GPU, Registries};
+use sunrise_game_data::Result;
 use sunrise_level::spans::{self, Span};
 use sunrise_perf_format::{
     files,
@@ -341,7 +341,7 @@ pub(in crate::game::client_side) fn profiler_args(command: &str) -> Option<&str>
 }
 
 pub(in crate::game) fn unavailable() -> String {
-    sunrise_client_core::lang::get("sunrise.perf.unavailable")
+    sunrise_game_data::lang::get("sunrise.perf.unavailable")
 }
 
 /// A path a request names, relative to the game's home.
@@ -380,7 +380,7 @@ pub(in crate::game) fn resolve_capture(
 /// The captures hook's answer: the share link for [`Job::Share`], nothing for [`Job::Open`].
 pub(in crate::game) fn run_job(job: Job, file: &Path) -> std::result::Result<String, String> {
     let captures = sunrise_hooks::engine::captures()
-        .ok_or_else(|| sunrise_client_core::lang::get("sunrise.perf.unavailable"))?;
+        .ok_or_else(|| sunrise_game_data::lang::get("sunrise.perf.unavailable"))?;
     match job {
         Job::Open => captures.open(file).map(|()| String::new()),
         Job::Share => captures.share(file),
@@ -917,7 +917,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let result = match receiver.try_recv() {
                 Ok(result) => result,
                 Err(TryRecvError::Empty) => return,
-                Err(TryRecvError::Disconnected) => Err(sunrise_client_core::lang::get(
+                Err(TryRecvError::Disconnected) => Err(sunrise_game_data::lang::get(
                     "sunrise.perf.upload_interrupted",
                 )),
             };

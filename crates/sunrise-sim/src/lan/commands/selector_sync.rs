@@ -1,6 +1,6 @@
 //! Sunrise's selector-token metadata, sent beside the server command tree.
-use sunrise_client_core::registries::SelectorToken;
 use sunrise_core::vanilla_bytes::Writer;
+use sunrise_game_data::registries::SelectorToken;
 use sunrise_protocol::{Error, Result, buf::Reader};
 pub const CHANNEL: &str = "sunrise:selector_tokens";
 #[derive(Debug, PartialEq, Eq)]

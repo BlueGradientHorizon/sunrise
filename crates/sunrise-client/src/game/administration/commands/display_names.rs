@@ -4,7 +4,7 @@
 //! `Nameable.getPlainTextName` for the selector's `name=`.
 use super::super::Game;
 use super::Target;
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `Nameable.getPlainTextName`: `getName().getString()`, the name without
@@ -60,7 +60,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     fn decorate_entity_display_name_with_uuid(
         kind: &str,
         uuid: Option<[i32; 4]>,
-        team: Option<&sunrise_client_core::scoreboard::Team>,
+        team: Option<&sunrise_game_data::scoreboard::Team>,
         name: Text,
     ) -> Text {
         let shown = match team {
@@ -93,9 +93,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     fn custom_name_of(&self, id: u32) -> Option<Text> {
         let raw = self.persist_raw(id)?.get("CustomName")?;
         let decoded = sunrise_sim::entity_nbt::decode_custom_name_text(raw)?;
-        Some(sunrise_client_core::scoreboard::remove_click_events(
-            &decoded,
-        ))
+        Some(sunrise_game_data::scoreboard::remove_click_events(&decoded))
     }
 
     /// `Entity.getName`: the decoded `CustomName` with click actions removed,
@@ -133,7 +131,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
                     .and_then(|saved| saved.1.get("CustomName"))
                     .or_else(|| self.persist_raw(id).and_then(|r| r.get("CustomName")))
                     .and_then(sunrise_sim::entity_nbt::decode_custom_name_text)
-                    .map(|text| sunrise_client_core::scoreboard::remove_click_events(&text));
+                    .map(|text| sunrise_game_data::scoreboard::remove_click_events(&text));
                 if let Some(name) = custom {
                     return name;
                 }
@@ -167,7 +165,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             .and_then(|b| b.custom_name.as_ref())
             .and_then(sunrise_sim::entity_nbt::decode_custom_name_text)
         {
-            return sunrise_client_core::scoreboard::remove_click_events(&name);
+            return sunrise_game_data::scoreboard::remove_click_events(&name);
         }
         Text::translate("entity.minecraft.lightning_bolt", &[])
     }
@@ -179,7 +177,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         &self,
         id: u32,
         kind: &str,
-        team: Option<&sunrise_client_core::scoreboard::Team>,
+        team: Option<&sunrise_game_data::scoreboard::Team>,
         name: Text,
     ) -> Text {
         Self::decorate_entity_display_name_with_uuid(kind, self.persist.uuid_of(id), team, name)

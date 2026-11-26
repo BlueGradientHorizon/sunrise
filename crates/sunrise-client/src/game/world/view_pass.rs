@@ -13,7 +13,7 @@
 //! area was withdrawn keeps its passes, with no ticket, until its chunks were forgotten and it was
 //! closed on the clients.
 use super::{Dim, Game};
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 use sunrise_sim::lan::hub::TickCtx;
 
 impl Game<'_, crate::game::server_side::ServerState> {

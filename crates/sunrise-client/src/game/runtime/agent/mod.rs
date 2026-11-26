@@ -23,8 +23,8 @@ use std::{
 use sunrise_client::actions::Action;
 use sunrise_client::held::Source;
 use sunrise_client::{block_entity_anim::Ticker, widgets};
-use sunrise_client_core::Result;
 use sunrise_core::geometry::Vec3;
+use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::{Species, villager::VILLAGER_TYPES};
 use sunrise_world::registry::BlockStateId;
@@ -420,7 +420,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             v["durability_left"] = json!((i64::from(max) - i64::from(s.damage)).max(0));
         }
         if let Some(c) = sunrise_items::item_data::component_snapshot(s) {
-            v["components"] = json!(sunrise_client_core::snbt::to_snbt(&c));
+            v["components"] = json!(sunrise_game_data::snbt::to_snbt(&c));
         }
         v
     }

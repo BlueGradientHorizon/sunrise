@@ -1517,7 +1517,7 @@ pub(in crate::game) struct ServerState {
     /// Whether the player currently swapped into the game is connectionless.
     pub(in crate::game::server_side) lan_acting_fake: bool,
     /// Command feedback to forward to a guest.
-    pub(in crate::game) chat_capture: Option<Vec<sunrise_client_core::text::Text>>,
+    pub(in crate::game) chat_capture: Option<Vec<sunrise_game_data::text::Text>>,
     /// Packets for the guest acting now, sent once its action returns.
     pub(in crate::game) guest_packets: Vec<sunrise_protocol::packets::play::Clientbound>,
     /// The acting guest's cooldowns, as (item, ticks): their packet needs the
@@ -1542,7 +1542,7 @@ pub(in crate::game) struct ServerState {
     /// command it was (`commandSource() != source`): None for a block, a
     /// minecart, the console or the host.
     pub(in crate::game::server_side) admin_feedback:
-        Vec<(sunrise_client_core::text::Text, Option<u32>)>,
+        Vec<(sunrise_game_data::text::Text, Option<u32>)>,
     /// The server console is running a command: whether its feedback goes to
     /// the operators (`DedicatedServer.shouldInformAdmins`,
     /// `broadcast-console-to-ops`).
@@ -1559,7 +1559,7 @@ pub(in crate::game) struct ServerState {
     pub(in crate::game::server_side) acting_input: acting_state::ServerActingInput,
     pub(in crate::game::server_side) pending_guest_ui: acting_state::ServerPendingGuestUi,
     pub(in crate::game) audio_capture_active: bool,
-    pub(in crate::game) pending_sounds: Vec<sunrise_client_core::sound_source::ServerSound>,
+    pub(in crate::game) pending_sounds: Vec<sunrise_game_data::sound_source::ServerSound>,
     pub(in crate::game) pending_particles:
         Vec<sunrise_sim::lan::server_effects::ServerQueuedParticle>,
     pub(in crate::game) pending_explosions: Vec<sunrise_sim::lan::server_effects::ServerExplosion>,

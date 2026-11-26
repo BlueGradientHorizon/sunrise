@@ -1,4 +1,4 @@
-//! The client's lowest layer, below commands and gameplay: chat text and
+//! Portable game data shared by client and server, below commands and gameplay: chat text and
 //! translations, SNBT and NBT paths, text components, the scoreboard, boss
 //! bars, game rules, block entity NBT tables, and the registry, particle and
 //! sound source tables commands name, and the `pack.mcmeta` filter regex.

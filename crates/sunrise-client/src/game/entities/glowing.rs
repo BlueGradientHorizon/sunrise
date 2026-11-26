@@ -2,7 +2,7 @@
 //! appear glowing, in which team colour, and their silhouettes for the renderer's entity
 //! outline (`OutlineBufferSource`).
 use super::{Game, Vertex};
-use sunrise_client_core::scoreboard as sb;
+use sunrise_game_data::scoreboard as sb;
 use sunrise_sim::mobs::Mob;
 
 /// `Entity.getTeamColor`: the team's colour, else white.

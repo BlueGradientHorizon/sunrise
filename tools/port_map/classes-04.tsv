@@ -132,9 +132,9 @@ WitherRoseBlock.animateTick	port	crates/sunrise-client/src/animate_tick.rs::bloc
 BannerPatternLayers.removeLast	inline	crates/sunrise-sim/src/cauldron.rs::interact	banner wash pops the last pattern in its arm
 BannerPatternLayers.Builder	skip:java		builder for banner pattern layers
 BannerPatterns	skip:data		registry bootstrap
-BarrelBlockEntity.loadAdditional	port	crates/sunrise-client-core/src/block_entity_nbt.rs::canonical	gap: minor: canonical NBT form only, no load step of its own
+BarrelBlockEntity.loadAdditional	port	crates/sunrise-game-data/src/block_entity_nbt.rs::canonical	gap: minor: canonical NBT form only, no load step of its own
 BarrelBlockEntity.recheckOpen	port	crates/sunrise-world/src/level/tick.rs::Sim::tick_block	openCount is recounted on the barrel's scheduled tick; zero crossings set the open property
-BarrelBlockEntity.saveAdditional	port	crates/sunrise-client-core/src/block_entity_nbt.rs::canonical	gap: minor: canonical NBT form only
+BarrelBlockEntity.saveAdditional	port	crates/sunrise-game-data/src/block_entity_nbt.rs::canonical	gap: minor: canonical NBT form only
 BarrelBlockEntity.startOpen	port	crates/sunrise-client/src/game/blocks/block_entity_anims.rs::Game::barrel_openers_changed
 BarrelBlockEntity.stopOpen	port	crates/sunrise-client/src/game/blocks/block_entity_anims.rs::Game::barrel_openers_changed
 BarrelBlockEntity.updateBlockState	inline	crates/sunrise-client/src/game/blocks/block_entity_anims.rs::Game::barrel_openers_changed	sets the open property when the count crosses zero

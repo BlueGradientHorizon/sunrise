@@ -10,7 +10,7 @@ pub(in crate::game) struct WorldRequest {
     pub seed: Option<i64>,
     pub creative: bool,
     pub create: Option<sunrise_sim::world_options::WorldOptions>,
-    pub rule_registry: Arc<sunrise_client_core::gamerules::RuleRegistry>,
+    pub rule_registry: Arc<sunrise_game_data::gamerules::RuleRegistry>,
     /// Where the server's region workers send their notices.
     pub(in crate::game) chunk_reports: Arc<sunrise_sim::chunk_io::Reports>,
     /// The account the world opens under, for an integrated server
@@ -113,7 +113,7 @@ impl WorldRequest {
         seed: Option<i64>,
         creative: bool,
         create: Option<&sunrise_sim::world_options::WorldOptions>,
-        rule_registry: Arc<sunrise_client_core::gamerules::RuleRegistry>,
+        rule_registry: Arc<sunrise_game_data::gamerules::RuleRegistry>,
     ) -> Result<Self> {
         Ok(Self {
             save_root: std::env::current_dir()?.join("saves").join(folder),
@@ -933,7 +933,7 @@ fn mod_terrain(
             .entries(DIMENSIONS)
             .find(|(level, _)| *level == dim.id())
             .and_then(|(_, stem)| serde_json::from_str(stem).ok())
-            .or_else(|| saved_stem.map(sunrise_client_core::scoreboard::tag_to_json))
+            .or_else(|| saved_stem.map(sunrise_game_data::scoreboard::tag_to_json))
     })?;
     if let Some(generator) = stem["generator"]["type"]
         .as_str()
@@ -1253,7 +1253,7 @@ pub(in crate::game::server_side) fn make_streaming(
             enabled_features,
             &pack.additional_data,
         );
-        let saved_stem = saved_stem.map(sunrise_client_core::scoreboard::tag_to_json);
+        let saved_stem = saved_stem.map(sunrise_game_data::scoreboard::tag_to_json);
         let regions = sunrise_sim::save::biome_regions::layout(world_root, dim.id())
             .map_err(|e| format!("Failed to read the world's biome regions: {e}"))?;
         let mut inner = VanillaTerrain::for_world_with_settings(terrain_resources, &overrides, seed, preset, dim.id(), structures, saved_stem.as_ref(), regions).map_err(|e| {
@@ -1560,7 +1560,7 @@ mod tests {
     #[ignore = "daily"]
     fn creation_rule_selection_reaches_the_saved_world() {
         use super::super::native_entity_refs::tests::with_game;
-        use sunrise_client_core::gamerules::{GameRules, Rule, RuleRegistry, Value};
+        use sunrise_game_data::gamerules::{GameRules, Rule, RuleRegistry, Value};
         let rule = Rule {
             name: "example:enabled".into(),
             category: "example:machines".into(),
@@ -1776,7 +1776,7 @@ mod tests {
                 Some(1),
                 true,
                 None,
-                Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
+                Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
             )
             .unwrap();
             request.save_root = root.to_owned();

@@ -6,12 +6,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn styled_stack_name(
         &self,
         stack: &ItemStack,
-    ) -> sunrise_client_core::text::Text {
+    ) -> sunrise_game_data::text::Text {
         let name = self.stack_hover_name_text(stack);
         if stack.data().is_some_and(|data| data.custom_name.is_some()) {
-            sunrise_client_core::text::Text::empty()
-                .append(name)
-                .italic()
+            sunrise_game_data::text::Text::empty().append(name).italic()
         } else {
             name
         }

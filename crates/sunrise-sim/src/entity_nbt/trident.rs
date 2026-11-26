@@ -131,7 +131,7 @@ pub fn trident_from_nbt(tag: &Tag) -> Option<TridentNbt> {
         fire_ticks: number(tag.get("Fire")).unwrap_or(0) as i16 as i32,
         fall_distance: float(tag.get("fall_distance")).unwrap_or(0.0),
         sound_event: text(tag.get("SoundEvent"))
-            .and_then(|s| sunrise_client_core::identifier::normalize_id(&s))
+            .and_then(|s| sunrise_game_data::identifier::normalize_id(&s))
             .unwrap_or_else(|| TRIDENT_HIT_GROUND.to_owned()),
         item: tag
             .get("item")

@@ -10,8 +10,8 @@ use sunrise_client::{
     gizmos::{Gizmos, InvisibleBlock},
     ui::EditBox,
 };
-use sunrise_client_core::text::Text;
 use sunrise_client_render::block_entity_reach::Reach;
+use sunrise_game_data::text::Text;
 use sunrise_level::{
     containers::BlockEntity,
     structure_block::{

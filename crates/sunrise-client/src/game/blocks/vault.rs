@@ -3,8 +3,8 @@
 //! keys players insert (`VaultBlock.useItemOn`) and the display item spinning
 //! inside (`VaultRenderer`).
 use super::Game;
-use sunrise_client_core::Result;
 use sunrise_core::random::{LegacyRandom, LevelRandom};
+use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{
     block_entities::BlockEntityLease,
@@ -67,8 +67,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn take_vault(&mut self, key: Pos) -> Option<TakenVault> {
         let state = self.world.block(key.0, key.1, key.2);
         let block = self.pack.assets.registry.state(state)?;
-        if sunrise_client_core::block_entity_types::factory_block(&block.name) != "minecraft:vault"
-        {
+        if sunrise_game_data::block_entity_types::factory_block(&block.name) != "minecraft:vault" {
             return None;
         }
         let current = block

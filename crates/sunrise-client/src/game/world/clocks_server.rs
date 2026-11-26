@@ -8,7 +8,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::ADVANCE_TIME)
+            .bool_at(sunrise_game_data::gamerules::vanilla::ADVANCE_TIME)
         {
             // The rule may have just been turned off: tell the guests the clock stopped.
             self.sync_hub_clocks();
@@ -50,7 +50,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let advancing = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::ADVANCE_TIME);
+            .bool_at(sunrise_game_data::gamerules::vanilla::ADVANCE_TIME);
         // A paused clock, or `advance_time` off, is a rate of 0 to the guests, as for the Overworld's.
         let guest_rate = |state: &WorldClock| {
             if advancing && !state.paused {
@@ -90,7 +90,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::ADVANCE_TIME)
+            .bool_at(sunrise_game_data::gamerules::vanilla::ADVANCE_TIME)
             && !self.ui.clock.paused
         {
             self.ui.clock.rate

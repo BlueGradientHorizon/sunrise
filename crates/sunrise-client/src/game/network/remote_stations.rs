@@ -18,7 +18,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         container: i32,
         menu: String,
         kind: Kind,
-        title: sunrise_client_core::text::Text,
+        title: sunrise_game_data::text::Text,
         pos: [i32; 3],
     ) {
         self.remote_set_menu(Some((container, menu)), Some(title));

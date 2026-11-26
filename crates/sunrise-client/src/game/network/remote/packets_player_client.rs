@@ -353,7 +353,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else {
             p.unsigned_content.as_ref().map_or_else(
                 || serde_json::Value::from(p.content.as_str()),
-                sunrise_client_core::scoreboard::tag_to_json,
+                sunrise_game_data::scoreboard::tag_to_json,
             )
         };
         let signed = signature.is_some();
@@ -511,7 +511,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     if let Some(name) = &e.display_name {
                         t.display_name = name
                             .as_ref()
-                            .map(sunrise_client_core::scoreboard::tag_to_json);
+                            .map(sunrise_game_data::scoreboard::tag_to_json);
                     }
                     if let Some(order) = e.list_order {
                         t.list_order = order;
@@ -686,7 +686,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             2 => "below_name".to_owned(),
             n @ 3..=18 => format!(
                 "sidebar.team.{}",
-                sunrise_client_core::text::COLORS[(n - 3) as usize].1
+                sunrise_game_data::text::COLORS[(n - 3) as usize].1
             ),
             _ => "sidebar".to_owned(),
         };
@@ -776,7 +776,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             s.display = p
                 .display
                 .as_ref()
-                .map(sunrise_client_core::scoreboard::tag_to_json);
+                .map(sunrise_game_data::scoreboard::tag_to_json);
             s.number_format = p.number_format.as_ref().map(number_format);
         }
     }
@@ -805,8 +805,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn apply_tab_list_packet(&mut self, p: play::TabList) {
         // handleTabListCustomisation: empty text clears it.
         let text = |t: &Tag| {
-            let json = sunrise_client_core::scoreboard::tag_to_json(t);
-            let text = sunrise_client_core::scoreboard::comp_text(&json);
+            let json = sunrise_game_data::scoreboard::tag_to_json(t);
+            let text = sunrise_game_data::scoreboard::comp_text(&json);
             text.spans
                 .iter()
                 .any(|span| !span.text.is_empty())

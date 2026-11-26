@@ -12,7 +12,7 @@ use sunrise_client::{
     packet_source::{PacketSource, TimestampedPacket},
     studio::{Metadata, ReplayDriver},
 };
-use sunrise_client_core::{Result, text::Text};
+use sunrise_game_data::{Result, text::Text};
 use sunrise_protocol::{buf::Reader, packets::play::Clientbound, registry::SyncedNames};
 
 /// Decode a recorded play packet against the same registry view as live play.

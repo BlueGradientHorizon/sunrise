@@ -24,7 +24,7 @@ fn a_mod_denies_one_entity_griefing() {
             assert!(
                 game.ui
                     .rules
-                    .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
+                    .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
             );
             assert!(!game.can_entity_grief(Some(denied)));
             assert!(game.can_entity_grief(Some(other)));

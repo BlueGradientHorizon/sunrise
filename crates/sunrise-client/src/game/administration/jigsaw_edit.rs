@@ -5,7 +5,7 @@ use super::{
     block_editor::{Editor, Item, Outcome, Pos, cycle, footer_action, on_off},
 };
 use sunrise_client::ui::EditBox;
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_level::{
     containers::BlockEntity,
     jigsaw_block::{JigsawBlock, JointType, is_vertical_front},

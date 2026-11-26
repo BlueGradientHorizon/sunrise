@@ -10,7 +10,7 @@ use sunrise_client::{
     pvp::{ChatOptions, Colour, CrosshairCache, Frame},
     pvp_hud::{self, Combo, Durability, Icon, Key, Line, Widget},
 };
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_level::particle_options::ParticleType;
 use winit::event::MouseButton;
 
@@ -376,7 +376,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let names = &self.pack.names;
             w.refresh(|effects, lines| {
                 for &(id, amplifier, secs) in effects {
-                    let key = sunrise_client_core::potions::description_id(id);
+                    let key = sunrise_game_data::potions::description_id(id);
                     let mut name = names.display_get(&key).unwrap_or_else(|| id.to_owned());
                     // EffectsInInventory.getEffectName: the level from II to X.
                     if (1..=9).contains(&amplifier) {
@@ -416,7 +416,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             state.held.clear();
         }
         let text = |key: &str, args: &[&dyn std::fmt::Display]| {
-            let line = sunrise_client_core::lang::tr(key, args);
+            let line = sunrise_game_data::lang::tr(key, args);
             Line::new(Icon::None, line, &width)
         };
         if hud.ping {
@@ -433,7 +433,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if let Some(([x, y, z], facing)) = coords {
                     lines.push(text("sunrise.pvp.hud.coords", &[x, y, z]));
                     let key = format!("sunrise.pvp.hud.direction.{facing}");
-                    let name = sunrise_client_core::lang::get_or(&key, facing);
+                    let name = sunrise_game_data::lang::get_or(&key, facing);
                     lines.push(text("sunrise.pvp.hud.facing", &[&name]));
                 }
             });
@@ -622,7 +622,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 false => (lines, size),
                 true if editing => {
                     let key = format!("sunrise.pvp.hud_{}", id.name());
-                    let name = sunrise_client_core::lang::get_or(&key, id.name());
+                    let name = sunrise_game_data::lang::get_or(&key, id.name());
                     let width = |s: &str| HudBatch::text_width(&self.side.gui.atlas, s);
                     stand_in = vec![Line::new(Icon::None, name, &width)];
                     (&stand_in, pvp_hud::size(&stand_in))

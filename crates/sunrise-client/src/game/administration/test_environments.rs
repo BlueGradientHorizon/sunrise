@@ -4,7 +4,7 @@
 //! definitions are the data pack's `test_environment` entries, or inline.
 use super::Game;
 use serde_json::Value as Json;
-use sunrise_client_core::gamerules::Value;
+use sunrise_game_data::gamerules::Value;
 pub(in crate::game) use sunrise_gameplay::test_environments::{
     Activation, Environment, Saved, WeatherType, parse,
 };

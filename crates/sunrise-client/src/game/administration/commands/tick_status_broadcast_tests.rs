@@ -24,7 +24,7 @@ fn chats(receiver: &mpsc::Receiver<sunrise_sim::lan::Out>) -> Vec<serde_json::Va
             let mut reader = sunrise_protocol::buf::Reader::new(&body);
             let id = reader.varint().unwrap();
             if let Clientbound::SystemChat(p) = Clientbound::decode(id, reader.rest()).unwrap() {
-                result.push(sunrise_client_core::scoreboard::tag_to_json(&p.content));
+                result.push(sunrise_game_data::scoreboard::tag_to_json(&p.content));
             }
         }
     }

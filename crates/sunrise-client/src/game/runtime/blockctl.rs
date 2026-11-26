@@ -4,7 +4,7 @@ use super::Game;
 use super::owner_link::{ControlRequest, OwnerRequest};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;
 use sunrise_world::{chunk::BlockState, registry::BlockStateId};
 

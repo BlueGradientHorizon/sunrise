@@ -7,9 +7,9 @@ use mod_api::{
     BlockEntityShapes, BlockEntityShapesError, BlockEntityTypeKey, LevelRef, PlayerRef,
     TransactionContext,
 };
-use sunrise_client_core::block_entity_nbt;
 use sunrise_core::nbt::{Compound, Tag};
 use sunrise_core::position::BlockPos;
+use sunrise_game_data::block_entity_nbt;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{
     containers::{BlockEntity, ModBlockEntity},
@@ -326,7 +326,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .native_block_entity_write_target(entity)
             .ok_or(BlockEntityError::Stale)?;
         let nbt = Tag::Compound(mod_payload(data));
-        if sunrise_client_core::nbt_path::too_deep(&nbt, 0) {
+        if sunrise_game_data::nbt_path::too_deep(&nbt, 0) {
             return Ok(false);
         }
         let Some(old) = self
@@ -475,7 +475,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             BlockEntity::Banner(banner) => banner.name.clone(),
             _ => world.block_names.get(&(x, y, z)).map(|name| match name {
                 Tag::String(text) => text.to_string_lossy(),
-                component => sunrise_client_core::component::name_text(component).plain(),
+                component => sunrise_game_data::component::name_text(component).plain(),
             }),
         }
     }

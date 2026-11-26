@@ -1,6 +1,6 @@
 use super::Game;
 use mod_api::GameRuleReadError;
-use sunrise_client_core::gamerules::Value as GameRuleValue;
+use sunrise_game_data::gamerules::Value as GameRuleValue;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(super) fn game_rule(&self, id: &str) -> Result<GameRuleValue, GameRuleReadError> {

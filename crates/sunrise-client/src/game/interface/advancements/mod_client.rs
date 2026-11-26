@@ -9,7 +9,7 @@ use std::sync::Arc;
 #[cfg(test)]
 use std::time::Instant;
 use sunrise_client::{hud::HudBatch, toasts::Slide};
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::advancements::{self as adv, Frame, Progress, Tree};
 
@@ -242,7 +242,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         a: sunrise_protocol::packets::play::Advancement,
     ) -> adv::Advancement {
-        use sunrise_client_core::scoreboard::tag_to_json;
+        use sunrise_game_data::scoreboard::tag_to_json;
         let display = a.display.map(|d| adv::Display {
             icon: self.remote_advancement_icon(d.icon),
             title: tag_to_json(&d.title),

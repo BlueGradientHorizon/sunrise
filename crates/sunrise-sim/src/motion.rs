@@ -1387,7 +1387,7 @@ impl MotionWorld<'_, '_, '_> {
         } else {
             None
         };
-        let modified = sunrise_client_core::move_input::modify_input(
+        let modified = sunrise_game_data::move_input::modify_input(
             direction,
             self.player.item_use_speed,
             sneak,
@@ -1483,7 +1483,7 @@ impl MotionWorld<'_, '_, '_> {
     /// deltaMovement a dismount teleport keeps (its DELTA_* are relative).
     pub(crate) fn rider_travel_tick(&mut self, direction: [f32; 2]) -> Result<()> {
         self.player.velocity = Vec3::ZERO;
-        let input = sunrise_client_core::move_input::modify_input(direction, None, None);
+        let input = sunrise_game_data::move_input::modify_input(direction, None, None);
         let mut gate = MoveGate::new();
         self.living_travel(
             &mut gate,
@@ -4513,7 +4513,7 @@ mod tests {
             player.local_spectator = true;
             player.may_fly = true;
             player.flying_speed =
-                sunrise_client_core::move_input::spectator_flying_speed(player.flying_speed, steps);
+                sunrise_game_data::move_input::spectator_flying_speed(player.flying_speed, steps);
             MotionWorld {
                 side: crate::motion::dry_side(),
                 tag_items: None,

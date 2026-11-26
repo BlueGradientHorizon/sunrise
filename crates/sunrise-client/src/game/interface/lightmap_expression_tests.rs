@@ -266,7 +266,7 @@ fn corner(game: &mut crate::game::ClientGame<'_>) -> [u8; 3] {
 /// A game frame.
 pub(in crate::game::client_side) fn frame(
     game: &mut crate::game::ClientGame<'_>,
-) -> sunrise_client_core::Result<bool> {
+) -> sunrise_game_data::Result<bool> {
     game.render_with(|renderer, frame| renderer.render(frame))
 }
 
@@ -274,7 +274,7 @@ pub(in crate::game::client_side) fn frame(
 /// frame, a loading screen's), from a screenshot of it.
 pub(in crate::game::client_side) fn corner_of(
     game: &mut crate::game::ClientGame<'_>,
-    draw: impl FnOnce(&mut crate::game::ClientGame<'_>) -> sunrise_client_core::Result<bool>,
+    draw: impl FnOnce(&mut crate::game::ClientGame<'_>) -> sunrise_game_data::Result<bool>,
 ) -> [u8; 3] {
     game.side.renderer.0.as_mut().unwrap().screenshot =
         Some(sunrise_client::gfx::ScreenshotRequest {

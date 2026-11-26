@@ -60,7 +60,7 @@ pub(in crate::game) fn read(
         .take()
         .unwrap_or_default()
         .iter()
-        .map(sunrise_client_core::text::Text::plain)
+        .map(sunrise_game_data::text::Text::plain)
         .collect();
     ok.then(|| {
         said.split_whitespace()

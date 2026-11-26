@@ -22,7 +22,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let griefing = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING);
+            .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING);
         for i in 0..self.mobs.len() {
             let m = &self.mobs[i];
             if m.species() != Species::Panda || !m.alive() || !self.creatures.ticked.contains(&m.id)

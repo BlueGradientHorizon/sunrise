@@ -229,7 +229,7 @@ fn a_command_block_placement_callback_saves_updated_entity_data() {
         let feedback = game
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
+            .bool_at(sunrise_game_data::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
         entity.track_output = !feedback;
         game.world.modified.clear();
         assert_eq!(level.set_placed_by(game, pos, None), Ok(true));

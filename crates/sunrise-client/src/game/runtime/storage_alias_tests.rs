@@ -94,7 +94,7 @@ fn fails_unchanged(game: &mut crate::game::ServerGame<'_>, command: &str) {
     let said = game.side.chat_capture.take().unwrap_or_default();
     assert_eq!(
         said.first()
-            .map(sunrise_client_core::text::Text::plain)
+            .map(sunrise_game_data::text::Text::plain)
             .as_deref(),
         Some("Nothing changed. The specified properties already have these values"),
         "{command}"

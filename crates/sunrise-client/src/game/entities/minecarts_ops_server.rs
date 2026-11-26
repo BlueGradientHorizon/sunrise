@@ -3,8 +3,8 @@ use super::Game;
 use crate::game::minecarts::{
     CART_KEY_Y, CartKind, Minecart, TNT_PRIME_EVENT, cart_is_destroyed, hit::CartHit,
 };
-use sunrise_client_core::sound_source::BLOCKS;
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_game_data::sound_source::BLOCKS;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
 
@@ -88,7 +88,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
+            .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
         {
             return;
         }
@@ -121,7 +121,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut stack = ItemStack::new(kind.item(), 1);
         if let Some(name) = self.persist_raw(id).and_then(|raw| raw.get("CustomName")) {
             let text = sunrise_sim::entity_nbt::name_text(name);
-            stack.data_mut().custom_name = Some(sunrise_client_core::scoreboard::component_tag(
+            stack.data_mut().custom_name = Some(sunrise_game_data::scoreboard::component_tag(
                 &text.component(),
             ));
         }
@@ -215,7 +215,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if self
                         .ui
                         .rules
-                        .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS)
+                        .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS)
                     {
                         self.spawn_item_own(self.cart_drop(kind, id), at, 10);
                         self.drop_vehicle_contents(at, &vec![None; slots]);

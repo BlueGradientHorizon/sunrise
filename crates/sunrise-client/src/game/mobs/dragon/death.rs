@@ -26,7 +26,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let drops = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_DROPS);
+            .bool_at(sunrise_game_data::gamerules::vanilla::MOB_DROPS);
         if t > 150 && t % 5 == 0 && drops {
             self.spawn_orbs([p.x, p.y, p.z], (xp as f32 * 0.08) as u32);
         }

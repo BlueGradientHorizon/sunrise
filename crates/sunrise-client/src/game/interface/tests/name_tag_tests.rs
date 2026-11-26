@@ -16,11 +16,11 @@ use super::name_tag_at;
 use crate::game::creatures::render_fixture::mob;
 use std::sync::Arc;
 use sunrise_client::hud::HudBatch;
-use sunrise_client_core::scoreboard as sb;
-use sunrise_client_core::text::Text;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::ChunkPos;
+use sunrise_game_data::scoreboard as sb;
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::entities::ArmorStand;
@@ -336,7 +336,7 @@ fn a_creative_player_keeps_the_tag_it_names_a_stand_with() {
     let named = game.armor_stands[0]
         .custom_name
         .as_ref()
-        .map(sunrise_client_core::text::Text::plain);
+        .map(sunrise_game_data::text::Text::plain);
     assert_eq!(named.as_deref(), Some("Bob"));
     // Survival spends one.
     game.set_mode_id(0);

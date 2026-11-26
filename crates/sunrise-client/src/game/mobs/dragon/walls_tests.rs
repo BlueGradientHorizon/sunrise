@@ -104,7 +104,7 @@ fn block_parts_answer_what_the_dragon_and_the_wither_may_destroy() {
             let griefing = |game: &mut crate::game::ServerGame<'_>, on: bool| {
                 assert!(game.ui.rules.set(
                     "mob_griefing",
-                    sunrise_client_core::gamerules::Value::Bool(on),
+                    sunrise_game_data::gamerules::Value::Bool(on),
                 ));
             };
             griefing(game, true);

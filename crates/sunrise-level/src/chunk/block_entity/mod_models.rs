@@ -1,11 +1,11 @@
 //! Engine-owned mod block entity storage and revision tracking.
 use super::published_shapes::{PublishedShapes, SHAPES_KEY};
 use std::sync::{Arc, LazyLock};
-use sunrise_client_core::{
+use sunrise_core::nbt::{Compound, JavaString, Tag};
+use sunrise_game_data::{
     block_entity_nbt::saved_item_slot,
     block_entity_types::{self, RegisteredBlockEntityType},
 };
-use sunrise_core::nbt::{Compound, JavaString, Tag};
 use sunrise_items::items::ItemStack;
 
 static ITEMS: LazyLock<JavaString> = LazyLock::new(|| "Items".into());

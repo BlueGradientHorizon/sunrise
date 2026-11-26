@@ -441,7 +441,7 @@ mod name_conversion_tests {
         Arc,
         atomic::{AtomicUsize, Ordering},
     };
-    use sunrise_client_core::text::Text;
+    use sunrise_game_data::text::Text;
     use sunrise_world::native_load_context::{DataLoadOrigin, LoadContext, LoadInputs, LoopSide};
 
     // Engine -> API rejects unrepresentable opaque metadata (NestedNull);

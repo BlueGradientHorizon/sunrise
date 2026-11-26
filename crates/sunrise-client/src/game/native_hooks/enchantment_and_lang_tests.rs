@@ -67,7 +67,7 @@ fn a_servers_synced_enchantment_reaches_the_registry_reads() {
 #[test]
 #[ignore = "daily"]
 fn translate_gives_the_text_of_a_defined_key_and_none_otherwise() {
-    use sunrise_client_core::lang::{Language, ResourceSource, scoped};
+    use sunrise_game_data::lang::{Language, ResourceSource, scoped};
     struct Empty;
     impl ResourceSource for Empty {
         fn read(&self, _: &str) -> Option<Vec<u8>> {

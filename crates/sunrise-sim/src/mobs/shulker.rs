@@ -1156,7 +1156,7 @@ mod tests {
         let tag = Tag::compound([
             (
                 "id",
-                sunrise_client_core::nbt_value::string("minecraft:shulker"),
+                sunrise_game_data::nbt_value::string("minecraft:shulker"),
             ),
             ("Pos", Tag::List(vec![Tag::Double(0); 3])),
             ("Peek", Tag::Byte(0)),

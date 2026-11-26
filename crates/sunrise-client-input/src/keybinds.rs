@@ -304,7 +304,7 @@ fn named_mouse_button(name: &str) -> Option<MouseButton> {
         _ => return None,
     })
 }
-pub use sunrise_client_core::key_display::{
+pub use sunrise_game_data::key_display::{
     clear_action_bindings, clear_action_resolver, display_name, replace_action_bindings,
     reset_action_bindings, set_action_binding, set_action_resolver,
 };
@@ -321,7 +321,7 @@ pub fn learn_layout(event: &winit::event::KeyEvent) {
     let Some(name) = key_name(code) else {
         return;
     };
-    let learn = sunrise_client_core::key_display::learn_layout;
+    let learn = sunrise_game_data::key_display::learn_layout;
     match event.key_without_modifiers() {
         Key::Character(text) => learn(name, &text),
         Key::Dead(Some(c)) => learn(name, c.encode_utf8(&mut [0; 4])),

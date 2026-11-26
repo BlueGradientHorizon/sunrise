@@ -16,8 +16,8 @@ ServerScoreboard.stopTrackingObjective	inline	crates/sunrise-sim/src/lan/scorebo
 ServerScoreboard.getObjectiveDisplaySlotCount	inline	crates/sunrise-sim/src/lan/scoreboard.rs::View::of	tracked set = objectives in any display slot
 ServerScoreboard.updatePlayerWaypoint	port	crates/sunrise-sim/src/lan/waypoints.rs::Waypoints::tick_level	team change remakes the player's waypoint connections, found by the per-tick diff
 ServerScoreboard.updateTeamWaypoints	port	crates/sunrise-sim/src/lan/waypoints.rs::Waypoints::tick_level	every player on a changed team, via the per-tick diff
-ServerScoreboard.load	port	crates/sunrise-client-core/src/scoreboard.rs::Scoreboard::unpack	the saved data's Objectives, Scores, DisplaySlots and Teams read back
-ServerScoreboard.store	port	crates/sunrise-client-core/src/scoreboard.rs::Scoreboard::pack	ScoreboardSaveData.Packed's fields, those equal to their codec default left out
+ServerScoreboard.load	port	crates/sunrise-game-data/src/scoreboard.rs::Scoreboard::unpack	the saved data's Objectives, Scores, DisplaySlots and Teams read back
+ServerScoreboard.store	port	crates/sunrise-game-data/src/scoreboard.rs::Scoreboard::pack	ScoreboardSaveData.Packed's fields, those equal to their codec default left out
 ServerTickRateManager.updateJoiningPlayer	port	crates/sunrise-sim/src/lan/hub.rs::Hub::send_level_info	sends ticking state and step to the joining guest
 ServerTickRateManager.updateStepTicks	inline	crates/sunrise-sim/src/lan/hub.rs::Hub::sync_ticking	a step's revision change broadcasts TickingStep, and the same fn sends the ticking state when the rate or the freeze changed
 SuppressedExceptionCollector.addEntry	port	crates/sunrise-sim/src/chunk_io.rs::SaveFailureReporter::record	tracks messages and counts for chunk/save per server; gap: chunk/load and packet locations
@@ -32,7 +32,7 @@ CustomBossEvent.removeAllPlayers	inline	crates/sunrise-client/src/game/interface
 CustomBossEvent.setValue	port	crates/sunrise-client/src/game/interface/bossbars.rs::Game::bossbar_set	value arm; progress is clamped in BossBar::progress
 CustomBossEvent.setMax	port	crates/sunrise-client/src/game/interface/bossbars.rs::Game::bossbar_set	max arm; progress clamped in BossBar::progress
 CustomBossEvent.setPlayers	port	crates/sunrise-client/src/game/interface/bossbars.rs::Game::bossbar_set	players arm
-CustomBossEvent.load	port	crates/sunrise-client-core/src/bossbar.rs::BossBars::unpack	restores saved bars; UUIDs minted from the id
+CustomBossEvent.load	port	crates/sunrise-game-data/src/bossbar.rs::BossBars::unpack	restores saved bars; UUIDs minted from the id
 CustomBossEvents.onPlayerDisconnect	port	crates/sunrise-client/src/game/interface/bossbars.rs::Game::publish_boss_bars	a disconnected viewer leaves boss_viewers and the sent map
 ChaseClient.start	skip:debug		/chase remote-control client, a developer tool
 ChaseClient.stop	skip:debug		/chase remote-control client, a developer tool

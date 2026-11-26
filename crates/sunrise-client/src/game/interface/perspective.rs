@@ -143,9 +143,9 @@ pub(in crate::game::client_side) fn own_invisible(
 /// translucent.
 pub(in crate::game::client_side) fn body_visible(
     invisible: bool,
-    team: Option<&sunrise_client_core::scoreboard::Team>,
+    team: Option<&sunrise_game_data::scoreboard::Team>,
 ) -> bool {
-    !sunrise_client_core::scoreboard::invisible_to(team, team, false, invisible)
+    !sunrise_game_data::scoreboard::invisible_to(team, team, false, invisible)
 }
 /// The player's model type for each resources root it was asked for.
 pub(in crate::game) static PLAYER_TYPES: Mutex<Vec<(PathBuf, Option<Arc<MobType>>)>> =
@@ -753,7 +753,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// The player's own team: a client is in it by its remote profile name.
     pub(in crate::game::client_side) fn own_team(
         &self,
-    ) -> Option<&sunrise_client_core::scoreboard::Team> {
+    ) -> Option<&sunrise_game_data::scoreboard::Team> {
         self.remote
             .as_ref()
             .and_then(|r| self.score.board.players_team(&r.profile_name))
@@ -2007,7 +2007,7 @@ pub(in crate::game) mod preview_tests {
 
     #[test]
     fn an_invisible_player_hides_its_own_body() {
-        use sunrise_client_core::scoreboard::Scoreboard;
+        use sunrise_game_data::scoreboard::Scoreboard;
         use sunrise_level::effects::EffectInstance;
         // The effect as a server's UpdateMobEffect or a drunk potion adds it.
         let id = sunrise_level::brewing::effect("minecraft:invisibility")
@@ -2037,7 +2037,7 @@ pub(in crate::game) mod preview_tests {
         let effects = sunrise_level::effects::PlayerEffects::default();
         assert!(own_invisible(&effects, true));
         assert!(!body_visible(own_invisible(&effects, true), None));
-        let mut board = sunrise_client_core::scoreboard::Scoreboard::default();
+        let mut board = sunrise_game_data::scoreboard::Scoreboard::default();
         let team = board.add_team("blue");
         assert!(body_visible(own_invisible(&effects, true), Some(team)));
     }

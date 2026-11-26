@@ -309,7 +309,7 @@ fn cached_language(
     vanilla_root: &Path,
     code: &str,
     dedicated: bool,
-) -> Arc<sunrise_client_core::lang::Language> {
+) -> Arc<sunrise_game_data::lang::Language> {
     #[derive(PartialEq, Eq)]
     struct LangKey {
         root: PathBuf,
@@ -317,12 +317,12 @@ fn cached_language(
         dedicated: bool,
         stamp: FileStamp,
     }
-    type LangSlot = Arc<OnceLock<Arc<sunrise_client_core::lang::Language>>>;
+    type LangSlot = Arc<OnceLock<Arc<sunrise_game_data::lang::Language>>>;
     static LANGS: Mutex<Vec<(LangKey, LangSlot)>> = Mutex::new(Vec::new());
 
     let dir = if dedicated { vanilla_root } else { root };
     let lang_code = if dedicated {
-        sunrise_client_core::lang::DEFAULT.to_owned()
+        sunrise_game_data::lang::DEFAULT.to_owned()
     } else {
         code.to_owned()
     };
@@ -350,11 +350,11 @@ fn cached_language(
     };
     slot.get_or_init(|| {
         let language = if dedicated {
-            sunrise_client_core::lang::Language::load_default(&vanilla_root.to_path_buf())
+            sunrise_game_data::lang::Language::load_default(&vanilla_root.to_path_buf())
         } else {
             let source =
                 sunrise_assets::resource_source::ResourceSource::directory(root.to_path_buf());
-            sunrise_client_core::lang::Language::load(&[&source], code)
+            sunrise_game_data::lang::Language::load(&[&source], code)
         };
         Arc::new(language)
     })
@@ -476,7 +476,7 @@ fn hydrate_hit(
         sunrise_level::brewing::set_pack_colors(client_pack.polytone_colors.effects.clone());
     }
     if !skip_lang {
-        sunrise_client_core::lang::set_shared(cached_language(
+        sunrise_game_data::lang::set_shared(cached_language(
             &cached.root,
             &cached.vanilla_root,
             &settings.language,

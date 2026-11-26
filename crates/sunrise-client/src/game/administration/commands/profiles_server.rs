@@ -1,5 +1,5 @@
 use super::{Arg, Context, Game, R, Target, err};
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_server_files::user_lists::NameAndId;
 
 impl Game<'_, crate::game::server_side::ServerState> {

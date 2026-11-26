@@ -4,13 +4,13 @@ use super::{
     commands_common::{R, Target, err},
 };
 use std::collections::{HashMap, HashSet};
-use sunrise_client_core::{
+use sunrise_command::{Arg, Context};
+use sunrise_core::{identifier::Identifier, java_hash_map::JavaHashMap, nbt::Tag};
+use sunrise_game_data::{
     bossbar::{self, BossBars},
     scoreboard::{self as sb, Comp, canonical_component, json_to_tag},
     text::Text,
 };
-use sunrise_command::{Arg, Context};
-use sunrise_core::{identifier::Identifier, java_hash_map::JavaHashMap, nbt::Tag};
 use sunrise_protocol::packets::play::{self, BossAction, Clientbound as C};
 use sunrise_sim::{mobs::Species, save, scoreboard_cmd::format_list};
 
@@ -223,7 +223,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     .bosses
                     .listed_bars()
                     .into_iter()
-                    .map(sunrise_client_core::bossbar::BossBar::display_name)
+                    .map(sunrise_game_data::bossbar::BossBar::display_name)
                     .collect();
                 let n = names.len();
                 if n == 0 {
@@ -257,7 +257,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             "bossbar.get" => {
                 let b = self.side.bosses.bars.get(&bar).cloned().unwrap_or_else(|| {
-                    sunrise_client_core::bossbar::BossBar::new(&bar, sb::literal(&bar))
+                    sunrise_game_data::bossbar::BossBar::new(&bar, sb::literal(&bar))
                 });
                 let s = b.display_name();
                 Ok(match last.as_str() {

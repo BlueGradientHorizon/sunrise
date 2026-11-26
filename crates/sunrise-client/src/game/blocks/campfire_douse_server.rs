@@ -1,5 +1,5 @@
 use super::{Game, Hit};
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::server_side::ServerState> {

@@ -22,7 +22,7 @@ pub(in crate::game) fn native_block_entity_tick(
 }
 
 pub(in crate::game) fn valid_tick_subject(block: &str, entity: &EngineBlockEntity) -> bool {
-    sunrise_client_core::block_entity_types::valid(block, entity.id()) == Some(true)
+    sunrise_game_data::block_entity_types::valid(block, entity.id()) == Some(true)
 }
 
 #[derive(Clone, Copy)]
@@ -150,7 +150,7 @@ impl ResidentBlockEntity for ServerBlockEntityData<'_> {
             .any(|reserved| key.0.iter().copied().eq(reserved.encode_utf16()))
             || (is_items && self.slot_count > 0)
             || value.as_ref().is_some_and(|tag| {
-                matches!(tag, Tag::End) || sunrise_client_core::nbt_path::too_deep(tag, 1)
+                matches!(tag, Tag::End) || sunrise_game_data::nbt_path::too_deep(tag, 1)
             })
         {
             return false;

@@ -9,7 +9,7 @@ use sunrise_sim::lan::data::SyncData;
 enum LocalRegistry<'a> {
     Enchantments(&'a sunrise_items::enchant::Enchantments),
     Advancements(&'a sunrise_sim::advancements::Tree),
-    Rules(&'a sunrise_client_core::gamerules::RuleRegistry),
+    Rules(&'a sunrise_game_data::gamerules::RuleRegistry),
     Json(&'a BTreeMap<String, serde_json::Value>),
     HashJson(&'a std::collections::HashMap<String, serde_json::Value>),
     Loot(&'a sunrise_items::items::Items),

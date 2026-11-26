@@ -141,7 +141,7 @@ impl From<ViewedLevelsError> for RouteError {
 /// block. A mod's state-aware block is asked at the travel, where its block entity is made.
 fn block_entity_block(facts: &BlockFacts, state: BlockStateId) -> bool {
     let block = facts.get(state);
-    sunrise_client_core::block_entity_types::type_for(&block.name).is_some()
+    sunrise_game_data::block_entity_types::type_for(&block.name).is_some()
         || block.sign_form().is_some()
         || sunrise_level::containers::BlockEntity::for_block(&block.name).is_some()
 }

@@ -17,7 +17,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         creative_source: bool,
         attack: &sunrise_sim::health::Attack,
         armor_weapon: Option<sunrise_sim::health::ArmorWeapon>,
-    ) -> sunrise_client_core::Result<sunrise_sim::health::BlockOutcome> {
+    ) -> sunrise_game_data::Result<sunrise_sim::health::BlockOutcome> {
         let rules = self.world.health_rules;
         // One decision about the hit's causing entity for its three levels.
         let decision = crate::game::entity::causer_decision!(self, attack.attacker);

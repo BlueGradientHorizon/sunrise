@@ -4608,7 +4608,6 @@ dependencies = [
  "socket2 0.6.5",
  "sunrise-assets",
  "sunrise-bench",
- "sunrise-client-core",
  "sunrise-client-gameplay",
  "sunrise-client-input",
  "sunrise-client-lib",
@@ -4617,6 +4616,7 @@ dependencies = [
  "sunrise-core",
  "sunrise-dualsense",
  "sunrise-friends",
+ "sunrise-game-data",
  "sunrise-gameplay",
  "sunrise-gameplay-common",
  "sunrise-hooks",
@@ -4653,19 +4653,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sunrise-client-core"
-version = "0.1.0"
-dependencies = [
- "log",
- "serde_json",
- "sunrise-assets",
- "sunrise-core",
- "sunrise-mod-api-macros",
- "sunrise-mod-vocab",
- "sunrise-world",
-]
-
-[[package]]
 name = "sunrise-client-gameplay"
 version = "0.1.0"
 dependencies = [
@@ -4690,8 +4677,8 @@ dependencies = [
  "arboard",
  "log",
  "png",
- "sunrise-client-core",
  "sunrise-core",
+ "sunrise-game-data",
  "sunrise-mod-api-macros",
  "sunrise-theme",
  "winit",
@@ -4725,13 +4712,13 @@ dependencies = [
  "stacker",
  "sunrise-assets",
  "sunrise-bench",
- "sunrise-client-core",
  "sunrise-client-input",
  "sunrise-client-lib",
  "sunrise-client-render",
  "sunrise-command",
  "sunrise-core",
  "sunrise-dualsense",
+ "sunrise-game-data",
  "sunrise-hooks",
  "sunrise-items",
  "sunrise-java-properties",
@@ -4794,11 +4781,11 @@ dependencies = [
  "sunrise-assets",
  "sunrise-audio-input",
  "sunrise-border",
- "sunrise-client-core",
  "sunrise-client-input",
  "sunrise-command",
  "sunrise-connected",
  "sunrise-core",
+ "sunrise-game-data",
  "sunrise-hdr",
  "sunrise-hooks",
  "sunrise-items",
@@ -4838,8 +4825,8 @@ dependencies = [
 name = "sunrise-command"
 version = "0.1.0"
 dependencies = [
- "sunrise-client-core",
  "sunrise-core",
+ "sunrise-game-data",
  "sunrise-items",
  "sunrise-mod-vocab",
  "sunrise-protocol",
@@ -4925,6 +4912,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "sunrise-game-data"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "serde_json",
+ "sunrise-assets",
+ "sunrise-core",
+ "sunrise-mod-api-macros",
+ "sunrise-mod-vocab",
+ "sunrise-world",
+]
+
+[[package]]
 name = "sunrise-game-discovery"
 version = "0.1.0"
 dependencies = [
@@ -4942,8 +4942,8 @@ dependencies = [
  "log",
  "serde_json",
  "sunrise-assets",
- "sunrise-client-core",
  "sunrise-core",
+ "sunrise-game-data",
  "sunrise-gameplay-common",
  "sunrise-items",
  "sunrise-level",
@@ -4962,9 +4962,9 @@ version = "0.1.0"
 dependencies = [
  "log",
  "serde_json",
- "sunrise-client-core",
  "sunrise-command",
  "sunrise-core",
+ "sunrise-game-data",
  "sunrise-items",
  "sunrise-level",
  "sunrise-mod-vocab",
@@ -5018,8 +5018,8 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
- "sunrise-client-core",
  "sunrise-core",
+ "sunrise-game-data",
  "sunrise-mod-package",
  "sunrise-mod-vocab",
  "sunrise-world",
@@ -5048,9 +5048,9 @@ dependencies = [
  "smallvec",
  "sunrise-assets",
  "sunrise-border",
- "sunrise-client-core",
  "sunrise-command",
  "sunrise-core",
+ "sunrise-game-data",
  "sunrise-items",
  "sunrise-mod-api",
  "sunrise-mod-api-macros",
@@ -5376,7 +5376,6 @@ dependencies = [
  "socket2 0.6.5",
  "sunrise-assets",
  "sunrise-bench",
- "sunrise-client-core",
  "sunrise-client-gameplay",
  "sunrise-client-input",
  "sunrise-client-lib",
@@ -5385,6 +5384,7 @@ dependencies = [
  "sunrise-core",
  "sunrise-dualsense",
  "sunrise-friends",
+ "sunrise-game-data",
  "sunrise-gameplay",
  "sunrise-gameplay-common",
  "sunrise-hooks",
@@ -5719,9 +5719,9 @@ dependencies = [
  "sunrise-assets",
  "sunrise-bench",
  "sunrise-border",
- "sunrise-client-core",
  "sunrise-command",
  "sunrise-core",
+ "sunrise-game-data",
  "sunrise-items",
  "sunrise-java-properties",
  "sunrise-level",

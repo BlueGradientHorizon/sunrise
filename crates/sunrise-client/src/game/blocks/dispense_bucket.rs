@@ -2,8 +2,8 @@
 //! empties it.
 use super::Game;
 use super::dispenser::{CLICK, Dispensed, FAIL, Pos, offset};
-use sunrise_client_core::Result;
 use sunrise_core::geometry::Direction;
+use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;
 use sunrise_world::{fluid::FluidKind, level::BucketContent};
 

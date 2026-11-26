@@ -5,7 +5,7 @@ use crate::game::commands::test_locate::link;
 use crate::game::commands::test_locate::locate_command;
 use crate::game::commands::test_locate::north_turned;
 use crate::game::commands::test_locate::path_of;
-use sunrise_client_core::text::{self, ClickEvent, Style, Text};
+use sunrise_game_data::text::{self, ClickEvent, Style, Text};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_world::worldgen::structure::Rotation;
 

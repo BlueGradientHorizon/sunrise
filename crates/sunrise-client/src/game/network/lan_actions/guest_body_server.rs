@@ -88,7 +88,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     w.scene.chunks.contains_key(&(x, z))
                 })
             {
-                let landed = (|| -> sunrise_client_core::Result<_> {
+                let landed = (|| -> sunrise_game_data::Result<_> {
                     // Entity.doCheckFallDamage queries support again before fallOn.
                     w.check_supporting_block(accepted.on_ground, movement)?;
                     let pos = w.legacy_on_position()?;

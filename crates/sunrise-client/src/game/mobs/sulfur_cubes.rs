@@ -3,8 +3,8 @@
 //! out, lighting an explosive one, swallowing blocks from the ground and
 //! splitting into two babies.
 use super::Game;
-use sunrise_client_core::text::Text;
 use sunrise_core::position::BlockPos;
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{
     mobs::{Species, Who, sulfur_cube},
@@ -57,7 +57,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if !self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
+                .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
             {
                 let message = Text::translate("block.minecraft.tnt.disabled", &[]);
                 self.server_send_overlay_message(message);
@@ -170,7 +170,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
+            .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
         {
             return;
         }
@@ -210,7 +210,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || !self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
+                .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
         {
             return;
         }
@@ -227,7 +227,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let griefing = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING);
+            .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING);
         for i in 0..self.mobs.len() {
             let m = &self.mobs[i];
             if m.species() != Species::SulfurCube || !self.creatures.ticked.contains(&m.id) {

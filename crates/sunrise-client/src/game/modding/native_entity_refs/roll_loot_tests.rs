@@ -164,7 +164,7 @@ fn command_roll(game: &mut crate::game::ServerGame<'_>, table: &str, tool: &str)
         .take()
         .unwrap_or_default()
         .iter()
-        .map(sunrise_client_core::text::Text::plain)
+        .map(sunrise_game_data::text::Text::plain)
         .collect();
     assert!(ok, "{said:?}");
     lines(game.inventory.iter().take(36).flatten())

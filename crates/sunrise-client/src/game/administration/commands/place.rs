@@ -3,8 +3,8 @@
 use super::{Arg, Context, Game, R, err};
 use crate::game::structure_blocks::{load_settings, template_size};
 use std::sync::OnceLock;
-use sunrise_client_core::text::Text;
 use sunrise_core::position::BlockPos;
+use sunrise_game_data::text::Text;
 use {
     sunrise_core::{
         nbt,
@@ -84,7 +84,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if raw.starts_with('{') {
                     let (tag, _) = sunrise_core::nbt::parse_snbt(&raw)
                         .map_err(|_| err("command.failed", &[]))?;
-                    let json = sunrise_client_core::scoreboard::tag_to_json(&tag).to_string();
+                    let json = sunrise_game_data::scoreboard::tag_to_json(&tag).to_string();
                     let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
                     let placed = self
                         .with_level(|b, level, ticks| {

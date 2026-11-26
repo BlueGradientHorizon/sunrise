@@ -45,7 +45,7 @@ pub(in crate::game) fn typed_source(tag: &Tag) -> Value {
             _ => {}
         }
     }
-    let mut value = sunrise_client_core::scoreboard::tag_to_json(tag);
+    let mut value = sunrise_game_data::scoreboard::tag_to_json(tag);
     keep_byte_limits(tag, &mut value);
     value
 }

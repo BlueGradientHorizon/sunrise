@@ -6,8 +6,8 @@ use crate::game::commands::items::list_operation;
 use crate::game::commands::items::mob_slot;
 use crate::game::commands::items::set_custom_data;
 use crate::game::commands::items::*;
-use sunrise_client_core::text::Text;
 use sunrise_core::nbt::Tag;
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::{furnace::FurnaceCooking, scoreboard_cmd::Tracker};
@@ -132,7 +132,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             return Some(stack);
                         }
                         if m["target"].as_str() == Some("item_name") {
-                            let name = sunrise_client_core::scoreboard::json_to_tag(&m["name"]);
+                            let name = sunrise_game_data::scoreboard::json_to_tag(&m["name"]);
                             edit_components(&mut stack, |c| {
                                 c.insert("minecraft:item_name".into(), name);
                             });
@@ -176,7 +176,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             .as_array()
                             .into_iter()
                             .flatten()
-                            .map(sunrise_client_core::scoreboard::json_to_tag)
+                            .map(sunrise_game_data::scoreboard::json_to_tag)
                             .collect();
                         edit_components(&mut stack, |c| {
                             let old: Vec<Tag> = match c.get(&"minecraft:lore".into()) {
@@ -192,7 +192,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             Value::String(snbt) => sunrise_core::nbt::parse_snbt(snbt)
                                 .map(|(t, _)| t)
                                 .unwrap_or(Tag::Compound(Default::default())),
-                            v => sunrise_client_core::scoreboard::json_to_tag(v),
+                            v => sunrise_game_data::scoreboard::json_to_tag(v),
                         };
                         set_custom_data(&mut stack, &tag);
                     }
@@ -217,7 +217,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 if remove {
                                     c.insert(marker, Tag::Compound(Default::default()));
                                 } else {
-                                    c.insert(key, sunrise_client_core::scoreboard::json_to_tag(v));
+                                    c.insert(key, sunrise_game_data::scoreboard::json_to_tag(v));
                                 }
                             }
                         });

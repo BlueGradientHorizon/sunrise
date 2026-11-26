@@ -2062,8 +2062,8 @@ server	api_values	impl TryIntoApi for crate::menu::AnvilCraftSnapshot	-	-	trait_
 server	api_values	impl TryIntoApi for sunrise_assets::item_model::StackView	-	-	trait_impl	-	trait-impl
 server	api_values	impl TryIntoApi for sunrise_client::merchant::ItemCost	-	-	trait_impl	-	trait-impl
 server	api_values	impl TryIntoApi for sunrise_client::merchant::MerchantOffer	-	-	trait_impl	-	trait-impl
-server	api_values	impl TryIntoApi for sunrise_client_core::gamerules::Value	-	-	trait_impl	-	trait-impl
-server	api_values	impl TryIntoApi for sunrise_client_core::suggestion::Suggestion	-	-	trait_impl	-	trait-impl
+server	api_values	impl TryIntoApi for sunrise_game_data::gamerules::Value	-	-	trait_impl	-	trait-impl
+server	api_values	impl TryIntoApi for sunrise_game_data::suggestion::Suggestion	-	-	trait_impl	-	trait-impl
 server	api_values	impl TryIntoApi for sunrise_world::chunk::BlockState	-	-	trait_impl	-	trait-impl
 server	api_values	impl TryIntoApi for sunrise_world::level::PlacementContext	-	-	trait_impl	-	trait-impl
 server	api_values	impl TryIntoApi for super::spill::BlockItemDrop	-	-	trait_impl	-	trait-impl

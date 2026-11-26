@@ -176,7 +176,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.send(S::PlayerLoaded(Empty));
         }
         // LevelLoadingScreen.onClose.
-        self.say_system_now(&sunrise_client_core::text::Text::translate(
+        self.say_system_now(&sunrise_game_data::text::Text::translate(
             "narrator.ready_to_play",
             &[],
         ));

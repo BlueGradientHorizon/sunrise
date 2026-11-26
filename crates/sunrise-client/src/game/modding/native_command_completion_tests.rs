@@ -480,7 +480,7 @@ fn a_quotable_argument_reads_a_quoted_phrase_mid_command_and_goes_out_as_a_quota
             let (mut game, rx) = game_with_guest(&mut resources, "QuestTester");
             // Vanilla's en_us text for `readerExpectedEndOfQuote`, in the game's language.
             assert_eq!(
-                sunrise_client_core::text::Text::tr("parsing.quote.expected.end", &[]).plain(),
+                sunrise_game_data::text::Text::tr("parsing.quote.expected.end", &[]).plain(),
                 "Unclosed quoted string"
             );
             game.ui.dispatcher.0 = Arc::new(dispatcher);

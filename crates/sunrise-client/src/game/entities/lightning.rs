@@ -116,7 +116,7 @@ impl Bolt {
 
     /// `Entity.load` inherited fields (`LightningBolt.readAdditionalSaveData` is empty).
     pub(in crate::game) fn apply_nbt(&mut self, tag: &sunrise_core::nbt::Tag) {
-        use sunrise_client_core::nbt_path::int_value;
+        use sunrise_game_data::nbt_path::int_value;
         use sunrise_sim::{entity_nbt, save::float};
         if let Some(pos) = entity_nbt::position(tag) {
             self.at = [
@@ -328,7 +328,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_bolt_away_from_players_starts_no_fire() {
-        use sunrise_client_core::gamerules::Value;
+        use sunrise_game_data::gamerules::Value;
         super::super::native_entity_refs::tests::with_game(|game| {
             game.world
                 .chunks

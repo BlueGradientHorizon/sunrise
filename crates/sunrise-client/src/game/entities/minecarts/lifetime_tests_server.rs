@@ -274,7 +274,7 @@ fn disabled_tnt_rule_discards_primed_carts_but_keeps_unprimed_ticks() {
                 game.reset_entity_residency();
                 assert!(game.ui.rules.set(
                     "tnt_explodes",
-                    sunrise_client_core::gamerules::Value::Bool(false),
+                    sunrise_game_data::gamerules::Value::Bool(false),
                 ));
                 let start = Vec3::new(0.5, 64.25, 0.5);
                 let stone = game

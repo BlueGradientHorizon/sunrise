@@ -8,7 +8,7 @@ use sunrise_client::{
     pad_glyph::{self, Glyph},
     widgets::{self, Action, DeclaredAction, Kind, Target},
 };
-use sunrise_client_core::lang;
+use sunrise_game_data::lang;
 
 /// The menu jobs that can do a declared job.
 const ACTION_JOBS: [MenuJob; 3] = [MenuJob::Alternate, MenuJob::Back, MenuJob::Extra];

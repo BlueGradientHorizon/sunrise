@@ -220,8 +220,8 @@ fn client_merchant_offers_follow_the_open_menu() {
     use super::native_entity_refs::tests::with_client_game;
     use mod_api::__private::game::Fields;
     use mod_api::ClientHost;
-    use sunrise_client_core::text::Text;
     use sunrise_core::nbt::Tag;
+    use sunrise_game_data::text::Text;
     use sunrise_protocol::{
         item::{Component, Stack, component::STORED_ENCHANTMENTS},
         packets::{

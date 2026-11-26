@@ -7,7 +7,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let explodes = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES);
+            .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES);
         if !explodes && c.fuse < 0 {
             return false;
         }
@@ -62,7 +62,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // ExplosionInteraction.TNT: the tnt_explosion_drop_decay rule.
         let interaction =
-            self.destroy_type(sunrise_client_core::gamerules::vanilla::TNT_EXPLOSION_DROP_DECAY);
+            self.destroy_type(sunrise_game_data::gamerules::vanilla::TNT_EXPLOSION_DROP_DECAY);
         // MinecartTNT.isPrimed (fuse > -1): a cart that ran into a wall or
         // fell unprimed blows rails up like any blast.
         self.side.combat.0.rail_proof_blast = c.fuse >= 0;

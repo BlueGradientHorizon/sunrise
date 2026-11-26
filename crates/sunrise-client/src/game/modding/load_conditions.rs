@@ -7,7 +7,7 @@ pub(in crate::game) type ConditionTable =
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn stage_condition_inventory(
         &mut self,
-    ) -> sunrise_client_core::Result<Option<sunrise_assets::resource_source::ResourceRoot>> {
+    ) -> sunrise_game_data::Result<Option<sunrise_assets::resource_source::ResourceRoot>> {
         self.protect_condition_root();
         self.mods.load_condition_candidate = None;
         let inventory = sunrise_mod_package::enabled::EnabledMods::read(&self.options.resources)?;
@@ -246,7 +246,7 @@ pub(in crate::game) fn content_root_with_conditions(
     cache: &std::path::Path,
     inventory: &sunrise_mod_package::enabled::EnabledMods,
     sources: &super::mods::ModsState,
-) -> sunrise_client_core::Result<std::path::PathBuf> {
+) -> sunrise_game_data::Result<std::path::PathBuf> {
     let conditions = conditions_for_mods(sources, inventory)?;
     sunrise_sim::mod_content::resource_root_with_conditions(
         root,

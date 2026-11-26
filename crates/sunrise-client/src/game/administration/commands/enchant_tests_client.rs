@@ -10,7 +10,7 @@ use crate::game::{
 };
 use std::sync::Arc;
 use sunrise_client::creative::Creative;
-use sunrise_client_core::scoreboard::tag_to_json;
+use sunrise_game_data::scoreboard::tag_to_json;
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::{
     buf::Reader,

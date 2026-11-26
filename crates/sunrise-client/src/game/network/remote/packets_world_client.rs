@@ -49,7 +49,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         match p.event {
             // NO_RESPAWN_BLOCK_AVAILABLE: ClientPacketListener.handleGameEvent
             // sends the player this system message.
-            0 => self.client_system_message(sunrise_client_core::text::Text::translate(
+            0 => self.client_system_message(sunrise_game_data::text::Text::translate(
                 "block.minecraft.spawn.not_valid",
                 &[],
             )),

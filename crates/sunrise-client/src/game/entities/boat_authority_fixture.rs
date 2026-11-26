@@ -7,8 +7,8 @@ use std::{
     path::Path,
     sync::{Arc, Mutex},
 };
-use sunrise_client_core::Result;
 use sunrise_core::geometry::Vec3;
+use sunrise_game_data::Result;
 
 #[derive(Deserialize)]
 struct Case {

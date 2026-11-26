@@ -1099,7 +1099,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// level.
     #[cfg(test)]
     pub(in crate::game) fn new_block_entity(&mut self, name: &str) -> Option<BlockEntity> {
-        if sunrise_client_core::block_entity_types::type_for(name).is_none() {
+        if sunrise_game_data::block_entity_types::type_for(name).is_none() {
             return block_entity_for_block(
                 self.pack.assets.registry,
                 self.res.facts(),
@@ -1532,7 +1532,7 @@ pub(in crate::game) mod tests {
                     assert!(error.contains("be_user"), "{error}");
                     assert!(error.contains("unknown block entity type"), "{error}");
                     assert!(error.contains(id), "{error}");
-                    assert!(sunrise_client_core::block_entity_types::current().is_none());
+                    assert!(sunrise_game_data::block_entity_types::current().is_none());
                     return;
                 }
                 assert_eq!(keys.shared.get(), keys.own.get());

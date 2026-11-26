@@ -37,7 +37,7 @@ use sunrise_world::{
 };
 #[allow(unused_imports)]
 use {
-    sunrise_client_core::Result, sunrise_items::items::ItemStack, sunrise_items::items::Items,
+    sunrise_game_data::Result, sunrise_items::items::ItemStack, sunrise_items::items::Items,
     sunrise_level::block_entities::BlockEntityIdentity, sunrise_level::collisions::SceneCollisions,
     sunrise_level::containers::BlockEntity, sunrise_level::particle_options::ParticleOptions,
     sunrise_level::particle_options::ParticleType, sunrise_sim::mobs::Species,
@@ -1250,7 +1250,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
+                .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
                 && sulfur_cube::prime(&mut self.mobs[i], false)
             {
                 let m = &mut self.mobs[i];
@@ -1292,7 +1292,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
+                .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
                 && self.tnt_prime_allowed(target_pos)
             {
                 self.spawn_primed_tnt(target_pos, false, None, None);
@@ -2869,7 +2869,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
+            .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
         {
             set_success("tnt", false);
             return (Some(stack), FAIL);

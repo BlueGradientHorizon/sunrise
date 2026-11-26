@@ -4,8 +4,8 @@
 use super::*;
 use crate::game::boats::Boat;
 use crate::game::game_tests::tests::server_game;
-use sunrise_client_core::gamerules::Value;
 use sunrise_core::nbt::Tag;
+use sunrise_game_data::gamerules::Value;
 use sunrise_sim::mobs::{Mob, MobEvent, Species};
 
 /// Blasts a boat 7.7 blocks away with `owner` as the indirect source, and

@@ -123,7 +123,7 @@ fn game(resources: &mut Option<std::sync::Arc<Resources>>) -> crate::game::Serve
         let said = game.side.chat_capture.take().unwrap_or_default();
         let said: Vec<_> = said
             .iter()
-            .map(sunrise_client_core::text::Text::plain)
+            .map(sunrise_game_data::text::Text::plain)
             .collect();
         assert!(ok, "{command}: {said:?}");
     };
@@ -144,7 +144,7 @@ fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Vec<Stri
     (
         ok,
         said.iter()
-            .map(sunrise_client_core::text::Text::plain)
+            .map(sunrise_game_data::text::Text::plain)
             .collect(),
     )
 }

@@ -42,7 +42,7 @@ pub(in crate::game) const MAX_FEEDBACK_LINE_BYTES: usize = 4096;
 
 /// `lines` as plain text, at most `MAX_FEEDBACK_LINES` of them, each cut to at most
 /// `MAX_FEEDBACK_LINE_BYTES` bytes at a character boundary.
-pub(in crate::game) fn capped_lines(lines: &[sunrise_client_core::text::Text]) -> Vec<String> {
+pub(in crate::game) fn capped_lines(lines: &[sunrise_game_data::text::Text]) -> Vec<String> {
     lines
         .iter()
         .take(MAX_FEEDBACK_LINES)

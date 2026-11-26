@@ -35,7 +35,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let hover = s.inputs[0]
                     .as_ref()
                     .map(|i| {
-                        sunrise_client_core::lang::returned_to_server(|| {
+                        sunrise_game_data::lang::returned_to_server(|| {
                             self.stack_hover_name_text(i).plain()
                         })
                     })
@@ -278,7 +278,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn tick_brewing_stand(
         &mut self,
         pos: (i32, i32, i32),
-    ) -> sunrise_client_core::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         let fuel = self.brewing_fuel_remainder(pos);
         let Some(BlockEntity::Brewing(b)) = self.world.block_entities.get_mut(&pos) else {
             return Ok(());

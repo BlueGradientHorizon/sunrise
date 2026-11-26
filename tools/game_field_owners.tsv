@@ -610,7 +610,7 @@ player_model	Option<Mob>	client	client (survey; index 604 is last field so drop 
 acting_input	acting_state::ServerActingInput	server	server (acting player input snapshot)	605	side	-
 pending_guest_ui	acting_state::ServerPendingGuestUi	server	server (acting player pending UI requests)	606	side	-
 audio_capture_active	bool	server	server (portable server audio recorder gate)	607	game	-
-pending_sounds	Vec<sunrise_client_core::sound_source::ServerSound>	server	server (portable server sound queue)	608	game	-
+pending_sounds	Vec<sunrise_game_data::sound_source::ServerSound>	server	server (portable server sound queue)	608	game	-
 pending_particles	Vec<crate::lan::server_effects::ServerQueuedParticle>	server	server (portable server particle queue)	609	game	-
 pending_explosions	Vec<crate::lan::server_effects::ServerExplosion>	server	server (portable server explosion queue)	610	game	-
 pending_native_sounds	Vec<creatures::NativeSound>	server	server (portable server native sound queue)	611	game	-

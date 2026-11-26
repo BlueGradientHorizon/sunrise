@@ -176,11 +176,11 @@ impl TooltipFont for EngineTooltipFont<'_> {
         9
     }
     fn width(&self, text: &Text) -> Result<i32, TextFormError> {
-        let text: sunrise_client_core::text::Text = text.try_into_engine(&())?;
+        let text: sunrise_game_data::text::Text = text.try_into_engine(&())?;
         Ok(self.font.width_text_with_font(&text, self.name()) as i32)
     }
     fn split(&self, text: &Text, max_width: i32) -> Result<Vec<Text>, TextFormError> {
-        let text: sunrise_client_core::text::Text = text.try_into_engine(&())?;
+        let text: sunrise_game_data::text::Text = text.try_into_engine(&())?;
         self.font
             .split_formatted_with_font(&text, max_width as f32, self.name())
             .into_iter()

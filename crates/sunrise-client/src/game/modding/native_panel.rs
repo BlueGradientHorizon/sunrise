@@ -990,7 +990,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     u32::MAX,
                 );
             }
-            let label = sunrise_client_core::lang::get("options.title");
+            let label = sunrise_game_data::lang::get("options.title");
             sunrise_client::widgets::record(&label, rect, true);
             if hovered && self.carried.is_none() {
                 settings_label = Some(label);

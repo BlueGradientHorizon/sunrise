@@ -1073,7 +1073,7 @@ pub(in crate::game) fn load_resources_for_mods(
     log::info!("load pack tables: {:.2}s", started.elapsed().as_secs_f32());
     progress.set(4);
     if !menu {
-        use sunrise_client_core::lang::{self, Language};
+        use sunrise_game_data::lang::{self, Language};
         // An integrated server shares the client's loaded resources and
         // language; it doesn't run this loader in production.
         lang::set(if role.is_dedicated_server() {

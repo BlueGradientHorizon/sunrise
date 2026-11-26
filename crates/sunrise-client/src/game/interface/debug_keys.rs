@@ -10,13 +10,13 @@ use sunrise_client::{
     hud::HudBatch,
     hud_layout, keybinds,
 };
-use sunrise_client_core::{
-    Result,
-    text::{ClickEvent, Style, Text},
-};
 use sunrise_command::args::GameMode;
 use sunrise_core::geometry::{Axis, Vec3};
 use sunrise_core::nbt::Tag;
+use sunrise_game_data::{
+    Result,
+    text::{ClickEvent, Style, Text},
+};
 use sunrise_protocol::packets::play::{
     BlockEntityTagQuery, DebugSubscriptionRequest, EntityTagQuery, Serverbound,
 };
@@ -697,7 +697,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             || self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::REDUCED_DEBUG_INFO)
+                .bool_at(sunrise_game_data::gamerules::vanilla::REDUCED_DEBUG_INFO)
             || self.remote.as_ref().is_some_and(|r| r.reduced_debug_info)
     }
     /// `DebugScreenEntryList.isCurrentlyEnabled` for an entry's path.
@@ -1063,7 +1063,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     fn copy_create_block_command(&mut self, pos: [i32; 3], state: &str, tag: Option<&Tag>) {
         let mut description = state.to_owned();
         if let Some(tag) = tag {
-            description.push_str(&sunrise_client_core::snbt::to_snbt(tag));
+            description.push_str(&sunrise_game_data::snbt::to_snbt(tag));
         }
         self.set_clipboard(&format!(
             "/setblock {} {} {} {description}",
@@ -1082,7 +1082,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
             }
             command.push(' ');
-            command.push_str(&sunrise_client_core::snbt::pretty(&tag).plain());
+            command.push_str(&sunrise_game_data::snbt::pretty(&tag).plain());
         }
         self.set_clipboard(&command);
     }

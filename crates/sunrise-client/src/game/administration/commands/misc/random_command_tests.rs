@@ -28,8 +28,8 @@ pub(in crate::game) fn chats(receiver: &mpsc::Receiver<Out>) -> Vec<String> {
         if let Clientbound::SystemChat(p) = Clientbound::decode(id, reader.rest()).unwrap() {
             // The client's own read of the line it is sent.
             out.push(
-                sunrise_client_core::scoreboard::comp_text(
-                    &sunrise_client_core::scoreboard::tag_to_json(&p.content),
+                sunrise_game_data::scoreboard::comp_text(
+                    &sunrise_game_data::scoreboard::tag_to_json(&p.content),
                 )
                 .plain(),
             );

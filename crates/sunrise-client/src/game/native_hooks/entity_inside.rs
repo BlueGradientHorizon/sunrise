@@ -257,7 +257,7 @@ pub(in crate::game) mod sweep_tests {
     /// scope: what a server turn walks, or the client's own tick.
     pub(in crate::game) fn sweep_game_player_runs(
         game: &mut crate::game::ServerGame<'_>,
-        runs: impl FnOnce(&mut sunrise_sim::motion::MotionWorld) -> sunrise_client_core::Result<()>,
+        runs: impl FnOnce(&mut sunrise_sim::motion::MotionWorld) -> sunrise_game_data::Result<()>,
     ) -> (f64, f64, bool) {
         use sunrise_sim::motion::MotionWorld;
         let before = game.player.as_ref().unwrap().velocity.x;

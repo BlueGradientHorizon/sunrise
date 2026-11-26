@@ -37,7 +37,7 @@ impl HopperState {
     /// `HopperBlockEntity.loadAdditional`: only the cooldown is saved; the
     /// last tick time starts at zero for the new block entity.
     pub fn load(tag: &sunrise_core::nbt::Tag) -> Self {
-        let canonical = sunrise_client_core::block_entity_nbt::canonical(tag);
+        let canonical = sunrise_game_data::block_entity_nbt::canonical(tag);
         let cooldown = match canonical.as_ref().and_then(|t| t.get("TransferCooldown")) {
             Some(sunrise_core::nbt::Tag::Int(value)) => *value,
             _ => -1,

@@ -9,7 +9,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use sunrise_client::client_perf::request::{
     Failed, GpuSwitch, ProfileSide, StartOptions, Started, Stopped,
 };
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 use sunrise_perf_format::{FieldSender, PartMerger, RawSend, files, v1::WarningCode};
 use sunrise_protocol::packets::{configuration::CustomPayload, play::Serverbound as S};
 use sunrise_sim::perf_net::{CHANNEL, Outcome, Refusal, Reply, Request, Unsent, Wanted};
@@ -35,11 +35,11 @@ fn refusal_text(why: Refusal) -> String {
             "the server could not write the profile; see its log",
         ),
     };
-    sunrise_client_core::lang::get_or(key, default)
+    sunrise_game_data::lang::get_or(key, default)
 }
 
 fn not_sunrise_text() -> String {
-    sunrise_client_core::lang::get_or(
+    sunrise_game_data::lang::get_or(
         "sunrise.perf.not_sunrise",
         "this server isn't running Sunrise",
     )
@@ -93,7 +93,7 @@ pub(in crate::game) struct Incoming {
 }
 
 fn part_text() -> String {
-    sunrise_client_core::lang::get_or(
+    sunrise_game_data::lang::get_or(
         "sunrise.perf.part_incomplete",
         "the server's part of the profile did not arrive whole",
     )

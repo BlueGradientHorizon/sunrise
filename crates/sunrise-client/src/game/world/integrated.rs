@@ -30,7 +30,7 @@ use std::{
     thread::JoinHandle,
     time::{Duration, Instant},
 };
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 use sunrise_level::level_loading::{STATUS_RADIUS, ServerLoadView, Stage};
 use sunrise_level::sim_settings::SimSettings;
 use sunrise_level::spans::startup;
@@ -156,7 +156,7 @@ pub(in crate::game) struct Integrated {
     /// The world's name (`level.dat`'s `LevelName`), for the pause menu.
     pub world_name: String,
     pub save_folder: String,
-    pub rule_registry: Arc<sunrise_client_core::gamerules::RuleRegistry>,
+    pub rule_registry: Arc<sunrise_game_data::gamerules::RuleRegistry>,
 }
 impl Integrated {
     /// The window's handle on a server fixture, with no server thread behind it.
@@ -298,7 +298,7 @@ impl Integrated {
             tasks: channel().0,
             world_name: "Test world".into(),
             save_folder: "test_world".into(),
-            rule_registry: Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
+            rule_registry: Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
         }
     }
     /// `IntegratedServer.halt(true)`: returns once the world is saved and let go.
@@ -423,7 +423,7 @@ pub(in crate::game) struct Starting {
 /// The world to open and the player who owns it.
 pub(in crate::game) struct Launch {
     pub(in crate::game) folder: String,
-    pub(in crate::game) rule_registry: Arc<sunrise_client_core::gamerules::RuleRegistry>,
+    pub(in crate::game) rule_registry: Arc<sunrise_game_data::gamerules::RuleRegistry>,
     pub(in crate::game) name: Option<String>,
     pub(in crate::game) seed: Option<i64>,
     pub(in crate::game) creative: bool,
@@ -1039,7 +1039,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         settings: LanSettings,
     ) -> std::result::Result<u16, String> {
         if self.options.developer_single_player {
-            return Err(sunrise_client_core::lang::get(
+            return Err(sunrise_game_data::lang::get(
                 "sunrise.developer_offline.single_player",
             ));
         }
@@ -1342,7 +1342,7 @@ pub(in crate::game) mod tests {
             tasks,
             world_name: String::new(),
             save_folder: String::new(),
-            rule_registry: Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
+            rule_registry: Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
         };
         assert!(server.post(|_| {
             let _guard = sunrise_level::crash::enter_native_mod(sunrise_level::crash::ModCall {
@@ -1424,7 +1424,7 @@ pub(in crate::game) mod tests {
                     tasks,
                     world_name: String::new(),
                     save_folder: String::new(),
-                    rule_registry: Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
+                    rule_registry: Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
                 },
                 ready,
                 player: "Dev".into(),
@@ -1504,11 +1504,9 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn integrated_rules_screen_shares_server_session_registry() {
         super::super::native_entity_refs::tests::with_client_game(|game| {
-            let registry = Arc::new(
-                sunrise_client_core::gamerules::RuleRegistry::with_categories(&[
-                    "example:machines".into(),
-                ]),
-            );
+            let registry = Arc::new(sunrise_game_data::gamerules::RuleRegistry::with_categories(
+                &["example:machines".into()],
+            ));
             let request =
                 WorldRequest::new("test", None, None, true, None, registry.clone()).unwrap();
             let (tasks, _receiver) = channel();
@@ -1598,7 +1596,7 @@ pub(in crate::game) mod tests {
     #[ignore = "daily"]
     fn forced_disconnect_keeps_wire_cache_until_integrated_server_stops() {
         use crate::game::native_entity_refs::tests::{run_fresh_cases, with_client_game};
-        use sunrise_client_core::text::Text;
+        use sunrise_game_data::text::Text;
         use sunrise_sim::lan::data::{SyncData, WorldTags};
 
         if run_fresh_cases(
@@ -1640,7 +1638,7 @@ pub(in crate::game) mod tests {
                     tasks,
                     world_name: "fixture".into(),
                     save_folder: "fixture".into(),
-                    rule_registry: Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
+                    rule_registry: Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
                 });
                 let result = game.leave_server(Some(Text::literal("test disconnect")));
                 assert_eq!(
@@ -1672,7 +1670,7 @@ pub(in crate::game) mod tests {
                 tasks,
                 world_name: "First world".into(),
                 save_folder: "first_world".into(),
-                rule_registry: Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
+                rule_registry: Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
             });
             let local = game.client_session().client_server().unwrap();
             assert!(local.integrated_local);
@@ -2007,7 +2005,7 @@ pub(in crate::game) mod tests {
             tasks,
             world_name: String::new(),
             save_folder: String::new(),
-            rule_registry: Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
+            rule_registry: Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
         };
         // The receiver deliberately does not run either task between the updates. In particular,
         // the dispatcher can still show the old value when the owner toggles back.
@@ -2056,7 +2054,7 @@ pub(in crate::game) mod tests {
             tasks,
             world_name: String::new(),
             save_folder: String::new(),
-            rule_registry: Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
+            rule_registry: Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
         };
         server.request_stop();
         assert!(flags.stop.load(Ordering::Relaxed));
@@ -2079,7 +2077,7 @@ pub(in crate::game) mod tests {
             tasks,
             world_name: String::new(),
             save_folder: String::new(),
-            rule_registry: Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
+            rule_registry: Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
         };
         assert_eq!(server.stop().unwrap_err().to_string(), "disk write failed");
     }

@@ -5,7 +5,7 @@ use sunrise_client::{
     hud::HudBatch,
     keybinds,
 };
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn open_gamemode_switcher(&mut self) {

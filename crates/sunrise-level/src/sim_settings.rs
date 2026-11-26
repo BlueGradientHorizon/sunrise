@@ -1,7 +1,7 @@
 //! Portable simulation/server settings subset extracted from `settings::Settings`.
 use crate::tick_mode::ParallelTickMode;
 
-pub use sunrise_client_core::sound_source::{
+pub use sunrise_game_data::sound_source::{
     SOUND_SOURCES, ServerSound, sound_source_for_event as sound_source,
 };
 

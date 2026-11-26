@@ -43,7 +43,7 @@ use sunrise_core::{
 use sunrise_gameplay_common::projectile_world::ProjWorld;
 use sunrise_sim::health::source_damage_type;
 use {
-    sunrise_client_core::Result, sunrise_items::items::ItemStack,
+    sunrise_game_data::Result, sunrise_items::items::ItemStack,
     sunrise_level::fast_hash::FxHashMap, sunrise_level::particle_options::ParticleType,
     sunrise_sim::arrows::EntityHit, sunrise_sim::health::Attack, sunrise_sim::health::HealthEvent,
     sunrise_sim::health::HurtSource, sunrise_sim::join_seq::JoinSeq, sunrise_sim::mobs::Damage,
@@ -1424,7 +1424,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         && self
                             .ui
                             .rules
-                            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
+                            .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
                         && let Some(area) = self
                             .mobs
                             .iter()
@@ -2496,7 +2496,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             && self
                                 .ui
                                 .rules
-                                .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
+                                .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS)
                         {
                             let at = [
                                 f64::from(pos[0]) + 0.5,
@@ -2807,7 +2807,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     ) && !self
                         .ui
                         .rules
-                        .bool_at(sunrise_client_core::gamerules::vanilla::MOB_DROPS)
+                        .bool_at(sunrise_game_data::gamerules::vanilla::MOB_DROPS)
                     {
                         continue;
                     }
@@ -4795,7 +4795,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         && self
                             .ui
                             .rules
-                            .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MONSTERS)
+                            .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MONSTERS)
                         && self.ui.difficulty != 0
                         && let Some(pl) = self.player.as_ref()
                     {
@@ -5570,7 +5570,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let vanish = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::ENDER_PEARLS_VANISH_ON_DEATH);
+            .bool_at(sunrise_game_data::gamerules::vanilla::ENDER_PEARLS_VANISH_ON_DEATH);
         if !hear && !alone_any {
             return self.tick_projectiles_live(through, ticking, vanish, round);
         }
@@ -7169,7 +7169,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mob_drops = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_DROPS);
+            .bool_at(sunrise_game_data::gamerules::vanilla::MOB_DROPS);
         if let Some(amount) = self
             .mobs
             .iter_mut()
@@ -7207,7 +7207,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::FORGIVE_DEAD_PLAYERS)
+            .bool_at(sunrise_game_data::gamerules::vanilla::FORGIVE_DEAD_PLAYERS)
         {
             return;
         }
@@ -7800,7 +7800,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     && self
                         .ui
                         .rules
-                        .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
+                        .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
                     && p.arrow
                         .as_ref()
                         .and_then(|a| a.can_break.as_ref())
@@ -7816,7 +7816,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || !self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::PROJECTILES_CAN_BREAK_BLOCKS)
+                .bool_at(sunrise_game_data::gamerules::vanilla::PROJECTILES_CAN_BREAK_BLOCKS)
         {
             return;
         }
@@ -8191,7 +8191,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let rule = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING);
+            .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING);
         entity.map_or(rule, |entity| self.entity_grief(entity, rule))
     }
     /// Whether a large fireball's blast lights fire (`LargeFireball.onHit`):

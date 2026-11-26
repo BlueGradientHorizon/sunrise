@@ -12,8 +12,8 @@ use sunrise_client::{
     confirm_screen::Choice,
     hud::HudBatch,
 };
-use sunrise_client_core::text::Text;
 use sunrise_command::{Dispatcher, Registries};
+use sunrise_game_data::text::Text;
 use sunrise_java_properties::now_millis;
 use sunrise_protocol::{
     packets::play::{self, Serverbound as S},

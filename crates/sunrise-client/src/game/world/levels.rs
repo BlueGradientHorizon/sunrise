@@ -25,7 +25,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 use sunrise_level::spans::time as span;
 use sunrise_level::world::World;
 use sunrise_level::{block_entity_ticks::BlockEntityTicks, chunk_streamer::ChunkStreamer};
@@ -3724,7 +3724,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::ADVANCE_WEATHER)
+                .bool_at(sunrise_game_data::gamerules::vanilla::ADVANCE_WEATHER)
             {
                 self.world.weather.tick_timers(&mut self.world.random);
             }

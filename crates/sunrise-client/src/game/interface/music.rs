@@ -103,7 +103,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
 
     /// `NowPlayingToast.getNowPlayingString` of the song the music manager
     /// plays: its file's short language key, slashes as dots.
-    fn now_playing_song(&self) -> Option<sunrise_client_core::text::Text> {
+    fn now_playing_song(&self) -> Option<sunrise_game_data::text::Text> {
         let id = self.side.music.current_instance()?;
         let location = self
             .side
@@ -123,8 +123,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             format!("{namespace}.{path}")
         }
         .replace('/', ".");
-        Some(sunrise_client_core::text::Text::literal(
-            sunrise_client_core::lang::get_or(&key, &key),
+        Some(sunrise_game_data::text::Text::literal(
+            sunrise_game_data::lang::get_or(&key, &key),
         ))
     }
     /// `ToastManager.update` (it plays no toast sound for this toast) and
@@ -356,9 +356,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
 /// Resolve each live entity once per sound tick, even when several sounds name it.
 fn update_bound_entities(
     entities: Vec<sunrise_client::sound_engine::SoundEntity>,
-    mut resolve: impl FnMut(u32) -> Option<sunrise_client_core::sound_source::SoundEntityState>,
+    mut resolve: impl FnMut(u32) -> Option<sunrise_game_data::sound_source::SoundEntityState>,
 ) {
-    use sunrise_client_core::sound_source::SoundEntityState;
+    use sunrise_game_data::sound_source::SoundEntityState;
     let mut states = std::collections::HashMap::new();
     for entity in entities {
         let previous = entity.state();
@@ -383,7 +383,7 @@ mod audio_music_tests;
 mod bound_lookup_tests {
     use super::update_bound_entities;
     use sunrise_client::sound_engine::SoundEntity;
-    use sunrise_client_core::sound_source::SoundEntityState;
+    use sunrise_game_data::sound_source::SoundEntityState;
 
     #[test]
     fn simultaneous_sounds_share_a_lookup_but_follow_each_new_tick() {

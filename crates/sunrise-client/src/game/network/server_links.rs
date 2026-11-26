@@ -7,7 +7,7 @@
 //! https://mcsrc.dev/2/26.3/net/minecraft/client/gui/screens/dialog/ServerLinksDialogScreen
 use super::{Game, Screen, packs::open_uri};
 use sunrise_client::{clipboard::Clipboard, hud::HudBatch, ui};
-use sunrise_client_core::{Result, text::Text};
+use sunrise_game_data::{Result, text::Text};
 use sunrise_protocol::packets::configuration::{ServerLink, ServerLinkKind};
 
 /// HeaderAndFooterLayout's header and footer heights; the content wants to
@@ -92,8 +92,8 @@ fn link_label(link: &ServerLink) -> Text {
             ),
             &[],
         ),
-        ServerLinkKind::Custom(tag) => sunrise_client_core::scoreboard::comp_text(
-            &sunrise_client_core::scoreboard::tag_to_json(tag),
+        ServerLinkKind::Custom(tag) => sunrise_game_data::scoreboard::comp_text(
+            &sunrise_game_data::scoreboard::tag_to_json(tag),
         ),
     }
 }

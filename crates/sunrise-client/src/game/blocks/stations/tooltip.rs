@@ -71,7 +71,7 @@ impl ClientTooltipPositioner for WidgetTooltipPositioner {
 /// engine never round-trips original text or bundles through the mod-API boundary on render.
 pub(in crate::game) enum PreparedTooltipItem {
     Text {
-        text: sunrise_client_core::text::Text,
+        text: sunrise_game_data::text::Text,
         color: u32,
     },
     Bundle {
@@ -85,7 +85,7 @@ impl PreparedTooltipItem {
     #[cfg(test)]
     pub(in crate::game::client_side) fn as_text(
         &self,
-    ) -> Option<(&sunrise_client_core::text::Text, u32)> {
+    ) -> Option<(&sunrise_game_data::text::Text, u32)> {
         match self {
             Self::Text { text, color } => Some((text, *color)),
             _ => None,
@@ -185,7 +185,7 @@ pub(in crate::game::client_side) fn wrap_tooltip_width(
 fn push_prepared_text(
     font: &sunrise_client::font::Font,
     default_font: &str,
-    resolved: sunrise_client_core::text::Text,
+    resolved: sunrise_game_data::text::Text,
     color: u32,
     wrap_width: Option<i32>,
     out: &mut Vec<PreparedTooltipItem>,
@@ -214,7 +214,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// `getEmptyBundleDescriptionTextHeight`'s lines: the empty bundle's description wrapped at
     /// the grid's width in `default_font`.
     fn bundle_description_lines(&self, default_font: &str) -> usize {
-        let text = sunrise_client_core::text::Text::translate(
+        let text = sunrise_game_data::text::Text::translate(
             "item.minecraft.bundle.empty.description",
             &[],
         );
@@ -342,7 +342,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn gather_tooltip_components(
         &self,
         stack: &ItemStack,
-        lines: Vec<(sunrise_client_core::text::Text, u32)>,
+        lines: Vec<(sunrise_game_data::text::Text, u32)>,
         mouse_x: i32,
         screen: (f32, f32),
     ) -> GatheredTooltip {
@@ -404,7 +404,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
 
             enum DecodedElement {
-                Text(sunrise_client_core::text::Text, u32),
+                Text(sunrise_game_data::text::Text, u32),
                 Component(mod_api::TooltipComponent),
             }
 
@@ -757,7 +757,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         creative: bool,
         x: f32,
         y: f32,
-        after_name: Vec<(sunrise_client_core::text::Text, u32)>,
+        after_name: Vec<(sunrise_game_data::text::Text, u32)>,
     ) {
         let mut lines = self.stack_tooltip_lines(stack, false, creative);
         if lines.is_empty()
@@ -775,7 +775,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         batch: &mut HudBatch,
         stack: &ItemStack,
-        lines: Vec<(sunrise_client_core::text::Text, u32)>,
+        lines: Vec<(sunrise_game_data::text::Text, u32)>,
         x: f32,
         y: f32,
     ) {

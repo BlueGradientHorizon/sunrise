@@ -129,8 +129,8 @@ SkinManager.TextureCache.getTextureLocation	port	crates/sunrise-level/src/profil
 SplashManager.getSplash	port	crates/sunrise-client/src/title/splash.rs::choose_splash	gap: player: no '<NAME> IS YOU' splash; vanilla sometimes shows the logged-in player's name instead of a splash on the title screen
 WaypointStyle.validate	port	crates/sunrise-client/src/locator_bar.rs::WaypointStyle::parse	validation is folded into the parse
 WaypointStyleManager.apply	port	crates/sunrise-client/src/locator_bar.rs::WaypointStyles::load	gap: minor: loads the arrow and dot sprites from the assets folder into one map
-ClientLanguage.appendFrom	port	crates/sunrise-client-core/src/lang.rs::Language::load	layers the translation JSON from the sources
-LanguageManager.extractLanguages	port	crates/sunrise-client-core/src/lang.rs::available	lists the languages the packs declare
+ClientLanguage.appendFrom	port	crates/sunrise-game-data/src/lang.rs::Language::load	layers the translation JSON from the sources
+LanguageManager.extractLanguages	port	crates/sunrise-game-data/src/lang.rs::available	lists the languages the packs declare
 LanguageManager.onResourceManagerReload	port	crates/sunrise-client/src/game/interface/options.rs::Game::load_language	gap: minor: no error screen when the translations are empty or missing
 AnimationMetadataSection.calculateFrameSize	port	crates/sunrise-assets/src/animation.rs::AnimationMetadata::frame_size
 GuiSpriteScaling.NineSlice.validate	port	crates/sunrise-client-render/src/ui.rs::decode_metadata	borders that meet leave no centre slice, so the metadata is dropped and the sprite draws as a plain stretch

@@ -7,8 +7,8 @@ use super::{
     native_server::PlayerRead,
 };
 use mod_api::{InventoryView, MenuReplace, OpenMenuError, PlayerDataRefusal, PlayerRef};
-use sunrise_client_core::text::Text;
 use sunrise_core::nbt::Tag;
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::lan::{data::component_nbt, menu::Slots};
 

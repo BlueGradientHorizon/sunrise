@@ -9,7 +9,7 @@ pub(in crate::game) fn base() -> String {
 /// The full title for a session part (`title.singleplayer`...), none while not connected.
 fn title(session: Option<&str>) -> String {
     match session {
-        Some(key) => format!("{} - {}", base(), sunrise_client_core::lang::get(key)),
+        Some(key) => format!("{} - {}", base(), sunrise_game_data::lang::get(key)),
         None => base(),
     }
 }
@@ -36,7 +36,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn update_window_title(&mut self) {
         let language = match self.side.window_title {
             Some((_, shown)) if self.side.screen != Screen::Playing => shown,
-            _ => sunrise_client_core::lang::generation(),
+            _ => sunrise_game_data::lang::generation(),
         };
         let shown = (self.title_session(), language);
         if self.side.window_title == Some(shown) {

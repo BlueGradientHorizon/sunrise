@@ -61,7 +61,7 @@ fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Option<S
     game.side.chat_capture = Some(Vec::new());
     let ok = game.run_command(command);
     let messages = game.side.chat_capture.take().unwrap_or_default();
-    let text = messages.first().map(sunrise_client_core::text::Text::plain);
+    let text = messages.first().map(sunrise_game_data::text::Text::plain);
     (ok, text)
 }
 

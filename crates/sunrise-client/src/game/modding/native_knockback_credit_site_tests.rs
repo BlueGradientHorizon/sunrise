@@ -59,7 +59,7 @@ fn a_harming_splash_potion_credits_its_thrower_and_its_sword() {
 fn a_harming_area_cloud_credits_its_owner_and_its_sword() {
     credited_push(|game| {
         let text =
-            sunrise_client_core::text::Text::translate("entity.minecraft.area_effect_cloud", &[]);
+            sunrise_game_data::text::Text::translate("entity.minecraft.area_effect_cloud", &[]);
         game.cloud_affect(
             super::potions::Victim::Mob(100),
             &[("instant_damage", 1, 0)],

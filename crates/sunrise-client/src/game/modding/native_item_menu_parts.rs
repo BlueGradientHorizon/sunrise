@@ -82,7 +82,7 @@ pub(crate) fn can_fit_inside_container_items(
 pub(crate) fn item_name(
     context: &LoopContext,
     stack: &ItemStack,
-    name: &mut Option<sunrise_client_core::text::Text>,
+    name: &mut Option<sunrise_game_data::text::Text>,
 ) {
     use super::api_values::TryIntoEngine;
     if !mod_api::__private::item_listens(mod_api::HookId::ItemName, &stack.item) {

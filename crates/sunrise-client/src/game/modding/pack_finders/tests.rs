@@ -2,7 +2,7 @@ use super::*;
 use mod_api::{AddPackFindersEvent, Hooks, Identifier, ModEntry};
 use mod_platform::testing::with_mods;
 use std::{fs, io::Write, path::PathBuf};
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_level::datapack::{DataStore, FunctionLine};
 
 const ASSET_PACK: &str = "assets/packmod/resourcepacks/optional";
@@ -613,8 +613,8 @@ fn registered_data_commands_respect_flags_required_packs_and_default_priority() 
 fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
     // Reload publishes a language just as the other game fixtures do. Keep this
     // fixture's publications visible locally, not at the mercy of their reloads.
-    let _language = sunrise_client_core::lang::isolate_publication(
-        sunrise_client_core::lang::Language::of("en_us", []),
+    let _language = sunrise_game_data::lang::isolate_publication(
+        sunrise_game_data::lang::Language::of("en_us", []),
     );
     let mut fixture = Fixture::new(true);
     let mut ran = false;
@@ -640,11 +640,11 @@ fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
             .unwrap();
             game.apply_staged_pack(staged).unwrap();
             assert_eq!(
-                sunrise_client_core::lang::get("packmod.optional.title"),
+                sunrise_game_data::lang::get("packmod.optional.title"),
                 "Optional example"
             );
             assert_eq!(
-                sunrise_client_core::lang::get("packmod.optional"),
+                sunrise_game_data::lang::get("packmod.optional"),
                 "packmod.optional"
             );
             game.refresh_pack_lists();
@@ -676,7 +676,7 @@ fn a_mods_pack_is_on_the_screen_and_applies_through_client_reload() {
                 .unwrap();
                 assert_eq!(staged.language.get("packmod.optional"), Some(expected));
                 game.apply_staged_pack(staged).unwrap();
-                assert_eq!(sunrise_client_core::lang::get("packmod.optional"), expected);
+                assert_eq!(sunrise_game_data::lang::get("packmod.optional"), expected);
                 assert!(
                     !game
                         .options

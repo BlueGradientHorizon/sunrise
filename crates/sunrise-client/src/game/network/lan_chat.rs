@@ -3,8 +3,8 @@
 //! handleSignedChatCommand), and the message commands whose text they sign
 //! (SayCommand, EmoteCommands, MsgCommand), relayed by the hub as chat.
 use super::{Game, commands::Target};
-use sunrise_client_core::text::{self, Text};
 use sunrise_command::{Arg, ParseResults};
+use sunrise_game_data::text::{self, Text};
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_sim::lan::{
     data::component_nbt,

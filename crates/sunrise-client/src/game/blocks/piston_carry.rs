@@ -94,7 +94,7 @@ impl GameLevel<'_> {
             .map(|p| (p[0], p[1], p[2]));
         let mut data = super::piston_carry_state::take_position_data(self.world, from);
         let cached = self.positions.hoppers.remove(&from).map(|h| h.cooldown);
-        let is_hopper = sunrise_client_core::block_entity_types::factory_block(
+        let is_hopper = sunrise_game_data::block_entity_types::factory_block(
             &self
                 .facts
                 .get(self.world.block(from.0, from.1, from.2))

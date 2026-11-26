@@ -17,7 +17,7 @@ Identifier.toShortString	skip:other		string helper; the minecraft: prefix is str
 Identifier.readGreedy	port	crates/sunrise-command/src/args.rs::read_identifier	reads id characters while they are allowed
 Identifier.isAllowedInIdentifier	port	crates/sunrise-command/src/args.rs::is_id_char	same character set
 Identifier.isValidPath	inline	crates/sunrise-core/src/identifier.rs::Identifier::from_parts	path check inside from_parts; '/' is allowed
-Identifier.isValidNamespace	port	crates/sunrise-core/src/identifier.rs::Identifier::from_parts	gap: minor: vanilla rejects the namespace '..'; from_parts accepts it (sunrise-client-core parse_identifier has that check)
+Identifier.isValidNamespace	port	crates/sunrise-core/src/identifier.rs::Identifier::from_parts	gap: minor: vanilla rejects the namespace '..'; from_parts accepts it (sunrise-game-data parse_identifier has that check)
 Identifier.assertValidNamespace	inline	crates/sunrise-core/src/identifier.rs::Identifier::from_parts	returns Err(Namespace) instead of throwing
 Identifier.validPathChar	inline	crates/sunrise-core/src/identifier.rs::Identifier::from_parts	path bytes: valid() or '/'
 Identifier.validNamespaceChar	port	crates/sunrise-core/src/identifier.rs::valid	same character set for namespaces

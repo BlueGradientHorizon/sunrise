@@ -6,7 +6,7 @@ use crate::options_file::{OptionsFile, V};
 use std::{fs, path::Path};
 use sunrise_protocol::packets::configuration::ClientInformation;
 
-pub use sunrise_client_core::sound_source::SOUND_SOURCES;
+pub use sunrise_game_data::sound_source::SOUND_SOURCES;
 pub use sunrise_level::sim_settings::SimSettings;
 
 /// Per-source volumes for the mixer (soundCategory_* except master).
@@ -16,7 +16,7 @@ pub fn set_source_volumes(volumes: [f32; 11]) {
 }
 /// The SoundSource an event plays on. Vanilla callers pick the source; this
 /// follows their conventions by event family.
-pub use sunrise_client_core::sound_source::sound_source_for_event as sound_source;
+pub use sunrise_game_data::sound_source::sound_source_for_event as sound_source;
 /// Volume multiplier of a sound source by index.
 pub fn source_volume(i: usize) -> f32 {
     if i == 0 {

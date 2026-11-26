@@ -13,7 +13,7 @@ use sunrise_client::{
     mod_browser::{Listing, ModBrowser, Status},
     mod_registry::{self, Done},
 };
-use sunrise_client_core::lang;
+use sunrise_game_data::lang;
 use sunrise_mod_package::index::Index;
 use sunrise_mod_package::mod_list::ModList;
 

@@ -21,7 +21,7 @@ fn run(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, Vec<Stri
     (
         ok,
         said.iter()
-            .map(sunrise_client_core::text::Text::plain)
+            .map(sunrise_game_data::text::Text::plain)
             .collect(),
     )
 }

@@ -9,7 +9,7 @@ use sunrise_client::{
     mesher::Vertex,
     text_display::{self, CachedQuads, TextDisplayData},
 };
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::entity_data::Value;
 use sunrise_world::registry::BlockStateId;
@@ -1512,7 +1512,7 @@ pub(in crate::game) mod tests {
         let atlas = sunrise_client::hud::HudAtlas::boot();
         let mut display = RemoteTextDisplay::new(Shows::Text, [0.0, 0.0, 5.0], 0.0);
         let d = TextDisplayData {
-            text: std::sync::Arc::new(sunrise_client_core::text::Text::literal("Culled")),
+            text: std::sync::Arc::new(sunrise_game_data::text::Text::literal("Culled")),
             ..Default::default()
         };
         let cache = CachedQuads::new(&atlas, &d, 0);
@@ -1536,7 +1536,7 @@ pub(in crate::game) mod tests {
     fn cached_text_quads_match_fresh_and_invalidate() {
         let atlas = sunrise_client::hud::HudAtlas::boot();
         let mut d = TextDisplayData {
-            text: std::sync::Arc::new(sunrise_client_core::text::Text::literal("Hologram")),
+            text: std::sync::Arc::new(sunrise_game_data::text::Text::literal("Hologram")),
             ..Default::default()
         };
         let cache = CachedQuads::new(&atlas, &d, 0);
@@ -1556,7 +1556,7 @@ pub(in crate::game) mod tests {
             match change {
                 0 => {
                     changed.text =
-                        std::sync::Arc::new(sunrise_client_core::text::Text::literal("Changed"))
+                        std::sync::Arc::new(sunrise_game_data::text::Text::literal("Changed"))
                 }
                 1 => changed.text = std::sync::Arc::new((*d.text).clone().bold()),
                 2 => changed.opacity = 40,
@@ -1570,12 +1570,12 @@ pub(in crate::game) mod tests {
         assert!(!cache.matches(&d, 1, atlas.font.epoch(), atlas.revision));
         assert!(!cache.matches(&d, 0, atlas.font.epoch() + 1, atlas.revision));
         assert!(!cache.matches(&d, 0, atlas.font.epoch(), atlas.revision + 1));
-        d.text = std::sync::Arc::new(sunrise_client_core::text::Text::legacy("§kSecret"));
+        d.text = std::sync::Arc::new(sunrise_game_data::text::Text::legacy("§kSecret"));
         let cache = CachedQuads::new(&atlas, &d, 0);
         assert!(!cache.matches(&d, 0, atlas.font.epoch(), atlas.revision));
         // A plugin hologram sends `§k` inside a literal JSON string: the font
         // resolves it, so its glyphs still change every frame.
-        d.text = std::sync::Arc::new(sunrise_client_core::text::Text::literal("§kSecret"));
+        d.text = std::sync::Arc::new(sunrise_game_data::text::Text::literal("§kSecret"));
         let cache = CachedQuads::new(&atlas, &d, 0);
         assert!(!cache.matches(&d, 0, atlas.font.epoch(), atlas.revision));
     }
@@ -1584,7 +1584,7 @@ pub(in crate::game) mod tests {
     fn transformed_text_bounds_reach_into_view_but_not_from_behind() {
         let atlas = sunrise_client::hud::HudAtlas::boot();
         let d = TextDisplayData {
-            text: std::sync::Arc::new(sunrise_client_core::text::Text::literal("Wide hologram")),
+            text: std::sync::Arc::new(sunrise_game_data::text::Text::literal("Wide hologram")),
             ..Default::default()
         };
         let cache = CachedQuads::new(&atlas, &d, 0);

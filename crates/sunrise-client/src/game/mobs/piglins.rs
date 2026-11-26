@@ -43,7 +43,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             },
         };
         if target == Who::Mob(mob)
-            || sunrise_client_core::scoreboard::teams_allied(self.mob_team(mob), target_team)
+            || sunrise_game_data::scoreboard::teams_allied(self.mob_team(mob), target_team)
             || self
                 .mobs
                 .iter()
@@ -277,7 +277,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let griefing = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING);
+            .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING);
         if !griefing && !self.grief_hooked() {
             return;
         }
@@ -585,7 +585,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let universal = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::UNIVERSAL_ANGER);
+            .bool_at(sunrise_game_data::gamerules::vanilla::UNIVERSAL_ANGER);
         // The target hook may remove mobs, so the list's end is read at each step.
         let mut next = 0;
         while next < self.mobs.len() {

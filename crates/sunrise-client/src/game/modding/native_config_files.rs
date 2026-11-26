@@ -839,11 +839,10 @@ mod tests {
         let saves = scratch.0.path.join("saves");
         let world = saves.join("Bulk World");
         let request = |create: bool| {
-            let rules =
-                std::sync::Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla());
+            let rules = std::sync::Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla());
             let options = sunrise_sim::world_options::WorldOptions {
                 world_type: sunrise_sim::save::WorldPreset::Flat,
-                rules: sunrise_client_core::gamerules::GameRules::with_registry(rules.clone(), &[]),
+                rules: sunrise_game_data::gamerules::GameRules::with_registry(rules.clone(), &[]),
                 ..Default::default()
             };
             let mut request = WorldRequest::new(

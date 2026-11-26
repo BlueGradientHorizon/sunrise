@@ -31,7 +31,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// None outside a logged-in client world.
     pub(in crate::game) fn native_client_language(&self) -> Option<Arc<str>> {
         self.native_session()?;
-        Some(sunrise_client_core::lang::code_snapshot())
+        Some(sunrise_game_data::lang::code_snapshot())
     }
 
     /// `PlayerInfo.getLatency` of the local player in milliseconds, 0 before the server's first
@@ -152,14 +152,14 @@ impl Game<'_, crate::game::client_side::ClientState> {
 /// names (`tab_list::name_for_display`), so the read cannot drift from what is drawn.
 fn tab_list(
     players: &[sunrise_level::profile_lookup::TabPlayer],
-    board: &sunrise_client_core::scoreboard::Scoreboard,
-    header: Option<&sunrise_client_core::text::Text>,
-    footer: Option<&sunrise_client_core::text::Text>,
+    board: &sunrise_game_data::scoreboard::Scoreboard,
+    header: Option<&sunrise_game_data::text::Text>,
+    footer: Option<&sunrise_game_data::text::Text>,
 ) -> mod_api::ClientTabList {
     use super::api_values::TryIntoApi;
     use sunrise_client::tab_list::{name_for_display, sorted_players};
     // A text too deep for the API reads as its plain words rather than dropping the entry.
-    let text = |text: &sunrise_client_core::text::Text| {
+    let text = |text: &sunrise_game_data::text::Text| {
         text.try_into_api()
             .unwrap_or_else(|_| mod_api::Text::literal(text.plain()))
     };
@@ -187,7 +187,7 @@ pub(in crate::game) mod tests {
     /// The Tab overlay's names, order, cap, header and footer, as `client_tab_list` reads them.
     #[test]
     fn the_tab_list_reads_as_the_overlay_draws_it() {
-        use sunrise_client_core::{scoreboard::Scoreboard, text::Text as EngineText};
+        use sunrise_game_data::{scoreboard::Scoreboard, text::Text as EngineText};
         use sunrise_level::profile_lookup::TabPlayer;
         let mut board = Scoreboard::default();
         let team = board.add_team("red");
@@ -310,7 +310,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn client_session_reads_follow_connection_language_and_frame_state() {
-        use sunrise_client_core::lang::{self, Language};
+        use sunrise_game_data::lang::{self, Language};
 
         with_client_game(|game| {
             assert_eq!(game.client_session().client_server(), None);

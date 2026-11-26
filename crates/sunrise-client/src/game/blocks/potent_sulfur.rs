@@ -9,8 +9,8 @@ use super::{Game, potions::mob_effect_id};
 pub(in crate::game) use crate::game::potent_sulfur_common::{
     GEYSER_CONTINUOUS_ACTIVE, GEYSER_ERUPTION_ACTIVE, PassMobs,
 };
-use sunrise_client_core::Result;
 use sunrise_core::{geometry::Aabb, position::BlockPos, random::RandomSource};
+use sunrise_game_data::Result;
 use sunrise_gameplay_common::potent_sulfur::{
     EFFECT_APPLICATION_FREQUENCY_TICKS, EFFECT_DURATION_IN_TICKS, Geyser, geyser_positional,
     launch_area, nearby_living_area,

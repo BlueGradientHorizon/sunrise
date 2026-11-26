@@ -2,8 +2,8 @@
 use super::{Options, Progress, Settings, load_resources};
 use crate::game::execution_role;
 use std::sync::Arc;
-use sunrise_client_core::who::EventSource;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};
+use sunrise_game_data::who::EventSource;
 use sunrise_level::{chunk::Chunk, containers::BlockEntity};
 use sunrise_sim::mobs::{Mob, Who, warden};
 
@@ -64,7 +64,7 @@ fn with_game(f: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
         !game
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS)
+            .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS)
     );
     f(&mut game);
 }

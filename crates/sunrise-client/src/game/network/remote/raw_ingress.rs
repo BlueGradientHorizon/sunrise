@@ -3,7 +3,7 @@ use super::{session::RemoteOpening, *};
 
 pub(in crate::game) fn local_transfer_notice() -> Event {
     Event::Disconnected {
-        reason: sunrise_client_core::lang::get("disconnect.transfer"),
+        reason: sunrise_game_data::lang::get("disconnect.transfer"),
         key: Some("disconnect.transfer".into()),
         from_server: true,
     }
@@ -11,7 +11,7 @@ pub(in crate::game) fn local_transfer_notice() -> Event {
 
 pub(in crate::game) fn packet_error_notice() -> Event {
     Event::Disconnected {
-        reason: sunrise_client_core::lang::get("disconnect.packetError"),
+        reason: sunrise_game_data::lang::get("disconnect.packetError"),
         key: Some("disconnect.packetError".into()),
         from_server: false,
     }

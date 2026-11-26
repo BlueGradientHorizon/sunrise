@@ -107,7 +107,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let locator_bar = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::LOCATOR_BAR);
+            .bool_at(sunrise_game_data::gamerules::vanilla::LOCATOR_BAR);
         if let Some(host) = self.lan.as_mut()
             && let Some(manager) = host.waypoints.get_mut(&level)
         {
@@ -149,7 +149,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let locator_bar = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::LOCATOR_BAR);
+            .bool_at(sunrise_game_data::gamerules::vanilla::LOCATOR_BAR);
         let mut levels: Vec<String> = host.waypoints.keys().cloned().collect();
         for (level, _, _) in &players {
             if !levels.iter().any(|l| l == level) {

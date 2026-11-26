@@ -34,7 +34,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         keys: sprint::Keys,
         window: i32,
         vehicle_sprint: Option<(bool, bool)>,
-    ) -> sunrise_client_core::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         let Some(player) = self.player.as_mut() else {
             return Ok(());
         };

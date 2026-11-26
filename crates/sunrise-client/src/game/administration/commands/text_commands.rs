@@ -1,6 +1,6 @@
 //! `/tellraw` (TellRawCommand) and `/title` (TitleCommand).
 use super::{Arg, Context, Game, R, Target, err};
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_sim::lan::data::component_nbt;
 
@@ -53,7 +53,7 @@ pub(in crate::game) fn compile_selector(
             let parsed = &source[..reader.cursor];
             let leftovers = &source[reader.cursor..];
             Some(
-                sunrise_client_core::text::Text::tr(
+                sunrise_game_data::text::Text::tr(
                     "command.trailing_data",
                     &[&format!("{parsed}[{leftovers}]")],
                 )
@@ -131,7 +131,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
             out
         };
-        Ok(sunrise_client_core::component::to_text_with(
+        Ok(sunrise_game_data::component::to_text_with(
             &value,
             &mut resolve,
             &mut |o| {
@@ -185,7 +185,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // numberFormatOrDefault(StyledFormat.NO_STYLE).
         let format = (score.number_format.clone())
             .or_else(|| objective.number_format.clone())
-            .unwrap_or(sunrise_client_core::scoreboard::NumberFormat::Styled(
+            .unwrap_or(sunrise_game_data::scoreboard::NumberFormat::Styled(
                 serde_json::json!({}),
             ));
         Ok(format.format(score.value))
@@ -229,7 +229,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 sources.push(tag);
             }
         }
-        let Ok(compiled) = sunrise_client_core::nbt_path::NbtPath::parse(path) else {
+        let Ok(compiled) = sunrise_game_data::nbt_path::NbtPath::parse(path) else {
             return Text::empty();
         };
         let plain = o.get("plain").and_then(|v| v.as_bool()) == Some(true);
@@ -243,13 +243,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 }
                 first = false;
                 let piece = if interpret {
-                    sunrise_client_core::scoreboard::comp_text(
-                        &sunrise_client_core::scoreboard::tag_to_json(&tag),
+                    sunrise_game_data::scoreboard::comp_text(
+                        &sunrise_game_data::scoreboard::tag_to_json(&tag),
                     )
                 } else if plain {
-                    Text::literal(sunrise_client_core::snbt::pretty(&tag).plain())
+                    Text::literal(sunrise_game_data::snbt::pretty(&tag).plain())
                 } else {
-                    sunrise_client_core::snbt::pretty(&tag)
+                    sunrise_game_data::snbt::pretty(&tag)
                 };
                 out.push(piece);
             }

@@ -173,7 +173,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let r = self.remote.as_ref()?;
         let (name, tag) = r.registries.entry("minecraft:painting_variant", id)?;
         if let Some(tag) = tag {
-            let json = sunrise_client_core::scoreboard::tag_to_json(tag);
+            let json = sunrise_game_data::scoreboard::tag_to_json(tag);
             return super::paintings::Variant::decode(name, &json).ok();
         }
         self.painting_variants.get(name).cloned()
@@ -347,8 +347,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     (14, Value::Text(output))
                         if c.kind == super::minecarts::CartKind::CommandBlock =>
                     {
-                        c.command.last_output = Some(sunrise_client_core::scoreboard::comp_text(
-                            &sunrise_client_core::scoreboard::tag_to_json(output),
+                        c.command.last_output = Some(sunrise_game_data::scoreboard::comp_text(
+                            &sunrise_game_data::scoreboard::tag_to_json(output),
                         ));
                     }
                     _ => {}

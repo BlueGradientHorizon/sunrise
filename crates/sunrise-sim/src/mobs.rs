@@ -152,7 +152,7 @@ impl StoredEffect {
             id,
             duration,
             amplifier,
-            registry_index: sunrise_client_core::potions::effect(id).map(|def| def.index),
+            registry_index: sunrise_game_data::potions::effect(id).map(|def| def.index),
             show_icon: true,
             pass_slot: 0,
         }
@@ -515,7 +515,7 @@ impl MobTypes {
         Ok(Self { types: out })
     }
 }
-pub use sunrise_client_core::who::Who;
+pub use sunrise_game_data::who::Who;
 /// A damage type's registry name and the tags consumed by mob combat.
 ///
 /// `NamedDamage::registered` builds both from a registry entry, interning
@@ -4942,7 +4942,7 @@ impl Mob {
         ambient: bool,
         visible: bool,
     ) -> bool {
-        let effect = sunrise_client_core::potions::namespaced(effect);
+        let effect = sunrise_game_data::potions::namespaced(effect);
         let mut incoming = crate::effects::EffectInstance::new(effect, ticks, amplifier);
         incoming.ambient = ambient;
         incoming.visible = visible;
@@ -5136,12 +5136,12 @@ impl Mob {
                     return;
                 }
                 for spec in effects {
-                    let Some(def) = sunrise_client_core::potions::effect(&spec.id) else {
+                    let Some(def) = sunrise_game_data::potions::effect(&spec.id) else {
                         continue;
                     };
                     // ApplyStatusEffectsConsumeEffect.apply passes even instantaneous
                     // effects to LivingEntity.addEffect, not to applyInstantenousEffect.
-                    let id = sunrise_client_core::potions::namespaced(def.id);
+                    let id = sunrise_game_data::potions::namespaced(def.id);
                     if self.species() != Species::Wither && self.can_be_affected(id) {
                         let mut instance = crate::effects::EffectInstance::from_def(
                             def,
@@ -5199,7 +5199,7 @@ impl Mob {
     /// `ignores_poison_and_regen` (which is `#minecraft:undead`) keeps poison and
     /// regeneration off a zombie, a skeleton, a phantom, a wither and the rest.
     pub fn can_be_affected(&self, effect: &'static str) -> bool {
-        let effect = sunrise_client_core::potions::namespaced(effect);
+        let effect = sunrise_game_data::potions::namespaced(effect);
         let refused = match self.species() {
             Species::Spider | Species::CaveSpider | Species::Nautilus | Species::ZombieNautilus => {
                 effect == "minecraft:poison"
@@ -5216,7 +5216,7 @@ impl Mob {
         !(self.kind.flags.undead && matches!(effect, "minecraft:poison" | "minecraft:regeneration"))
     }
     pub fn add_effect(&mut self, effect: &'static str, ticks: i32, amplifier: i32) {
-        let effect = sunrise_client_core::potions::namespaced(effect);
+        let effect = sunrise_game_data::potions::namespaced(effect);
         // LivingEntity.addEffect: an effect the mob refuses is never added, so it
         // never joins the list the client draws or an effect tick reads.
         // WitherBoss.addEffect returns false for every effect.
@@ -6398,7 +6398,7 @@ mod magic_absorb_tests {
     #[test]
     fn resolved_instances_preserve_mob_identity_through_hidden_promotion() {
         let mut m = witch();
-        let def = sunrise_client_core::potions::effect("speed").unwrap();
+        let def = sunrise_game_data::potions::effect("speed").unwrap();
         let effect = "minecraft:speed";
         assert!(m.add_effect_instance(effect, crate::effects::EffectInstance::from_def(def, 2, 1)));
         assert!(

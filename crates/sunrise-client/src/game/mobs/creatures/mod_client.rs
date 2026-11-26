@@ -10,13 +10,13 @@ use crate::game::creatures::thrown_item_quad;
 use crate::game::creatures::*;
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{graphics::EntityCullingMode, mesher::Vertex};
-use sunrise_client_core::Result;
 use sunrise_client_render::render_geometry::EntitySpan;
 use sunrise_core::{
     geometry::{Aabb, Vec3, trig::Mth},
     position::BlockPos,
     random::RandomSource,
 };
+use sunrise_game_data::Result;
 use sunrise_sim::{
     mobs::{Mob, MobEvent, Species, Who},
     projectiles::{Projectile, ProjectileKind},

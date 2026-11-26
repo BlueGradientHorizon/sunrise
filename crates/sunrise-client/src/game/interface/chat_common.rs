@@ -5,8 +5,8 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-use sunrise_client_core::gamerules::GameRules;
 use sunrise_command::Registries;
+use sunrise_game_data::gamerules::GameRules;
 use sunrise_gameplay_common::world_clock::WorldClock;
 use sunrise_world::{
     heightmap::{HeightmapState, HeightmapType},
@@ -26,7 +26,7 @@ pub use sunrise_gameplay_common::world_clock::TimeMarker;
 pub struct SessionDispatcher(pub Arc<sunrise_command::Dispatcher>);
 impl Default for SessionDispatcher {
     fn default() -> Self {
-        let registry = sunrise_client_core::gamerules::RuleRegistry::vanilla();
+        let registry = sunrise_game_data::gamerules::RuleRegistry::vanilla();
         Self(Arc::new(sunrise_command::vanilla::session_dispatcher(
             &registry,
             &[],
@@ -369,8 +369,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         self.sync_loot_table_ids();
         // ResourceOrIdArgument decodes an inline feature with the world's live feature codec.
         self.ui.registries.inline_feature = self.res.behaviours().live_features().map(|features| {
-            sunrise_client_core::registries::InlineFeatureCheck::new(move |tag| {
-                let json = sunrise_client_core::scoreboard::tag_to_json(tag).to_string();
+            sunrise_game_data::registries::InlineFeatureCheck::new(move |tag| {
+                let json = sunrise_game_data::scoreboard::tag_to_json(tag).to_string();
                 features
                     .decode_inline(&json)
                     .map(drop)
@@ -558,19 +558,19 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let r = &self.ui.rules;
         sunrise_world::level::GameRules {
             water_source_conversion: r
-                .bool_at(sunrise_client_core::gamerules::vanilla::WATER_SOURCE_CONVERSION),
+                .bool_at(sunrise_game_data::gamerules::vanilla::WATER_SOURCE_CONVERSION),
             lava_source_conversion: r
-                .bool_at(sunrise_client_core::gamerules::vanilla::LAVA_SOURCE_CONVERSION),
-            random_tick_speed: r.int_at(sunrise_client_core::gamerules::vanilla::RANDOM_TICK_SPEED),
-            block_drops: r.bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS),
-            mob_griefing: r.bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING),
+                .bool_at(sunrise_game_data::gamerules::vanilla::LAVA_SOURCE_CONVERSION),
+            random_tick_speed: r.int_at(sunrise_game_data::gamerules::vanilla::RANDOM_TICK_SPEED),
+            block_drops: r.bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS),
+            mob_griefing: r.bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING),
             max_snow_accumulation_height: r
-                .int_at(sunrise_client_core::gamerules::vanilla::MAX_SNOW_ACCUMULATION_HEIGHT),
-            spawn_mobs: r.bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS),
-            spawn_monsters: r.bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MONSTERS),
+                .int_at(sunrise_game_data::gamerules::vanilla::MAX_SNOW_ACCUMULATION_HEIGHT),
+            spawn_mobs: r.bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS),
+            spawn_monsters: r.bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MONSTERS),
             fire_spread_radius_around_player: r
-                .int_at(sunrise_client_core::gamerules::vanilla::FIRE_SPREAD_RADIUS_AROUND_PLAYER),
-            spread_vines: r.bool_at(sunrise_client_core::gamerules::vanilla::SPREAD_VINES),
+                .int_at(sunrise_game_data::gamerules::vanilla::FIRE_SPREAD_RADIUS_AROUND_PLAYER),
+            spread_vines: r.bool_at(sunrise_game_data::gamerules::vanilla::SPREAD_VINES),
         }
     }
 
@@ -579,28 +579,28 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         self.world.health_rules.natural_regeneration = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::NATURAL_HEALTH_REGENERATION);
+            .bool_at(sunrise_game_data::gamerules::vanilla::NATURAL_HEALTH_REGENERATION);
         // Player.isInvulnerableTo: the damage-type rules.
         self.world.health_rules.drowning_damage = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::DROWNING_DAMAGE);
+            .bool_at(sunrise_game_data::gamerules::vanilla::DROWNING_DAMAGE);
         self.world.health_rules.fall_damage = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::FALL_DAMAGE);
+            .bool_at(sunrise_game_data::gamerules::vanilla::FALL_DAMAGE);
         self.world.health_rules.fire_damage = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::FIRE_DAMAGE);
+            .bool_at(sunrise_game_data::gamerules::vanilla::FIRE_DAMAGE);
         self.world.health_rules.freeze_damage = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::FREEZE_DAMAGE);
+            .bool_at(sunrise_game_data::gamerules::vanilla::FREEZE_DAMAGE);
         sunrise_sim::mobs::sulfur_cube::set_tnt_explodes(
             self.ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES),
+                .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES),
         );
         use sunrise_world::food::Difficulty;
         self.world.health_rules.difficulty = match self.ui.difficulty {

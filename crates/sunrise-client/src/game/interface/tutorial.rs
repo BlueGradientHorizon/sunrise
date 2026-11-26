@@ -192,7 +192,7 @@ impl super::Game<'_, crate::game::client_side::ClientState> {
 
 pub(in crate::game) struct HintToast {
     hint: Hint,
-    lines: Vec<(sunrise_client_core::text::Text, bool)>,
+    lines: Vec<(sunrise_game_data::text::Text, bool)>,
     title_lines: usize,
     progress: Option<f32>,
     smooth: f32,
@@ -215,7 +215,7 @@ impl super::Game<'_, crate::game::client_side::ClientState> {
     /// `Tutorial.key`: bold belongs to the bound key, not the translation using it.
     fn tutorial_toast(&self, hint: Hint, progress: Option<f32>) -> Option<HintToast> {
         use sunrise_client::keybinds;
-        use sunrise_client_core::text::Text;
+        use sunrise_game_data::text::Text;
         let key =
             |mapping: &str| keybinds::display_name(self.side.settings.keys.get(mapping)).bold();
         let (title_key, fallback, description_key, description, title_args) = match hint {

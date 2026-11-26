@@ -834,10 +834,7 @@ impl Minecart {
         // ValueInput's numeric getters take any NumericTag: getIntOr is its
         // intValue, getShortOr the low 16 bits of it, getBooleanOr
         // `byteValue() != 0` (the low 8), getDoubleOr its doubleValue.
-        let int = |k: &str| {
-            tag.get(k)
-                .and_then(sunrise_client_core::nbt_path::int_value)
-        };
+        let int = |k: &str| tag.get(k).and_then(sunrise_game_data::nbt_path::int_value);
         let flag = |k: &str, default: bool| int(k).map_or(default, |v| v as i8 != 0);
         let double = |k: &str| match tag.get(k) {
             Some(Tag::Byte(v)) => f64::from(*v),
@@ -873,7 +870,7 @@ impl Minecart {
                 Some(Tag::Double(v)) => f64::from_bits(*v) as f32,
                 Some(Tag::Long(v)) => *v as f32,
                 Some(other) => {
-                    sunrise_client_core::nbt_path::int_value(other).map_or(default, |v| v as f32)
+                    sunrise_game_data::nbt_path::int_value(other).map_or(default, |v| v as f32)
                 }
                 None => default,
             };
@@ -1367,7 +1364,7 @@ pub(in crate::game) mod cart_push_tests {
     #[ignore = "daily"]
     fn a_moving_carts_team_rules_which_carts_it_pushes() {
         use crate::game::commands::Target;
-        use sunrise_client_core::scoreboard::CollisionRule;
+        use sunrise_game_data::scoreboard::CollisionRule;
 
         /// Puts a cart on a team of its own, as `/team join` would.
         fn on_a_team(game: &mut crate::game::ServerGame<'_>, id: u32, rule: CollisionRule) {
@@ -1450,7 +1447,7 @@ pub(in crate::game) mod cart_push_tests {
     #[ignore = "daily"]
     fn a_moving_carts_team_keeps_it_from_boarding_a_cow() {
         use crate::game::commands::Target;
-        use sunrise_client_core::scoreboard::CollisionRule;
+        use sunrise_game_data::scoreboard::CollisionRule;
         use sunrise_sim::mobs::Mob;
 
         let mut resources = None;
@@ -1536,7 +1533,7 @@ pub(in crate::game) mod container_drop_tests {
                 assert!(
                     game.ui
                         .rules
-                        .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS)
+                        .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS)
                 );
                 let at = Vec3::new(8.5, 64.0, 8.5);
                 if boat {
@@ -1829,7 +1826,7 @@ pub(in crate::game) mod hook_mutation_regressions {
                     game.options.dedicated = Some(Vec::new());
                     game.ui.rules.set(
                         "entity_drops",
-                        sunrise_client_core::gamerules::Value::Bool(true),
+                        sunrise_game_data::gamerules::Value::Bool(true),
                     );
                     if cart {
                         game.carts

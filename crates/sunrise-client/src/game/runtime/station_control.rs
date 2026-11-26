@@ -2,7 +2,7 @@
 //! drive the workstation screens (`sunrise-ctl click-slot 600`, ...).
 use super::{Game, Screen};
 use serde_json::{Value, json};
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;
 
 pub(in crate::game) const HELP: &[&str] = &[

@@ -23,8 +23,8 @@ use mod_api::{
     self, BlockSide, Capability, ENTITY_AUTOMATION, EntityRef, ItemResource, ResourceHandler,
 };
 use std::{borrow::Cow, ops::ControlFlow, sync::Arc};
-use sunrise_client_core::Result;
 use sunrise_core::{geometry::Direction, position::BlockPos, random::RandomSource};
+use sunrise_game_data::Result;
 use sunrise_items::{
     item_data::cooking_fuel,
     items::{ItemStack, Items},
@@ -1280,7 +1280,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         state.cooldown = 0;
         // Most ticks only advance the cooldown: the block is checked when the
         // hopper is about to move, not on every tick it waits.
-        let hopper = sunrise_client_core::block_entity_types::factory_block(
+        let hopper = sunrise_game_data::block_entity_types::factory_block(
             &self
                 .res
                 .facts()
@@ -1470,7 +1470,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 for y in lo.y.floor() as i32..=hi.y.floor() as i32 {
                     for z in lo.z.floor() as i32..=hi.z.floor() as i32 {
                         let state = self.world.block(x, y, z);
-                        if sunrise_client_core::block_entity_types::factory_block(
+                        if sunrise_game_data::block_entity_types::factory_block(
                             &self.res.facts().get(state).name,
                         ) != "minecraft:hopper"
                         {

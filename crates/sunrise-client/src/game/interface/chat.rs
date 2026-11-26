@@ -15,8 +15,8 @@ use sunrise_client::{
     hud::HudBatch,
     screen_draw::Measure,
 };
-use sunrise_client_core::text::{ClickEvent, Style, Text};
 use sunrise_command::{ArgType, Dispatcher, MOD_COMMAND};
+use sunrise_game_data::text::{ClickEvent, Style, Text};
 
 /// The tree the chat parses and completes with: `Remote::chat_tree`, which is
 /// a server's, once it has sent one (ClientPacketListener.commands), else the
@@ -442,7 +442,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .remote
             .as_ref()
             .filter(|remote| remote.logged_in && remote.profile != 0)
-            .map(|remote| sunrise_client_core::registries::CommandSender {
+            .map(|remote| sunrise_game_data::registries::CommandSender {
                 uuid: remote.profile,
                 name: remote.profile_name.clone(),
             });
@@ -613,7 +613,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         mouse: (i32, i32),
         (x, y, w, h): (i32, i32, i32, i32),
     ) -> Vec<sunrise_client::screen_draw::Draw> {
-        let label = Text::literal(sunrise_client_core::lang::get_or(
+        let label = Text::literal(sunrise_game_data::lang::get_or(
             "multiplayer.stopSleeping",
             "Leave Bed",
         ));
@@ -1238,7 +1238,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) -> Vec<(Text, u32)> {
         let mut lines = Vec::new();
         if let Some(name) = entity.get("name") {
-            let name = sunrise_client_core::component::to_text(name, &mut |s| Text::literal(s));
+            let name = sunrise_game_data::component::to_text(name, &mut |s| Text::literal(s));
             lines.push((name, u32::MAX));
         }
         let id = entity
@@ -1364,7 +1364,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn component_hover_effect(
         &mut self,
         batch: &mut HudBatch,
-        style: &sunrise_client_core::text::Style,
+        style: &sunrise_game_data::text::Style,
         at: (f32, f32),
     ) {
         if self.component_hover_canceled(batch, style, at) {
@@ -1395,7 +1395,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn component_hover_canceled(
         &self,
         batch: &mut HudBatch,
-        style: &sunrise_client_core::text::Style,
+        style: &sunrise_game_data::text::Style,
         at: (f32, f32),
     ) -> bool {
         if !mod_api::__private::listened(mod_api::HookId::ComponentHover) {

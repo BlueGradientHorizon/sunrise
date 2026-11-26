@@ -1,11 +1,11 @@
 //! Engine particle provider options, independent of API registry keys.
 use mod_api::client::particles::PositionSource;
 use std::{collections::BTreeMap, sync::Arc};
-pub use sunrise_client_core::particle_type::ParticleType;
 use sunrise_core::{
     geometry::{Vec3, trig},
     random::RandomSource,
 };
+pub use sunrise_game_data::particle_type::ParticleType;
 use sunrise_world::particle_options::ParticleOptions as PersistentOptions;
 
 /// What an emitter seeds on the custom particle it spawns: its own `red`... `custom` and customs.

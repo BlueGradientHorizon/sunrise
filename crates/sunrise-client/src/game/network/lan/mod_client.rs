@@ -1,6 +1,6 @@
 use super::Game;
 use crate::game::server_side::lan::LanSettings;
-use sunrise_client_core::{Result, text::Text};
+use sunrise_game_data::{Result, text::Text};
 use sunrise_sim::lan::{self};
 
 impl Game<'_, crate::game::client_side::ClientState> {

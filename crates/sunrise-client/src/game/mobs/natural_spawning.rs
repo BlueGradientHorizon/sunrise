@@ -991,7 +991,7 @@ impl NaturalLevel for GameLevel<'_, '_> {
         self.game
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS)
+            .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
     }
     /// WORLD_SURFACE (every spawn attempt's) is the chunk's kept heightmap.
     /// The others are scanned down the column: sections of air alone are
@@ -1029,7 +1029,7 @@ impl sunrise_sim::mobs::spawner::SpawnerLevel for GameLevel<'_, '_> {
         self.game
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
+            .bool_at(sunrise_game_data::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
     }
     fn spawner_type(&self, id: &str) -> Option<sunrise_sim::mobs::spawner::SpawnerTypeFacts> {
         self.game.res.rest().spawner_types.get(id).copied()
@@ -1337,12 +1337,12 @@ impl<'a> Game<'a, crate::game::server_side::ServerState> {
         state: &SpawnState,
     ) -> Vec<Category> {
         let rules = &self.ui.rules;
-        if !rules.bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS) {
+        if !rules.bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS) {
             return Vec::new();
         }
         state.policy_categories(
             self.spawn_policy(self.dim.key()).flags,
-            rules.bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MONSTERS),
+            rules.bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MONSTERS),
             self.world.game_time % 400 == 0,
         )
     }
@@ -1363,7 +1363,7 @@ impl<'a> Game<'a, crate::game::server_side::ServerState> {
         if self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS)
+            .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
         {
             sunrise_level::spans::time("spawn_custom", || self.tick_custom_spawners());
         }
@@ -1778,7 +1778,7 @@ mod tests {
             assert!(
                 game.ui
                     .rules
-                    .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS)
+                    .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
             );
             // A contained chunk must actually reach the spawning pass, so an
             // empty category list cannot satisfy the rejected-chunk assertion.

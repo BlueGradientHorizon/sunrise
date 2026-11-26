@@ -156,7 +156,7 @@ fn block_drops_on_keeps_the_pop() {
     assert!(
         game.ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
+            .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS)
     );
     for (block, item, drops, meal, _, on) in CASES {
         place(&mut game, on, block);

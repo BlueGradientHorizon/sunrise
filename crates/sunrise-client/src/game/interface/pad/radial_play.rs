@@ -7,9 +7,9 @@ use std::time::{Duration, Instant};
 use sunrise_client::gamepad::MenuJob;
 use sunrise_client::gamepad::{self, Button, RadialMode, RadialStick, Rumble};
 use sunrise_client::pad_glyph::Glyph;
-use sunrise_client_core::text::Text;
 use sunrise_client_input::radial::{self, RadialAction, Slot};
 use sunrise_client_render::radial_overlay::{self, Dial, Seen, Toggles, View};
+use sunrise_game_data::text::Text;
 
 /// The D-pad's buttons, which settle after the menu closes on a D-pad opener.
 const DPAD: [Button; 4] = [
@@ -261,7 +261,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some((page, slot)) = self.side.pad.0.radial_said.poll(at, now) {
             let slot = pages.page(page).slot(slot);
             let caption = sunrise_client_render::radial_overlay::slot_caption(slot)
-                .unwrap_or_else(|| sunrise_client_core::lang::get("sunrise.radial.empty"));
+                .unwrap_or_else(|| sunrise_game_data::lang::get("sunrise.radial.empty"));
             self.say_system_now(&Text::literal(caption));
         }
     }

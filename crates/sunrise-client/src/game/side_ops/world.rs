@@ -1,7 +1,7 @@
 //! Role-dispatched world/level/tick/transaction side operations (rewritten to `SideOps` traits at switch).
 use crate::game::{Game, GameLevel};
-use sunrise_client_core::Result;
 use sunrise_core::position::BlockPos;
+use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::crafting::Recipes;
 use sunrise_world::{

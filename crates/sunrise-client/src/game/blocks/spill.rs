@@ -7,9 +7,9 @@ use super::api_values::{TryIntoApi, TryIntoEngine};
 use super::{Game, GameLevel};
 use mod_api::EntityRef;
 use std::collections::HashMap;
-use sunrise_client_core::block_entity_nbt;
 use sunrise_core::position::BlockPos;
 use sunrise_core::random::RandomSource;
+use sunrise_game_data::block_entity_nbt;
 use sunrise_items::items::{BlockLootRoll, ItemStack, Items};
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::{block_entity_item, furnace::FurnaceCooking};
@@ -60,7 +60,7 @@ pub(in crate::game) fn world_source(
             // Sparse storage can omit an empty block entity, but its type's
             // implicit components still belong to the loot source. Use the
             // factory's entity identity, which need not match the block's id.
-            sunrise_client_core::block_entity_types::type_for(block)
+            sunrise_game_data::block_entity_types::type_for(block)
                 .or_else(|| sunrise_sim::lan::chunks::block_entity_type(block))
                 .map(|kind| {
                     Tag::compound([
@@ -1848,7 +1848,7 @@ mod tests {
                 game.options.dedicated = Some(Vec::new());
                 assert!(game.ui.rules.set(
                     "block_drops",
-                    sunrise_client_core::gamerules::Value::Bool(false),
+                    sunrise_game_data::gamerules::Value::Bool(false),
                 ));
                 let dirt = game
                     .pack
@@ -2457,7 +2457,7 @@ mod crafter_drop_name_tests {
             assert!(
                 game.ui
                     .rules
-                    .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
+                    .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS)
             );
             let clock = game.world.game_time;
             let mut unexpected = Vec::new();

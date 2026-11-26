@@ -640,7 +640,7 @@ fn a_reopened_window_uses_only_its_new_screen_instance() {
                     game.native_screen_tooltip_lines(&batch, None, &mut lines);
                     assert_eq!(
                         lines,
-                        [(sunrise_client_core::text::Text::literal("742"), u32::MAX)]
+                        [(sunrise_game_data::text::Text::literal("742"), u32::MAX)]
                     );
 
                     game.handle_packet(C::ContainerClose(ContainerClose { container: 23 }))

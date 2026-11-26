@@ -292,7 +292,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 || self
                     .ui
                     .rules
-                    .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS));
+                    .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS));
         self.break_leash(id, drop, sound);
     }
     /// `Entity.dropAllLeashConnections`: every mob and boat leashed to the
@@ -512,7 +512,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let drop = self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS);
+                .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS);
             for fence in fences {
                 let live_id = self.side.knot_ids.get(&fence).copied();
                 let mobs: Vec<u32> = self

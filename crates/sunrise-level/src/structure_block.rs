@@ -2,7 +2,7 @@
 //! options, with its save format (`saveAdditional` / `loadAdditional`), the
 //! corner scan (`getEnclosingBoundingBox`) and the box the editor shows
 //! (`getRenderableBox`).
-use sunrise_client_core::nbt_value::{float, number, string, text};
+use sunrise_game_data::nbt_value::{float, number, string, text};
 use {
     sunrise_core::nbt::Tag,
     sunrise_world::worldgen::structure::{Mirror, Rotation},

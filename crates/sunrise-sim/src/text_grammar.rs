@@ -222,7 +222,7 @@ fn hover(event: &Map<String, Value>, ctx: &Grammar<'_>) -> Option<Value> {
                 return None;
             }
             let uuid = match event.get("uuid")? {
-                Value::String(id) => sunrise_client_core::uuid::uuid_from_text(id)?,
+                Value::String(id) => sunrise_game_data::uuid::uuid_from_text(id)?,
                 Value::Array(words) if words.len() == 4 => {
                     let mut out = [0; 4];
                     for (slot, word) in out.iter_mut().zip(words) {

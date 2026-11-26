@@ -8,7 +8,7 @@ use super::remote_camera::CameraFogEffects;
 use sunrise_client::camera::CameraFluid;
 use sunrise_client::gfx::pack_uniforms::{PackInputs, PlayerStatus, ViewEntity};
 use sunrise_client::shader_options::ShaderOptions;
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_mod_package::mod_list::ModList;
 use sunrise_shader_api::Api;
 use sunrise_shaders::{BlockIds, Macros, Pack, Properties, dimension_folder_named, load_post};

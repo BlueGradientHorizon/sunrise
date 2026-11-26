@@ -334,7 +334,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn tick_server_measured(
         &mut self,
         paused: bool,
-    ) -> sunrise_client_core::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         self.serve_perf_asked();
         let Some(mut side) = self.side.profile.server.take() else {
             return self.tick_server_timed(paused);

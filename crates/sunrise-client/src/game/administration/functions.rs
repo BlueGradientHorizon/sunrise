@@ -9,12 +9,12 @@ use super::{
 };
 use mod_api::__private::reload::ReloadStageError;
 use std::sync::Arc;
-use sunrise_client_core::{
+use sunrise_command::{Arg, Context};
+use sunrise_core::nbt::Tag;
+use sunrise_game_data::{
     scoreboard::bracketed,
     text::{self, Text},
 };
-use sunrise_command::{Arg, Context};
-use sunrise_core::nbt::Tag;
 use sunrise_level::datapack::{self, DataPack, DataStore, Function};
 use sunrise_sim::save;
 
@@ -745,7 +745,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 "commands.function.instantiationFailure",
                 &[
                     &f.id,
-                    &sunrise_client_core::text::Text::tr(key, &args).plain(),
+                    &sunrise_game_data::text::Text::tr(key, &args).plain(),
                 ],
             )
         };
@@ -776,7 +776,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 > self
                     .ui
                     .rules
-                    .int_at(sunrise_client_core::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
+                    .int_at(sunrise_game_data::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
                     .max(1) as u32
             {
                 break;
@@ -923,7 +923,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let data = self.data_of(&r)?;
             let tag = match ctx.get("path") {
                 Some(Arg::Str(p)) => {
-                    let path = sunrise_client_core::nbt_path::NbtPath::parse(p)
+                    let path = sunrise_game_data::nbt_path::NbtPath::parse(p)
                         .map_err(sunrise_sim::data_cmd::path_error)?;
                     sunrise_sim::data_cmd::single_tag(&path, &data)?
                 }
@@ -1039,7 +1039,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let limit = self
             .ui
             .rules
-            .int_at(sunrise_client_core::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
+            .int_at(sunrise_game_data::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
             .max(1) as u32;
         if sources.len() > limit.saturating_sub(self.side.exec.0.commands) as usize {
             return None;
@@ -1568,7 +1568,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let json = if id.starts_with('{') {
             let (tag, _) = sunrise_core::nbt::parse_snbt(id)
                 .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
-            let value = sunrise_client_core::scoreboard::tag_to_json(&tag);
+            let value = sunrise_game_data::scoreboard::tag_to_json(&tag);
             sunrise_world::loot::validate_loot_condition(&value)
                 .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
             value
@@ -2716,7 +2716,7 @@ mod tests {
                 Some(1),
                 true,
                 None,
-                std::sync::Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
+                std::sync::Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
             )
             .unwrap();
             request.save_root = root.clone();

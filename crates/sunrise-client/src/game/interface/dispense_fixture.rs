@@ -9,9 +9,9 @@ use super::{
 };
 use serde_json::Value;
 use std::{cell::RefCell, collections::HashMap, fmt::Write as _, io::Write as _, sync::Arc};
-use sunrise_client_core::{Result, gamerules::Value as RuleValue};
 use sunrise_command::args::GameMode;
 use sunrise_core::{position::BlockPos, random::RandomSource};
+use sunrise_game_data::{Result, gamerules::Value as RuleValue};
 use sunrise_items::{
     item_data::{canon_stack, parse_stack},
     items::ItemStack,

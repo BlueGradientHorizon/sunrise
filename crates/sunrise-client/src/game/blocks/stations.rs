@@ -12,7 +12,7 @@ pub(in crate::game) mod draw;
 pub(in crate::game) mod tooltip;
 use super::smithing_icons::smithing_slot_icons;
 pub(in crate::game) struct EngineTooltipLines<'a>(
-    pub(in crate::game) &'a mut Vec<(sunrise_client_core::text::Text, u32)>,
+    pub(in crate::game) &'a mut Vec<(sunrise_game_data::text::Text, u32)>,
 );
 
 impl mod_api::TooltipLinesAccess for EngineTooltipLines<'_> {
@@ -120,10 +120,10 @@ use mod_api::TooltipElement;
 use std::cell::Cell;
 #[allow(unused_imports)]
 use sunrise_client::hud::{HudBatch, rgba};
-#[allow(unused_imports)]
-use sunrise_client_core::text::Text;
 #[cfg(feature = "client")]
 use sunrise_core::random::{LegacyRandom, RandomSource};
+#[allow(unused_imports)]
+use sunrise_game_data::text::Text;
 #[allow(unused_imports)]
 use sunrise_items::items::ItemStack;
 #[allow(unused_imports)]
@@ -453,7 +453,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let hover = s.inputs[0]
                     .as_ref()
                     .map(|i| {
-                        sunrise_client_core::lang::returned_to_server(|| {
+                        sunrise_game_data::lang::returned_to_server(|| {
                             self.stack_hover_name_text(i).plain()
                         })
                     })
@@ -666,7 +666,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let name = input
             .as_ref()
             .map(|i| {
-                sunrise_client_core::lang::returned_to_server(|| {
+                sunrise_game_data::lang::returned_to_server(|| {
                     self.stack_hover_name_text(i).plain()
                 })
             })
@@ -854,7 +854,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let name = input
                 .as_ref()
                 .map(|i| {
-                    sunrise_client_core::lang::returned_to_server(|| {
+                    sunrise_game_data::lang::returned_to_server(|| {
                         self.stack_hover_name_text(i).plain()
                     })
                 })
@@ -1250,7 +1250,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn stack_tooltip(
         &self,
         stack: &ItemStack,
-    ) -> Vec<(sunrise_client_core::text::Text, u32)> {
+    ) -> Vec<(sunrise_game_data::text::Text, u32)> {
         self.stack_tooltip_lines(stack, false, false)
     }
     /// The same rarity colour in the GUI batch's packed RGBA format.
@@ -1267,7 +1267,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         stack: &ItemStack,
         nested: bool,
         creative: bool,
-    ) -> Vec<(sunrise_client_core::text::Text, u32)> {
+    ) -> Vec<(sunrise_game_data::text::Text, u32)> {
         self.tooltip_lines(stack, nested, creative, self.options_advanced_tooltips())
     }
 
@@ -1297,7 +1297,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         nested: bool,
         creative: bool,
         advanced: bool,
-    ) -> Vec<(sunrise_client_core::text::Text, u32)> {
+    ) -> Vec<(sunrise_game_data::text::Text, u32)> {
         // A listener, part or appender may ask for another tooltip on the same client thread.
         let guard = if IN_TOOLTIP_BUILD.replace(true) {
             None
@@ -1314,7 +1314,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         creative: bool,
         advanced: bool,
         mod_callbacks: bool,
-    ) -> Vec<(sunrise_client_core::text::Text, u32)> {
+    ) -> Vec<(sunrise_game_data::text::Text, u32)> {
         use sunrise_client::item_tooltip::{
             self, EnchantmentComponent, PaintingTooltip, TooltipHolders,
         };
@@ -1330,8 +1330,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
             lines.push((name, color));
         }
         let translate = |k: &str| self.pack.names.display_get(k);
-        let push = |lines: &mut Vec<(sunrise_client_core::text::Text, u32)>, s: String, c: u32| {
-            lines.push((sunrise_client_core::text::Text::legacy(&s), c));
+        let push = |lines: &mut Vec<(sunrise_game_data::text::Text, u32)>, s: String, c: u32| {
+            lines.push((sunrise_game_data::text::Text::legacy(&s), c));
         };
         let gray = rgba(170, 170, 170, 255);
         let item_info = self.items().get(&stack.item);
@@ -1357,7 +1357,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         size: [v.width, v.height],
                     })
                 },
-                &sunrise_client_core::text::Text::translate,
+                &sunrise_game_data::text::Text::translate,
             )
             .into_iter()
             .map(|text| (text, u32::MAX)),
@@ -1458,7 +1458,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             for run in charged.chunk_by(|a, b| a.same_item_same_components(b)) {
                 let projectile = &run[0];
                 let line = if run.len() == 1 {
-                    sunrise_client_core::text::format_translation(
+                    sunrise_game_data::text::format_translation(
                         &self.translate_with_fallback(
                             "item.minecraft.crossbow.projectile.single",
                             "Projectile: %s",
@@ -1466,13 +1466,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         &[self.stack_display_name(projectile)],
                     )
                 } else {
-                    sunrise_client_core::text::format_translation(
+                    sunrise_game_data::text::format_translation(
                         &self.translate_with_fallback(
                             "item.minecraft.crossbow.projectile.multiple",
                             "Projectile: %s x %s",
                         ),
                         &[
-                            sunrise_client_core::text::Text::literal(run.len().to_string()),
+                            sunrise_game_data::text::Text::literal(run.len().to_string()),
                             self.stack_hover_name_text(projectile),
                         ],
                     )
@@ -1484,11 +1484,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     // `literal("  ").append(line).withStyle(GRAY)`: the line's
                     // own colours win over the gray.
                     let rgb = if c == u32::MAX {
-                        sunrise_client_core::text::GRAY
+                        sunrise_game_data::text::GRAY
                     } else {
                         rgb_of(c)
                     };
-                    let indented = sunrise_client_core::text::Text::literal("  ")
+                    let indented = sunrise_game_data::text::Text::literal("  ")
                         .append(text)
                         .with_color(rgb);
                     lines.push((indented, u32::MAX));
@@ -1570,7 +1570,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if let Some((text, italic)) =
             sunrise_client::item_tooltip::dyed_line(stack, &display, advanced, &translate)
         {
-            let text = sunrise_client_core::text::Text::legacy(&text);
+            let text = sunrise_game_data::text::Text::legacy(&text);
             lines.push((if italic { text.italic() } else { text }, gray));
         }
         details.start("minecraft:lore", lines.len());
@@ -1695,13 +1695,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         {
             // `item.durability`, in the selected language.
             lines.push((
-                sunrise_client_core::text::Text::translate(
+                sunrise_game_data::text::Text::translate(
                     "item.durability",
                     &[
-                        sunrise_client_core::text::Text::literal(
+                        sunrise_game_data::text::Text::literal(
                             info.max_damage.saturating_sub(stack.damage).to_string(),
                         ),
-                        sunrise_client_core::text::Text::literal(info.max_damage.to_string()),
+                        sunrise_game_data::text::Text::literal(info.max_damage.to_string()),
                     ],
                 ),
                 u32::MAX,
@@ -1746,7 +1746,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .into_iter()
             .enumerate()
             {
-                let text = sunrise_client_core::text::Text::legacy(
+                let text = sunrise_game_data::text::Text::legacy(
                     &self.translate_with_fallback(key, fallback),
                 );
                 lines.push((
@@ -1823,7 +1823,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.side.settings.file.bool("advancedItemTooltips")
     }
     /// `TooltipRenderUtil`: dark box with the purple border, first line spaced.
-    pub(in crate::game) fn draw_tooltip_lines<T: Clone + Into<sunrise_client_core::text::Text>>(
+    pub(in crate::game) fn draw_tooltip_lines<T: Clone + Into<sunrise_game_data::text::Text>>(
         &self,
         batch: &mut HudBatch,
         lines: &[(T, u32)],
@@ -1839,7 +1839,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
 
     pub(in crate::game::client_side) fn draw_tooltip_lines_positioned<
-        T: Clone + Into<sunrise_client_core::text::Text>,
+        T: Clone + Into<sunrise_game_data::text::Text>,
     >(
         &self,
         batch: &mut HudBatch,
@@ -1854,15 +1854,13 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.draw_prepared_tooltip(batch, None, &mut components, anchor, positioner, true)
     }
     /// A tooltip's lines with their legacy codes resolved and their colours.
-    pub(in crate::game::client_side) fn resolved<
-        T: Clone + Into<sunrise_client_core::text::Text>,
-    >(
+    pub(in crate::game::client_side) fn resolved<T: Clone + Into<sunrise_game_data::text::Text>>(
         lines: &[(T, u32)],
-    ) -> Vec<(sunrise_client_core::text::Text, u32)> {
+    ) -> Vec<(sunrise_game_data::text::Text, u32)> {
         lines
             .iter()
             .map(|(text, color)| {
-                let text: sunrise_client_core::text::Text = text.clone().into();
+                let text: sunrise_game_data::text::Text = text.clone().into();
                 (text.resolve_legacy(), *color)
             })
             .collect()
@@ -2004,7 +2002,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let atlas = &self.side.gui.atlas;
         if let Some((at, hidden)) = layout.overflow {
-            let label = sunrise_client_core::text::Text::literal(format!("+{hidden}"));
+            let label = sunrise_game_data::text::Text::literal(format!("+{hidden}"));
             let w = atlas.font.width_text_with_font(&label, default_font);
             batch.text_styled_with_font(
                 atlas,
@@ -2019,7 +2017,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .empty_description
             .zip(Some("item.minecraft.bundle.empty.description"))
         {
-            let text = sunrise_client_core::text::Text::translate(description, &[]);
+            let text = sunrise_game_data::text::Text::translate(description, &[]);
             let mut ty = at[1];
             for line in atlas
                 .font
@@ -2063,7 +2061,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             u32::MAX,
         );
         if let Some(key) = layout.label {
-            let label = sunrise_client_core::text::Text::translate(key, &[]);
+            let label = sunrise_game_data::text::Text::translate(key, &[]);
             let w = atlas.font.width_text_with_font(&label, default_font);
             batch.text_styled_with_font(
                 atlas,
@@ -2120,7 +2118,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         } else if let Some(text) = self.crafter_tooltip(slot) {
             self.draw_tooltip_lines(
                 batch,
-                &[(sunrise_client_core::text::Text::literal(text), u32::MAX)],
+                &[(sunrise_game_data::text::Text::literal(text), u32::MAX)],
                 self.side.cursor.0,
                 self.side.cursor.1,
             );
@@ -2911,7 +2909,7 @@ pub(in crate::game) mod tests {
         };
         use std::sync::atomic::{AtomicU8, Ordering};
         use sunrise_client::tooltip_components::{TooltipComponentFactories, with_test_factories};
-        use sunrise_client_core::text::Text;
+        use sunrise_game_data::text::Text;
 
         struct KnownData(i32, i32);
         impl TooltipComponentData for KnownData {}

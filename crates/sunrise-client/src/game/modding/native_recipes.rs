@@ -149,7 +149,7 @@ pub(in crate::game::client_side) fn components(s: &ItemStack) -> String {
             format!(
                 "{}={}",
                 k.to_string_lossy(),
-                sunrise_client_core::snbt::to_snbt(v)
+                sunrise_game_data::snbt::to_snbt(v)
             )
         })
         .collect();

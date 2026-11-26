@@ -10,15 +10,15 @@ use crate::game::commands::target_entity_mut;
 use crate::game::commands::texts;
 use crate::game::commands::without_knots;
 use crate::game::commands::wrap_degrees;
-use sunrise_client_core::{
-    gamerules::Value,
-    text::{self, Text},
-};
 use sunrise_command::{
     Arg, CommandError, Context,
     args::{Coordinates, GameMode, ItemInput, Selector},
 };
 use sunrise_core::{geometry::Vec3, java_number::float_to_string};
+use sunrise_game_data::{
+    gamerules::Value,
+    text::{self, Text},
+};
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_world::registry::BlockStateId;
@@ -88,7 +88,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
+                .bool_at(sunrise_game_data::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
     }
     /// `CommandSourceStack.getDisplayName` for the admin line: the executing
     /// entity's name, read where `execute in` put the command (`source.dimension`,
@@ -121,11 +121,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return;
         }
         let rules = &self.ui.rules;
-        let ops = rules.bool_at(sunrise_client_core::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
+        let ops = rules.bool_at(sunrise_game_data::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
         // `source != server`: RCON is a source of its own and is logged.
         let console_source = self.side.console_broadcast.is_some() && !self.side.rcon_source;
         let log = !console_source
-            && rules.bool_at(sunrise_client_core::gamerules::vanilla::LOG_ADMIN_COMMANDS);
+            && rules.bool_at(sunrise_game_data::gamerules::vanilla::LOG_ADMIN_COMMANDS);
         if !ops && !log {
             return;
         }
@@ -172,7 +172,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let limit = self
             .ui
             .rules
-            .int_at(sunrise_client_core::gamerules::vanilla::MAX_BLOCK_MODIFICATIONS);
+            .int_at(sunrise_game_data::gamerules::vanilla::MAX_BLOCK_MODIFICATIONS);
         if area > i64::from(limit) {
             return Err(err("commands.clone.toobig", &[&limit, &area]));
         }
@@ -299,7 +299,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let limit = self
             .ui
             .rules
-            .int_at(sunrise_client_core::gamerules::vanilla::MAX_BLOCK_MODIFICATIONS);
+            .int_at(sunrise_game_data::gamerules::vanilla::MAX_BLOCK_MODIFICATIONS);
         if area > i64::from(limit) {
             return Err(err("commands.fill.toobig", &[&limit, &area]));
         }
@@ -1694,7 +1694,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::COMMAND_BLOCK_OUTPUT)
+                .bool_at(sunrise_game_data::gamerules::vanilla::COMMAND_BLOCK_OUTPUT)
     }
     pub(in crate::game) fn source_position(&self) -> [f64; 3] {
         if let Some(s) = &self.side.command_source {
@@ -2080,8 +2080,8 @@ pub(in crate::game) mod query_feedback_tests {
         use super::{Arg, Context};
         use crate::game::native_entity_refs::tests::with_game;
         use std::sync::Arc;
-        use sunrise_client_core::gamerules::{GameRules, Rule, RuleRegistry, Value};
         use sunrise_command::ParsedArg;
+        use sunrise_game_data::gamerules::{GameRules, Rule, RuleRegistry, Value};
         with_game(|game| {
             let registry = RuleRegistry::with_mod_rules(
                 &["test:feedback".into()],
@@ -2160,8 +2160,8 @@ pub(in crate::game) mod forced_respawn_tests {
     fn setworldspawn_reports_normalized_rotation() {
         use crate::game::native_entity_refs::tests::with_game;
         use std::sync::Arc;
-        use sunrise_client_core::text::Text;
         use sunrise_core::geometry::Vec3;
+        use sunrise_game_data::text::Text;
         use sunrise_level::chunk::Chunk;
         use sunrise_sim::motion::PlayerMotion;
 

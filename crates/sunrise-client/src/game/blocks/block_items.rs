@@ -3,8 +3,8 @@
 //! block entity's data on Ctrl in creative, and the data and components a
 //! placed item gives its block entity.
 use super::Game;
-use sunrise_client_core::block_entity_nbt;
 use sunrise_core::nbt::{Compound, JavaString, Tag};
+use sunrise_game_data::block_entity_nbt;
 use sunrise_items::{item_data, items::ItemStack};
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::{block_entity_item, save};
@@ -128,7 +128,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn block_name_plain(&self, key: (i32, i32, i32)) -> Option<String> {
         self.world.block_names.get(&key).map(|name| match name {
             Tag::String(text) => text.to_string_lossy(),
-            component => sunrise_client_core::component::name_text(component).plain(),
+            component => sunrise_game_data::component::name_text(component).plain(),
         })
     }
 

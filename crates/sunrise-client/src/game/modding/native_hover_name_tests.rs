@@ -3,7 +3,7 @@ use super::native_entity_refs::tests::with_game;
 use crate::game::api_values::TryIntoApi;
 use mod_api::prelude::{ItemsHost, TextHost};
 use mod_api::{ItemStack, text::TextContent};
-use sunrise_client_core::lang::{Language, scoped};
+use sunrise_game_data::lang::{Language, scoped};
 
 #[test]
 #[ignore = "daily"]

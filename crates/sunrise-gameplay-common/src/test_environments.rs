@@ -3,7 +3,7 @@
 //! all of them), set up when the batch starts and torn down after it. The
 //! definitions are the data pack's `test_environment` entries, or inline.
 use serde_json::Value as Json;
-use sunrise_client_core::gamerules::{GameRules, Value};
+use sunrise_game_data::gamerules::{GameRules, Value};
 
 /// `Weather.Type`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

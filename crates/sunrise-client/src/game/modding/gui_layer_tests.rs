@@ -1093,7 +1093,7 @@ fn hotbar_attack_indicator_progress_edits_only_stock_hotbar_paint() {
 fn f1_hides_vanilla_paint_without_skipping_the_hud_walk() {
     use std::sync::atomic::{AtomicBool, Ordering};
     use sunrise_client::{chat::ChatSource, hud::rgba};
-    use sunrise_client_core::text::{Style, Text};
+    use sunrise_game_data::text::{Style, Text};
 
     let test =
         "game::client_side::gui_layer_tests::f1_hides_vanilla_paint_without_skipping_the_hud_walk";
@@ -1594,7 +1594,7 @@ fn panicking_hud_listeners_under_f1_disable_only_themselves_and_report_their_own
 fn a_panicking_hud_painter_shows_its_error_toast_under_f1() {
     use std::time::{Duration, Instant};
     use sunrise_client::toasts::SystemToast;
-    use sunrise_client_core::text::Text;
+    use sunrise_game_data::text::Text;
 
     const OWNER: &str = "broken_hud";
     let test = "game::client_side::gui_layer_tests::a_panicking_hud_painter_shows_its_error_toast_under_f1";

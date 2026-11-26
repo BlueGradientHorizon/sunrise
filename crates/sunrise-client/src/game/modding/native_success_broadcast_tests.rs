@@ -9,7 +9,7 @@ use std::sync::{
     atomic::{AtomicI32, AtomicUsize},
     mpsc,
 };
-use sunrise_client_core::gamerules::Value as Rule;
+use sunrise_game_data::gamerules::Value as Rule;
 use sunrise_protocol::packets::{configuration::ClientInformation, play::Clientbound};
 use sunrise_sim::lan::{Joined, Out, PlayerSender, guest::Guest};
 
@@ -171,7 +171,7 @@ fn chats(
                     if let Clientbound::SystemChat(p) =
                         Clientbound::decode(id, reader.rest()).unwrap()
                     {
-                        lines.push(sunrise_client_core::scoreboard::tag_to_json(&p.content));
+                        lines.push(sunrise_game_data::scoreboard::tag_to_json(&p.content));
                     }
                 }
             }

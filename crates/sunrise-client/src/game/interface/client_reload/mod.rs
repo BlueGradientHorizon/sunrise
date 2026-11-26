@@ -65,7 +65,7 @@ impl ClientReloadListenerContext for StartupReloadContext<'_> {
         crate::game::startup_math_profile()
     }
     fn text_string(&self, text: &mod_api::Text) -> String {
-        sunrise_client_core::lang::scoped(sunrise_client_core::lang::Language::default(), || {
+        sunrise_game_data::lang::scoped(sunrise_game_data::lang::Language::default(), || {
             sunrise_sim::api_text::to_engine_inprocess(text).plain()
         })
         .0

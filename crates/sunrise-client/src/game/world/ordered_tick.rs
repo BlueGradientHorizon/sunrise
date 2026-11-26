@@ -439,7 +439,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             on_sound: &mut |pos, pitch| {
                                 if capture_active {
                                     pending_sounds.push(
-                                        sunrise_client_core::sound_source::ServerSound::new(
+                                        sunrise_game_data::sound_source::ServerSound::new(
                                             "minecraft:entity.generic.burn",
                                             pos,
                                             0.4,

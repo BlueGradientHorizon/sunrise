@@ -433,9 +433,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `ServerLevel.isAllowedToEnterPortal`.
     pub(in crate::game) fn may_enter(&self, target: Dim) -> bool {
         target != Dim::Nether
-            || self.ui.rules.bool_at(
-                sunrise_client_core::gamerules::vanilla::ALLOW_ENTERING_NETHER_USING_PORTALS,
-            )
+            || self
+                .ui
+                .rules
+                .bool_at(sunrise_game_data::gamerules::vanilla::ALLOW_ENTERING_NETHER_USING_PORTALS)
     }
     /// The plan of an entity of `width` by `height` at `at` going through the
     /// portal at `entry` (`getDimensionTransitionFromExit` and the scaled,
@@ -900,7 +901,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn restore_portal_cooldown(&mut self, id: u32, tag: &Tag) {
         if let Some(cooldown) = tag
             .get("PortalCooldown")
-            .and_then(sunrise_client_core::nbt_path::int_value)
+            .and_then(sunrise_game_data::nbt_path::int_value)
             && cooldown != 0
         {
             self.portals.entities.insert(
@@ -918,7 +919,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some(portal) = self.portals.entities.get_mut(&id) {
             portal.cooldown = tag
                 .get("PortalCooldown")
-                .and_then(sunrise_client_core::nbt_path::int_value)
+                .and_then(sunrise_game_data::nbt_path::int_value)
                 .unwrap_or(0);
         } else {
             self.restore_portal_cooldown(id, tag);

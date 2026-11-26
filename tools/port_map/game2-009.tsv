@@ -14,7 +14,7 @@ PotionContents.isPotionWithoutCustomEffects	inline	crates/sunrise-level/src/effe
 PotionContents.getAllEffects	port	crates/sunrise-level/src/effects.rs::PlayerEffects::contents_effects	the potion's effects and the stack's `custom_effects` (`brewing::contents_effects`), applied by `finish_drinking` at the stack's duration scale
 PotionContents.withPotion	port	crates/sunrise-items/src/item_data.rs::ItemStack::with_potion	sets the potion and keeps the other data
 PotionContents.withEffectAdded	inline	crates/sunrise-client/src/game/mobs/dragon.rs::Game::tick_breath	gap: minor: the dragon fireball cloud's instant damage (12) is hard-coded in the tick, not an added effect; the breath cloud's 6 is the same path
-PotionContents.getColorOptional	port	crates/sunrise-client-core/src/potions.rs::potion_color	amplifier-weighted mix; base colour when there are no effects
+PotionContents.getColorOptional	port	crates/sunrise-game-data/src/potions.rs::potion_color	amplifier-weighted mix; base colour when there are no effects
 PotionContents.hasEffects	inline	crates/sunrise-client/src/game/items/potions_server.rs::Game::splash	a lingering cloud is made only when the potion has effects
 PotionContents.getPotionDescription	port	crates/sunrise-level/src/brewing.rs::tooltip	effect name with potency; joined with a space, not the potion.withAmplifier translation
 PotionContents.onConsume	port	crates/sunrise-client/src/game/items/potions_server.rs::Game::tick_drinking	gap: minor: duration scale is always 1.0; POTION_DURATION_SCALE is not read

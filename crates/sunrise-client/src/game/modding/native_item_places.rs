@@ -1939,7 +1939,7 @@ pub(in crate::game) mod tests {
                 assert_eq!(instrument.get(name), direct_instrument.get(name), "{name}");
             }
             assert_eq!(
-                sunrise_client_core::component::name_text(instrument.get("description").unwrap())
+                sunrise_game_data::component::name_text(instrument.get("description").unwrap())
                     .plain(),
                 "Test Horn"
             );

@@ -1,9 +1,9 @@
 //! `/item` (ItemCommands) and `if items`/`if slots`: addressing the item
 //! slots of the player, mobs, armor stands, item frames and containers.
 use super::{Arg, Context, Game, R, Target, err};
-use sunrise_client_core::text::Text;
 use sunrise_command::{CommandError, args::ItemInput};
 use sunrise_core::nbt::Tag;
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::scoreboard_cmd::Holder;
@@ -664,7 +664,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn parse_inline_item_modifier(raw: &str) -> R<serde_json::Value> {
         let (tag, _) =
             sunrise_core::nbt::parse_snbt(raw).map_err(|e| err("argument.nbt.invalid", &[&e]))?;
-        let value = sunrise_client_core::scoreboard::tag_to_json(&tag);
+        let value = sunrise_game_data::scoreboard::tag_to_json(&tag);
         sunrise_world::loot::validate_item_modifier(&value)
             .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
         Ok(value)

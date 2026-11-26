@@ -37,7 +37,7 @@ SUNRISE_CLIENT = [
 # The generator scans these to write the mod API and the host boundary: its own sources, the vocabulary, the
 # engine crates holding hook targets and their manifests.
 MOD_API_GEN = [
-    "Cargo.lock", "crates/sunrise-assets/src", "crates/sunrise-client", "crates/sunrise-client-core/src",
+    "Cargo.lock", "crates/sunrise-assets/src", "crates/sunrise-client", "crates/sunrise-game-data/src",
     "crates/sunrise-client-render", "crates/sunrise-core/src", "crates/sunrise-items",
     "crates/sunrise-mod-api", "crates/sunrise-mod-api-macros/src/lib.rs", "crates/sunrise-mod-package/src",
     "crates/sunrise-mod-render", "crates/sunrise-mod-runtime/src", "crates/sunrise-mod-vocab/behaviours",
@@ -61,7 +61,7 @@ READERS = {
     "sunrise-client-lib": SUNRISE_CLIENT,
     "sunrise-parity-fixtures": SUNRISE_CLIENT,
     # lang.rs embeds the bundled language files.
-    "sunrise-client-core": ["crates/sunrise-client/assets/sunrise/lang"],
+    "sunrise-game-data": ["crates/sunrise-client/assets/sunrise/lang"],
     "sunrise-client-render": [
         "crates/sunrise-client/assets/sunrise/lang", "crates/sunrise-client/assets/sunrise/textures/gui",
         # Its WGSL validation compiles the shader pack crate's shaders too.
@@ -108,8 +108,8 @@ READERS = {
     ],
 }
 # What a package's tests only read at run time and nothing else uses: the package is selected, its dependents are not.
-# sunrise-client-core's lang.rs tests read the sources of every crate for the language keys the code names.
-SCANNED = {"sunrise-client-core": ["crates"]}
+# sunrise-game-data's lang.rs tests read the sources of every crate for the language keys the code names.
+SCANNED = {"sunrise-game-data": ["crates"]}
 # Literals the scan takes for a walk up to crates/ that are not one (a ".." among path-traversal checks).
 # "machines/.." in a test's sample paths, "mods/" in an instance's file names: no read either.
 NOT_READS = {

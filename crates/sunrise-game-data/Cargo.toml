@@ -1,10 +1,10 @@
 [package]
-name = "sunrise-client-core"
+name = "sunrise-game-data"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
-description = "The client's lowest layer: chat text and translations, SNBT and NBT paths, the scoreboard, boss bars, game rules and the registry and particle tables commands name"
+description = "Portable game data below commands and gameplay, shared by client and server: chat text and translations, SNBT and NBT paths, the scoreboard, boss bars, game rules and the registry and particle tables commands name"
 
 [dependencies]
 log = "0.4"

@@ -143,7 +143,7 @@ fn denied_hits_other_blocks_and_direct_destroy_keep_their_drop_contracts() {
         assert!(
             game.ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
+                .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
         );
         assert!(game.run_command("gamerule mob_griefing"));
         assert!(game.run_command(

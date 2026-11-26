@@ -9,7 +9,7 @@ fn menu_title_snapshot_tracks_open_replacement_and_close() {
         game.connect_local(client, "menu-title-test").unwrap();
         let remote = game.remote.as_mut().unwrap();
         for value in [Some("first"), Some("replacement"), None] {
-            remote.set_menu_title(value.map(sunrise_client_core::text::Text::literal));
+            remote.set_menu_title(value.map(sunrise_game_data::text::Text::literal));
             assert_eq!(
                 remote.menu_title_snapshot(),
                 remote.menu_title.try_into_api().unwrap().as_ref()

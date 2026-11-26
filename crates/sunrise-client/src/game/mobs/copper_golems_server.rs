@@ -272,7 +272,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let drop = self
                     .ui
                     .rules
-                    .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS);
+                    .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS);
                 self.break_leash(id, drop, false);
             }
         }

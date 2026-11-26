@@ -60,7 +60,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || !self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
+                .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS)
         {
             return None;
         }
@@ -159,8 +159,8 @@ mod tests {
     fn a_level_pops_spawns_and_awards_as_vanilla() {
         use super::super::spill;
         use mod_api::{LevelRef, WorldEpoch};
-        use sunrise_client_core::gamerules::Value as RuleValue;
         use sunrise_core::random::RandomSource;
+        use sunrise_game_data::gamerules::Value as RuleValue;
         use sunrise_items::items::ItemStack;
 
         super::super::native_entity_refs::tests::with_game(|game| {

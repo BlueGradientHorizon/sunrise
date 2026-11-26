@@ -738,7 +738,7 @@ impl mod_api::__private::LivingReads for super::native_hooks::HitLevel<'_> {
         effect: mod_api::EffectKey,
     ) -> Option<mod_api::ActiveEffect> {
         let def = mod_api::__private::effect_index(effect)
-            .and_then(sunrise_client_core::potions::effect_by_index)?;
+            .and_then(sunrise_game_data::potions::effect_by_index)?;
         super::native_living_body::body_effect(self.party_body(party)?, def.index)
     }
     fn living_effects(
@@ -753,7 +753,7 @@ impl mod_api::__private::LivingReads for super::native_hooks::HitLevel<'_> {
         effect: mod_api::EffectKey,
     ) -> bool {
         mod_api::__private::effect_index(effect)
-            .and_then(sunrise_client_core::potions::effect_by_index)
+            .and_then(sunrise_game_data::potions::effect_by_index)
             .zip(self.party_body(party))
             .is_some_and(|(def, body)| {
                 super::native_living_body::body_potion_affected(body, def.index)

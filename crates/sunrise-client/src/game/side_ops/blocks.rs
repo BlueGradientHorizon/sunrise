@@ -1,7 +1,7 @@
 //! Role dispatchers owned by lane `blocks` (`side_ops/blocks.rs`).
 use crate::game::{Game, piston_push, stations_common};
-use sunrise_client_core::Result;
 use sunrise_core::{geometry::Vec3, nbt::Tag};
+use sunrise_game_data::Result;
 use sunrise_level::containers::BlockEntity;
 use sunrise_world::entity_move::MoverType;
 use sunrise_world::moving_colliders::Prepared;

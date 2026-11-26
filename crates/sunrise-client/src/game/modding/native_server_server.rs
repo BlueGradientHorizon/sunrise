@@ -26,9 +26,9 @@ use serde_json::json;
 #[allow(unused_imports)]
 use std::sync::{LazyLock, Mutex, atomic::Ordering};
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
-use sunrise_client_core::text::Text;
 use sunrise_command::{Arg, ArgType, Context};
 use sunrise_core::position::BlockPos;
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_sim::{
@@ -946,7 +946,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         line: &str,
         capture: bool,
-    ) -> (bool, Vec<sunrise_client_core::text::Text>) {
+    ) -> (bool, Vec<sunrise_game_data::text::Text>) {
         if self.lan.is_none() {
             return (false, Vec::new());
         }

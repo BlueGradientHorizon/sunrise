@@ -504,7 +504,7 @@ impl BlocksAttacks {
             .data()
             .and_then(|d| d.other("minecraft:blocks_attacks"))
         {
-            let json = sunrise_client_core::scoreboard::tag_to_json(own);
+            let json = sunrise_game_data::scoreboard::tag_to_json(own);
             return Self::parse(&json).map(std::borrow::Cow::Owned);
         }
         item?
@@ -802,7 +802,7 @@ pub struct Items {
     // The item -> its BlockItem block -> effect holder lookup, resolved once at load.
     suspicious_stew_effects: Arc<HashMap<String, StewEffects>>,
     /// Registry snapshot used to validate ingredient component payloads.
-    pub component_registry: Arc<sunrise_client_core::registries::Registries>,
+    pub component_registry: Arc<sunrise_game_data::registries::Registries>,
     /// Loaded component prototypes for concrete ingredient predicates.
     pub component_defaults: Arc<HashMap<String, sunrise_core::nbt::Compound>>,
     /// Default `minecraft:mob_visibility` by item id, with the `equippable`
@@ -1231,7 +1231,7 @@ impl Items {
         root: &Path,
         overlay: &PackOverlay,
         defaults: &ItemDefaults,
-        damage: sunrise_client_core::registries::RegistryIds,
+        damage: sunrise_game_data::registries::RegistryIds,
         load_registries: impl FnOnce(&mut Self) -> Result<()>,
     ) -> Result<Self> {
         let mut items = Self::catalog_items(root, overlay, defaults, load_registries)?;
@@ -1421,7 +1421,7 @@ impl Items {
                         .map(|(name, value)| {
                             (
                                 name.clone(),
-                                sunrise_client_core::scoreboard::json_to_tag(value),
+                                sunrise_game_data::scoreboard::json_to_tag(value),
                             )
                         })
                         .collect(),
@@ -1612,7 +1612,7 @@ impl Items {
     /// registry entry or inline instrument.
     pub fn instrument(&self, stack: &ItemStack) -> Option<Instrument> {
         if let Some(tag) = inline_instrument(stack) {
-            return Instrument::decode(&sunrise_client_core::scoreboard::tag_to_json(tag)).ok();
+            return Instrument::decode(&sunrise_game_data::scoreboard::tag_to_json(tag)).ok();
         }
         self.instruments.get(&instrument_id(stack)?).cloned()
     }
@@ -3233,7 +3233,7 @@ fn apply_components(stack: &mut ItemStack, patch: &Value) {
             } else {
                 (
                     id.as_str().into(),
-                    sunrise_client_core::scoreboard::json_to_tag(value),
+                    sunrise_game_data::scoreboard::json_to_tag(value),
                 )
             }
         })
@@ -4558,7 +4558,7 @@ mod tests {
         });
         sword.data_mut().set_other(
             "minecraft:blocks_attacks",
-            Some(sunrise_client_core::scoreboard::json_to_tag(&component)),
+            Some(sunrise_game_data::scoreboard::json_to_tag(&component)),
         );
         let b = BlocksAttacks::of_stack(&sword, None).expect("the stack's own component");
         assert_eq!(b.delay_seconds, 0.0);
@@ -4572,7 +4572,7 @@ mod tests {
         let mut bare = plain.clone();
         bare.data_mut().set_other(
             "minecraft:blocks_attacks",
-            Some(sunrise_client_core::scoreboard::json_to_tag(&json!({}))),
+            Some(sunrise_game_data::scoreboard::json_to_tag(&json!({}))),
         );
         let b = BlocksAttacks::of_stack(&bare, None).expect("defaults");
         assert_eq!(b.reductions[0].horizontal_angle, 90.0);
@@ -4981,7 +4981,7 @@ mod tests {
         assert_eq!(stack.count, 7);
         assert_eq!(
             stack.data().and_then(|d| d.other("minecraft:custom_data")),
-            Some(&sunrise_client_core::scoreboard::json_to_tag(
+            Some(&sunrise_game_data::scoreboard::json_to_tag(
                 &json!({"machine": "furnace"})
             ))
         );
@@ -5728,7 +5728,7 @@ mod tests {
         let drops = ctx(&items, None, &props, "").evaluate(&table, &mut LegacyRandom::new(1));
         let saved = crate::item_data::encode_components(&drops[0], &Default::default())
             .expect("components");
-        let saved = sunrise_client_core::scoreboard::tag_to_json(&saved);
+        let saved = sunrise_game_data::scoreboard::tag_to_json(&saved);
         assert_eq!(saved["minecraft:custom_name"], "Lucky");
         assert_eq!(saved["minecraft:item_name"]["text"], "Potion of 1-Up");
         let effect = &saved["minecraft:potion_contents"]["custom_effects"][0];

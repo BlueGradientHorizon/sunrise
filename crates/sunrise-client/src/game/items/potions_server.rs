@@ -28,7 +28,7 @@ use sunrise_core::{
 };
 use sunrise_sim::health::Attack;
 use {
-    sunrise_client_core::text::Text, sunrise_items::items::ItemStack, sunrise_level::brewing,
+    sunrise_game_data::text::Text, sunrise_items::items::ItemStack, sunrise_level::brewing,
     sunrise_level::effects::EffectAction, sunrise_level::effects::EffectInstance,
     sunrise_level::effects::OmenTick, sunrise_level::effects::PlayerEffects,
     sunrise_level::effects::effect_modifier, sunrise_level::particle_options::ParticleOptions,
@@ -443,7 +443,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         new: bool,
     ) {
         if mod_api::__private::effect_index(effect)
-            .and_then(sunrise_client_core::potions::effect_by_index)
+            .and_then(sunrise_game_data::potions::effect_by_index)
             .is_some_and(|def| def.index >= brewing::EFFECTS.len())
         {
             if new {
@@ -1159,7 +1159,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let limit = self
                 .ui
                 .rules
-                .int_at(sunrise_client_core::gamerules::vanilla::MAX_ENTITY_CRAMMING);
+                .int_at(sunrise_game_data::gamerules::vanilla::MAX_ENTITY_CRAMMING);
             let mut count = 2;
             if limit >= 1 {
                 let near = bounds.inflate(Vec3::new(2.0, 2.0, 2.0));
@@ -1796,7 +1796,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn use_potion_item(
         &mut self,
         stack: &ItemStack,
-    ) -> sunrise_client_core::Result<bool> {
+    ) -> sunrise_game_data::Result<bool> {
         match &*stack.item {
             "minecraft:potion" | "minecraft:ominous_bottle" => {
                 self.start_using_item();
@@ -1911,7 +1911,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         pos: [i32; 3],
         face: [i32; 3],
         stack: &ItemStack,
-    ) -> sunrise_client_core::Result<bool> {
+    ) -> sunrise_game_data::Result<bool> {
         if &*stack.item != "minecraft:potion"
             || stack.potion() != Some("minecraft:water")
             || face == [0, -1, 0]
@@ -2359,7 +2359,7 @@ pub(in crate::game) mod tests {
                     );
                     assert!(game.ui.rules.set(
                         "natural_health_regeneration",
-                        sunrise_client_core::gamerules::Value::Bool(false)
+                        sunrise_game_data::gamerules::Value::Bool(false)
                     ));
                     game.tick_mob_effects();
                     assert_eq!(game.player.as_ref().unwrap().health.food.exhaustion, 2.0);

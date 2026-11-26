@@ -304,7 +304,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 }
                 (2, Value::OptText(name)) => {
                     let text = name.as_ref().map(sunrise_sim::entity_nbt::name_text);
-                    m.custom_name = text.as_ref().map(sunrise_client_core::text::Text::plain);
+                    m.custom_name = text.as_ref().map(sunrise_game_data::text::Text::plain);
                     m.custom_name_text = text;
                 }
                 (2, Value::Text(name)) => {

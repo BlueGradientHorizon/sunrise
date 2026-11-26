@@ -1146,7 +1146,7 @@ fn component_patch(components: &BTreeMap<String, serde_json::Value>) -> Result<V
         .iter()
         .map(|(key, value)| {
             if !key.starts_with('!') && sunrise_protocol::item::custom::id(key).is_some() {
-                let tag = sunrise_client_core::scoreboard::json_to_tag(value);
+                let tag = sunrise_game_data::scoreboard::json_to_tag(value);
                 sunrise_core::nbt::validate_component_value(&tag)
                     .map_err(|error| format!("component {key}: {error}"))?;
             }

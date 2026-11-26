@@ -158,7 +158,7 @@ fn a_blank_line_or_no_server_runs_nothing() {
 /// at a character boundary (the line below ends in a three-byte character on the cap).
 #[test]
 fn the_feedback_kept_is_capped() {
-    use sunrise_client_core::text::Text;
+    use sunrise_game_data::text::Text;
     let long = Text::literal(format!(
         "ab{}",
         "\u{20ac}".repeat(super::native_console::MAX_FEEDBACK_LINE_BYTES)
@@ -188,7 +188,7 @@ fn a_nested_capture_leaves_the_outer_one_as_it_was() {
         let outer = game
             .side
             .chat_capture
-            .replace(vec![sunrise_client_core::text::Text::literal("outer line")]);
+            .replace(vec![sunrise_game_data::text::Text::literal("outer line")]);
         let result = game.native_run_command_with_output("time query gametime");
         assert!(result.success && result.feedback.len() == 1, "{result:?}");
         let kept: Vec<String> = game

@@ -31,7 +31,7 @@ members = [
     "crates/sunrise-gameplay-common",
     "crates/sunrise-gameplay",
     "crates/sunrise-client-gameplay",
-    "crates/sunrise-client-core",
+    "crates/sunrise-game-data",
     "crates/sunrise-client-input",
     "crates/sunrise-border",
     "crates/sunrise-client-render",

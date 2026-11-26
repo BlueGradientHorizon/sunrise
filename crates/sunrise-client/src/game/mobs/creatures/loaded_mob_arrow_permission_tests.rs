@@ -30,12 +30,12 @@ fn loaded_mob_arrow_predicate_survives_model_and_controls_actual_block_hit() {
         assert!(
             game.ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::PROJECTILES_CAN_BREAK_BLOCKS)
+                .bool_at(sunrise_game_data::gamerules::vanilla::PROJECTILES_CAN_BREAK_BLOCKS)
         );
         assert!(
             game.ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
+                .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS)
         );
         assert!(game.run_command(
             "summon pig 14.5 200 14.5 {UUID:[I;197,0,0,1],NoAI:1b,NoGravity:1b,Health:10f}"
@@ -67,7 +67,7 @@ fn loaded_mob_arrow_predicate_survives_model_and_controls_actual_block_hit() {
             if game
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
+                .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
                 != griefing
             {
                 assert!(game.run_command(&format!("gamerule mob_griefing {griefing}")));
@@ -75,7 +75,7 @@ fn loaded_mob_arrow_predicate_survives_model_and_controls_actual_block_hit() {
             assert_eq!(
                 game.ui
                     .rules
-                    .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING),
+                    .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING),
                 griefing
             );
             assert!(game.run_command(&format!("setblock {x} 199 {z} end_stone")));

@@ -113,7 +113,7 @@ impl SpawnDataExt for SpawnData {
     }
 }
 
-pub use sunrise_client_core::identifier::normalize_id;
+pub use sunrise_game_data::identifier::normalize_id;
 
 /// How much a slime's or magma cube's box is scaled by the size its data
 /// loads (`Slime.readAdditionalSaveData`: Size + 1, kept in 1..=127), which

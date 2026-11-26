@@ -4,7 +4,7 @@ use super::Game;
 pub(in crate::game) use crate::game::jukebox_common::{
     jukebox_playable, jukebox_signals, song_of_record,
 };
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_level::containers::BlockEntity;
 
 #[cfg(feature = "client")]
@@ -24,7 +24,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .jukebox_sounds
             .insert((pos[0], pos[1], pos[2]), id);
         let description =
-            sunrise_client_core::component::to_text(&s.description, &mut |k| Text::literal(k));
+            sunrise_game_data::component::to_text(&s.description, &mut |k| Text::literal(k));
         let message = Text::translate("record.nowPlaying", &[description]);
         self.say_system_now(&message);
         self.side.titles.set_overlay(message, true);

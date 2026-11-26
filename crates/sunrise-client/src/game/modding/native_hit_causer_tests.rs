@@ -169,8 +169,7 @@ fn blast(
     player: bool,
     guest: Option<u32>,
 ) {
-    game.side.combat.0.blast_owner =
-        Some((owner, sunrise_client_core::text::Text::literal("owner")));
+    game.side.combat.0.blast_owner = Some((owner, sunrise_game_data::text::Text::literal("owner")));
     game.side.combat.0.blast_owner_player = player;
     game.side.combat.0.blast_guest = guest;
     game.server_explode(at, 3.0, super::explosion::BlockInteraction::Keep, false)

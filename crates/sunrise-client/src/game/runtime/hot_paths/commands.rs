@@ -1,7 +1,7 @@
 //! A command that resolves an entity selector, parsed and run as a function's line or a
 //! repeating command block runs it every tick.
 use super::{super::Game, Recorder};
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(super) fn hot_commands(&mut self, recorder: &mut Recorder) -> Result<()> {

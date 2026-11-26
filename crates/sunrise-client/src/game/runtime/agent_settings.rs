@@ -5,7 +5,7 @@
 //! Turning either switch in the game opens or closes it at once.
 use super::Game;
 use std::path::PathBuf;
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 use sunrise_sim::control;
 
 impl Game<'_, crate::game::client_side::ClientState> {
@@ -153,7 +153,7 @@ fn status_lines(
     last_command: Option<u64>,
     session_only: bool,
 ) -> Vec<String> {
-    use sunrise_client_core::lang::{get, tr};
+    use sunrise_game_data::lang::{get, tr};
     let mut lines = vec![match &server {
         Some(s) if s.clients > 0 => {
             let (one, many) = match last_command {
@@ -189,7 +189,7 @@ fn status_lines(
 #[cfg(test)]
 mod tests {
     use super::{Socket, status_lines};
-    use sunrise_client_core::lang::{Language, scoped};
+    use sunrise_game_data::lang::{Language, scoped};
 
     fn lines(code: &str, clients: usize, ago: Option<u64>, session_only: bool) -> Vec<String> {
         let socket = Socket {

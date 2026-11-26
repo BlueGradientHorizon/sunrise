@@ -207,7 +207,7 @@ impl PatrolLevel for PatrolCx<'_, '_, '_> {
             .game
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_PATROLS)
+            .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_PATROLS)
     }
     fn bright_outside(&self) -> bool {
         !self.level.game.dimension_type().has_fixed_time && self.level.game.sky_darken() < 4
@@ -467,7 +467,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || !self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::RAIDS)
+                .bool_at(sunrise_game_data::gamerules::vanilla::RAIDS)
             || !self.gameplay_attribute(sunrise_sim::patrol::CAN_START_RAID, at)
         {
             return None;
@@ -690,7 +690,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 &lvl,
                 self.ui
                     .rules
-                    .bool_at(sunrise_client_core::gamerules::vanilla::RAIDS),
+                    .bool_at(sunrise_game_data::gamerules::vanilla::RAIDS),
                 &members,
             )
         };
@@ -1459,11 +1459,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let enemies = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS)
+            .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MONSTERS);
+                .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MONSTERS);
         let mut random = std::mem::replace(
             &mut self.world.random,
             LevelRandom::for_level(LegacyRandom::new(0)),
@@ -1579,7 +1579,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn raid_fixture_state(
         &self,
         op: &serde_json::Value,
-    ) -> sunrise_client_core::Result<serde_json::Value> {
+    ) -> sunrise_game_data::Result<serde_json::Value> {
         use serde_json::json;
         let id = op["id"].as_i64().ok_or("raid observation: missing id")? as i32;
         let mut state = json!({"id":id,"present":self.side.raiding.0.raids.get(id).is_some()});
@@ -1595,7 +1595,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 state["member_present"] = json!(self.raid_members(id).next().is_some());
             }
         }
-        let observe = |m: &Mob| -> sunrise_client_core::Result<serde_json::Value> {
+        let observe = |m: &Mob| -> sunrise_game_data::Result<serde_json::Value> {
             let uuid = self
                 .persist
                 .uuids
@@ -1614,12 +1614,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 "pos":[m.position.x,m.position.y,m.position.z],"noai":m.no_ai,
                 "home":m.extra.bed.map(|p| p.to_vec()).unwrap_or_default(),
                 "raid_id":raider::state(m).and_then(|s|s.raid_id).unwrap_or(-1),
-                "nbt":sunrise_client_core::snbt::to_snbt(&tag)}))
+                "nbt":sunrise_game_data::snbt::to_snbt(&tag)}))
         };
         let actors = self
             .raid_members(id)
             .map(observe)
-            .collect::<sunrise_client_core::Result<Vec<_>>>()?;
+            .collect::<sunrise_game_data::Result<Vec<_>>>()?;
         let mut villagers = Vec::new();
         for uuid in op["villagers"]
             .as_array()
@@ -1656,7 +1656,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             "raid input raw: {}",
             json!({"label":op["label"],"id":id,"loaded":loaded,
             "live_poi":live_poi,"claimed_pois":self.village_pois(),
-            "raid_nbt":sunrise_client_core::snbt::to_snbt(&self.side.raiding.0.raids.to_nbt()),
+            "raid_nbt":sunrise_game_data::snbt::to_snbt(&self.side.raiding.0.raids.to_nbt()),
             "actors":actors,"villagers":villagers})
         );
         Ok(state)

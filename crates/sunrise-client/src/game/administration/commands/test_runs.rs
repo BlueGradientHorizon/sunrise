@@ -6,8 +6,8 @@
 //! Retries are `RetryOptions(numberOfTimes, untilFailed)`.
 use super::{Arg, Context, Game, R, err};
 use crate::game::game_tests::Retry;
-use sunrise_client_core::text::Text;
 use sunrise_core::bounding_box::BoundingBox;
+use sunrise_game_data::text::Text;
 use sunrise_world::worldgen::structure::Rotation;
 
 pub(in crate::game) type Pos = (i32, i32, i32);

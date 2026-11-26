@@ -6,8 +6,8 @@ use super::{
     minecarts::{CartKind, Minecart},
 };
 use serde_json::Value;
-use sunrise_client_core::Result;
 use sunrise_core::geometry::Vec3;
+use sunrise_game_data::Result;
 use sunrise_items::item_data::parse_stack;
 use sunrise_sim::{
     entities::{ArmorStand, ItemFrame, Painting},

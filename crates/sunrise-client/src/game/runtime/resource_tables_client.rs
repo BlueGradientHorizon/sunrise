@@ -76,14 +76,14 @@ impl PlainTexts {
     pub(in crate::game) fn with<R>(
         &self,
         text: &str,
-        draw: impl FnOnce(&sunrise_client_core::text::Text) -> R,
+        draw: impl FnOnce(&sunrise_game_data::text::Text) -> R,
     ) -> R {
         let mut texts = self.0.borrow_mut();
         if !texts.contains_key(text) {
             if texts.len() >= Self::MAX {
                 texts.clear();
             }
-            texts.insert(text.into(), sunrise_client_core::text::Text::literal(text));
+            texts.insert(text.into(), sunrise_game_data::text::Text::literal(text));
         }
         draw(&texts[text])
     }

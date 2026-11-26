@@ -116,7 +116,7 @@ fn a_mobs_burst_leaves_vehicles_alone_with_mob_griefing_off() {
             !game
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
+                .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
         );
         // The rule change re-derives the difficulty from the game's
         // (`Game::sync_rules`), which no level.dat set here.

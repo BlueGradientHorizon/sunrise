@@ -1667,7 +1667,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn entity_drops_gates_a_dying_mobs_lead_in_the_tick_not_in_detach() {
-        use sunrise_client_core::gamerules::Value;
+        use sunrise_game_data::gamerules::Value;
         use sunrise_sim::{
             mobs::{MobEvent, leash::Holder},
             motion::PlayerMotion,

@@ -375,7 +375,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn tick_guest_connections(
         &mut self,
         across_levels: bool,
-    ) -> sunrise_client_core::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         building_cache(self.lan.as_ref());
         let result = self.tick_guest_connections_inner(across_levels);
         building_cache(None);
@@ -385,7 +385,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn tick_guest_connections_inner(
         &mut self,
         across_levels: bool,
-    ) -> sunrise_client_core::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         let Some(host) = self.lan.as_ref() else {
             return Ok(());
         };

@@ -21,7 +21,7 @@ mod component_hover_tests {
     use mod_platform::testing::with_mods;
     use std::sync::Mutex;
     use sunrise_client::hud::HudBatch;
-    use sunrise_client_core::text::{Style, Text};
+    use sunrise_game_data::text::{Style, Text};
 
     /// Every hover the mod was asked about, in order.
     static SEEN: Mutex<Vec<TextHover>> = Mutex::new(Vec::new());

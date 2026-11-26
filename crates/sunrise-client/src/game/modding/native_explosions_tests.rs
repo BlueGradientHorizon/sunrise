@@ -391,7 +391,7 @@ fn a_mob_blast_breaks_blocks_only_when_its_source_may_grief() {
                 floor(game);
                 assert!(game.ui.rules.set(
                     "mob_griefing",
-                    sunrise_client_core::gamerules::Value::Bool(griefing),
+                    sunrise_game_data::gamerules::Value::Bool(griefing),
                 ));
                 mob(
                     game,

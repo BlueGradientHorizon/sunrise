@@ -481,7 +481,7 @@ fn custom_menu_screens_route_by_menu_type_and_allow_cross_mod_slot_controls() {
                             game.native_screen_tooltip_lines(&batch, None, &mut lines);
                             assert_eq!(
                                 lines,
-                                [(sunrise_client_core::text::Text::literal(screen_owner), 0)]
+                                [(sunrise_game_data::text::Text::literal(screen_owner), 0)]
                             );
                             let hooks = ["create", "draw", "click", "tooltip"];
                             let only_owner: Vec<_> =

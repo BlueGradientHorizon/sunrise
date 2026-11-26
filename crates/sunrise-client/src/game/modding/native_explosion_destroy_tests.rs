@@ -163,7 +163,7 @@ fn a_thousand_stone_blocks_turn_to_air_with_drops_decayed_by_the_rule() {
             game.dropped.clear();
             assert!(game.ui.rules.set(
                 "block_explosion_drop_decay",
-                sunrise_client_core::gamerules::Value::Bool(decay),
+                sunrise_game_data::gamerules::Value::Bool(decay),
             ));
             // Under decay a stack survives one time in `radius`: none of 1000 at a radius of
             // a billion. Without it every stone drops its cobblestone.
@@ -246,7 +246,7 @@ fn drops_of_one_item_merge_at_the_first_blocks_position() {
     with_watch(|game, _| {
         assert!(game.ui.rules.set(
             "block_explosion_drop_decay",
-            sunrise_client_core::gamerules::Value::Bool(false),
+            sunrise_game_data::gamerules::Value::Bool(false),
         ));
         let positions = [[1, 80, 1], [8, 80, 8]];
         for p in positions {
@@ -273,7 +273,7 @@ fn drops_of_one_item_merge_at_the_first_blocks_position() {
         // when the gamerule prevents constructing the merged item entity.
         assert!(game.ui.rules.set(
             "block_drops",
-            sunrise_client_core::gamerules::Value::Bool(false)
+            sunrise_game_data::gamerules::Value::Bool(false)
         ));
         for p in positions {
             set(game, p, "cobblestone");

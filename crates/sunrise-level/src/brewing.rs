@@ -11,7 +11,7 @@ use serde_json::Value;
 use std::{collections::HashSet, path::Path};
 use sunrise_world::loot::PackOverlay;
 
-pub use sunrise_client_core::potions::{
+pub use sunrise_game_data::potions::{
     BASE_POTION_COLOR, Category, EFFECTS, EffectDef, POTIONS, PotionDef, all_effects,
     description_id, effect, is_mod_effect, mod_effects, namespaced, potion, potion_color,
     register_mod_effects, set_pack_colors,
@@ -86,8 +86,8 @@ pub fn contents_effects(stack: &ItemStack) -> Vec<(&'static str, i32, i32)> {
 }
 /// `PotionContents.getAllEffects`, retaining each custom instance's flags.
 pub fn contents_instances(stack: &ItemStack) -> Vec<crate::effects::EffectInstance> {
-    use sunrise_client_core::nbt_value::{number, text};
     use sunrise_core::nbt::Tag;
+    use sunrise_game_data::nbt_value::{number, text};
     let mut effects: Vec<_> = stack
         .potion()
         .and_then(potion)
@@ -118,7 +118,7 @@ pub fn contents_instances(stack: &ItemStack) -> Vec<crate::effects::EffectInstan
 /// `PotionContents.getColor`: an explicit colour wins; otherwise mix only
 /// visible base and custom effects, with their amplifier weights.
 pub fn contents_color(stack: &ItemStack) -> u32 {
-    use sunrise_client_core::nbt_value::number;
+    use sunrise_game_data::nbt_value::number;
     if let Some(color) = stack
         .data()
         .and_then(|d| d.potion_extra.iter().find(|(k, _)| k == "custom_color"))
@@ -127,7 +127,7 @@ pub fn contents_color(stack: &ItemStack) -> u32 {
         return color as u32;
     }
     0xFF00_0000
-        | sunrise_client_core::potions::effects_color(
+        | sunrise_game_data::potions::effects_color(
             contents_instances(stack)
                 .iter()
                 .filter(|e| e.visible)

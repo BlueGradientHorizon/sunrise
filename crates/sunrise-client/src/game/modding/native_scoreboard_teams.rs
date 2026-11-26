@@ -10,7 +10,7 @@ use mod_api::{
     CollisionRule, ScoreHolder, TeamColor, TeamError, TeamMembersReadError, TeamRef,
     TeamVisibility, TextFormError,
 };
-use sunrise_client_core::{
+use sunrise_game_data::{
     scoreboard::{self as sb, Comp, comp_text},
     text::Text as EngineText,
 };

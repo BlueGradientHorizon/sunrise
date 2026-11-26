@@ -2,8 +2,8 @@
 //! the player's statistics, with the Done button.
 use super::{Game, Screen};
 use sunrise_client::{hud::HudBatch, ui};
-use sunrise_client_core::text::Text;
 use sunrise_core::java_number::{double_to_string, format_decimal2};
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use winit::keyboard::KeyCode;
 

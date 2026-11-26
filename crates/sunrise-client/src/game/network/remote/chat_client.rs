@@ -42,7 +42,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         decorated: &Text,
         received_ms: i64,
     ) -> ChatTrust {
-        use sunrise_client_core::scoreboard::{comp_text, tag_to_json};
+        use sunrise_game_data::scoreboard::{comp_text, tag_to_json};
         if self.integrated.is_some()
             && self
                 .remote
@@ -84,8 +84,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         bound: &play::ChatTypeBound,
         content: &serde_json::Value,
         decoration: Decoration,
-    ) -> sunrise_client_core::text::Text {
-        use sunrise_client_core::scoreboard::comp_text;
+    ) -> sunrise_game_data::text::Text {
+        use sunrise_game_data::scoreboard::comp_text;
         let Some(r) = self.remote.as_ref() else {
             return comp_text(content);
         };
@@ -241,7 +241,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let mut line = self.decorate_chat(&chat_type, &displayed, Decoration::Chat);
                 let decorated = unsigned_content.as_ref().map_or_else(
                     || serde_json::Value::from(signed_content.as_str()),
-                    sunrise_client_core::scoreboard::tag_to_json,
+                    sunrise_game_data::scoreboard::tag_to_json,
                 );
                 let trust = self.chat_trust(
                     sender,
@@ -282,7 +282,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 if !has_player || !visible {
                     return false;
                 }
-                let content = sunrise_client_core::scoreboard::tag_to_json(&message);
+                let content = sunrise_game_data::scoreboard::tag_to_json(&message);
                 (
                     chat_type.clone(),
                     self.decorate_chat(&chat_type, &content, Decoration::Chat),

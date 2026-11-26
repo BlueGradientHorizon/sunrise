@@ -48,7 +48,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     /// A language change reaches the server-sent components too: their titles
     /// are resolved when the packet arrives, with the session's language.
     pub(in crate::game) fn refresh_remote_language(&mut self) {
-        if let Some(lang) = sunrise_client_core::lang::current()
+        if let Some(lang) = sunrise_game_data::lang::current()
             && let Some(r) = self.remote.as_mut()
         {
             r.lang = Arc::new(lang.map().clone());
@@ -219,7 +219,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
     }
     /// The title the server gave the menu it opened.
-    pub(in crate::game) fn remote_menu_title(&self) -> Option<sunrise_client_core::text::Text> {
+    pub(in crate::game) fn remote_menu_title(&self) -> Option<sunrise_game_data::text::Text> {
         self.remote.as_ref()?.menu_title.clone()
     }
     /// ClientboundMerchantOffersPacket.
@@ -269,7 +269,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         container: i32,
         title: String,
-        text: sunrise_client_core::text::Text,
+        text: sunrise_game_data::text::Text,
     ) {
         self.remote_set_menu(
             Some((container, "minecraft:merchant".to_owned())),
@@ -452,7 +452,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 // Unsupported menu: tell the server we closed it.
                 self.remote_reject_container(p.container);
                 self.add_chat_line(
-                    sunrise_client_core::text::Text::literal(format!(
+                    sunrise_game_data::text::Text::literal(format!(
                         "(Sunrise cannot show {menu} screens yet)"
                     )),
                     sunrise_client::chat::ChatSource::Client,

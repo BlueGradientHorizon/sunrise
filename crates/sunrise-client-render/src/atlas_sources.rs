@@ -13,8 +13,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 use sunrise_assets::{animation::AnimationMetadata, palette::apply_palette};
-use sunrise_client_core::pattern::Pattern;
 use sunrise_core::nbt::Tag;
+use sunrise_game_data::pattern::Pattern;
 
 /// One region of an `unstitch` source, in units of the divisors.
 #[derive(Clone, Debug, PartialEq)]

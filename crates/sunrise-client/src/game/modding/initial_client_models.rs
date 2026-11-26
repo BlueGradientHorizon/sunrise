@@ -58,7 +58,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         models: InitialModelGeneration,
         client_applies: Vec<client_reload::PreparedClientReload>,
         renderer: Option<Box<Renderer>>,
-    ) -> sunrise_client_core::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         self.join_world_rest()?;
         let InitialModelGeneration {
             pack,
@@ -93,7 +93,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn publish_initial_client_models(
         &mut self,
         client_applies: Vec<client_reload::PreparedClientReload>,
-    ) -> sunrise_client_core::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         let pack = self.pack.clone();
         let client_pack = self.side.client_pack.clone();
         let metrics = UiResources::fonts_only(&pack.source)?;

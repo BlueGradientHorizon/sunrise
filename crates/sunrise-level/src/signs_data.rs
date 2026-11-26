@@ -43,7 +43,7 @@ pub struct SignData {
 /// `getBooleanOr(key, false)` and `Codec.BOOL`: any numeric tag's nonzero byte.
 fn nbt_flag(tag: &Tag, key: &str) -> bool {
     tag.get(key)
-        .and_then(sunrise_client_core::nbt_path::int_value)
+        .and_then(sunrise_game_data::nbt_path::int_value)
         .is_some_and(|value| value as i8 != 0)
 }
 
@@ -312,7 +312,7 @@ fn component_text(tag: &Tag) -> String {
         // Component.getString: translations and key binds resolved.
         // The editor sends these lines back to the server: a key only Sunrise's own files give
         // stays the key, as in vanilla's client, so a server's sign can't tell this client by it.
-        Tag::Compound(_) | Tag::List(_) => sunrise_client_core::lang::returned_to_server(|| {
+        Tag::Compound(_) | Tag::List(_) => sunrise_game_data::lang::returned_to_server(|| {
             scoreboard::comp_text(&scoreboard::tag_to_json(tag)).plain()
         }),
         _ => String::new(),
@@ -353,7 +353,7 @@ mod tests {
     /// give stays the key, as vanilla's client leaves it.
     #[test]
     fn a_sign_resolves_no_key_only_sunrise_gives() {
-        use sunrise_client_core::lang;
+        use sunrise_game_data::lang;
         let key = "sunrise.osk.close";
         let side = Tag::compound([(
             "messages",

@@ -21,7 +21,6 @@ use super::{
     potions::{Victim, mob_can_be_affected},
 };
 use mod_api::DragonPhase;
-use sunrise_client_core::nbt_value;
 #[allow(unused_imports)]
 use sunrise_client_gameplay::dragon_render::{dissolve_color, dissolve_mask, dragon_rays};
 use sunrise_core::nbt::Tag;
@@ -31,11 +30,12 @@ use sunrise_core::{
     jmath,
     random::{LegacyRandom, RandomSource},
 };
+use sunrise_game_data::nbt_value;
 #[cfg(test)]
 use sunrise_protocol::entity_data::Value;
 #[allow(unused_imports)]
 use {
-    sunrise_client::mesher::Vertex, sunrise_client_core::text::Text,
+    sunrise_client::mesher::Vertex, sunrise_game_data::text::Text,
     sunrise_level::particle_options::ParticleType, sunrise_level::random_source,
     sunrise_sim::health::DamageContainer, sunrise_sim::health::DamageLevel,
     sunrise_sim::health::HurtSource, sunrise_sim::health::Hurting, sunrise_sim::health::Knock,
@@ -1591,7 +1591,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             self.side.fight.blast_by = by;
             // EndCrystal.hurtServer: ExplosionInteraction.BLOCK.
             let interaction = self
-                .destroy_type(sunrise_client_core::gamerules::vanilla::BLOCK_EXPLOSION_DROP_DECAY);
+                .destroy_type(sunrise_game_data::gamerules::vanilla::BLOCK_EXPLOSION_DROP_DECAY);
             // EndCrystal is 2 by 2 blocks: its box decides `isInWater`.
             let (x, y, z) = (c.position.x, c.position.y, c.position.z);
             self.side.combat.0.explosion_in_water = self.bounds_in_water(Aabb::new(
@@ -2921,7 +2921,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .mobs
                 .iter()
                 .map(|m| {
-                    sunrise_client_core::scoreboard::teams_allow_damage(
+                    sunrise_game_data::scoreboard::teams_allow_damage(
                         self.mob_team(d.id),
                         self.mob_team_of(m),
                     )
@@ -4009,7 +4009,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         }
         // DragonRespawnStage.SUMMONING_PILLARS: ExplosionInteraction.BLOCK.
         let interaction =
-            self.destroy_type(sunrise_client_core::gamerules::vanilla::BLOCK_EXPLOSION_DROP_DECAY);
+            self.destroy_type(sunrise_game_data::gamerules::vanilla::BLOCK_EXPLOSION_DROP_DECAY);
         let _ = self.server_explode(
             [f64::from(cx) + 0.5, f64::from(h), f64::from(cz) + 0.5],
             5.0,

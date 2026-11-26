@@ -440,7 +440,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             &mut sign.back
         };
         for (line, new) in side.lines.iter_mut().zip(&p.lines) {
-            *line = sunrise_client_core::text::strip_formatting(new);
+            *line = sunrise_game_data::text::strip_formatting(new);
         }
         self.world.block_entities.set_sign_editor(key, None);
         self.mark_block_entity_updated(key);
@@ -483,8 +483,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// action bar. A guest gets a packet, so its own client translates it.
     pub(in crate::game::server_side) fn sign_click_actions_disabled(&mut self) {
         self.server_send_overlay_message(
-            sunrise_client_core::text::Text::translate("sign.click_actions_disabled", &[])
-                .with_color(sunrise_client_core::text::RED),
+            sunrise_game_data::text::Text::translate("sign.click_actions_disabled", &[])
+                .with_color(sunrise_game_data::text::RED),
         );
     }
     /// `SignBlockEntity.playerIsTooFarAwayToEdit`: a player who left is no

@@ -248,7 +248,7 @@ impl hud::Canvas for Canvas<'_> {
         (self.batch.width, self.batch.height)
     }
     fn tr(&self, key: &str) -> String {
-        sunrise_client_core::lang::get(key)
+        sunrise_game_data::lang::get(key)
     }
     fn text_width(&self, text: &str) -> f32 {
         HudBatch::text_width(self.atlas, text)

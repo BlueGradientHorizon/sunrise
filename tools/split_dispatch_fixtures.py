@@ -20,8 +20,8 @@ SOURCE = Path("crates/sunrise-mod-api-gen/dispatch-tests/src/lib.rs")
 DIRECTORY = SOURCE.parent / "fixtures"
 SHELL = '#[cfg(test)]\nmod tests {\n    #[allow(dead_code)]\n    mod stubs {\n        include!(concat!(env!("OUT_DIR"), "/dispatch_fixtures_stubs.rs"));\n    }\n    use generated as mod_api;\n    include!(concat!(env!("OUT_DIR"), "/dispatch_fixtures_root.rs"));\n}\n'
 REFLOWS = [
-    ('let subscribers = sunrise_client_core::subscribers::Subscribers::new(\n            HOOK_COUNT,\n            mods.len(),\n            subscriptions,\n        );',
-     'let subscribers =\n    sunrise_client_core::subscribers::Subscribers::new(HOOK_COUNT, mods.len(), subscriptions);'),
+    ('let subscribers = sunrise_game_data::subscribers::Subscribers::new(\n            HOOK_COUNT,\n            mods.len(),\n            subscriptions,\n        );',
+     'let subscribers =\n    sunrise_game_data::subscribers::Subscribers::new(HOOK_COUNT, mods.len(), subscriptions);'),
     ("fn item_model_property(\n                &self,\n                _: &dyn ClientHost,\n                event: &mut ItemModelPropertyEvent<'_>,\n            ) {",
      "fn item_model_property(&self, _: &dyn ClientHost, event: &mut ItemModelPropertyEvent<'_>) {"),
 ]

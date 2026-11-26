@@ -128,7 +128,7 @@ fn give(
     let _ = game.run_command("execute store result score d il run clear @s minecraft:diamond");
     (
         ok,
-        said.first().map(sunrise_client_core::text::Text::plain),
+        said.first().map(sunrise_game_data::text::Text::plain),
         score(game, "r"),
         score(game, "s"),
         score(game, "d"),
@@ -234,7 +234,7 @@ fn inline_references_follow_the_codec_and_the_reloaded_registry() {
     let said = game.side.chat_capture.take().unwrap_or_default();
     assert_eq!(
         said.first()
-            .map(sunrise_client_core::text::Text::plain)
+            .map(sunrise_game_data::text::Text::plain)
             .as_deref(),
         Some("Unknown function parity:il_bad")
     );

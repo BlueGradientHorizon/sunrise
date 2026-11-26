@@ -3,7 +3,7 @@ use crate::game::api_values::TryIntoEngine;
 use crate::game::api_values::engine_display_context;
 use sunrise_items::items::Items;
 
-impl TryIntoApi for (sunrise_client_core::text::Text, u32) {
+impl TryIntoApi for (sunrise_game_data::text::Text, u32) {
     type Api = (mod_api::Text, u32);
     type Error = mod_api::text::TextFormError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {

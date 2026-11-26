@@ -58,8 +58,8 @@ fn block_entity_data_received_after_merge() {
     .into();
     mod_platform::testing::with_mods(mods.clone(), || {
         crate::game::api_values::install_parts(&mods).unwrap();
-        sunrise_client_core::block_entity_types::install(
-            sunrise_client_core::block_entity_types::BlockEntityTypes::new(
+        sunrise_game_data::block_entity_types::install(
+            sunrise_game_data::block_entity_types::BlockEntityTypes::new(
                 [
                     ("minecraft:stone".into(), "notice:counter".into()),
                     ("minecraft:dirt".into(), "notice:silent".into()),

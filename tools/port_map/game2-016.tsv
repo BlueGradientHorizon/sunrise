@@ -121,11 +121,11 @@ AbstractFurnaceBlockEntity.setRecipeUsed	inline	crates/sunrise-sim/src/furnace.r
 AbstractFurnaceBlockEntity.awardUsedRecipesAndPopExperience	port	crates/sunrise-client/src/game/item_entities.rs::Game::award_furnace_recipes	gap: minor: pays the experience and clears the used recipes; the recipe unlock and recipe-crafted trigger are not in this fn.
 AbstractFurnaceBlockEntity.getRecipesToAwardAndPopExperience	port	crates/sunrise-sim/src/furnace.rs::Furnace::recipe_experience	gap: minor: returns counts and experience, not the recipe list.
 AbstractFurnaceBlockEntity.fillStackedContents	port	crates/sunrise-sim/src/menu/place.rs::Menu::stacked_contents	Furnace arm counts all three slots.
-BannerBlockEntity.saveAdditional	port	crates/sunrise-client-core/src/block_entity_nbt.rs::canonical	banner arm of the saved NBT form
+BannerBlockEntity.saveAdditional	port	crates/sunrise-game-data/src/block_entity_nbt.rs::canonical	banner arm of the saved NBT form
 BannerBlockEntity.applyImplicitComponents	port	crates/sunrise-sim/src/block_entity_item.rs::place	banner patterns and name from item components
 BannerBlockEntity.collectImplicitComponents	port	crates/sunrise-sim/src/block_entity_item.rs::collect	banner patterns and name to item components
-BaseContainerBlockEntity.loadAdditional	port	crates/sunrise-client-core/src/block_entity_nbt.rs::items	container slots from the saved list
-BaseContainerBlockEntity.saveAdditional	port	crates/sunrise-client-core/src/block_entity_nbt.rs::canonical	container NBT in its saved form
+BaseContainerBlockEntity.loadAdditional	port	crates/sunrise-game-data/src/block_entity_nbt.rs::items	container slots from the saved list
+BaseContainerBlockEntity.saveAdditional	port	crates/sunrise-game-data/src/block_entity_nbt.rs::canonical	container NBT in its saved form
 BaseContainerBlockEntity.sendChestLockedNotifications	port	crates/sunrise-level/src/containers.rs::locked_message	the container.isLocked action-bar text, naming the container by its display name; the menu path in game/network/lan_actions.rs refuses a container whose Lock the held item does not open, sends this and plays block.chest.locked
 BaseContainerBlockEntity.isEmpty	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Containers::is_empty
 BaseContainerBlockEntity.removeItem	port	crates/sunrise-client/src/game/blocks/machines/mod.rs::Game::take_one	gap: minor: takes one item, not a chosen count.

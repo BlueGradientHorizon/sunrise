@@ -882,7 +882,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// refusal fails the open, and no save runs after it.
     pub(in crate::game::server_side) fn carrier_world_opened(
         &mut self,
-    ) -> sunrise_client_core::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         self.world.carrier_data_existed_at_open = self.side.world_root.join("data").is_dir();
         self.side.carrier_retention_snapshot = match Store::open(&self.side.world_root) {
             Ok(sunrise_sim::carrier_store::Opened::Live(store)) => store.retention_snapshot(),
@@ -904,7 +904,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn carrier_break_block(
         &mut self,
         pos: [i32; 3],
-    ) -> sunrise_client_core::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         if self.world.carrier_fences.locks_cell(&pos) {
             return Err("a carrier transfer holds this cell".into());
         }
@@ -919,7 +919,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// while the store stays exactly as recovery found it.
     pub(in crate::game::server_side) fn carrier_recover_all_levels(
         &mut self,
-    ) -> sunrise_client_core::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         // No pending operation: no level is touched at all.
         let dimension = match sunrise_sim::carrier_store::Store::open(&self.side.world_root) {
             Ok(sunrise_sim::carrier_store::Opened::Live(store)) => {
@@ -1015,7 +1015,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Saves every affected chunk and waits for the writer's barrier, so
     /// the sectors are on disk with the regions synced.
     #[cfg_attr(not(test), allow(dead_code))]
-    fn save_affected(&mut self, cells: &[BlockPos]) -> sunrise_client_core::Result<()> {
+    fn save_affected(&mut self, cells: &[BlockPos]) -> sunrise_game_data::Result<()> {
         let mut keys = Vec::new();
         for pos in cells {
             let key = (pos.x >> 4, pos.z >> 4);

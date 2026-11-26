@@ -1,10 +1,10 @@
 //! Enderman leave-block attempts need the authoritative block simulation.
 use crate::game::Game;
-use sunrise_client_core::Result;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
 };
+use sunrise_game_data::Result;
 use sunrise_sim::mobs::Species;
 use sunrise_world::{
     level::{LevelAccess, flags},

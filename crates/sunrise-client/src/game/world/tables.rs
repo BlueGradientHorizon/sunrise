@@ -162,7 +162,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         if self.is_logical_server() {
             self.ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::LIMITED_CRAFTING)
+                .bool_at(sunrise_game_data::gamerules::vanilla::LIMITED_CRAFTING)
         } else {
             self.remote.as_ref().is_some_and(|r| r.do_limited_crafting)
         }

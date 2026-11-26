@@ -5,7 +5,7 @@ use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},
 };
-use sunrise_client_core::{gamerules, text};
+use sunrise_game_data::{gamerules, text};
 use sunrise_protocol::{
     buf::Reader, ids::play::clientbound::SYSTEM_CHAT, packets::play::Clientbound,
 };

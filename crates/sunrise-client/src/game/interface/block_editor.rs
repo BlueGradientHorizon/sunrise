@@ -9,7 +9,7 @@ use sunrise_client::{
     hud::{HudBatch, rgba},
     ui::{self, EditBox},
 };
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_level::containers::BlockEntity;
 use sunrise_protocol::packets::play::Serverbound as S;
 use winit::keyboard::KeyCode;

@@ -418,7 +418,7 @@ pub fn creeper_tick(m: &mut Mob, events: &mut Vec<MobEvent>) {
                     )
                 })
                 .collect();
-            let color = sunrise_client_core::potions::effects_color(
+            let color = sunrise_game_data::potions::effects_color(
                 effects
                     .iter()
                     .filter(|(id, ..)| !m.extra.hidden_effects.contains(id))

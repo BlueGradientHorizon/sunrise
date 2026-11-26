@@ -1,8 +1,8 @@
 //! Mob handles for native server mods.
 use super::{Game, commands::Target};
 use mod_api::{EntityRef, LivingRef, MobRef};
-use sunrise_client_core::scoreboard::Team;
 use sunrise_core::geometry::{Aabb, Axis};
+use sunrise_game_data::scoreboard::Team;
 use sunrise_sim::mobs::{self, Mob, MobWorld, Species, Who, ai::brain_target};
 
 pub(in crate::game::server_side) fn warden_mob_target_bounds(mob: &Mob) -> Option<Aabb> {
@@ -283,7 +283,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         other: Option<&Team>,
     ) -> bool {
         let border = self.border.geometry();
-        !sunrise_client_core::scoreboard::teams_allied(own, other)
+        !sunrise_game_data::scoreboard::teams_allied(own, other)
             && border.is_within_bounds(bounds.min(Axis::X), bounds.min(Axis::Z), 0.0)
             && border.is_within_bounds(
                 bounds.max(Axis::X) - f64::from(1.0e-5_f32),

@@ -13,7 +13,7 @@ use sunrise_client::{
     screen_draw::Measure,
     window::GuiSize,
 };
-use sunrise_client_core::{Result, text::Text};
+use sunrise_game_data::{Result, text::Text};
 use sunrise_level::{
     chunk::Chunk,
     containers::{BlockEntity, Furnace, FurnaceKind},

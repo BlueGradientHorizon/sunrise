@@ -13,7 +13,7 @@ use sunrise_client::{
     ui::{self, EditBox},
     widgets::{self, Narratable, join_for_narration},
 };
-use sunrise_client_core::text::{Text, named_color};
+use sunrise_game_data::text::{Text, named_color};
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 use winit::keyboard::KeyCode;
 
@@ -616,22 +616,21 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // The response itself lists the server's available rules; the client
         // may not own this world's level.dat (including on the server thread).
         let features = if entries.iter().any(|e| {
-            sunrise_client_core::gamerules::rule_registry()
+            sunrise_game_data::gamerules::rule_registry()
                 .rule(&e.name)
                 .is_some_and(|r| r.name == "minecraft:max_minecart_speed")
         }) {
-            vec![sunrise_client_core::gamerules::MINECART_IMPROVEMENTS.to_owned()]
+            vec![sunrise_game_data::gamerules::MINECART_IMPROVEMENTS.to_owned()]
         } else {
             Vec::new()
         };
         let registry = self
             .integrated
             .as_ref()
-            .map_or_else(sunrise_client_core::gamerules::rule_registry, |server| {
+            .map_or_else(sunrise_game_data::gamerules::rule_registry, |server| {
                 server.rule_registry.clone()
             });
-        let mut rules =
-            sunrise_client_core::gamerules::GameRules::with_registry(registry, &features);
+        let mut rules = sunrise_game_data::gamerules::GameRules::with_registry(registry, &features);
         for entry in entries {
             rules.set_string(&entry.name, &entry.value);
         }

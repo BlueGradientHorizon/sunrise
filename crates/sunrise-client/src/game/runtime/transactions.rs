@@ -460,7 +460,7 @@ pub(in crate::game) struct Level {
     pub(in crate::game) native_menu_slots: HashMap<u64, Vec<Option<ItemStack>>>,
     pub(in crate::game) menu_data: MenuDataJournal,
     /// The scoreboard before this transaction first wrote it (`journal_scoreboard`), whole.
-    pub(in crate::game) board: Option<sunrise_client_core::scoreboard::Scoreboard>,
+    pub(in crate::game) board: Option<sunrise_game_data::scoreboard::Scoreboard>,
     /// Each entity's, player's, chunk's and the level's attachment map before this transaction
     /// first reached it (a block entity's is kept with it). Per-level holders are keyed by level;
     /// player-owned attachment maps are keyed by player body across dimensions.

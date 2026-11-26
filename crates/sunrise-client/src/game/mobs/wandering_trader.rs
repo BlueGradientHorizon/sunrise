@@ -44,7 +44,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || !self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_WANDERING_TRADERS)
+                .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_WANDERING_TRADERS)
         {
             return;
         }

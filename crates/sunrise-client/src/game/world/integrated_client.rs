@@ -10,7 +10,7 @@ use std::{
     sync::{Arc, atomic::Ordering, mpsc::channel},
     time::{Duration, Instant},
 };
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 use sunrise_protocol::crypto::offline_uuid;
 use sunrise_sim::lan::OwnerProfile;
 use sunrise_sim::world_options::WorldOptions;

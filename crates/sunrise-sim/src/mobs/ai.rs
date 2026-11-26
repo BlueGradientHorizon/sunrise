@@ -5714,7 +5714,7 @@ fn tick_effects_until_hurt(
                 "minecraft:absorption" if m.absorption <= 0.0 => {
                     expired = true;
                 }
-                id if sunrise_client_core::potions::is_mod_effect(id) => {
+                id if sunrise_game_data::potions::is_mod_effect(id) => {
                     if let Some(mods) = mods
                         && let Some(index) = m.extra.effects[i].registry_index
                     {

@@ -963,7 +963,7 @@ fn a_viewed_sound_reaches_a_viewer_holding_its_chunk_within_its_distance() {
     assert_eq!(got(&rx[2]), [], "3 answered revision 2");
     // A sound bound to an entity the view does not track is not sent to it.
     hub.captured_sound(
-        &sunrise_client_core::sound_source::ServerSound {
+        &sunrise_game_data::sound_source::ServerSound {
             event: "minecraft:entity.goat.ram_impact".into(),
             position: [8.5, 64.0, 8.5],
             volume: 1.0,

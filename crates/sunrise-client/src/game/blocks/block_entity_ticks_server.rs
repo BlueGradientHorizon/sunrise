@@ -1,6 +1,6 @@
 use super::Game;
 use crate::game::block_entity_ticks::Enclosing;
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 use sunrise_gameplay::block_entity_ticks::block_ticking_at;
 use sunrise_level::{
     block_entities::{Pos, Ticking},
@@ -159,7 +159,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .map(|i| {
                 let state = BlockStateId(i as u32);
                 let name: &str = &self.res.facts().get(state).name;
-                let factory = sunrise_client_core::block_entity_types::factory_block(name);
+                let factory = sunrise_game_data::block_entity_types::factory_block(name);
                 match factory {
                     "minecraft:hopper"
                     | "minecraft:crafter"

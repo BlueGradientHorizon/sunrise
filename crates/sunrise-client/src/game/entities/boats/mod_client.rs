@@ -312,7 +312,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn run_boat_authority_fixture(
         &mut self,
         directory: &std::path::Path,
-    ) -> sunrise_client_core::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         use serde::Deserialize;
         use serde_json::json;
         use std::sync::Mutex;

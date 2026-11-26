@@ -209,7 +209,7 @@ pub(in crate::game) fn replace_client_definition(
         "minecraft:enchantment".into(),
         vec![(
             "test:levels".into(),
-            Some(sunrise_client_core::scoreboard::json_to_tag(&definition(
+            Some(sunrise_game_data::scoreboard::json_to_tag(&definition(
                 max_level,
             ))),
         )],

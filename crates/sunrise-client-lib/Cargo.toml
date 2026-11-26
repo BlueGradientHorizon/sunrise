@@ -18,7 +18,7 @@ sunrise-hooks = { path = "../sunrise-hooks" }
 sunrise-mod-runtime = { path = "../sunrise-mod-runtime" }
 mod_api = { package = "sunrise-mod-vocab", path = "../sunrise-mod-vocab" }
 sunrise-assets = { path = "../sunrise-assets" }
-sunrise-client-core = { path = "../sunrise-client-core" }
+sunrise-game-data = { path = "../sunrise-game-data" }
 sunrise-client-input = { path = "../sunrise-client-input" }
 sunrise-client-render = { path = "../sunrise-client-render" }
 sunrise-command = { path = "../sunrise-command" }

@@ -20,7 +20,7 @@ level events and their dispatchers, the custom spawners' dispatch (`G/mobs/custo
 (`G/mobs/raids/mod.rs`) and the block-entity tick loop (`G/blocks/block_entity_ticks.rs`) have not moved.
 
 Paths: `L/` = `crates/sunrise-client/src/`, `G/` = `crates/sunrise-client/src/game/`, `W/` =
-`crates/sunrise-world/src/`, `K/` = `crates/sunrise-client-core/src/`, `C/` = `crates/sunrise-command/src/`,
+`crates/sunrise-world/src/`, `K/` = `crates/sunrise-game-data/src/`, `C/` = `crates/sunrise-command/src/`,
 `I/` = `crates/sunrise-items/src/`, `R/` = `crates/sunrise-client-render/src/`, `N/` = `crates/sunrise-client-input/src/`.
 Checks: a bare name is a harness (`python3 tools/parity.py <name>`, script `tools/test_<name>_parity.py`);
 `lan_e2e <check>` is `python3 tools/lan_e2e.py --check <check>`.

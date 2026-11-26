@@ -2,8 +2,8 @@
 //! state and priorities, with its save format (`saveAdditional` /
 //! `loadAdditional`).
 use crate::structure_block::parse_identifier;
-use sunrise_client_core::nbt_value::{number, string, text};
 use sunrise_core::nbt::Tag;
+use sunrise_game_data::nbt_value::{number, string, text};
 
 /// `JigsawBlockEntity.EMPTY_ID` and `Pools.EMPTY`.
 pub const EMPTY_ID: &str = "minecraft:empty";

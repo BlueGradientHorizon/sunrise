@@ -5,7 +5,7 @@
 use std::collections::HashSet;
 use winit::keyboard::{KeyCode, ModifiersState};
 
-pub use sunrise_client_core::move_input::{keyboard_direction, modify_input};
+pub use sunrise_game_data::move_input::{keyboard_direction, modify_input};
 
 /// `InputQuirks.isQuitShortcutDown`: checks whether the platform's window-closing
 /// keyboard shortcut is held.

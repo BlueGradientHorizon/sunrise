@@ -42,8 +42,8 @@ pub(in crate::game) fn run_a_bolt_summoned_with_nbt_strikes_and_goes() {
     let steps = witness["steps"].as_array().unwrap();
     assert!(!steps.is_empty());
 
-    let _language = sunrise_client_core::lang::isolate_publication(
-        sunrise_client_core::lang::Language::of("en_us", []),
+    let _language = sunrise_game_data::lang::isolate_publication(
+        sunrise_game_data::lang::Language::of("en_us", []),
     );
     with_game(|game| {
         prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));

@@ -7,11 +7,11 @@ use sunrise_client::{
     ui,
     widgets::{self, ScreenInfo},
 };
-use sunrise_client_core::{
+use sunrise_core::nbt::Tag;
+use sunrise_game_data::{
     Result,
     text::{self, ClickEvent, Text},
 };
-use sunrise_core::nbt::Tag;
 use winit::keyboard::KeyCode;
 
 impl Screen {
@@ -1294,7 +1294,7 @@ mod tests {
     /// link.
     #[test]
     fn a_death_causes_link_is_the_glyph_under_the_pointer() {
-        use sunrise_client_core::text::{ClickEvent, Style, Text};
+        use sunrise_game_data::text::{ClickEvent, Style, Text};
         let link = Style {
             click: Some(ClickEvent::OpenUrl("https://example.com".into())),
             ..Style::default()

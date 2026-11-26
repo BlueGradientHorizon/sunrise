@@ -21,8 +21,8 @@ sunrise-client	lib	game::server_side::tnt::tests::silent_potions_keep_the_splash
 sunrise-client	lib	game::server_side::tnt::tests::silent_tnt_keeps_the_blast_without_its_sound	crates/sunrise-client/src/game/entities/tnt.rs:1873	game-boot
 sunrise-client	lib	game::server_side::tnt::tests::tnt_primed_by_a_blast_waits_for_the_next_tick	crates/sunrise-client/src/game/entities/tnt.rs:2260	game-boot
 sunrise-client	lib	game::server_side::wither_star_tests::a_withers_nether_star_lives_12000_ticks	crates/sunrise-client/src/game/mobs/wither_star_tests.rs:18	game-boot
-sunrise-client-core	lib	component::tests::mixed_recursive_temporaries_are_released_on_256_kib	crates/sunrise-client-core/src/component.rs:842	slow
-sunrise-client-core	lib	lang::tests::every_sentence_key_in_en_us_is_one_the_code_names	crates/sunrise-client-core/src/lang.rs:1090	slow
+sunrise-game-data	lib	component::tests::mixed_recursive_temporaries_are_released_on_256_kib	crates/sunrise-game-data/src/component.rs:842	slow
+sunrise-game-data	lib	lang::tests::every_sentence_key_in_en_us_is_one_the_code_names	crates/sunrise-game-data/src/lang.rs:1090	slow
 sunrise-sim	lib	api_text::iterative_tests::recursive_fields_survive_512_nodes_on_256_kib	crates/sunrise-sim/src/api_text.rs:1738	slow
 sunrise-client-lib	lib	benchmark::tests::the_load_waits_for_the_chunks_a_teleport_starts	crates/sunrise-client/src/benchmark.rs:918	slow
 sunrise-client-lib	lib	benchmark::tests::the_trip_flies_512_blocks_then_holds_four_blocks_at_its_end	crates/sunrise-client/src/benchmark.rs:1041	slow

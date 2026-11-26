@@ -885,7 +885,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::KEEP_INVENTORY)
+            .bool_at(sunrise_game_data::gamerules::vanilla::KEEP_INVENTORY)
         {
             stacks.extend(self.inventory.iter_mut().filter_map(Option::take));
             stacks.extend(self.armor.iter_mut().rev().filter_map(Option::take));
@@ -975,7 +975,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let block_drops = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS);
+            .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS);
         if let Some(at) = spill::admitted_pop_position(&mut self.world.random, pos, block_drops) {
             self.spawn_item_own(stack, at, 10);
         }
@@ -1018,7 +1018,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
+            .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS)
         {
             return;
         }

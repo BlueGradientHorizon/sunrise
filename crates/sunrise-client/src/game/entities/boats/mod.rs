@@ -550,7 +550,7 @@ pub(in crate::game::server_side) fn boat_wood(item: &str) -> Option<&str> {
 /// `EntityType.by`: a boat-shaped id still needs a registered entity type.
 pub(in crate::game::server_side) fn registered_boat<'a>(
     kind: &'a str,
-    registry: &sunrise_client_core::registries::Registries,
+    registry: &sunrise_game_data::registries::Registries,
 ) -> Option<(&'a str, bool)> {
     let boat = any_boat_wood(kind)?;
     registry
@@ -966,7 +966,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     && self
                         .ui
                         .rules
-                        .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
+                        .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
                 {
                     for &cell in &snow {
                         self.powder_snow_melt(BlockPos::new(cell[0], cell[1], cell[2]));
@@ -1335,7 +1335,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS)
+                .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS)
         {
             self.anger_piglins(true);
         }
@@ -1453,7 +1453,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && self
                     .ui
                     .rules
-                    .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS)
+                    .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS)
             {
                 self.spawn_item_own(
                     ItemStack {
@@ -1482,7 +1482,7 @@ pub(in crate::game) mod tests {
 
     #[test]
     fn boat_admission_uses_registered_entity_ids() {
-        let registry = sunrise_client_core::registries::Registries {
+        let registry = sunrise_game_data::registries::Registries {
             entity_types: vec![
                 "minecraft:bamboo_chest_raft".into(),
                 "minecraft:oak_boat".into(),

@@ -9,7 +9,7 @@ use sunrise_client::{
     settings::Settings,
     toasts::SystemToast,
 };
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_narrator::{Status, screen::Trigger};
 use winit::event::{ElementState, KeyEvent, MouseButton, WindowEvent};
 use winit::keyboard::{KeyCode, PhysicalKey};

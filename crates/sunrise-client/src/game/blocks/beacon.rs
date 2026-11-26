@@ -13,8 +13,8 @@ use super::{
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::beacon_common::{EFFECTS, effect_box_hits};
 use sunrise_client::{hud::HudBatch, mesher::Vertex};
-use sunrise_client_core::text::Text;
 use sunrise_client_render::block_entity_reach::Reach;
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{containers::BlockEntity, test_instance_block::Status};
 use sunrise_protocol::packets::play::{self, Serverbound as S};
@@ -519,9 +519,8 @@ mod tests {
     #[test]
     fn every_hovered_beacon_button_shows_its_tooltip() {
         let at = |(x, y): (f32, f32)| (x + 11.0, y + 11.0);
-        let name = |e: usize| {
-            sunrise_client_core::lang::get(&format!("effect.minecraft.{}", EFFECTS[e].0))
-        };
+        let name =
+            |e: usize| sunrise_game_data::lang::get(&format!("effect.minecraft.{}", EFFECTS[e].0));
         let buttons = buttons();
         let hovered_tooltip = |at, primary| {
             button_tooltip(primary, &buttons, |x, y| inside(at, x, y, 22.0, 22.0))
@@ -541,13 +540,13 @@ mod tests {
             hovered_tooltip(at((164.0, 107.0)), None)
                 .unwrap_or_default()
                 .plain(),
-            sunrise_client_core::lang::get("gui.done")
+            sunrise_game_data::lang::get("gui.done")
         );
         assert_eq!(
             hovered_tooltip(at((190.0, 107.0)), Some(0))
                 .unwrap_or_default()
                 .plain(),
-            sunrise_client_core::lang::get("gui.cancel")
+            sunrise_game_data::lang::get("gui.cancel")
         );
         assert!(hovered_tooltip((0.0, 0.0), Some(0)).is_none());
     }

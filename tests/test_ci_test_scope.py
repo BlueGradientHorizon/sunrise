@@ -159,7 +159,7 @@ class RealWorkspaceTests(unittest.TestCase):
 
     def test_sunrise_client_lib_is_built_from_sunrise_clients_files(self):
         chosen = self.workspace.scope(["crates/sunrise-client/src/game/x.rs"])
-        self.assertLessEqual({"sunrise-client", "sunrise-client-lib", "sunrise-client-core"}, chosen)
+        self.assertLessEqual({"sunrise-client", "sunrise-client-lib", "sunrise-game-data"}, chosen)
         self.assertNotIn("sunrise-release-sign", chosen)
         self.assertIn("sunrise-client-lib", self.workspace.scope(["crates/sunrise-client/tests/lan_bot.rs"]))
 
@@ -186,9 +186,9 @@ class RealWorkspaceTests(unittest.TestCase):
 
     def test_the_scan_finds_the_reads_the_table_was_built_from(self):
         found = reads(self.workspace)
-        self.assertIn("crates/sunrise-client/assets/sunrise/lang", found["sunrise-client-core"])
+        self.assertIn("crates/sunrise-client/assets/sunrise/lang", found["sunrise-game-data"])
         self.assertIn("docs/api/server-reference.md", found["sunrise-server"])
-        self.assertIn("crates", found["sunrise-client-core"])
+        self.assertIn("crates", found["sunrise-game-data"])
 
 
 if __name__ == "__main__":

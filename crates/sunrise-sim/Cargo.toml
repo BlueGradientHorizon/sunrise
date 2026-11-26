@@ -10,7 +10,7 @@ description = "Portable simulation engines (entities, mobs, motion, health, craf
 sunrise-assets = { path = "../sunrise-assets" }
 sunrise-bench = { path = "../sunrise-bench" }
 sunrise-border = { path = "../sunrise-border" }
-sunrise-client-core = { path = "../sunrise-client-core" }
+sunrise-game-data = { path = "../sunrise-game-data" }
 sunrise-command = { path = "../sunrise-command" }
 sunrise-core = { path = "../sunrise-core" }
 sunrise-items = { path = "../sunrise-items" }

@@ -47,7 +47,7 @@ fn allowed_by_server_toml() -> Result<bool> {
 /// The dedicated server does not load client language layers. Use Sunrise's
 /// bundled English for its own missing-mod diagnostics.
 pub(super) fn in_english<R>(f: impl FnOnce() -> R) -> R {
-    use sunrise_client_core::lang;
+    use sunrise_game_data::lang;
     lang::scoped(lang::Language::load(&[], lang::DEFAULT), f).0
 }
 
@@ -64,7 +64,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if allowed {
             let (lines, allowed) = in_english(|| {
                 let lines: Vec<String> = missing.iter().map(level_mods::describe).collect();
-                let allowed = sunrise_client_core::lang::tr(
+                let allowed = sunrise_game_data::lang::tr(
                     "sunrise.missing_mods.server.allowed",
                     &[&level_mods::ALLOW_FLAG],
                 );
@@ -79,7 +79,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         level_mods::forget_answer();
         let mut lines = in_english(|| level_mods::refusal_lines(&missing));
         let last = lines.pop().unwrap_or_default();
-        let heading = in_english(|| sunrise_client_core::lang::get("sunrise.missing_mods.title"));
+        let heading = in_english(|| sunrise_game_data::lang::get("sunrise.missing_mods.title"));
         log("ERROR", &heading);
         for line in &lines {
             log("ERROR", line);

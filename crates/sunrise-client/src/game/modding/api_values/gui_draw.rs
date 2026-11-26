@@ -150,7 +150,7 @@ impl TryIntoApi for sunrise_client::hud_layout::GuiDraw {
             self,
             Engine,
             Api,
-            |t: &sunrise_client_core::text::Text| t.try_into_api()
+            |t: &sunrise_game_data::text::Text| t.try_into_api()
         ))
     }
 }

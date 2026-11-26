@@ -94,7 +94,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     ) -> Option<Tag> {
         let item = mod_api::__private::item_key_id(item)?;
         let prototype = self.pack.item_models.prototypes.get(item)?;
-        Some(sunrise_client_core::scoreboard::json_to_tag(
+        Some(sunrise_game_data::scoreboard::json_to_tag(
             prototype.get(component)?,
         ))
     }
@@ -187,7 +187,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn mod_item_name(
         &self,
         stack: &ItemStack,
-    ) -> Option<sunrise_client_core::text::Text> {
+    ) -> Option<sunrise_game_data::text::Text> {
         sunrise_sim::stations::item_name_part(&self.loop_context, stack)
     }
     /// `ItemStack.isBarVisible`, `getBarWidth`, `getBarColor`, before client-only hooks.
@@ -246,7 +246,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let enchantments = self
             .item_combat_component(stack, "minecraft:enchantments")
             .unwrap_or_else(|| serde_json::json!({}));
-        let tag = sunrise_client_core::scoreboard::json_to_tag(
+        let tag = sunrise_game_data::scoreboard::json_to_tag(
             &serde_json::json!({"minecraft:enchantments": enchantments}),
         );
         let (_, extra) = sunrise_items::item_data::decode_components(Some(&tag));
@@ -769,10 +769,9 @@ pub(in crate::game) mod combat_query_tests {
         mod_api::ItemResource::of(&test_snapshot(stack))
     }
     fn patch(stack: &mut ItemStack, id: &str, value: serde_json::Value) {
-        stack.data_mut().set_other(
-            id,
-            Some(sunrise_client_core::scoreboard::json_to_tag(&value)),
-        );
+        stack
+            .data_mut()
+            .set_other(id, Some(sunrise_game_data::scoreboard::json_to_tag(&value)));
     }
 
     #[test]

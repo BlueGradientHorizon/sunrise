@@ -17,11 +17,11 @@ use std::{
     path::Path,
     time::{Duration, Instant},
 };
-use sunrise_client_core::{Result, text::Text};
+use sunrise_game_data::{Result, text::Text};
 
 /// A message's structured component as `ComponentSerialization.CODEC` writes it.
 pub(in crate::game::server_side) fn canonical_component(text: &Text) -> Value {
-    sunrise_client_core::scoreboard::canonical_component(&text.component())
+    sunrise_game_data::scoreboard::canonical_component(&text.component())
 }
 
 /// A message as `[text, style]` runs with adjacent equal styles merged; the

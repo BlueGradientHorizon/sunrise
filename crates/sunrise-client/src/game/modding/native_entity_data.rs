@@ -6,8 +6,8 @@
 //! only the name reads there.
 use super::{Game, commands::Target};
 use mod_api::{EntityRef, EntityTags, MobCategory};
-use sunrise_client_core::{scoreboard::json_to_tag, text::Text};
 use sunrise_core::nbt::{Compound, Tag};
+use sunrise_game_data::{scoreboard::json_to_tag, text::Text};
 use sunrise_sim::entity_nbt::flag;
 
 /// The most tags an entity holds (`Entity.addTag`).
@@ -49,7 +49,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             return false;
         };
         let nbt = Tag::Compound(nbt);
-        if sunrise_client_core::nbt_path::too_deep(&nbt, 0) {
+        if sunrise_game_data::nbt_path::too_deep(&nbt, 0) {
             return false;
         }
         let merged = sunrise_sim::data_cmd::merged(&old, &nbt);
@@ -283,9 +283,9 @@ mod tests {
     use super::super::api_values::TryIntoApi;
     use super::super::native_entity_refs::tests::with_game;
     use mod_api::{EntityRef, MobCategory};
-    use sunrise_client_core::text::Text;
     use sunrise_core::geometry::Vec3;
     use sunrise_core::nbt::{JavaString, Tag};
+    use sunrise_game_data::text::Text;
     use sunrise_sim::{entities::ArmorStand, mobs::Mob};
 
     fn push_mob(game: &mut crate::game::ServerGame<'_>, id: u32, kind: &str) -> EntityRef {

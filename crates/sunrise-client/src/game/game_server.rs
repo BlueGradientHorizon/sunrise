@@ -5,7 +5,7 @@ use sunrise_core::{geometry::Aabb, position::BlockPos};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
 use sunrise_world::level::{Behaviours, BucketContent, LevelEvent, PlayerEffect, Ticks};
 use {
-    sunrise_client_core::Result, sunrise_items::items::ItemStack,
+    sunrise_game_data::Result, sunrise_items::items::ItemStack,
     sunrise_level::containers::BlockEntity, sunrise_sim::entities::Experience,
     sunrise_sim::first_person_sim::Hand, sunrise_sim::save::Level,
 };
@@ -228,7 +228,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     && self
                         .ui
                         .rules
-                        .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
+                        .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS)
                 {
                     let at = [
                         f64::from(pos[0]) + 0.5,
@@ -797,7 +797,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else if self.open_station(pos, &name) {
             // Workstation menus: game/blocks/stations.rs.
         } else {
-            self.server_send_overlay_message(sunrise_client_core::text::Text::literal(format!(
+            self.server_send_overlay_message(sunrise_game_data::text::Text::literal(format!(
                 "{} is not available yet",
                 name.trim_start_matches("minecraft:").replace('_', " ")
             )));
@@ -1130,7 +1130,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let rule = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
+            .bool_at(sunrise_game_data::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
         let mut players: Vec<((i32, i32), bool)> = self.lan.as_ref().map_or_else(Vec::new, |h| {
             h.hub
                 .guests
@@ -1366,9 +1366,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             "tell_sleeper called on Client role"
         );
         if overlay {
-            self.server_send_overlay_message(sunrise_client_core::text::Text::translate(key, &[]));
+            self.server_send_overlay_message(sunrise_game_data::text::Text::translate(key, &[]));
         } else {
-            self.server_system_message(sunrise_client_core::text::Text::translate(key, &[]));
+            self.server_system_message(sunrise_game_data::text::Text::translate(key, &[]));
         }
     }
     pub(in crate::game::server_side) fn tick_mining(&mut self) -> Result<()> {
@@ -1485,7 +1485,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::ADVANCE_TIME)
+                .bool_at(sunrise_game_data::gamerules::vanilla::ADVANCE_TIME)
             {
                 // SleepFinishedTimeEvent on the level's own clock (game/world/wake_time.rs): None
                 // when a mod canceled, so `native_time_skip` is not asked, or no time fits.
@@ -1501,7 +1501,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             if self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::ADVANCE_WEATHER)
+                .bool_at(sunrise_game_data::gamerules::vanilla::ADVANCE_WEATHER)
                 && self.weather_levels(1.0).0 > 0.2
             {
                 self.world.weather.raining = false;
@@ -1677,7 +1677,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self
             .ui
             .rules
-            .int_at(sunrise_client_core::gamerules::vanilla::PLAYERS_SLEEPING_PERCENTAGE)
+            .int_at(sunrise_game_data::gamerules::vanilla::PLAYERS_SLEEPING_PERCENTAGE)
             > 100
         {
             self.tell_sleeper(

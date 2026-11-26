@@ -1,6 +1,6 @@
 use crate::game::in_own_process;
 use crate::game::native_server::command_failure_tests::with_failure_sources;
-use sunrise_client_core::text;
+use sunrise_game_data::text;
 
 #[test]
 #[ignore = "daily"]

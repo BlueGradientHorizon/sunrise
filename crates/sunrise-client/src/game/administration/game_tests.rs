@@ -21,8 +21,8 @@ use super::{
     test_instances::TestDef,
 };
 use std::time::Instant;
-use sunrise_client_core::text::{self, Text};
 use sunrise_core::bounding_box::BoundingBox;
+use sunrise_game_data::text::{self, Text};
 pub(in crate::game) use sunrise_gameplay::game_tests::{Retry, TestError, number};
 use sunrise_level::{
     containers::BlockEntity,
@@ -431,7 +431,7 @@ fn summary_line(context: Option<SummarySource>, text: Text, broadcast: bool) -> 
 /// `ComponentUtils.wrapInSquareBrackets` for the summary's coordinate links.
 /// The locate/pos link helpers have their own existing representation.
 fn summary_coordinates(key: &str, at: [i32; 3], dim: Dim, rotation: [i32; 2], color: u32) -> Text {
-    use sunrise_client_core::text::{ClickEvent, Style};
+    use sunrise_game_data::text::{ClickEvent, Style};
     let mut args: Vec<_> = at.into_iter().map(number).collect();
     args.push(Text::literal(dim.id().split_once(':').unwrap().1));
     Text::translate("chat.square_brackets", &[Text::translate(key, &args)]).with_style(&Style {

@@ -1,7 +1,7 @@
 //! Compare the typed events omitted from the local layout projection. Components and NBT can
 //! be arbitrarily deep in memory, so don't use recursive equality on their child trees.
 use super::*;
-use sunrise_client_core::identifier::parse_identifier_parts;
+use sunrise_game_data::identifier::parse_identifier_parts;
 
 pub(super) fn same_events(a: LocalStyle<'_>, b: LocalStyle<'_>) -> bool {
     let mut nodes = Vec::new();

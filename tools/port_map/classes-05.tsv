@@ -49,7 +49,7 @@ VibrationSelector.chosenCandidate	port	crates/sunrise-level/src/sculk.rs::Select
 VibrationSelector.shouldReplaceVibration	port	crates/sunrise-level/src/sculk.rs::Selector::should_replace
 GameRuleCategory.register	skip:data		static category table; Sunrise's rule categories are static strings (gamerules.rs)
 GameRuleMap.equals	skip:java		value equality of the map
-GameRuleMap.of	port	crates/sunrise-client-core/src/gamerules.rs::GameRules::get	no stored map: a rule that was never set reads its table default
+GameRuleMap.of	port	crates/sunrise-game-data/src/gamerules.rs::GameRules::get	no stored map: a rule that was never set reads its table default
 GameRuleMap.setFromIf	skip:other		no caller in the pinned sources (only withOther uses it)
 GameRuleMap.withOther	skip:other		no caller in the pinned sources
 BlendingData	home	crates/sunrise-world/src/worldgen/blending.rs	BlendingData and Blender are in that file: unpack/pack and calculated (getOrUpdateBlendingData + calculateData) for the border columns, heights, densities and biomes; the client reads the saved chunks (old_world.rs)

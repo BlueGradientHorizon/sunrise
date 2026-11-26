@@ -721,7 +721,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         .iter()
                         .find(|(k, _)| k == "minecraft:profile")
                 })
-                .map(|(_, t)| sunrise_client_core::scoreboard::tag_to_json(t))
+                .map(|(_, t)| sunrise_game_data::scoreboard::tag_to_json(t))
                 .unwrap_or(serde_json::Value::Null);
             let has_foil = stack.data().is_some_and(|d| !d.enchantments.is_empty());
             self.side.client_pack.item_renderer.submit_special(

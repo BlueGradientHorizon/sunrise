@@ -210,7 +210,7 @@ fn hurt_gossip_belongs_to_the_hits_own_player() {
             &[("instant_damage", 1, 0)],
             (&[], &[], 1.0),
             [at.x, at.y, at.z],
-            &sunrise_client_core::text::Text::literal("Cloud"),
+            &sunrise_game_data::text::Text::literal("Cloud"),
             (Some(Who::Player), Some(7)),
         );
         assert_eq!(game.villager_reputation_of(91, [0, 0, 0, 9]), -25);

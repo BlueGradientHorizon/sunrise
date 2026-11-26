@@ -8,7 +8,7 @@
 //! because most mobs never need one and a map costs a few KiB.
 use crate::Result;
 use std::{cell::OnceCell, collections::BTreeMap, convert::Infallible, fmt, io, sync::Arc};
-use sunrise_client_core::nbt_value::{float, string, text};
+use sunrise_game_data::nbt_value::{float, string, text};
 use sunrise_items::{
     equipment::Equipment,
     items::{ItemStack, Items},

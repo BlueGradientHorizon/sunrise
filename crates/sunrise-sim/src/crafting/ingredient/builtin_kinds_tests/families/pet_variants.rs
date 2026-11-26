@@ -1,7 +1,7 @@
 use super::*;
 #[test]
 fn components_pet_variants_use_registry_keys_and_inherited_prototypes() {
-    use sunrise_client_core::registries::RegistryIds;
+    use sunrise_game_data::registries::RegistryIds;
     let mut items = Items::empty();
     let registries = std::sync::Arc::make_mut(&mut items.component_registry);
     for (registry, ids) in [

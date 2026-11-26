@@ -9,7 +9,7 @@ use sunrise_client::{
     social_screen::{self, Action, Entry, Page, SocialView},
     ui::EditBox,
 };
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_level::profile_lookup::TabPlayer;
 use winit::keyboard::KeyCode;
 

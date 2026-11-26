@@ -10,11 +10,11 @@ use sunrise_client::{
     mobs::Part,
     trims::{TrimOverride, TrimRegistry},
 };
-use sunrise_client_core::Result;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::RandomSource,
 };
+use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{
     entities::ArmorStand,
@@ -1202,7 +1202,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && self
                     .ui
                     .rules
-                    .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
+                    .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
                 && self.world.random.next_int_bound(chance).unwrap_or(1) == 0
             {
                 self.crack_turtle_egg([p.x, p.y, p.z])?;
@@ -1232,7 +1232,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             stand,
             self.ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_DROPS),
+                .bool_at(sunrise_game_data::gamerules::vanilla::MOB_DROPS),
             dying,
             |table| {
                 let Some(loot) = self.side.server_loot.0.get() else {
@@ -1321,7 +1321,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
+            .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
             && matches!(causing, Some(Target::Mob(_)))
         {
             return false;

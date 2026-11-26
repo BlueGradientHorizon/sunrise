@@ -77,7 +77,7 @@ pub(in crate::game) fn pot_data_in(
             ("z", Tag::Int(pos[2])),
         ])
     });
-    tag = sunrise_client_core::block_entity_nbt::canonical(&tag)?;
+    tag = sunrise_game_data::block_entity_nbt::canonical(&tag)?;
     if let Tag::Compound(map) = &mut tag {
         map.remove(&"keepPacked".into());
     }

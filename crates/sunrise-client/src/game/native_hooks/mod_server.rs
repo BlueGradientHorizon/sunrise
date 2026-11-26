@@ -21,9 +21,9 @@ use mod_api::{BlockEntityRef, ClockAdjustment};
 use mod_api::{BlockUpdateFlags, LevelRef, LogicalSide, TriState, UsePhase};
 use mod_api::{ExplosionStart, LootDrops};
 use std::sync::Arc;
-use sunrise_client_core::gamerules::Value as GameRuleValue;
-use sunrise_client_core::suggestion::Suggestion;
 use sunrise_core::{geometry::Direction, position::BlockPos};
+use sunrise_game_data::gamerules::Value as GameRuleValue;
+use sunrise_game_data::suggestion::Suggestion;
 use sunrise_level::containers::ModBlockEntity as EngineBlockEntity;
 use sunrise_sim::block_contact::Pending;
 use sunrise_sim::health::mob_source;
@@ -31,15 +31,15 @@ use sunrise_sim::health::mob_source;
 use sunrise_sim::mobs::Damage;
 use sunrise_world::level::PlaceContext;
 use sunrise_world::level::flags;
+use {sunrise_core::nbt::Compound, sunrise_world::registry::BlockStateId};
 use {
-    sunrise_client_core::text::Text, sunrise_items::items::ItemStack,
+    sunrise_game_data::text::Text, sunrise_items::items::ItemStack,
     sunrise_level::block_entities::Pos, sunrise_level::containers::BlockEntity,
     sunrise_level::containers::ModContainer, sunrise_level::containers::ModEnergyBuffer,
     sunrise_level::containers::ModFluidTanks, sunrise_level::fast_hash::FxHashMap,
     sunrise_sim::first_person_sim::Hand, sunrise_sim::health::Attack,
     sunrise_sim::health::HurtSource, sunrise_sim::merchant::MerchantOffer, sunrise_sim::mobs::Who,
 };
-use {sunrise_core::nbt::Compound, sunrise_world::registry::BlockStateId};
 
 #[path = "base_server.rs"]
 pub(in crate::game) mod base;
@@ -341,7 +341,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         mob: u32,
         pos: [i32; 3],
         state: BlockStateId,
-    ) -> sunrise_client_core::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
         let against = self.world.block(pos[0], pos[1] - 1, pos[2]);
         let kind = self
@@ -600,7 +600,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         ctx: &PlaceContext,
         by_player: bool,
         stack: &ItemStack,
-    ) -> sunrise_client_core::Result<Option<sunrise_world::level::AppliedPlacement>> {
+    ) -> sunrise_game_data::Result<Option<sunrise_world::level::AppliedPlacement>> {
         let registry = self.pack.assets.registry;
         let game_master = ctx.can_use_game_master_blocks;
         let stack_state =

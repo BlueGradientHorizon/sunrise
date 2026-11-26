@@ -292,12 +292,12 @@ pub(in crate::game::server_side) fn is_illager(s: Species) -> bool {
 #[derive(Clone, Copy)]
 pub(in crate::game) struct Party<'a> {
     pub(in crate::game) illager: bool,
-    pub(in crate::game) team: Option<&'a sunrise_client_core::scoreboard::Team>,
+    pub(in crate::game) team: Option<&'a sunrise_game_data::scoreboard::Team>,
 }
 /// `AbstractIllager.considersEntityAsAlly(other)`: the base rule (the teams
 /// are allied), or an illager friend while both have no team.
 pub(in crate::game::server_side) fn illager_considers(me: Party, other: Party) -> bool {
-    sunrise_client_core::scoreboard::teams_allied(me.team, other.team)
+    sunrise_game_data::scoreboard::teams_allied(me.team, other.team)
         || other.illager && me.team.is_none() && other.team.is_none()
 }
 /// `owner.isAlliedTo(other)` for an evoker owner: `Evoker.considersEntityAsAlly`
@@ -311,7 +311,7 @@ pub(in crate::game::server_side) fn fangs_allied(
 ) -> bool {
     illager_considers(owner, other)
         || other.illager && illager_considers(other, owner)
-        || !other.illager && sunrise_client_core::scoreboard::teams_allied(other.team, owner.team)
+        || !other.illager && sunrise_game_data::scoreboard::teams_allied(other.team, owner.team)
         || vex_root.is_some_and(|(is_owner, root)| is_owner || illager_considers(owner, root))
 }
 #[cfg(test)]
@@ -386,13 +386,13 @@ pub(in crate::game) mod tests {
         }
     }
 
-    fn party(illager: bool, team: Option<&sunrise_client_core::scoreboard::Team>) -> Party<'_> {
+    fn party(illager: bool, team: Option<&sunrise_game_data::scoreboard::Team>) -> Party<'_> {
         Party { illager, team }
     }
 
     #[test]
     fn fangs_allies_follow_teams_and_the_illager_tag() {
-        let mut board = sunrise_client_core::scoreboard::Scoreboard::default();
+        let mut board = sunrise_game_data::scoreboard::Scoreboard::default();
         board.add_team("red");
         board.add_team("blue");
         let red = board.team("red").unwrap();

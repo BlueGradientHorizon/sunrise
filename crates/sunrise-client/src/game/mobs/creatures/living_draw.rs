@@ -9,7 +9,7 @@ pub(in crate::game) struct LivingFrame<'a> {
     /// `Entity.shouldRenderAtSqrDistance`'s view scale.
     pub(in crate::game) scale: f64,
     /// Who watches (`Entity.isInvisibleTo`): the local player's team.
-    pub(in crate::game) viewer: Option<&'a sunrise_client_core::scoreboard::Team>,
+    pub(in crate::game) viewer: Option<&'a sunrise_game_data::scoreboard::Team>,
     pub(in crate::game) skinning: bool,
     pub(in crate::game) listened: bool,
     pub(in crate::game) now: std::time::Instant,

@@ -17,8 +17,8 @@ fn cross_level_transaction_replays_effects_in_request_level_and_preserves_packet
     in_isolated_process(
         "cross_level_transaction_replays_effects_in_request_level_and_preserves_packet_order",
         || {
-            use sunrise_client_core::gamerules::Value;
             use sunrise_core::random::RandomSource;
+            use sunrise_game_data::gamerules::Value;
             use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 
             with_guests(|game| {

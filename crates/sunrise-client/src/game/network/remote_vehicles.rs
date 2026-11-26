@@ -16,8 +16,8 @@
 use super::{Game, Keys, remote::Remote};
 use std::collections::HashMap;
 use sunrise_client::keybinds;
-use sunrise_client_core::text::Text;
 use sunrise_core::geometry::Vec3;
+use sunrise_game_data::text::Text;
 use sunrise_protocol::packets::play::{self, Serverbound as S};
 use sunrise_sim::mobs::{Mob, equine, happy_ghast};
 use sunrise_world::stepped_interpolation::PosRot;
@@ -825,7 +825,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         keys: Keys,
         window: i32,
-    ) -> sunrise_client_core::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         let mount = self.mobs.iter().position(|m| self.drives(m));
         let can_sprint = mount.is_some_and(|i| equine::can_sprint(self.mobs[i].species()));
         self.player_sprint_tick(keys, window, Some((can_sprint, mount.is_some())))
@@ -897,7 +897,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.send(riding_jump(id, self.mount.jump_scale));
         }
         let [strafe, forward] =
-            sunrise_client_core::move_input::modify_input(keys.direction(), None, None);
+            sunrise_game_data::move_input::modify_input(keys.direction(), None, None);
         let m = &mut self.mobs[i];
         if jump > 0.0 && equine::is_equine(m.species()) {
             // `onPlayerJump`: the mount slides on the rider's keys and rears

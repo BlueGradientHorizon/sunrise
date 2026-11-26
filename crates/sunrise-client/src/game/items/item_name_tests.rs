@@ -46,7 +46,7 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
         crate::entry::install_client_hooks();
         with_game(|game| {
             game.resolve_parts().unwrap();
-            let plain = |t: sunrise_client_core::text::Text| t.plain();
+            let plain = |t: sunrise_game_data::text::Text| t.plain();
             // An untranslated key reads as itself: the Part's name, independent of the code.
             let named = ItemStack::new("minecraft:paper", 2);
             assert_eq!(plain(game.stack_hover_name_text(&named)), KEY);
@@ -211,7 +211,7 @@ fn a_part_names_its_stacks_everywhere_the_game_names_them() {
         });
         with_client_game(|game| {
             game.resolve_parts().unwrap();
-            let plain = |t: sunrise_client_core::text::Text| t.plain();
+            let plain = |t: sunrise_game_data::text::Text| t.plain();
             let named = ItemStack::new("minecraft:paper", 2);
             assert_eq!(plain(game.styled_stack_name(&named)), KEY);
             let mut labelled = named.clone();
@@ -302,7 +302,7 @@ fn a_client_anvil_click_fills_the_rename_box_with_the_parts_name() {
 
             // One sheet, which the Part leaves: vanilla's name, as a vanilla client sends it.
             let sheet = ItemStack::new("minecraft:paper", 1);
-            let vanilla = sunrise_client_core::lang::returned_to_server(|| {
+            let vanilla = sunrise_game_data::lang::returned_to_server(|| {
                 sunrise_sim::stations::hover_name_text(&game.pack.names, &sheet).plain()
             });
             assert_eq!(vanilla, "Paper");

@@ -53,7 +53,7 @@ fn pos(game: &mut crate::game::ServerGame<'_>, uuid: &str) -> String {
     assert!(game.run_command(&format!("data get entity {uuid} Pos")));
     let said = game.side.chat_capture.take().unwrap_or_default();
     said.iter()
-        .map(sunrise_client_core::text::Text::plain)
+        .map(sunrise_game_data::text::Text::plain)
         .collect()
 }
 

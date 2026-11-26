@@ -5,7 +5,7 @@ use super::Game;
 use serde_json::{Value, json};
 use std::{path::PathBuf, sync::mpsc::Sender, time::UNIX_EPOCH};
 use sunrise_client::title;
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 
 pub(in crate::game) const HELP: &[&str] = &[
     "worlds                         the saved worlds, newest first: folder, name, mode, last played, version",

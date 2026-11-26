@@ -5,7 +5,7 @@ pub(in crate::game) mod connected_advancement_save_tests {
     fn command(
         game: &mut crate::game::ServerGame<'_>,
         text: &str,
-    ) -> Vec<sunrise_client_core::text::Text> {
+    ) -> Vec<sunrise_game_data::text::Text> {
         game.side.chat_capture = Some(Vec::new());
         let dispatcher = sunrise_command::vanilla::build_for(false, true);
         game.ui.registries.permission = 4;
@@ -182,7 +182,7 @@ pub(in crate::game) mod connected_advancement_preservation_tests {
     fn command(
         game: &mut crate::game::ServerGame<'_>,
         text: &str,
-    ) -> Vec<sunrise_client_core::text::Text> {
+    ) -> Vec<sunrise_game_data::text::Text> {
         game.side.chat_capture = Some(Vec::new());
         let dispatcher = sunrise_command::vanilla::build_for(false, true);
         game.ui.registries.permission = 4;

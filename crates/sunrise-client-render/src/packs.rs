@@ -738,7 +738,7 @@ fn merge(kind: Merge, layers: &[Vec<u8>]) -> Option<Vec<u8>> {
         // can both lose and admit the wrong entries.
         let mut strings = std::collections::HashMap::new();
         for layer in layers {
-            sunrise_client_core::lang::read_lang_file(layer, &mut strings);
+            sunrise_game_data::lang::read_lang_file(layer, &mut strings);
         }
         return serde_json::to_vec(&Map::from_iter(
             strings
@@ -1139,7 +1139,7 @@ mod tests {
             Source::Opened(make_source(r#"{"h":"higher pack still loads"}"#)),
         );
         let merged = resources(base, &[lower, upper]).unwrap();
-        let language = sunrise_client_core::lang::Language::load(&[&merged], "en_us");
+        let language = sunrise_game_data::lang::Language::load(&[&merged], "en_us");
         assert_eq!(language.get("a"), Some("old"));
         assert_eq!(language.get("m"), Some("still here"));
         assert_eq!(language.get("z"), Some("1.50"));

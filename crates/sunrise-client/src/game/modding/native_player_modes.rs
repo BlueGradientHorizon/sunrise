@@ -195,7 +195,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn one_player_may_harm_another_by_the_pvp_rule_and_their_teams() {
-        use sunrise_client_core::gamerules::Value;
+        use sunrise_game_data::gamerules::Value;
         with_guests(|game| {
             let (a, b) = (game.player(12).unwrap(), game.player(13).unwrap());
             assert_eq!(a.can_harm(&*game, b), Some(true), "no teams, pvp on");

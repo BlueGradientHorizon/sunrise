@@ -2,7 +2,7 @@ use super::*;
 use crate::game::native_entity_refs::tests::with_game;
 use mod_api::{Hooks, ModEntry, ServerHost};
 use std::{fs, path::Path};
-use sunrise_client_core::lang::{self, Language};
+use sunrise_game_data::lang::{self, Language};
 
 fn string(host: &dyn ServerHost, key: &str) -> String {
     host.text_string(&mod_api::Text::translate(key, vec![]))
@@ -120,7 +120,7 @@ fn dedicated_language_uses_the_opening_selection_once() {
                     Some(1),
                     true,
                     None,
-                    Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
+                    Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
                 )
                 .unwrap();
                 request.save_root = world.to_owned();

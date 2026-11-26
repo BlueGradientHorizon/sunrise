@@ -104,7 +104,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || !self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
+                .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
                 && matches!(causing, Some(Target::Mob(_)))
         {
             return None;

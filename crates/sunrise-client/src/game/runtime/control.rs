@@ -9,8 +9,8 @@ use std::{
 };
 use sunrise_client::gfx::pack_timing;
 use sunrise_client::held::Source;
-use sunrise_client_core::Result;
 use sunrise_core::geometry::Vec3;
+use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;
 use winit::{event::MouseButton, keyboard::KeyCode};
 

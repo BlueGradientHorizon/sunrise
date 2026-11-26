@@ -85,7 +85,7 @@ fn request(root: &std::path::Path) -> world_loading::WorldRequest {
         Some(1),
         true,
         None,
-        Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
+        Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
     )
     .unwrap();
     value.save_root = root.into();

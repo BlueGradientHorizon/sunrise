@@ -3,9 +3,9 @@ pub(in crate::game::server_side) use crate::game::commands::data::DataRef;
 use crate::game::commands::data::set_key;
 use crate::game::commands::data::strip_finalize_tree;
 pub(in crate::game::server_side) use crate::game::commands::data::summon_type_name;
-#[allow(unused_imports)]
-use sunrise_client_core::text::Text;
 use sunrise_core::nbt::{Compound, Tag};
+#[allow(unused_imports)]
+use sunrise_game_data::text::Text;
 #[allow(unused_imports)]
 use sunrise_level::containers::BlockEntity;
 #[allow(unused_imports)]

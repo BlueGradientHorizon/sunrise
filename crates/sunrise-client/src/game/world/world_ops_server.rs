@@ -308,7 +308,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let interaction = if !self.can_entity_grief(source) {
             explosion::BlockInteraction::Keep
         } else {
-            self.destroy_type(sunrise_client_core::gamerules::vanilla::MOB_EXPLOSION_DROP_DECAY)
+            self.destroy_type(sunrise_game_data::gamerules::vanilla::MOB_EXPLOSION_DROP_DECAY)
         };
         self.server_explode_from(center, radius, interaction, fire, blast)
     }

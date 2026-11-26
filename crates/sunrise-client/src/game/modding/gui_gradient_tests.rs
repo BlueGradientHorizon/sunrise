@@ -8,7 +8,7 @@ use mod_api::{ComponentHoverEvent, Hooks, ModEntry};
 use mod_platform::testing::with_mods;
 use sunrise_client::hud::HudBatch;
 use sunrise_client::hud_layout::abgr;
-use sunrise_client_core::text::{Style, Text};
+use sunrise_game_data::text::{Style, Text};
 
 const TOP: u32 = 0x8000_FF00;
 const BOTTOM: u32 = 0xFF00_00FF;

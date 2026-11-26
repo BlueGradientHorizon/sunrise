@@ -8,7 +8,7 @@ use sunrise_narrator::GameNarrator;
 impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn narrate(
         &mut self,
-        text: &sunrise_client_core::text::Text,
+        text: &sunrise_game_data::text::Text,
         when: Narration,
     ) -> Result<(), NarrateError> {
         debug_assert!(self.options.execution_role.is_client());

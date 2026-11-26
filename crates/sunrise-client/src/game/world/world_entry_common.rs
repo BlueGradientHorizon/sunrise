@@ -1,6 +1,6 @@
 use super::Game;
 use std::time::{Duration, Instant};
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub(in crate::game) fn join_world_rest(&mut self) -> Result<()> {

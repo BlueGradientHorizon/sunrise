@@ -2,10 +2,10 @@ use super::{Arg, Context, Game, R, Target, err, items::Owner};
 use crate::game::commands::terrain_cmds::holder;
 use crate::game::commands::terrain_cmds::loot_location_block;
 use crate::game::commands::terrain_cmds::num;
-use sunrise_client_core::text::Text;
 use sunrise_command::CommandError;
 #[allow(unused_imports)]
 use sunrise_core::{position::ChunkPos, random::RandomSource};
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::scoreboard_cmd::Tracker;
 
@@ -24,7 +24,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 if table.starts_with('{') {
                     let (tag, _) = sunrise_core::nbt::parse_snbt(&table)
                         .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
-                    let json = sunrise_client_core::scoreboard::tag_to_json(&tag);
+                    let json = sunrise_game_data::scoreboard::tag_to_json(&tag);
                     sunrise_world::loot::validate_loot_table(&json)
                         .map_err(|e| err("argument.nbt.invalid", &[&e]))?;
                     // LootCommand's omitted fishing tool is EMPTY, not mainhand.

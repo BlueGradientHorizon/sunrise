@@ -269,7 +269,7 @@ pub(super) fn decode_block_entity_with_history(
             // Randomizable containers reset their inventory, then load Items only
             // when tryLoadLootTable did not read a valid loot-table key.
             let has_table = text(tag.get("LootTable"))
-                .and_then(|id| sunrise_client_core::identifier::normalize_id(&id))
+                .and_then(|id| sunrise_game_data::identifier::normalize_id(&id))
                 .is_some();
             if !has_table {
                 *items = decode_items(tag.get("Items"), items.len());

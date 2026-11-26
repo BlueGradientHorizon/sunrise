@@ -69,7 +69,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         // Entity.isInvisibleTo(viewer): a spectator sees it anyway, the
         // body forced translucent (`LivingEntityRenderer.submit`).
         let seen_invisible = invisible
-            && !sunrise_client_core::scoreboard::invisible_to(
+            && !sunrise_game_data::scoreboard::invisible_to(
                 self.client_mob_team_of(mob),
                 viewer,
                 self.own_player_is_spectator(),

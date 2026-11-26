@@ -209,7 +209,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 // new block entity's saved defaults before loadWithComponents.
                 if let sunrise_core::nbt::Tag::Compound(fields) = &mut tag {
                     fields.extend(carried.clone());
-                    self.load_block_entity_nbt(pos, &sunrise_client_core::snbt::to_snbt(&tag));
+                    self.load_block_entity_nbt(pos, &sunrise_game_data::snbt::to_snbt(&tag));
                 }
             }
         }
@@ -234,7 +234,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS)
+                .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS)
         {
             if let Some(id) = sound_event {
                 self.level_events.push(LevelEvent::LevelEvent {

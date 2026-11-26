@@ -10,9 +10,9 @@ use crate::game::{
     view_vector,
 };
 use mod_api::{EntityRef, LevelRef, PlayerAbilities, PlayerRef};
-use sunrise_client_core::text::Text;
 use sunrise_command::args::GameMode;
 use sunrise_core::geometry::{Aabb, Vec3};
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::{
     join_seq::residency::{Kind, Owner, Source},

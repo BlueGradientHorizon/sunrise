@@ -13,7 +13,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         sunrise_sim::mobs::sulfur_cube::set_tnt_explodes(
             self.ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES),
+                .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES),
         );
         self.update_chunk_tickets();
         self.score_destroyed_entities();

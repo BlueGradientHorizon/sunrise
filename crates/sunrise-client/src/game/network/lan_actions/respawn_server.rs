@@ -184,8 +184,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn guest_death_message(
         &mut self,
         conn: u32,
-        me: sunrise_client_core::text::Text,
-    ) -> sunrise_client_core::text::Text {
+        me: sunrise_game_data::text::Text,
+    ) -> sunrise_game_data::text::Text {
         if self.side.lan_acting == Some(conn) {
             return self.combat_death_message_for(me);
         }
@@ -259,7 +259,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let reward = xp.death_reward(
                 self.ui
                     .rules
-                    .bool_at(sunrise_client_core::gamerules::vanilla::KEEP_INVENTORY)
+                    .bool_at(sunrise_game_data::gamerules::vanilla::KEEP_INVENTORY)
                     || spectator,
             );
             let drops = (!spectator).then(|| [at[0], at[1] + eye - f64::from(0.3f32), at[2]]);
@@ -311,13 +311,13 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let message = if self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::SHOW_DEATH_MESSAGES)
+                .bool_at(sunrise_game_data::gamerules::vanilla::SHOW_DEATH_MESSAGES)
             {
                 let me = self.player_text(&name, uuid);
                 let text = match cause {
-                    Some(key) => sunrise_client_core::text::Text::translate(&key, &[me]),
+                    Some(key) => sunrise_game_data::text::Text::translate(&key, &[me]),
                     None if at[1] < self.world.below_world_y() => {
-                        sunrise_client_core::text::Text::translate("death.attack.outOfWorld", &[me])
+                        sunrise_game_data::text::Text::translate("death.attack.outOfWorld", &[me])
                     }
                     None => self.guest_death_message(conn, me),
                 };
@@ -327,7 +327,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     return;
                 };
                 host.hub.system_message_to(message.clone(), |other| {
-                    sunrise_client_core::scoreboard::death_message_reaches(board, &name, other)
+                    sunrise_game_data::scoreboard::death_message_reaches(board, &name, other)
                 });
                 if self.is_dedicated_server() {
                     crate::game::dedicated::events::record(
@@ -339,7 +339,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     // Only a message for everyone is logged (`broadcastSystemMessage`).
                     if board.players_team(&name).is_none_or(|t| {
                         t.death_message_visibility
-                            == sunrise_client_core::scoreboard::Visibility::Always
+                            == sunrise_game_data::scoreboard::Visibility::Always
                     }) {
                         crate::game::dedicated::log(
                             "INFO",
@@ -536,7 +536,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let keep_inventory_rule = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::KEEP_INVENTORY);
+            .bool_at(sunrise_game_data::gamerules::vanilla::KEEP_INVENTORY);
         let motion = self.motion;
         if !self.restore_cloned_player(
             conn,

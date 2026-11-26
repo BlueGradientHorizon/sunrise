@@ -19,7 +19,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 map.insert(key.into(), before.get(key)?.clone());
             }
         }
-        let mut tag = sunrise_client_core::block_entity_nbt::canonical(&input)?;
+        let mut tag = sunrise_game_data::block_entity_nbt::canonical(&input)?;
         if let Tag::Compound(map) = &mut tag {
             map.remove(&"keepPacked".into());
         }

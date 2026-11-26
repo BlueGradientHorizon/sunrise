@@ -2,13 +2,13 @@
 //! the vanilla error messages and completion suggestions.
 use super::{CmdResult, CommandError, Context, Reader, SuggestionsBuilder};
 use std::{fmt, sync::Arc};
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 
-pub use sunrise_client_core::registries::{
-    CustomCompletionAction, Registries, RegistryIds, modify_custom_completions,
-};
 use sunrise_core::java_float_parse::{parse_java_double, parse_java_float};
 pub use sunrise_core::{game_mode::GameMode, text::parse_java_integer as java_parse_int};
+pub use sunrise_game_data::registries::{
+    CustomCompletionAction, Registries, RegistryIds, modify_custom_completions,
+};
 
 /// How much of the command line a registered custom argument takes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -608,7 +608,7 @@ pub fn read_identifier(reader: &mut Reader) -> CmdResult<String> {
         }
     }
 }
-pub use sunrise_client_core::identifier::parse_identifier;
+pub use sunrise_game_data::identifier::parse_identifier;
 pub fn normalize(id: &str) -> String {
     normalized(id).into_owned()
 }
@@ -1647,7 +1647,7 @@ impl ArgType {
                     return Err(CommandError::tr_at(key, &[&m], reader));
                 }
                 let text = &reader.string[start..reader.cursor];
-                match sunrise_client_core::component::parse_snbt(text) {
+                match sunrise_game_data::component::parse_snbt(text) {
                     Ok((v, _)) => Arg::Str(v.to_string()),
                     Err(_) => Arg::Str(text.to_owned()),
                 }
@@ -1695,7 +1695,7 @@ impl ArgType {
                 }
                 let id = &reader.string[start..reader.cursor];
                 // ObjectiveCriteria.byName: statistics resolve to their canonical name.
-                match sunrise_client_core::scoreboard::criteria_by_name(id, reg) {
+                match sunrise_game_data::scoreboard::criteria_by_name(id, reg) {
                     Ok(Some(canonical)) => Arg::Str(canonical),
                     Ok(None) => {
                         reader.cursor = start;
@@ -1717,7 +1717,7 @@ impl ArgType {
             }
             ArgType::ScoreboardSlot => {
                 let name = reader.read_unquoted_string();
-                if !sunrise_client_core::scoreboard::display_slot_valid(name) {
+                if !sunrise_game_data::scoreboard::display_slot_valid(name) {
                     return Err(CommandError::tr_at(
                         "argument.scoreboardDisplaySlot.invalid",
                         &[&name],
@@ -1745,7 +1745,7 @@ impl ArgType {
             }
             ArgType::TeamColor => {
                 let name = reader.read_unquoted_string();
-                if sunrise_client_core::scoreboard::team_color_rgb(name).is_none() {
+                if sunrise_game_data::scoreboard::team_color_rgb(name).is_none() {
                     return Err(CommandError::tr_at(
                         "argument.color.invalid",
                         &[&name],
@@ -1793,7 +1793,7 @@ impl ArgType {
                 let id = read_identifier(reader)?;
                 let known = reg.ids("minecraft:particle_type");
                 let exists = if known.is_empty() {
-                    sunrise_client_core::particle_type::ParticleType::from_name(&id).is_some()
+                    sunrise_game_data::particle_type::ParticleType::from_name(&id).is_some()
                 } else {
                     known.contains(&id)
                 };
@@ -2028,16 +2028,16 @@ impl ArgType {
             }
             ArgType::Team => builder.suggest_matching(reg.teams.iter().map(String::as_str)),
             ArgType::Criteria => {
-                let mut ids: Vec<String> = sunrise_client_core::scoreboard::CUSTOM_CRITERIA
+                let mut ids: Vec<String> = sunrise_game_data::scoreboard::CUSTOM_CRITERIA
                     .iter()
                     .map(|s| (*s).to_owned())
                     .collect();
-                for c in sunrise_client_core::scoreboard::team_colors() {
+                for c in sunrise_game_data::scoreboard::team_colors() {
                     ids.push(format!("teamkill.{c}"));
                     ids.push(format!("killedByTeam.{c}"));
                 }
                 let stat =
-                    |ty: &str, key: &str| sunrise_client_core::scoreboard::stat_criteria(ty, key);
+                    |ty: &str, key: &str| sunrise_game_data::scoreboard::stat_criteria(ty, key);
                 ids.extend(reg.blocks.keys().map(|b| stat("mined", b)));
                 for ty in ["crafted", "used", "broken", "picked_up", "dropped"] {
                     ids.extend(reg.items.iter().map(|i| stat(ty, i)));
@@ -2046,14 +2046,14 @@ impl ArgType {
                     ids.extend(reg.entity_types.iter().map(|e| stat(ty, e)));
                 }
                 ids.extend(
-                    sunrise_client_core::scoreboard::CUSTOM_STATS
+                    sunrise_game_data::scoreboard::CUSTOM_STATS
                         .iter()
                         .map(|c| stat("custom", &format!("minecraft:{c}"))),
                 );
                 builder.suggest_matching(ids.iter().map(String::as_str));
             }
             ArgType::ScoreboardSlot => {
-                let slots = sunrise_client_core::scoreboard::display_slots();
+                let slots = sunrise_game_data::scoreboard::display_slots();
                 builder.suggest_matching(slots.iter().map(String::as_str));
             }
             ArgType::Operation => builder.suggest_matching(OPERATIONS),
@@ -2061,7 +2061,7 @@ impl ArgType {
             ArgType::Particle => {
                 let known = reg.ids("minecraft:particle_type");
                 if known.is_empty() {
-                    let names: Vec<String> = sunrise_client_core::particle_type::ParticleType::ALL
+                    let names: Vec<String> = sunrise_game_data::particle_type::ParticleType::ALL
                         .iter()
                         .map(|t| format!("minecraft:{}", t.name()))
                         .collect();
@@ -2098,7 +2098,7 @@ impl ArgType {
             }
             ArgType::ResourceOrId(registry) => suggest_resources(builder, reg.ids(registry), ""),
             ArgType::TeamColor => {
-                builder.suggest_matching(sunrise_client_core::scoreboard::team_colors())
+                builder.suggest_matching(sunrise_game_data::scoreboard::team_colors())
             }
             ArgType::Anchor => builder.suggest_matching(["eyes", "feet"]),
             ArgType::Component | ArgType::Style | ArgType::NbtTag => super::snbt::suggest(builder),

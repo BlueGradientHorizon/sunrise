@@ -7,10 +7,10 @@ use mod_api::{
     BoolGameRuleKey, FeatureFlags, LevelDimensionShape, LevelDimensionType, LevelReadError,
     LevelRef,
 };
-use sunrise_client_core::gamerules::Value as GameRuleValue;
 use sunrise_command::vanilla::DIFFICULTIES;
 use sunrise_core::position::BlockPos;
 use sunrise_core::random::LegacyRandom;
+use sunrise_game_data::gamerules::Value as GameRuleValue;
 use sunrise_level::world::World;
 use sunrise_world::registry::BlockStateId;
 use {sunrise_core::dimension::Dimension as LevelDimension, sunrise_world::level::LevelAccess};
@@ -434,7 +434,7 @@ mod tests {
     use mod_api::{GameRuleChangedEvent, GameRuleValue, Hooks, LevelHost, ModEntry, ServerHost};
     use mod_platform::testing::with_mods;
     use std::sync::{Arc, Mutex};
-    use sunrise_client_core::gamerules;
+    use sunrise_game_data::gamerules;
     use sunrise_level::chunk::Chunk;
 
     #[test]

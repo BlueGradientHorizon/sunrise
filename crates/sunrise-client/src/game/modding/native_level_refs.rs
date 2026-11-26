@@ -2181,8 +2181,8 @@ mod tests {
     fn a_level_rng_draws_survive_transaction_abort_on_active_and_parked_levels() {
         use crate::game::journal_level_write::JournalLevelWrite;
         use mod_api::ObjectiveRenderType;
-        use sunrise_client_core::text::Text;
         use sunrise_core::random::{LegacyRandom, LevelRandom, RandomSource};
+        use sunrise_game_data::text::Text;
 
         with_game(|game| {
             let here = game.dim;

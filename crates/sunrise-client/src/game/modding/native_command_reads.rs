@@ -57,10 +57,10 @@ fn advancement_in(tree: &Tree, id: &Identifier) -> Option<AdvancementInfo> {
 fn advancement_info(advancement: &Advancement) -> Option<AdvancementInfo> {
     let display = match &advancement.display {
         Some(d) => Some(AdvancementDisplay::new(
-            sunrise_client_core::scoreboard::comp_text(&d.title)
+            sunrise_game_data::scoreboard::comp_text(&d.title)
                 .try_into_api()
                 .ok()?,
-            sunrise_client_core::scoreboard::comp_text(&d.description)
+            sunrise_game_data::scoreboard::comp_text(&d.description)
                 .try_into_api()
                 .ok()?,
             d.icon.try_into_api().ok()?,

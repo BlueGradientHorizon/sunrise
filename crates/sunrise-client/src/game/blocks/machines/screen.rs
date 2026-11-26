@@ -51,7 +51,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         self.draw_screen_phase(batch, sunrise_client::screen_draw::RenderPhase::Background);
         let grey = sunrise_client::hud::rgba(64, 64, 64, 255);
         let title = &self.remote_menu_title().unwrap_or_else(|| {
-            sunrise_client_core::text::Text::literal(
+            sunrise_game_data::text::Text::literal(
                 self.container_title(self.translate_with_fallback(key, fallback)),
             )
             .resolve_legacy()

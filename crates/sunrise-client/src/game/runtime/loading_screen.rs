@@ -373,9 +373,9 @@ impl Loading {
         // The menu read its language from the prepared root alone (`set_root`) and
         // `load_resources` skips it on this path: read it again with the mods' layers, in the
         // language picked in the menu.
-        sunrise_client_core::lang::set(sunrise_client_core::lang::Language::load(
+        sunrise_game_data::lang::set(sunrise_game_data::lang::Language::load(
             &[&loaded.pack.source],
-            &sunrise_client_core::lang::code(),
+            &sunrise_game_data::lang::code(),
         ));
         let pack_error = loaded.pack_error.or_else(|| self.pack_error.take());
         // The game borrows its shared resources for the process's lifetime,

@@ -620,7 +620,7 @@ mod tests {
                 game.enter_level(dimension).unwrap();
                 game.ui.rules.set(
                     "keep_inventory",
-                    sunrise_client_core::gamerules::Value::Bool(keep),
+                    sunrise_game_data::gamerules::Value::Bool(keep),
                 );
                 let host = game.lan.as_mut().unwrap();
                 host.hub.guests.update(0, |guest| {
@@ -634,7 +634,7 @@ mod tests {
                         .effects
                         .list
                         .push(sunrise_level::effects::EffectInstance::from_def(
-                            sunrise_client_core::potions::effect_by_index(
+                            sunrise_game_data::potions::effect_by_index(
                                 mod_api::__private::effect_index(
                                     mod_platform::__private::part_tests::effect_key(
                                         "minecraft:speed",

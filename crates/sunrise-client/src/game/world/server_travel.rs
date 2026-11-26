@@ -486,8 +486,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !gateway_ok {
             self.as_guest(conn, |g| {
                 g.server_send_overlay_message(
-                    sunrise_client_core::text::Text::translate("spectator.cannot_teleport", &[])
-                        .with_color(sunrise_client_core::text::RED),
+                    sunrise_game_data::text::Text::translate("spectator.cannot_teleport", &[])
+                        .with_color(sunrise_game_data::text::RED),
                 );
             });
             return true;
@@ -511,11 +511,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
                     if !self.spectator_exit_exists(&plan) {
                         self.as_guest(conn, |g| {
                             g.server_send_overlay_message(
-                                sunrise_client_core::text::Text::translate(
+                                sunrise_game_data::text::Text::translate(
                                     "spectator.cannot_teleport",
                                     &[],
                                 )
-                                .with_color(sunrise_client_core::text::RED),
+                                .with_color(sunrise_game_data::text::RED),
                             );
                         });
                         return true;
@@ -764,9 +764,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
             }
         }
         let rule = if invulnerable {
-            sunrise_client_core::gamerules::vanilla::PLAYERS_NETHER_PORTAL_CREATIVE_DELAY
+            sunrise_game_data::gamerules::vanilla::PLAYERS_NETHER_PORTAL_CREATIVE_DELAY
         } else {
-            sunrise_client_core::gamerules::vanilla::PLAYERS_NETHER_PORTAL_DEFAULT_DELAY
+            sunrise_game_data::gamerules::vanilla::PLAYERS_NETHER_PORTAL_DEFAULT_DELAY
         };
         let transition = self.ui.rules.int_at(rule).max(0);
         let Some(entry) = self
@@ -1116,7 +1116,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .spawn_search
             .as_ref()
             .is_some_and(|search| search.legacy_personal_point);
-        let result = (|| -> sunrise_client_core::Result<Option<Trip>> {
+        let result = (|| -> sunrise_game_data::Result<Option<Trip>> {
             let own = if let Some(config) = trip.respawn {
                 if let Some(found) = self.find_respawn_and_use(config, consume)? {
                     Some(found)

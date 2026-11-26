@@ -33,7 +33,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let spawn_enemies = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MONSTERS)
+            .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MONSTERS)
             && self.ui.difficulty != 0;
         let mut at = 0;
         while let Some(entry) = self.creatures.custom_spawners[&dim]

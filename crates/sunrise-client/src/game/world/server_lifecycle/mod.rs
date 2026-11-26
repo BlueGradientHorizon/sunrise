@@ -2,7 +2,7 @@
 
 use super::Game;
 use std::panic::{AssertUnwindSafe, catch_unwind};
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 
 pub(in crate::game) use sunrise_gameplay::crash_save::CrashSave;
 

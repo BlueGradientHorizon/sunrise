@@ -137,7 +137,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     .assets
                     .registry
                     .state(self.world.block(key.0, key.1, key.2))?;
-                if sunrise_client_core::block_entity_types::factory_block(&block.name)
+                if sunrise_game_data::block_entity_types::factory_block(&block.name)
                     != "minecraft:trial_spawner"
                 {
                     return None;

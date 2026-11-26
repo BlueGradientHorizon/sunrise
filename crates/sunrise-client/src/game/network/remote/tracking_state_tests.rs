@@ -49,7 +49,7 @@ fn any_tracked_passenger_makes_its_vehicle_a_vehicle() {
 
 #[test]
 fn a_dragon_sound_uses_live_movement_without_losing_mob_metadata() {
-    use sunrise_client_core::sound_source::SoundEntityState;
+    use sunrise_game_data::sound_source::SoundEntityState;
     let stale = SoundEntityState {
         position: [0.0, 64.0, 0.0],
         silent: true,

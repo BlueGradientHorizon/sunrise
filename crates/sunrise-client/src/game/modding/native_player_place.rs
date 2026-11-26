@@ -230,7 +230,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         pos: [i32; 3],
         placer: Option<PlayerRef>,
         stack: Option<&ItemStack>,
-    ) -> sunrise_client_core::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         let [x, y, z] = pos;
         let key = (x, y, z);
         let placed = self.world.block(x, y, z);

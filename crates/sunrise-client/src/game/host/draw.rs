@@ -72,7 +72,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
         argb: u32,
         shadow: bool,
     ) -> Result<f32, TextFormError> {
-        let text: sunrise_client_core::text::Text = text.try_into_engine(&())?;
+        let text: sunrise_game_data::text::Text = text.try_into_engine(&())?;
         let [a, r, g, b] = argb.to_be_bytes();
         if a == 0 {
             return Ok(0.0);
@@ -217,7 +217,7 @@ pub(in crate::game) const MAX_GLYPHS: usize = 8192;
 #[cfg(test)]
 pub(in crate::game) fn label_layout(
     font: &crate::font::Font,
-    text: &sunrise_client_core::text::Text,
+    text: &sunrise_game_data::text::Text,
     max_width: f32,
     align: TextAlign,
     scale: f32,
@@ -228,11 +228,11 @@ pub(in crate::game) fn label_layout(
 }
 pub(in crate::game) fn label_layout_with(
     font: &crate::font::Font,
-    text: &sunrise_client_core::text::Text,
+    text: &sunrise_game_data::text::Text,
     max_width: f32,
     align: TextAlign,
     scale: f32,
-    mut to_api: impl FnMut(&sunrise_client_core::text::Text) -> Result<Text, TextLinesRefusal>,
+    mut to_api: impl FnMut(&sunrise_game_data::text::Text) -> Result<Text, TextLinesRefusal>,
 ) -> Result<TextLines, TextLinesRefusal> {
     // No position and no size to answer: a scale of zero or less, or one that is not a number,
     // refuses rather than answering every line at an undefined place.
@@ -327,7 +327,7 @@ pub(in crate::game) mod tests {
     }
 
     /// A line's component as the game draws it.
-    fn engine(text: &mod_api::Text) -> sunrise_client_core::text::Text {
+    fn engine(text: &mod_api::Text) -> sunrise_game_data::text::Text {
         text.try_into_engine(&()).unwrap()
     }
 
@@ -344,7 +344,7 @@ pub(in crate::game) mod tests {
     fn layout(text: &str, max_width: f32, align: TextAlign, scale: f32) -> TextLines {
         label_layout(
             &fake_font(6.0),
-            &sunrise_client_core::text::Text::literal(text),
+            &sunrise_game_data::text::Text::literal(text),
             max_width,
             align,
             scale,
@@ -361,7 +361,7 @@ pub(in crate::game) mod tests {
     ) -> Result<TextLines, TextLinesRefusal> {
         label_layout(
             &fake_font(6.0),
-            &sunrise_client_core::text::Text::literal(text),
+            &sunrise_game_data::text::Text::literal(text),
             max_width,
             align,
             scale,
@@ -464,7 +464,7 @@ pub(in crate::game) mod tests {
         // line width, so it starts at 13, not at the exact 12.5 an unrounded centre would give.
         let lines = label_layout(
             &fake_font(5.0),
-            &sunrise_client_core::text::Text::literal("AAA"),
+            &sunrise_game_data::text::Text::literal("AAA"),
             40.0,
             TextAlign::Centre,
             1.0,
@@ -487,7 +487,7 @@ pub(in crate::game) mod tests {
     fn styles_survive_wrapping() {
         let mut text = mod_api::Text::literal("AAAA BBBB");
         text.style.bold = Some(true);
-        let text: sunrise_client_core::text::Text = text.try_into_engine(&()).unwrap();
+        let text: sunrise_game_data::text::Text = text.try_into_engine(&()).unwrap();
         let lines = label_layout(&fake_font(6.0), &text, 30.0, TextAlign::Left, 1.0).unwrap();
         assert_eq!(plain(&lines), ["AAAA", "BBBB"]);
         for line in &lines.lines {
@@ -503,7 +503,7 @@ pub(in crate::game) mod tests {
     #[test]
     fn laid_out_objects_keep_their_sprites_profiles_and_fallbacks_on_redraw() {
         use mod_api::text::{TextContent, TextObject, TextProfile};
-        use sunrise_client_core::text::InlineObject;
+        use sunrise_game_data::text::InlineObject;
 
         let atlas = Text::new(TextContent::Object(TextObject::Atlas {
             atlas: "minecraft:gui".into(),
@@ -682,7 +682,7 @@ pub(in crate::game) mod tests {
         // A 20-pixel character in a 6-pixel box: neither fits, and neither is dropped.
         let lines = label_layout(
             &fake_font(20.0),
-            &sunrise_client_core::text::Text::literal("AB"),
+            &sunrise_game_data::text::Text::literal("AB"),
             6.0,
             TextAlign::Left,
             1.0,
@@ -808,7 +808,7 @@ pub(in crate::game) mod tests {
             font.width("i"),
             font.width("m")
         );
-        let text = sunrise_client_core::text::Text::literal("mmmm ".repeat(80));
+        let text = sunrise_game_data::text::Text::literal("mmmm ".repeat(80));
         let lines = label_layout(font, &text, 120.0, TextAlign::Centre, 1.0).unwrap();
         // The text needs this many 120-pixel lines even with no space wasted.
         let floor = (font.width_text(&text) / 120.0).ceil() as usize;
@@ -845,7 +845,7 @@ pub(in crate::game) mod tests {
         );
         // At scale 2 the same two-line word fits its box at twice every answer: a line's width,
         // the second line's place and the block's height.
-        let word = sunrise_client_core::text::Text::literal("mmmm\nmmmm");
+        let word = sunrise_game_data::text::Text::literal("mmmm\nmmmm");
         let plain_size = label_layout(font, &word, 200.0, TextAlign::Left, 1.0).unwrap();
         let doubled = label_layout(font, &word, 200.0, TextAlign::Left, 2.0).unwrap();
         assert_eq!(doubled.lines[1].width, plain_size.lines[1].width * 2.0);

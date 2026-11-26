@@ -12,7 +12,7 @@ use sunrise_client::{
     hud::{HudAtlas, HudBatch, HudVertex},
     mesher::Vertex,
 };
-use sunrise_client_core::{scoreboard as sb, text::Text};
+use sunrise_game_data::{scoreboard as sb, text::Text};
 use sunrise_sim::{mobs::Mob, save::uuid_text};
 
 /// The world size of one text pixel in a name tag: `Matrix4f.scale(0.025F, -0.025F, 0.025F)`.
@@ -44,7 +44,7 @@ impl NameTagLayouts {
         let epoch = (
             atlas.revision,
             atlas.font.epoch(),
-            sunrise_client_core::lang::bidirectional(),
+            sunrise_game_data::lang::bidirectional(),
         );
         if self.epoch != epoch {
             self.lines.clear();
@@ -897,7 +897,7 @@ pub(in crate::game) struct NameTag {
 /// summoned or set as `{text: "..", color: "red"}` keeps its colour), else the plain text.
 pub(in crate::game) fn name_component(m: &Mob, name: &str) -> sunrise_core::nbt::Tag {
     match &m.custom_name_text {
-        Some(text) => sunrise_client_core::scoreboard::component_tag(&text.component()),
+        Some(text) => sunrise_game_data::scoreboard::component_tag(&text.component()),
         None => sunrise_protocol::text::literal(name),
     }
 }
@@ -1057,7 +1057,7 @@ pub(in crate::game) mod tests {
         let mut atlas = HudAtlas::boot();
         let mut sprite = atlas.sprites["sunrise/white"];
         atlas.sprites.insert("item/probe".into(), sprite);
-        let text = sunrise_client_core::component::to_text(
+        let text = sunrise_game_data::component::to_text(
             &serde_json::json!({"object":"atlas", "sprite":"minecraft:item/probe"}),
             &mut |_| Text::empty(),
         );

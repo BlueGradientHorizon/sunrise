@@ -5,9 +5,9 @@ use crate::game::commands::world_cmds::num;
 use crate::game::commands::world_cmds::take_new_reinforcements;
 use crate::game::commands::world_cmds::text_error;
 use crate::game::minecarts::CartHit;
-use sunrise_client_core::text::Text;
 use sunrise_core::nbt::Tag;
 use sunrise_core::random::RandomSource;
+use sunrise_game_data::text::Text;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_sim::{
     mobs::{Damage, Who},

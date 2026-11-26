@@ -8,7 +8,7 @@ use sunrise_client::{
     hud::{EndPortalFill, HudBatch},
     win_screen::{Key, WinScreen},
 };
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 use winit::keyboard::KeyCode;
 
 /// What closing the screen does (`WinScreen.onFinished`).

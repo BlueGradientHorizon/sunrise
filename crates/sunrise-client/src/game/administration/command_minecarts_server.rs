@@ -1,6 +1,6 @@
 //! Server-side `MinecartCommandBlock` execution, synced output, and edit packet handling.
 use super::{Game, commands::execute::Source, commands_common::Target, minecarts::Minecart};
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_protocol::packets::play;
 
 impl Minecart {
@@ -10,7 +10,7 @@ impl Minecart {
             .command
             .last_output
             .as_ref()
-            .map(|text| sunrise_client_core::scoreboard::component_tag(&text.component_view()));
+            .map(|text| sunrise_game_data::scoreboard::component_tag(&text.component_view()));
     }
 }
 
@@ -29,7 +29,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let rules_work = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::COMMAND_BLOCKS_WORK);
+            .bool_at(sunrise_game_data::gamerules::vanilla::COMMAND_BLOCKS_WORK);
         let dimension = self.dim;
         let Some(prepared) = self.edit_command_cart(id, |c| {
             use std::ops::ControlFlow::{Break, Continue};
@@ -108,7 +108,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
+            .bool_at(sunrise_game_data::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
         {
             self.cart_command_output(id, |timestamp| timestamp.append(message));
         }
@@ -143,7 +143,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let enabled = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::COMMAND_BLOCKS_WORK);
+            .bool_at(sunrise_game_data::gamerules::vanilla::COMMAND_BLOCKS_WORK);
         if self
             .edit_command_cart(id, |c| {
                 c.command.set_command(&command);

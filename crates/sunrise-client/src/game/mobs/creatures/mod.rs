@@ -40,13 +40,13 @@ use super::{Dim, Game, InteractTarget, native_projectiles::Impact, view_vector};
 use std::sync::Arc;
 #[allow(unused_imports)]
 use sunrise_client::mesher::Vertex;
-#[allow(unused_imports)]
-use sunrise_client_core::Result;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
+#[allow(unused_imports)]
+use sunrise_game_data::Result;
 #[allow(unused_imports)]
 use sunrise_items::{
     blocks::Fluid,
@@ -749,11 +749,11 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             mob_griefing: self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING),
+                .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING),
             tnt_explodes: self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES),
+                .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES),
             mob_hooks,
             owners,
         }

@@ -48,7 +48,7 @@ fn pet_holder_contracts_preserve_siblings_removals_and_prototypes() {
             .by_registry
             .insert(
                 registry.into(),
-                sunrise_client_core::registries::RegistryIds {
+                sunrise_game_data::registries::RegistryIds {
                     ids: vec!["fixture:valid".into(), "fixture:other".into()],
                     tags: vec![],
                 },

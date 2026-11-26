@@ -3,7 +3,7 @@
 //! T of four iron blocks (arms along X or Z, nothing beside the legs) an iron
 //! golem. Players placing the pumpkin and dispensers share it.
 use super::Game;
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 use sunrise_sim::block_pattern::{
     IRON_GOLEM_BASE, IRON_GOLEM_FULL, SNOW_GOLEM_BASE, SNOW_GOLEM_FULL,
 };

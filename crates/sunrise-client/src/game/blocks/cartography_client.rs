@@ -89,7 +89,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 u32::MAX,
             );
             if let Some(name) = &d.name {
-                let text = sunrise_client_core::text::Text::literal(name);
+                let text = sunrise_game_data::text::Text::literal(name);
                 let f = self.side.gui.atlas.font.width_text(&text);
                 if f > 0.0 {
                     let f1 = (25.0 / f).clamp(0.0, 6.0 / 9.0);

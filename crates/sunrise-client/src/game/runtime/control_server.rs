@@ -1,5 +1,5 @@
 use super::Game;
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `sunrise-ctl save` and `save-all`.

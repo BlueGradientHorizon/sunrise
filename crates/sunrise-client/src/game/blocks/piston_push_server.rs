@@ -1173,7 +1173,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         mover: MoverType,
         movement: Vec3,
         auto_jump: bool,
-    ) -> sunrise_client_core::Result<Option<Vec3>> {
+    ) -> sunrise_game_data::Result<Option<Vec3>> {
         use sunrise_sim::landing::PlayerLandingPause;
 
         let Some(player) = self.player.as_ref() else {

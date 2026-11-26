@@ -4,7 +4,7 @@ use super::Game;
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_client::hud_overlays::Titles;
 use sunrise_client::{hud::HudBatch, hud_layout, hud_overlays::HeldName};
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     #[inline(always)]

@@ -1845,7 +1845,7 @@ mod tests {
                     1,
                     "minecraft:anvil".into(),
                     crate::game::stations::Kind::Anvil,
-                    sunrise_client_core::text::Text::literal("Anvil"),
+                    sunrise_game_data::text::Text::literal("Anvil"),
                     [0; 3],
                 );
                 game.build_screen_at(small);

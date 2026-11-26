@@ -492,7 +492,7 @@ pub struct Hub {
     /// Server mods' commands, a root in the commands report's format, sent
     /// after vanilla's; the key the game last set them for.
     mod_commands: (serde_json::Value, Option<u64>),
-    selector_tokens: Vec<sunrise_client_core::registries::SelectorToken>,
+    selector_tokens: Vec<sunrise_game_data::registries::SelectorToken>,
     /// Players' areas in other levels and what their clients view of them (#3716).
     pub viewed: super::viewed_levels::ViewedLevels,
 }

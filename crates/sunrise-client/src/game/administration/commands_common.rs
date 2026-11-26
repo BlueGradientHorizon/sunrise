@@ -1,12 +1,12 @@
 //! Common command types and data-only helpers shared by server and client modules.
 use super::Game;
-use sunrise_client_core::text::{self, Style, Text};
 use sunrise_command::CommandError;
 use sunrise_core::{
     geometry::Vec3,
     nbt::Tag,
     version::{BUILD_TIME, DATA_VERSION, STABLE, VANILLA_VERSION, VERSION_ID},
 };
+use sunrise_game_data::text::{self, Style, Text};
 use sunrise_items::items::ItemStack;
 
 pub(in crate::game) type R<T> = Result<T, CommandError>;
@@ -141,7 +141,7 @@ pub(in crate::game) fn formatted_command_failure(message: Text, timestamp: Optio
             }
         }
         let tag = if timestamp.is_some() {
-            sunrise_client_core::scoreboard::component_tag(&component)
+            sunrise_game_data::scoreboard::component_tag(&component)
         } else {
             sunrise_sim::lan::data::component_nbt(&component)
         };

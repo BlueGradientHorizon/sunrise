@@ -3,12 +3,12 @@
 //! getOrigin, then PlayerSpawnFinder.findSpawn picks a free column around
 //! the world spawn within the respawn radius.
 use super::Game;
-use sunrise_client_core::Result;
 use sunrise_core::{
     geometry::{Aabb, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
+use sunrise_game_data::Result;
 pub(in crate::game) use sunrise_gameplay::initial_spawn::{Columns, bottom_center};
 use sunrise_level::{
     collisions::{SceneCollisions, no_collision_or_liquid},
@@ -261,7 +261,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mut radius = self
             .ui
             .rules
-            .int_at(sunrise_client_core::gamerules::vanilla::RESPAWN_RADIUS)
+            .int_at(sunrise_game_data::gamerules::vanilla::RESPAWN_RADIUS)
             .max(0);
         let to_border = self
             .border

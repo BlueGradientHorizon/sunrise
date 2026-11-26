@@ -70,14 +70,14 @@ fn a_leave_request_does_not_follow_a_world_switch() {
 #[test]
 #[ignore = "daily"]
 fn a_translatable_reason_reads_in_the_players_language() {
-    let language = sunrise_client_core::lang::Language::of(
+    let language = sunrise_game_data::lang::Language::of(
         "fr_fr",
         [
             ("disconnect.lost".into(), "Connexion perdue".into()),
             ("mymod.kicked".into(), "Expulsé par le mod".into()),
         ],
     );
-    let ((), _missed) = sunrise_client_core::lang::scoped(language, || {
+    let ((), _missed) = sunrise_game_data::lang::scoped(language, || {
         for (sent, expected) in [
             (kicked(), "Expulsé par le mod"),
             (Text::literal("You were kicked"), "You were kicked"),

@@ -44,10 +44,10 @@ SimpleGizmoCollector.GizmoInstance.persistForMillis	missing		minor: debug gizmos
 SimpleGizmoCollector.GizmoInstance.getAlphaMultiplier	missing		minor: fade-out of persisted debug gizmos; gizmos.rs has no fade
 TextGizmo.emit	inline	crates/sunrise-client/src/game/interface/debug_renderers.rs::Game::debug_renderer_geometry	a text gizmo draws through the billboard text path, one font pixel at billboard_text_unit's world size
 TextGizmo.Style.withLeftAlignment	missing		minor: left-aligned debug label text (debug renderers only); no text style in gizmos.rs
-DeprecatedTranslationsInfo.loadFromJson	port	crates/sunrise-client-core/src/lang.rs::apply_deprecated	parses and applies the deprecated list in one fn; vanilla throws on a bad file, Sunrise ignores it
-DeprecatedTranslationsInfo.loadFromResource	inline	crates/sunrise-client-core/src/lang.rs::Language::load	reads assets/minecraft/lang/deprecated.json from the first source that has it, then applies it
-Language.parseTranslations	port	crates/sunrise-client-core/src/lang.rs::Language::load	reads each lang file from every source; a file that fails to parse is skipped
-Language.loadFromJson	port	crates/sunrise-client-core/src/lang.rs::Language::load	gap: minor: component-valued entries (arrays or objects) are not kept; serde_json rejects the whole file, so its other entries are lost
+DeprecatedTranslationsInfo.loadFromJson	port	crates/sunrise-game-data/src/lang.rs::apply_deprecated	parses and applies the deprecated list in one fn; vanilla throws on a bad file, Sunrise ignores it
+DeprecatedTranslationsInfo.loadFromResource	inline	crates/sunrise-game-data/src/lang.rs::Language::load	reads assets/minecraft/lang/deprecated.json from the first source that has it, then applies it
+Language.parseTranslations	port	crates/sunrise-game-data/src/lang.rs::Language::load	reads each lang file from every source; a file that fails to parse is skipped
+Language.loadFromJson	port	crates/sunrise-game-data/src/lang.rs::Language::load	gap: minor: component-valued entries (arrays or objects) are not kept; serde_json rejects the whole file, so its other entries are lost
 ByteArrayTag.copy	skip:java		Clone on Tag replaces copy()
 ByteArrayTag.equals	skip:java		PartialEq derive replaces equals()
 ByteArrayTag.setTag	port	crates/sunrise-world/src/nbt_path.rs::set_tag	gap: minor: writes through an NBT path node; returns a change count, not a boolean for non-numeric tags
@@ -65,12 +65,12 @@ CompoundTag.getByteArray	port	crates/sunrise-world/src/datafix/dynamic.rs::as_by
 CompoundTag.getLongArray	port	crates/sunrise-world/src/datafix/dynamic.rs::as_long_stream	minor: also accepts number lists; vanilla takes a LongArrayTag only
 CompoundTag.getCompound	port	crates/sunrise-world/src/datafix/dynamic.rs::map	the key lookup is done by the caller (dynamic.rs::get)
 CompoundTag.getList	port	crates/sunrise-world/src/datafix/dynamic.rs::stream	gap: minor: returns copies of the elements, not the list tag; number arrays also pass
-CompoundTag.getBooleanOr	port	crates/sunrise-client-core/src/block_entity_nbt.rs::flag	minor: reads the int value of any numeric tag; vanilla reads the byte, which differs only beyond a byte
+CompoundTag.getBooleanOr	port	crates/sunrise-game-data/src/block_entity_nbt.rs::flag	minor: reads the int value of any numeric tag; vanilla reads the byte, which differs only beyond a byte
 CompoundTag.copy	skip:java		Clone on Tag replaces copy()
 CompoundTag.equals	skip:java		PartialEq derive replaces equals()
 CompoundTag.writeNamedTag	port	crates/sunrise-core/src/nbt.rs::Writer::payload	the Compound arm writes each entry's id and name before its payload
 CompoundTag.readNamedTagData	port	crates/sunrise-core/src/nbt.rs::Reader::payload	the read error is an Error value, not a crash report
-CompoundTag.accept	port	crates/sunrise-client-core/src/snbt.rs::visit	gap: minor: the StreamTagVisitor overload (entry-by-entry walk) is not ported
+CompoundTag.accept	port	crates/sunrise-game-data/src/snbt.rs::visit	gap: minor: the StreamTagVisitor overload (entry-by-entry walk) is not ported
 CompoundTag.store	skip:java		codec-based save; Sunrise writes fields explicitly (block_entity_nbt.rs Fields::put)
 CompoundTag.storeNullable	skip:java		codec-based save of an optional value; Sunrise writes fields explicitly
 CompoundTag.read	skip:java		codec-based load; Sunrise reads fields explicitly (block_entity_nbt.rs helpers)
@@ -99,7 +99,7 @@ ListTag.getNullable	skip:java		bounds-checked element access; Rust slice get and
 ListTag.copy	skip:java		Clone on Tag replaces copy()
 ListTag.equals	skip:java		PartialEq derive replaces equals()
 ListTag.compoundStream	port	crates/sunrise-world/src/datafix/dynamic.rs::stream	gap: minor: returns the elements; the compound-only filter is done by the caller
-ListTag.accept	port	crates/sunrise-client-core/src/snbt.rs::visit	gap: minor: the StreamTagVisitor overload (entry-by-entry walk) is not ported
+ListTag.accept	port	crates/sunrise-game-data/src/snbt.rs::visit	gap: minor: the StreamTagVisitor overload (entry-by-entry walk) is not ported
 LongArrayTag.write	port	crates/sunrise-core/src/nbt.rs::Writer::payload	the LongArray arm writes the count, then the longs
 LongArrayTag.copy	skip:java		Clone on Tag replaces copy()
 LongArrayTag.equals	skip:java		PartialEq derive replaces equals()

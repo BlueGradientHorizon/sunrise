@@ -3,11 +3,11 @@
 //! it adds and the rewards it ejects.
 use super::{Game, natural_spawning::GameLevel, spawner::Planned};
 use std::collections::HashMap;
-use sunrise_client_core::Result;
 use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, LevelRandom, RandomSource},
 };
+use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::mobs::{
@@ -29,7 +29,7 @@ impl TrialSpawnerLevel for GameLevel<'_, '_> {
         self.game
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS)
+            .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
     }
     fn players(&self) -> Vec<TrialPlayer> {
         let guests = self.game.lan_present().into_iter().map(|g| TrialPlayer {
@@ -151,7 +151,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .assets
             .registry
             .state(self.world.block(key.0, key.1, key.2))?;
-        if sunrise_client_core::block_entity_types::factory_block(&block.name)
+        if sunrise_game_data::block_entity_types::factory_block(&block.name)
             != "minecraft:trial_spawner"
         {
             return None;

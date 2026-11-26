@@ -4,7 +4,7 @@ impl Hub {
     /// Publish the frozen server token inventory before sending any command trees.
     pub fn set_selector_tokens(
         &mut self,
-        tokens: Vec<sunrise_client_core::registries::SelectorToken>,
+        tokens: Vec<sunrise_game_data::registries::SelectorToken>,
     ) {
         self.selector_tokens = tokens;
     }

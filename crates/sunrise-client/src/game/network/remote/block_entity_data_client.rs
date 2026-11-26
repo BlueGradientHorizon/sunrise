@@ -46,7 +46,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let block = self.world.block(pos[0], pos[1], pos[2]);
         if let Some(BlockEntity::Mod(m)) = self.world.block_entities.get_mut(&key) {
             if m.id() == name
-                && sunrise_client_core::block_entity_types::valid(
+                && sunrise_game_data::block_entity_types::valid(
                     &self.res.facts().get(block).name,
                     name,
                 ) == Some(true)

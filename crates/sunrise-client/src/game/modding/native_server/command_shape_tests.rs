@@ -5,7 +5,7 @@ use crate::game::{
     in_own_process, lan_actions::GuestCommand, native_guest_turn_tests::with_guests,
 };
 use std::sync::{Arc, Mutex};
-use sunrise_client_core::text;
+use sunrise_game_data::text;
 use sunrise_protocol::{
     buf::Reader,
     ids::play::clientbound::COMMANDS,

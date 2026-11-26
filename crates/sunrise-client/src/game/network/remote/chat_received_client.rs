@@ -13,7 +13,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         sender: u128,
         chat_type: Option<i32>,
         player: Option<&mod_api::PlayerChatInfo>,
-        line: &mut sunrise_client_core::text::Text,
+        line: &mut sunrise_game_data::text::Text,
     ) -> bool {
         if !mod_api::__private::listened(mod_api::HookId::ClientChatReceived) {
             return true;

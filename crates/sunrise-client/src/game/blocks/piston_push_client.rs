@@ -33,7 +33,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         mover: MoverType,
         movement: Vec3,
         auto_jump: bool,
-    ) -> sunrise_client_core::Result<Option<Vec3>> {
+    ) -> sunrise_game_data::Result<Option<Vec3>> {
         let Some(player) = self.player.as_ref() else {
             return Ok(None);
         };

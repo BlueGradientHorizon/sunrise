@@ -1,7 +1,7 @@
 use super::{Arg, Context, Game, R, Target, err};
 use crate::game::chat_common::PLAYER_NAME;
-use sunrise_client_core::text::{self, Text};
 use sunrise_core::random::RandomSource;
+use sunrise_game_data::text::{self, Text};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game::server_side) fn cmd_random(&mut self, id: &str, ctx: &Context) -> R<i32> {

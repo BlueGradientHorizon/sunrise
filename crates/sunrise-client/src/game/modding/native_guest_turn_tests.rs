@@ -1685,7 +1685,7 @@ fn guest_message_capture_is_restored_after_a_real_native_panic() {
                 .unwrap();
             }
             let outer = game.side.lan_acting;
-            let feedback = || vec![sunrise_client_core::text::Text::literal("outer feedback")];
+            let feedback = || vec![sunrise_game_data::text::Text::literal("outer feedback")];
             game.side.chat_capture = Some(feedback());
             let hit = |game: &mut crate::game::ServerGame<'_>| {
                 assert_eq!(game.side.chat_capture, Some(Vec::new()));
@@ -1713,7 +1713,7 @@ fn guest_message_capture_is_restored_after_a_real_native_panic() {
                         .chat_capture
                         .as_mut()
                         .unwrap()
-                        .push(sunrise_client_core::text::Text::literal("guest feedback"));
+                        .push(sunrise_game_data::text::Text::literal("guest feedback"));
                     panic!("engine panic during a messaged turn");
                 })
             }))
@@ -2006,7 +2006,7 @@ fn run_command_answers_false_for_a_bad_line_or_a_stale_handle() {
 fn run_command_refuses_a_player_whose_level_is_parked() {
     use super::native_inventories::NativeInventoryKind::Player;
     use mod_api::PermissionLevel::Owners;
-    use sunrise_client_core::gamerules::vanilla::SEND_COMMAND_FEEDBACK;
+    use sunrise_game_data::gamerules::vanilla::SEND_COMMAND_FEEDBACK;
     use sunrise_items::items::ItemStack;
 
     let name = "run_command_refuses_a_player_whose_level_is_parked";

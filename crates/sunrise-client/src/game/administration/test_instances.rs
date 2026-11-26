@@ -7,8 +7,8 @@ use super::{
     structure_blocks::{create_seed, template_size},
     test_entities::{aabb_of, inflate},
 };
-use sunrise_client_core::text::{self, Text};
 use sunrise_core::{position::BlockPos, ticks::TickArea};
+use sunrise_game_data::text::{self, Text};
 use sunrise_level::{
     containers::BlockEntity,
     structure_block::rotation_from_ordinal,

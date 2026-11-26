@@ -128,7 +128,7 @@ fn a_chest_cart_broken_by_a_player_angers_the_piglins_that_see_them() {
     assert!(
         game.ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::ENTITY_DROPS)
+            .bool_at(sunrise_game_data::gamerules::vanilla::ENTITY_DROPS)
     );
     let at = Vec3::new(8.5, 64.0, 8.5);
     game.carts.push(Minecart::new(1, CartKind::Chest, at));

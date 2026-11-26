@@ -308,7 +308,7 @@ impl Well {
         let name = if fluid.key().is_some() {
             sunrise_client::fluid_tooltip::fluid_name(&id)
         } else {
-            sunrise_client_core::lang::get("sunrise.fluid.unknown")
+            sunrise_game_data::lang::get("sunrise.fluid.unknown")
         };
         Self {
             stack: fluid.clone(),
@@ -647,9 +647,9 @@ impl Game<'_, crate::game::client_side::ClientState> {
             }
         }
         if let Some((key, fallback)) = self.side.panel.transfer_warning {
-            let warning = sunrise_client_core::lang::get_or(key, fallback);
+            let warning = sunrise_game_data::lang::get_or(key, fallback);
             let lines = [(
-                sunrise_client_core::text::Text::literal(warning.clone()).resolve_legacy(),
+                sunrise_game_data::text::Text::literal(warning.clone()).resolve_legacy(),
                 rgba(255, 100, 100, 255),
             )];
             if let Some(rect) = self.draw_tooltip_lines(batch, &lines, cursor.0, cursor.1) {

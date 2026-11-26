@@ -324,8 +324,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let denied = if spectator_pending {
             // ServerPlayer.openMenu: the refused spectator's action bar, red.
             let message =
-                sunrise_client_core::text::Text::translate("container.spectatorCantOpen", &[])
-                    .with_color(sunrise_client_core::text::RED);
+                sunrise_game_data::text::Text::translate("container.spectatorCantOpen", &[])
+                    .with_color(sunrise_game_data::text::RED);
             host.hub.send_to(
                 conn,
                 &C::SystemChat(play::SystemChat {

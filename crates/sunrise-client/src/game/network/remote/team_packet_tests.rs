@@ -1,6 +1,6 @@
 use crate::game::{in_own_process, native_entity_refs::tests::with_client_game};
-use sunrise_client_core::scoreboard::comp_text;
 use sunrise_core::nbt::Tag;
+use sunrise_game_data::scoreboard::comp_text;
 use sunrise_protocol::packets::play::{Clientbound, SetPlayerTeam, TeamParameters};
 
 fn send_team(

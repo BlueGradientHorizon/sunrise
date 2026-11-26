@@ -2,11 +2,11 @@
 //! `VibrationSelector`) shared by sculk sensors, shriekers and wardens, the
 //! sculk block entities and the per-player warden spawn tracker.
 pub use crate::chunk::block_entity::{Data, Info, SculkEntity, SculkKind, Selector};
-use sunrise_client_core::who::{EventSource, Who};
 use sunrise_core::{
     geometry::{Direction, Vec3, traverse_blocks},
     position::BlockPos,
 };
+use sunrise_game_data::who::{EventSource, Who};
 use {sunrise_core::nbt::Tag, sunrise_world::level::sculk::SculkSpreader};
 
 /// Every `GameEvent` with its `VibrationSystem` frequency (0: none).
@@ -349,9 +349,7 @@ fn uuid_field(tag: &Tag, key: &str) -> Option<[i32; 4]> {
     }
 }
 fn info_from_nbt(tag: &Tag) -> Option<Info> {
-    let event = intern(&sunrise_client_core::nbt_value::text(
-        tag.get("game_event"),
-    )?)?;
+    let event = intern(&sunrise_game_data::nbt_value::text(tag.get("game_event"))?)?;
     let distance = match tag.get("distance") {
         Some(Tag::Float(f)) => f32::from_bits(*f),
         _ => 0.0,

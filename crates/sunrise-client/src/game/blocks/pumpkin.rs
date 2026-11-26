@@ -2,8 +2,8 @@
 //! facing the clicked side (the side facing the player on the top and
 //! bottom), and the `carve/pumpkin` seeds pop out of that side.
 use super::{Game, item_abilities::ability};
-use sunrise_client_core::Result;
 use sunrise_core::random::RandomSource;
+use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;
 
 impl Game<'_, crate::game::server_side::ServerState> {

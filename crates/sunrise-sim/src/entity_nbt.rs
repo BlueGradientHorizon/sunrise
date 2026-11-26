@@ -96,7 +96,7 @@ fn hidden_effect_from_nbt(effect: &'static str, tag: &Tag) -> crate::effects::Ef
 }
 /// Entity type ID (`id`).
 pub fn kind(tag: &Tag) -> Option<String> {
-    sunrise_client_core::identifier::normalize_id(&text(tag.get("id"))?)
+    sunrise_game_data::identifier::normalize_id(&text(tag.get("id"))?)
 }
 pub fn position(tag: &Tag) -> Option<Vec3> {
     read_doubles::<3>(tag.get("Pos")).map(|p| Vec3::new(p[0], p[1], p[2]))
@@ -1926,7 +1926,7 @@ pub fn sanitize_custom_name(tag: &mut Tag) {
         map.remove(&"CustomName".into());
     }
 }
-pub use sunrise_client_core::component::{name_text, validated_component};
+pub use sunrise_game_data::component::{name_text, validated_component};
 /// `Mob.readAdditionalSaveData`: negative radii retain the live homePosition.
 /// Used after the command adapter restores runtime AI, as well as fresh load.
 pub fn read_mob_home(m: &mut Mob, tag: &Tag) {
@@ -2165,7 +2165,7 @@ fn mob_from_nbt_at(
     // golems and elder guardians start persistent).
     m.persistent = flag(tag, "PersistenceRequired");
     m.extra.death_loot_table = text(tag.get("DeathLootTable"))
-        .and_then(|t| sunrise_client_core::identifier::normalize_id(&t));
+        .and_then(|t| sunrise_game_data::identifier::normalize_id(&t));
     m.extra.death_table_seed = number(tag.get("DeathLootTableSeed")).unwrap_or(0);
     refs::read_last_hurt_by(&mut m, tag);
     // `NeutralMob.readPersistentAngerSaveData`: the anger end time and the
@@ -4240,7 +4240,7 @@ pub fn boat_to_nbt(
         map.remove(&"Items".into());
         if let Some(items) = items {
             let table = crate::save::text(map.get(&"LootTable".into()))
-                .and_then(|id| sunrise_client_core::identifier::normalize_id(&id));
+                .and_then(|id| sunrise_game_data::identifier::normalize_id(&id));
             if let Some(table) = table {
                 map.insert("LootTable".into(), Tag::String(table.as_str().into()));
             } else {
@@ -6874,7 +6874,7 @@ fn restore_warden_owned_memories(m: &mut Mob, tag: &Tag) {
         if !matches!(entry.get("value"), Some(Tag::Compound(value)) if value.is_empty()) {
             continue; // Unmeasured malformed shapes retain existing initialization.
         }
-        match sunrise_client_core::nbt_value::number(entry.get("ttl")) {
+        match sunrise_game_data::nbt_value::number(entry.get("ttl")) {
             Some(ttl) => slot.set_ttl((), ttl),
             None => slot.set(()),
         }

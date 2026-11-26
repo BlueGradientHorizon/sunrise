@@ -6,7 +6,7 @@ use super::Game;
 use super::key_codes::{gameplay_has_keyboard, glfw_modifiers};
 use mod_api::{ClientModifiers, KeyConflictContext, MappingError, ModKeyMappingRef, ModKeyRefusal};
 use sunrise_client::keymapping::{KeyAction, MappingContext, ModBinding, ModKeySlot};
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_mod_package::mod_list::{ALT, CONTROL, SHIFT};
 use winit::{event::MouseButton, keyboard::KeyCode};
 

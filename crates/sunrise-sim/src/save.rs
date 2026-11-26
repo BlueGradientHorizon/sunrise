@@ -143,8 +143,8 @@ pub fn chunks_with_block_entities<'a, E: std::hash::BuildHasher, N: std::hash::B
         .collect()
 }
 
-use sunrise_client_core::nbt_value::string;
-pub use sunrise_client_core::nbt_value::{float, number, text};
+use sunrise_game_data::nbt_value::string;
+pub use sunrise_game_data::nbt_value::{float, number, text};
 /// Insert or replace a key of a compound tag.
 pub(crate) fn put(tag: &mut Tag, key: &str, value: Tag) {
     if let Tag::Compound(map) = tag {
@@ -617,8 +617,8 @@ pub use level_dat::*;
 mod saved_data;
 use saved_data::{read_saved_data, saved_data_path, write_saved_data};
 include!("save/preset_saved.rs");
-pub use sunrise_client_core::uuid::uuid_from_text;
 pub use sunrise_core::uuid::uuid_text;
+pub use sunrise_game_data::uuid::uuid_from_text;
 /// A random (version 4) UUID as vanilla's four-int form.
 ///
 /// Every call gets its own: the generator is seeded once from the clock and

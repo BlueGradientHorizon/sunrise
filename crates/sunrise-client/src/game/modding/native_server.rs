@@ -53,11 +53,11 @@ use std::sync::{
 };
 use std::{collections::HashMap, sync::Arc};
 #[allow(unused_imports)]
-use sunrise_client_core::text::Text;
-#[allow(unused_imports)]
 use sunrise_command::{Arg, ArgType, Dispatcher};
 #[cfg(test)]
 use sunrise_core::position::BlockPos;
+#[allow(unused_imports)]
+use sunrise_game_data::text::Text;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 #[allow(unused_imports)]
 use sunrise_sim::{
@@ -2778,7 +2778,7 @@ pub(in crate::game) mod tests {
     #[test]
     fn usages_under_a_vanilla_root_merge_beside_its_usages() {
         let vanilla = sunrise_command::vanilla::session_dispatcher(
-            &sunrise_client_core::gamerules::RuleRegistry::vanilla(),
+            &sunrise_game_data::gamerules::RuleRegistry::vanilla(),
             &[],
         );
         let commands = [

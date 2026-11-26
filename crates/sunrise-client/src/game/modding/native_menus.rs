@@ -5,7 +5,7 @@ use super::api_values::TryIntoEngine;
 use super::{Game, lan::LanHost, lan_menus::GuestMenus};
 use mod_api::__private::game::*;
 use mod_api::{MenuRef, MenuReplace, ModMenuOpen};
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::lan::{
     data::component_nbt,

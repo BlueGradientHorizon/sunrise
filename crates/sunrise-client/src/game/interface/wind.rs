@@ -4,12 +4,12 @@
 use super::Game;
 use super::entity::{Blast, Entity as _, for_each_entity_mut};
 use std::collections::BTreeSet;
-use sunrise_client_core::Result;
 use sunrise_core::{
     geometry::{Direction, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
+use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::LevelShape;
 use sunrise_sim::advancements::EntityView;
@@ -549,7 +549,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING);
+                .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING);
         let diameter = f64::from(radius * 2.0);
         let distance = |p: [f64; 3]| {
             ((p[0] - center[0]).powi(2) + (p[1] - center[1]).powi(2) + (p[2] - center[2]).powi(2))
@@ -600,7 +600,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && !self
                     .ui
                     .rules
-                    .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING),
+                    .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING),
             items_ignore: !blocklike,
             spared: None,
         };
@@ -795,7 +795,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
+                .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
         {
             // Util.shuffle(list, level.random)
             for i in (2..=targets.len()).rev() {
@@ -850,7 +850,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && !self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
+                .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
         {
             return Ok(());
         }

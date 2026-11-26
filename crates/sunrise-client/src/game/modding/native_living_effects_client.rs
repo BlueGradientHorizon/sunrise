@@ -11,7 +11,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         partial: f32,
     ) -> Option<f32> {
         let def = mod_api::__private::effect_index(effect)
-            .and_then(sunrise_client_core::potions::effect_by_index)?;
+            .and_then(sunrise_game_data::potions::effect_by_index)?;
         let Target::Player = self.native_client_entity_target(living.entity())? else {
             return None;
         };

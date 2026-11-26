@@ -12,7 +12,7 @@ pub fn load_language(resources: &std::path::Path) -> Language {
     // No language screen ran (a dedicated server's log): en_us, with
     // Sunrise's own strings included — the net thread resolves keys with
     // this map (`Reason::keyed`).
-    sunrise_client_core::lang::Language::load(&[&resources.to_path_buf()], "en_us")
+    sunrise_game_data::lang::Language::load(&[&resources.to_path_buf()], "en_us")
         .map()
         .clone()
 }

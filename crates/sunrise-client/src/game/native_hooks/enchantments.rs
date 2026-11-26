@@ -27,7 +27,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             .map(|e| e.min_cost.calculate(level))
     }
     /// `ItemStack.getHoverName()` as a component: each viewer renders it in their language.
-    pub(in crate::game) fn hover_name(&self, stack: &ItemStack) -> sunrise_client_core::text::Text {
+    pub(in crate::game) fn hover_name(&self, stack: &ItemStack) -> sunrise_game_data::text::Text {
         self.stack_hover_name_text(stack)
     }
     /// Whether enchantment `id` can go on `item` (`Enchantment.isSupportedItem`).

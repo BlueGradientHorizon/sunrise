@@ -7,7 +7,7 @@ use super::{
     stations::{Kind, Station},
 };
 use sunrise_client::widgets::Cursor;
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_items::{items::ItemStack, random_sequences::RandomSequences};
 use sunrise_sim::merchant::{self, MerchantOffer, TradeContext, TradeFeedback};
 use sunrise_sim::mobs::{
@@ -305,7 +305,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         index: usize,
         item: &str,
-    ) -> sunrise_client_core::Result<bool> {
+    ) -> sunrise_game_data::Result<bool> {
         let m = &self.mobs[index];
         let species = m.species();
         if !matches!(species, Species::Villager | Species::WanderingTrader)

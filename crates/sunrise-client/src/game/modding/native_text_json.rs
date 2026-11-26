@@ -1,10 +1,10 @@
 //! The host's persistent text forms, read as `ComponentSerialization.CODEC` takes them.
 use super::Game;
 use mod_api::text::TextFormError;
-use sunrise_client_core::text::Text;
 use sunrise_command::Registries;
 use sunrise_core::json_nbt::{JsonNbtError, tag_to_json};
 use sunrise_core::nbt::{self, Tag};
+use sunrise_game_data::text::Text;
 use sunrise_sim::text_grammar::build;
 
 impl<__Side: crate::game::Side> Game<'_, __Side> {
@@ -59,7 +59,7 @@ fn component_from_snbt(tag: &Tag, registries: &Registries) -> Result<Option<Text
     };
     // Only the rebuilt value reaches the capture, so a failure anywhere leaves no partial text.
     let text = build(&value, registries, true).map(Text::from);
-    sunrise_client_core::component::discard_component(value);
+    sunrise_game_data::component::discard_component(value);
     Ok(text)
 }
 

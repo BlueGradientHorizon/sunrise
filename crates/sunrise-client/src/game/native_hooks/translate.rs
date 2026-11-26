@@ -6,6 +6,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// The selected language's text for a translation key (`Component.translatable`'s lookup), `None`
     /// when no language layer defines it.
     pub(in crate::game) fn translate(&self, key: &str) -> Option<String> {
-        sunrise_client_core::lang::has(key).then(|| sunrise_client_core::lang::get(key))
+        sunrise_game_data::lang::has(key).then(|| sunrise_game_data::lang::get(key))
     }
 }

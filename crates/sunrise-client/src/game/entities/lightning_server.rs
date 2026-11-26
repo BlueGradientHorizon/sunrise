@@ -996,7 +996,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             let trap = self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS)
+                .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
                 && self.world.random.next_double() < difficulty * 0.01
                 && !below.ends_with("lightning_rod");
             if !self.lightning_strike_allowed(None, pos, "weather") {

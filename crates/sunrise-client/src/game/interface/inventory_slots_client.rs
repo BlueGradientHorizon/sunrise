@@ -131,7 +131,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     );
                     // A server's furnace menu has the title it was given.
                     let title = self.remote_menu_title().unwrap_or_else(|| {
-                        sunrise_client_core::text::Text::literal(
+                        sunrise_game_data::text::Text::literal(
                             self.container_title(self.translate_with_fallback(key, fallback)),
                         )
                         .resolve_legacy()

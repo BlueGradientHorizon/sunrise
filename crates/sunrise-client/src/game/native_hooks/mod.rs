@@ -76,14 +76,14 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use sunrise_client_core::gamerules::Value as GameRuleValue;
-use sunrise_client_core::suggestion::Suggestion;
 use sunrise_core::{
     connection_kind::ConnectionKind,
     geometry::Direction,
     position::BlockPos,
     ticks::{ScheduleResult, TickPriority},
 };
+use sunrise_game_data::gamerules::Value as GameRuleValue;
+use sunrise_game_data::suggestion::Suggestion;
 #[cfg(test)]
 use sunrise_sim::mobs::Damage;
 use sunrise_world::level::BonemealCheck;
@@ -93,7 +93,7 @@ use {
     sunrise_client::atlas_sources::qualified, sunrise_client::extras::Corner,
     sunrise_client::extras_hud::Corners, sunrise_client::hud::HudBatch, sunrise_client::hud::rgba,
     sunrise_client::keybinds, sunrise_client::music::Music, sunrise_client::music::MusicLayer,
-    sunrise_client_core::text::Text, sunrise_items::items::ItemStack,
+    sunrise_game_data::text::Text, sunrise_items::items::ItemStack,
     sunrise_level::biome::BiomeColors, sunrise_level::biome::SpawnEntry,
     sunrise_level::block_entities::Pos, sunrise_level::containers::BlockEntity,
     sunrise_level::containers::MOD_MENUS, sunrise_level::containers::ModBlockEntityFields,

@@ -21,7 +21,7 @@ use sunrise_client::{
     },
     ui::EditBox,
 };
-use sunrise_client_core::text::{Style, Text};
+use sunrise_game_data::text::{Style, Text};
 use sunrise_items::items::ItemStack;
 use sunrise_level::{
     containers::{BlockEntity, FurnaceKind},
@@ -2215,8 +2215,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &mut self,
         batch: &mut HudBatch,
         calls: &[Drawn],
-    ) -> Option<Vec<(sunrise_client_core::text::Text, u32)>> {
-        let mut tooltip: Option<Vec<(sunrise_client_core::text::Text, u32)>> = None;
+    ) -> Option<Vec<(sunrise_game_data::text::Text, u32)>> {
+        let mut tooltip: Option<Vec<(sunrise_game_data::text::Text, u32)>> = None;
         for d in calls {
             let start = batch.vertices.len();
             let atlas = &self.side.gui.atlas;
@@ -2312,7 +2312,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                                 .iter()
                                 .map(|l| {
                                     (
-                                        sunrise_client_core::text::Text::literal(
+                                        sunrise_game_data::text::Text::literal(
                                             l.iter().map(|r| r.text.as_str()).collect::<String>(),
                                         ),
                                         u32::MAX,
@@ -2327,7 +2327,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                         let mut lines = self.stack_tooltip(stack);
                         if *more {
                             lines.push((
-                                sunrise_client_core::text::Text::literal(
+                                sunrise_game_data::text::Text::literal(
                                     self.translate_with_fallback(
                                         "gui.recipebook.moreRecipes",
                                         "Right Click for More",

@@ -3,7 +3,7 @@
 //! effects (regeneration, poison, wither, hunger, saturation, instant
 //! effects), and the derived flags the movement and damage code read.
 use crate::particle_options::{ParticleOptions, ParticleType};
-use sunrise_client_core::potions;
+use sunrise_game_data::potions;
 use sunrise_protocol::entity_data::Value;
 use sunrise_world::attributes::Operation;
 

@@ -41,7 +41,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         }
         let (ox, oy) = self.inventory_origin(batch);
         let local = (self.side.cursor.0 - ox, self.side.cursor.1 - oy);
-        let mut tooltip: Option<Vec<(sunrise_client_core::text::Text, u32)>> = None;
+        let mut tooltip: Option<Vec<(sunrise_game_data::text::Text, u32)>> = None;
         let mut anvil_name = false;
         let mut recipe_tooltip: Option<ItemStack> = None;
         {
@@ -300,13 +300,12 @@ impl Game<'_, crate::game::client_side::ClientState> {
                                 .translate_with_fallback("container.enchant.clue", "%s . . . ?")
                                 .replace("%s", &name);
                             let mut lines =
-                                vec![(sunrise_client_core::text::Text::literal(clue), u32::MAX)];
+                                vec![(sunrise_game_data::text::Text::literal(clue), u32::MAX)];
                             if !self.creative {
-                                lines
-                                    .push((sunrise_client_core::text::Text::literal(""), u32::MAX));
+                                lines.push((sunrise_game_data::text::Text::literal(""), u32::MAX));
                                 if level < cost {
                                     lines.push((
-                                        sunrise_client_core::text::Text::literal(
+                                        sunrise_game_data::text::Text::literal(
                                             self.translate_with_fallback(
                                                 "container.enchant.level.requirement",
                                                 "Level Requirement: %s",
@@ -330,7 +329,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                                         .replace("%s", &n.to_string())
                                     };
                                     lines.push((
-                                        sunrise_client_core::text::Text::literal(lapis),
+                                        sunrise_game_data::text::Text::literal(lapis),
                                         if gold >= n as i32 {
                                             rgba(170, 170, 170, 255)
                                         } else {
@@ -350,7 +349,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                                         .replace("%s", &n.to_string())
                                     };
                                     lines.push((
-                                        sunrise_client_core::text::Text::literal(levels),
+                                        sunrise_game_data::text::Text::literal(levels),
                                         rgba(170, 170, 170, 255),
                                     ));
                                 }
@@ -502,7 +501,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                                 .gui
                                 .atlas
                                 .font
-                                .split_lines(&sunrise_client_core::text::Text::literal(text), 115.0)
+                                .split_lines(&sunrise_game_data::text::Text::literal(text), 115.0)
                                 .into_iter()
                                 .map(|(line, _)| (line, u32::MAX))
                                 .collect(),

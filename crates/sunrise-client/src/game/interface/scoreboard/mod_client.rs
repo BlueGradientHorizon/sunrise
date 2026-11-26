@@ -4,7 +4,7 @@ use crate::game::server_side::scoreboard::*;
 use std::collections::HashMap;
 use sunrise_client::actions::Action;
 use sunrise_client::{hud::HudBatch, hud_layout, hud_overlays};
-use sunrise_client_core::scoreboard::{self as sb};
+use sunrise_game_data::scoreboard::{self as sb};
 use sunrise_sim::{lan::playerdata::ints_uuid, save::uuid_text};
 
 impl Game<'_, crate::game::client_side::ClientState> {

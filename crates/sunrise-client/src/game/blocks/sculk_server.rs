@@ -4,12 +4,12 @@
 use super::{Game, Result};
 use mod_api::client::particles::PositionSource;
 use std::collections::HashSet;
-use sunrise_client_core::who::EventSource;
 use sunrise_core::{
     geometry::{Aabb, Direction, Vec3},
     position::BlockPos,
     random::RandomSource,
 };
+use sunrise_game_data::who::EventSource;
 use sunrise_sim::join_seq::ListStamp;
 use sunrise_world::registry::BlockStateId;
 use {
@@ -876,7 +876,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// `WardenSpawnTrackerCommand`: clear the player's tracker or set its
     /// warning level.
     pub(in crate::game::server_side) fn cmd_warden_spawn_tracker(&mut self, level: Option<i32>) {
-        use sunrise_client_core::text::Text;
+        use sunrise_game_data::text::Text;
         let key = match level {
             Some(level) => {
                 self.side.sculk.tracker.set_warning_level(level);
@@ -890,7 +890,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
+            .bool_at(sunrise_game_data::gamerules::vanilla::SEND_COMMAND_FEEDBACK)
         {
             self.server_system_message(Text::translate(
                 key,
@@ -1803,7 +1803,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_WARDENS)
+                .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_WARDENS)
     }
     /// `SculkShriekerBlockEntity.tryShriek`.
     pub(in crate::game::server_side) fn try_shriek(
@@ -2933,7 +2933,7 @@ pub(in crate::game) mod command_damage_listener_tests {
                 assert_eq!(event.pos, [4.5, 200.0, 4.5]);
                 assert_eq!(
                     event.source,
-                    Some(sunrise_client_core::who::EventSource::Mob(id))
+                    Some(sunrise_game_data::who::EventSource::Mob(id))
                 );
                 assert_eq!(tick, before);
                 assert_eq!(

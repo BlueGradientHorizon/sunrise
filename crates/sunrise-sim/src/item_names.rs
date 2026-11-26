@@ -22,7 +22,7 @@ pub fn live_holders(
     let entries = |kind: &str| dynamic.registries.get(kind).into_iter().flatten();
     let text = |data: &Tag, key: &str| {
         data.get(key)
-            .map(sunrise_client_core::scoreboard::tag_to_json)
+            .map(sunrise_game_data::scoreboard::tag_to_json)
     };
     let enchantments = entries("minecraft:enchantment")
         .filter_map(|(id, data)| {
@@ -149,7 +149,7 @@ impl Names {
     /// `block.*`, then the pinned English map (`Names::item`).
     pub fn display_item(&self, id: &str) -> String {
         let (namespace, path) = id.split_once(':').unwrap_or(("minecraft", id));
-        if let Some(lang) = sunrise_client_core::lang::current() {
+        if let Some(lang) = sunrise_game_data::lang::current() {
             for prefix in ["item", "block"] {
                 if let Some(name) = lang.get(&format!("{prefix}.{namespace}.{path}")) {
                     return name.to_owned();
@@ -161,7 +161,7 @@ impl Names {
     /// A translation key's text in the selected language, else the pinned
     /// English map (`HoverName` and tooltip keys such as potion names).
     pub fn display_get(&self, key: &str) -> Option<String> {
-        sunrise_client_core::lang::current()
+        sunrise_game_data::lang::current()
             .and_then(|lang| lang.get(key).map(str::to_owned))
             .or_else(|| self.get(key).map(str::to_owned))
     }

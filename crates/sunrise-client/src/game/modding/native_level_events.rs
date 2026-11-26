@@ -402,7 +402,7 @@ mod tests {
     #[ignore = "daily"]
     fn a_global_level_event_reaches_every_player_or_falls_back_to_a_plain_one() {
         use mod_api::{LevelRef, WorldEpoch};
-        use sunrise_client_core::gamerules::Value;
+        use sunrise_game_data::gamerules::Value;
         super::super::native_entity_refs::tests::with_game(|game| {
             let level = game.level(game.dim.id()).unwrap();
             let stale = LevelRef::new(WorldEpoch::new(level.epoch().get() + 1), level.dimension());
@@ -459,7 +459,7 @@ mod tests {
             Arc,
             atomic::{AtomicI32, AtomicUsize},
         };
-        use sunrise_client_core::gamerules::Value;
+        use sunrise_game_data::gamerules::Value;
         use sunrise_protocol::packets::{
             configuration::ClientInformation,
             play::{Clientbound, LevelEvent},

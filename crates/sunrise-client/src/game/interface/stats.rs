@@ -368,9 +368,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// server thread's players are all hosted).
     pub(in crate::game::server_side) fn spawn_phantoms(&mut self) {
         let rules = &self.ui.rules;
-        if !rules.bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS)
-            || !rules.bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MONSTERS)
-            || !rules.bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_PHANTOMS)
+        if !rules.bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
+            || !rules.bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MONSTERS)
+            || !rules.bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_PHANTOMS)
             || self.dim != Dim::Overworld
             || !self.has_custom_spawner(mod_api::SpawnerKind::Phantom)
         {

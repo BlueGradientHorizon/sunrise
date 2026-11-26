@@ -283,7 +283,7 @@ fn resource_selector_scans_normalized_ids() {
 
 #[test]
 fn modprofile_session_command_requires_admin_permission() {
-    let rules = sunrise_client_core::gamerules::RuleRegistry::vanilla();
+    let rules = sunrise_game_data::gamerules::RuleRegistry::vanilla();
     let session = vanilla::session_dispatcher(&rules, &[]);
     assert!(vanilla::dispatcher().find("modprofile").is_none());
     for permission in 0..=4 {
@@ -306,12 +306,12 @@ fn modprofile_session_command_requires_admin_permission() {
 }
 #[test]
 fn session_dispatchers_respect_feature_flags() {
-    let first = sunrise_client_core::gamerules::RuleRegistry::vanilla();
-    let second = sunrise_client_core::gamerules::RuleRegistry::vanilla();
+    let first = sunrise_game_data::gamerules::RuleRegistry::vanilla();
+    let second = sunrise_game_data::gamerules::RuleRegistry::vanilla();
     let plain = vanilla::session_dispatcher(&first, &[]);
     let enabled = vanilla::session_dispatcher(
         &second,
-        &[sunrise_client_core::gamerules::MINECART_IMPROVEMENTS.to_owned()],
+        &[sunrise_game_data::gamerules::MINECART_IMPROVEMENTS.to_owned()],
     );
     let registries = reg();
     assert!(
@@ -865,7 +865,7 @@ fn whitespace_is_what_java_character_is_whitespace_says() {
 fn a_registered_token_reads_as_a_whole_word_before_the_vanilla_letter() {
     let mut reg = reg();
     reg.selector_tokens
-        .push(sunrise_client_core::registries::SelectorToken {
+        .push(sunrise_game_data::registries::SelectorToken {
             name: "allies".into(),
             tooltip: "test.selector.allies".into(),
             players_only: true,
@@ -2467,7 +2467,7 @@ fn a_declared_provider_is_asked_with_the_prefix_the_earlier_arguments_and_the_se
         calls.clone(),
     ));
     let mut registries = reg();
-    registries.sender = Some(sunrise_client_core::registries::CommandSender {
+    registries.sender = Some(sunrise_game_data::registries::CommandSender {
         uuid: 42,
         name: "Simon".into(),
     });

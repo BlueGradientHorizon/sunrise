@@ -4,12 +4,12 @@
 //! inactive until the dragon dies.
 use super::{Dim, Game};
 use sunrise_client::mesher::Vertex;
-use sunrise_client_core::Result;
 use sunrise_core::{
     geometry::Vec3,
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
+use sunrise_game_data::Result;
 use sunrise_items::items::ItemStack;
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::{
@@ -316,7 +316,7 @@ impl SummonedEye {
             };
             let id = match item.get(&"id".into()) {
                 Some(Tag::String(s)) => {
-                    sunrise_client_core::identifier::normalize_id(&s.to_string_lossy())
+                    sunrise_game_data::identifier::normalize_id(&s.to_string_lossy())
                 }
                 _ => None,
             }

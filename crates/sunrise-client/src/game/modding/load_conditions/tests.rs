@@ -123,7 +123,7 @@ fn malformed_known_recipe_stops_dedicated_world_startup() {
                         Some(1),
                         true,
                         None,
-                        Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
+                        Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
                     )
                     .unwrap();
                     request.save_root = scratch.path().join("refused-startup");
@@ -170,7 +170,7 @@ fn load_conditions_recipe_reload_counts_and_failed_candidates_keep_old_recipes()
                     Some(1),
                     true,
                     None,
-                    Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
+                    Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
                 )
                 .unwrap();
                 request.save_root = scratch.path().join("save");

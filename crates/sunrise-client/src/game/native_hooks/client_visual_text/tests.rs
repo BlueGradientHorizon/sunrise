@@ -10,8 +10,8 @@ fn visual_read_uses_live_translations_styles_and_bidi_outside_drawing() {
         argument.style.color = Some("red".into());
         let mut line = Text::translate("fixture.greet", vec![argument]);
         line.style.color = Some("gold".into());
-        sunrise_client_core::lang::scoped(
-            sunrise_client_core::lang::Language::of(
+        sunrise_game_data::lang::scoped(
+            sunrise_game_data::lang::Language::of(
                 "test",
                 [("fixture.greet".into(), "Hello, %s!".into())],
             ),

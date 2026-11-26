@@ -77,7 +77,7 @@ class RustChangesTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertFalse(needs_server_build([path]))
         for path in ["crates/sunrise-client/src/game.rs", "crates/sunrise-client-render/src/hud.rs",
-                     "crates/sunrise-client-core/src/lang.rs", "crates/sunrise-world/Cargo.toml", "Cargo.lock",
+                     "crates/sunrise-game-data/src/lang.rs", "crates/sunrise-world/Cargo.toml", "Cargo.lock",
                      "Cargo.toml", ".cargo/config.toml", ".github/workflows/ci.yml", "tools/ci/rust_changes.py"]:
             with self.subTest(path=path):
                 self.assertTrue(needs_server_build(["docs/setup.md", path]))

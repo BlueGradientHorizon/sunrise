@@ -21,12 +21,12 @@ use crate::game::minecarts::takes_push_from_cart;
 use crate::game::minecarts::tnt_ignites_by_collision;
 #[allow(unused_imports)]
 use std::sync::Arc;
-use sunrise_client_core::scoreboard::pushable_by;
 use sunrise_core::{
     geometry::{Aabb, Vec3, trig},
     position::BlockPos,
     random::RandomSource,
 };
+use sunrise_game_data::scoreboard::pushable_by;
 use sunrise_gameplay::minecart_cells::CartCells;
 use sunrise_items::items::{ItemStack, Items};
 use sunrise_level::containers::BlockEntity;
@@ -508,7 +508,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         f64::from(
             self.ui
                 .rules
-                .int_at(sunrise_client_core::gamerules::vanilla::MAX_MINECART_SPEED),
+                .int_at(sunrise_game_data::gamerules::vanilla::MAX_MINECART_SPEED),
         ) * if c.in_water { 0.5 } else { 1.0 }
             / 20.0
     }

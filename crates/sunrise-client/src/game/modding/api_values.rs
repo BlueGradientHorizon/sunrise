@@ -724,7 +724,7 @@ impl<C: ?Sized, T: TryIntoEngine<C>> TryIntoEngine<C> for [T] {
     }
 }
 impl<C: ?Sized> TryIntoEngine<C> for (mod_api::Text, u32) {
-    type Engine = (sunrise_client_core::text::Text, u32);
+    type Engine = (sunrise_game_data::text::Text, u32);
     type Error = mod_api::text::TextFormError;
     fn try_into_engine(&self, context: &C) -> Result<Self::Engine, Self::Error> {
         Ok((self.0.try_into_engine(context)?, self.1))
@@ -739,10 +739,7 @@ impl<A: TryIntoApi, B: TryIntoApi<Error = A::Error>> TryIntoApi for (A, B) {
     }
 }
 impl<C: ?Sized> TryIntoEngine<C> for (mod_api::Text, mod_api::Text) {
-    type Engine = (
-        sunrise_client_core::text::Text,
-        sunrise_client_core::text::Text,
-    );
+    type Engine = (sunrise_game_data::text::Text, sunrise_game_data::text::Text);
     type Error = mod_api::text::TextFormError;
     fn try_into_engine(&self, context: &C) -> Result<Self::Engine, Self::Error> {
         Ok((
@@ -953,7 +950,7 @@ impl TryIntoApi for sunrise_assets::item_model::StackView {
         let components = Tag::compound(self.patch.iter().map(|(name, value)| match value {
             Some(value) => (
                 sunrise_core::nbt::JavaString::from(name.as_str()),
-                sunrise_client_core::scoreboard::json_to_tag(value),
+                sunrise_game_data::scoreboard::json_to_tag(value),
             ),
             None => (
                 sunrise_core::nbt::JavaString::from(format!("!{name}").as_str()),
@@ -2316,7 +2313,7 @@ pub(in crate::game) mod item_model_snapshot_tests {
     }
 }
 
-impl TryIntoApi for sunrise_client_core::suggestion::Suggestion {
+impl TryIntoApi for sunrise_game_data::suggestion::Suggestion {
     type Api = mod_api::Suggestion;
     type Error = std::convert::Infallible;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -2327,7 +2324,7 @@ impl TryIntoApi for sunrise_client_core::suggestion::Suggestion {
     }
 }
 impl TryIntoEngine for mod_api::Suggestion {
-    type Engine = sunrise_client_core::suggestion::Suggestion;
+    type Engine = sunrise_game_data::suggestion::Suggestion;
     type Error = StackWriteError;
     fn try_into_engine(&self, _: &Items) -> Result<Self::Engine, Self::Error> {
         Ok(Self::Engine {
@@ -2343,7 +2340,7 @@ pub(in crate::game) mod completion_snapshot_tests {
     use super::*;
     #[test]
     fn completion_round_trip_keeps_range_tooltip_and_numeric_order() {
-        let source = sunrise_client_core::suggestion::Suggestion {
+        let source = sunrise_game_data::suggestion::Suggestion {
             range: (4, 7),
             text: "42".into(),
             tooltip: Some("count".into()),
@@ -2414,7 +2411,7 @@ pub(in crate::game) mod declaration_snapshot_tests {
         );
         assert_eq!(
             registry.rule("test:active").unwrap().default,
-            sunrise_client_core::gamerules::Value::Bool(true)
+            sunrise_game_data::gamerules::Value::Bool(true)
         );
     }
 }
@@ -2428,7 +2425,7 @@ pub(in crate::game) mod gui_draw_boundary_tests {
     use super::{TryIntoApi, TryIntoEngine};
     use serde_json::json;
     use sunrise_client::hud_layout::{Blend, GuiDraw as D, PoseOp};
-    use sunrise_client_core::text::Text;
+    use sunrise_game_data::text::Text;
 
     #[test]
     fn gui_commands_keep_every_variant_field_order_and_text_source() {
@@ -2520,13 +2517,13 @@ pub(in crate::game) mod gui_draw_boundary_tests {
 
     #[test]
     fn tooltip_pairs_round_trip_without_an_item_registry() {
-        let lines = vec![(sunrise_client_core::text::Text::literal("tip"), 0xff00ff00)];
+        let lines = vec![(sunrise_game_data::text::Text::literal("tip"), 0xff00ff00)];
         let snapshot: Result<Vec<(mod_api::Text, u32)>, mod_api::text::TextFormError> =
             lines.try_into_api();
         let snapshot = snapshot.unwrap();
         assert_eq!(snapshot[0], (mod_api::Text::literal("tip"), 0xff00ff00));
         let restored: Result<
-            Vec<(sunrise_client_core::text::Text, u32)>,
+            Vec<(sunrise_game_data::text::Text, u32)>,
             mod_api::text::TextFormError,
         > = snapshot.try_into_engine(&());
         let restored = restored.unwrap();
@@ -2730,7 +2727,7 @@ pub(in crate::game) mod placement_snapshot_tests {
     }
 }
 
-impl TryIntoApi for sunrise_client_core::gamerules::Value {
+impl TryIntoApi for sunrise_game_data::gamerules::Value {
     type Api = mod_api::GameRuleValue;
     type Error = StackReadError;
     fn try_into_api(&self) -> Result<Self::Api, Self::Error> {
@@ -2742,7 +2739,7 @@ impl TryIntoApi for sunrise_client_core::gamerules::Value {
 }
 
 impl TryIntoEngine for mod_api::GameRuleValue {
-    type Engine = sunrise_client_core::gamerules::Value;
+    type Engine = sunrise_game_data::gamerules::Value;
     type Error = ();
     fn try_into_engine(&self, _: &Items) -> Result<Self::Engine, Self::Error> {
         match *self {
@@ -2758,7 +2755,7 @@ impl TryIntoEngine for mod_api::GameRuleValue {
 fn game_rule_int_snapshot_preserves_full_range() {
     for value in [i32::MIN, -1, 0, 256, i32::MAX] {
         assert_eq!(
-            sunrise_client_core::gamerules::Value::Int(value)
+            sunrise_game_data::gamerules::Value::Int(value)
                 .try_into_api()
                 .unwrap(),
             mod_api::GameRuleValue::Int(value)
@@ -2769,7 +2766,7 @@ fn game_rule_int_snapshot_preserves_full_range() {
 pub(in crate::game) fn with_rule_schema<T>(
     f: impl FnOnce(&mod_api::__private::RuleSchema<'_>) -> T,
 ) -> T {
-    let registry = sunrise_client_core::gamerules::rule_registry();
+    let registry = sunrise_game_data::gamerules::rule_registry();
     f(&mod_api::__private::RuleSchema {
         category: &|id| registry.categories().iter().any(|category| category == id),
         position: &|id| registry.position(id),
@@ -2826,16 +2823,16 @@ pub(in crate::game) fn register_game_keys(ids: impl IntoIterator<Item = String>)
         )
     });
     mod_api::__private::resolve_effects(
-        sunrise_client_core::potions::all_effects()
-            .map(|def| sunrise_client_core::potions::namespaced(def.id)),
-        |id| sunrise_client_core::potions::effect(id).map(|def| def.index),
+        sunrise_game_data::potions::all_effects()
+            .map(|def| sunrise_game_data::potions::namespaced(def.id)),
+        |id| sunrise_game_data::potions::effect(id).map(|def| def.index),
     )
     .unwrap();
     mod_api::__private::validate_effect_part_owners(|id| {
-        sunrise_client_core::potions::effect(id)?.owner
+        sunrise_game_data::potions::effect(id)?.owner
     })
     .unwrap();
-    if let Some(types) = sunrise_client_core::block_entity_types::current() {
+    if let Some(types) = sunrise_game_data::block_entity_types::current() {
         // Registration just replaced the mod snapshot, but the process-wide engine
         // table can still belong to an earlier fixture. Include this fixture's
         // declarations before resolving its requested keys, as content loading does.
@@ -2853,12 +2850,12 @@ pub(in crate::game) fn register_game_keys(ids: impl IntoIterator<Item = String>)
     }
 }
 
-pub(in crate::game) fn game_rule_registry() -> sunrise_client_core::gamerules::RuleRegistry {
+pub(in crate::game) fn game_rule_registry() -> sunrise_game_data::gamerules::RuleRegistry {
     let rules: Vec<_> = mod_api::__private::game_rules()
         .iter()
         .map(|rule| rule.try_into_engine(&()).unwrap())
         .collect();
-    sunrise_client_core::gamerules::RuleRegistry::with_mod_rules(
+    sunrise_game_data::gamerules::RuleRegistry::with_mod_rules(
         mod_api::__private::game_rule_categories(),
         &rules,
     )

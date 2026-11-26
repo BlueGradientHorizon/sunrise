@@ -106,7 +106,7 @@ impl StartupMenu {
         additional_data: Arc<[Arc<sunrise_level::datapack::DataPack>]>,
         splashes: &str,
     ) {
-        sunrise_client_core::lang::set(sunrise_client_core::lang::Language::load(
+        sunrise_game_data::lang::set(sunrise_game_data::lang::Language::load(
             &[&sunrise_assets::resource_source::ResourceSource::directory(
                 root.clone(),
             )],
@@ -626,7 +626,7 @@ impl Loading {
 
     fn open_menu_options(&mut self, page: Page) {
         self.menu.options.open_at(false, page);
-        self.menu.options.languages = sunrise_client_core::lang::available(&[
+        self.menu.options.languages = sunrise_game_data::lang::available(&[
             &sunrise_assets::resource_source::ResourceSource::directory(self.menu.root.clone()),
         ]);
         let additional = self.options.as_ref().map_or_else(Vec::new, |options| {
@@ -659,7 +659,7 @@ impl Loading {
                     self.save_menu_settings();
                 }
                 Event::Language(code) => {
-                    sunrise_client_core::lang::set(sunrise_client_core::lang::Language::load(
+                    sunrise_game_data::lang::set(sunrise_game_data::lang::Language::load(
                         &[&sunrise_assets::resource_source::ResourceSource::directory(
                             self.menu.root.clone(),
                         )],
@@ -1648,7 +1648,7 @@ mod tests {
     #[ignore = "daily"]
     fn queued_creation_is_reconciled_at_handoff() {
         use mod_api::{Hooks, Registrar, RegistrationContext};
-        use sunrise_client_core::gamerules::Value;
+        use sunrise_game_data::gamerules::Value;
         struct Mod;
         #[mod_api::__subscriptions]
         impl Hooks for Mod {
@@ -2026,7 +2026,7 @@ mod tests {
         );
         let mut screen = sunrise_client::pack_screen::PackScreen::new(
             &sunrise_client::screen_draw::Measure(&loading.boot.font),
-            sunrise_client_core::text::Text::translate("dataPack.title", &[]),
+            sunrise_game_data::text::Text::translate("dataPack.title", &[]),
             480,
             270,
             false,

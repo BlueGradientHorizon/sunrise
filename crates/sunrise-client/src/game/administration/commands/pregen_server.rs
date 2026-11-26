@@ -4,7 +4,7 @@ use crate::game::commands::pregen::REPORT_EVERY;
 use crate::game::commands::pregen::STALL;
 use crate::game::commands::pregen::failure;
 use std::time::{Duration, Instant};
-use sunrise_client_core::text::{self, Text};
+use sunrise_game_data::text::{self, Text};
 use sunrise_sim::pregen::{Pregen, Shape};
 
 impl Game<'_, crate::game::server_side::ServerState> {

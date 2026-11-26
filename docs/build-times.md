@@ -106,7 +106,7 @@ and of 2 (Windows) or 1 (Linux) for `fast`.
 | Crates recompiled by those four edits | 9, 2, 1, 3 | the same | the same | the same |
 
 Crates recompiled: an edit in `sunrise-world` recompiles `sunrise-world` and the eight crates above it
-(`sunrise-items`, `sunrise-protocol`, `sunrise-command`, `sunrise-client-core`, `sunrise-client-input`,
+(`sunrise-items`, `sunrise-protocol`, `sunrise-command`, `sunrise-game-data`, `sunrise-client-input`,
 `sunrise-server-files`, `sunrise-client-render` and `sunrise-client`); one in `sunrise-items` recompiles it,
 `sunrise-client-render` and `sunrise-client`; one in `sunrise-client-render` recompiles it and `sunrise-client`;
 one in `game.rs` only `sunrise-client`.

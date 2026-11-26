@@ -1,7 +1,7 @@
 use super::*;
 use crate::game::FallingBlock;
-use sunrise_client_core::Result;
 use sunrise_core::geometry::Vec3;
+use sunrise_game_data::Result;
 use sunrise_level::collisions;
 use sunrise_world::{
     collision_context::{CollisionContext, CollisionEntity},

@@ -2,8 +2,8 @@
 use super::{super::Game, Recorder, world::FLOOR};
 use mod_api::BlockEntityRef;
 use std::{cell::RefCell, sync::Arc};
-use sunrise_client_core::Result;
 use sunrise_core::nbt::Tag;
+use sunrise_game_data::Result;
 use sunrise_level::{
     chunk::Chunk,
     containers::{BlockEntity, ModBlockEntity, ModBlockEntityFields},
@@ -64,7 +64,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 .default_state(KIND)
                 .ok_or_else(|| format!("{name}: registered benchmark block {KIND} is missing"))?;
             let block_name = &self.res.facts().get(block).name;
-            if sunrise_client_core::block_entity_types::valid(block_name, KIND) != Some(true) {
+            if sunrise_game_data::block_entity_types::valid(block_name, KIND) != Some(true) {
                 return Err(format!(
                     "{name}: benchmark block {block_name} is not valid for block entity type {KIND}"
                 )

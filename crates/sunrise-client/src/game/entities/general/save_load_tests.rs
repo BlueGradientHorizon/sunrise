@@ -1192,7 +1192,7 @@ fn removing_a_vehicle_dismounts_general_and_mob_passengers_immediately_in_order(
         // loader admits its passengers. Fuse expiry must let them go too.
         assert!(game.ui.rules.set(
             "tnt_explodes",
-            sunrise_client_core::gamerules::Value::Bool(false),
+            sunrise_game_data::gamerules::Value::Bool(false),
         ));
         game.load_tnt(
             Tag::Compound(

@@ -1,8 +1,8 @@
 //! `/data` (DataCommands), `/tag` (TagCommand) and `/summon` with NBT: entity,
 //! block entity and storage data accessors over the game state.
 use super::{Arg, Context, Game, R, Target, err};
-use sunrise_client_core::{nbt_path::NbtPath, snbt, text::Text};
 use sunrise_core::nbt::{Compound, JavaString, Tag, parse_snbt};
+use sunrise_game_data::{nbt_path::NbtPath, snbt, text::Text};
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::{
     data_cmd::{self, Op, path_error},
@@ -319,7 +319,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         } else if let Tag::Compound(map) = &mut input {
             map.remove(&"OutputSignal".into());
         }
-        let Some(normalized) = sunrise_client_core::block_entity_nbt::canonical(&input) else {
+        let Some(normalized) = sunrise_game_data::block_entity_nbt::canonical(&input) else {
             return Some(None);
         };
         let output = normalized.get("OutputSignal").cloned();
@@ -355,7 +355,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         == p
                         && save::text(t.get("id")).as_deref() == Some("minecraft:comparator")
                 })?;
-                let tag = sunrise_client_core::block_entity_nbt::canonical(tag)?;
+                let tag = sunrise_game_data::block_entity_nbt::canonical(tag)?;
                 match tag.get("OutputSignal") {
                     Some(Tag::Int(v)) => Some(*v),
                     _ => None,
@@ -636,7 +636,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 };
                 let nbt = sunrise_command::snbt::parse_fully(nbt)?;
                 let old = self.data_of(&target)?;
-                if sunrise_client_core::nbt_path::too_deep(&nbt, 0) {
+                if sunrise_game_data::nbt_path::too_deep(&nbt, 0) {
                     return Err(err("arguments.nbtpath.too_deep", &[]));
                 }
                 let result = data_cmd::merged(&old, &nbt);
@@ -904,7 +904,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                             sorted
                                 .into_iter()
                                 .map(|s| {
-                                    Text::literal(s).with_color(sunrise_client_core::text::GREEN)
+                                    Text::literal(s).with_color(sunrise_game_data::text::GREEN)
                                 })
                                 .collect(),
                         )

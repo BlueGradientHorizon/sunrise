@@ -74,7 +74,7 @@ pub fn types_text(edit_modifier: bool, alt: bool, altgr_is_ctrl_alt: bool) -> bo
     !edit_modifier || (altgr_is_ctrl_alt && alt)
 }
 
-pub use sunrise_client_core::text::{filter_text, is_allowed_chat_character, strip_formatting};
+pub use sunrise_game_data::text::{filter_text, is_allowed_chat_character, strip_formatting};
 
 /// `TextFieldHelper.getClipboardContents`: formatting and carriage returns
 /// removed (signs).

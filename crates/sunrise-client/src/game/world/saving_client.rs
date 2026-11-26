@@ -4,7 +4,7 @@ use crate::game::saving::ClosingSave;
 use crate::game::saving::Stage;
 use std::time::{Duration, Instant};
 use sunrise_client::hud::HudBatch;
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 
 impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn begin_closing_save(&mut self, quit: bool) -> Result<()> {

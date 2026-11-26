@@ -81,23 +81,23 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             mob_griefing: self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING),
+                .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING),
             universal_anger: self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::UNIVERSAL_ANGER),
+                .bool_at(sunrise_game_data::gamerules::vanilla::UNIVERSAL_ANGER),
             mob_drops: self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_DROPS),
+                .bool_at(sunrise_game_data::gamerules::vanilla::MOB_DROPS),
             pvp: self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::PVP),
+                .bool_at(sunrise_game_data::gamerules::vanilla::PVP),
             max_entity_cramming: self
                 .ui
                 .rules
-                .int_at(sunrise_client_core::gamerules::vanilla::MAX_ENTITY_CRAMMING),
+                .int_at(sunrise_game_data::gamerules::vanilla::MAX_ENTITY_CRAMMING),
             dimension_type: self.dimension_type(),
             world_seed: self.level.seed,
             sea_level: self.dim.sea_level(),

@@ -353,7 +353,7 @@ mod tests {
             &Default::default(),
         );
         assert_eq!(
-            sunrise_client_core::snbt::pretty(&tag).plain(),
+            sunrise_game_data::snbt::pretty(&tag).plain(),
             r#"{Target: [I; 1, 2, 3, 4], components: {}, x: 4098, y: 300, z: 4098, id: "minecraft:conduit"}"#,
         );
         assert!(tag.get("keepPacked").is_none());

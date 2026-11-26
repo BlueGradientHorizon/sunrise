@@ -1,7 +1,7 @@
 //! What a mod's presence costs per call: a hook fired with no listener, or with the one native
 //! listener `sunrise-hot-paths-game` installs, and an attachment read and written.
 use super::{super::Game, Recorder};
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 
 /// The attachment the attachment workloads read and write: plain data, not saved or synced.
 static COUNTER: mod_api::AttachmentType<u32> = mod_api::AttachmentType {

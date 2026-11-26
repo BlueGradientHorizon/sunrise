@@ -55,7 +55,7 @@ fn say(game: &mut crate::game::ServerGame<'_>, command: &str) -> (bool, String) 
     (
         ok,
         said.iter()
-            .map(sunrise_client_core::text::Text::plain)
+            .map(sunrise_game_data::text::Text::plain)
             .collect(),
     )
 }
@@ -72,8 +72,8 @@ fn summon(game: &mut crate::game::ServerGame<'_>, extra: &str) {
 #[test]
 #[ignore = "daily"]
 fn a_blast_from_damage_breaks_the_stand_though_the_command_fails() {
-    let _language = sunrise_client_core::lang::isolate_publication(
-        sunrise_client_core::lang::Language::of("en_us", []),
+    let _language = sunrise_game_data::lang::isolate_publication(
+        sunrise_game_data::lang::Language::of("en_us", []),
     );
     let mut game_resources = None;
     let mut game = game(&mut game_resources);
@@ -99,8 +99,8 @@ fn a_blast_from_damage_breaks_the_stand_though_the_command_fails() {
 #[test]
 #[ignore = "daily"]
 fn fire_from_damage_lights_or_burns_the_stand_though_the_command_fails() {
-    let _language = sunrise_client_core::lang::isolate_publication(
-        sunrise_client_core::lang::Language::of("en_us", []),
+    let _language = sunrise_game_data::lang::isolate_publication(
+        sunrise_game_data::lang::Language::of("en_us", []),
     );
     let mut game_resources = None;
     let mut game = game(&mut game_resources);
@@ -120,8 +120,8 @@ fn fire_from_damage_lights_or_burns_the_stand_though_the_command_fails() {
 #[test]
 #[ignore = "daily"]
 fn igniting_a_frozen_stand_clears_its_freeze_while_burning_keeps_it() {
-    let _language = sunrise_client_core::lang::isolate_publication(
-        sunrise_client_core::lang::Language::of("en_us", []),
+    let _language = sunrise_game_data::lang::isolate_publication(
+        sunrise_game_data::lang::Language::of("en_us", []),
     );
     let mut resources = None;
     let mut game = game(&mut resources);
@@ -144,8 +144,8 @@ fn igniting_a_frozen_stand_clears_its_freeze_while_burning_keeps_it() {
 #[test]
 #[ignore = "daily"]
 fn damage_immunity_on_worn_boots_refuses_campfire_but_not_in_fire_or_wrong_slot() {
-    let _language = sunrise_client_core::lang::isolate_publication(
-        sunrise_client_core::lang::Language::of("en_us", []),
+    let _language = sunrise_game_data::lang::isolate_publication(
+        sunrise_game_data::lang::Language::of("en_us", []),
     );
     let mut resources = None;
     let mut game = game(&mut resources);
@@ -185,8 +185,8 @@ fn take_events() -> Vec<(&'static str, [f64; 3], Option<sunrise_sim::mobs::Who>)
 #[test]
 #[ignore = "daily"]
 fn cause_damage_and_explosion_post_attributed_game_events() {
-    let _language = sunrise_client_core::lang::isolate_publication(
-        sunrise_client_core::lang::Language::of("en_us", []),
+    let _language = sunrise_game_data::lang::isolate_publication(
+        sunrise_game_data::lang::Language::of("en_us", []),
     );
     use sunrise_sim::mobs::Who;
     let mut resources = None;
@@ -251,8 +251,8 @@ fn items(game: &mut crate::game::ServerGame<'_>) -> String {
 #[test]
 #[ignore = "daily"]
 fn control_an_absent_or_removed_stand_is_not_broken_again() {
-    let _language = sunrise_client_core::lang::isolate_publication(
-        sunrise_client_core::lang::Language::of("en_us", []),
+    let _language = sunrise_game_data::lang::isolate_publication(
+        sunrise_game_data::lang::Language::of("en_us", []),
     );
     let mut game_resources = None;
     let mut game = game(&mut game_resources);
@@ -270,8 +270,8 @@ fn control_an_absent_or_removed_stand_is_not_broken_again() {
 #[test]
 #[ignore = "daily"]
 fn control_invulnerable_and_marker_stands_refuse_the_blast() {
-    let _language = sunrise_client_core::lang::isolate_publication(
-        sunrise_client_core::lang::Language::of("en_us", []),
+    let _language = sunrise_game_data::lang::isolate_publication(
+        sunrise_game_data::lang::Language::of("en_us", []),
     );
     for flag in ["Invulnerable:1b", "Marker:1b"] {
         let mut game_resources = None;
@@ -295,8 +295,8 @@ fn control_invulnerable_and_marker_stands_refuse_the_blast() {
 #[test]
 #[ignore = "daily"]
 fn control_repeated_burning_breaks_the_stand_once() {
-    let _language = sunrise_client_core::lang::isolate_publication(
-        sunrise_client_core::lang::Language::of("en_us", []),
+    let _language = sunrise_game_data::lang::isolate_publication(
+        sunrise_game_data::lang::Language::of("en_us", []),
     );
     let mut game_resources = None;
     let mut game = game(&mut game_resources);
@@ -338,8 +338,8 @@ fn with_player(game: &mut crate::game::ServerGame<'_>) {
 #[test]
 #[ignore = "daily"]
 fn a_player_attack_from_damage_wobbles_then_breaks_the_stand() {
-    let _language = sunrise_client_core::lang::isolate_publication(
-        sunrise_client_core::lang::Language::of("en_us", []),
+    let _language = sunrise_game_data::lang::isolate_publication(
+        sunrise_game_data::lang::Language::of("en_us", []),
     );
     let mut game_resources = None;
     let mut game = game(&mut game_resources);
@@ -378,8 +378,8 @@ fn a_player_attack_from_damage_wobbles_then_breaks_the_stand() {
 #[test]
 #[ignore = "daily"]
 fn an_always_killing_source_breaks_the_stand_on_the_first_hit() {
-    let _language = sunrise_client_core::lang::isolate_publication(
-        sunrise_client_core::lang::Language::of("en_us", []),
+    let _language = sunrise_game_data::lang::isolate_publication(
+        sunrise_game_data::lang::Language::of("en_us", []),
     );
     let mut game_resources = None;
     let mut game = game(&mut game_resources);
@@ -393,8 +393,8 @@ fn an_always_killing_source_breaks_the_stand_on_the_first_hit() {
 #[test]
 #[ignore = "daily"]
 fn a_creative_player_breaks_the_stand_at_once_without_drops() {
-    let _language = sunrise_client_core::lang::isolate_publication(
-        sunrise_client_core::lang::Language::of("en_us", []),
+    let _language = sunrise_game_data::lang::isolate_publication(
+        sunrise_game_data::lang::Language::of("en_us", []),
     );
     let mut game_resources = None;
     let mut game = game(&mut game_resources);
@@ -412,8 +412,8 @@ fn a_creative_player_breaks_the_stand_at_once_without_drops() {
 #[test]
 #[ignore = "daily"]
 fn a_player_who_may_not_build_cannot_hurt_the_stand() {
-    let _language = sunrise_client_core::lang::isolate_publication(
-        sunrise_client_core::lang::Language::of("en_us", []),
+    let _language = sunrise_game_data::lang::isolate_publication(
+        sunrise_game_data::lang::Language::of("en_us", []),
     );
     for mode in ["adventure", "spectator"] {
         let mut game_resources = None;
@@ -438,8 +438,8 @@ fn a_player_who_may_not_build_cannot_hurt_the_stand() {
 #[test]
 #[ignore = "daily"]
 fn control_a_source_in_neither_tag_still_fails_without_a_hurt() {
-    let _language = sunrise_client_core::lang::isolate_publication(
-        sunrise_client_core::lang::Language::of("en_us", []),
+    let _language = sunrise_game_data::lang::isolate_publication(
+        sunrise_game_data::lang::Language::of("en_us", []),
     );
     let mut game_resources = None;
     let mut game = game(&mut game_resources);
@@ -469,8 +469,8 @@ fn events(
 #[test]
 #[ignore = "daily"]
 fn a_hit_from_damage_posts_entity_damage_then_entity_die_for_its_causing_entity() {
-    let _language = sunrise_client_core::lang::isolate_publication(
-        sunrise_client_core::lang::Language::of("en_us", []),
+    let _language = sunrise_game_data::lang::isolate_publication(
+        sunrise_game_data::lang::Language::of("en_us", []),
     );
     let mut game_resources = None;
     let mut game = game(&mut game_resources);
@@ -494,8 +494,8 @@ fn a_hit_from_damage_posts_entity_damage_then_entity_die_for_its_causing_entity(
 #[test]
 #[ignore = "daily"]
 fn an_always_killing_source_posts_only_entity_die_for_a_stand_without_a_cause() {
-    let _language = sunrise_client_core::lang::isolate_publication(
-        sunrise_client_core::lang::Language::of("en_us", []),
+    let _language = sunrise_game_data::lang::isolate_publication(
+        sunrise_game_data::lang::Language::of("en_us", []),
     );
     let mut game_resources = None;
     let mut game = game(&mut game_resources);

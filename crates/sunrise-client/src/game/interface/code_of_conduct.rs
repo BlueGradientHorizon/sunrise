@@ -10,8 +10,8 @@ use sunrise_client::{
     hud::{HudBatch, rgba},
     multiplayer, ui,
 };
-use sunrise_client_core::{Result, text::Text};
 use sunrise_core::random::java_string_hash;
+use sunrise_game_data::{Result, text::Text};
 use sunrise_protocol::servers;
 
 /// The text's line height.

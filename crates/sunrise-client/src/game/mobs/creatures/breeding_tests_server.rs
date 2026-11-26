@@ -215,7 +215,7 @@ pub(in crate::game) fn tick_breeding(
     game.mobs.clear();
     game.ui.rules.set(
         "mob_drops",
-        sunrise_client_core::gamerules::Value::Bool(mob_drops),
+        sunrise_game_data::gamerules::Value::Bool(mob_drops),
     );
     let base = game.side.next_entity;
     game.side.next_entity += 2;

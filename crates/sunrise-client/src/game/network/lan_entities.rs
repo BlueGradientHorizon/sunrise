@@ -446,7 +446,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 e.meta.push((
                     2,
                     serializer::OPTIONAL_COMPONENT,
-                    Value::OptText(Some(sunrise_client_core::scoreboard::json_to_tag(
+                    Value::OptText(Some(sunrise_game_data::scoreboard::json_to_tag(
                         &name.component(),
                     ))),
                 ));

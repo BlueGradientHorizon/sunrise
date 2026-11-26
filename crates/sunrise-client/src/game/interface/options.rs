@@ -10,7 +10,7 @@ use sunrise_client::{
     options_ui::{Event, Page},
     window::{FrameContext, InactivityFpsLimit, framerate_limit},
 };
-use sunrise_client_core::{Result, lang, text::Text};
+use sunrise_game_data::{Result, lang, text::Text};
 use winit::{event::MouseButton, keyboard::KeyCode, window::Fullscreen};
 
 /// `CommonLinks.ACCESSIBILITY_HELP`, the Accessibility page's footer link.

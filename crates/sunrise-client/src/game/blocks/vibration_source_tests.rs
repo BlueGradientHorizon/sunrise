@@ -60,7 +60,7 @@ fn read(game: &mut crate::game::ServerGame<'_>, path: &str) -> Option<String> {
     let said = game.side.chat_capture.take().unwrap_or_default();
     ok.then(|| {
         said.iter()
-            .map(sunrise_client_core::text::Text::plain)
+            .map(sunrise_game_data::text::Text::plain)
             .collect()
     })
 }

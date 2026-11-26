@@ -16,9 +16,9 @@ use std::{
     sync::Arc,
 };
 use sunrise_client::{hud::rgba, toasts::Slide};
-use sunrise_client_core::text::{self, Style, Text};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::RandomSource;
+use sunrise_game_data::text::{self, Style, Text};
 use sunrise_items::items::ItemStack;
 use sunrise_level::effects::PlayerEffects;
 use sunrise_protocol::packets::play::Clientbound as C;
@@ -1403,7 +1403,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::SHOW_ADVANCEMENT_MESSAGES)
+                .bool_at(sunrise_game_data::gamerules::vanilla::SHOW_ADVANCEMENT_MESSAGES)
         {
             let key = match d.frame {
                 Frame::Task => "chat.type.advancement.task",
@@ -2764,7 +2764,7 @@ pub(in crate::game::server_side) fn frame_color(frame: Frame) -> u32 {
 /// siblings): a parsed Text moves a styled root's style down a level once it
 /// has siblings.
 pub(in crate::game::server_side) fn decorate_name(d: &adv::Display) -> Text {
-    let mut component = match sunrise_client_core::scoreboard::canonical_component(&d.title) {
+    let mut component = match sunrise_game_data::scoreboard::canonical_component(&d.title) {
         Value::String(s) => serde_json::json!({ "text": s }),
         c => c,
     };
@@ -2853,7 +2853,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
 /// An advancement's title or description: a whole component (ComponentSerialization.CODEC),
 /// with its siblings and styles, as a plugin's `{"text":"","extra":[...]}` needs.
 pub(in crate::game) fn text_of(v: &Value) -> Text {
-    sunrise_client_core::scoreboard::comp_text(v)
+    sunrise_game_data::scoreboard::comp_text(v)
 }
 
 #[cfg(test)]
@@ -2970,7 +2970,7 @@ pub(in crate::game) mod tests {
                 serde_json::json!("Bob"),
             ),
         ] {
-            let text = sunrise_client_core::scoreboard::comp_text(&name);
+            let text = sunrise_game_data::scoreboard::comp_text(&name);
             game.mobs[0].custom_name = Some(text.plain());
             game.mobs[0].custom_name_text = Some(text);
             for key in ["components", "minecraft:components"] {
@@ -3252,7 +3252,7 @@ pub(in crate::game) mod tests {
             serde_json::json!("Open the board"),
         );
         let (sent, local) = hover(&a);
-        let sent = sunrise_client_core::scoreboard::comp_text(&sent);
+        let sent = sunrise_game_data::scoreboard::comp_text(&sent);
         assert_eq!(sent.plain(), "Quest Board\nOpen the board");
         let colors = |t: &Text| t.spans.iter().map(|s| s.style.color).collect::<Vec<_>>();
         let (gold, green) = (Some(text::GOLD), Some(text::GREEN));
@@ -3274,7 +3274,7 @@ pub(in crate::game) mod tests {
         );
         for a in [object, list] {
             let (sent, local) = hover(&a);
-            let sent = sunrise_client_core::scoreboard::comp_text(&sent);
+            let sent = sunrise_game_data::scoreboard::comp_text(&sent);
             assert_eq!(sent.plain(), "Quest Board\nOpen the board");
             let last = &sent.spans.last().unwrap().style;
             assert_eq!((last.color, last.bold), (Some(text::GOLD), Some(true)));

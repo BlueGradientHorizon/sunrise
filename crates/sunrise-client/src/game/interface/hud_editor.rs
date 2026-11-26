@@ -10,7 +10,7 @@ use sunrise_client::{
     pvp_hud::{self, Layout, Place, WidgetId},
     ui,
 };
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 
 #[derive(Default)]
 pub(in crate::game) struct HudEditor {

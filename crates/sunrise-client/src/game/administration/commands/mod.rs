@@ -34,16 +34,16 @@ pub(in crate::game) mod text_commands;
 pub(in crate::game) mod world_cmds;
 
 use super::{Dim, Game};
-use sunrise_client_core::{
-    gamerules::{self, Value},
-    text::{self, Text},
-};
 use sunrise_command::{
     Arg, CommandError, Context, Reader,
     args::{BlockInput, Coordinates, ItemInput, Selector},
     vanilla::DIFFICULTIES,
 };
 use sunrise_core::{geometry::Vec3, java_number::float_to_string, random::RandomSource};
+use sunrise_game_data::{
+    gamerules::{self, Value},
+    text::{self, Text},
+};
 use sunrise_items::items::ItemStack;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_world::registry::BlockStateId;
@@ -383,7 +383,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && self
                     .ui
                     .rules
-                    .bool_at(sunrise_client_core::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
+                    .bool_at(sunrise_game_data::gamerules::vanilla::SEND_COMMAND_FEEDBACK);
             let changed = self.for_player(t, |g| {
                 if !g.set_game_mode(mode) {
                     return false;
@@ -1065,7 +1065,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let Ok(pattern) = sunrise_command::snbt::parse_fully(nbt) else {
             return false;
         };
-        sunrise_client_core::nbt_path::compare_nbt(&pattern, self.block_entity_nbt(p).as_ref())
+        sunrise_game_data::nbt_path::compare_nbt(&pattern, self.block_entity_nbt(p).as_ref())
     }
     /// The state part of `block_matches`: name or tag, then properties.
     pub(in crate::game) fn command_block_state_matches(
@@ -1764,8 +1764,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
                         .map(|(t, _)| t);
                     match (present, value) {
                         (Some(have), Some(want)) => {
-                            sunrise_client_core::nbt_path::compare_nbt(&want, Some(have))
-                                && sunrise_client_core::nbt_path::compare_nbt(have, Some(&want))
+                            sunrise_game_data::nbt_path::compare_nbt(&want, Some(have))
+                                && sunrise_game_data::nbt_path::compare_nbt(have, Some(&want))
                         }
                         _ => false,
                     }
@@ -1817,7 +1817,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                                 }
                         }
                         (_, Some(v)) => present.is_some_and(|have| {
-                            sunrise_client_core::nbt_path::compare_nbt(&v, Some(have))
+                            sunrise_game_data::nbt_path::compare_nbt(&v, Some(have))
                         }),
                         _ => false,
                     }

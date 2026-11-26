@@ -3,7 +3,7 @@ MultiLineEditBox.setValue	port	crates/sunrise-client-render/src/multiline_edit.r
 TransferableSelectionList.PackEntry.mouseClicked	inline	crates/sunrise-client-render/src/pack_screen.rs::PackScreen::click	entry select, move arrows and double-click transfer
 CompoundTag.getIntArray	skip:java		typed NBT accessor; Rust matches Tag::IntArray where it reads one
 Component.toFlatList	skip:java		Sunrise Text already keeps flat styled spans
-Style.withColor	port	crates/sunrise-client-core/src/text.rs::Text::with_color	colour on the text span
+Style.withColor	port	crates/sunrise-game-data/src/text.rs::Text::with_color	colour on the text span
 MinecraftServer.halt	port	crates/sunrise-client/src/game/world/integrated.rs::Integrated::halt	stop the integrated server and wait for it
 DedicatedPlayerList.loadOps	inline	crates/sunrise-server-files/src/user_lists.rs::UserList::load	ops.json through the shared user-list loader
 ServerStatsCounter.toJson	inline	crates/sunrise-client/src/game/interface/stats.rs::Stats::write	stats JSON built while saving

@@ -106,7 +106,7 @@ fn reload_conditions_read_candidate_registries_and_bound_tags() {
                     Some(1),
                     true,
                     None,
-                    std::sync::Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
+                    std::sync::Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
                 )
                 .unwrap();
                 request.save_root = root.to_owned();

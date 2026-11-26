@@ -216,12 +216,12 @@
     "rationale": "Existing separately supplied input SUNRISE_SPECIAL_ATTACK_CASES in tools/ci/ignored-tests/harness-inputs.txt; its dedicated workflow/harness must supply this input, which ordinary prepared resources do not contain. needs prepared resources and SUNRISE_SPECIAL_ATTACK_CASES=INPUT,OUTPUT"
   },
   {
-    "package": "sunrise-client-core",
+    "package": "sunrise-game-data",
     "target": "lib",
     "test": "lang::tests::every_lang_file_of_a_pack_reads",
-    "path": "crates/sunrise-client-core/src/lang.rs",
+    "path": "crates/sunrise-game-data/src/lang.rs",
     "reason": "needs a downloaded pack in SUNRISE_LANG_PACK_DIR",
-    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-sunrise-client-core.txt: needs a downloaded pack in SUNRISE_LANG_PACK_DIR. Not selected by daily shards."
+    "rationale": "Existing explicit manual runner by-hand in tools/ci/ignored-tests/manual-sunrise-game-data.txt: needs a downloaded pack in SUNRISE_LANG_PACK_DIR. Not selected by daily shards."
   },
   {
     "package": "sunrise-sim",

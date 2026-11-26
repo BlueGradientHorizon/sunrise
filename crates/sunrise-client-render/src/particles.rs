@@ -30,7 +30,7 @@ pub use sunrise_level::particle_options::{
 pub use sunrise_level::potent_sulfur_level::SulfurLevel;
 use sunrise_world::block_collision::BlockCollisionRegistry;
 
-pub use sunrise_client_core::particle_type::ParticleType;
+pub use sunrise_game_data::particle_type::ParticleType;
 pub use sunrise_items::firework::{DYE_FIREWORK_COLORS, FireworkExplosion, FireworkShape};
 mod collide;
 mod explosions;

@@ -5,12 +5,12 @@
 //! `/version`, with vanilla's feedback and failures.
 use super::{Arg, Context, Game, R, Target, err};
 use std::{collections::HashMap, time::Instant};
-use sunrise_client_core::{
+use sunrise_command::CommandError;
+use sunrise_core::nbt::{JavaString, Tag};
+use sunrise_game_data::{
     snbt,
     text::{self, ClickEvent, InlineObject, Style, Text},
 };
-use sunrise_command::CommandError;
-use sunrise_core::nbt::{JavaString, Tag};
 use sunrise_level::profile_lookup::{NameOrId, ResolvedProfile};
 use sunrise_protocol::packets::play::DialogHolder;
 use sunrise_sim::lan::waypoints::Icon;
@@ -247,9 +247,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 ) {
                     (Target::Player, Some(team)) => {
                         let mut n = Text::empty();
-                        n.push(sunrise_client_core::scoreboard::comp_text(&team.prefix));
+                        n.push(sunrise_game_data::scoreboard::comp_text(&team.prefix));
                         n.push(crate::game::chat_common::PLAYER_NAME);
-                        n.push(sunrise_client_core::scoreboard::comp_text(&team.suffix));
+                        n.push(sunrise_game_data::scoreboard::comp_text(&team.suffix));
                         n
                     }
                     _ => self.target_name(*t),

@@ -32,13 +32,13 @@ use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use sunrise_client_core::{Result, scoreboard::Scoreboard};
 use sunrise_core::{
     geometry::{Direction, Vec3},
     position::{BlockPos, ChunkPos},
     random::RandomSource,
     ticks::ChunkTicks,
 };
+use sunrise_game_data::{Result, scoreboard::Scoreboard};
 use sunrise_level::{chunk::Chunk, random_source};
 use sunrise_mod_runtime::attachments::{ATTACHMENTS_KEY, attachment_compound};
 use sunrise_sim::{
@@ -146,7 +146,7 @@ fn with_constructor_uuid(saved: Option<[i32; 4]>) -> Option<[i32; 4]> {
 /// `Entity.saveWithoutId`: materialize the mandatory fields of an entity
 /// whose simulation state is still represented by its loaded compound.
 pub(in crate::game::server_side) fn write_static_entity_fields(tag: &mut Tag) {
-    use sunrise_client_core::nbt_path::int_value;
+    use sunrise_game_data::nbt_path::int_value;
     use sunrise_sim::save::float;
 
     let int = |key, default| tag.get(key).and_then(int_value).unwrap_or(default);
@@ -736,7 +736,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 let p = block_entity_pos(tag);
                 if text(tag.get("id")).as_deref() == Some("minecraft:comparator")
                     && self.data_block_name(p) == "minecraft:comparator"
-                    && let Some(tag) = sunrise_client_core::block_entity_nbt::canonical(tag)
+                    && let Some(tag) = sunrise_game_data::block_entity_nbt::canonical(tag)
                     && let Some(Tag::Int(output)) = tag.get("OutputSignal")
                 {
                     self.block_ticks

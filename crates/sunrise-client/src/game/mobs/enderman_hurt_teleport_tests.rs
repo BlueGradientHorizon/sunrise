@@ -389,7 +389,7 @@ fn a_teleporting_shulker_posts_teleport_where_it_stood() {
         let said = game.side.chat_capture.take().unwrap_or_default();
         let said: String = said
             .iter()
-            .map(sunrise_client_core::text::Text::plain)
+            .map(sunrise_game_data::text::Text::plain)
             .collect();
         assert!(
             said.contains("minecraft:teleport") && said.contains("[8.5d, 4.5d, 8.5d]"),

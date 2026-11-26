@@ -36,7 +36,7 @@ fn advancement_icons_reach_local_and_remote_ui_surfaces() {
         let tree = Tree::load(&fixture().join("data"));
         if case == "local" {
             use crate::game::server_side::advancements::{Toast, text_of, toast_label};
-            use sunrise_client_core::text::Text;
+            use sunrise_game_data::text::Text;
             game.adv.tree = Arc::new(tree);
             game.adv.loaded = true;
             let tree = game.adv.tree.clone();

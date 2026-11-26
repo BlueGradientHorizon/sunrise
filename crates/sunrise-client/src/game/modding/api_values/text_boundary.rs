@@ -2,7 +2,7 @@
 mod text_style_capture;
 use super::{TryIntoApi, TryIntoEngine};
 use mod_api::text::{Text, TextFormError};
-use sunrise_client_core::text as engine;
+use sunrise_game_data::text as engine;
 
 impl TryIntoApi for engine::Text {
     type Api = Text;

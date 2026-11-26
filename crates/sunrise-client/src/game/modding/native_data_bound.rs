@@ -126,7 +126,7 @@ mod tests {
         mod_platform::testing::with_mods(mods, || {
             with_game(|game| {
                 let scratch = tempfile::tempdir().unwrap();
-                let registry = Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla());
+                let registry = Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla());
                 let create = sunrise_sim::world_options::WorldOptions::default();
                 let mut request = crate::game::world_loading::WorldRequest::new(
                     "defaults",

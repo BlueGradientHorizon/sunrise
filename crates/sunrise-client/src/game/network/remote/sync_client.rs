@@ -58,7 +58,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `handleAddObjective`: add, remove or change an objective.
     pub(in crate::game) fn remote_objective(&mut self, p: play::SetObjective) {
-        use sunrise_client_core::scoreboard::{RenderType, tag_to_json};
+        use sunrise_game_data::scoreboard::{RenderType, tag_to_json};
         let board = &mut self.score.board;
         match (p.method, p.display) {
             (1, _) => board.remove_objective(&p.name),
@@ -139,7 +139,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 |t| board.players_team(&t.name),
             );
             if r.remote_player_info_game_mode(m.id as i32) == Some(SPECTATOR)
-                || !sunrise_client_core::scoreboard::pushable_by(mob_team, player_team, true)
+                || !sunrise_game_data::scoreboard::pushable_by(mob_team, player_team, true)
             {
                 continue;
             }
@@ -171,10 +171,10 @@ impl Game<'_, crate::game::client_side::ClientState> {
             let bb = b.bounds();
             let times = usize::from(
                 bounds.intersects(bb.inflate(area))
-                    && sunrise_client_core::scoreboard::pushable_by(None, player_team, true),
+                    && sunrise_game_data::scoreboard::pushable_by(None, player_team, true),
             ) + usize::from(
                 bounds.intersects(bb)
-                    && sunrise_client_core::scoreboard::pushable_by(player_team, None, true),
+                    && sunrise_game_data::scoreboard::pushable_by(player_team, None, true),
             );
             if times > 0
                 && crate::game::boat_passengers::boat_pushes(bb, bounds, false)
@@ -362,7 +362,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game::client_side) fn remote_sound_entity_state(
         &mut self,
         id: i32,
-    ) -> Option<sunrise_client_core::sound_source::SoundEntityState> {
+    ) -> Option<sunrise_game_data::sound_source::SoundEntityState> {
         let r = self.remote.as_ref()?;
         let player = self.player.as_ref().map(|p| {
             (
@@ -376,7 +376,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             return entity_sound_state(id, player, None, &r.entities, None);
         }
         let mob = self.mob_index.get(&self.mobs, id as u32).map(|m| {
-            sunrise_client_core::sound_source::SoundEntityState {
+            sunrise_game_data::sound_source::SoundEntityState {
                 position: [m.position.x, m.position.y, m.position.z],
                 silent: m.silent,
                 removed: m.removed,
@@ -417,7 +417,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     }
     /// `handleSetPlayerTeamPacket`.
     pub(in crate::game) fn remote_team(&mut self, p: play::SetPlayerTeam) {
-        use sunrise_client_core::scoreboard::{CollisionRule, Visibility, tag_to_json};
+        use sunrise_game_data::scoreboard::{CollisionRule, Visibility, tag_to_json};
         let board = &mut self.score.board;
         let team = if p.method == 0 {
             board.add_team(&p.name)
@@ -441,7 +441,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             team.suffix = tag_to_json(&params.suffix);
             team.color = params
                 .color
-                .and_then(|c| sunrise_client_core::text::COLORS.get(c as usize))
+                .and_then(|c| sunrise_game_data::text::COLORS.get(c as usize))
                 .map(|c| c.1.to_owned());
             team.allow_friendly_fire = params.options & 1 != 0;
             team.see_friendly_invisibles = params.options & 2 != 0;

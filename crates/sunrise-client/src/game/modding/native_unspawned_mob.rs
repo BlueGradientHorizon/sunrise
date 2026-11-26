@@ -19,7 +19,7 @@ use mod_api::{
 };
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::{cell::RefCell, rc::Rc};
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_mod_runtime::pending_children::PendingChildren;
 use sunrise_sim::mobs::finalize::{Ageable, Group};
 use sunrise_sim::mobs::{Mob, equine, llama, tame};
@@ -414,8 +414,8 @@ pub(in crate::game) fn spawn_group(group: &SpawnGroup) -> Option<Group> {
         },
         SpawnGroup::Spider { effect } => Group::Spider(match effect {
             Some(id) => {
-                let def = sunrise_client_core::potions::effect(&id.to_string())?;
-                Some(sunrise_client_core::potions::namespaced(def.id))
+                let def = sunrise_game_data::potions::effect(&id.to_string())?;
+                Some(sunrise_game_data::potions::namespaced(def.id))
             }
             None => None,
         }),

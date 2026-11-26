@@ -94,7 +94,7 @@ impl StartupAdmission {
     pub(in crate::game) fn open(
         mods: &ModsState,
         refused: Vec<MissingJar>,
-    ) -> sunrise_client_core::Result<Self> {
+    ) -> sunrise_game_data::Result<Self> {
         let native = mods
             .native
             .packages()

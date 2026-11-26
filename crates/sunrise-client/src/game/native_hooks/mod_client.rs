@@ -42,7 +42,7 @@ use sunrise_client::{
     keybinds,
     music::{Music, MusicLayer},
 };
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{biome::BiomeColors, block_entities::Pos, containers::BlockEntity};
 use sunrise_mod_package::mod_list::{
@@ -749,7 +749,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         batch: &HudBatch,
         slot: Option<usize>,
-        lines: &mut Vec<(sunrise_client_core::text::Text, u32)>,
+        lines: &mut Vec<(sunrise_game_data::text::Text, u32)>,
     ) {
         let Some(screen) = self
             .shown_native_screen()
@@ -1620,8 +1620,8 @@ impl Game<'_, crate::game::client_side::ClientState> {
                 let reason = self.options.offline_reason.take()?;
                 Some(
                     sunrise_client::toasts::SystemToast::new(
-                        sunrise_client_core::text::Text::tr("sunrise.title.playing_offline", &[]),
-                        Some(sunrise_client_core::text::Text::literal(reason)),
+                        sunrise_game_data::text::Text::tr("sunrise.title.playing_offline", &[]),
+                        Some(sunrise_game_data::text::Text::literal(reason)),
                     )
                     .with_display_time(sunrise_client::toasts::SystemToast::LONG_DISPLAY_TIME),
                 )

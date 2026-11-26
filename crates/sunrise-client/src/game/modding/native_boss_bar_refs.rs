@@ -2,8 +2,8 @@
 use super::Game;
 use mod_api::__private::game::*;
 use mod_api::{BossBarColor, BossBarOverlay, BossBarRef, PlayerRef};
-use sunrise_client_core::{bossbar::BossBar, scoreboard::comp_text, text::Text};
 use sunrise_core::identifier::Identifier;
+use sunrise_game_data::{bossbar::BossBar, scoreboard::comp_text, text::Text};
 use sunrise_sim::lan::playerdata::{ints_uuid, uuid_ints};
 
 impl Game<'_, crate::game::server_side::ServerState> {
@@ -468,7 +468,7 @@ mod tests {
             game.side.world_root = dir.clone();
             game.save_bossbars();
             let root = sunrise_sim::save::read_dat(&game.bossbar_path()).unwrap();
-            let loaded = sunrise_client_core::bossbar::BossBars::unpack(root.get("data").unwrap());
+            let loaded = sunrise_game_data::bossbar::BossBars::unpack(root.get("data").unwrap());
             let kept = loaded.get("mod:bar").unwrap();
             assert_eq!((kept.value, kept.max, kept.color.as_str()), (9, 100, "red"));
             assert_eq!(kept.players, vec![uuid_ints(123)]);

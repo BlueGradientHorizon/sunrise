@@ -2,8 +2,8 @@
 //! updates (`setblock`, `fill`) to build test scenes.
 use super::Game;
 use serde_json::{Value, json};
-use sunrise_client_core::Result;
 use sunrise_core::random::RandomSource;
+use sunrise_game_data::Result;
 use sunrise_world::registry::BlockStateId;
 
 pub const HELP: &[&str] = &[

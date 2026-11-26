@@ -136,7 +136,7 @@ fn warp(declared: Declared) -> (Value, Dispatcher) {
 fn guest() -> Registries {
     Registries {
         permission: 3,
-        sender: Some(sunrise_client_core::registries::CommandSender {
+        sender: Some(sunrise_game_data::registries::CommandSender {
             uuid: 0x5eed,
             name: "Simon".into(),
         }),

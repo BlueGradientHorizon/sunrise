@@ -5,7 +5,7 @@
 use super::{chat_common::PLAYER_NAME, native_entity_refs::tests::run_fresh_cases, *};
 use mod_api::{Flow, Hooks, PlayerStatAwardEvent, ServerHost, StatType};
 use std::sync::{Arc, Mutex, atomic::AtomicI32, mpsc};
-use sunrise_client_core::{
+use sunrise_game_data::{
     scoreboard::{RenderType, stat_criteria},
     text::Text,
 };
@@ -197,7 +197,7 @@ fn a_player_killing_another_player_credits_the_kill() {
     add_objectives(&mut game);
     let host_team = game.score.board.add_team("host");
     host_team.color = Some("red".into());
-    host_team.prefix = sunrise_client_core::scoreboard::literal("Host: ");
+    host_team.prefix = sunrise_game_data::scoreboard::literal("Host: ");
     game.score.board.add_team("guest").color = Some("blue".into());
     assert!(game.score.board.add_to_team(PLAYER_NAME, "host"));
     assert!(game.score.board.add_to_team(VICTIM, "guest"));
@@ -222,7 +222,7 @@ fn a_player_killing_another_player_credits_the_kill() {
         .as_ref()
         .unwrap();
     assert_eq!(
-        sunrise_client_core::scoreboard::comp_text(display).plain(),
+        sunrise_game_data::scoreboard::comp_text(display).plain(),
         format!("Host: {PLAYER_NAME}")
     );
     game.tick_scoreboard();

@@ -244,7 +244,7 @@ pub fn markdown() -> String {
 mod tests {
     use super::*;
 
-    fn parse(args: &[&str]) -> sunrise_client_core::Result<Option<super::super::Options>> {
+    fn parse(args: &[&str]) -> sunrise_game_data::Result<Option<super::super::Options>> {
         super::super::Options::parse(args.iter().map(|a| a.to_string()))
     }
 

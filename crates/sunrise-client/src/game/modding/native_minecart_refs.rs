@@ -206,7 +206,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || !self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
+                .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
         {
             return false;
         }
@@ -396,7 +396,7 @@ mod tests {
             let mut features = game.level.enabled_features.to_vec();
             features.push("minecraft:minecart_improvements".into());
             game.level.enabled_features = features.into();
-            game.ui.rules = sunrise_client_core::gamerules::GameRules::with_features(
+            game.ui.rules = sunrise_game_data::gamerules::GameRules::with_features(
                 &game.level.enabled_features,
             );
             assert_eq!(rideable.max_speed(game), Some(8.0 / 20.0));
@@ -462,7 +462,7 @@ mod tests {
             assert!(!furnace.prime_fuse(game));
             game.ui.rules.set(
                 "tnt_explodes",
-                sunrise_client_core::gamerules::Value::Bool(false),
+                sunrise_game_data::gamerules::Value::Bool(false),
             );
             game.carts.update(3, |c| c.fuse = -1);
             assert!(!tnt.prime_fuse(game));
@@ -518,14 +518,14 @@ mod tests {
             assert!(
                 game.ui
                     .rules
-                    .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
+                    .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
             );
             assert!(game.perform_cart_command(id));
             assert!(
                 !game
                     .ui
                     .rules
-                    .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING),
+                    .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING),
                 "the new command ran"
             );
             assert!(!rideable.set_command(game, "say hi"));

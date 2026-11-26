@@ -2,7 +2,7 @@
 //! and its payloads). Plain data, as vanilla's block entities are world data;
 //! their behaviour lives with the features that use them (`containers`,
 //! `brewing`, `signs`, ...), which re-export these types under their old paths.
-use sunrise_client_core::{
+use sunrise_game_data::{
     text::Text,
     who::{EventSource, Who},
 };

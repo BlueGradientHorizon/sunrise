@@ -421,7 +421,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             self.spectator_scroll(-wheel);
         } else if self.own_player_is_spectator() {
             let speed = self.player.as_mut().map(|player| {
-                player.flying_speed = sunrise_client_core::move_input::spectator_flying_speed(
+                player.flying_speed = sunrise_game_data::move_input::spectator_flying_speed(
                     player.flying_speed,
                     vertical_steps,
                 );

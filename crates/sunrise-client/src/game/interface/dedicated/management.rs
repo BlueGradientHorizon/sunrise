@@ -6,11 +6,11 @@
 use super::{GAME_MODES, ServerState, auto_save, log, set_auto_save};
 use crate::game::Game;
 use serde_json::{Value, json};
-use sunrise_client_core::{
+use sunrise_command::vanilla::DIFFICULTIES;
+use sunrise_game_data::{
     gamerules::{self, Value as GameRuleValue},
     text::Text,
 };
-use sunrise_command::vanilla::DIFFICULTIES;
 use sunrise_protocol::text::translatable;
 use sunrise_server_files::profiles;
 use sunrise_server_files::user_lists::{BanEntry, NameAndId, OpEntry, WhiteEntry};

@@ -113,7 +113,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
+                .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS)
             && let Some(stack) = self.picked_stack(pos, true)
         {
             self.spawn_item_own(stack, pos.map(f64::from), 10);

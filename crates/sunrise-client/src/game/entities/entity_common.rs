@@ -144,7 +144,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             (((self.yaw - 180.0 + 180.0).rem_euclid(360.0) - 180.0 + 22.5) / 45.0).floor() * 45.0;
         let mut stand = ArmorStand::new(0, foot, yaw);
         if let Some(name) = stack.custom_name() {
-            stand.custom_name = Some(sunrise_client_core::text::Text::literal(name));
+            stand.custom_name = Some(sunrise_game_data::text::Text::literal(name));
         }
         let b = stand.bounds();
         let (lo, hi) = (b.min_position(), b.max_position());

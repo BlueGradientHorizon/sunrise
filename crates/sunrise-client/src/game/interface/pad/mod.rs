@@ -19,8 +19,8 @@ use sunrise_client::{
     keymapping::SNEAK,
     pad_glyph::{Glyph, Glyphs},
 };
-use sunrise_client_core::Result;
 use sunrise_client_input::radial;
+use sunrise_game_data::Result;
 use winit::event::MouseButton;
 use winit::keyboard::KeyCode;
 
@@ -863,7 +863,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         if !self.side.settings.controller.enabled {
             return;
         }
-        let label = sunrise_client_core::lang::get;
+        let label = sunrise_game_data::lang::get;
         let notice = match change {
             Connection::Connected(family) => Notice::new(
                 label("sunrise.controller.notice.controller_connected"),

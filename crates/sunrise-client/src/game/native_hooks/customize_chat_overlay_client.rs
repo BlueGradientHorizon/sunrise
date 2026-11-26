@@ -11,7 +11,7 @@ pub(in crate::game) mod customize_chat_overlay_tests {
     use mod_platform::testing::with_mods;
     use std::sync::Arc;
     use sunrise_client::hud::HudBatch;
-    use sunrise_client_core::text::Text;
+    use sunrise_game_data::text::Text;
 
     /// `CustomizeGuiOverlayEvent.Chat`: the mod gets vanilla's place (0, GUI height - 40) and the
     /// GUI size, focused or not, and the chat is drawn where it moved it. With the chat hidden

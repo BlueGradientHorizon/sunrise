@@ -89,7 +89,7 @@ fn a_baby_rabbit_takes_a_parents_colour_or_a_fresh_biome_variant() {
         if game
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_DROPS)
+            .bool_at(sunrise_game_data::gamerules::vanilla::MOB_DROPS)
         {
             let _ = parent.next_int_bound(7);
         }

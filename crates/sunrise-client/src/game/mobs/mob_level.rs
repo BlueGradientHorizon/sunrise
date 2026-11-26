@@ -32,7 +32,7 @@ impl MobLevel for Game<'_, crate::game::server_side::ServerState> {
     fn mob_griefing(&self) -> bool {
         self.ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
+            .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
     }
     fn entity_grief(&self, entity: u32, rule: bool) -> bool {
         Game::entity_grief(self, entity, rule)

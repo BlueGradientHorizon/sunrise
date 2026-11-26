@@ -30,8 +30,8 @@ mod tests {
                 ("Space", "tail", "Space / Cake + tail"),
                 ("Espace", "fin", "Espace / Cake + fin"),
             ] {
-                sunrise_client_core::lang::scoped(
-                    sunrise_client_core::lang::Language::of(
+                sunrise_game_data::lang::scoped(
+                    sunrise_game_data::lang::Language::of(
                         "test",
                         [
                             ("test.plain".into(), "%2$s / %1$s".into()),
@@ -66,7 +66,7 @@ mod tests {
             let plain: Vec<_> = lines
                 .iter()
                 .map(|line| {
-                    let line: sunrise_client_core::text::Text = line.try_into_engine(&()).unwrap();
+                    let line: sunrise_game_data::text::Text = line.try_into_engine(&()).unwrap();
                     assert!(line.chars().all(|(_, style)| style.is_bold()));
                     line.plain()
                 })
@@ -78,7 +78,7 @@ mod tests {
             let plain: Vec<_> = lines
                 .iter()
                 .map(|line| {
-                    let line: sunrise_client_core::text::Text = line.try_into_engine(&()).unwrap();
+                    let line: sunrise_game_data::text::Text = line.try_into_engine(&()).unwrap();
                     line.plain()
                 })
                 .collect();
@@ -107,8 +107,8 @@ mod tests {
                 arguments: vec![],
             });
             for (value, width, lines) in [("A", 6, 1), ("AA", 12, 2)] {
-                sunrise_client_core::lang::scoped(
-                    sunrise_client_core::lang::Language::of(
+                sunrise_game_data::lang::scoped(
+                    sunrise_game_data::lang::Language::of(
                         "test",
                         [("test.measure".into(), value.into())],
                     ),

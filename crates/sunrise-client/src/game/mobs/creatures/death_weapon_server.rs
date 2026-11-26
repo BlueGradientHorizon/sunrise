@@ -58,7 +58,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let mob_drops = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_DROPS);
+            .bool_at(sunrise_game_data::gamerules::vanilla::MOB_DROPS);
         let experience = sunrise_sim::mobs::drops::experience_reward(m, player_killed, mob_drops);
         let reward = experience.filter(|_| !consumed)?;
         let kind = crate::game::native_hooks::mob_kind(m);
@@ -213,7 +213,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             mob_drops: self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_DROPS),
+                .bool_at(sunrise_game_data::gamerules::vanilla::MOB_DROPS),
             world_seed: self.level.seed,
         };
         let raider = sunrise_sim::mobs::raider::is_raider(m.species());

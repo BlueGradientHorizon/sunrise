@@ -111,7 +111,7 @@ pub struct UiResources {
 #[rustfmt::skip]
 pub struct PlainTexts(
     pub(in crate::game)
-        std::cell::RefCell<std::collections::HashMap<Box<str>, sunrise_client_core::text::Text>>,
+        std::cell::RefCell<std::collections::HashMap<Box<str>, sunrise_game_data::text::Text>>,
 );
 
 #[cfg(feature = "client")]

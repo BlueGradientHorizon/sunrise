@@ -689,7 +689,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let (kind, name) = if let Some(mob) = self.mob_object(root) {
             (
                 VehicleTreeKind::Mob,
-                sunrise_client_core::identifier::normalize_id(&mob.kind.id)?,
+                sunrise_game_data::identifier::normalize_id(&mob.kind.id)?,
             )
         } else if let Some(boat) = self.boat_object(root) {
             (VehicleTreeKind::Boat, boat.entity_type())

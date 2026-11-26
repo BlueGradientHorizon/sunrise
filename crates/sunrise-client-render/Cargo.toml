@@ -16,7 +16,7 @@ sunrise-mod-api-macros = { path = "../sunrise-mod-api-macros" }
 lz4_flex = { version = "0.14", default-features = false, features = ["std", "safe-encode", "safe-decode", "checked-decode"] }
 sunrise-assets = { path = "../sunrise-assets" }
 sunrise-audio-input = { path = "../sunrise-audio-input", optional = true }
-sunrise-client-core = { path = "../sunrise-client-core" }
+sunrise-game-data = { path = "../sunrise-game-data" }
 sunrise-client-input = { path = "../sunrise-client-input" }
 sunrise-command = { path = "../sunrise-command" }
 sunrise-core = { path = "../sunrise-core" }

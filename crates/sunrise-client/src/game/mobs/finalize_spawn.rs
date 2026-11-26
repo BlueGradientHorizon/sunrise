@@ -431,7 +431,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn the_striders_piglin_rider_needs_spawning_monsters() {
-        use sunrise_client_core::gamerules::Value as RuleValue;
+        use sunrise_game_data::gamerules::Value as RuleValue;
         crate::game::native_guest_turn_tests::with_guests(|game| {
             // The gate reads the difficulty setting (`ui.difficulty`), which a
             // fresh test game leaves peaceful; the rules default on.

@@ -2,7 +2,7 @@
 
 use super::Game;
 use sunrise_client::hud::{HudBatch, rgba};
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack as EngineStack;
 
 impl Game<'_, crate::game::client_side::ClientState> {

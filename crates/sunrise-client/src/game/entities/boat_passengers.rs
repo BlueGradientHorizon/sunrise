@@ -7,9 +7,9 @@
 #[allow(unused_imports)]
 use super::{Game, boats::Boat, commands::Target, lan_mobs::guest_bounds};
 use std::cell::{Cell, Ref, RefCell};
-#[allow(unused_imports)]
-use sunrise_client_core::scoreboard::pushable_by;
 use sunrise_core::geometry::{Aabb, Vec3};
+#[allow(unused_imports)]
+use sunrise_game_data::scoreboard::pushable_by;
 #[allow(unused_imports)]
 use sunrise_level::fast_hash::FxHashMap;
 #[allow(unused_imports)]

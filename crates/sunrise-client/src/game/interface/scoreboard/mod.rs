@@ -9,10 +9,10 @@ use sunrise_core::nbt::Tag;
 use sunrise_gameplay_common::stats::{StatScoreChange, StatScoreOp};
 #[allow(unused_imports)]
 use {
-    sunrise_client_core::scoreboard as sb, sunrise_client_core::scoreboard::Comp,
-    sunrise_client_core::scoreboard::Scoreboard, sunrise_client_core::scoreboard::literal,
-    sunrise_client_core::text::Text, sunrise_command::Context, sunrise_command::args::IntRange,
-    sunrise_command::args::Selector, sunrise_level::profile_lookup::TabPlayer,
+    sunrise_command::Context, sunrise_command::args::IntRange, sunrise_command::args::Selector,
+    sunrise_game_data::scoreboard as sb, sunrise_game_data::scoreboard::Comp,
+    sunrise_game_data::scoreboard::Scoreboard, sunrise_game_data::scoreboard::literal,
+    sunrise_game_data::text::Text, sunrise_level::profile_lookup::TabPlayer,
     sunrise_sim::lan::guest::Guest, sunrise_sim::lan::playerdata::ints_uuid, sunrise_sim::save,
     sunrise_sim::save::uuid_from_text, sunrise_sim::save::uuid_text, sunrise_sim::scoreboard_cmd,
     sunrise_sim::scoreboard_cmd::Env, sunrise_sim::scoreboard_cmd::Holder,
@@ -409,7 +409,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 for (pattern, negated) in &s.nbt {
                     let matches = match (&data, sunrise_core::nbt::parse_snbt(pattern)) {
                         (Some(d), Ok((p, _))) => {
-                            sunrise_client_core::nbt_path::compare_nbt(&p, Some(d))
+                            sunrise_game_data::nbt_path::compare_nbt(&p, Some(d))
                         }
                         _ => false,
                     };

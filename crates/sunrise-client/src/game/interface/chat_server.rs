@@ -2,8 +2,8 @@ use super::Game;
 use crate::game::chat_common::SessionDispatcher;
 use crate::game::chat_common::command_export;
 use std::sync::Arc;
-use sunrise_client_core::text::Text;
 use sunrise_command::Registries;
+use sunrise_game_data::text::Text;
 use sunrise_gameplay::world_clock::OVERWORLD_CLOCK;
 use sunrise_gameplay::world_clock::WorldClock;
 
@@ -48,7 +48,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// first tick and any player: a refusal fails the open.
     pub(in crate::game::server_side) fn load_world_state(
         &mut self,
-    ) -> sunrise_client_core::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         self.ui.dispatcher =
             SessionDispatcher(Arc::new(sunrise_command::vanilla::session_dispatcher(
                 &self.level.rule_registry,

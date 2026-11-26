@@ -235,7 +235,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
             .map(|r| {
                 let with = r.with.and_then(|w| self.glyph(w));
                 let glyphs = with.into_iter().chain(self.glyph(r.of));
-                HintRow::new(glyphs, sunrise_client_core::lang::get(r.caption))
+                HintRow::new(glyphs, sunrise_game_data::lang::get(r.caption))
             })
             .collect();
         // Glyphs against the view's edge, captions towards the middle.

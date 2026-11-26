@@ -5,7 +5,7 @@
 //! chunk the players leave.
 use super::{CommandError, Dim, Game};
 use std::time::{Duration, Instant};
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_sim::{lan::data::component_nbt, pregen::Pregen};
 

@@ -133,7 +133,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn check_wither_spawn(
         &mut self,
         placed: [i32; 3],
-    ) -> sunrise_client_core::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         // The transaction journals ordinary state and entity changes, not this
         // pattern's flag-2 writes, destroy events and subsequent neighbour pass.
         // The mod placement preflight refuses a completing formation before it writes.
@@ -158,7 +158,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         &mut self,
         found: PatternMatch,
         cells: &[[i32; 3]],
-    ) -> sunrise_client_core::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         // Clear the pattern, the wither appears on the middle of the bottom
         // row facing along the pattern's forwards axis, then neighbours update.
         self.clear_pattern_blocks(cells)?;
@@ -191,7 +191,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         p: &Projectile,
         hit: sunrise_sim::projectiles::Hit,
         at: [f64; 3],
-    ) -> sunrise_client_core::Result<()> {
+    ) -> sunrise_game_data::Result<()> {
         let who = match hit {
             sunrise_sim::projectiles::Hit::Entity { who, .. } => Some(who),
             _ => None,

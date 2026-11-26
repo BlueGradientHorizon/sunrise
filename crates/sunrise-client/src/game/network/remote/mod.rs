@@ -138,8 +138,8 @@ pub(in crate::game) use super::villager_client::builtin_registries;
 pub(in crate::game) mod chat_queue;
 
 /// A text component the server sent, for the HUD.
-pub(in crate::game) fn remote_text(tag: &Tag) -> sunrise_client_core::text::Text {
-    use sunrise_client_core::scoreboard::{comp_text, tag_to_json};
+pub(in crate::game) fn remote_text(tag: &Tag) -> sunrise_game_data::text::Text {
+    use sunrise_game_data::scoreboard::{comp_text, tag_to_json};
     comp_text(&tag_to_json(tag))
 }
 
@@ -157,11 +157,11 @@ pub(in crate::game) fn player_voice_pitch() -> f32 {
 pub(in crate::game) fn entity_sound_state(
     id: i32,
     player: Option<(i32, [f64; 3], bool)>,
-    mob: Option<sunrise_client_core::sound_source::SoundEntityState>,
+    mob: Option<sunrise_game_data::sound_source::SoundEntityState>,
     tracked: &HashMap<i32, Tracked>,
     dragon: Option<(i32, [f64; 3])>,
-) -> Option<sunrise_client_core::sound_source::SoundEntityState> {
-    use sunrise_client_core::sound_source::SoundEntityState;
+) -> Option<sunrise_game_data::sound_source::SoundEntityState> {
+    use sunrise_game_data::sound_source::SoundEntityState;
     if let Some((player_id, position, silent)) = player
         && player_id == id
     {
@@ -189,7 +189,7 @@ pub(in crate::game) fn entity_sound_state(
 
 /// `ClientboundOpenScreenPacket.title` as a container screen draws it: the
 /// component's styles, and the `§` codes a literal holds (`StringDecomposer`).
-pub(in crate::game) fn menu_title(tag: &Tag) -> sunrise_client_core::text::Text {
+pub(in crate::game) fn menu_title(tag: &Tag) -> sunrise_game_data::text::Text {
     remote_text(tag).resolve_legacy()
 }
 
@@ -521,7 +521,7 @@ pub(in crate::game) struct Remote {
     /// (`CraftingMenu.slotChangedCraftingGrid`): the client never computes it.
     pub(in crate::game) craft_result: Option<ItemStack>,
     /// The open menu's title as the server named it, with its styles.
-    pub(in crate::game) menu_title: Option<sunrise_client_core::text::Text>,
+    pub(in crate::game) menu_title: Option<sunrise_game_data::text::Text>,
     pub(in crate::game) menu_title_snapshot: Option<Arc<mod_api::Text>>,
     pub(in crate::game) state_id: i32,
     /// Window 0's state and carried stack while another menu is active.
@@ -691,7 +691,7 @@ pub(in crate::game) struct Remote {
     pub(in crate::game) stop_mining: bool,
     /// `CommonPlayerSpawnInfo.isFlat`: the level is a superflat one.
     pub(in crate::game) flat: bool,
-    pub(in crate::game) death_message: Option<sunrise_client_core::text::Text>,
+    pub(in crate::game) death_message: Option<sunrise_game_data::text::Text>,
     /// `LocalPlayer.showDeathScreen`: off with `immediate_respawn`.
     pub(in crate::game) show_death_screen: bool,
     /// `Player.isReducedDebugInfo`: the server's `reduced_debug_info` rule.
@@ -758,8 +758,8 @@ pub(in crate::game) fn face_direction(face: [i32; 3]) -> u8 {
 /// A protocol number format as the scoreboard's.
 pub(in crate::game) fn number_format(
     f: &play::NumberFormat,
-) -> sunrise_client_core::scoreboard::NumberFormat {
-    use sunrise_client_core::scoreboard::{NumberFormat, tag_to_json};
+) -> sunrise_game_data::scoreboard::NumberFormat {
+    use sunrise_game_data::scoreboard::{NumberFormat, tag_to_json};
     match f {
         play::NumberFormat::Blank => NumberFormat::Blank,
         play::NumberFormat::Styled(t) => NumberFormat::Styled(tag_to_json(t)),

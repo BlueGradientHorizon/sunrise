@@ -236,7 +236,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     }
     pub(in crate::game::server_side) fn send_captured_level_sound(
         &mut self,
-        mut sound: sunrise_client_core::sound_source::ServerSound,
+        mut sound: sunrise_game_data::sound_source::ServerSound,
         except: Option<u32>,
     ) {
         let source = mod_api::SoundSource::ALL

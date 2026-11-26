@@ -113,11 +113,11 @@ pub struct EffectIcon {
 
 impl From<&crate::effects::EffectInstance> for EffectIcon {
     fn from(effect: &crate::effects::EffectInstance) -> Self {
-        let def = sunrise_client_core::potions::effect(effect.id);
+        let def = sunrise_game_data::potions::effect(effect.id);
         Self {
             id: effect.id.to_owned(),
             beneficial: def
-                .is_some_and(|d| d.category == sunrise_client_core::potions::Category::Beneficial),
+                .is_some_and(|d| d.category == sunrise_game_data::potions::Category::Beneficial),
             sort_order: def.map_or(0, |d| d.sort_order),
             ambient: effect.ambient,
             duration: effect.duration,
@@ -186,7 +186,7 @@ pub fn effects(w: i32, demo: bool, effects: &[EffectIcon]) -> Vec<GuiDraw> {
             blend: crate::hud_layout::Blend::Textured,
         });
         out.push(GuiDraw::Sprite {
-            sprite: Cow::Owned(sunrise_client_core::potions::sprite(&e.id)),
+            sprite: Cow::Owned(sunrise_game_data::potions::sprite(&e.id)),
             x: x + 3,
             y: y + 3,
             w: 18,

@@ -1,9 +1,9 @@
 use super::super::{Game, commands::OtherEntity, persist::ItemDisplayTransformation};
-use sunrise_client_core::{
+use sunrise_core::nbt::Tag;
+use sunrise_game_data::{
     nbt_path::int_value,
     scoreboard::{component_tag, tag_to_json},
 };
-use sunrise_core::nbt::Tag;
 use sunrise_items::item_nbt::{item_from_nbt, item_to_nbt};
 use sunrise_sim::{
     entity_nbt,

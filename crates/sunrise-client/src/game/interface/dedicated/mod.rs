@@ -18,8 +18,8 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use sunrise_client_core::{Result, text::Text};
 use sunrise_core::nbt::{JavaString, Tag};
+use sunrise_game_data::{Result, text::Text};
 use sunrise_perf_format::v1::{StopReason, Trigger};
 use sunrise_protocol::text::translatable;
 use sunrise_server_files::profiles;
@@ -316,7 +316,7 @@ pub(in crate::game) fn preflight(options: &mut Options) -> Result<bool> {
             name if name == sunrise_sim::save::level_mods::ALLOW_FLAG => allow_missing_mods = true,
             "help" => {
                 let allow = missing_mods::in_english(|| {
-                    sunrise_client_core::lang::get("sunrise.missing_mods.server.help")
+                    sunrise_game_data::lang::get("sunrise.missing_mods.server.help")
                 });
                 eprintln!(
                     "Option                Description\n------                -----------\n--allowMissingMods    {allow}\n--help\n--game-tests          Enables test-only mod content (or SUNRISE_GAME_TESTS=1/true)\n--initSettings        Initializes 'server.properties' and 'eula.txt', then quits\n--nogui\n--port <Integer>      (default: -1)\n--universe <String>   (default: .)\n--world <String>"
@@ -600,7 +600,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// Add the adopted packs' English at the dedicated server-starting notice.
     /// World and registry-load listeners still see only the built-in language.
     fn start_loaded_dedicated_world(&mut self, packs: &super::functions::PackStack) {
-        use sunrise_client_core::lang::{self, Language, ResourceSource};
+        use sunrise_game_data::lang::{self, Language, ResourceSource};
 
         let layers = self
             .pack
@@ -1064,7 +1064,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // DedicatedServer.initServer: a legacy `announce-player-achievements`
         // sets the show_advancement_messages rule once, as the file is read.
         if let Some(announce) = props.announce_player_achievements {
-            let value = sunrise_client_core::gamerules::Value::Bool(announce);
+            let value = sunrise_game_data::gamerules::Value::Bool(announce);
             if self.ui.rules.set("show_advancement_messages", value) {
                 self.game_rule_changed("minecraft:show_advancement_messages", value, None);
             }
@@ -1539,7 +1539,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let rule = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
+            .bool_at(sunrise_game_data::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
         let guest = self.lan.as_ref().and_then(|h| {
             // A held player (arriving from another server) is sent the level too, so it
             // holds the world loaded around it as a placed player does.
@@ -2653,9 +2653,7 @@ mod tests {
         ] {
             game.options.execution_role = role;
             let lines = capture_log(|| {
-                game.native_broadcast(sunrise_client_core::text::Text::literal(
-                    "destination probe",
-                ))
+                game.native_broadcast(sunrise_game_data::text::Text::literal("destination probe"))
             });
             assert_eq!(lines, expected, "{role:?}");
         }

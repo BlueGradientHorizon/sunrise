@@ -50,7 +50,7 @@ fn command(game: &mut crate::game::ServerGame<'_>, command: &str) {
         ok,
         "{command}: {}",
         said.iter()
-            .map(sunrise_client_core::text::Text::plain)
+            .map(sunrise_game_data::text::Text::plain)
             .collect::<String>()
     );
 }

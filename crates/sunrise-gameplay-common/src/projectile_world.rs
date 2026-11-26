@@ -1,10 +1,10 @@
 //! What a flying projectile asks of the world (`ProjectileWorld` for `ProjWorld`): block
 //! contacts, collisions, fluids and the world border.
-use sunrise_client_core::who::Who;
 use sunrise_core::{
     geometry::{Aabb, Vec3, traverse_blocks},
     position::BlockPos,
 };
+use sunrise_game_data::who::Who;
 use sunrise_level::collisions::SceneCollisions;
 use sunrise_sim::{
     mobs::MobWorld,

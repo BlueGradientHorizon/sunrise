@@ -11,7 +11,7 @@ use mod_api::{
     DisplaySlot, NumberFormat, ObjectiveError, ObjectiveRef, ObjectiveRenderType, ScoreEntry,
     ScoreHolder, TextFormError,
 };
-use sunrise_client_core::{
+use sunrise_game_data::{
     scoreboard::{self as sb, Comp, comp_text, literal},
     text::Text as EngineText,
 };

@@ -291,7 +291,7 @@ fn delayed_chat_uses_only_show_secure_chat_from_receipt() {
                 .set("onlyShowSecureChat", V::Bool(false));
             let key = RsaPrivateKey::generate(2048).unwrap();
             add_signed_sender(game, &key, BOB);
-            sunrise_client_core::lang::set(sunrise_client_core::lang::Language::of(
+            sunrise_game_data::lang::set(sunrise_game_data::lang::Language::of(
                 "test_before",
                 [
                     ("chat.type.text".into(), "<%s> %s".into()),
@@ -304,7 +304,7 @@ fn delayed_chat_uses_only_show_secure_chat_from_receipt() {
             ));
             deliver_signed(game, &key, packet);
             assert_eq!(game.chat_queue_len(), 1);
-            sunrise_client_core::lang::set(sunrise_client_core::lang::Language::of(
+            sunrise_game_data::lang::set(sunrise_game_data::lang::Language::of(
                 "test_after",
                 [
                     ("chat.type.text".into(), "<%s> %s".into()),

@@ -32,8 +32,8 @@ use sunrise_client::{
     widgets::{self, Kind, Target},
     window::PointerSample,
 };
-use sunrise_client_core::Result;
 use sunrise_client_input::snap;
+use sunrise_game_data::Result;
 use winit::{
     event::{DeviceId, ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent},
     keyboard::KeyCode,

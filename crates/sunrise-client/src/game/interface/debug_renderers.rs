@@ -18,8 +18,8 @@ use sunrise_client::{
     hud_layout::abgr,
     mesher::Vertex,
 };
-use sunrise_client_core::text::Text;
 use sunrise_core::{geometry::Vec3, position::BlockPos};
+use sunrise_game_data::text::Text;
 use sunrise_world::{collision_context::CollisionContext, heightmap::HeightmapType};
 
 /// `WaterDebugRenderer`'s fill: `ARGB.colorFromFloat(0.15F, 0, 1, 0)`.

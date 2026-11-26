@@ -22,7 +22,7 @@ sunrise-gameplay = { path = "../sunrise-gameplay" }
 sunrise-gameplay-common = { path = "../sunrise-gameplay-common" }
 sunrise-client-gameplay = { path = "../sunrise-client-gameplay" }
 sunrise-assets = { path = "../sunrise-assets" }
-sunrise-client-core = { path = "../sunrise-client-core" }
+sunrise-game-data = { path = "../sunrise-game-data" }
 sunrise-client-input = { path = "../sunrise-client-input" }
 sunrise-client-render = { path = "../sunrise-client-render" }
 sunrise-command = { path = "../sunrise-command" }
@@ -174,7 +174,7 @@ workspace = true
 
 [dev-dependencies]
 sunrise-hooks = { path = "../sunrise-hooks", features = ["test-support"] }
-sunrise-client-core = { path = "../sunrise-client-core", features = ["test-language-publication"] }
+sunrise-game-data = { path = "../sunrise-game-data", features = ["test-language-publication"] }
 sunrise-client-lib = { path = "../sunrise-client-lib", default-features = false, features = ["test-menu-validity", "test-payload-probe", "test-publication-scope", "test-residency-observer", "test-dry-side", "test-tooltip-factories", "test-pack-feedback", "test-resource-cache"] }
 tempfile = "3"
 sunrise-mod-runtime = { path = "../sunrise-mod-runtime", features = ["test-work-count"] }

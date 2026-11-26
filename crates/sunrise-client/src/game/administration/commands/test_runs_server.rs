@@ -7,7 +7,7 @@ use crate::game::{
     game_tests::{Grid, Info, Retry, RunnerOptions, verify_batches},
     test_instances::TestDef,
 };
-use sunrise_client_core::text::{self, Text};
+use sunrise_game_data::text::{self, Text};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// The tests a finder gives (`findTests`), by id.

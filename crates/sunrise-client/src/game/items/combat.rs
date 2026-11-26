@@ -8,7 +8,7 @@ pub(in crate::game) mod infested_roll_tests;
 #[cfg(test)]
 use sunrise_core::random::RandomSource;
 use {
-    sunrise_client_core::text::Text, sunrise_level::particle_options::ParticleType,
+    sunrise_game_data::text::Text, sunrise_level::particle_options::ParticleType,
     sunrise_sim::health::Attack, sunrise_sim::health::HealthEvent, sunrise_sim::mobs::Damage,
     sunrise_sim::mobs::Mob, sunrise_sim::mobs::Species, sunrise_sim::mobs::Who,
     sunrise_sim::mobs::stuck::Stuck, sunrise_sim::motion::MotionEvent,
@@ -711,14 +711,14 @@ impl Game<'_, crate::game::server_side::ServerState> {
             // with a custom name gets the `.item` message.
             let (key, args) = match (&knock.attacker, &killer) {
                 (Some(a), k) if k.as_ref().is_none_or(|k| k.0 != a.0) => {
-                    sunrise_client_core::scoreboard::death_message_args(
+                    sunrise_game_data::scoreboard::death_message_args(
                         "death.fell.assist",
                         &me,
                         &a.1,
                         self.entry_item(knock).as_ref(),
                     )
                 }
-                (_, Some(k)) => sunrise_client_core::scoreboard::death_message_args(
+                (_, Some(k)) => sunrise_game_data::scoreboard::death_message_args(
                     "death.fell.finish",
                     &me,
                     &k.1,
@@ -740,7 +740,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if let Some((_, name)) = killer {
             // DamageSource.getLocalizedDeathMessage: the cause's item with a
             // custom name gets the `<id>.item` message.
-            let (key, args) = sunrise_client_core::scoreboard::death_message_args(
+            let (key, args) = sunrise_game_data::scoreboard::death_message_args(
                 &key,
                 &me,
                 &name,
@@ -785,7 +785,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::SHOW_DEATH_MESSAGES)
+            .bool_at(sunrise_game_data::gamerules::vanilla::SHOW_DEATH_MESSAGES)
         {
             return;
         }
@@ -1204,7 +1204,7 @@ pub(in crate::game) mod held_item_tests {
 #[cfg(test)]
 pub(in crate::game) mod noted_tests {
     use super::{CombatTracker, PendingAttacker};
-    use sunrise_client_core::text::Text;
+    use sunrise_game_data::text::Text;
 
     /// A canceled hit forgets what was noted for it, also before its hurt
     /// started (a PvP blow, `/damage`), and nothing a landed hit noted.
@@ -1249,7 +1249,7 @@ pub(in crate::game) mod noted_tests {
 #[cfg(test)]
 pub(in crate::game) mod kill_credit_tests {
     use super::{CombatTracker, PlayerCredit};
-    use sunrise_client_core::text::Text;
+    use sunrise_game_data::text::Text;
 
     #[test]
     fn player_reference_expires_after_one_hundred_ticks() {

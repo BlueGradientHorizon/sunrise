@@ -10,8 +10,8 @@
 use super::{Game, lan::LanSettings};
 use std::time::{Duration, Instant};
 use sunrise_client::hud::HudBatch;
-use sunrise_client_core::{Result, lang, text::Text};
 use sunrise_friends::{Host, HostConfig, HostEvent, PathMode, host::DEFAULT_PORT, reach, stun};
+use sunrise_game_data::{Result, lang, text::Text};
 use sunrise_protocol::{GAME_VERSION, PROTOCOL_VERSION};
 
 #[path = "friends/screen.rs"]

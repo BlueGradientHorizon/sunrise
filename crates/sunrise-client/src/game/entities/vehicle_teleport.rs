@@ -309,7 +309,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         rotation: Option<[f32; 2]>,
         turn_riders: bool,
         motion: TeleportMotion,
-    ) -> sunrise_client_core::Result<Option<bool>> {
+    ) -> sunrise_game_data::Result<Option<bool>> {
         if let Target::General(id) = target {
             // Entity.teleport's stopRiding(): a targeted rider leaves its vehicle first.
             if self.dim != destination
@@ -369,7 +369,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         at: [f64; 3],
         rotation: Option<[f32; 2]>,
         motion: TeleportMotion,
-    ) -> sunrise_client_core::Result<Option<bool>> {
+    ) -> sunrise_game_data::Result<Option<bool>> {
         let (Target::Item(id)
         | Target::Tnt(id)
         | Target::Trident(id)
@@ -462,7 +462,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         rotation: Option<[f32; 2]>,
         turn_riders: bool,
         motion: TeleportMotion,
-    ) -> sunrise_client_core::Result<bool> {
+    ) -> sunrise_game_data::Result<bool> {
         let Some(root) = vehicle_id(target) else {
             return Ok(false);
         };

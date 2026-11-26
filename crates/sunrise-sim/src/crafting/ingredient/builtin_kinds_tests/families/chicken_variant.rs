@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn chicken_variant_decodes_registry_holders_and_matches_borrowed_values() {
     use serde_json::json;
-    use sunrise_client_core::registries::RegistryIds;
+    use sunrise_game_data::registries::RegistryIds;
 
     let mut items = Items::empty();
     std::sync::Arc::make_mut(&mut items.component_registry)

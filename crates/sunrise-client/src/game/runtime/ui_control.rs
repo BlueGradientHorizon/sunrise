@@ -12,7 +12,7 @@ use sunrise_client::{
     creative::Creative,
     widgets::{self, Kind, Node},
 };
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 use sunrise_sim::control::Request;
 use winit::event::MouseButton;
 

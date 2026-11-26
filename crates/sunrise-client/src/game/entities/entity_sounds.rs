@@ -1,8 +1,8 @@
 //! Client-side entity-bound level sound playback and entity sound state lookup.
 use super::{Game, level_sounds::LevelSound};
-#[cfg(feature = "client")]
-use sunrise_client_core::sound_source::SoundEntityState;
 use sunrise_core::nbt::Tag;
+#[cfg(feature = "client")]
+use sunrise_game_data::sound_source::SoundEntityState;
 
 pub(in crate::game) fn saved_silent(extra: Option<&Tag>) -> bool {
     sunrise_sim::save::number(extra.and_then(|tag| tag.get("Silent"))).unwrap_or(0) != 0

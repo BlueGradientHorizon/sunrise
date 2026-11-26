@@ -3,8 +3,8 @@
 use super::native_entity_refs::tests::with_game;
 use mod_api::{ChatRecipientEvent, CommandResult, Flow, Hooks, PermissionLevel, ServerHost};
 use std::sync::{Arc, Mutex, atomic::AtomicI32, mpsc};
-use sunrise_client_core::text::Text;
 use sunrise_core::position::{BlockPos, ChunkPos};
+use sunrise_game_data::text::Text;
 use sunrise_protocol::packets::{configuration::ClientInformation, play};
 use sunrise_sim::lan::hub::chat::ChatMessage;
 use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest};
@@ -331,7 +331,7 @@ fn console_and_command_block_say_can_be_hidden_per_receiver() {
 fn dispatcher_say_filters_the_acting_guests_captured_copy() {
     use super::lan_actions::GuestCommand;
     use play::Clientbound as C;
-    use sunrise_client_core::scoreboard::{comp_text, tag_to_json};
+    use sunrise_game_data::scoreboard::{comp_text, tag_to_json};
 
     let asked = Asked::default();
     let mods = vec![mod_api::ModEntry::new(

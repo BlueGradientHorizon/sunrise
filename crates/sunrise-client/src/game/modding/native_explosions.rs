@@ -10,7 +10,7 @@ use super::{
     native_hooks::sound_id,
 };
 use mod_api::{EntityRef, ExplodeError, ExplosionInteraction, ExplosionSettings};
-use sunrise_client_core::gamerules::vanilla;
+use sunrise_game_data::gamerules::vanilla;
 use sunrise_level::particle_options::ParticleType;
 use sunrise_sim::lan::server_effects::{
     ServerExplosionParticle, ServerParticle, server_particle_ok,
@@ -396,9 +396,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
 /// The fields of `CombatTracker` that describe the blast going off now.
 pub(in crate::game) struct BlastState {
     explicit_cause: Option<Option<super::explosion::ExplosionCause>>,
-    blast_owner: Option<(u32, sunrise_client_core::text::Text)>,
+    blast_owner: Option<(u32, sunrise_game_data::text::Text)>,
     blast_guest: Option<u32>,
-    explicit_direct: Option<sunrise_client_core::text::Text>,
+    explicit_direct: Option<sunrise_game_data::text::Text>,
     source: Option<u32>,
     direct: Option<u32>,
     cause: Option<sunrise_sim::advancements::EntityView>,

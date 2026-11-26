@@ -5,7 +5,7 @@ use sunrise_client::{
     keybinds::{KeyBinds, display_name},
     ui, widgets,
 };
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 
 const MOVEMENT: [&str; 4] = ["key.forward", "key.left", "key.back", "key.right"];
 const BUY_MINECRAFT_JAVA: &str = "https://aka.ms/BuyMinecraftJava";

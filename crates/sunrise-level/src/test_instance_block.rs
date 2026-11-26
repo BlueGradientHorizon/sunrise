@@ -1,6 +1,6 @@
 //! `TestInstanceBlockEntity`: the test instance block's test, size, rotation
 //! and status, its error markers, and the boxes derived from them.
-use sunrise_client_core::nbt_value::{number, string, text};
+use sunrise_game_data::nbt_value::{number, string, text};
 use {
     sunrise_core::{bounding_box::BoundingBox, nbt::Tag},
     sunrise_world::worldgen::structure::Rotation,

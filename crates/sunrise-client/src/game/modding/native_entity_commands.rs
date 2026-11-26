@@ -1,6 +1,6 @@
 //! Entity command execution shared by the bool and feedback-returning mod API methods.
 use super::{Game, commands::execute, native_server::system_chat};
-use sunrise_client_core::text::Text;
+use sunrise_game_data::text::Text;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// Runs the command `line` (a leading slash allowed) with the entity as
@@ -251,7 +251,7 @@ mod tests {
                         let id = reader.varint().unwrap();
                         if let C::DisguisedChat(chat) = C::decode(id, reader.rest()).unwrap() {
                             assert_eq!(
-                                sunrise_client_core::component::name_text(&chat.message).plain(),
+                                sunrise_game_data::component::name_text(&chat.message).plain(),
                                 "silent source announcement"
                             );
                             announcements += 1;
@@ -309,9 +309,9 @@ mod tests {
                     let chat: Vec<_> = game.side.guest_packets[before..]
                         .iter()
                         .filter_map(|packet| match packet {
-                            C::SystemChat(chat) if !chat.overlay => Some(
-                                sunrise_client_core::component::name_text(&chat.content).plain(),
-                            ),
+                            C::SystemChat(chat) if !chat.overlay => {
+                                Some(sunrise_game_data::component::name_text(&chat.content).plain())
+                            }
                             _ => None,
                         })
                         .collect();

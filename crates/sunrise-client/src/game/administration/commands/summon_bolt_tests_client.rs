@@ -10,8 +10,8 @@ use sunrise_sim::motion::PlayerMotion;
 #[test]
 #[ignore = "daily"]
 fn silent_bolt_suppresses_sound_and_posts_strike_event_on_first_tick() {
-    let _language = sunrise_client_core::lang::isolate_publication(
-        sunrise_client_core::lang::Language::of("en_us", []),
+    let _language = sunrise_game_data::lang::isolate_publication(
+        sunrise_game_data::lang::Language::of("en_us", []),
     );
     with_game(|game| {
         prepare_entity_ticking_neighborhood(game, ChunkPos::new(0, 0));

@@ -20,7 +20,7 @@ use super::{
 use crate::game::api_values::TryIntoApi;
 use event_timings::{EventTimings, UseDetail, describe_burst, event_kind, note_event};
 use std::{collections::HashMap, sync::Arc, time::Instant};
-use sunrise_client_core::{Result, text::Text};
+use sunrise_game_data::{Result, text::Text};
 use sunrise_level::{
     effects::{
         EffectInstance, ModifiedEffectParticles, ShownEffect, effect_particle,
@@ -2569,10 +2569,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
             host.hub.movement_checks = (
                 self.ui
                     .rules
-                    .bool_at(sunrise_client_core::gamerules::vanilla::PLAYER_MOVEMENT_CHECK),
+                    .bool_at(sunrise_game_data::gamerules::vanilla::PLAYER_MOVEMENT_CHECK),
                 self.ui
                     .rules
-                    .bool_at(sunrise_client_core::gamerules::vanilla::ELYTRA_MOVEMENT_CHECK),
+                    .bool_at(sunrise_game_data::gamerules::vanilla::ELYTRA_MOVEMENT_CHECK),
             );
             Self::sync_hub_mod_flags(&mut host.hub);
             let pass = self.side.level_pass;
@@ -3037,10 +3037,10 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 host.hub.movement_checks = (
                     self.ui
                         .rules
-                        .bool_at(sunrise_client_core::gamerules::vanilla::PLAYER_MOVEMENT_CHECK),
+                        .bool_at(sunrise_game_data::gamerules::vanilla::PLAYER_MOVEMENT_CHECK),
                     self.ui
                         .rules
-                        .bool_at(sunrise_client_core::gamerules::vanilla::ELYTRA_MOVEMENT_CHECK),
+                        .bool_at(sunrise_game_data::gamerules::vanilla::ELYTRA_MOVEMENT_CHECK),
                 );
                 // IntegratedServer.getScaledTrackingDistance: the Entity Distance
                 // option scales what an integrated server or a LAN host tracks (a
@@ -3052,12 +3052,12 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 host.hub.set_immediate_respawn(
                     self.ui
                         .rules
-                        .bool_at(sunrise_client_core::gamerules::vanilla::IMMEDIATE_RESPAWN),
+                        .bool_at(sunrise_game_data::gamerules::vanilla::IMMEDIATE_RESPAWN),
                 );
                 host.hub.set_limited_crafting(
                     self.ui
                         .rules
-                        .bool_at(sunrise_client_core::gamerules::vanilla::LIMITED_CRAFTING),
+                        .bool_at(sunrise_game_data::gamerules::vanilla::LIMITED_CRAFTING),
                 );
                 // A server with several levels runs a pass for each
                 // (`tick_server`): the network is read once, before the first.
@@ -3617,7 +3617,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let rule = self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
+            .bool_at(sunrise_game_data::gamerules::vanilla::SPECTATORS_GENERATE_CHUNKS);
         // The held players are sent the level, so their chunks are kept as the placed ones'.
         self.side.streaming.extra = host
             .hub
@@ -5227,7 +5227,7 @@ pub(in crate::game) mod tests {
         use super::super::native_entity_refs::tests::with_game;
         use mod_api::{Flow, Hooks, ServerChatEvent, ServerHost};
         use std::sync::{Arc, atomic::AtomicI32, mpsc};
-        use sunrise_client_core::text::Text;
+        use sunrise_game_data::text::Text;
         use sunrise_protocol::packets::{configuration::ClientInformation, play};
         use sunrise_sim::lan::hub::{HostEvent, HubConfig, chat::ChatMessage};
         use sunrise_sim::lan::{Joined, NetConfig, Out, PlayerSender, guest::Guest};
@@ -5319,8 +5319,7 @@ pub(in crate::game) mod tests {
                             match play::Clientbound::decode(id, reader.rest()) {
                                 Ok(play::Clientbound::SystemChat(chat)) => seen.push(format!(
                                     "system {}",
-                                    sunrise_client_core::component::name_text(&chat.content)
-                                        .plain()
+                                    sunrise_game_data::component::name_text(&chat.content).plain()
                                 )),
                                 Ok(play::Clientbound::PlayerChat(_)) => {
                                     seen.push("player".to_owned())
@@ -6595,7 +6594,7 @@ pub(in crate::game) mod merchant_packet_tests {
                     dragging: false,
                     focused: None,
                     mob: Some(77),
-                    name: Some(sunrise_client_core::text::Text::literal("Packet timing")),
+                    name: Some(sunrise_game_data::text::Text::literal("Packet timing")),
                 },
             );
             fn packets(
@@ -6735,7 +6734,7 @@ pub(in crate::game) mod merchant_packet_tests {
                     dragging: false,
                     focused: None,
                     mob: Some(77),
-                    name: Some(sunrise_client_core::text::Text::literal(
+                    name: Some(sunrise_game_data::text::Text::literal(
                         "Level-up packet timing",
                     )),
                 },

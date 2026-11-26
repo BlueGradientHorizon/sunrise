@@ -8,12 +8,12 @@ use super::{
 };
 use mod_api::ExplosionStart;
 use std::{cmp::Ordering, collections::HashSet, io};
-use sunrise_client_core::{Result, text::Text};
 use sunrise_core::{
     geometry::{Vec3, VoxelShape},
     position::BlockPos,
     random::{LegacyRandom, RandomSource},
 };
+use sunrise_game_data::{Result, text::Text};
 use sunrise_items::{blocks::Fluid, items::ItemStack};
 use sunrise_level::collisions::SceneCollisions;
 use sunrise_sim::health::DamageLevel;
@@ -316,7 +316,7 @@ struct ExplosionHookContext<'a> {
     flying_knockback: f32,
     /// The player whose blast it is (`DamageSource.getEntity() instanceof Player`: a primed
     /// TNT's owner, the player who broke an end crystal), by entity id, with their team.
-    player_cause: Option<(i32, Option<sunrise_client_core::scoreboard::Team>)>,
+    player_cause: Option<(i32, Option<sunrise_game_data::scoreboard::Team>)>,
 }
 
 /// An entity in the blast's reach: how far (as a share of the blast's
@@ -378,8 +378,8 @@ impl Game<'_, crate::game::server_side::ServerState> {
             .map_or_else(
                 || Text::translate(&format!("entity.{}", kind.replace(':', ".")), &[]),
                 |name| {
-                    sunrise_client_core::scoreboard::comp_text(
-                        &sunrise_client_core::scoreboard::tag_to_json(name),
+                    sunrise_game_data::scoreboard::comp_text(
+                        &sunrise_game_data::scoreboard::tag_to_json(name),
                     )
                 },
             )
@@ -464,7 +464,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// entity id, with their team: an explicit cause that is a player (an end crystal they
     /// broke), else a primed TNT's owning player. Asked before any player is swapped in, so
     /// a cause that names no guest is the player in place.
-    fn blast_player_cause(&self) -> Option<(i32, Option<sunrise_client_core::scoreboard::Team>)> {
+    fn blast_player_cause(&self) -> Option<(i32, Option<sunrise_game_data::scoreboard::Team>)> {
         let (id, guest) = match &self.side.combat.0.explicit_explosion_cause {
             Some(cause) => cause
                 .as_ref()
@@ -861,7 +861,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // `ServerPlayer.hurtServer`'s `canHarmPlayer` of the player whose blast it is.
         let hurtable = context.hurts
             && exploding.is_none_or(|id| {
-                sunrise_client_core::scoreboard::teams_allow_damage(
+                sunrise_game_data::scoreboard::teams_allow_damage(
                     self.mob_team(id),
                     self.player_team(),
                 )
@@ -1049,9 +1049,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         // `source.doTeamsAllowDamage(entity)`: the exploding mob spares its
         // team mates when its team has no friendly fire (they are still pushed).
         let exploding = self.side.combat.0.explosion_source;
-        let teams_allow = |g: &Self, victim: Option<&sunrise_client_core::scoreboard::Team>| {
+        let teams_allow = |g: &Self, victim: Option<&sunrise_game_data::scoreboard::Team>| {
             exploding.is_none_or(|id| {
-                sunrise_client_core::scoreboard::teams_allow_damage(g.mob_team(id), victim)
+                sunrise_game_data::scoreboard::teams_allow_damage(g.mob_team(id), victim)
             })
         };
         // The player, then every other player in the level (LAN guests),
@@ -1192,7 +1192,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && !self
                     .ui
                     .rules
-                    .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING),
+                    .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING),
             items_ignore: items_ignore_explosion(self.blast_griefs(), interaction),
             spared: exploding.filter(|_| self.side.combat.0.explosion_source_named),
         };
@@ -1557,7 +1557,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
+                .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
         {
             return false;
         }
@@ -1704,7 +1704,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     /// and plain destruction.
     pub(in crate::game) fn destroy_type(
         &self,
-        rule: sunrise_client_core::gamerules::RuleIndex,
+        rule: sunrise_game_data::gamerules::RuleIndex,
     ) -> BlockInteraction {
         if self.ui.rules.bool_at(rule) {
             BlockInteraction::DestroyWithDecay
@@ -1900,7 +1900,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
+            .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS)
         {
             return;
         }
@@ -2043,7 +2043,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
                 && self
                     .ui
                     .rules
-                    .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS)
+                    .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS)
             {
                 self.spawn_orbs(pos.map(|v| f64::from(v) + 0.5), xp);
             }
@@ -2098,7 +2098,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             && self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::TNT_EXPLODES)
+                .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES)
         {
             let r = &mut self.world.random;
             let rot = r.next_double() * f64::from(std::f32::consts::TAU);
@@ -2156,7 +2156,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let interaction = if !self.can_entity_grief(source) {
             BlockInteraction::Keep
         } else {
-            self.destroy_type(sunrise_client_core::gamerules::vanilla::TNT_EXPLOSION_DROP_DECAY)
+            self.destroy_type(sunrise_game_data::gamerules::vanilla::TNT_EXPLOSION_DROP_DECAY)
         };
         self.server_explode_from(center, radius, interaction, false, blast)
     }
@@ -3060,7 +3060,7 @@ mod shulker_lock_drop_tests {
         assert!(
             game.ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::BLOCK_DROPS),
+                .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS),
             "actual drop rule must be enabled"
         );
         game.creative = false;

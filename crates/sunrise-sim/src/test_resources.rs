@@ -7,10 +7,7 @@ use sunrise_world::{
     native_load_context::{DataLoadOrigin, LoadContext, LoadInputs, LoopContext, LoopSide},
 };
 
-pub fn item_data(
-    root: &Path,
-    origin: DataLoadOrigin,
-) -> sunrise_client_core::Result<Arc<ItemData>> {
+pub fn item_data(root: &Path, origin: DataLoadOrigin) -> sunrise_game_data::Result<Arc<ItemData>> {
     let inputs = LoadInputs::new(BTreeMap::new(), root.join("settings"));
     Ok(Arc::new(ItemData::load(
         root,

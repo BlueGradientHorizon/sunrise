@@ -10,7 +10,7 @@ use mod_api::{
     Billboard, DisplayKind, DisplayRef, EntityRef, ItemDisplayContext, TextAlignment,
     Transformation,
 };
-use sunrise_client_core::{
+use sunrise_game_data::{
     scoreboard::{comp_text, json_to_tag, tag_to_json},
     text::Text,
 };

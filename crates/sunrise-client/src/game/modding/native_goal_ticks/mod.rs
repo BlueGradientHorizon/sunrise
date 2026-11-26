@@ -813,7 +813,7 @@ impl mobs::part_goals::GoalHost for Game<'_, crate::game::server_side::ServerSta
             Some(mob) => self.mob_team_scoped(mob, actor, world),
             None => self.native_target_team(self.native_entity_target(source)?)?,
         };
-        Some(sunrise_client_core::scoreboard::teams_allow_damage(
+        Some(sunrise_game_data::scoreboard::teams_allow_damage(
             own, other,
         ))
     }

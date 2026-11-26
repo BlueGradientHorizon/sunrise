@@ -32,7 +32,7 @@ fn world_preset_availability_does_not_depend_on_shared_generator_history() {
             Some(1),
             true,
             None,
-            Arc::new(sunrise_client_core::gamerules::RuleRegistry::vanilla()),
+            Arc::new(sunrise_game_data::gamerules::RuleRegistry::vanilla()),
         )
         .unwrap();
         request.save_root = scratch.path().to_owned();

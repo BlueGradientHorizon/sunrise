@@ -9,7 +9,7 @@ pub(in crate::game) fn run(
     (
         ok,
         said.iter()
-            .map(sunrise_client_core::text::Text::plain)
+            .map(sunrise_game_data::text::Text::plain)
             .collect(),
     )
 }

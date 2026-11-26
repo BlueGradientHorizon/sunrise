@@ -206,7 +206,7 @@ fn snapshot(catalog: &Arc<Catalog>, mob: &Mob) -> Option<ModifierSnapshot> {
 
 /// An item modifier the map refused (a bad modifier id) is logged, naming the
 /// entity, instead of being lost.
-fn warn_failed(id: u32, kind: &str, result: sunrise_client_core::Result<()>) {
+fn warn_failed(id: u32, kind: &str, result: sunrise_game_data::Result<()>) {
     if let Err(error) = result {
         log::warn!("equipment attributes of {kind} {id}: {error}");
     }
@@ -1096,8 +1096,8 @@ mod tests {
 
     /// The ids of the modifiers a saved `attributes` list holds.
     fn saved_ids<'a>(list: impl IntoIterator<Item = &'a sunrise_core::nbt::Tag>) -> Vec<String> {
-        use sunrise_client_core::nbt_value::text;
         use sunrise_core::nbt::Tag;
+        use sunrise_game_data::nbt_value::text;
         list.into_iter()
             .flat_map(|entry| match entry.get("modifiers") {
                 Some(Tag::List(l)) => l.iter().filter_map(|m| text(m.get("id"))).collect(),

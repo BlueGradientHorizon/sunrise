@@ -484,7 +484,7 @@ impl<'r> Game<'r, crate::game::server_side::ServerState> {
         let mob_blocked = !self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::MOB_GRIEFING)
+            .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
             && matches!(causing_target, Some(Target::Mob(_)));
 
         // ArmorStand.hurtServer (igniteForSeconds clears freeze; refusal restores fire_ticks only).

@@ -44,11 +44,11 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MOBS)
+            .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS)
             || !self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::SPAWN_MONSTERS)
+                .bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MONSTERS)
         {
             return;
         }

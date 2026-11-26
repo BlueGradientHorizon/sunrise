@@ -1192,7 +1192,7 @@ impl PendingContainerLoot {
     pub fn from_tag(tag: &Tag) -> Option<Self> {
         let table = tag.get("LootTable")?;
         let Tag::String(id) = table else { return None };
-        sunrise_client_core::identifier::normalize_id(&id.to_string_lossy())?;
+        sunrise_game_data::identifier::normalize_id(&id.to_string_lossy())?;
         Some(Self {
             table: table.clone(),
             seed: tag.get("LootTableSeed").cloned(),
@@ -1202,11 +1202,11 @@ impl PendingContainerLoot {
         let Tag::String(id) = &self.table else {
             unreachable!("validated loot table")
         };
-        sunrise_client_core::identifier::normalize_id(&id.to_string_lossy())
+        sunrise_game_data::identifier::normalize_id(&id.to_string_lossy())
             .expect("validated loot table")
     }
     pub fn seed_value(&self) -> Option<i64> {
-        sunrise_client_core::nbt_value::number(self.seed.as_ref())
+        sunrise_game_data::nbt_value::number(self.seed.as_ref())
     }
     /// Overlay pending metadata without manufacturing an Items list. The table is written as the
     /// identifier it reads as (`RandomizableContainer.trySaveLootTable`,

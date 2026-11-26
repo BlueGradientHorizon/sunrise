@@ -1,9 +1,9 @@
 use super::{Codec, Error, boolean, id, identifier, optional, s, string, uuid, uuid_tag};
 use mod_api::text::{TextClick, TextHover, TextStyle};
-use sunrise_client_core::component::untrusted_http_url;
-use sunrise_client_core::text::is_allowed_chat_character;
 use sunrise_core::nbt::{self, Compound, Limits, Tag, numeric_int};
 use sunrise_core::text::parse_java_uuid;
+use sunrise_game_data::component::untrusted_http_url;
+use sunrise_game_data::text::is_allowed_chat_character;
 use sunrise_world::component_value::source::{
     normalize_template_patch, text_color_name, text_shadow_color, validate_template_count,
 };

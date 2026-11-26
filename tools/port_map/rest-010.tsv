@@ -17,12 +17,12 @@ SnbtPrinterTagVisitor.visitLongArray	skip:data		datagen .snbt writer only (NbtUt
 SnbtPrinterTagVisitor.visitList	skip:data		datagen .snbt writer only (NbtUtils.structureToSnbt); Sunrise writes no .snbt
 SnbtPrinterTagVisitor.visitCompound	skip:data		datagen .snbt writer only (NbtUtils.structureToSnbt); Sunrise writes no .snbt
 SnbtPrinterTagVisitor.getKeys	skip:data		structure key order for .snbt files; Sunrise writes no .snbt
-StringTagVisitor.visitByteArray	inline	crates/sunrise-client-core/src/snbt.rs::visit	compact [B;..B] form
-StringTagVisitor.visitIntArray	inline	crates/sunrise-client-core/src/snbt.rs::visit	compact [I;..] form
-StringTagVisitor.visitLongArray	inline	crates/sunrise-client-core/src/snbt.rs::visit	compact [L;..L] form
-StringTagVisitor.visitList	inline	crates/sunrise-client-core/src/snbt.rs::visit	compact list form
-StringTagVisitor.visitCompound	inline	crates/sunrise-client-core/src/snbt.rs::visit	compact form; keys sorted
-StringTagVisitor.handleKeyEscape	inline	crates/sunrise-client-core/src/snbt.rs::Pretty::compound	decides bare or quoted key; quote_and_escape does the quoting
+StringTagVisitor.visitByteArray	inline	crates/sunrise-game-data/src/snbt.rs::visit	compact [B;..B] form
+StringTagVisitor.visitIntArray	inline	crates/sunrise-game-data/src/snbt.rs::visit	compact [I;..] form
+StringTagVisitor.visitLongArray	inline	crates/sunrise-game-data/src/snbt.rs::visit	compact [L;..L] form
+StringTagVisitor.visitList	inline	crates/sunrise-game-data/src/snbt.rs::visit	compact list form
+StringTagVisitor.visitCompound	inline	crates/sunrise-game-data/src/snbt.rs::visit	compact form; keys sorted
+StringTagVisitor.handleKeyEscape	inline	crates/sunrise-game-data/src/snbt.rs::Pretty::compound	decides bare or quoted key; quote_and_escape does the quoting
 Tag.acceptAsRoot	skip:java		streaming visitor entry point; Sunrise reads whole trees
 Tag.asBoolean	port	crates/sunrise-world/src/datafix/dynamic.rs::as_bool_opt	non-zero number is true
 TagParser.castToCompoundOrThrow	inline	crates/sunrise-command/src/snbt.rs::parse_compound_argument	expected-compound error
@@ -31,17 +31,17 @@ TagType.parseRoot	skip:java		streaming root parse; Sunrise reads whole trees
 TagType.StaticSize.skip	skip:java		streaming skip; Sunrise reads whole trees
 TagType.VariableSize.skip	skip:java		streaming skip; Sunrise reads whole trees
 TagTypes.getType	inline	crates/sunrise-core/src/nbt.rs::Reader::payload	tag id dispatch; unknown id is an error
-TextComponentTagVisitor.visitByte	inline	crates/sunrise-client-core/src/snbt.rs::Pretty::visit	number arm: gold value, red suffix
-TextComponentTagVisitor.visitShort	inline	crates/sunrise-client-core/src/snbt.rs::Pretty::visit	number arm: gold value, red suffix
-TextComponentTagVisitor.visitLong	inline	crates/sunrise-client-core/src/snbt.rs::Pretty::visit	number arm: gold value, red suffix
-TextComponentTagVisitor.visitFloat	inline	crates/sunrise-client-core/src/snbt.rs::Pretty::visit	number arm: gold value, red suffix
-TextComponentTagVisitor.visitDouble	inline	crates/sunrise-client-core/src/snbt.rs::Pretty::visit	number arm: gold value, red suffix
-TextComponentTagVisitor.visitByteArray	port	crates/sunrise-client-core/src/snbt.rs::Pretty::array	128-element cap with <...>
-TextComponentTagVisitor.visitIntArray	port	crates/sunrise-client-core/src/snbt.rs::Pretty::array	128-element cap with <...>
-TextComponentTagVisitor.visitLongArray	port	crates/sunrise-client-core/src/snbt.rs::Pretty::array	128-element cap with <...>
-TextComponentTagVisitor.shouldWrapListElements	inline	crates/sunrise-client-core/src/snbt.rs::Pretty::list	wrap when under 8 elements and one is not numeric
-TextComponentTagVisitor.appendSubTag	port	crates/sunrise-client-core/src/snbt.rs::Pretty::sub	depth and indent tracking
-TextComponentTagVisitor.RichStyling.overrideToken	inline	crates/sunrise-client-core/src/snbt.rs::Pretty::number	token colours are fixed in code; nothing to override
+TextComponentTagVisitor.visitByte	inline	crates/sunrise-game-data/src/snbt.rs::Pretty::visit	number arm: gold value, red suffix
+TextComponentTagVisitor.visitShort	inline	crates/sunrise-game-data/src/snbt.rs::Pretty::visit	number arm: gold value, red suffix
+TextComponentTagVisitor.visitLong	inline	crates/sunrise-game-data/src/snbt.rs::Pretty::visit	number arm: gold value, red suffix
+TextComponentTagVisitor.visitFloat	inline	crates/sunrise-game-data/src/snbt.rs::Pretty::visit	number arm: gold value, red suffix
+TextComponentTagVisitor.visitDouble	inline	crates/sunrise-game-data/src/snbt.rs::Pretty::visit	number arm: gold value, red suffix
+TextComponentTagVisitor.visitByteArray	port	crates/sunrise-game-data/src/snbt.rs::Pretty::array	128-element cap with <...>
+TextComponentTagVisitor.visitIntArray	port	crates/sunrise-game-data/src/snbt.rs::Pretty::array	128-element cap with <...>
+TextComponentTagVisitor.visitLongArray	port	crates/sunrise-game-data/src/snbt.rs::Pretty::array	128-element cap with <...>
+TextComponentTagVisitor.shouldWrapListElements	inline	crates/sunrise-game-data/src/snbt.rs::Pretty::list	wrap when under 8 elements and one is not numeric
+TextComponentTagVisitor.appendSubTag	port	crates/sunrise-game-data/src/snbt.rs::Pretty::sub	depth and indent tracking
+TextComponentTagVisitor.RichStyling.overrideToken	inline	crates/sunrise-game-data/src/snbt.rs::Pretty::number	token colours are fixed in code; nothing to override
 CollectFields.visitEntry	skip:java		streaming field filter for speed; Sunrise reads whole tags
 CollectFields.visitContainerEnd	skip:java		streaming field filter for speed; Sunrise reads whole tags
 CollectToTag.visit	skip:java		streaming tag builder; Sunrise parses to a tree directly

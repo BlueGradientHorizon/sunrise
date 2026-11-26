@@ -9,8 +9,8 @@ use sunrise_client::{
     hud::Rect,
     particles::{ParticleEngine, ParticleLevel},
 };
-use sunrise_client_core::Result;
 use sunrise_core::geometry::Vec3;
+use sunrise_game_data::Result;
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 use sunrise_sim::motion::PlayerMotion;
 

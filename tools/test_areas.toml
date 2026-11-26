@@ -200,7 +200,7 @@ paths = [
   "crates/sunrise-client/src/game/world/storage.rs", "crates/sunrise-client/src/game/world/autosave.rs",
   "crates/sunrise-world/src/region.rs", "crates/sunrise-world/src/datafix/*", "crates/sunrise-core/src/nbt.rs",
   "crates/sunrise-world/src/crash_fixture.rs", "tools/save_fault_harness.py",
-  "crates/sunrise-client-core/src/block_entity_nbt.rs",
+  "crates/sunrise-game-data/src/block_entity_nbt.rs",
 ]
 cargo = [
   { package = "sunrise-sim", target = "lib", filter = "save::" },
@@ -288,7 +288,7 @@ name = "commands"
 about = "command parsing and execution, functions, scoreboards, selectors, data packs"
 paths = [
   "crates/sunrise-command/*", "crates/sunrise-client/src/game/administration/*", "crates/sunrise-sim/src/scoreboard_cmd.rs",
-  "crates/sunrise-sim/src/data_cmd.rs", "crates/sunrise-client-core/src/scoreboard.rs",
+  "crates/sunrise-sim/src/data_cmd.rs", "crates/sunrise-game-data/src/scoreboard.rs",
   "crates/sunrise-*/src/nbt_path.rs", "crates/sunrise-client/src/game/world/server_reload/*",
   "tools/command_exec_corpus.py", "tools/command_parse_corpus.py",
 ]

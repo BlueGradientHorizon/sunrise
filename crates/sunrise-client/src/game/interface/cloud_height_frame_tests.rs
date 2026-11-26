@@ -58,7 +58,7 @@ fn join_overworld(game: &mut crate::game::ClientGame<'_>, height: f64) {
         "minecraft:dimension_type".into(),
         vec![(
             "minecraft:overworld".into(),
-            Some(sunrise_client_core::scoreboard::json_to_tag(&json)),
+            Some(sunrise_game_data::scoreboard::json_to_tag(&json)),
         )],
     );
     game.set_registries(std::sync::Arc::new(registries));

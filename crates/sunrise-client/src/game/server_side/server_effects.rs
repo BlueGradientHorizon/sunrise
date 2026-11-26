@@ -1,6 +1,6 @@
 //! Server-owned sound queue, capture lifecycle, and portable effect helpers.
 use super::Game;
-use sunrise_client_core::sound_source::ServerSound;
+use sunrise_game_data::sound_source::ServerSound;
 
 impl Game<'_, crate::game::server_side::ServerState> {
     #[inline(always)]

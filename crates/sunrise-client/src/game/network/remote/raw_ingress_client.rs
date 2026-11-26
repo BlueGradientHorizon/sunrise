@@ -190,7 +190,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         };
         self.connection_ended(&reason, key.as_deref(), by);
         let screen_reason = match key.as_deref() {
-            Some(k) if sunrise_client_core::lang::get(k) == reason => Text::translate(k, &[]),
+            Some(k) if sunrise_game_data::lang::get(k) == reason => Text::translate(k, &[]),
             _ => Text::literal(reason),
         };
         self.leave_server(Some(screen_reason))
@@ -337,7 +337,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
                     r.joined = true;
                     r.profile = uuid;
                     r.profile_name = name.clone();
-                    r.status = sunrise_client_core::lang::get_or(
+                    r.status = sunrise_game_data::lang::get_or(
                         "multiplayer.downloadingTerrain",
                         "Loading terrain...",
                     );

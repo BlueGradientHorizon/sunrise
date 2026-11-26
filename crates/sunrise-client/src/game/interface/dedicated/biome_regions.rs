@@ -22,7 +22,7 @@ fn parse(text: &str) -> Result<Settings, String> {
 pub(in crate::game::server_side) fn choose(
     world: &std::path::Path,
     config: &std::path::Path,
-) -> sunrise_client_core::Result<()> {
+) -> sunrise_game_data::Result<()> {
     let settings = match std::fs::read_to_string(config) {
         Ok(text) => parse(&text).map_err(|e| format!("server.toml: {e}"))?,
         Err(why) if why.kind() == std::io::ErrorKind::NotFound => Settings::default(),

@@ -1,7 +1,7 @@
 //! `/effect` (EffectCommands) and `/enchant` (EnchantCommand).
 use super::{Arg, Context, Game, R, Target, err, texts};
 use mod_api::EquipmentSlot;
-use sunrise_client_core::text::{self, Style, Text};
+use sunrise_game_data::text::{self, Style, Text};
 use sunrise_items::equipment::MAINHAND;
 use sunrise_level::{
     brewing::{self, namespaced},

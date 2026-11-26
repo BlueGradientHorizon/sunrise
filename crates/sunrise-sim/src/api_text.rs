@@ -8,11 +8,11 @@ use mod_api::text::{
 };
 use serde_json::{Map, Value};
 use std::collections::HashMap;
-use sunrise_client_core::{component, text as engine};
 use sunrise_core::{
     json_nbt,
     nbt::{self, Tag},
 };
+use sunrise_game_data::{component, text as engine};
 pub use text_style_capture::{style_to_api, style_to_api_inprocess};
 
 type Error = TextFormError;
@@ -116,7 +116,7 @@ struct Node<'a> {
 
 fn uuid(value: &Value) -> Option<[u64; 2]> {
     let words = if let Some(s) = value.as_str() {
-        sunrise_client_core::uuid::uuid_from_text(s)?
+        sunrise_game_data::uuid::uuid_from_text(s)?
     } else {
         let values: &[Value; 4] = value.as_array()?.as_slice().try_into().ok()?;
         let mut words = [0i32; 4];
@@ -1653,15 +1653,15 @@ mod text_capture_tests {
 
     #[test]
     fn missing_translation_template_survives_typed_iterative_boundary() {
-        let language = sunrise_client_core::lang::Language::of(
+        let language = sunrise_game_data::lang::Language::of(
             "en_us",
             [("Hi %s".into(), "Wrong translation".into())],
         );
-        sunrise_client_core::lang::scoped(language, || {
-            let engine = sunrise_client_core::text::Text::translate_with_fallback(
+        sunrise_game_data::lang::scoped(language, || {
+            let engine = sunrise_game_data::text::Text::translate_with_fallback(
                 "test.missing",
                 "Hi %s",
-                &[sunrise_client_core::text::Text::literal("Steve")],
+                &[sunrise_game_data::text::Text::literal("Steve")],
             );
             let api = engine.try_into_api().unwrap();
             assert!(
@@ -1673,12 +1673,12 @@ mod text_capture_tests {
 
     #[test]
     fn native_translation_fallback_survives_noop_owned_round_trip() {
-        let language = sunrise_client_core::lang::Language::of(
+        let language = sunrise_game_data::lang::Language::of(
             "en_us",
             [("test.fallback".into(), "Wrong translation".into())],
         );
-        sunrise_client_core::lang::scoped(language, || {
-            let native = sunrise_client_core::text::Text::translate_with_fallback(
+        sunrise_game_data::lang::scoped(language, || {
+            let native = sunrise_game_data::text::Text::translate_with_fallback(
                 "test.missing",
                 "test.fallback",
                 &[],
@@ -1694,7 +1694,7 @@ mod text_capture_tests {
     }
     use mod_api::text::{TextContent as C, TextHover};
     use serde_json::json;
-    use sunrise_client_core::text::Text as EngineText;
+    use sunrise_game_data::text::Text as EngineText;
 
     #[test]
     fn item_and_entity_hovers_survive_a_round_trip() {
@@ -1862,7 +1862,7 @@ mod text_encoding_tests {
         )]);
         text.children.push(Text::literal("first"));
         text.children.push(Text::literal("second"));
-        let engine: Result<sunrise_client_core::text::Text, mod_api::text::TextFormError> =
+        let engine: Result<sunrise_game_data::text::Text, mod_api::text::TextFormError> =
             text.try_into_engine(&());
         assert_eq!(
             engine.unwrap().component(),
@@ -2076,7 +2076,7 @@ mod iterative_tests {
                     }
                     source = parent;
                 }
-                let engine = sunrise_client_core::text::Text::empty().with_component(source);
+                let engine = sunrise_game_data::text::Text::empty().with_component(source);
                 let api = engine.try_into_api().unwrap();
                 let nodes = api_nodes(&api, false);
                 assert_eq!(nodes.len(), depth);
@@ -2146,7 +2146,7 @@ mod iterative_tests {
         std::thread::Builder::new()
             .stack_size(256 * 1024)
             .spawn(|| {
-                use sunrise_client_core::text::{Span, Style, Text as Engine};
+                use sunrise_game_data::text::{Span, Style, Text as Engine};
                 for depth in [512, 513] {
                     let mut text = Engine::from_spans(vec![Span::new("leaf", Style::default())]);
                     for _ in 1..depth {
@@ -2313,7 +2313,7 @@ mod iterative_tests {
     #[test]
     fn component_view_borrows_retained_source() {
         let engine =
-            sunrise_client_core::text::Text::empty().with_component(json!({"text":"source"}));
+            sunrise_game_data::text::Text::empty().with_component(json!({"text":"source"}));
         assert!(matches!(
             engine.component_view(),
             std::borrow::Cow::Borrowed(_)

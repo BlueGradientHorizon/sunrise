@@ -4,8 +4,8 @@ use crate::game::commands::execute::StoreEntry;
 use crate::game::commands::execute::StoreTarget;
 use crate::game::commands::execute::fork_limit_reached;
 use crate::game::commands::execute::is_player_in_place;
-use sunrise_client_core::{nbt_path::NbtPath, text::Text};
 use sunrise_command::CommandError;
+use sunrise_game_data::{nbt_path::NbtPath, text::Text};
 
 impl Game<'_, crate::game::server_side::ServerState> {
     /// `ExecuteCommand.isChunkLoaded`: an entity-ticking loading status and
@@ -358,7 +358,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let limit = self
             .ui
             .rules
-            .int_at(sunrise_client_core::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
+            .int_at(sunrise_game_data::gamerules::vanilla::MAX_COMMAND_SEQUENCE_LENGTH)
             .max(1) as u32;
         if self.side.exec.0.commands > limit {
             return Err(err("command.failed", &[]));
@@ -444,7 +444,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let fork_limit = self
             .ui
             .rules
-            .int_at(sunrise_client_core::gamerules::vanilla::MAX_COMMAND_FORKS)
+            .int_at(sunrise_game_data::gamerules::vanilla::MAX_COMMAND_FORKS)
             as usize;
         let mut sources = vec![
             self.side
@@ -1101,7 +1101,7 @@ pub(in crate::game) mod score_condition_tests {
         (
             ok,
             said.iter()
-                .map(sunrise_client_core::text::Text::plain)
+                .map(sunrise_game_data::text::Text::plain)
                 .collect(),
         )
     }

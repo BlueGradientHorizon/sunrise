@@ -5,7 +5,7 @@ use mod_api::{
     ClientObjective, ClientScore, ClientScoreboard, ClientTeam, CollisionRule, DisplaySlot,
     NumberFormat, ObjectiveRenderType, TeamColor, TeamVisibility, TextFormError,
 };
-use sunrise_client_core::{
+use sunrise_game_data::{
     scoreboard::{self as sb, Comp, comp_text},
     text::Text as EngineText,
 };

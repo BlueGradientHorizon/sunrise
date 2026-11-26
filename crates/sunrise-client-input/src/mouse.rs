@@ -80,7 +80,7 @@ impl ScrollWheelHandler {
     }
 }
 
-pub use sunrise_client_core::move_input::spectator_flying_speed;
+pub use sunrise_game_data::move_input::spectator_flying_speed;
 
 /// Entity rotation as `Entity.turn` keeps it.
 #[derive(Clone, Copy, Debug, PartialEq)]

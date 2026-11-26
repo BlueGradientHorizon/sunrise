@@ -8,13 +8,13 @@ use super::{
     persist::SpawnTree,
 };
 use std::collections::HashMap;
-use sunrise_client_core::Result;
 use sunrise_core::nbt::Tag;
 #[allow(unused_imports)]
 use sunrise_core::{
     geometry::Vec3,
     random::{LegacyRandom, LevelRandom, RandomSource},
 };
+use sunrise_game_data::Result;
 use sunrise_level::containers::BlockEntity;
 use sunrise_sim::mobs::{
     Mob, Who,
@@ -94,7 +94,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
             || !self
                 .ui
                 .rules
-                .bool_at(sunrise_client_core::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
+                .bool_at(sunrise_game_data::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
         {
             return Ok(());
         }
@@ -358,9 +358,9 @@ impl Game<'_, crate::game::server_side::ServerState> {
         if !self
             .ui
             .rules
-            .bool_at(sunrise_client_core::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
+            .bool_at(sunrise_game_data::gamerules::vanilla::SPAWNER_BLOCKS_WORK)
         {
-            self.server_system_message(sunrise_client_core::text::Text::translate(
+            self.server_system_message(sunrise_game_data::text::Text::translate(
                 "advMode.notEnabled.spawner",
                 &[],
             ));

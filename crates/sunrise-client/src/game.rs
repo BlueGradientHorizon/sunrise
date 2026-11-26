@@ -3091,7 +3091,7 @@ use {
     sunrise_client::mesher::MeshTables, sunrise_client::mesher::Vertex, sunrise_client::models,
     sunrise_client::mouse::LookOptions, sunrise_client::mouse::MouseLook,
     sunrise_client::particles::Particle, sunrise_client::settings::Settings,
-    sunrise_client::title::Action, sunrise_client::title::Title, sunrise_client_core::Result,
+    sunrise_client::title::Action, sunrise_client::title::Title, sunrise_game_data::Result,
     sunrise_items::blocks::BlockFacts, sunrise_items::blocks::Fluid,
     sunrise_items::items::ItemStack, sunrise_items::items::Items, sunrise_level::assets::Assets,
     sunrise_level::biome::Biomes, sunrise_level::collisions,

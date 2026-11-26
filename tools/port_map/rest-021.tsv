@@ -126,11 +126,11 @@ FileUtil.createDirectoriesSafe	skip:other		directory creation; save.rs uses crea
 FileUtil.isEmptyPath	skip:data		resource path handling; Sunrise reads its data from tables and files
 FileZipper.add	skip:debug		profiling report archive (Minecraft.archiveProfilingReport, PerfCommand); Sunrise writes no zip report
 FileZipper.close	skip:debug		profiling report archive (Minecraft.archiveProfilingReport, PerfCommand); Sunrise writes no zip report
-FormattedCharSequence.forward	port	crates/sunrise-client-core/src/text.rs::Text::styled	styled text object; the per-character walk is Text::chars
+FormattedCharSequence.forward	port	crates/sunrise-game-data/src/text.rs::Text::styled	styled text object; the per-character walk is Text::chars
 FormattedCharSequence.backward	skip:other		the reverse walk SubStringSource.substring does, which is skip:ui (the HUD draws each span with its own style)
 FormattedCharSequence.decorateOutput	inline	crates/sunrise-level/src/bidi.rs::reorder	the mirror a right-to-left character is drawn as; vanilla's sink mirrors every code point when the language reads right to left, here only the code points in a right-to-left run
-FormattedCharSequence.composite	port	crates/sunrise-client-core/src/text.rs::Text::empty	zero parts give the empty sequence
-FormattedCharSequence.fromPair	port	crates/sunrise-client-core/src/text.rs::Text::append	concatenation of two sequences
+FormattedCharSequence.composite	port	crates/sunrise-game-data/src/text.rs::Text::empty	zero parts give the empty sequence
+FormattedCharSequence.fromPair	port	crates/sunrise-game-data/src/text.rs::Text::append	concatenation of two sequences
 FutureChain.append	skip:other		ordering helper for the async chat-signature checks in ServerGamePacketListenerImpl; a scheduling wrapper, no game behaviour of its own
 Graph.depthFirstSearch	inline	crates/sunrise-world/src/worldgen/feature_sort.rs::build_features_per_step	iterative DFS with colours; finds the cycle and emits the reverse topological order
 Weapon.<clinit>	skip:java		constructs the Java persistent and stream codecs; record validation and values are implemented natively

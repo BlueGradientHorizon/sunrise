@@ -158,7 +158,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
         let level = std::mem::replace(&mut reg.permission, permission);
         let own_sender = reg
             .sender
-            .replace(sunrise_client_core::registries::CommandSender {
+            .replace(sunrise_game_data::registries::CommandSender {
                 uuid: player_uuid,
                 name: player_name.clone(),
             });
@@ -250,7 +250,7 @@ impl Game<'_, crate::game::server_side::ServerState> {
     pub(in crate::game) fn run_guest_command_told(
         &mut self,
         c: GuestCommand,
-    ) -> Option<(bool, Vec<sunrise_client_core::text::Text>)> {
+    ) -> Option<(bool, Vec<sunrise_game_data::text::Text>)> {
         let (ok, mut lines) = self.with_guest_swap(c.conn, self.dim, |game| {
             game.side.chat_capture = Some(Vec::new());
             let level = std::mem::replace(&mut game.ui.registries.permission, c.permission);

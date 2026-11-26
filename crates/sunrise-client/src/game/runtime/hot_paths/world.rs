@@ -1,7 +1,7 @@
 //! The benchmark's level: a stone floor at y 63 over a square of otherwise empty chunks.
 use super::super::Game;
 use std::sync::Arc;
-use sunrise_client_core::Result;
+use sunrise_game_data::Result;
 use sunrise_level::chunk::Chunk;
 use sunrise_world::level::Ticks;
 

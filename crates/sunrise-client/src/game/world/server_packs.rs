@@ -20,7 +20,7 @@ use sunrise_client::{
     toasts::SystemToast,
     ui,
 };
-use sunrise_client_core::{
+use sunrise_game_data::{
     Result,
     scoreboard::{comp_text, tag_to_json},
     text::{Text, named_color},
@@ -1215,7 +1215,7 @@ mod tests {
                     ClientHost, ClientTickPreEvent, Flow, Hooks, ModEntry, RenderGuiPreEvent,
                     ToastAddEvent,
                 };
-                use sunrise_client_core::lang;
+                use sunrise_game_data::lang;
 
                 struct VetoingPanicker;
                 #[mod_api::__subscriptions]

@@ -1564,7 +1564,7 @@ mod tests {
     const CLIENT_CRATES: [&str; 4] = [
         "sunrise-client",
         "sunrise-client-render",
-        "sunrise-client-core",
+        "sunrise-game-data",
         "sunrise-client-input",
     ];
 
@@ -1841,7 +1841,7 @@ mod tests {
     }
 
     /// Every lang file of a downloaded pack, e.g. BACAP Language Pack:
-    /// `SUNRISE_LANG_PACK_DIR=<pack>/assets/minecraft/lang cargo test -p sunrise-client-core
+    /// `SUNRISE_LANG_PACK_DIR=<pack>/assets/minecraft/lang cargo test -p sunrise-game-data
     /// lang::tests::every_lang_file_of_a_pack_reads -- --ignored --nocapture`.
     #[test]
     #[ignore = "needs a downloaded pack in SUNRISE_LANG_PACK_DIR"]

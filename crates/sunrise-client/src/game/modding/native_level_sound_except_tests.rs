@@ -235,8 +235,8 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
     in_isolated_process(
         "entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactions",
         || {
-            use sunrise_client_core::gamerules::Value;
             use sunrise_core::random::{LegacyRandom, RandomSource};
+            use sunrise_game_data::gamerules::Value;
             use {
                 sunrise_level::particle_options::ParticleOptions,
                 sunrise_level::particle_options::ParticleType,
@@ -634,7 +634,7 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
         || {
             use mod_api::{EquipmentSlot, Flow, HostSide, HostTransaction, LivingRef};
             use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-            use sunrise_client_core::gamerules::Value;
+            use sunrise_game_data::gamerules::Value;
             use sunrise_items::items::ItemStack;
             use {
                 sunrise_level::particle_options::ParticleOptions,

@@ -9,8 +9,7 @@
 use super::{Game, lan_pvp::Victim};
 use sunrise_core::geometry::{Aabb, Vec3};
 use {
-    sunrise_client_core::text::Text, sunrise_sim::health::HurtSource,
-    sunrise_sim::spear_sim::Kinetic,
+    sunrise_game_data::text::Text, sunrise_sim::health::HurtSource, sunrise_sim::spear_sim::Kinetic,
 };
 
 /// Another player a spear can reach in the acting player's turn, taken from

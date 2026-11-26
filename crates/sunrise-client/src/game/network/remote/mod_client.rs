@@ -81,9 +81,9 @@ use sunrise_client::{
     screen_effects,
     streaming::MeshStreamer,
 };
-#[allow(unused_imports)]
-use sunrise_client_core::{Result, text::Text};
 use sunrise_core::{geometry::Vec3, profile::AccountProperty, random::RandomSource};
+#[allow(unused_imports)]
+use sunrise_game_data::{Result, text::Text};
 #[allow(unused_imports)]
 use sunrise_items::{blocks::Fluid, items::ItemStack};
 #[allow(unused_imports)]
@@ -703,11 +703,11 @@ impl Game<'_, crate::game::client_side::ClientState> {
         let atlas = &self.side.gui.atlas;
         let (w, h) = (batch.width, batch.height);
         sunrise_client::ui::menu_background(batch, atlas, 0.0, 0.0, w, h, false);
-        let title = sunrise_client_core::text::Text::translate("connect.reconfiguring", &[]);
+        let title = sunrise_game_data::text::Text::translate("connect.reconfiguring", &[]);
         let ((tx, ty), (bx, by)) = self.reconfigure_layout((w, h));
         batch.text_styled(atlas, &title, tx, ty, u32::MAX, true);
         // CommonComponents.GUI_DISCONNECT
-        let label = sunrise_client_core::text::Text::translate("menu.disconnect", &[]);
+        let label = sunrise_game_data::text::Text::translate("menu.disconnect", &[]);
         let active = self.ticks.saturating_sub(since) >= 600;
         let hover = sunrise_client::ui::hovered(self.side.cursor, bx, by, 150.0, 20.0);
         sunrise_client::ui::button(batch, atlas, bx, by, 150.0, 20.0, &label, active, hover);
@@ -889,7 +889,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
         &self,
         (w, h): (f32, f32),
     ) -> ((f32, f32), (f32, f32)) {
-        let title = sunrise_client_core::text::Text::translate("connect.reconfiguring", &[]);
+        let title = sunrise_game_data::text::Text::translate("connect.reconfiguring", &[]);
         let title_w = self.side.gui.atlas.font.width_text(&title).ceil() as i32;
         let width = (title_w + 20).max(170);
         let left = ((w as i32 - width) as f32 * 0.5) as i32;

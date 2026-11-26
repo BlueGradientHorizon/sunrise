@@ -1,8 +1,8 @@
 //! What the custom spawners (`CustomSpawner`: cats, the wandering trader, the village siege) call on `ServerLevel`.
 
 use std::collections::HashSet;
-use sunrise_client_core::gamerules::RuleIndex;
 use sunrise_core::geometry::Vec3;
+use sunrise_game_data::gamerules::RuleIndex;
 use sunrise_items::blocks::BlockFacts;
 use sunrise_level::world::World;
 use sunrise_sim::{

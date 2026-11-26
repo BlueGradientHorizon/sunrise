@@ -22,11 +22,11 @@ use sunrise_client::{
     mesher::Vertex,
     title::Action,
 };
-use sunrise_client_core::Result;
 use sunrise_client_gameplay::frame_autotune;
 use sunrise_client_render::block_entity_reach::Reach;
 use sunrise_core::{geometry::Aabb, position::BlockPos};
 use sunrise_core::{geometry::Vec3, random::RandomSource};
+use sunrise_game_data::Result;
 use sunrise_items::blocks::Fluid;
 use sunrise_level::spans::startup;
 use sunrise_level::{containers::BlockEntity, spans};
@@ -3546,7 +3546,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     pub(in crate::game) fn process_level_events_portal_travel_client(&mut self) {
         let pitch = self.side.particles.0.level_random().next_float() * 0.4 + 0.8;
         self.side.audio.0.play_on(
-            sunrise_client_core::sound_source::AMBIENT,
+            sunrise_game_data::sound_source::AMBIENT,
             "minecraft:block.portal.travel",
             None,
             0.25,
@@ -5269,8 +5269,7 @@ impl Game<'_, crate::game::client_side::ClientState> {
     ) {
         let lid = |p: [i32; 3]| self.chest_lid(p, partial);
         let anim = |p: [i32; 3]| self.block_anim(p, partial);
-        let substitute =
-            |text: &sunrise_client_core::text::Text| self.substitute_inline_images(text);
+        let substitute = |text: &sunrise_game_data::text::Text| self.substitute_inline_images(text);
         let inline_sprite =
             |atlas: &str, sprite: &str| self.side.gui.atlas.inline_sprite(atlas, sprite);
         use block_entity_render::SignOutline;

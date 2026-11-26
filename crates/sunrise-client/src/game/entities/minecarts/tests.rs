@@ -10,11 +10,11 @@ fn a_furnace_cart_is_capped_at_half_the_rule_speed_under_the_new_physics() {
         features.push("minecraft:minecart_improvements".into());
         game.level.enabled_features = features.into();
         game.ui.rules =
-            sunrise_client_core::gamerules::GameRules::with_features(&game.level.enabled_features);
+            sunrise_game_data::gamerules::GameRules::with_features(&game.level.enabled_features);
         let rule = f64::from(
             game.ui
                 .rules
-                .int_at(sunrise_client_core::gamerules::vanilla::MAX_MINECART_SPEED),
+                .int_at(sunrise_game_data::gamerules::vanilla::MAX_MINECART_SPEED),
         ) / 20.0;
         assert_eq!(rule, 0.4);
         game.world.chunks.insert(
