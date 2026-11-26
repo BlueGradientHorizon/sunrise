@@ -3,7 +3,8 @@
 
 use std::ops::Range;
 
-/// A diagnostic in the author's file (`ns:path`, as includes name it).
+/// A diagnostic in the author's file (`ns:path`, as includes name it). Its display includes
+/// the authored position and the shader stage when known.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Error {
     pub file: String,
@@ -23,11 +24,12 @@ pub struct Error {
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match (self.file.as_str(), self.line, self.column) {
-            ("", _, _) => f.write_str(&self.message),
-            (file, 0, _) => write!(f, "{file}: {}", self.message),
-            (file, line, 0) => write!(f, "{file}:{line}: {}", self.message),
-            (file, line, column) => write!(f, "{file}:{line}:{column}: {}", self.message),
+            ("", _, _) => {}
+            (file, 0, _) => write!(f, "{file}: ")?,
+            (file, line, 0) => write!(f, "{file}:{line}: ")?,
+            (file, line, column) => write!(f, "{file}:{line}:{column}: ")?,
         }
+        std::fmt::Display::fmt(&shader_message(self.stage, &self.message), f)
     }
 }
 
@@ -75,7 +77,33 @@ impl Location {
     }
 }
 
-/// Errors as one line, `; ` between them: a load note's text.
+/// Display a refusal with its shader stage as a prefix when known, without changing the refusal
+/// itself. Use this in diagnostics that carry their own source location.
+pub fn shader_message(
+    stage: Option<naga::ShaderStage>,
+    message: impl std::fmt::Display,
+) -> impl std::fmt::Display {
+    use naga::ShaderStage;
+    std::fmt::from_fn(move |f| {
+        if let Some(stage) = stage {
+            let name = match stage {
+                ShaderStage::Vertex => "vertex",
+                ShaderStage::Fragment => "fragment",
+                ShaderStage::Compute => "compute",
+                ShaderStage::Task => "task",
+                ShaderStage::Mesh => "mesh",
+                ShaderStage::RayGeneration => "ray generation",
+                ShaderStage::Miss => "miss",
+                ShaderStage::AnyHit => "any hit",
+                ShaderStage::ClosestHit => "closest hit",
+            };
+            write!(f, "{name} shader: ")?;
+        }
+        message.fmt(f)
+    })
+}
+
+/// Errors as one line, `; ` between them: a load note with each error's position and stage.
 pub fn describe(errors: &[Error]) -> String {
     let mut out = String::new();
     for (n, error) in errors.iter().enumerate() {
@@ -442,16 +470,31 @@ impl Expanded {
         self.error_at(span.to_range().map(|r| r.start), message)
     }
 
-    /// [`Expanded::error_in`] for each of naga's errors, the text's lines found once for all.
-    pub fn errors_in(&self, errors: impl IntoIterator<Item = (naga::Span, String)>) -> Vec<Error> {
+    /// Locate each of naga's parse errors in `stage`, indexing the rewritten text's line
+    /// breaks once. `message` receives the error kind and the line naga read (the first line
+    /// when the span is unknown); the diagnostic's position is mapped back to the author.
+    pub fn errors_in(
+        &self,
+        stage: naga::ShaderStage,
+        errors: &naga::front::glsl::ParseErrors,
+        message: impl Fn(&naga::front::glsl::ErrorKind, &str) -> String,
+    ) -> Vec<Error> {
         let text = self.text();
         let breaks: Vec<usize> = text.match_indices('\n').map(|(at, _)| at).collect();
-        (errors.into_iter())
-            .map(|(span, message)| {
-                let at = span.to_range().map(|r| r.start);
-                let origin =
-                    || at.and_then(|at| self.lines.origin(breaks.partition_point(|&b| b < at)));
-                self.located_error(at.and_then(|at| self.lines.position(at)), origin, message)
+        errors
+            .errors
+            .iter()
+            .map(|error| {
+                let at = error.meta.to_range().map(|r| r.start);
+                let line = at.map_or(0, |at| breaks.partition_point(|&b| b < at));
+                let from = line.checked_sub(1).map_or(0, |l| breaks[l] + 1);
+                let to = breaks.get(line).copied().unwrap_or(text.len());
+                self.located_error(
+                    at.and_then(|at| self.lines.position(at)),
+                    || at.and_then(|_| self.lines.origin(line)),
+                    message(&error.kind, &text[from..to]),
+                )
+                .with_stage(stage)
             })
             .collect()
     }
@@ -576,19 +619,27 @@ mod tests {
     }
 
     #[test]
-    fn an_error_names_its_file_and_line_or_the_file_alone() {
-        let error = |line| Error {
-            file: "minecraft:shaders/core/text.fsh".into(),
+    fn an_error_names_its_position_and_stage_when_known() {
+        use naga::ShaderStage::{Compute, Fragment, Vertex};
+        let error = |file, line, column, stage| Error {
+            file,
             line,
-            column: if line == 0 { 0 } else { 5 },
-            stage: Some(naga::ShaderStage::Fragment),
+            column,
+            stage,
             message: "oops".into(),
             unprovided: None,
         };
+        let file = "minecraft:shaders/include/shared.glsl";
         assert_eq!(
-            describe(&[error(3), error(0)]),
-            "minecraft:shaders/core/text.fsh:3:5: oops; \
-             minecraft:shaders/core/text.fsh: oops"
+            describe(&[
+                error(file.into(), 3, 5, Some(Fragment)),
+                error(file.into(), 0, 0, Some(Vertex)),
+                error(String::new(), 0, 0, Some(Compute)),
+                error(file.into(), 3, 0, None),
+            ]),
+            "minecraft:shaders/include/shared.glsl:3:5: fragment shader: oops; \
+             minecraft:shaders/include/shared.glsl: vertex shader: oops; \
+             compute shader: oops; minecraft:shaders/include/shared.glsl:3: oops"
         );
     }
 }
