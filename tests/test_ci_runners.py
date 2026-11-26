@@ -108,7 +108,8 @@ def switch_facts(route, setting):
     facts = {}
     for comparison in route.comparisons():
         left, right = comparison.operands
-        if comparison.operator in ("==", "!=") and left == SWITCH and isinstance(right.value, str):
+        if comparison.operator in ("==", "!=") and left == SWITCH and right.operator == "literal" \
+                and isinstance(right.value, str):
             facts[comparison] = (right.value.lower() == setting) == (comparison.operator == "==")
     return facts
 
@@ -227,6 +228,9 @@ jobs:
              "'ubuntu-latest' }}", {"light"}, "SELF_HOSTED_CI=off"),
             ("${{ (vars.SELF_HOSTED_CI != 'off' || inputs.force) && 'sunrise-light' || 'ubuntu-latest' }}",
              {"light"}, "SELF_HOSTED_CI=off"),
+            # A computed operand is not a literal: format(...) can be 'off' too.
+            ("${{ vars.SELF_HOSTED_CI == format('{0}', inputs.mode) && 'sunrise-light' || 'ubuntu-latest' }}",
+             {"light"}, "SELF_HOSTED_CI=off"),
             ("${{ vars.SELF_HOSTED_CI != 'off' && (vars.SELF_HOSTED_CI != 'light' || inputs.force) && "
              "fromJSON('[\"self-hosted\", \"sunrise-checks\"]') || 'ubuntu-latest' }}", {"checks"},
              "SELF_HOSTED_CI=light"),
@@ -241,6 +245,8 @@ jobs:
             "fromJSON('[\"ubuntu-latest\", \"sunrise-light\"]')[1]",
             "fromJSON('{\"Pool\": [\"self-hosted\", \"sunrise-light\"]}').pool",
             "fromJSON('[\"ubuntu-latest\", \"sunrise-light\"]')[inputs.slot]",
+            "fromJSON('[\"ubuntu-latest\", \"sunrise-light\"]')['1']",
+            "fromJSON('[\"ubuntu-latest\", \"sunrise-light\"]')[1.5]",
         ]
         with tempfile.TemporaryDirectory() as directory, patch(f"{__name__}.WORKFLOWS", Path(directory)):
             path = Path(directory) / "fixture.yml"

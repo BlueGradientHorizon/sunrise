@@ -1,6 +1,7 @@
 """Syntax and conservative branch analysis for Actions workflow policy tests."""
 from dataclasses import dataclass
 import json
+import math
 import re
 
 
@@ -143,7 +144,7 @@ def branch_values(expression, facts=None):
 
     Comparisons are unknown booleans unless the caller supplies a fact about one;
     of the function calls, only fromJSON on a known string produces a known result,
-    and indexing a known value gives the element its key can pick (null when absent).
+    and indexing a known value gives the elements its key can pick (null when absent).
     """
     op = expression.operator
     if op == "literal":
@@ -176,15 +177,16 @@ _UNKNOWN = object()
 
 
 def _elements(value, key):
-    """What `value[key]` can be in Actions: a known list or object indexed by a dynamic key can give
-    any of its elements; a dynamic value gives _UNKNOWN."""
+    """What `value[key]` can be in Actions: a list takes a key that is a number, floored; an object a
+    string, compared without case. A key the analysis cannot resolve that way (a dynamic value, or a
+    string or other value Actions would convert) can give any element; a dynamic value gives _UNKNOWN."""
     if value in (_UNKNOWN_FALSY, _UNKNOWN_TRUTHY):
         return [_UNKNOWN]
-    if key in (_UNKNOWN_FALSY, _UNKNOWN_TRUTHY):
-        items = value if isinstance(value, list) else list(value.values()) if isinstance(value, dict) else []
-        return [*items, None]
     if isinstance(value, list) and isinstance(key, (int, float)) and not isinstance(key, bool):
-        return [value[int(key)] if key == int(key) and 0 <= key < len(value) else None]
+        index = math.floor(key)
+        return [value[index] if 0 <= index < len(value) else None]
     if isinstance(value, dict) and isinstance(key, str):
         return [next((item for name, item in value.items() if name.lower() == key.lower()), None)]
+    if isinstance(value, (list, dict)):
+        return [*(value if isinstance(value, list) else value.values()), None]
     return [None]
