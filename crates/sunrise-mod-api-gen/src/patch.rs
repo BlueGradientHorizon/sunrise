@@ -2220,16 +2220,17 @@ mod tests {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
     }
 
+    const AUTOSAVE_INTERVAL: &str = "sunrise_gameplay::game::server_side::autosave_server::crate::game::ServerGame<'_>::next_autosave_interval";
+
     /// [`generate`] on this checkout, with its function index for `targets`.
     fn generate_here(targets: &[String], extras: &Extras) -> Result<PatchCrate, Vec<Refusal>> {
-        let generic = extras
-            .loops
-            .iter()
-            .map(|l| crate::functions::key(&l.published.generic_target()))
-            .collect();
-        let only = targets.iter().map(|t| crate::functions::key(t)).collect();
-        let index = crate::functions::index_of(&root(), &generic, Some(&only)).unwrap();
-        generate(&root(), "sunrise_patch", targets, extras, &index)
+        static INDEX: std::sync::OnceLock<crate::functions::FunctionIndex> =
+            std::sync::OnceLock::new();
+        let root = root();
+        let index = INDEX.get_or_init(|| {
+            crate::functions::index_with_layout(&root, SourceLayout::read(&root).unwrap()).unwrap()
+        });
+        generate(&root, "sunrise_patch", targets, extras, index)
     }
 
     #[test]
@@ -2257,22 +2258,18 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_method_moves_into_a_trait_of_its_own_type() {
-        let crate_ = generate_here(
-            &["sunrise_client::game::server_side::autosave_server::Game<'_>::next_autosave_interval".into()],
-            &Extras::default(),
-        )
-        .unwrap();
+        let crate_ = generate_here(&[AUTOSAVE_INTERVAL.into()], &Extras::default()).unwrap();
         assert_eq!(
             crate_.patched[0].id,
-            "sunrise_patch::game::server_side::autosave_server::<Game<'_,crate::game::server_side::ServerState> as __Fnr_Game_next_autosave_interval>::next_autosave_interval"
+            "sunrise_patch_gameplay::game::server_side::autosave_server::<crate::game::ServerGame<'_> as __Fnr_crate_game_ServerGame_next_autosave_interval>::next_autosave_interval"
         );
         let lib = &crate_.libs[0].1;
         assert!(lib.contains("pub mod server_side {"));
         assert!(lib.contains("pub mod autosave_server {"));
         assert!(lib.replace(char::is_whitespace, "").contains(
-            "impl__Fnr_Game_next_autosave_intervalforGame<'_,crate::game::server_side::ServerState>"
+            "impl__Fnr_crate_game_ServerGame_next_autosave_intervalforcrate::game::ServerGame<'_>"
         ));
-        assert!(lib.contains("self.clock.sprinting()"));
+        assert!(lib.contains("self.common.clock.sprinting()"));
     }
 
     #[test]
@@ -2280,7 +2277,7 @@ mod tests {
     fn refusals_are_named() {
         let error = generate_here(
             &[
-                "sunrise_client::game::server_side::autosave_server::Game<'_>::no_such_function"
+                "sunrise_gameplay::game::server_side::autosave_server::crate::game::ServerGame<'_>::no_such_function"
                     .into(),
                 "sunrise_no_such_crate::f".into(),
             ],
@@ -2296,14 +2293,14 @@ mod tests {
     fn a_lower_crate_function_gets_a_patch_crate_of_its_own() {
         let crate_ = generate_here(
             &[
-                "sunrise_client::game::server_side::autosave_server::Game<'_>::next_autosave_interval".into(),
+                AUTOSAVE_INTERVAL.into(),
                 "sunrise_sim::clock::FixedStep::advance".into(),
             ],
             &Extras::default(),
         )
         .unwrap();
         let names: Vec<_> = crate_.libs.iter().map(|(name, _)| name.as_str()).collect();
-        assert_eq!(names, ["sunrise_patch", "sunrise_patch_sim"]);
+        assert_eq!(names, ["sunrise_patch_gameplay", "sunrise_patch_sim"]);
         let lower = &crate_.libs[1].1;
         assert!(lower.contains("pub mod clock"), "{lower}");
         assert!(
@@ -2820,7 +2817,7 @@ mod tests {
         let extras = Extras {
             modules: vec![SupportModule {
                 id: "support".into(),
-                file: "crates/sunrise-client/src/game/world/autosave_server.rs".into(),
+                file: "crates/sunrise-gameplay/src/game/world/autosave_server.rs".into(),
                 name: "fnr_support".into(),
                 text: "pub fn twice(n: i64) -> i64 { n * 2 }".into(),
                 public: false,
@@ -2829,18 +2826,14 @@ mod tests {
                 id: "ticks".into(),
                 method: "__horizon_mixins_m_ticks".into(),
                 kind: "GET_MUT".into(),
-                target: "sunrise_client::game::server_side::ServerState".into(),
+                target: "sunrise_gameplay::game::server_side::ServerState".into(),
                 member: Some("ticks_until_autosave".into()),
             }],
             idents: BTreeSet::new(),
             linked: BTreeSet::new(),
             loops: Vec::new(),
         };
-        let crate_ = generate_here(
-            &["sunrise_client::game::server_side::autosave_server::Game<'_>::next_autosave_interval".into()],
-            &extras,
-        )
-        .unwrap();
+        let crate_ = generate_here(&[AUTOSAVE_INTERVAL.into()], &extras).unwrap();
         let lib = crate_.libs[0].1.replace(char::is_whitespace, "");
         assert!(
             lib.contains("pub(crate)modfnr_support{pubfntwice"),
@@ -2946,15 +2939,15 @@ mod tests {
             [(published.entry.as_str(), true), (generic.as_str(), false)]
         );
         let lib = both.libs[0].1.replace(char::is_whitespace, "");
-        assert!(lib.contains("pubtrait__Fnr_Game_tick_block_entities_with{fntick_block_entities_with(&mutself,__a1:&mut__FnrLoopSlots_block_entities_tick,)->Result<()>;"), "{}", both.libs[0].1);
-        assert!(lib.contains("|game,slots:&mut__FnrLoopSlots_block_entities_tick|{__Fnr_Game_tick_block_entities_with::tick_block_entities_with(game,slots,)}") || lib.contains("|game,slots:&mut__FnrLoopSlots_block_entities_tick|__Fnr_Game_tick_block_entities_with::tick_block_entities_with(game,slots,),"), "{}", both.libs[0].1);
+        assert!(lib.contains("pubtrait__Fnr_ServerGame_tick_block_entities_with{fntick_block_entities_with(&mutself,__a1:&mut__FnrLoopSlots_block_entities_tick,)->Result<()>;"), "{}", both.libs[0].1);
+        assert!(lib.contains("|game,slots:&mut__FnrLoopSlots_block_entities_tick|{__Fnr_ServerGame_tick_block_entities_with::tick_block_entities_with(game,slots,)}") || lib.contains("|game,slots:&mut__FnrLoopSlots_block_entities_tick|__Fnr_ServerGame_tick_block_entities_with::tick_block_entities_with(game,slots,),"), "{}", both.libs[0].1);
         assert!(
             lib.contains("|game|game.tick_block_entities_with(&mut()),"),
             "{}",
             both.libs[0].1
         );
         assert!(
-            !lib.contains("__fnr_install_Game_tick_block_entities_with"),
+            !lib.contains("__fnr_install_ServerGame_tick_block_entities_with"),
             "{}",
             both.libs[0].1
         );
