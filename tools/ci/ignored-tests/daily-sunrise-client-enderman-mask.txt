@@ -1,2 +1,0 @@
-# enderman_mask: a mod answers whether a worn head item masks an enderman's stare (#5948).
-sunrise-client game::creatures::enderman_anger_tests::a_mod_says_whether_a_worn_head_item_masks_the_stare lib daily resources

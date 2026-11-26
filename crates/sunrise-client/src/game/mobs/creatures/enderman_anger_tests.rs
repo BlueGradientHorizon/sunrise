@@ -71,20 +71,20 @@ fn a_mod_keeps_one_stared_at_enderman_calm() {
     });
 }
 
-/// Says enderman `self.0` is never masked from, and enderman `self.1` always is.
+/// Says the gaze is never disguised from mob `self.0`, and always from mob `self.1`.
 struct Mask(u32, u32);
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for Mask {
-    fn enderman_mask(&self, _: &dyn mod_api::Host, event: &mut mod_api::EndermanMaskEvent) {
-        if event.enderman.id() == self.0 {
-            event.mask = false;
-        } else if event.enderman.id() == self.1 {
-            event.mask = true;
+    fn gaze_disguise(&self, _: &dyn mod_api::Host, event: &mut mod_api::GazeDisguiseEvent) {
+        if event.observer.id() == self.0 {
+            event.disguised = false;
+        } else if event.observer.id() == self.1 {
+            event.disguised = true;
         }
     }
 }
 
-/// `enderman_mask` (#5948): under a carved pumpkin, the mod lets one enderman count the
+/// `gaze_disguise` (#5948): under a carved pumpkin, the mod lets one enderman count the
 /// stare and leaves another to vanilla's mask; bare-headed, the mod masks a third.
 #[test]
 #[ignore = "daily"]

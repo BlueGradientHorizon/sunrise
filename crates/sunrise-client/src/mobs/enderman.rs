@@ -48,7 +48,7 @@ pub fn register(m: &mut Mob) {
 }
 /// Enderman.isBeingStaredBy: the player's look within a cone of 0.025 / distance
 /// of the eyes, with line of sight, and no head item in #minecraft:gaze_disguise_equipment (or
-/// what a mod's `enderman_mask` answers for it). Last, a mod may keep the enderman calm
+/// what a mod's `gaze_disguise` answers for it). Last, a mod may keep the enderman calm
 /// (`EnderManAngerEvent`).
 pub fn stared_at(m: &Mob, w: &MobWorld) -> bool {
     let Some(p) = w.selected_player() else {
@@ -57,11 +57,7 @@ pub fn stared_at(m: &Mob, w: &MobWorld) -> bool {
     if !p.alive {
         return false;
     }
-    let mask = super::ai::wears_gaze_disguise(p.head.as_deref(), w);
-    let mask = w
-        .mob_hooks
-        .map_or(mask, |hooks| hooks.enderman_mask(m.id, p, mask));
-    if mask {
+    if super::ai::gaze_disguised(m.id, p, w) {
         return false;
     }
     let look = p.look;
