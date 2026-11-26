@@ -4996,6 +4996,8 @@ dependencies = [
 name = "sunrise-gameplay-common"
 version = "0.1.0"
 dependencies = [
+ "cap-fs-ext",
+ "cap-std",
  "chrono",
  "glam",
  "indexmap",
@@ -5008,6 +5010,7 @@ dependencies = [
  "sunrise-command",
  "sunrise-core",
  "sunrise-game-data",
+ "sunrise-hooks",
  "sunrise-items",
  "sunrise-level",
  "sunrise-mod-api",
@@ -5020,6 +5023,7 @@ dependencies = [
  "sunrise-sim",
  "sunrise-threads",
  "sunrise-world",
+ "tempfile",
 ]
 
 [[package]]
