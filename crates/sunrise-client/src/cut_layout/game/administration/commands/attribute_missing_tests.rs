@@ -8,7 +8,7 @@ use {crate::game::*, sunrise_gameplay_common::game::{Mob, Resources, Vec3, entit
 use std::sync::Arc;
 use sunrise_sim::motion::PlayerMotion;
 
-pub(in crate::game) fn game<'a>(
+pub(crate) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
 ) -> sunrise_gameplay::game::ServerGame<'a> {
     let mut game = sunrise_gameplay::game::game_tests::tests::server_game(resources);
@@ -24,10 +24,10 @@ pub(in crate::game) fn game<'a>(
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::server_side::commands_server::world_cmds::attribute_missing_tests::run;
+pub(crate) use sunrise_gameplay::game::server_side::commands_server::world_cmds::attribute_missing_tests::run;
 
 /// The one line a command told its issuer (`command_failure` adds no others).
-pub(in crate::game) fn only(said: &[String]) -> &str {
+pub(crate) fn only(said: &[String]) -> &str {
     assert_eq!(said.len(), 1, "{said:?}");
     &said[0]
 }

@@ -108,7 +108,7 @@ fn blank_inventory_presses_are_handled_and_feed_double_click_history() {
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::core_tests_client::exercise_blank_inventory_presses;
+pub(crate) use crate::game::client_side::core_tests_client::exercise_blank_inventory_presses;
 
 /// `ClipContext.Block.OUTLINE` for the SOURCE_ONLY ray (#8180): a ray
 /// through the empty part of a torch's cell is not stopped by it.
@@ -373,7 +373,7 @@ fn an_interact_packet_cannot_name_a_mob_the_pick_would_refuse() {
 }
 
 #[path = "incoming_tests/pet_order.rs"]
-pub(in crate::game) mod pet_order_tests;
+pub(crate) mod pet_order_tests;
 /// The packet's location is `EntityHitResult.getLocation() -
 /// entity.position()`, the point the view ray met the box at measured
 /// from the mob's feet (`MultiPlayerGameMode.interact`). The old fixed
@@ -961,7 +961,7 @@ fn eager_saves_keep_dirty_order_cooldowns_and_writer_budget() {
 }
 
 #[path = "incoming_tests/knot_command_view.rs"]
-pub(in crate::game) mod knot_command_view_tests;
+pub(crate) mod knot_command_view_tests;
 
 #[test]
 fn the_debug_crosshair_gives_way_to_the_radial_menu() {
@@ -969,7 +969,7 @@ fn the_debug_crosshair_gives_way_to_the_radial_menu() {
 }
 
 /// Wind charges: where they burst, and what their hit deals.
-pub(in crate::game) mod wind_charge_burst_tests {
+pub(crate) mod wind_charge_burst_tests {
     use super::*;
     use sunrise_gameplay::game::wind::above_the_top;
     use std::sync::Arc;

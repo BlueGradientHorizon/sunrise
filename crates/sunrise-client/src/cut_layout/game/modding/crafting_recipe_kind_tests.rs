@@ -5,14 +5,14 @@ use std::sync::{
     Arc,
     atomic::{AtomicBool, AtomicUsize, Ordering},
 };
-pub(in crate::game) struct Probe {
+pub(crate) struct Probe {
     pub tosses: Arc<AtomicUsize>,
-    pub(in crate::game) bad_recipe: Arc<AtomicBool>,
+    pub(crate) bad_recipe: Arc<AtomicBool>,
 }
-pub(in crate::game) struct Kind {
+pub(crate) struct Kind {
     pub stick: mod_api::ItemKey,
-    pub(in crate::game) diamond: mod_api::ItemKey,
-    pub(in crate::game) bucket: mod_api::ItemKey,
+    pub(crate) diamond: mod_api::ItemKey,
+    pub(crate) bucket: mod_api::ItemKey,
 }
 impl mod_api::CraftingRecipeKind for Kind {
     type Value = u32;

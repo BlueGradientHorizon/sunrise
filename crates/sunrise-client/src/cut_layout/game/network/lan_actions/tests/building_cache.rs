@@ -12,9 +12,9 @@ use sunrise_sim::{
     motion::PlayerMotion,
 };
 
-pub(in crate::game) type Boxes = Vec<([f64; 3], [f64; 3])>;
+pub(crate) type Boxes = Vec<([f64; 3], [f64; 3])>;
 
-pub(in crate::game) fn game<'a>(
+pub(crate) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
 ) -> sunrise_gameplay::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
@@ -115,12 +115,12 @@ pub(in crate::game) fn game<'a>(
 }
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay::game::server_side::lan_actions_server::tick::building_cache_tests::seen_by_builder;
+pub(crate) use sunrise_gameplay::game::server_side::lan_actions_server::tick::building_cache_tests::seen_by_builder;
 
 /// The Builder's view at the start of a tick, after `command` (and, with
 /// `turns`, the guests' turns that follow it in the tick), and the same
 /// without the shared boxes.
-pub(in crate::game) fn the_mover_changed_mid_tick(
+pub(crate) fn the_mover_changed_mid_tick(
     command: &str,
     turns: bool,
 ) -> (Boxes, Boxes, Boxes) {
@@ -138,7 +138,7 @@ pub(in crate::game) fn the_mover_changed_mid_tick(
     (before, cached, fresh)
 }
 
-pub(in crate::game) fn mover_at(boxes: &Boxes, x: f64) -> bool {
+pub(crate) fn mover_at(boxes: &Boxes, x: f64) -> bool {
     boxes
         .iter()
         .any(|(min, max)| min[0] <= x && x <= max[0] && min[1] <= 100.5 && 100.5 <= max[1])

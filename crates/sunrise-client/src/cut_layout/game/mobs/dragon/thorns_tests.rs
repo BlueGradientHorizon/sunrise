@@ -7,16 +7,16 @@ use sunrise_sim::{
 };
 
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::dragon_client::thorns_tests::with_game;
-pub(in crate::game) fn thorny() -> ItemStack {
+pub(crate) use crate::game::client_side::dragon_client::thorns_tests::with_game;
+pub(crate) fn thorny() -> ItemStack {
     let mut stack = ItemStack::new("minecraft:diamond_chestplate", 1);
     stack.set_crafting_enchantments(vec![("minecraft:thorns".into(), 255)]);
     stack
 }
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::dragon_client::thorns_tests::check_answer;
+pub(crate) use crate::game::client_side::dragon_client::thorns_tests::check_answer;
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::client_side::dragon_client::thorns_tests::pair;
+pub(crate) use crate::game::client_side::dragon_client::thorns_tests::pair;
 #[test]
 #[ignore = "daily"]
 fn mob_thorns_melee_projectiles_and_non_attacks() {

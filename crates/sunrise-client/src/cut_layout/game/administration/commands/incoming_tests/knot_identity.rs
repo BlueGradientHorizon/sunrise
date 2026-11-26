@@ -9,12 +9,12 @@ use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::{mobs::leash::Holder, motion::PlayerMotion};
 
-pub(in crate::game) const PIG: &str = "0000609a-0000-0000-0000-000000000001";
-pub(in crate::game) const OTHER_PIG: &str = "0000609a-0000-0000-0000-000000000003";
-pub(in crate::game) const AT_FENCE: &str =
+pub(crate) const PIG: &str = "0000609a-0000-0000-0000-000000000001";
+pub(crate) const OTHER_PIG: &str = "0000609a-0000-0000-0000-000000000003";
+pub(crate) const AT_FENCE: &str =
     "@e[type=minecraft:leash_knot,x=8.5,y=201.375,z=0.5,distance=..0.001]";
 
-pub(in crate::game) fn game<'a>(
+pub(crate) fn game<'a>(
     resources: &'a mut Option<std::sync::Arc<sunrise_gameplay_common::game::Resources>>,
 ) -> sunrise_gameplay::game::ServerGame<'a> {
     let root = std::path::PathBuf::from(
@@ -70,19 +70,19 @@ pub(in crate::game) fn game<'a>(
     game
 }
 
-pub(in crate::game) fn summon_pig(game: &mut sunrise_gameplay::game::ServerGame<'_>, n: i32, x: f64) {
+pub(crate) fn summon_pig(game: &mut sunrise_gameplay::game::ServerGame<'_>, n: i32, x: f64) {
     let command = format!(
         "summon pig {x} 201 0.5 {{NoAI:1b,PersistenceRequired:1b,NoGravity:1b,leash:[I;8,201,0],UUID:[I;24730,0,0,{n}]}}"
     );
     assert!(game.run_command(&command), "{command}");
 }
 
-pub(in crate::game) fn step(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
+pub(crate) fn step(game: &mut sunrise_gameplay::game::ServerGame<'_>) {
     assert!(game.run_command("tick step 1"));
     game.tick_server(false).unwrap();
 }
 
-pub(in crate::game) fn mob(game: &mut sunrise_gameplay::game::ServerGame<'_>, uuid: &str) -> usize {
+pub(crate) fn mob(game: &mut sunrise_gameplay::game::ServerGame<'_>, uuid: &str) -> usize {
     match game.target_with_uuid(sunrise_sim::save::uuid_from_text(uuid).unwrap()) {
         Some(super::Target::Mob(id)) => game.mobs.iter().position(|m| m.id == id).unwrap(),
         other => panic!("{other:?}"),
@@ -90,7 +90,7 @@ pub(in crate::game) fn mob(game: &mut sunrise_gameplay::game::ServerGame<'_>, uu
 }
 
 /// The knots the level in place's selectors list, by entity id.
-pub(in crate::game) fn knots(game: &sunrise_gameplay::game::ServerGame<'_>) -> Vec<u32> {
+pub(crate) fn knots(game: &sunrise_gameplay::game::ServerGame<'_>) -> Vec<u32> {
     game.level_candidates(false)
         .into_iter()
         .filter_map(|t| match t {
@@ -101,7 +101,7 @@ pub(in crate::game) fn knots(game: &sunrise_gameplay::game::ServerGame<'_>) -> V
 }
 
 /// The UUID `/data` reads from the one knot of the level in place.
-pub(in crate::game) fn knot_uuid(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> [i32; 4] {
+pub(crate) fn knot_uuid(game: &mut sunrise_gameplay::game::ServerGame<'_>) -> [i32; 4] {
     let [id] = knots(game)[..] else {
         panic!("one knot: {:?}", knots(game));
     };

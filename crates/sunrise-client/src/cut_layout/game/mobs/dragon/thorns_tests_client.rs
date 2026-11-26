@@ -5,7 +5,7 @@ use crate::game::server_side::dragon::thorns_tests::thorny;
 use {crate::game::*, sunrise_gameplay_common::game::{Instant, Options, PathBuf, PlayerMotion, Progress, Vec3, World, dragon_common, execution_role, hit}};
 use sunrise_sim::mobs::{Damage, DamageKind, Mob, Who, finalize as f};
 
-pub(in crate::game) fn check_answer(g: &sunrise_gameplay::game::ServerGame<'_>, slot: usize, answers: bool) {
+pub(crate) fn check_answer(g: &sunrise_gameplay::game::ServerGame<'_>, slot: usize, answers: bool) {
     let health = g.mobs[0].health;
     assert_eq!(health < 100.0, answers, "attacker health: {health}");
     assert_eq!(
@@ -125,7 +125,7 @@ fn dragon_takes_player_thorns_through_its_body() {
     });
 }
 
-pub(in crate::game) fn pair(g: &mut sunrise_gameplay::game::ServerGame<'_>, slot: usize) -> Damage {
+pub(crate) fn pair(g: &mut sunrise_gameplay::game::ServerGame<'_>, slot: usize) -> Damage {
     g.mobs.clear();
     g.side.pending_sounds.clear();
     let kind = g.res.mob_types().get("minecraft:husk").unwrap().clone();
@@ -140,7 +140,7 @@ pub(in crate::game) fn pair(g: &mut sunrise_gameplay::game::ServerGame<'_>, slot
     Damage::mob(41, [10.5, 64.0, 0.5])
 }
 
-pub(in crate::game) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
+pub(crate) fn with_game(test: impl FnOnce(&mut sunrise_gameplay::game::ServerGame<'_>)) {
     let root = PathBuf::from(std::env::var_os("SUNRISE_TEST_RESOURCES").unwrap());
     let settings = Settings::default();
     let loaded = load_resources(
