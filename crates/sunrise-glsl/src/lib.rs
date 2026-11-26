@@ -163,7 +163,7 @@ pub fn declared_at(
     reading: [bool; 2],
     binding: u32,
 ) -> Location {
-    let declaration = |(module, code): (&naga::Module, &Expanded)| {
+    let location_of = |(module, code): (&naga::Module, &Expanded)| {
         (module.global_variables.iter())
             .find(|(_, g)| {
                 g.binding
@@ -174,7 +174,7 @@ pub fn declared_at(
     };
     let order = [0, 1].into_iter().filter(|&i| reading[i]).chain([0, 1]);
     order
-        .filter_map(|i| declaration(stages[i]))
+        .filter_map(|i| location_of(stages[i]))
         .next()
         .unwrap_or_else(|| Location {
             file: stages[0].1.file().to_owned(),
@@ -1461,7 +1461,7 @@ pub struct Resource<'a> {
 pub fn resources(text: &str) -> Vec<Resource<'_>> {
     text.lines()
         .flat_map(declaration_lines)
-        .filter_map(declared)
+        .filter_map(|(_, line)| declared(line))
         .filter_map(|declared| {
             let (name, kind) = match declared {
                 Declared::Storage(block) => (
@@ -1497,19 +1497,31 @@ pub fn resources(text: &str) -> Vec<Resource<'_>> {
 /// classifier, whatever else is on the line, and the text is read as `rewrite` reads it, with
 /// comments gone and includes inlined ([`expand_includes`]).
 pub fn stage_inputs(text: &str) -> Vec<(usize, &str, &str)> {
-    text.lines()
-        .flat_map(declaration_lines)
-        .filter_map(declared)
-        .filter_map(|declared| match declared {
-            // The name is a slice of `text`, so its address gives its byte.
-            Declared::Other(decl) if decl.storage == "in" => Some((
-                decl.name.as_ptr() as usize - text.as_ptr() as usize,
-                decl.name,
-                decl.ty,
-            )),
+    lines_at(text)
+        .flat_map(|(line_at, line)| {
+            declaration_lines(line)
+                .into_iter()
+                .map(move |(at, piece)| (line_at + at, piece))
+        })
+        .filter_map(|(piece_at, piece)| match declared(piece)? {
+            Declared::Other(decl) if decl.storage == "in" => {
+                Some((piece_at + decl.name_at, decl.name, decl.ty))
+            }
             _ => None,
         })
         .collect()
+}
+
+/// The lines of `text` (as [`str::lines`] splits them), each with the byte where it starts.
+fn lines_at(text: &str) -> impl Iterator<Item = (usize, &str)> {
+    let mut start = 0;
+    text.lines().map(move |line| {
+        let at = start;
+        start += text[start..]
+            .find('\n')
+            .map_or(text.len() - start, |n| n + 1);
+        (at, line)
+    })
 }
 
 /// A declaration on one line, classified: the one reading of a line that [`rewrite`] binds from
@@ -1566,6 +1578,8 @@ struct Decl<'a> {
     storage: &'a str,
     ty: &'a str,
     name: &'a str,
+    /// The byte of the line given to [`declaration`] where `name` stands.
+    name_at: usize,
 }
 
 /// The precision qualifiers, which GLSL takes before or after the storage word (`in highp vec4 X;`).
@@ -1589,15 +1603,18 @@ const LEADING_QUALIFIERS: [&str; 8] = [
 ];
 
 /// A line's leading `layout(...)` qualifier split off: what stood inside it (trimmed, empty
-/// without one) and the line after it. `None` for a `layout` with no closed parenthesis.
-fn layout_prefix(line: &str) -> Option<(&str, &str)> {
-    let line = line.trim();
-    let Some(after) = line.strip_prefix("layout") else {
-        return Some(("", line));
+/// without one), the line after it, and the byte of `line` where that rest starts. `None` for a
+/// `layout` with no closed parenthesis.
+fn layout_prefix(line: &str) -> Option<(&str, &str, usize)> {
+    let trimmed = line.trim();
+    let lead = line.len() - line.trim_start().len();
+    let Some(after) = trimmed.strip_prefix("layout") else {
+        return Some(("", trimmed, lead));
     };
     let after = after.trim_start().strip_prefix('(')?;
     let close = after.find(')')?;
-    Some((after[..close].trim(), after[close + 1..].trim_start()))
+    let rest = after[close + 1..].trim_start();
+    Some((after[..close].trim(), rest, lead + trimmed.len() - rest.len()))
 }
 
 /// The declaration `line` is, if it is one: a statement of `layout(...)`, then only real
@@ -1605,7 +1622,7 @@ fn layout_prefix(line: &str) -> Option<(&str, &str)> {
 /// `out` or `uniform`, then precision and memory qualifiers, the type and the name. Any other word before the storage word makes it some other statement
 /// (`x = in vec2 y;`, `return out vec4 c;`).
 fn declaration(line: &str) -> Option<Decl<'_>> {
-    let (layout, rest) = layout_prefix(line)?;
+    let (layout, rest, rest_at) = layout_prefix(line)?;
     let location = layout.split(',').find_map(|q| {
         let (key, value) = q.split_once('=')?;
         (key.trim() == "location").then(|| value.trim().parse().ok())?
@@ -1647,15 +1664,18 @@ fn declaration(line: &str) -> Option<Decl<'_>> {
         storage: words[storage_at],
         ty,
         name,
+        // The name is the body's last word.
+        name_at: rest_at + body.len() - name.len(),
     })
 }
 
 /// GLSL pack shaders are often minified, with several global declarations on one line, some after
 /// code (`void f() { } uniform sampler2D Late;`). Keep the line-oriented rewriter simple by
 /// separating every declaration statement ([`declared`]) wherever it stands on the line; the
-/// code around them stays as it is, in pieces. A statement ends at a `;` outside braces, and a
-/// declaration may start where the line does or after a `}` that closes a braced body.
-fn declaration_lines(line: &str) -> Vec<&str> {
+/// code around them stays as it is, in pieces, each with the byte of `line` where it starts. A
+/// statement ends at a `;` outside braces, and a declaration may start where the line does or
+/// after a `}` that closes a braced body.
+fn declaration_lines(line: &str) -> Vec<(usize, &str)> {
     let mut parts = Vec::new();
     let mut taken = 0;
     let mut depth = 0usize;
@@ -1678,9 +1698,9 @@ fn declaration_lines(line: &str) -> Vec<&str> {
                     .find(|&&start| declared(&line[start..end]).is_some())
                 {
                     if taken < start {
-                        parts.push(&line[taken..start]);
+                        parts.push((taken, &line[taken..start]));
                     }
-                    parts.push(&line[start..end]);
+                    parts.push((start, &line[start..end]));
                     taken = end;
                 }
                 starts = vec![end];
@@ -1689,32 +1709,23 @@ fn declaration_lines(line: &str) -> Vec<&str> {
         }
     }
     if parts.is_empty() {
-        return vec![line];
+        return vec![(0, line)];
     }
     if taken < line.len() {
-        parts.push(&line[taken..]);
+        parts.push((taken, &line[taken..]));
     }
     parts
 }
 
-/// Where the `uniform` keyword stands in `line`: a whole token, never part of an identifier
-/// such as `uniformColor`.
-fn uniform_keyword(line: &str) -> Option<usize> {
-    line.match_indices("uniform").map(|(at, _)| at).find(|&at| {
-        !line[..at].ends_with(is_ident) && !line[at + "uniform".len()..].starts_with(is_ident)
-    })
-}
-
-/// The block a `uniform Name {` line opens, with its name and the line from the `uniform` token
-/// on (what the line's text before `uniform` leaves: the block's `layout(...)` is rewritten).
+/// The block a `[layout(...)] uniform Name {` line opens, with its name and the line from the
+/// `uniform` token on (what the line leaves after its `layout(...)`, which is rewritten).
+/// `uniform` is a whole word, never the start of an identifier such as `uniformColor`.
 fn block_name(line: &str) -> Option<(&str, &str)> {
-    let at = uniform_keyword(line)?;
-    let head = line[..at].trim();
-    if !(head.is_empty() || head.starts_with("layout")) {
-        return None;
-    }
-    let tail = line[at..].trim();
-    let rest = tail["uniform".len()..].trim();
+    let (_, tail, _) = layout_prefix(line)?;
+    let rest = tail
+        .strip_prefix("uniform")
+        .filter(|after| !after.starts_with(is_ident))?
+        .trim();
     let name_end = rest.find(|c: char| !is_ident(c)).unwrap_or(rest.len());
     let (name, after) = rest.split_at(name_end);
     // `{` alone, or the whole block on the line (`uniform Day { float daylight; };`).
@@ -1737,7 +1748,7 @@ struct StorageBlock<'a> {
 
 /// The storage buffer block a line opens, if it opens one.
 fn storage_block(line: &str) -> Option<StorageBlock<'_>> {
-    let (layout, mut rest) = layout_prefix(line)?;
+    let (layout, mut rest, _) = layout_prefix(line)?;
     let word_end = |s: &str| s.find(|c: char| !is_ident(c)).unwrap_or(s.len());
     let mut qualifiers = Vec::new();
     loop {
@@ -1765,21 +1776,11 @@ fn storage_block(line: &str) -> Option<StorageBlock<'_>> {
     }
 }
 
-/// Whether the `layout(...)` qualifier before `uniform` names `push_constant`.
+/// Whether the `layout(...)` qualifier of `line` names `push_constant`.
 fn is_push_constant_block(line: &str) -> bool {
-    let Some(at) = uniform_keyword(line) else {
-        return false;
-    };
-    let head = line[..at].trim();
-    let Some(open) = head.find('(') else {
-        return false;
-    };
-    let Some(close) = head[open + 1..].rfind(')') else {
-        return false;
-    };
-    head[open + 1..open + 1 + close]
-        .split(',')
-        .any(|item| item.trim() == "push_constant")
+    layout_prefix(line).is_some_and(|(layout, _, _)| {
+        layout.split(',').any(|item| item.trim() == "push_constant")
+    })
 }
 
 /// First set-0 binding strictly above every caller-declared block (`b`) and sampler (`b`, `b + 1`).
@@ -1918,23 +1919,18 @@ fn rewrite(
     let explicit: Vec<u32> = if vertex {
         text.lines()
             .flat_map(declaration_lines)
-            .filter_map(declaration)
+            .filter_map(|(_, line)| declaration(line))
             .filter(|d| d.storage == "out")
             .filter_map(|d| d.location)
             .collect()
     } else {
         Vec::new()
     };
-    let mut start = 0;
-    for (n, source_line) in text.lines().enumerate() {
+    for (n, (here, source_line)) in lines_at(text).enumerate() {
         let origin = source.lines.origin(n);
-        let here = start;
-        start += text[start..]
-            .find('\n')
-            .map_or(text.len() - start, |n| n + 1);
         let at = |message: String| source.error_at(Some(here), message);
         let write = |out: &mut Lines, code: &str| out.push(code, origin);
-        for line in declaration_lines(source_line) {
+        for (_, line) in declaration_lines(source_line) {
             let Some(found) = declared(line) else {
                 write(&mut out, line);
                 write(&mut out, "\n");
@@ -3064,6 +3060,9 @@ mod tests {
             Some("uniform Day {")
         );
         assert_eq!(block_name("uniform float x;"), None);
+        // Only `layout(...)` may stand before `uniform`, and it must close.
+        assert_eq!(block_name("layout(std140) flat uniform Day {"), None);
+        assert_eq!(block_name("layout(std140 uniform Day {"), None);
         assert_eq!(block_name("uniform sampler2D Sampler0;"), None);
     }
 
