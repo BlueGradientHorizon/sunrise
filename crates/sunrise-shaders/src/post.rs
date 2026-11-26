@@ -4015,8 +4015,10 @@ blend.composite1.colortex3 = ONE ONE ONE ONE
     fn sunrises_test_pack_loads() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/packs/post-test");
         let pack = Pack::open(&dir).unwrap();
-        let macros = Macros::standard();
-        let properties = Properties::parse(&pack.read_text("shaders.properties").unwrap(), &macros);
+        // As the game reads it: `read_properties`, then the programs with the macros it leaves.
+        let mut macros = Macros::standard();
+        let (properties, notes) = crate::read_properties(&pack, &mut macros);
+        assert!(notes.is_empty(), "{notes:?}");
         let post = load_post(
             &pack,
             &dimension_folder(&pack, 0),

@@ -896,13 +896,16 @@ mod tests {
     }
 
     /// A pack's `#undef` of an answer in `shaders.properties` decides the conditionals after it;
-    /// a value the load expands again with its own macros (`program.<name>.enabled`) still sees
-    /// the answer, as it sees every other macro the load has.
+    /// the values the load expands again with its own macros (`program.<name>.enabled`,
+    /// `size.buffer.*`, `image.*`) still see the answer, as they see every other macro the load
+    /// has.
     #[test]
     fn an_undef_in_shaders_properties_hides_the_answer_from_conditionals_only() {
         let text = "iris.features.optional = SSBO\n#undef IRIS_FEATURE_SSBO\n\
                     #ifdef IRIS_FEATURE_SSBO\nguarded = 1\n#endif\n\
-                    program.composite.enabled = IRIS_FEATURE_SSBO\n";
+                    program.composite.enabled = IRIS_FEATURE_SSBO\n\
+                    size.buffer.colortex4 = 8 IRIS_FEATURE_SSBO\n\
+                    image.grid = none RGBA RGBA8 BYTE false false 16 IRIS_FEATURE_SSBO\n";
         let pack = feature_pack(text, &[("seen_ssbo", "SSBO")]);
         let mut macros = crate::Macros::standard();
         let (properties, _) = read_properties(&pack, &mut macros);
@@ -911,6 +914,20 @@ mod tests {
             composite_uniforms(&pack, &properties, &macros),
             ["seen_ssbo"]
         );
+        let post = crate::load_post(
+            &pack,
+            "",
+            &properties,
+            &macros,
+            &crate::GameInputs::default(),
+        );
+        assert_eq!(post.sizes[4], Some(crate::BufferSize::Absolute([8, 1])));
+        let grid: Vec<_> = post
+            .images
+            .iter()
+            .map(|i| (i.name.as_str(), i.size))
+            .collect();
+        assert_eq!(grid, [("grid", crate::ImageSize::Absolute([16, 1]))]);
     }
 
     /// A macro set reused for another pack starts its first read without the answers the

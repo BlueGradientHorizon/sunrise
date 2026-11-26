@@ -216,12 +216,16 @@ the full list.
     doesn't list, stay undefined. A required flag Sunrise lacks keeps its note, and the pack still loads, as before.
   - `shaders.properties` is read twice, in one fixed order: first with the standard macros, the renderer's and the
     pack's options and no feature macro (any answer a reused macro set still holds is dropped), which settles the two
-    lists; then the answers are defined and the file is
-    read again, and that second read is the one the game uses. A list that only a feature macro reaches is not read.
+    lists; then the answers are defined and the file is read again, and that second read is the one the game uses. A list that only a feature macro reaches is not read.
     The programs and `block.properties`, `entity.properties` and `item.properties` see the answers. A pack that lists
     no supported flag is read once, with the macros it had before, but for one exception that holds for every pack:
     a line declaring an `IRIS_FEATURE_*` name (`#define IRIS_FEATURE_SSBO 1 // [0 1]`, `//#define
     IRIS_FEATURE_SSBO`) is no longer one of its options (below).
+  - A mod's pack binding may not define an `IRIS_FEATURE_*` name: registration refuses it with a diagnostic, as it
+    refuses `GL_` names (`PackBinding::validate_syntax`). Before this change such a define was accepted and reached
+    the pack; with the read above dropping every `IRIS_FEATURE_*` before it settles the answers, it would be lost
+    without a word, so registration names it instead. This is a compatibility change for mods
+    (`crates/sunrise-mod-vocab/changes/shader-pack-iris-feature-defines-6054.md`).
   - What is decided by the lists after the read (the eight shadow colour buffers of `HIGHER_SHADOWCOLOR`) takes the
     lists of the first read, the ones the answers came from, even where the second read would hide or change them.
     They keep their place in the file's order among the other entries.
@@ -257,9 +261,12 @@ the full list.
   `options::tests::a_repeat_the_second_read_cannot_see_is_still_noted`,
   `options::tests::the_settled_lists_keep_their_place_in_the_file`,
   `options::tests::an_undef_in_shaders_properties_hides_the_answer_from_conditionals_only`,
-  `options::tests::a_reused_macro_set_carries_no_answer_to_the_next_pack`, and in `tests/it`
+  `options::tests::a_reused_macro_set_carries_no_answer_to_the_next_pack`, `post::tests::sunrises_test_pack_loads`, and
+  in `tests/it`
   `reversed_culling_feature::requested_reversed_culling_loads_and_packs_take_the_path_it_guards` and
   `terrain_fade::fade_feature_negotiation_ignores_case_and_defines_the_written_macro` (`sunrise-shaders`);
   `game::shader_packs::native_pack_tests::the_hdr_read_and_the_options_page_see_the_features_the_pack_lists`,
-  `game::shader_packs::native_pack_tests::the_loads_id_files_see_the_features_the_pack_lists`
+  `game::shader_packs::native_pack_tests::the_loads_id_files_see_the_features_the_pack_lists`; the refusal by
+  `client::render_pipeline::tests::pack_binding_syntax_rejects_bad_identifiers_and_multiline_defines`
+  (`sunrise-mod-vocab`)
   (`sunrise-client`); `profiles_behind_answered_feature_flags_are_dumped` (`sunrise-render-shaderpack`, `spirv_dump`).
