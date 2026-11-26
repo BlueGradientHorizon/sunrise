@@ -28,6 +28,8 @@ class TrialMergeTests(unittest.TestCase):
             run("init", "-q", "-b", "base")
             run("config", "user.name", "t")  # supervise's own commits need an identity too (CI has none)
             run("config", "user.email", "t@t")
+            # Applies to both fixture commits and supervise's trial merges in this repository.
+            run("config", "--local", "commit.gpgsign", "false")
             Path(temp, "shared.txt").write_text("one\n")
             run("add", "shared.txt")
             run("commit", "-q", "-m", "start")

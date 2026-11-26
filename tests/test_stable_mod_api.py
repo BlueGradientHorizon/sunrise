@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from tests.git_fixture import git_in
 from tools.ci import nightly
 
 PREVIOUS = "26.3-0.1.10"
@@ -493,11 +494,11 @@ class StableModApiTests(unittest.TestCase):
     def test_same_line_accepts_pr_merges_of_backports_but_not_new_main_history(self):
         repo, checkout = (self.notes.with_name(name) for name in ("upstream", "checkout"))
         repo.mkdir()
-        git = nightly.git
-        with chdir(repo), mock.patch.object(nightly, "REPOSITORY", repo):
+        git = git_in(repo)
+        with chdir(repo):
             git("init", "--initial-branch=main")
-            for key, default in (("user.name", "Release Test"), ("user.email", "release-test@example.invalid")):
-                git("config", key, git("config", "--default", default, "--get", key))
+            git("config", "user.name", "Release Test")
+            git("config", "user.email", "release-test@example.invalid")
             # The base is shared; the upstream-only change makes the cherry-pick a different commit.
             git("commit", "--allow-empty", "-m", "initial")
             unrelated = git("rev-parse", "HEAD")
@@ -521,7 +522,7 @@ class StableModApiTests(unittest.TestCase):
         with chdir(checkout), mock.patch.object(nightly, "REPOSITORY", checkout):
             tag = "26.3-0.1.11"
             nightly.require_stable_lineage(candidate, tag, previous, PREVIOUS)
-            self.assertEqual(git("rev-parse", "--is-shallow-repository"), "false")
+            self.assertEqual(nightly.git("rev-parse", "--is-shallow-repository"), "false")
             with self.assertRaisesRegex(SystemExit, "brings in main history"):
                 nightly.require_stable_lineage(imported, tag, previous, PREVIOUS)
             with self.assertRaisesRegex(SystemExit, "does not descend from"):
@@ -530,11 +531,11 @@ class StableModApiTests(unittest.TestCase):
     def test_same_line_accepts_backport_already_merged_back_into_main(self):
         repo, checkout = (self.notes.with_name(name) for name in ("upstream", "checkout"))
         repo.mkdir()
-        git = nightly.git
-        with chdir(repo), mock.patch.object(nightly, "REPOSITORY", repo):
+        git = git_in(repo)
+        with chdir(repo):
             git("init", "--initial-branch=main")
-            for key, default in (("user.name", "Release Test"), ("user.email", "release-test@example.invalid")):
-                git("config", key, git("config", "--default", default, "--get", key))
+            git("config", "user.name", "Release Test")
+            git("config", "user.email", "release-test@example.invalid")
             git("commit", "--allow-empty", "-m", "previous stable")
             previous = git("rev-parse", "HEAD")
             git("switch", "-c", "release")
@@ -609,15 +610,15 @@ class JudgeBuildTests(unittest.TestCase):
             # The tree is a plain extraction: the checkout gains no worktree.
             repo = work / "repo"
             repo.mkdir()
-            git = nightly.git
-            with chdir(repo), mock.patch.object(nightly, "REPOSITORY", repo):
-                git("init", "-q")
-                Path("a.txt").write_text("a\n")
-                git("add", "a.txt")
-                git("-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "a")
+            git = git_in(repo)
+            git("init", "-q")
+            (repo / "a.txt").write_text("a\n")
+            git("add", "a.txt")
+            git("-c", "user.name=T", "-c", "user.email=t@example.invalid", "commit", "-q", "-m", "a")
+            with mock.patch.object(nightly, "REPOSITORY", repo):
                 nightly.unpack("HEAD", work / "tree")
-                self.assertEqual((work / "tree" / "a.txt").read_text(), "a\n")
-                self.assertEqual(len(git("worktree", "list").splitlines()), 1)
+            self.assertEqual((work / "tree" / "a.txt").read_text(), "a\n")
+            self.assertEqual(len(git("worktree", "list").splitlines()), 1)
 
     def test_download_only_returns_assets_verified_under_their_tag(self):
         files = {nightly.SDK_INDEX: b"index", nightly.SDK_SURFACE: b"surface"}

@@ -8,6 +8,8 @@ import sys
 import tempfile
 import unittest
 
+from tests.git_fixture import isolated_git_env
+
 SCRIPT = Path(__file__).resolve().parents[1] / "tools/ci/check_repository_hygiene.py"
 VENDOR = SCRIPT.parent / "vendor"
 LOADER = SCRIPT.parent / "vendored_yaml.py"
@@ -31,7 +33,7 @@ class RepositoryHygieneTests(unittest.TestCase):
         self.write("clean.txt", "clean\n")
 
     def git(self, *args):
-        return subprocess.check_output(["git", *args], cwd=self.root, text=True).strip()
+        return subprocess.check_output(["git", *args], cwd=self.root, env=isolated_git_env(), text=True).strip()
 
     def write(self, path, content, tracked=True):
         file = self.root / path
