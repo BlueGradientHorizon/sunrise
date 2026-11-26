@@ -71,7 +71,6 @@ pub(in crate::game) use client_side::beacon;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::beacon_cull_tests;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::block_breaking;
@@ -155,7 +154,6 @@ pub(in crate::game) use client_side::creative_hotbar;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::crosshair_pick_tests;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::custom_arm_pose;
@@ -182,7 +180,6 @@ pub(in crate::game) use client_side::dialogs;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::dragon_boss_bar_name_tests;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::draw_boundary;
@@ -192,7 +189,6 @@ pub(in crate::game) use client_side::dynamic_lights;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::enchant_power_beam_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::entity_culling;
 #[cfg(feature = "client")]
@@ -276,7 +272,6 @@ pub(in crate::game) use client_side::gui_entity;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::gui_layer_tests;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::gui_paint_items;
@@ -288,14 +283,12 @@ pub(in crate::game) use client_side::hand;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::hand_part_tests;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::headless;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::highlight_tip_tests;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::hud_editor;
@@ -381,15 +374,12 @@ pub(in crate::game) use client_side::mod_browser;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::mod_menu_decisions_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::mod_raycast_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::mod_recipe_property_tests;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::mod_toasts;
@@ -472,7 +462,6 @@ pub(in crate::game) use client_side::native_fluid_render;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::native_general_renderers_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::native_hotbar_slot;
 #[cfg(feature = "client")]
@@ -491,7 +480,6 @@ pub(in crate::game) use client_side::native_key_mappings;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::native_key_mappings_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
@@ -618,7 +606,6 @@ pub(in crate::game) use client_side::native_passage_cross;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::native_player_inventory_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::native_recipes;
 #[cfg(feature = "client")]
@@ -637,7 +624,6 @@ pub(in crate::game) use client_side::native_scene_live;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::native_scene_live_tests;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::native_section_visibility;
@@ -647,7 +633,6 @@ pub(in crate::game) use client_side::native_shaders;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::native_small_reads_tests;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::native_special_renderers;
@@ -681,7 +666,6 @@ pub(in crate::game) use client_side::options;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::options_close_tests;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
@@ -738,7 +722,6 @@ pub(in crate::game) use client_side::pointer_capture;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::polytone_frame_tests;
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::potions;
 #[cfg(feature = "client")]
@@ -758,7 +741,6 @@ pub(in crate::game) use client_side::recipe_book;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::recipe_properties_tests;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::remote_block_writes;
@@ -821,7 +803,6 @@ pub(in crate::game) use client_side::screen_build_fixture;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::screen_render_phase_tests;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::screen_room;
@@ -864,7 +845,6 @@ pub(in crate::game) use client_side::social;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::spawner_client_tick_tests;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::spear_client;
@@ -905,7 +885,6 @@ pub(in crate::game) use client_side::subtitles;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::sulfur_bucket_tests;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::swing_packet;
@@ -960,7 +939,6 @@ pub(in crate::game) use client_side::ui_control;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::use_same_item_tests;
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 pub(in crate::game) use client_side::using_item_client;
@@ -1355,7 +1333,6 @@ use subtitles::{Subtitles, in_game_ui, subtitles};
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use client_side::sign_chain_tests;
 
 #[cfg(feature = "client")]
 #[cfg(test)]

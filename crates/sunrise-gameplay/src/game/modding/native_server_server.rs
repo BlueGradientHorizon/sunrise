@@ -1855,7 +1855,8 @@ impl crate::game::ServerGame<'_> {
 pub(in crate::game) mod fake_action_tests {
 use sunrise_gameplay_common::game::api_values::test_snapshot;
 
-    use super::super::{respawn_anchor::RespawnConfig, stations::Kind, stations::Station};
+    use super::super::respawn_anchor::RespawnConfig;
+    use sunrise_gameplay_common::game::stations_common::{Kind, Station};
     use super::{Acting, ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
     use sunrise_gameplay_common::game::native_server::fake_action_tests::AttackWatcher;
     use sunrise_gameplay_common::game::native_server::fake_action_tests::ChargeWatcher;
@@ -1885,7 +1886,7 @@ use sunrise_gameplay_common::game::api_values::test_snapshot;
     #[test]
     #[ignore = "daily"]
     fn attack_entity_runs_before_the_blow_resets_the_attack_charge() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         use std::sync::{
             Arc, Mutex,
             atomic::{AtomicBool, Ordering},
@@ -1981,7 +1982,7 @@ use sunrise_gameplay_common::game::api_values::test_snapshot;
     #[test]
     #[ignore = "daily"]
     fn attack_strength_rejects_non_finite_partial_without_restricting_finite_ticks() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         with_game(|game| {
             let (player, conn, _) = fake(game, None, 0);
             game.as_guest(conn, |g| g.server.attack_ticks = 2).unwrap();
@@ -2018,7 +2019,7 @@ use sunrise_gameplay_common::game::api_values::test_snapshot;
     #[test]
     #[ignore = "daily"]
     fn attack_strength_scale_reads_the_charge_at_the_hook_and_not_after_the_swing() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         use std::sync::{Arc, Mutex};
 
         let seen = Arc::new(Mutex::new(Vec::new()));
@@ -2078,7 +2079,7 @@ use sunrise_gameplay_common::game::api_values::test_snapshot;
     #[test]
     #[ignore = "daily"]
     fn scoped_fake_attack_with_full_charge_deals_the_weapons_full_damage() {
-        use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
         use mod_api::PlayerActionSetup;
         if run_fresh_cases(
             "game::server_side::native_server_server::fake_action_tests::scoped_fake_attack_with_full_charge_deals_the_weapons_full_damage",

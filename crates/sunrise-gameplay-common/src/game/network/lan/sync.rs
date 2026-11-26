@@ -22,7 +22,7 @@ struct ServerSources {
 static SOURCES: Mutex<Option<ServerSources>> = Mutex::new(None);
 
 /// Every byte of the packs' files, what a pack set is keyed by.
-pub(in crate::game) fn overlay_key(overlay: &sunrise_world::loot::PackOverlay) -> u64 {
+pub fn overlay_key(overlay: &sunrise_world::loot::PackOverlay) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
     overlay.files.hash(&mut hasher);
@@ -193,7 +193,7 @@ pub fn forget_server_sources() {
 
 /// What `sync_data` loaded from this resource generation.
 #[derive(Clone)]
-pub(in crate::game) struct Synced {
+pub struct Synced {
     pub(in crate::game) root: std::path::PathBuf,
     pub(in crate::game) with_packs: bool,
     pub(in crate::game) generation: u64,
@@ -204,8 +204,8 @@ pub(in crate::game) struct Synced {
 /// except when the entering world actually defines damage types.
 #[derive(Default)]
 pub struct SyncCache {
-    pub(in crate::game) data: Option<Synced>,
-    pub(in crate::game) damage: Option<FrozenDamage>,
+    pub data: Option<Synced>,
+    pub damage: Option<FrozenDamage>,
     pub(in crate::game) world_tags: Option<WorldTags>,
     pub(in crate::game) packed_registries: Option<Arc<PackRegistryDefinitions>>,
     pub(in crate::game) advancements: Option<Arc<Tree>>,
@@ -232,7 +232,7 @@ pub fn sync_data(
     cached_sync_data(&mut sync, root, overlay, item_data, items)
 }
 
-pub(in crate::game) fn cached_sync_data(
+pub fn cached_sync_data(
     sync: &mut SyncCache,
     root: &std::path::Path,
     overlay: &sunrise_world::loot::PackOverlay,
@@ -312,7 +312,7 @@ pub fn install_world_sync_data(staged: SyncCache) {
     *SYNC.lock().unwrap_or_else(|e| e.into_inner()) = staged;
 }
 
-pub(in crate::game) fn initialize_world_sync_data(
+pub fn initialize_world_sync_data(
     sync: &mut SyncCache,
     root: &std::path::Path,
     overlay: &sunrise_world::loot::PackOverlay,

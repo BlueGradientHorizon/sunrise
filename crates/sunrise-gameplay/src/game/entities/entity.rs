@@ -1714,7 +1714,7 @@ pub(in crate::game) mod load_claim_tests {
                 "{id}"
             );
             assert!(
-                crate::game::boats_common::any_boat_wood(&id).is_none(),
+                sunrise_gameplay_common::game::boats_common::any_boat_wood(&id).is_none(),
                 "{id}"
             );
             assert!(

@@ -1260,7 +1260,7 @@ impl ServerGame<'_> {
 pub mod tests {
 use sunrise_gameplay_common::game::server_side::native_living_refs::tests::ZOMBIE_NBT;
 
-    use super::super::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use super::*;
     use sunrise_core::geometry::Vec3;
 

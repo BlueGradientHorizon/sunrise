@@ -751,9 +751,9 @@ pub struct Boat {
     pub(in crate::game) tick_count: i32,
     /// `AbstractBoat.bubbleMultiplier`, `bubbleAngle` and `bubbleAngleO`
     /// (a client's).
-    pub(in crate::game) bubble_multiplier: f32,
-    pub(in crate::game) bubble_angle: f32,
-    pub(in crate::game) bubble_angle_old: f32,
+    pub bubble_multiplier: f32,
+    pub bubble_angle: f32,
+    pub bubble_angle_old: f32,
     pub hurt_time: i32,
     pub hurt_dir: i32,
     pub damage: f32,
@@ -1055,7 +1055,7 @@ impl Boat {
     }
     /// The start of `Entity.move`: a boat made stuck since its last move goes its
     /// velocity times the multiplier, and its velocity and the multiplier are spent.
-    pub(in crate::game) fn take_movement(&mut self) -> Vec3 {
+    pub fn take_movement(&mut self) -> Vec3 {
         if self.stuck.length_squared() <= 1.0e-7 {
             return self.velocity;
         }

@@ -5,7 +5,7 @@ pub mod fake_action_tests {
 
 use sunrise_gameplay_common::game::native_server::fake_action_tests::on_top;
 
-use super::{Acting, ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
+use mod_api::{ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
 
 use mod_api::{BlockHit, Hand, PlayerRef};
 
@@ -109,7 +109,7 @@ pub fn held(
 #[test]
     #[ignore = "daily"]
     fn a_fake_uses_items_through_the_players_own_path() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         // A log on stone: placed, one used up.
         with_game(|game| {
             let (player, ..) = fake(game, Some("minecraft:oak_log"), 0);
@@ -189,7 +189,7 @@ pub(in crate::game) fn health(game: &crate::game::ServerGame<'_>, id: u32) -> f3
 #[test]
     #[ignore = "daily"]
     fn a_fake_attacks_through_the_players_own_path() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         with_game(|game| {
             let (player, fake_conn, _) = fake(game, None, 0);
             game.server.lan.as_mut().unwrap().hub.guests.update_all(|g| {
@@ -246,7 +246,7 @@ pub(in crate::game) fn health(game: &crate::game::ServerGame<'_>, id: u32) -> f3
 #[test]
     #[ignore = "daily"]
     fn a_fake_breaks_blocks_at_once_by_the_game_modes_rules() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         let level_block = |game: &mut crate::game::ServerGame<'_>, pos| {
             let level = game.level(game.dim.id()).unwrap();
             game.level_block(level, pos)
@@ -322,7 +322,7 @@ pub(in crate::game) fn health(game: &crate::game::ServerGame<'_>, id: u32) -> f3
 #[test]
     #[ignore = "daily"]
     fn a_fakes_effects_are_stopped_where_they_start() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         // A chest's menu (Game::open_menu).
         with_game(|game| {
             let (player, ..) = fake(game, None, 0);

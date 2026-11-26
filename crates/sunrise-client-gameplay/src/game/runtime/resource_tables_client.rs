@@ -3,7 +3,7 @@ use std::path::Path;
 use sunrise_client_render::streaming::{MeshWorkerContext, WorkerContext};
 use sunrise_gameplay_common::game::api_values::{self, TryIntoApi};
 #[cfg(test)]
-use sunrise_gameplay_common::game::resource_tables::DYNAMIC_TEXTURE_POOL_OVERRIDE;
+use crate::game::resource_tables::DYNAMIC_TEXTURE_POOL_OVERRIDE;
 use sunrise_gameplay_common::game::resource_tables::PackParts;
 use sunrise_level::chunk_streamer::ChunkWorkerContext;
 

@@ -263,7 +263,7 @@ impl ClientGame<'_> {
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use crate::game::commands::Target;
+    use sunrise_gameplay_common::game::commands_common::Target;
 
     #[test]
     fn tnt_and_falling_blocks_have_no_entity_pick_result() {

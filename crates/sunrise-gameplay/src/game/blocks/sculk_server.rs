@@ -24,7 +24,7 @@ use {
 
 #[cfg(test)]
 #[allow(unused_imports)]
-pub(in crate::game) use crate::game::side_ops::events::{
+pub(in crate::game) use sunrise_gameplay_common::game::side_ops::events::{
     TEST_POSTED_EVENT_ORDER, TEST_POSTED_EVENTS,
 };
 

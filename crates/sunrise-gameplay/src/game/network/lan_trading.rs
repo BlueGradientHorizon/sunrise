@@ -1017,9 +1017,9 @@ impl crate::game::ServerGame<'_> {
 pub mod tests {
 use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer;
 
-    use super::super::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
     use super::super::native_entity_refs::tests::with_game;
-    use {sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::offer, crate::game::server_side::native_merchant_refs::tests::spawn};
+    use {crate::game::server_side::native_merchant_refs::tests::spawn};
     use super::*;
     use crate::game::lan::LanSettings;
     use mod_api::ServerHost;

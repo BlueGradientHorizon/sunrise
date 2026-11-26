@@ -21,7 +21,6 @@ use sunrise_gameplay_common::game::dragon_common::{
     breath_expired, dragon_part_id, wrap,
 };
 use {sunrise_gameplay_common::game::potions_common::Victim, crate::game::server_side::potions_server::mob_can_be_affected};
-#[cfg(test)]
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
 use sunrise_core::{

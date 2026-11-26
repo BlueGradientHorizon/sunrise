@@ -293,7 +293,7 @@ impl DataMaps {
 
     /// `entry`'s value in map `type_id` of `registry`, as NBT: none where the
     /// map gives it none.
-    pub(in crate::game) fn value(
+    pub fn value(
         &self,
         registry: &str,
         type_id: &str,
@@ -307,7 +307,7 @@ impl DataMaps {
     }
 
     /// Every entry map `type_id` of `registry` gives a value, in id order.
-    pub(in crate::game) fn entries(
+    pub fn entries(
         &self,
         registry: &str,
         type_id: &str,

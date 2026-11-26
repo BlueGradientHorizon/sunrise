@@ -20,7 +20,7 @@ pub struct EntityTypeRows {
 
 impl EntityTypeRows {
     /// The rows of `entity-types.json`'s text; none when it isn't an object.
-    pub(in crate::game) fn parse(bytes: &[u8]) -> Self {
+    pub fn parse(bytes: &[u8]) -> Self {
         let rows = serde_json::from_slice::<serde_json::Value>(bytes).unwrap_or_default();
         let mut out = Self::default();
         for (id, row) in rows.as_object().into_iter().flatten() {

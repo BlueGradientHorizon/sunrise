@@ -23,7 +23,7 @@ impl DragonPartsTable {
         let h = key.wrapping_mul(0x9e3779b9);
         ((h ^ (h >> 16)) as usize) & mask
     }
-    pub(in crate::game) fn insert(&mut self, key: u32) {
+    pub fn insert(&mut self, key: u32) {
         if key == 0 {
             if self.zero {
                 return;
@@ -54,7 +54,7 @@ impl DragonPartsTable {
             }
         }
     }
-    pub(in crate::game) fn remove(&mut self, key: u32) {
+    pub fn remove(&mut self, key: u32) {
         if key == 0 {
             if self.zero {
                 self.zero = false;
@@ -108,7 +108,7 @@ impl DragonPartsTable {
 #[derive(Default)]
 pub struct DragonSlot {
     slot: sunrise_sim::join_seq::ResidentSlot<crate::game::dragon_common::Dragon>,
-    pub(in crate::game) table: std::cell::RefCell<DragonPartsTable>,
+    pub table: std::cell::RefCell<DragonPartsTable>,
     registered: std::cell::Cell<u32>,
 }
 impl std::ops::Deref for DragonSlot {

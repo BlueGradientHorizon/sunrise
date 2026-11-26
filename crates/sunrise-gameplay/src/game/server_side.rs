@@ -1222,7 +1222,7 @@ pub struct ServerState {
     /// (`RconConsoleSource.createCommandSourceStack`), not `Server`.
     pub(in crate::game::server_side) rcon_source: bool,
     pub(in crate::game::server_side) bosses: bossbars::BossState,
-    pub(in crate::game::server_side) rand_sequences:
+    pub rand_sequences:
         sunrise_items::random_sequences::RandomSequences,
     /// `BrushableBlockEntity`'s brush counts of the blocks being brushed.
     pub(in crate::game::server_side) brushing: brush::Brushing,

@@ -781,7 +781,7 @@ pub(in crate::game) mod families {
     #[test]
     #[ignore = "daily"]
     fn a_workstation_menu_decides_the_pickup() {
-        use crate::game::stations::{Kind, Station};
+        use sunrise_gameplay_common::game::stations_common::{Kind, Station};
         let window = std::cell::Cell::new(0);
         family(
             |game| {
@@ -2433,7 +2433,7 @@ pub mod item_part_tests {
                         );
                         assert!(matches!(
                             game.open_block_menu(12, pos),
-                            crate::game::lan_actions::MenuOpen::Opened
+                            sunrise_gameplay_common::game::lan_actions::MenuOpen::Opened
                         ));
                         let window = game.side.lan.as_ref().unwrap().hub.guests[0]
                             .menu
@@ -2887,7 +2887,7 @@ pub mod item_part_tests {
                 seed_furnace(game);
                 assert!(matches!(
                     game.open_block_menu(12, pos),
-                    crate::game::lan_actions::MenuOpen::Opened
+                    sunrise_gameplay_common::game::lan_actions::MenuOpen::Opened
                 ));
                 let window = game.side.lan.as_ref().unwrap().hub.guests[0]
                     .menu

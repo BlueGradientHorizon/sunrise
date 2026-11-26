@@ -2,7 +2,10 @@ use super::*;
 use std::io::Write as _;
 use sunrise_mod_package::{content::RECIPE_PRIORITIES_PATH, manifest::JarRef};
 use sunrise_sim::crafting::ResolvedSources;
-use sunrise_world::{loot::PackOverlay, native_load_context::DataLoadOrigin};
+use sunrise_world::{
+    loot::PackOverlay,
+    native_load_context::{DataLoadOrigin, LoadContext, LoadInputs},
+};
 
 fn write(path: &Path, bytes: impl AsRef<[u8]>) {
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -14,10 +17,10 @@ fn jar(store: &Path, id: &str, digit: char, files: &[(String, Vec<u8>)]) -> JarR
     let reference = JarRef::new(id.into(), "1".into(), digit.to_string().repeat(128)).unwrap();
     let path = reference.cache_path(store);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-    let mut archive = zip::ZipWriter::new(std::fs::File::create(path).unwrap());
+    let mut archive = sunrise_assets::zip::ZipWriter::new(std::fs::File::create(path).unwrap());
     for (path, bytes) in files {
         archive
-            .start_file(path, zip::write::SimpleFileOptions::default())
+            .start_file(path, sunrise_assets::zip::write::SimpleFileOptions::default())
             .unwrap();
         archive.write_all(bytes).unwrap();
     }

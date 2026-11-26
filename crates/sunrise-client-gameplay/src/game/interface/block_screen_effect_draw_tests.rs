@@ -1,6 +1,6 @@
 //! Selected block overlay renderers in a real game: what they submit and where those quads land.
 #[allow(unused_imports)]
-use super::native_entity_refs::tests::{fixture_root, run_fresh_cases, with_client_game};
+use crate::game::native_entity_refs::tests::{fixture_root, run_fresh_cases, with_client_game};
 #[allow(unused_imports)]
 use super::{Game, PackResources, Screen};
 #[allow(unused_imports)]
@@ -768,7 +768,7 @@ fn pack_assembly_reports_a_missing_water_default() {
         .unwrap();
         let assembled_pack = PackResources::assemble(
             &root,
-            super::resource_tables::PackParts {
+            sunrise_gameplay_common::game::resource_tables::PackParts {
                 assets: Arc::new(assets),
                 biomes: game.pack.chunk_context.biomes.clone(),
                 light: game.pack.chunk_context.light.clone(),

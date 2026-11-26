@@ -550,7 +550,7 @@ pub struct Dragon {
     pub ambient_time: i32,
     pub ticks: i32,
     /// DragonFlightHistory: (y, yRot) samples, newest at `head`.
-    pub(in crate::game) history: [(f64, f32); 64],
+    pub history: [(f64, f32); 64],
     pub(in crate::game) head: usize,
     /// head, neck, body, tail1-3, wing1-2.
     pub parts: [DragonPart; 8],

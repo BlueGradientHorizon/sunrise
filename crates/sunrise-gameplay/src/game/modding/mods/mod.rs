@@ -945,7 +945,7 @@ pub mod tests {
         mod_platform::__private::with_test_package_inventory(
             inventory("srv_runes", mod_api::Side::Server),
             || {
-                assert!(crate::game::part_admission::admit_parts(&mods).is_err());
+                assert!(sunrise_gameplay_common::game::part_admission::admit_parts(&mods).is_err());
             },
         );
         assert_eq!(
@@ -1125,7 +1125,7 @@ pub mod tests {
         mod_platform::__private::with_test_package_inventory(
             inventory("srv_runes", mod_api::Side::Server),
             || {
-                assert!(crate::game::part_admission::admit_parts(&attr_mods).is_err());
+                assert!(sunrise_gameplay_common::game::part_admission::admit_parts(&attr_mods).is_err());
             },
         );
         assert_eq!(

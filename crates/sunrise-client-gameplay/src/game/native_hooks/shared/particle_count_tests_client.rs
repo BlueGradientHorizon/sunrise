@@ -1,39 +1,39 @@
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use super::super::pickups::{Collector, Taken};
+pub(crate) use super::super::pickups::{Collector, Taken};
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::particle_count_tests::ClearAt;
+pub(crate) use crate::game::native_hooks::shared::particle_count_tests::ClearAt;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::particle_count_tests::ClearInGui;
+pub(crate) use crate::game::native_hooks::shared::particle_count_tests::ClearInGui;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::particle_count_tests::ClearInModel;
+pub(crate) use crate::game::native_hooks::shared::particle_count_tests::ClearInModel;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::particle_count_tests::FrameGeometry;
+pub(crate) use crate::game::native_hooks::shared::particle_count_tests::FrameGeometry;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::particle_count_tests::FrameMod;
+pub(crate) use crate::game::native_hooks::shared::particle_count_tests::FrameMod;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::particle_count_tests::frame_geometry;
+pub(crate) use crate::game::native_hooks::shared::particle_count_tests::frame_geometry;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::particle_count_tests::host_clear;
+pub(crate) use crate::game::native_hooks::shared::particle_count_tests::host_clear;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::particle_count_tests::orb;
+pub(crate) use crate::game::native_hooks::shared::particle_count_tests::orb;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::particle_count_tests::with_frame_scene;
+pub(crate) use crate::game::native_hooks::shared::particle_count_tests::with_frame_scene;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use crate::game::native_hooks::particle_count_tests::*;
+pub(crate) use crate::game::native_hooks::shared::particle_count_tests::*;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use mod_api::ClientHost;
+pub(crate) use mod_api::ClientHost;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use std::time::Duration;
+pub(crate) use std::time::Duration;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_client::particles::FireworkExplosion;
+pub(crate) use sunrise_client::particles::FireworkExplosion;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_core::geometry::Vec3;
+pub(crate) use sunrise_core::geometry::Vec3;
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_level::particle_options::{
+pub(crate) use sunrise_level::particle_options::{
     ParticleOptions, ParticleType,
 };
 #[allow(unused_imports)]
-pub(in crate::game::client_side) use sunrise_sim::entities::ExperienceOrb;
+pub(crate) use sunrise_sim::entities::ExperienceOrb;
 
 /// `particle_count` and `clear_particles` through the client host. The count covers every
 /// live group. A clear reads 0 at once and empties every group, its queue and emitters

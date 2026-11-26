@@ -1,5 +1,7 @@
 
 
+use sunrise_gameplay_common::game::Mining;
+
 #[cfg(test)]
 impl crate::game::server_side::lan_actions_server::GuestPlay {
     #[cfg(test)]
@@ -553,7 +555,8 @@ pub mod tests {
     #[test]
     #[ignore = "daily"]
     fn block_menu_handle_and_use_each_count_the_guest_once() {
-        use crate::game::{Hit, sculk::TEST_POSTED_EVENTS};
+        use crate::game::sculk_server::TEST_POSTED_EVENTS;
+        use sunrise_gameplay_common::game::Hit;
         use mod_api::{BlockUpdateFlags, GameMode};
         use std::sync::Arc;
         use sunrise_level::chunk::Chunk;
@@ -640,7 +643,7 @@ pub mod tests {
                 if switch.is_some() {
                     // In the reverse direction the rejected spectator must not
                     // remove the other player's actual opener.
-                    assert_eq!(game.open_block_menu(13, pos), super::MenuOpen::Opened);
+                    assert_eq!(game.open_block_menu(13, pos), sunrise_gameplay_common::game::lan_actions::MenuOpen::Opened);
                     assert_eq!(count(game), 1);
                     take_signals(game);
                     mod_platform::testing::with_mods(
@@ -670,7 +673,7 @@ pub mod tests {
                 }
                 for direct in [false, true] {
                     if direct {
-                        assert_eq!(game.open_block_menu(12, pos), super::MenuOpen::Opened);
+                        assert_eq!(game.open_block_menu(12, pos), sunrise_gameplay_common::game::lan_actions::MenuOpen::Opened);
                     } else {
                         use_menu(game);
                     }
@@ -706,7 +709,7 @@ pub mod tests {
                     .update(0, |guest| {
                         guest.game_mode = 3;
                     });
-                assert_eq!(game.open_block_menu(12, pos), super::MenuOpen::Opened);
+                assert_eq!(game.open_block_menu(12, pos), sunrise_gameplay_common::game::lan_actions::MenuOpen::Opened);
                 assert_eq!(count(game), 0, "{block}");
                 game.guest_close_all(12);
                 assert_eq!(take_signals(game), (vec![], vec![], vec![]), "{block}");
@@ -727,7 +730,7 @@ pub mod tests {
     #[test]
     #[ignore = "daily"]
     fn block_part_use_item_on_consumes_once() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         use mod_api::InteractionResult as Answer;
         use mod_api::{self, BlockPart, Hooks, Registrar, ServerHost, UseItemOnEvent};
         use std::sync::{
@@ -795,7 +798,7 @@ pub mod tests {
     #[test]
     #[ignore = "daily"]
     fn replacing_empty_note_block_use_does_not_award_vanilla_stats() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         use mod_api::InteractionResult as Answer;
         use mod_api::{self, BlockPart, Hooks, Registrar, ServerHost, UseWithoutItemEvent};
         use std::sync::{
@@ -928,7 +931,7 @@ pub mod tests {
 
 #[cfg(test)]
 pub(in crate::game) mod hotbar_tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::with_game;
     use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, crate::game::server_side::native_item_places::tests::open_to_lan};
     use mod_api::{
         Flow, Hooks, ModEntry, PlayerSwitchHotbarSlotPostEvent, PlayerSwitchHotbarSlotPreEvent,
@@ -1004,7 +1007,7 @@ pub(in crate::game) mod hotbar_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod respawn_position_tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::with_game;
     use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, crate::game::server_side::native_item_places::tests::open_to_lan};
     use mod_api::{Hooks, LevelDimension, ModEntry, PlayerRespawnPositionEvent, ServerHost};
     use std::sync::{Arc, Mutex};
@@ -1130,7 +1133,7 @@ pub(in crate::game) mod respawn_position_tests {
 
 #[cfg(test)]
 pub(in crate::game) mod pickup_xp_tests {
-    use super::super::native_entity_refs::tests::with_game;
+    use crate::game::native_entity_refs::tests::with_game;
     use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, crate::game::server_side::native_item_places::tests::open_to_lan};
     use sunrise_core::geometry::Vec3;
     use sunrise_sim::entities::ExperienceOrb;

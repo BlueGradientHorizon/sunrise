@@ -642,7 +642,7 @@ pub mod tests {
     use sunrise_gameplay_common::game::server_side::native_unspawned_mob::tests::id;
 
     use super::super::commands::Target;
-    use super::super::creatures::SpawnSite;
+    use sunrise_gameplay_common::game::creatures::SpawnSite;
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::{FinalizeSpawnEvent, Flow, Host};

@@ -178,7 +178,7 @@ pub struct MapData {
     pub decorations: Vec<Decoration>,
     /// `bannerMarkers` and `frameMarkers` (`banners`, `frames` when saved).
     pub banners: Vec<MapBanner>,
-    pub(in crate::game) frames: Vec<MapFrame>,
+    pub frames: Vec<MapFrame>,
     pub(in crate::game) holders: Vec<Holder>,
     /// Changed since the last save / texture upload.
     pub dirty: bool,

@@ -1564,7 +1564,7 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
     ) -> (bool, Shown) {
         game.inventory[game.selected] = Some(ItemStack::new(item, 2));
         game.start_audio_capture();
-        crate::game::sculk::TEST_POSTED_EVENTS
+        crate::game::sculk_server::TEST_POSTED_EVENTS
             .with(|events| *events.borrow_mut() = Some(Vec::new()));
         let used = game.interact_mount(0, item);
         let sounds = std::mem::take(&mut game.server.pending_sounds)
@@ -1572,7 +1572,7 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
             .map(|s| (s.event, s.position, s.volume, s.pitch))
             .collect();
         game.stop_audio_capture();
-        let events = crate::game::sculk::TEST_POSTED_EVENTS.with(|events| {
+        let events = crate::game::sculk_server::TEST_POSTED_EVENTS.with(|events| {
             events
                 .borrow_mut()
                 .take()
@@ -1614,7 +1614,7 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
     ) -> (bool, Shown) {
         game.inventory[game.selected] = Some(ItemStack::new(item, 2));
         game.start_audio_capture();
-        crate::game::sculk::TEST_POSTED_EVENTS
+        crate::game::sculk_server::TEST_POSTED_EVENTS
             .with(|events| *events.borrow_mut() = Some(Vec::new()));
         let used = game.interact_mount(0, item);
         let sounds = std::mem::take(&mut game.server.pending_sounds)
@@ -1622,7 +1622,7 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::mob;
             .map(|s| (s.event, s.position, s.volume, s.pitch))
             .collect();
         game.stop_audio_capture();
-        let events = crate::game::sculk::TEST_POSTED_EVENTS.with(|events| {
+        let events = crate::game::sculk_server::TEST_POSTED_EVENTS.with(|events| {
             events
                 .borrow_mut()
                 .take()

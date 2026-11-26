@@ -152,7 +152,7 @@ impl ProjectileHandBack {
 #[test]
 #[ignore = "daily"]
 fn a_hand_egg_checks_and_spawns_the_type_named_by_its_component() {
-    use {crate::game::commands::peaceful_tests, sunrise_gameplay_common::game::execution_role::ExecutionRole};
+    use {sunrise_gameplay_common::game::server_side::commands::peaceful_tests, sunrise_gameplay_common::game::execution_role::ExecutionRole};
     use sunrise_core::nbt::Tag;
     use sunrise_level::chunk::block_entity::BlockEntity;
     use sunrise_sim::mobs::spawner::{SpawnDataExt, SpawnerExt};

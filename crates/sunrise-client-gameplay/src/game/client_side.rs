@@ -1728,7 +1728,7 @@ pub struct ClientState {
     pub lent_level_random:
         ClientOnly<Option<std::rc::Rc<std::cell::RefCell<mod_api::LegacyRandomSource>>>>,
     /// Controllers (Sunrise's own).
-    pub(in crate::game::client_side) pad: ClientShared<pad::Pads>,
+    pub pad: ClientShared<pad::Pads>,
     /// Mod screens' living scenes, per mod and clock id (game/modding/native_scene_live.rs).
     pub(in crate::game::client_side) live_scenes:
         ClientOnly<std::cell::RefCell<native_scene_live::LiveScenes>>,

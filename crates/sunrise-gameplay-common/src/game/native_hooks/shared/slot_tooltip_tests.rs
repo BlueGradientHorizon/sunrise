@@ -90,7 +90,7 @@ impl mod_api::ClientTooltipComponent for SlotImageClient {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub(in crate::game) enum ObservedComponent {
+pub enum ObservedComponent {
     Text(mod_api::Text, u32),
     Custom,
 }
@@ -107,7 +107,7 @@ impl mod_api::ItemPart for Image {
         Some(mod_api::TooltipComponent::custom(SlotImageData))
     }
 }
-pub(in crate::game) struct Listener {
+pub struct Listener {
     pub(in crate::game) enabled: bool,
     pub(in crate::game) painted: Arc<AtomicUsize>,
     pub(in crate::game) mode: Arc<AtomicU8>,

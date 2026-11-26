@@ -1,5 +1,7 @@
 use {crate::game::remote::recipe_properties::*};
-use crate::game::stations::{Kind, Station};
+use std::sync::Arc;
+
+use sunrise_gameplay_common::game::stations_common::{Kind, Station};
 
 pub fn cut_pack(root: &std::path::Path) -> impl Fn(&str, &str) {
     let pack = root.join("datapacks/cuts");

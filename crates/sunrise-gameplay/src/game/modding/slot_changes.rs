@@ -938,7 +938,7 @@ mod tests {
     fn with_test_item_keys(f: impl FnOnce(mod_api::ItemKey, mod_api::ItemKey, Items)) {
         let mods = mod_api::Mods::default();
         mod_platform::testing::with_mods(mods.clone(), || {
-            super::super::api_values::install_parts(&mods).unwrap();
+            sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
             mod_api::__private::resolve_items([
                 "minecraft:iron_sword",
                 "minecraft:stick",
@@ -1358,7 +1358,7 @@ mod tests {
 
         let mods: mod_api::Mods = vec![mod_api::ModEntry::new("test", Box::new(TestMod))].into();
         mod_platform::testing::with_mods(mods.clone(), || {
-            super::super::api_values::install_parts(&mods).unwrap();
+            sunrise_gameplay_common::game::api_values::install_parts(&mods).unwrap();
             let (target, other) = ((10, 64, 10), (20, 64, 20));
             let viewers = |guests: &GuestList| {
                 super::listening_block_menu_viewers(

@@ -570,7 +570,6 @@ pub mod tests {
     use sunrise_sim::lan::{Out, PlayerSender};
     use {
         crate::game::server_side::native_item_places::tests::open_to_lan,
-        sunrise_gameplay_common::game::server_side::native_item_places::tests::guest,
     };
 
     /// Guest 1 (UUID 123) on a world open to LAN, and what their client is sent.

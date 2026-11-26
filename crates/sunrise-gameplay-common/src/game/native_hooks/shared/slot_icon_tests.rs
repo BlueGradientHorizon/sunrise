@@ -31,7 +31,7 @@ impl mod_api::MenuScreenFactory for IconScreen {
 }
 pub const ICON_MENU: &str = "icon_open:menu";
 
-pub(in crate::game) struct IconMod(pub(in crate::game) Arc<AtomicBool>);
+pub struct IconMod(pub(in crate::game) Arc<AtomicBool>);
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for IconMod {
     fn register(&self, r: &mut dyn mod_api::Registrar, _: &mod_api::RegistrationContext) {

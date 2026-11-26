@@ -146,7 +146,7 @@ impl crate::game::ClientGame<'_> {
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_client_game;
-    use super::super::native_hooks::particle_count_tests::frame_scene;
+    use crate::game::native_hooks::particle_count_tests::frame_scene;
     use super::*;
     use mod_api::{ClientHost, Flow, Hooks, ModEntry, ScreenCharTypedPreEvent};
     use std::sync::{Arc, Mutex};

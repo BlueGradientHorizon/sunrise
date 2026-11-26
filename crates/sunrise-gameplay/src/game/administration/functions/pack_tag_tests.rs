@@ -11,7 +11,7 @@ use sunrise_level::chunk::Chunk;
 #[test]
 #[ignore = "daily"]
 fn a_packs_own_item_and_block_tags_admit_and_match_its_functions() {
-    use crate::game::game_tests::tests::server_game;
+    use crate::game::server_side::integrated::tests::server_game;
     let mut resources = None;
     let mut game = server_game(&mut resources);
     let dir = std::env::temp_dir().join(format!(

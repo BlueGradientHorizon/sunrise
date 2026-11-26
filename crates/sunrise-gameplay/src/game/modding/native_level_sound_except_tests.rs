@@ -1,7 +1,7 @@
 //! `LevelRef::play_sound` leaving one player out: the player handle is translated to the
 //! connection inside the game.
 
-use super::native_guest_turn_tests::with_guests;
+use crate::game::native_guest_turn_tests::with_guests;
 use mod_api::{HostTransaction, SoundSource};
 use std::sync::{Arc, mpsc};
 use sunrise_protocol::{buf::Reader, packets::play::Clientbound as C};
@@ -815,7 +815,7 @@ fn committed_effects_leave_unrelated_queues_intact_prevent_sound_recursion_and_k
                             "minecraft:zombie",
                             [3.5, 64.0, 5.5],
                             true,
-                            super::creatures::SpawnSite::Raw,
+                            sunrise_gameplay_common::game::creatures::SpawnSite::Raw,
                         )
                         .unwrap();
                     let mut helmet = ItemStack::new("minecraft:iron_helmet", 1);
@@ -1151,7 +1151,7 @@ fn sound_listener_transaction_preserves_mixed_play_and_stop_packet_order() {
                             "minecraft:zombie",
                             at,
                             true,
-                            super::creatures::SpawnSite::Raw,
+                            sunrise_gameplay_common::game::creatures::SpawnSite::Raw,
                         )
                         .unwrap();
                     *hurt_on_bell.lock().unwrap() = Some(game.entity(victim).unwrap());
@@ -1525,7 +1525,7 @@ fn cross_level_sound_listener_block_writes_journal_by_dimension_on_abort_commit_
     in_isolated_process(
         "cross_level_sound_listener_block_writes_journal_by_dimension_on_abort_commit_and_nested_merge",
         || {
-            use super::api_values::TryIntoApi;
+            use sunrise_gameplay_common::game::api_values::TryIntoApi;
             use mod_api::{BlockUpdateFlags, Flow, HostSide};
             use std::sync::atomic::{AtomicUsize, Ordering};
             use sunrise_level::chunk::Chunk;

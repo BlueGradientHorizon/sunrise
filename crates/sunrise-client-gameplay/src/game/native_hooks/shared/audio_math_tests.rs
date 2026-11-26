@@ -23,7 +23,8 @@ fn hand_pose_rejects_invalid_components() {
 /// value that isn't finite is none.
 #[test]
 fn a_shake_is_scaled_and_bounded() {
-    use sunrise_gameplay_common::game::native_hooks::{Shake, bounded_shake, shake_pose};
+    use sunrise_gameplay_common::game::native_hooks::camera_math::bounded_shake;
+    use sunrise_gameplay_common::game::native_hooks::{Shake, shake_pose};
     let shake = Shake {
         pitch: 4.0,
         yaw: -30.0,

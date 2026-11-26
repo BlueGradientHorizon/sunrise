@@ -2549,7 +2549,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
 #[test]
     #[ignore = "daily"]
     fn resolved_model_draws_and_resource_replacement_invalidates_it() {
-        use super::super::host::draw::GameBlockEntityDrawContext;
+        use crate::game::host::draw::GameBlockEntityDrawContext;
         use mod_api::BlockEntityDrawContext;
 
         let _fixture =
@@ -2745,7 +2745,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
 #[test]
     #[ignore = "daily"]
     fn model_tint_alpha_agrees_on_keep_deferred_and_batch() {
-        use super::super::host::draw::{GameBlockEntityDrawContext, GameWorldDrawContext};
+        use crate::game::host::draw::{GameBlockEntityDrawContext, GameWorldDrawContext};
         use mod_api::{
             BlockEntityDrawContext, Identifier, LightCoords, ModelInstance, Overlay,
             WorldDrawContext,
@@ -2914,7 +2914,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
     #[test]
     #[ignore = "daily"]
     fn a_pack_shades_batch_and_per_copy_models_with_one_program() {
-        use super::super::host::draw::{GameBlockEntityDrawContext, GameWorldDrawContext};
+        use crate::game::host::draw::{GameBlockEntityDrawContext, GameWorldDrawContext};
         use mod_api::{BlockEntityDrawContext, LightCoords, ModelInstance, Overlay};
         use mod_api::{Identifier, WorldDrawContext};
         use sunrise_client::gfx::entity_pixel_test::{self, PACK_COLOURS};
@@ -3078,7 +3078,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
     #[test]
     #[ignore = "daily"]
     fn text_lays_glyphs_out_under_the_pose_in_the_frames_light() {
-        use super::super::host::draw::GameBlockEntityDrawContext;
+        use crate::game::host::draw::GameBlockEntityDrawContext;
         use mod_api::BlockEntityDrawContext;
 
         super::super::native_entity_refs::tests::with_client_game(|game| {
@@ -3177,7 +3177,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
 #[test]
     #[ignore = "daily"]
     fn fractional_text_advance_rounds_up_for_drawing_and_measurement() {
-        use super::super::host::draw::GameBlockEntityDrawContext;
+        use crate::game::host::draw::GameBlockEntityDrawContext;
         use mod_api::BlockEntityDrawContext;
         use sunrise_assets::resource_source::{Resource, ResourceSource};
         super::super::native_entity_refs::tests::with_client_game(|game| {
@@ -3282,7 +3282,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
     #[test]
     #[ignore = "daily"]
     fn a_mod_built_cube_face_draws_in_its_sprite() {
-        use super::super::host::draw::GameBlockEntityDrawContext;
+        use crate::game::host::draw::GameBlockEntityDrawContext;
         use mod_api::BlockEntityDrawContext;
 
         super::super::native_entity_refs::tests::with_client_game(|game| {

@@ -9,10 +9,10 @@
 //! during the stage-3 migration rather than exporting a public token API.
 #![allow(dead_code)]
 
-use super::After as Effect;
+pub use super::After as Effect;
 use mod_api::{__private::TransactionFrame, EntityRef, WorldEpoch};
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
-use sunrise_items::items::ItemStack;
+pub use sunrise_items::items::ItemStack;
 
 #[path = "menu_owner.rs"]
 pub mod menu_owner;
@@ -99,7 +99,7 @@ struct MenuInner {
 /// Owning indirection is internal; no borrowed menu survives dispatch. The id
 /// names storage, while `instance` distinguishes replacement menus in it.
 #[derive(Clone)]
-pub(in crate::game) struct Menu {
+pub struct Menu {
     id: MenuId,
     inner: Rc<RefCell<MenuInner>>,
 }
@@ -134,7 +134,7 @@ impl Menu {
 }
 
 #[derive(Clone, Debug)]
-pub(in crate::game) enum Mutation {
+pub enum Mutation {
     Cursor(Option<ItemStack>),
     Slot(usize, Option<ItemStack>),
     Cost(u32),
@@ -143,7 +143,7 @@ pub(in crate::game) enum Mutation {
 
 /// Use the existing deferred-effect vocabulary and root publisher. There is no
 /// parallel packet/drop publication path specific to decisions.
-pub(in crate::game) enum Step {
+pub enum Step {
     Write(Mutation),
     Effect(Effect),
 }

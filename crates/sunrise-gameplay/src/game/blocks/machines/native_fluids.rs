@@ -642,7 +642,7 @@ impl mod_api::ResourceHandler<mod_api::FluidResource> for WaterTank {
     #[test]
     #[ignore = "daily"]
     fn a_cauldron_move_the_target_takes_part_of_gives_the_whole_levels_that_fit() {
-        use super::super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         use mod_api::{BlockUpdateFlags, FLUIDS, resource_util::move_resources};
         use sunrise_level::chunk::Chunk;
         with_game(|game| {

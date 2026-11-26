@@ -507,7 +507,8 @@ impl ServerGame<'_> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use super::super::{lan::LanSettings, native_entity_refs::tests::with_game};
+    use super::super::lan::LanSettings;
+    use crate::game::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::{TeamColor, prelude::ScoreboardServerHost, text::TextStyle};
     use std::sync::{

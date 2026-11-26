@@ -1,4 +1,4 @@
-use crate::game::item_entities::thrown_items_tests::with_remote_game;
+use crate::game::client_side::item_entities_client::thrown_items_tests::with_remote_game;
 use sunrise_gameplay_common::game::remote::frozen_screen_effects_tests::JAVA_FREEZING;
 use sunrise_gameplay_common::game::remote::frozen_screen_effects_tests::JAVA_UNFREEZING;
 use sunrise_protocol::packets::play::{self, Clientbound as C};

@@ -1,4 +1,4 @@
-use {crate::game::native_hooks::*, sunrise_gameplay_common::game::native_hooks::{Arc, ScreenOpening, Tag, Text, mod_api, screen_opening}};
+use {crate::game::native_hooks::*, sunrise_gameplay_common::game::native_hooks::{ScreenOpening, Tag, Text, mod_api, screen_opening}};
 use std::sync::{Arc, Mutex};
 
 #[derive(Debug, PartialEq)]

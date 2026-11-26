@@ -1,4 +1,4 @@
-use {crate::game::villager_client::*, sunrise_gameplay_common::game::villager_client::{Arc, Builtin, Mob, ResolvedProfessions, Value, server_meta, villager_data}};
+use {crate::game::villager_client::*, sunrise_gameplay_common::game::villager_client::{Builtin, Mob, ResolvedProfessions, Value, server_meta, villager_data}};
 use crate::game::client_side::villager_client_client::receive;
 use std::sync::Arc;
 use sunrise_client::mobs::render;

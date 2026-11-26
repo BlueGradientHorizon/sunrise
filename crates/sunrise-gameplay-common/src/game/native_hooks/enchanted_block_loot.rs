@@ -111,7 +111,7 @@ pub mod tests {
     }
 
     /// Records every read and answers with `answer`, or leaves it.
-    pub(in crate::game) struct Fortune {
+    pub struct Fortune {
         pub(in crate::game) answer: Option<u32>,
         pub(in crate::game) reads: Arc<Mutex<Vec<Read>>>,
     }

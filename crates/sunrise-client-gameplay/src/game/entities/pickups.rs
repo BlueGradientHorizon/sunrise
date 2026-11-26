@@ -101,7 +101,7 @@ impl ClientGame<'_> {
         }
     }
     /// [`Self::add_pickup`] with the collector's first target given.
-    pub(in crate::game::client_side) fn add_pickup_toward(
+    pub fn add_pickup_toward(
         &mut self,
         taken: Taken,
         collector: Collector,

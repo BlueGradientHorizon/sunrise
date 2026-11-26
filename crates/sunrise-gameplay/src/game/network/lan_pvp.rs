@@ -306,7 +306,7 @@ impl crate::game::ServerGame<'_> {
             victim_team,
         );
         #[cfg(test)]
-        let answer = super::rule_replacements::harm(attacker, victim).unwrap_or(answer);
+        let answer = sunrise_gameplay_common::game::rule_replacements::harm(attacker, victim).unwrap_or(answer);
         let _ = (attacker, victim);
         answer
     }

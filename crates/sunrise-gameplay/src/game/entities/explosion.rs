@@ -2662,7 +2662,7 @@ use sunrise_gameplay_common::game::server_side::explosion::tests::zombie_type;
         let cause = blast_cause(owner, exploding, find, exploded);
         let kind = sunrise_sim::mobs::DamageKind::Explosion;
         (
-            super::super::creatures::damage_type(kind, cause.is_some()),
+            sunrise_gameplay_common::game::creatures::damage_type(kind, cause.is_some()),
             cause,
         )
     }

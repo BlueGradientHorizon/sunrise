@@ -52,4 +52,4 @@ impl crate::game::ClientGame<'_> {
 
 #[cfg(test)]
 #[path = "book_screen/lifecycle_tests.rs"]
-pub(in crate::game::client_side) mod lifecycle_tests_shared;
+pub(crate) mod lifecycle_tests_shared;

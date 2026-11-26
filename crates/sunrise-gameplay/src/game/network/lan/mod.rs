@@ -4232,7 +4232,7 @@ pub(in crate::game) mod tests {
     /// back to none is sent.
     #[test]
     fn a_mobs_stuck_counts_are_sent_by_mob_meta() {
-        let types = super::super::mods::living_mod_types();
+        let types = sunrise_gameplay_common::game::mods::living_mod_types();
         let hub = meta_hub("StuckMetaTest");
         let mut mob = Mob::new(
             1,
@@ -4310,7 +4310,7 @@ pub(in crate::game) mod tests {
 
     #[test]
     fn unresolved_profession_sends_none_without_changing_saved_identity() {
-        let types = super::super::mods::living_mod_types();
+        let types = sunrise_gameplay_common::game::mods::living_mod_types();
         let hub = meta_hub("MissingProfessionMeta");
         let mut mob = Mob::new(
             1,
@@ -4338,7 +4338,7 @@ pub(in crate::game) mod tests {
     /// for entry what its template sends.
     #[test]
     fn a_mod_living_type_sends_its_templates_entity_data() {
-        let types = super::super::mods::living_mod_types();
+        let types = sunrise_gameplay_common::game::mods::living_mod_types();
         let hub = meta_hub("ModMobMetaTest");
         let meta_of = |id: &str| {
             let at = sunrise_core::geometry::Vec3::new(0.5, 64.0, 0.5);
@@ -4590,7 +4590,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_mod_changes_the_effect_particles_players_are_sent() {
-        use super::super::api_values::{TryIntoApi, TryIntoEngine};
+        use sunrise_gameplay_common::game::api_values::{TryIntoApi, TryIntoEngine};
         use super::super::lan::LanSettings;
         use mod_api::{EffectParticleModificationEvent, Hooks, Host, ModEntry, Mods};
         use std::sync::{

@@ -149,7 +149,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn entity_energy_and_fluids_move_and_roll_back() {
-        use super::super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         use mod_api::{
             BlockUpdateFlags, ENERGY, ENTITY_ENERGY, ENTITY_FLUIDS, Holder, move_energy,
             resource_util::move_resources,
@@ -301,7 +301,7 @@ mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_buffers_energy_moves_by_its_sides_and_limits_and_an_abort_puts_it_back() {
-        use super::super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         use mod_api::{BlockUpdateFlags, ENERGY, move_energy};
         use sunrise_core::geometry::Direction;
         use sunrise_level::chunk::Chunk;

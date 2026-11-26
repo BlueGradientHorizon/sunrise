@@ -804,7 +804,7 @@ pub struct LevelTicks<'b, L, T = &'b mut Ticks> {
 }
 
 impl<'b, L, T> LevelTicks<'b, L, T> {
-    pub(in crate::game) fn new(level: L, ticks: T) -> Self {
+    pub fn new(level: L, ticks: T) -> Self {
         Self {
             level,
             ticks,

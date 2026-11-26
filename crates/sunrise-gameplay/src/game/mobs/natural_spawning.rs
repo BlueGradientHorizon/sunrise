@@ -2030,7 +2030,7 @@ struct ClusterMod;
     #[test]
     #[ignore = "daily"]
     fn spawn_checks_pin_the_random_draws_of_both_halves() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         with_game(|game| {
             let level = game.natural_level();
             let placement = |random: &mut LegacyRandom| {
@@ -2189,7 +2189,7 @@ struct ClusterMod;
     #[test]
     #[ignore = "daily"]
     fn natural_spawn_checks_lend_the_mob_and_keep_the_draws() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         with_game(|game| {
             spawn_check_world(game, Vec3::new(0.5, 64.0, 0.5));
             let stone = game.pack.assets.registry.default_state("minecraft:stone");
@@ -2287,7 +2287,7 @@ struct ClusterMod;
     #[test]
     #[ignore = "daily"]
     fn spawner_checks_tell_the_block_and_keep_the_draws() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         use sunrise_level::chunk::block_entity::Next;
         use sunrise_sim::mobs::spawner::{SpawnData, SpawnDataExt};
         with_game(|game| {
@@ -2383,7 +2383,7 @@ struct ClusterMod;
     #[test]
     #[ignore = "daily"]
     fn trial_spawner_checks_tell_the_block_and_keep_the_draws() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         use sunrise_sim::mobs::spawner::{SpawnData, SpawnDataExt};
         use sunrise_sim::mobs::trial_spawner::{TrialSpawner, TrialState};
         with_game(|game| {
@@ -2462,7 +2462,7 @@ struct ClusterMod;
     #[test]
     #[ignore = "daily"]
     fn finalize_spawn_cancels_pin_the_draws_and_the_outcome() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         with_game(|game| {
             let kind = game
                 .res
@@ -2515,8 +2515,8 @@ struct ClusterMod;
     #[test]
     #[ignore = "daily"]
     fn finalize_spawn_is_told_only_where_vanilla_finalizes() {
-        use super::super::creatures::SpawnSite;
-        use super::super::native_entity_refs::tests::with_game;
+        use sunrise_gameplay_common::game::creatures::SpawnSite;
+        use crate::game::native_entity_refs::tests::with_game;
         let heard = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let mods = vec![mod_api::ModEntry::new(
             "count-finalize",
@@ -2553,8 +2553,8 @@ struct ClusterMod;
     #[test]
     #[ignore = "daily"]
     fn jockeys_finalize_with_the_parents_reason() {
-        use super::super::creatures::SpawnSite;
-        use super::super::native_entity_refs::tests::with_game;
+        use sunrise_gameplay_common::game::creatures::SpawnSite;
+        use crate::game::native_entity_refs::tests::with_game;
         let heard = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
         let mods = vec![mod_api::ModEntry::new(
             "record-finalize",
@@ -2596,7 +2596,7 @@ struct ClusterMod;
     #[test]
     #[ignore = "daily"]
     fn mob_despawn_answers_override_vanilla_and_default_passes_through() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         use mod_api::Despawn::{Allow, Default as Vanilla, Deny};
         use std::sync::atomic::Ordering::Relaxed;
         let answer = std::sync::Arc::new(std::sync::Mutex::new(Vanilla));
@@ -2612,7 +2612,7 @@ struct ClusterMod;
                         "minecraft:zombie",
                         [8.5, 64.0, 8.5],
                         false,
-                        super::super::creatures::SpawnSite::Plain,
+                        sunrise_gameplay_common::game::creatures::SpawnSite::Plain,
                     )
                     .unwrap();
                 // Asks the hook, then runs `despawn_check` for an idle zombie 40
@@ -2675,14 +2675,14 @@ struct ClusterMod;
     #[test]
     #[ignore = "daily"]
     fn mob_despawn_with_no_listener_draws_as_vanilla() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         with_game(|game| {
             let id = game
                 .spawn_mob(
                     "minecraft:zombie",
                     [8.5, 64.0, 8.5],
                     false,
-                    super::super::creatures::SpawnSite::Plain,
+                    sunrise_gameplay_common::game::creatures::SpawnSite::Plain,
                 )
                 .unwrap();
             let mut mob = game.mobs.iter().find(|m| m.id == id).unwrap().clone();
@@ -2718,7 +2718,7 @@ struct ClusterMod;
     #[test]
     #[ignore = "daily"]
     fn entity_parts_answer_the_spawn_cluster_size() {
-        use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
         if run_fresh_cases(
             "game::server_side::natural_spawning::tests::entity_parts_answer_the_spawn_cluster_size",
             "SUNRISE_SPAWN_CLUSTER_CHILD",

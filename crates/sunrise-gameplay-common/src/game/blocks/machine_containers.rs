@@ -86,7 +86,7 @@ impl View {
     }
     /// `Container.getMaxStackSize`: what one slot holds of any item, 1 for a chiseled
     /// bookshelf's books and a jukebox's disc, else vanilla's default.
-    pub(in crate::game) fn slot_limit(&self) -> u32 {
+    pub fn slot_limit(&self) -> u32 {
         match self.kind {
             Kind::Bookshelf | Kind::Jukebox | Kind::Composter(_) => 1,
             _ => 99,

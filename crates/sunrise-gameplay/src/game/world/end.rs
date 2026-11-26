@@ -1190,8 +1190,8 @@ pub(in crate::game) mod tests {
     use super::*;
     use crate::game::{
         client_side::end_client::eye_quad,
-        end_state::{exact_teleport, flash_pose},
     };
+    use sunrise_gameplay_common::game::end_state::{exact_teleport, flash_pose};
     use sunrise_level::containers::EndGateway;
 
     #[test]
@@ -1221,7 +1221,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn leaving_the_end_for_a_world_spawn_there_builds_no_platform() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         use std::sync::Arc;
 
         with_game(|game| {
@@ -1249,7 +1249,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn a_pearl_reads_its_end_gateway_cooldown_and_refuses_the_write() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
 
         with_game(|game| {
             game.add_projectile(Projectile::new(

@@ -1659,7 +1659,7 @@ pub mod tests {
 #[test]
     #[ignore = "daily"]
     fn a_dispenser_keeps_the_egg_if_its_type_cannot_spawn_in_peaceful() {
-        use {crate::game::commands::peaceful_tests, sunrise_gameplay_common::game::execution_role::ExecutionRole};
+        use {sunrise_gameplay_common::game::execution_role::ExecutionRole, sunrise_gameplay_common::game::server_side::commands::peaceful_tests};
 
         peaceful_tests::with_types(ExecutionRole::IntegratedServer, |game| {
             let egg = peaceful_tests::trader_egg();

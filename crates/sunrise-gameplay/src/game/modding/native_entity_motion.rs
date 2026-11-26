@@ -477,7 +477,7 @@ use sunrise_gameplay_common::game::server_side::native_entity_motion::tests::ass
     #[test]
     #[ignore = "daily"]
     fn on_block_picks_the_support_nearest_the_entity_and_pick_clips_blocks() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         use mod_api::BlockFace;
         use std::sync::Arc;
         use sunrise_level::chunk::Chunk;
@@ -607,7 +607,7 @@ use sunrise_gameplay_common::game::server_side::native_entity_motion::tests::ass
     #[test]
     #[ignore = "daily"]
     fn set_on_ground_refreshes_the_live_footprint_without_moving_the_body() {
-        use super::super::native_entity_refs::tests::{run_fresh_cases, with_game};
+        use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
         use std::sync::Arc;
         use sunrise_core::position::BlockPos;
         use sunrise_items::items::ItemStack;
@@ -724,9 +724,9 @@ use sunrise_gameplay_common::game::server_side::native_entity_motion::tests::ass
     #[test]
     #[ignore = "daily"]
     fn set_on_ground_follows_the_server_players_parked_and_acting_bodies() {
-        use super::super::{
-            Dim, native_entity_refs::tests::run_fresh_cases, native_guest_turn_tests::with_guests,
-        };
+        use super::super::Dim;
+        use crate::game::native_entity_refs::tests::run_fresh_cases;
+        use crate::game::native_guest_turn_tests::with_guests;
         use std::sync::Arc;
         use sunrise_level::chunk::Chunk;
 

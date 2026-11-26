@@ -181,7 +181,7 @@ pub struct Minecart {
     pub random: LegacyRandom,
     /// What `entity_size` answered at its last size refresh (`EntityEvent.Size`): its box takes
     /// the answer while it holds for its vanilla size.
-    pub(in crate::game) size_answer: Option<sunrise_sim::pose::SizeAnswer>,
+    pub size_answer: Option<sunrise_sim::pose::SizeAnswer>,
 }
 /// `EntityType.MINECART`'s `sized(0.98F, 0.7F)`: float dimensions, widened.
 pub const WIDTH: f64 = 0.98_f32 as f64;

@@ -343,7 +343,7 @@ impl crate::game::ServerGame<'_> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use super::super::api_values::{StackReadError, TryIntoApi, TryIntoEngine};
+    use sunrise_gameplay_common::game::api_values::{StackReadError, TryIntoApi, TryIntoEngine};
     use super::super::native_entity_refs::tests::with_game;
     use super::*;
     use mod_api::WorldEpoch;

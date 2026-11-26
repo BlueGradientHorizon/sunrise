@@ -977,8 +977,8 @@ pub mod tests {
 use sunrise_gameplay_common::game::server_side::native_item_places::tests::guest;
 
     use super::super::BlockEntity;
-    use super::super::api_values::TryIntoApi;
-    use super::super::native_entity_refs::tests::with_game;
+    use sunrise_gameplay_common::game::api_values::TryIntoApi;
+    use crate::game::native_entity_refs::tests::with_game;
     use mod_api::HostTransaction;
     use mod_api::ServerHost;
     use mod_api::{

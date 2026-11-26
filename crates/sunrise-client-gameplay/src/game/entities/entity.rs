@@ -7,9 +7,9 @@ use sunrise_gameplay_common::game::server_side::entity_server::join_order_tests:
 
 use crate::game::client_side::entity_client::{DrawExtras, DrawFamily, DrawRun, draw_runs};
 
-use crate::game::entity::{EntityHandle, EntityLists, JoinOrderError};
+use sunrise_gameplay_common::game::entity::{EntityHandle, EntityLists, JoinOrderError};
 
-use crate::game::{boats_common::Boat, creatures::render_fixture::mob, fireworks::Rocket};
+use sunrise_gameplay_common::game::{boats_common::Boat, creatures::render_fixture::mob, fireworks::Rocket};
 
 use sunrise_sim::join_seq::{JoinList, JoinSeq};
 

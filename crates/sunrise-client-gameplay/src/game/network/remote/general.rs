@@ -5,8 +5,9 @@ pub mod tests {
 
 use crate::game::{
         client_side::remote_client::general::{RemoteGeneral, tick_remote_general},
-        remote::Lerp,
     };
+
+use sunrise_gameplay_common::game::remote::Lerp;
 
 use indexmap::IndexMap;
 

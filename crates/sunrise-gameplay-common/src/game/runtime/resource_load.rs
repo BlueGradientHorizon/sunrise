@@ -594,7 +594,7 @@ pub(in crate::game) fn with_mod_widened_bounds(
 /// (#846, `EntityAttributeModificationEvent`), in registration order, so a
 /// later addition of the same attribute wins. An unknown attribute or a type
 /// without a row refuses the load, naming the type.
-pub(in crate::game) fn with_mod_attribute_additions(
+pub fn with_mod_attribute_additions(
     catalog: &sunrise_world::attributes::entity::Catalog,
     modifications: &[mod_api::__private::EntityAttributeModification],
 ) -> std::result::Result<sunrise_world::attributes::entity::Catalog, String> {
@@ -617,7 +617,7 @@ pub(in crate::game) fn with_mod_attribute_additions(
 /// a declared set's type does (#845), so a new mob of the type spawns with
 /// what the live map answers. A type with no mob type (the player) builds
 /// its map from the catalog alone.
-pub(in crate::game) fn take_modified_attribute_rows(
+pub fn take_modified_attribute_rows(
     types: &mut HashMap<String, sunrise_sim::mobs::MobType>,
     catalog: &sunrise_world::attributes::entity::Catalog,
     modifications: &[mod_api::__private::EntityAttributeModification],

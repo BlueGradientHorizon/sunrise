@@ -2,13 +2,14 @@
 
 #[cfg(test)]
 pub(in crate::game) mod rope_hold_tests {
-    use super::{
-        Holder, Tag, held_by_acting_player, leash, resolve_pending_leash, write_mob_leash_tag,
-    };
     use crate::game::client_side::leads_client::rope_hold_angles;
+    use sunrise_core::nbt::Tag;
+    use sunrise_gameplay_common::leash_knot::{
+        held_by_acting_player, resolve_pending_leash, write_mob_leash_tag,
+    };
     use sunrise_protocol::crypto::offline_uuid;
     use sunrise_sim::lan::playerdata::uuid_ints;
-    use sunrise_sim::mobs::leash::Pending;
+    use sunrise_sim::mobs::leash::{self, Holder, Pending};
 
     #[test]
     fn rope_hold_angles_lerp_by_half_the_partial_tick() {

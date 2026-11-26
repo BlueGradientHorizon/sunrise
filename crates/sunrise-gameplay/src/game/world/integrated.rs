@@ -17,7 +17,9 @@ use super::{
     world_loading::{WorldLoader, WorldRequest},
 };
 #[cfg(test)]
-use crate::game::{client_side::integrated_client::Integrated, integrated_link::stack_for};
+use crate::game::client_side::integrated_client::Integrated;
+#[cfg(test)]
+use sunrise_gameplay_common::game::integrated_link::stack_for;
 use sunrise_gameplay_common::game::{
     integrated_link::{
         ComponentHarness, Flags, Launch, PLAYER_CHUNKS, ProfileResolverFactory, Ready,
@@ -1017,6 +1019,7 @@ impl Integrated {
 pub mod tests {
     use super::*;
     use mod_api::prelude::*;
+    use std::sync::mpsc::channel;
 
     
 

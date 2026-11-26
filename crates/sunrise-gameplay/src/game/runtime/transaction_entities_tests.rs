@@ -173,7 +173,7 @@ impl Hooks for Observer {
 /// Runs the test `name` with the observer installed, in a fresh process (installed mods are
 /// process-wide), on a dedicated server's overworld with chunk 0 0 loaded.
 fn with_observer(name: &str, test: impl FnOnce(&mut crate::game::ServerGame<'_>)) {
-    use super::native_entity_refs::tests::{run_fresh_cases, with_game};
+    use crate::game::native_entity_refs::tests::{run_fresh_cases, with_game};
     if run_fresh_cases(name, "SUNRISE_TRANSACTION_ENTITIES_CHILD", &["valid"]) {
         return;
     }
@@ -791,7 +791,7 @@ fn exhausted_ids_refuse_every_mod_spawn() {
             sunrise_core::geometry::Vec3::new(1.5, 70.0, 1.5),
         );
         game.player = Some(player.unwrap());
-        super::native_entity_refs::tests::bind_local_player(game, 20, 123);
+        crate::game::native_entity_refs::tests::bind_local_player(game, 20, 123);
         let mob = summon(game, "minecraft:zombie", "{}").unwrap();
         let fixture = Fixture {
             level: game.level(game.dim.id()).unwrap(),

@@ -31,7 +31,7 @@ pub fn attack_range_contains(
 }
 
 /// `AttackRange.isInRange(attacker, box, buffer)` with inclusive eye-to-box distance.
-pub(in crate::game) fn in_attack_range(
+pub fn in_attack_range(
     distance: f64,
     (min, max, margin): (f32, f32, f32),
     buffer: f64,

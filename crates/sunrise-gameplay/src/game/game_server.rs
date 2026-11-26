@@ -569,7 +569,7 @@ impl crate::game::ServerGame<'_> {
     /// (`Entity.checkFallDamage`): a mod block's `fall_on` Part hears it, through the same
     /// `block_contact::fall` as a player's and a mob's landing. An item takes no fall damage.
     /// Nothing is lent or built unless a Part of that block listens.
-    pub(in crate::game::server_side) fn item_fall_on(
+    pub fn item_fall_on(
         &mut self,
         id: u32,
         on: sunrise_core::position::BlockPos,

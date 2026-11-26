@@ -2,15 +2,15 @@
 //! assets (`content_root`), and the Mods page's rows. Code mods are native (`native_hooks.rs`)
 //! with content-only packages loaded separately.
 #[allow(unused_imports)]
-use super::{execution_role::ExecutionRole, registration_capability_coverage as coverage};
+pub use super::{execution_role::ExecutionRole, registration_capability_coverage as coverage};
 pub(in crate::game) mod menu_books;
 pub mod package_files;
 pub mod runtime_files;
 pub mod standalone;
 #[allow(unused_imports)]
-use mod_api::__private::{DeclarationKind, DeclarationRefusal, DeclarationSink, game::*};
+pub use mod_api::__private::{DeclarationKind, DeclarationRefusal, DeclarationSink, game::*};
 #[allow(unused_imports)]
-use mod_api::{Answered, DeclarationError, LoadingMessage, RegistrationContext};
+pub use mod_api::{Answered, DeclarationError, LoadingMessage, RegistrationContext};
 #[allow(unused_imports)]
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -18,11 +18,11 @@ use std::{
     sync::{Arc, Mutex},
 };
 #[allow(unused_imports)]
-use sunrise_game_data::lang;
+pub use sunrise_game_data::lang;
 #[allow(unused_imports)]
-use sunrise_mod_package::manifest::{MissingJar, collect_jar_requirements, missing_jars};
+pub use sunrise_mod_package::manifest::{MissingJar, collect_jar_requirements, missing_jars};
 #[allow(unused_imports)]
-use sunrise_mod_package::mod_list::{self, Installed};
+pub use sunrise_mod_package::mod_list::{self, Installed};
 #[allow(unused_imports)]
 use sunrise_sim::{mobs::spawner::SpawnerTypeFacts, mod_content::DeclaredContent};
 #[allow(unused_imports)]
@@ -224,7 +224,7 @@ impl ModsState {
         }
     }
 
-    pub(in crate::game) fn apply_code_switches(
+    pub fn apply_code_switches(
         &self,
         disabled: &std::collections::BTreeSet<String>,
     ) {
@@ -251,7 +251,7 @@ impl ModsState {
     /// One admission rule for initial composition and later code-only toggles.
     /// Content acceptance belongs to the generation; code admission belongs to
     /// the installed dispatch entries, including their live enabled switches.
-    pub(in crate::game) fn enabled_inventory(
+    pub fn enabled_inventory(
         &self,
         accepted_content: impl Fn(&str) -> bool,
     ) -> sunrise_mod_package::enabled::EnabledMods {
@@ -359,7 +359,7 @@ impl ModsState {
         })
     }
 
-    pub(in crate::game) fn report_refusals(&self, rows: &mut [Installed]) {
+    pub fn report_refusals(&self, rows: &mut [Installed]) {
         let refused = self.refused.lock().unwrap();
         for row in rows {
             let mut problems: Vec<_> = refused
@@ -469,14 +469,14 @@ pub fn freeze_declarations() {
 }
 
 #[derive(Clone, Debug)]
-pub struct DeclarationFailures(pub(in crate::game) Vec<DeclarationRefusal>);
+pub struct DeclarationFailures(pub Vec<DeclarationRefusal>);
 
 impl DeclarationFailures {
     pub(in crate::game) fn new(refusals: Vec<DeclarationRefusal>) -> Self {
         Self(refusals)
     }
 
-    pub(in crate::game) fn messages(&self) -> impl Iterator<Item = LoadingMessage> {
+    pub fn messages(&self) -> impl Iterator<Item = LoadingMessage> {
         use sunrise_game_data::text::Text;
         let quoted = |value: &str| Text::literal(format!("{value:?}"));
         self.0.iter().map(move |refusal| {
@@ -561,7 +561,7 @@ impl NativeDeclared {
 }
 
 /// The same native declarations serve startup and every pack reload.
-pub(in crate::game) fn native_declared() -> std::borrow::Cow<'static, NativeDeclared> {
+pub fn native_declared() -> std::borrow::Cow<'static, NativeDeclared> {
     let collect = || {
         use super::api_values::TryIntoEngine;
         let mut declared = NativeDeclared::default();
@@ -667,11 +667,11 @@ pub fn register_map_decoration_types() {
 /// process.
 pub(in crate::game) struct ContentOverlay {
     /// The root with the mods' content merged in.
-    pub(in crate::game) root: sunrise_assets::resource_source::ResourceRoot,
+    pub root: sunrise_assets::resource_source::ResourceRoot,
     /// The accepted content mods, in overlay order.
-    pub(in crate::game) mods: Vec<sunrise_sim::mod_content::ContentMod>,
+    pub mods: Vec<sunrise_sim::mod_content::ContentMod>,
     /// The protocol entries of the accepted mods.
-    pub(in crate::game) announced: Vec<sunrise_protocol::mod_list::Entry>,
+    pub announced: Vec<sunrise_protocol::mod_list::Entry>,
     /// Whether the protocol's local mod list is still unset.
     pub(in crate::game) announce: bool,
     /// The accepted content-only mods, each with its version, for the worlds saved to record.
@@ -679,7 +679,7 @@ pub(in crate::game) struct ContentOverlay {
 }
 
 /// A package's primary namespace is not an alias another layer can acquire.
-pub(in crate::game) fn refuse_primary_namespace_claims(
+pub fn refuse_primary_namespace_claims(
     manifests: &[&sunrise_mod_package::Manifest],
 ) -> sunrise_game_data::Result<()> {
     let mut primary: std::collections::HashSet<&str> = manifests
@@ -705,13 +705,13 @@ pub(in crate::game) fn refuse_primary_namespace_claims(
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::game) enum ServedContentStage {
+pub enum ServedContentStage {
     Read,
     Admit,
 }
 
 #[derive(Debug)]
-pub(in crate::game) struct ServedContentLoadError {
+pub struct ServedContentLoadError {
     pub(in crate::game) mod_id: String,
     pub(in crate::game) stage: ServedContentStage,
     pub(in crate::game) detail: String,
@@ -734,7 +734,7 @@ impl std::fmt::Display for ServedContentLoadError {
 impl std::error::Error for ServedContentLoadError {}
 
 #[derive(Debug, PartialEq, Eq)]
-pub(in crate::game) struct DisabledServingHost {
+pub struct DisabledServingHost {
     pub(in crate::game) content: String,
     pub(in crate::game) host: String,
 }
@@ -794,7 +794,7 @@ pub(in crate::game) fn content_layer_owner<'a>(
 
 /// Maps each admitted content layer's namespaces to its owning package ID:
 /// the serving native host for `served_by` content packages, otherwise the layer itself.
-pub(in crate::game) fn content_owner_pairs<'a>(
+pub fn content_owner_pairs<'a>(
     mods: &'a [sunrise_sim::mod_content::ContentMod],
     selected: &'a [sunrise_mod_package::selection::SelectedPackage],
 ) -> Vec<(&'a str, &'a str)> {
@@ -1450,7 +1450,7 @@ pub(in crate::game) fn announced_entry(
     }
 }
 
-pub(in crate::game) fn mob_effect_entries<'a>(
+pub fn mob_effect_entries<'a>(
     mods: &'a [sunrise_sim::mod_content::ContentMod],
     selected: &'a [sunrise_mod_package::selection::SelectedPackage],
 ) -> Vec<(&'a str, &'a sunrise_mod_package::content::MobEffect)> {
@@ -1470,7 +1470,7 @@ pub(in crate::game) fn mob_effect_entries<'a>(
 /// sets them, until restart: a pack reload after a Mods switch builds a root
 /// with others. A root declaring none freezes nothing, and a game without
 /// mob effects reads the same empty list either way.
-pub(in crate::game) fn register_mob_effects(
+pub fn register_mob_effects(
     mods: &[sunrise_sim::mod_content::ContentMod],
     selected: &[sunrise_mod_package::selection::SelectedPackage],
 ) {
@@ -1512,7 +1512,7 @@ pub(in crate::game) fn register_mob_effects(
 
 /// Content and general types share the entity-type key space even though their definitions
 /// enter through different paths. Refuse the collision before building the content root.
-pub(in crate::game) fn validate_entity_type_families(
+pub fn validate_entity_type_families(
     mods: &[sunrise_sim::mod_content::ContentMod],
     general: &crate::game::general::GeneralTypeCatalog,
 ) -> Result<(), String> {
@@ -1604,7 +1604,7 @@ pub(in crate::game) fn register_menu_types(
 }
 
 /// The embedded inventory, formatted for the crash report.
-pub(in crate::game) fn native_mods_detail(
+pub fn native_mods_detail(
     built: &[mod_api::__private::native::BuiltMod],
 ) -> Option<String> {
     let list = built
@@ -1650,7 +1650,7 @@ pub(in crate::game) fn remember_verdict(
 }
 
 /// The mod at `path`'s [`Verdict`], read once per version of it (never remembered for `dev`).
-pub(in crate::game) fn verdict(
+pub fn verdict(
     path: &std::path::Path,
     manifest: &sunrise_mod_package::Manifest,
     dev: bool,
@@ -1675,7 +1675,7 @@ pub(in crate::game) fn verdict(
 
 /// Notes a content mod's id, and whether its files can switch with a world
 /// open (`mod_content::live_switch`).
-pub(in crate::game) fn live_switch_of(
+pub fn live_switch_of(
     path: &std::path::Path,
     package: &sunrise_mod_package::Package,
     dev: bool,
@@ -1702,7 +1702,7 @@ pub(in crate::game) fn live_switch_of(
 }
 
 /// Installed native mods not compiled into this executable get an explanatory row.
-pub(in crate::game) fn not_built(
+pub fn not_built(
     dir: &std::path::Path,
     built: &[mod_api::__private::native::BuiltMod],
     rows: &[Installed],
@@ -2330,7 +2330,7 @@ impl ModsState {
 }
 
 impl ModsState {
-    pub(in crate::game) fn perf_metadata<'a>(
+    pub fn perf_metadata<'a>(
         &self,
         packages: impl Iterator<Item = &'a mod_api::PackageInfo>,
     ) -> Vec<sunrise_perf_format::v1::Mod> {

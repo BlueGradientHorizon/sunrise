@@ -34,7 +34,7 @@ impl crate::game::ServerGame<'_> {
         .inflate(Vec3::new(1.0, 0.5, 1.0));
         let mut projectiles = self.common.creatures.projectiles.lift();
         #[cfg(test)]
-        crate::game::entity_server::taken_pass_tests::after_take(self);
+        crate::game::server_side::entity_server::taken_pass_tests::after_take(self);
         let mut picked = Vec::new();
         projectiles.retain(|shot| {
             let Some(a) = shot.arrow.as_ref().filter(|a| !a.removed) else {

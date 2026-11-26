@@ -97,10 +97,10 @@ pub fn shared<'a>(
 
 #[derive(Serialize)]
 pub struct SharedSections {
-    pub(in crate::game) sections: usize,
-    pub(in crate::game) mb: f64,
+    pub sections: usize,
+    pub mb: f64,
     #[serde(skip)]
-    pub(in crate::game) bytes: usize,
+    pub bytes: usize,
 }
 
 #[derive(Serialize)]
@@ -432,8 +432,8 @@ impl Drop for MemoryCancellation {
 /// One census slot across captures; stop cancels the sample and waits for the worker to exit.
 pub struct PendingMemory {
     pub(in crate::game) cancel: MemoryCancellation,
-    pub(in crate::game) worker: JoinHandle<()>,
-    pub(in crate::game) rows: Receiver<MemoryRows>,
+    pub worker: JoinHandle<()>,
+    pub rows: Receiver<MemoryRows>,
 }
 
 pub trait MemoryCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {

@@ -437,7 +437,7 @@ pub(in crate::game) mod tests {
     #[test]
     #[ignore = "daily"]
     fn moves_and_pushes_a_live_mob() {
-        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::native_entity_refs::tests::with_game;
         use sunrise_core::geometry::Vec3;
         use sunrise_sim::mobs::Mob;
 
