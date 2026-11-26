@@ -45,6 +45,29 @@ pub trait ClientInputClientHost {
     /// clipboard unchanged, as vanilla's.
     fn set_clipboard_text(&self, text: &str) -> bool;
     /// Side: client.
+    /// Opens the link confirmation over whatever screen is open (`ConfirmLinkScreen.confirmLinkNow`).
+    /// Yes hands `uri` to the desktop's browser (`Blaze3D.openUri`); Copy to Clipboard copies it;
+    /// every answer returns to the screen that was open. The player's answer is the consent, so no
+    /// input event is needed: a tick or a payload handler may call it. `trusted` only changes the
+    /// prompt, as vanilla's argument does: untrusted shows `chat.link.confirm`, the
+    /// `chat.link.warning` line and Yes / Copy to Clipboard / No; trusted shows
+    /// `chat.link.confirmTrusted`, no warning line and Open in Browser / Copy to Clipboard / Cancel.
+    /// The chat's Web Links and Prompt on Links options gate chat click events only and do not
+    /// apply. Only http and https URIs are accepted, as `Util.parseAndValidateUntrustedUri` does
+    /// (the scheme in any case); anything else returns [`OpenLinkError::Invalid`] and opens
+    /// nothing. Returns [`OpenLinkError::Unavailable`] without a native window (a server or a
+    /// headless host). A screen hook that cancels the prompt's opening leaves it unopened, as
+    /// for any screen.
+    fn confirm_link(&mut self, uri: &str, trusted: bool) -> Result<(), OpenLinkError>;
+    /// Side: client.
+    /// Hands `path` to the desktop's handler at once, with no confirmation (`Blaze3D.openPath`):
+    /// a folder opens in the default file manager, a file in the program the system assigns it.
+    /// The path comes from the mod; no input event is needed. A path that does not exist returns
+    /// [`OpenPathError::NotFound`] and starts no process; any other failure of the system's
+    /// call returns [`OpenPathError::Failed`] with its text. Returns [`OpenPathError::Unavailable`]
+    /// without a native window (a server or a headless host).
+    fn open_path(&self, path: &std::path::Path) -> Result<(), OpenPathError>;
+    /// Side: client.
     /// Whether the window holds the pointer (`MouseHandler.isMouseGrabbed`): true while the
     /// player looks around in a world, false with a screen open or the window released.
     fn is_mouse_grabbed(&self) -> bool;
