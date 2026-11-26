@@ -2120,7 +2120,7 @@ pub enum SamplerAddress {
 /// backends blend between mip levels linearly whenever `maxLod` allows more than the base level
 /// (`GlSampler`: `NEAREST` becomes `NEAREST_MIPMAP_LINEAR`, `LINEAR` becomes
 /// `LINEAR_MIPMAP_LINEAR`; Vulkan: the mipmap mode is linear when `maxLod > 0.25`), and so does
-/// this one. [`Sampler::new`] gives what mod samplers always did.
+/// this one. [`Sampler::new`] has no `max_lod`, so it blends between levels.
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 // no wire: local client sampler descriptor.

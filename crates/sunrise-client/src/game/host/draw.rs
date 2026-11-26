@@ -1032,18 +1032,10 @@ impl FrameGraphContext for GameFrameGraphContext<'_, '_> {
         let owner = mod_api::content::crash::current_native_mod();
         // Validate imported mod render target ownership/liveness, and the mip level the pass
         // renders into, up front.
-        match desc.target {
-            FrameTarget::Mod(rt) => {
-                renderer
-                    .resolve_mod_render_target(owner, rt, desc.mip_level)
-                    .map_err(FrameGraphError::InvalidTarget)?;
-            }
-            _ if desc.mip_level != 0 => {
-                return Err(FrameGraphError::InvalidTarget(
-                    RenderTargetError::InvalidMipLevels,
-                ));
-            }
-            _ => {}
+        if let FrameTarget::Mod(rt) = desc.target {
+            renderer
+                .resolve_mod_render_target(owner, rt, desc.mip_level)
+                .map_err(FrameGraphError::InvalidTarget)?;
         }
         for &t in desc.reads.iter().chain(desc.writes.iter()) {
             if let FrameTarget::Mod(rt) = t {
@@ -1061,6 +1053,11 @@ impl FrameGraphContext for GameFrameGraphContext<'_, '_> {
                 renderer.warn_frame_graph_cycle_once(passes);
             }
             return Err(err);
+        }
+        if matches!(desc.target, FrameTarget::Transient(_)) && desc.mip_level != 0 {
+            return Err(FrameGraphError::InvalidTarget(
+                RenderTargetError::InvalidMipLevels,
+            ));
         }
         let mut recorded =
             sunrise_client::gfx::mod_frame_graph::RecordedFramePass::from_descriptor(desc, owner);

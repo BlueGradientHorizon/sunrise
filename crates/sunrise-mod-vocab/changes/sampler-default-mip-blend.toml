@@ -1,3 +1,0 @@
-ids = ["type:Sampler", "method:Sampler::new", "type:Sampler.max_lod"]
-why = "#6000: a Sampler with no max_lod (what Sampler::new gives) blends between mip levels, as vanilla's samplers do for an absent maxLod (1000 > 0.25), instead of reading the single nearest level. Such a sampler is a filtering one, so a pipeline that samples a depth target, or an R32Float target without float32_filterable, through it is refused with PipelineDrawError::InvalidBinding."
-migrate = "To sample a depth target, or an R32Float target where RenderCapabilities::float32_filterable is false, set the sampler's max_lod to Some(0.0) with SamplerFilter::Nearest. To keep reading the single nearest mip level of a mipmapped texture, set max_lod to Some(0.0) as well."
