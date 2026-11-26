@@ -858,8 +858,9 @@ pub fn translate_oit(
 
 /// Expand both stages ([`Expanded`]), refuse what the guard and the vertex inputs refuse, and
 /// translate the program, once more with the linear-light finish when `options` ask for it.
-/// Include expansion refusals name the file and line of the failing directive. The built program
-/// carries each stage's expanded text.
+/// Include expansion refusals name the file and line of the failing directive. The translator
+/// takes the authored sources so each stage keeps its own file, lines and include folder; the
+/// built program also carries the expanded text.
 fn translate_inner(
     sources: &ProgramSources<'_>,
     options: &Options<'_>,
@@ -895,17 +896,10 @@ fn translate_inner(
         return Err(vec![refusal_at(&fragment, at, msg)]);
     }
 
-    // `Stages` has one folder for both stages, which a quoted include is read from. The vertex
-    // stage's own source keeps `__LINE__` and error lines exact, but is only right when the
-    // folders are the same; otherwise its text, expanded against its own folder above, goes in.
-    let vertex_source = if sources.vertex_dir == sources.fragment_dir {
-        sources.vertex
-    } else {
-        vertex.text()
-    };
     let stages = Stages {
-        dir: sources.fragment_dir,
-        vertex: vertex_source,
+        vertex_dir: sources.vertex_dir,
+        fragment_dir: sources.fragment_dir,
+        vertex: sources.vertex,
         fragment: sources.fragment,
         vertex_file: sources.vertex_file,
         fragment_file: sources.fragment_file,
@@ -972,8 +966,9 @@ fn translate_inner(
 }
 
 /// Re-translate an already-expanded program with [`linear_fragment_finish`] enabled, returning
-/// the linear-light fragment [`naga::Module`]. Used by the GPU renderer only on linear-light
-/// frames so standard gamma loads avoid translating twice.
+/// the linear-light fragment [`naga::Module`]. No include folders are needed for these expanded
+/// stages. Used by the GPU renderer only on linear-light frames so standard gamma loads avoid
+/// translating twice.
 pub fn translate_linear_fragment(
     vertex_expanded: &str,
     fragment_expanded: &str,
@@ -991,7 +986,8 @@ pub fn translate_linear_fragment(
         // `translate_oit` does, and the renderer never re-translates an OIT program.
         let provided = |_: &str| false;
         let stages = Stages {
-            dir: "",
+            vertex_dir: "",
+            fragment_dir: "",
             vertex: vertex_expanded,
             fragment: fragment_expanded,
             vertex_file: "",
@@ -1267,10 +1263,17 @@ void main() { fragColor = texture(Sampler0, texCoord0); }
         );
     }
 
+    /// Stages from different folders resolve quoted includes independently and still translate
+    /// the vertex stage with its authored line numbers and GLSL version.
     #[test]
     fn separate_vertex_and_fragment_directories_resolve_own_relative_includes() {
-        let vsh = "#version 330\n#include \"vhelper.glsl\"\nin vec3 Position;\nout vec4 vertexColor;\n\
-            void main() { gl_Position = vec4(Position, 1.0); vertexColor = vcolor(); }\n";
+        let vsh = "#version 330\n#include \"vhelper.glsl\"\n\
+            const uint authoredLine = __LINE__;\nconst int authoredVersion = __VERSION__;\n\
+            in vec3 Position;\nout vec4 vertexColor;\n\
+            void main() {\n\
+                gl_Position = vec4(Position, float(authoredLine + uint(authoredVersion)));\n\
+                vertexColor = vcolor();\n\
+            }\n";
         let fsh = "#version 330\n#include \"fhelper.glsl\"\nin vec4 vertexColor;\nout vec4 fragColor;\n\
             void main() { fragColor = vertexColor * fscale(); }\n";
         let srcs = ProgramSources {
@@ -1292,6 +1295,48 @@ void main() { fragColor = texture(Sampler0, texCoord0); }
         };
         let built = translate(&srcs, &Options::default(), &include).unwrap();
         assert_eq!(built.translated.fragment_writes(), [0]);
+        let vertex = &built.translated.vertex;
+        for (name, expected) in [
+            ("authoredLine", naga::Literal::U32(3)),
+            ("authoredVersion", naga::Literal::I32(330)),
+        ] {
+            let (_, constant) = vertex
+                .constants
+                .iter()
+                .find(|(_, c)| c.name.as_deref() == Some(name))
+                .unwrap_or_else(|| panic!("missing constant {name}"));
+            let expression = &vertex.global_expressions[constant.init];
+            assert!(
+                matches!(expression, naga::Expression::Literal(actual) if *actual == expected),
+                "{name}: {expression:?}"
+            );
+        }
+    }
+
+    /// A split-folder vertex error after an include names the line in the stage file, not the
+    /// shifted line in the expanded text.
+    #[test]
+    fn a_split_folder_vertex_error_names_its_authored_line() {
+        let vsh = "#version 330\n#include \"height.glsl\"\nin vec3 Position;\n\
+            layout(std140) uniform Unbound { vec4 Offset; };\n\
+            void main() { gl_Position = vec4(Position, height()) + Offset; }\n";
+        let fsh = "#version 330\nout vec4 fragColor;\nvoid main() { fragColor = vec4(1.0); }\n";
+        let program = ProgramSources {
+            vertex_file: "assets/libmod/shaders/core/v/shared.vsh",
+            vertex_dir: "libmod:shaders/core/v/",
+            ..sources(vsh, fsh)
+        };
+        let include = |id: &str| match id {
+            "libmod:shaders/core/v/height.glsl" => {
+                Ok(Some("float height() {\n    return 1.0;\n}\n".to_owned()))
+            }
+            other => stub_include(other),
+        };
+        let refused = translate(&program, &Options::default(), &include).unwrap_err();
+        assert_eq!(refused.len(), 1, "{refused:?}");
+        assert_eq!(refused[0].file, "assets/libmod/shaders/core/v/shared.vsh");
+        assert_eq!(refused[0].line, 4, "{refused:?}");
+        assert!(refused[0].message.contains("Unbound"), "{refused:?}");
     }
 
     #[test]

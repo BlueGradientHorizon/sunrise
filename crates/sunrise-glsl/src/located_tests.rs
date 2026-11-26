@@ -59,7 +59,8 @@ fn read(id: &str) -> Result<Option<String>, String> {
 
 fn translate(vertex: &str, fragment: &str) -> Result<Translated, Vec<Error>> {
     let stages = Stages {
-        dir: "minecraft:shaders/core/",
+        vertex_dir: "minecraft:shaders/core/",
+        fragment_dir: "minecraft:shaders/core/",
         vertex,
         fragment,
         vertex_file: VSH_FILE,
