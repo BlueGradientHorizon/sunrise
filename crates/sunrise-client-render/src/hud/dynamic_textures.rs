@@ -648,7 +648,7 @@ mod tests {
         // Three pixels wide: each row is padded to 256 bytes on the GPU.
         let rgba: Vec<u8> = (0..3 * 2 * 4).map(|i| (i * 9) as u8).collect();
         textures
-            .create("mod", &id("mod:dyn/icon"), [3, 2], &rgba)
+            .create("mod", &id("mod:dyn/icon"), [3, 2], 1, &rgba)
             .unwrap();
         let mut uploads = crate::gfx::upload::Uploads::new(&device);
         let mut encoder = device.create_command_encoder(&Default::default());
@@ -662,7 +662,7 @@ mod tests {
         uploads.finish(&encoder);
         queue.submit([encoder.finish()]);
         textures
-            .create("mod", &id("mod:pending"), [1, 1], &[0; 4])
+            .create("mod", &id("mod:pending"), [1, 1], 1, &[0; 4])
             .unwrap();
 
         let dir = tempfile::tempdir().unwrap();
