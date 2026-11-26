@@ -2,7 +2,8 @@
 use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
 use std::fmt;
 
-/// What is wrong, and where: a file, with the 1-based line and column when known (0 when not).
+/// What is wrong, and where: a file by its asset path (`assets/<namespace>/<path>`, an `#include`d
+/// file's too), with the 1-based line and column when known (0 when not).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Problem {
     pub file: String,
@@ -41,21 +42,6 @@ pub fn line_column(text: &str, offset: usize) -> (usize, usize) {
     let line = before.matches('\n').count() + 1;
     let column = before.len() - before.rfind('\n').map_or(0, |i| i + 1) + 1;
     (line, column)
-}
-
-pub fn located(file: &str, text: &str, offset: Option<usize>, message: String) -> Problem {
-    match offset {
-        Some(at) => {
-            let (line, column) = line_column(text, at);
-            Problem {
-                file: file.to_owned(),
-                line,
-                column,
-                message,
-            }
-        }
-        None => problem(file, message),
-    }
 }
 
 /// Validates `module` and translates every entry point for Vulkan (SPIR-V), Metal (MSL) and
