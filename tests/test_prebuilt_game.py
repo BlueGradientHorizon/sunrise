@@ -8,6 +8,7 @@ import struct
 import subprocess
 import tarfile
 import tempfile
+import tomllib
 import unittest
 from unittest.mock import patch
 from pathlib import Path
@@ -282,6 +283,20 @@ class RegistryPatchTests(unittest.TestCase):
             self.assertFalse((sdk / "game.rs").exists())
             self.assertNotIn("workspace", (sdk / "Cargo.toml").read_text())
 
+    def test_path_only_sdk_keeps_the_committed_and_staged_locks_distinct(self):
+        with tempfile.TemporaryDirectory() as directory:
+            staged, sdk = Path(directory) / "stage", Path(directory) / "sdk"
+            staged.mkdir()
+            sdk.mkdir()
+            (staged / "Cargo.toml").write_text("[workspace]\nmembers = []\n")
+            committed = b"# committed\r\nversion = 4\r\n"
+            staged_lock = "# staged\nversion = 4\n"
+            (staged / "Cargo.lock").write_bytes(staged_lock.encode())
+            patches, registry_lock = prebuilt_game.carry_cargo_inputs(staged, sdk, {"packages": []}, committed)
+            self.assertEqual(patches, {})
+            self.assertEqual(registry_lock, staged_lock)
+            self.assertEqual((sdk / "Cargo.lock").read_bytes(), committed)
+
     @needs_symlinks
     def test_source_symlink_is_refused_without_copying_its_target(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -331,6 +346,159 @@ class RegistryPatchTests(unittest.TestCase):
             extra.symlink_to(declared)
             with self.assertRaisesRegex(SystemExit, "symlinks"):
                 prebuilt_game.check(sdk)
+
+
+class GitRegistryPatchTests(unittest.TestCase):
+    FORK = "https://github.com/sunrise-org/sunrise-wgpu"
+    MEMBERS = ("naga", "naga-types", "wgpu-hal", "wgpu-naga-bridge", "wgpu-types")
+    VERSION = "30.0.1"
+    EXTRA_STAGE_ROW = '\n[[package]]\nname = "staged-only"\nversion = "1.0.0"\n'
+
+    def git(self, *args):
+        return subprocess.check_output(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-c", "commit.gpgsign=false",
+             "-c", "core.autocrlf=false", *args], cwd=self.checkout, stdin=subprocess.DEVNULL,
+        ).decode("ascii").strip()
+
+    def setUp(self):
+        root = Path(self.enterContext(tempfile.TemporaryDirectory())).resolve()
+        self.checkout, self.staged, self.sdk = root / "checkout", root / "stage", root / "sdk"
+        for directory in (self.checkout, self.staged, self.sdk):
+            directory.mkdir()
+        self.git("init", "-q", "--object-format=sha1")
+        members = [*self.MEMBERS, "naga/hlsl-snapshots", "wgpu", "wgpu-core"]
+        self.payload = {
+            "Cargo.toml": (f"[workspace]\nmembers = {json.dumps(members)}\n"
+                           f"[workspace.package]\nversion = '{self.VERSION}'\n").encode(),
+            "LICENSE.APACHE": b"root Apache notice\n",
+            "LICENSE.MIT": b"root MIT notice\n",
+            "SUNRISE.md": b"downstream attribution\n",
+            "naga/src/space name.bin": b"\0\xff\r\n",
+        }
+        for name in self.MEMBERS:
+            self.payload[f"{name}/Cargo.toml"] = f"[package]\nname = '{name}'\nversion.workspace = true\n".encode()
+            self.payload[f"{name}/src/lib.rs"] = f"// committed {name}\n".encode()
+            self.payload[f"{name}/LICENSE.MIT"] = f"MIT notice for {name}\n".encode()
+        for name, data in (self.payload | {
+            ".gitattributes": b"naga/src/lib.rs export-ignore\n",
+            ".cargo/config.toml": b"# repository config\n",
+            "naga/.cargo/config.toml": b"# member config\n",
+            "naga/hlsl-snapshots/Cargo.toml": b"# nested dev crate\n",
+            "Cargo.lock": b"# the fork's own workspace lock\n",
+            "wgpu/Cargo.toml": b"# registry version is used instead\n",
+            "wgpu-core/Cargo.toml": b"# registry version is used instead\n",
+        }).items():
+            file = self.checkout / name
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_bytes(data)
+        self.git("add", "--all", "--force")
+        self.git("update-index", "--chmod=+x", "naga/src/lib.rs")
+        self.git("commit", "-qm", "fixture checkout")
+        self.rev = self.git("rev-parse", "HEAD")
+        self.source = f"git+{self.FORK}?rev={self.rev}#{self.rev}"
+        fixture = prebuilt_game.ROOT / "tools/fixtures/sdk-git-patches"
+        self.game_lock = (fixture / "game.lock").read_text(encoding="utf-8").replace("1" * 40, self.rev)
+        self.sdk_lock = (fixture / "sdk.lock").read_text(encoding="utf-8")
+        self.metadata = {"packages": [
+            {"name": name, "version": self.VERSION, "source": self.source,
+             "manifest_path": str(self.checkout / name / "Cargo.toml")} for name in self.MEMBERS
+        ]}
+        self.manifest = "[patch.crates-io]\n" + "".join(
+            f'{name} = {{ git = "{self.FORK}", rev = "{self.rev}" }}\n' for name in self.MEMBERS
+        ) + 'allocator-sys = { path = "vendor/allocator-sys" }\n'
+        (self.staged / "Cargo.toml").write_text(self.manifest)
+        allocator = self.staged / "vendor/allocator-sys/Cargo.toml"
+        allocator.parent.mkdir(parents=True)
+        allocator.write_bytes(b"[package]\nname = 'allocator-sys'\nversion = '1.0.0'\n")
+        (self.staged / "Cargo.lock").write_bytes((self.game_lock + self.EXTRA_STAGE_ROW).encode())
+
+    def carry(self):
+        committed = self.game_lock.replace("\n", "\r\n").encode()
+        return prebuilt_game.carry_cargo_inputs(self.staged, self.sdk, self.metadata, committed)
+
+    def test_sdk_localizes_both_locks_and_carries_only_the_pinned_wgpu_payload(self):
+        dirty = self.checkout / "naga/src/lib.rs"
+        dirty.write_bytes(b"// dirty checkout\r\n")
+        (self.checkout / "naga/untracked").write_bytes(b"not committed")
+        patches, registry_lock = self.carry()
+        expected_paths = {name: {"path": f"patches/wgpu/{name}"} for name in self.MEMBERS}
+        expected_paths["allocator-sys"] = {"path": "patches/allocator-sys"}
+        self.assertEqual(patches, {"crates-io": expected_paths})
+        self.assertEqual(tomllib.loads((self.sdk / "Cargo.toml").read_text()), {"patch": patches})
+        self.assertEqual(dirty.read_bytes(), b"// dirty checkout\r\n")
+        self.assertEqual((self.sdk / "Cargo.lock").read_bytes(), self.sdk_lock.replace("\n", "\r\n").encode())
+        self.assertEqual(registry_lock, self.sdk_lock + self.EXTRA_STAGE_ROW)
+        self.assertEqual((self.staged / "Cargo.lock").read_bytes(), (self.game_lock + self.EXTRA_STAGE_ROW).encode())
+        self.assertNotIn("git+", registry_lock)
+        self.assertNotIn(b"git+", (self.sdk / "Cargo.lock").read_bytes())
+        payload = {f"patches/wgpu/{name}": data for name, data in self.payload.items()}
+        payload["patches/allocator-sys/Cargo.toml"] = (self.staged / "vendor/allocator-sys/Cargo.toml").read_bytes()
+        self.assertEqual({path.relative_to(self.sdk).as_posix(): path.read_bytes()
+                          for path in (self.sdk / "patches").rglob("*") if path.is_file()}, payload)
+        if os.name == "posix":
+            self.assertTrue((self.sdk / "patches/wgpu/naga/src/lib.rs").stat().st_mode & 0o100)
+        with linux_package():
+            write_build_data(self.sdk, {"patch_files": {name: prebuilt_game.sha256(self.sdk / name) for name in payload}})
+            prebuilt_game.check(self.sdk)
+        identity = json.loads((self.sdk / prebuilt_game.IDENTITY).read_text())
+        engine = prebuilt_game.archives(self.sdk, identity["slices"])["engine"]
+        self.assertTrue({"Cargo.lock", "Cargo.toml", *payload} <= set(engine))
+
+    def test_lock_rev_must_match_the_manifest_rev(self):
+        lock = self.staged / "Cargo.lock"
+        bad_source = self.source.rsplit("#", 1)[0] + "#" + "0" * 40
+        lock.write_bytes(self.game_lock.replace(self.source, bad_source, 1).encode())
+        with self.assertRaisesRegex(ValueError, "Git source must match the manifest rev"):
+            self.carry()
+        self.assertFalse((self.sdk / "patches").exists())
+
+    def test_unknown_or_unused_git_packages_are_refused(self):
+        for header, name, message in (("package", "intruder", "unsupported Git package intruder"),
+                                      ("patch.unused", "naga", "unused Git patch naga")):
+            with self.subTest(header=header):
+                row = f'\n[[{header}]]\nname = "{name}"\nversion = "{self.VERSION}"\nsource = "{self.source}"\n'
+                (self.staged / "Cargo.lock").write_bytes((self.game_lock + row).encode())
+                with self.assertRaisesRegex(ValueError, message):
+                    self.carry()
+        self.assertFalse((self.sdk / "patches").exists())
+
+    def test_git_patch_group_rejects_partial_membership_urls_and_other_selectors(self):
+        for manifest, message in (
+            (self.manifest.replace("naga-types = ", "other = "), "five crates.io wgpu Git patches"),
+            (self.manifest.replace(self.FORK, "https://example.invalid/wgpu", 1), "SDK Git patches require"),
+            (self.manifest.replace(" rev = ", " branch = ", 1), "SDK Git patches require"),
+        ):
+            with self.subTest(message=message):
+                (self.staged / "Cargo.toml").write_text(manifest)
+                with self.assertRaisesRegex(ValueError, message):
+                    self.carry()
+        self.assertFalse((self.sdk / "patches").exists())
+
+    def test_git_identity_cannot_collide_with_another_source_at_the_same_version(self):
+        lock = self.game_lock.replace('version = "29.0.0"', f'version = "{self.VERSION}"')
+        (self.staged / "Cargo.lock").write_bytes(lock.encode())
+        with self.assertRaisesRegex(ValueError, "naga 30.0.1 collides with another package identity"):
+            self.carry()
+        self.assertFalse((self.sdk / "patches").exists())
+
+    def test_metadata_must_name_exactly_one_match_per_locked_identity(self):
+        self.metadata["packages"].append(self.metadata["packages"][0].copy())
+        with self.assertRaisesRegex(ValueError, "metadata does not match the game Git lock identities"):
+            self.carry()
+        self.assertFalse((self.sdk / "patches").exists())
+
+    def test_metadata_cannot_split_the_group_across_checkouts(self):
+        separate = self.checkout.with_name("other-checkout")
+        self.metadata["packages"][0]["manifest_path"] = str(separate / "naga/Cargo.toml")
+        with self.assertRaisesRegex(ValueError, "from one checkout"):
+            self.carry()
+        self.assertFalse((self.sdk / "patches").exists())
+
+    def test_checkout_head_must_be_the_pin_even_when_the_pin_is_present(self):
+        self.git("commit", "--allow-empty", "-qm", "wrong checkout HEAD")
+        with self.assertRaisesRegex(ValueError, "must be the Git top level at HEAD"):
+            self.carry()
+        self.assertFalse((self.sdk / "patches").exists())
 
 
 class SdkAssetTests(unittest.TestCase):
