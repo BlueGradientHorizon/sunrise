@@ -129,7 +129,7 @@ fn a_fishing_hook_keeps_its_base_state_in_memory() {
         write_and_read_back(game, entity);
         assert_eq!(entity.fire_immune(game), Some(false));
         // A bobber is never saved: nothing lands in a saved compound.
-        assert!(game.persist.raw.get(&id).is_none());
+        assert!(!game.persist.raw.contains_key(&id));
     });
 }
 
