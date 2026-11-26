@@ -81,8 +81,8 @@ with the library it made, the build log's path and the packed `.smod` path:
 
 ```text
 Compiling greeter (1/1)
-Built …/sunrise-mod/work/greeter/prebuilt-build/…/libmod_greeter.so
-Build log: …/sunrise-mod/work/greeter/build.log
+Built …/sunrise-mod/work/greeter-…/prebuilt-build/…/libmod_greeter.so
+Build log: …/sunrise-mod/work/greeter-…/build.log
 Built ./target/sunrise-mod/greeter.smod
 ```
 

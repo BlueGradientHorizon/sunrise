@@ -81,6 +81,9 @@ impl Game<'_> {
     /// (so OS IME commits and text typing are enabled). Note that `ime_preedit`
     /// separately checks `mounted_widget_preedit`, never `captures_input()`.
     pub(super) fn text_field_focused(&mut self) -> bool {
+        if self.context_menu_open() {
+            return false;
+        }
         if self.screen_state.widgets.has_focus() {
             return self.mounted_widget_captures_input();
         }
@@ -92,7 +95,9 @@ impl Game<'_> {
     /// with an initially focused field) clears the old field's preedit and area.
     fn ime_focus_identity(&mut self) -> Option<u64> {
         use std::hash::{Hash, Hasher};
-        if !self.text_field_focused() && self.preset_editor_title().is_none() {
+        if self.context_menu_open()
+            || (!self.text_field_focused() && self.preset_editor_title().is_none())
+        {
             return None;
         }
         let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -141,7 +146,8 @@ impl Game<'_> {
 
     /// The input method consumes composing key presses even if the editor has no built-in caret.
     pub(super) fn ime_suppresses_key(&mut self) -> bool {
-        (self.text_field_focused() || self.preset_editor_title().is_some())
+        !self.context_menu_open()
+            && (self.text_field_focused() || self.preset_editor_title().is_some())
             && preedit::should_suppress_key()
     }
 
@@ -149,6 +155,10 @@ impl Game<'_> {
     /// still being composed is shown under the focused field's caret.
     pub(super) fn ime_preedit(&mut self, text: &str, cursor: Option<(usize, usize)>) {
         self.sync_ime();
+        if self.context_menu_open() {
+            preedit::reset();
+            return;
+        }
         let preedit_receiver = (mod_api::__private::listened(mod_api::HookId::ScreenPreeditPre)
             || mod_api::__private::listened(mod_api::HookId::ScreenPreeditPost))
         .then(|| self.observed_input_screen())
@@ -255,7 +265,7 @@ impl Game<'_> {
     /// Text the input method committed (`WindowEvent::Ime(Commit)`).
     pub(super) fn ime_commit(&mut self, text: &str) {
         preedit::mark_committed();
-        if text.is_empty() || self.held_key_text.swallows(text) {
+        if self.context_menu_open() || text.is_empty() || self.held_key_text.swallows(text) {
             return;
         }
         // ScreenEvent.CharacterTyped.Pre, mounted widgets, focused vanilla

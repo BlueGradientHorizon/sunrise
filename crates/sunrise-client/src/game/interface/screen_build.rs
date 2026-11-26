@@ -327,6 +327,10 @@ pub(super) struct ScreenState {
     /// book drew none.
     pub(super) drawn_book_tabs: std::cell::Cell<Option<[f32; 4]>>,
     pub(super) widgets: super::screen_widgets::MountedScreenWidgets,
+    /// A mod's context menu over this screen (`ClientHost::open_context_menu`).
+    pub(super) context_menu: Option<super::context_menu::ContextMenu>,
+    /// Press-to-release ownership for mouse, keyboard and controller input consumed by a context menu.
+    pub(super) context_menu_input: super::context_menu::ContextMenuInput,
     /// Monotonic identity of the currently open screen instance. Bumped on
     /// every screen open, close, or replacement, and preserved across
     /// same-instance resize/rebuild (`Screen.resize`/`rebuildWidgets`).
@@ -350,6 +354,10 @@ impl ScreenState {
     pub(super) fn bump_instance(&mut self) -> u64 {
         self.screen_instance = self.screen_instance.wrapping_add(1);
         self.last_click = None;
+        if self.context_menu.is_some() {
+            self.context_menu = None;
+            self.context_menu_input.clear_unowned_keys_if_idle();
+        }
         self.screen_instance
     }
 

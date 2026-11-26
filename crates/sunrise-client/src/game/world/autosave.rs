@@ -171,6 +171,27 @@ impl Game<'_> {
         Ok(())
     }
 
+    /// Admit a world save cycle and tell mods it is starting, before players,
+    /// levels or metadata are written. Rejects re-entry while the notice runs.
+    #[inline(always)]
+    pub(super) fn begin_world_save(&mut self, wait: bool) -> Result<()> {
+        self.admit_level_save()?;
+        if !mod_api::__private::enabled_listened(mod_api::HookId::WorldSaveStart) {
+            return Ok(());
+        }
+        struct Guard<'a, 'g>(&'a mut Game<'g>);
+        impl Drop for Guard<'_, '_> {
+            fn drop(&mut self) {
+                self.0.world_save_starting = false;
+            }
+        }
+        self.world_save_starting = true;
+        let guard = Guard(self);
+        // Mods write their own state into this cycle before any of it (players first) goes to disk.
+        guard.0.native_world_save_start(wait);
+        Ok(())
+    }
+
     /// The autosave doesn't `wait` for the chunks to be on disk: every
     /// generated chunk is saved, hundreds at a time, encoded and written on
     /// the region writer meanwhile.
@@ -178,7 +199,7 @@ impl Game<'_> {
         if self.remote.is_some() {
             return Ok(());
         }
-        self.admit_level_save()?;
+        self.begin_world_save(wait)?;
         let owner_saved = self.save_placed_players();
         self.write_world(wait, owner_saved)
     }
@@ -215,6 +236,9 @@ impl Game<'_> {
 
 impl Game<'_> {
     pub(super) fn admit_level_save(&self) -> Result<()> {
+        if self.world_save_starting {
+            return Err("a world save is already starting".into());
+        }
         // A carrier transfer that broke after `prepared` stopped the
         // session (`carrier_stop_session`): its recovery replays the
         // affected regions from the disk state the transfer itself
