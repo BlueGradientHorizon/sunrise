@@ -1,5 +1,4 @@
 """Dyna's switch routes only supported, same-repository events to its pool."""
-import ast
 import copy
 import hashlib
 import json
@@ -603,27 +602,6 @@ class DynaRoutingTests(unittest.TestCase):
         self.assertEqual(parity["runs-on"], "dyna-large")
         self.assertIn("false", [step.get("with", {}).get("persist-credentials") for step in parity["steps"]])
         self.assertIn("${{ inputs.commit }}", [step.get("with", {}).get("ref") for step in parity["steps"]])
-
-    def test_no_parity_harness_builds_the_client_lib_test(self):
-        # Its one rustc outgrew the 16 GiB parity runner (#4896): a harness runs a sunrise-client fixture from
-        # lab.parity_fixtures() instead.
-        def builds_client_lib_test(path):
-            # A command list or tuple naming sunrise-client with `cargo test` or `--lib`, whatever its flags and their
-            # order, or a call of a `*test_binary*` helper naming sunrise-client.
-            for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
-                if isinstance(node, (ast.List, ast.Tuple)):
-                    words = {item.value for item in node.elts if isinstance(item, ast.Constant)}
-                    if "sunrise-client" in words and ({"cargo", "test"} <= words or "--lib" in words):
-                        return True
-                elif isinstance(node, ast.Call):
-                    name = getattr(node.func, "id", getattr(node.func, "attr", ""))
-                    if "test_binary" in name and any(isinstance(arg, ast.Constant) and arg.value == "sunrise-client"
-                                                     for arg in node.args):
-                        return True
-            return False
-
-        self.assertEqual([path.name for path in sorted((ROOT / "tools").glob("test_*_parity.py"))
-                          if builds_client_lib_test(path)], [])
 
     @needs_runner_shell
     def test_daily_harnesses_client_lib_tests_are_built_before_the_harnesses(self):

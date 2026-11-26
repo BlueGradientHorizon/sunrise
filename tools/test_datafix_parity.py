@@ -263,7 +263,7 @@ def main():
     import datafix_worlds
     import file_lock
     WORLDS.parent.mkdir(parents=True, exist_ok=True)
-    with open(WORLDS.parent / 'generate.lock', 'w') as handle:
+    with open(WORLDS.parent / 'generate.lock', 'a') as handle:
         file_lock.lock(handle)  # another process may be generating them
         seed_keep = os.environ.get('SUNRISE_DATAFIX_SEED_KEEP')
         if seed_keep:
