@@ -125,6 +125,8 @@ OLD_VERSIONS = {
 
 # Mojang's runtime platform names (the keys of its java runtime manifest), by Windows machine.
 WINDOWS_PLATFORMS = {'AMD64': 'windows-x64', 'ARM64': 'windows-arm64', 'x86': 'windows-x86'}
+# and by Linux machine: its manifest has no arm64 Linux runtime, so such a machine is refused.
+LINUX_PLATFORMS = {'x86_64': 'linux', 'i386': 'linux-i386', 'i686': 'linux-i386'}
 
 
 def platform():
@@ -135,7 +137,9 @@ def platform():
         if host.machine() not in WINDOWS_PLATFORMS:
             raise ValueError(f'no Mojang Java runtime platform for Windows machine {host.machine()}')
         return WINDOWS_PLATFORMS[host.machine()]
-    return 'linux'
+    if host.machine() not in LINUX_PLATFORMS:
+        raise ValueError(f'no Mojang Java runtime platform for Linux machine {host.machine()}')
+    return LINUX_PLATFORMS[host.machine()]
 
 
 def pinned_runtimes(plat):

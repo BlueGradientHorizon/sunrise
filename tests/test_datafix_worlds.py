@@ -45,10 +45,19 @@ class UnpinnedPlatformTests(unittest.TestCase):
 
     def test_platform_names_what_mojang_calls_the_machine(self):
         for system, machine, expected in (('win32', 'AMD64', 'windows-x64'), ('win32', 'ARM64', 'windows-arm64'),
-                                          ('darwin', 'x86_64', 'mac-os'), ('darwin', 'arm64', 'mac-os-arm64'), ('linux', 'x86_64', 'linux')):
+                                          ('darwin', 'x86_64', 'mac-os'), ('darwin', 'arm64', 'mac-os-arm64'), ('linux', 'x86_64', 'linux'), ('linux', 'i686', 'linux-i386')):
             with self.subTest(system, machine=machine), mock.patch.object(worlds, 'sys', SimpleNamespace(platform=system)), \
                     mock.patch.object(worlds, 'host', SimpleNamespace(machine=lambda: machine)):
                 self.assertEqual(worlds.platform(), expected)
+
+
+class UnsupportedMachineTests(unittest.TestCase):
+    def test_a_machine_mojang_has_no_runtime_for_is_refused_by_name(self):
+        for system, machine in (('linux', 'aarch64'), ('win32', 'ia64')):
+            with self.subTest(system, machine=machine), mock.patch.object(worlds, 'sys', SimpleNamespace(platform=system)), \
+                    mock.patch.object(worlds, 'host', SimpleNamespace(machine=lambda: machine)), \
+                    self.assertRaisesRegex(ValueError, f'machine {machine}'):
+                worlds.platform()
 
 
 class ServerStopTests(unittest.TestCase):
