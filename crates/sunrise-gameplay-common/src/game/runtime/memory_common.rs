@@ -500,7 +500,7 @@ impl ServerMemoryRequest {
 }
 
 impl MemoryCancellation {
-    pub(in crate::game) fn cancel(&mut self) {
+    pub fn cancel(&mut self) {
         self.cancelled.store(true, Ordering::Release);
         if let Some(wake) = self.wake_worker.take() {
             let _ = wake.send(None);
@@ -509,7 +509,7 @@ impl MemoryCancellation {
 }
 
 impl PendingMemory {
-    pub(in crate::game) fn cancel(&mut self) {
+    pub fn cancel(&mut self) {
         self.cancel.cancel();
     }
     pub fn poll(&self) -> Poll<Option<MemoryRows>> {

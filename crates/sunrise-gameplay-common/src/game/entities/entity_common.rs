@@ -15,7 +15,7 @@ use sunrise_sim::{
 };
 
 pub struct PlacementWorld<'a, 'r, S: crate::game::Side>(
-    pub(in crate::game) &'a Game<'r, S>,
+    pub &'a Game<'r, S>,
 );
 
 impl<S: crate::game::Side> sunrise_sim::cushion::World for PlacementWorld<'_, '_, S> {

@@ -84,7 +84,7 @@ impl DragonPartsTable {
         self.slots[hole] = None;
     }
     /// Start at `None`, then resume below the last slot inspected. The zero key comes first.
-    pub(in crate::game) fn next_part(&self, cursor: &mut Option<usize>) -> Option<u32> {
+    pub fn next_part(&self, cursor: &mut Option<usize>) -> Option<u32> {
         let before = match *cursor {
             Some(before) => before,
             None if self.zero => {
@@ -141,7 +141,7 @@ impl DragonSlot {
         }
     }
     // Return a copy so the caller never runs a visitor under the table borrow.
-    pub(in crate::game) fn next_part(&self, cursor: &mut Option<usize>) -> Option<u32> {
+    pub fn next_part(&self, cursor: &mut Option<usize>) -> Option<u32> {
         self.table.borrow().next_part(cursor)
     }
     pub(in crate::game) fn replace(&mut self, dragon: crate::game::dragon_common::Dragon) {

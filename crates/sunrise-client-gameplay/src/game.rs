@@ -32,7 +32,7 @@ macro_rules! client_game_side {
             $meta,
             match &$s.side.remote {
                 Some(remote) => &remote.features,
-                None => $crate::game::tables::default_client_features(),
+                None => sunrise_gameplay_common::game::tables::default_client_features(),
             },
             $s.side
                 .remote
@@ -1383,7 +1383,7 @@ mod villager_client;
 #[path = "game/network/remote/mod.rs"]
 mod remote;
 
-mod native_hooks;
+pub mod native_hooks;
 
 #[path = "game/modding/payload_transport.rs"]
 pub(in crate::game) mod payload_transport;

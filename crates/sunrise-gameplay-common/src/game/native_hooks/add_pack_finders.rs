@@ -1,20 +1,22 @@
 use super::*;
 
+#[doc(hidden)]
+#[macro_export]
 macro_rules! impl_pack_discovery_context {
     ($game:ty) => {
         impl mod_api::PackDiscoveryContext for $game {
             fn live_host(&mut self) -> Option<mod_api::HostSide<'_>> {
-                Some(crate::game::execution_role::host_side(self))
+                Some($crate::game::execution_role::host_side(self))
             }
 
             fn client_text(&self) -> Option<&dyn mod_api::prelude::ClientTextClientHost> {
-                crate::game::Side::as_client_text_host(self)
+                <<Self as $crate::game::SideGame<'_>>::State as $crate::game::Side>::as_client_text_host(self)
             }
         }
     };
 }
 
-pub use impl_pack_discovery_context;
+pub use crate::impl_pack_discovery_context;
 
 #[inline(always)]
 pub(in crate::game) fn native_add_pack_finders(

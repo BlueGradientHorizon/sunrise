@@ -451,6 +451,8 @@ pub fn apply_contact_writes(
 
 /// The game's lists of entities, in the order systems walk them. Hands them to
 /// `$then`, so one list drives the handles and every typed dispatch.
+#[doc(hidden)]
+#[macro_export]
 macro_rules! entity_lists {
     ($($then:ident)::+, $($args:tt)*) => {
         $($then)::+! {
@@ -471,8 +473,10 @@ macro_rules! entity_lists {
     };
 }
 #[allow(unused_imports)]
-pub use entity_lists;
+pub use crate::entity_lists;
 
+#[doc(hidden)]
+#[macro_export]
 macro_rules! direct_entity_edit {
     (Projectile) => {
         false
@@ -491,7 +495,7 @@ macro_rules! direct_entity_edit {
     };
 }
 #[allow(unused_imports)]
-pub use direct_entity_edit;
+pub use crate::direct_entity_edit;
 
 macro_rules! define_entity_handles {
     (() $($kind:ident($ty:ty) $field:ident: $($list:ident).+,)*) => {
@@ -499,7 +503,7 @@ macro_rules! define_entity_handles {
         /// [`for_each_entity`] while the world is borrowed mutably.
         #[derive(Clone, Copy)]
         pub struct EntityLists<'w> {
-            $(pub(in crate::game) $field: &'w [$ty],)*
+            $(pub $field: &'w [$ty],)*
         }
 
         /// One entity, by list and index.
@@ -589,6 +593,8 @@ pub enum JoinOrderError {
     OutOfOrder(EntityHandle),
 }
 
+#[doc(hidden)]
+#[macro_export]
 macro_rules! entity_access {
     (shared, $list:expr, $index:expr, $entity:ident, $body:expr) => {{
         let $entity = &$list[$index];
@@ -599,44 +605,43 @@ macro_rules! entity_access {
     };
 }
 #[allow(unused_imports)]
-pub(crate) use entity_access;
+pub use crate::entity_access;
 
+#[doc(hidden)]
+#[macro_export]
 macro_rules! match_entity {
     (($borrow:ident, $entity:ident, $game:expr, $handle:expr, $body:expr)
      $($kind:ident($ty:ty) $field:ident: $($list:ident).+,)*) => {
         match $handle {
             $($crate::game::entity::EntityHandle::$kind(i) => {
-                $crate::game::entity::entity_access!($borrow, $game$(.$list)+, i, $entity, $body)
+                $crate::entity_access!($borrow, $game$(.$list)+, i, $entity, $body)
             })*
         }
     };
 }
 #[allow(unused_imports)]
-pub(crate) use match_entity;
+pub use crate::match_entity;
 
 /// Runs `$body` with `$entity` bound to the handle's entity, as its own type:
 /// one match, each arm compiled for its kind, so nothing goes through a vtable.
+#[doc(hidden)]
+#[macro_export]
 macro_rules! with_entity {
     ($game:expr, $handle:expr, $entity:ident => $body:expr) => {
-        $crate::game::entity::entity_lists!(
-            $crate::game::entity::match_entity,
-            shared,
-            $entity,
-            $game,
-            $handle,
-            $body
-        )
+        $crate::entity_lists!($crate::match_entity, shared, $entity, $game, $handle, $body)
     };
 }
 #[allow(unused_imports)]
-pub use with_entity;
+pub use crate::with_entity;
 
 #[path = "entity/list_borrows.rs"]
 pub mod list_borrows;
 #[allow(unused_imports)]
 pub use list_borrows::entity_lists_of;
 #[allow(unused_imports)]
-pub(crate) use list_borrows::{borrow_level_list, borrow_lists};
+pub use list_borrows::{borrow_level_list, borrow_lists};
+#[doc(hidden)]
+#[macro_export]
 macro_rules! walk_lists {
     (($lists:expr, $entity:ident, $body:block)
      $($kind:ident($ty:ty) $field:ident: $($list:ident).+,)*) => {
@@ -644,30 +649,29 @@ macro_rules! walk_lists {
     };
 }
 #[allow(unused_imports)]
-pub(crate) use walk_lists;
+pub use crate::walk_lists;
 
 /// Runs `$body` for every entity, with `$entity` as a reference to its own
 /// type: one loop per list, each compiled for its kind, so nothing allocates
 /// or goes through a vtable and a check a kind answers with a constant folds
 /// away. A kind added to `entity_lists!` joins every walk.
+#[doc(hidden)]
+#[macro_export]
 macro_rules! for_each_entity {
     ($lists:expr, $entity:ident => $body:block) => {
-        $crate::game::entity::entity_lists!(
-            $crate::game::entity::walk_lists,
-            $lists,
-            $entity,
-            $body
-        )
+        $crate::entity_lists!($crate::walk_lists, $lists, $entity, $body)
     };
 }
 #[allow(unused_imports)]
-pub use for_each_entity;
+pub use crate::for_each_entity;
 
 /// [`with_entity`], with the entity mutable.
+#[doc(hidden)]
+#[macro_export]
 macro_rules! with_entity_mut {
     ($game:expr, $handle:expr, $entity:ident => $body:expr) => {
-        $crate::game::entity::entity_lists!(
-            $crate::game::entity::match_entity,
+        $crate::entity_lists!(
+            $crate::match_entity,
             exclusive,
             $entity,
             $game,
@@ -677,7 +681,7 @@ macro_rules! with_entity_mut {
     };
 }
 #[allow(unused_imports)]
-pub use with_entity_mut;
+pub use crate::with_entity_mut;
 
 impl Entity for Mob {
     stored_ground!();

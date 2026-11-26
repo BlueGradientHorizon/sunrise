@@ -1,14 +1,18 @@
 //! Split entity-list borrows so level inventory reads can mutate carts.
+#[doc(hidden)]
+#[macro_export]
 macro_rules! borrow_level_list {
     (Cart, $game:expr, $($list:ident).+) => { &[] };
     ($kind:ident, $game:expr, $($list:ident).+) => { &$game$(.$list)+ };
 }
-pub(crate) use borrow_level_list;
+pub use crate::borrow_level_list;
 
+#[doc(hidden)]
+#[macro_export]
 macro_rules! borrow_lists {
     ((without_carts $game:expr) $($kind:ident($ty:ty) $field:ident: $($list:ident).+,)*) => {
         $crate::game::entity::EntityLists {
-            $($field: $crate::game::entity::borrow_level_list!($kind, $game, $($list).+),)*
+            $($field: $crate::borrow_level_list!($kind, $game, $($list).+),)*
         }
     };
     (($game:expr) $($kind:ident($ty:ty) $field:ident: $($list:ident).+,)*) => {
@@ -17,15 +21,17 @@ macro_rules! borrow_lists {
         }
     };
 }
-pub(crate) use borrow_lists;
+pub use crate::borrow_lists;
 
 /// `$game`'s [`super::EntityLists`]; a macro so the borrow stays field by field.
+#[doc(hidden)]
+#[macro_export]
 macro_rules! entity_lists_of {
     ($game:expr, without_carts) => {
-        $crate::game::entity::entity_lists!($crate::game::entity::borrow_lists, without_carts $game)
+        $crate::entity_lists!($crate::borrow_lists, without_carts $game)
     };
     ($game:expr) => {
-        $crate::game::entity::entity_lists!($crate::game::entity::borrow_lists, $game)
+        $crate::entity_lists!($crate::borrow_lists, $game)
     };
 }
-pub(crate) use entity_lists_of;
+pub use crate::entity_lists_of;

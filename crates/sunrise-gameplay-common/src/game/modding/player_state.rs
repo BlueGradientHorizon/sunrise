@@ -2,7 +2,7 @@ use mod_api::{__private::TransactionFrame, Attachments};
 
 /// Per-player attachment state and active replacement player UUIDs during clone hooks.
 #[derive(Default)]
-pub(in crate::game) struct PlayerState {
+pub struct PlayerState {
     pub attachments: sunrise_mod_runtime::attachments::ResidentAttachments,
     pub cloning_players: Vec<(u128, u32, u32)>,
 }

@@ -21,32 +21,31 @@ use sunrise_world::{
 /// mob and entity ticks that read friction. Fields borrow the game's tables one by one, so the
 /// tick's other borrows of the game stand beside it (`game_side!`).
 pub struct GameSide<'a> {
-    pub(in crate::game) dim: super::Dim,
+    pub dim: super::Dim,
     /// The level handle of the open world, absent before a world has an epoch.
-    pub(in crate::game) level: Option<LevelRef>,
-    pub(in crate::game) facts: &'a sunrise_items::blocks::BlockFacts,
-    pub(in crate::game) biomes: &'a sunrise_level::biome::Biomes,
-    pub(in crate::game) behaviours: &'a sunrise_world::level::Behaviours,
-    pub(in crate::game) features: &'a std::sync::Arc<[String]>,
-    pub(in crate::game) items: &'a Items,
-    pub(in crate::game) damage_types: &'a sunrise_world::damage_source::Catalog,
-    pub(in crate::game) player_equipment: sunrise_sim::health::PlayerEquipment<'a>,
+    pub level: Option<LevelRef>,
+    pub facts: &'a sunrise_items::blocks::BlockFacts,
+    pub biomes: &'a sunrise_level::biome::Biomes,
+    pub behaviours: &'a sunrise_world::level::Behaviours,
+    pub features: &'a std::sync::Arc<[String]>,
+    pub items: &'a Items,
+    pub damage_types: &'a sunrise_world::damage_source::Catalog,
+    pub player_equipment: sunrise_sim::health::PlayerEquipment<'a>,
     /// What a hit on the player in place would read beside this side's own data, as borrows:
     /// assembled into the hit's reads only when a hit builds its level
     /// ([`SideLevel::hit_reads`](sunrise_client::motion::SideLevel::hit_reads)).
-    pub(in crate::game) hit_borrows: HitBorrows<'a>,
-    pub(in crate::game) tag_items: Option<&'a Items>,
+    pub hit_borrows: HitBorrows<'a>,
+    pub tag_items: Option<&'a Items>,
 }
 
 /// The game's tables a hit on the player in place reads that this side does not otherwise hold.
 pub struct HitBorrows<'a> {
-    pub(in crate::game) living_types: sunrise_sim::health::LivingTypeKeys,
-    pub(in crate::game) attributes: &'a std::sync::Arc<sunrise_world::attributes::entity::Catalog>,
-    pub(in crate::game) player_effects: &'a sunrise_level::effects::PlayerEffects,
-    pub(in crate::game) player_uuid: Option<u128>,
-    pub(in crate::game) player_attachments: &'a mod_api::Attachments,
-    pub(in crate::game) entity_attachments:
-        &'a sunrise_level::fast_hash::FxHashMap<u32, mod_api::Attachments>,
+    pub living_types: sunrise_sim::health::LivingTypeKeys,
+    pub attributes: &'a std::sync::Arc<sunrise_world::attributes::entity::Catalog>,
+    pub player_effects: &'a sunrise_level::effects::PlayerEffects,
+    pub player_uuid: Option<u128>,
+    pub player_attachments: &'a mod_api::Attachments,
+    pub entity_attachments: &'a sunrise_level::fast_hash::FxHashMap<u32, mod_api::Attachments>,
 }
 
 impl sunrise_sim::motion::SideLevel for GameSide<'_> {
@@ -367,16 +366,9 @@ fn query_friction(
 }
 
 impl crate::game::CommonGame<'_> {
-
     /// The friction of `state` at `pos` under the boat `b` (`AbstractBoat.getGroundFriction`,
     /// `Leashable.angularFriction`), from `own`, the block's value.
-    pub fn boat_friction(
-        &self,
-        b: &Boat,
-        pos: BlockPos,
-        state: BlockStateId,
-        own: f32,
-    ) -> f32 {
+    pub fn boat_friction(&self, b: &Boat, pos: BlockPos, state: BlockStateId, own: f32) -> f32 {
         if !block_state::block_listens(mod_api::HookId::Friction, state) {
             return own;
         }
@@ -393,7 +385,7 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait NativeSurfaceGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-     fn level_friction(
+    fn level_friction(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -427,9 +419,7 @@ pub trait NativeSurfaceGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> NativeSurfaceGameExt1<'__sg> for G {}
 
-
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
-
 
 use crate::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
 

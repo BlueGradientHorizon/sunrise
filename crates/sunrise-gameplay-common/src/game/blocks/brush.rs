@@ -4,7 +4,7 @@
 use crate::game::CommonGame;
 
 #[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay_common::brushing::{
+pub use sunrise_gameplay_common::brushing::{
     Brushing, USE_DURATION, completion_state,
 };
 

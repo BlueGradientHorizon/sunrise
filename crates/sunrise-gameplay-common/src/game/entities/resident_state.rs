@@ -2,7 +2,7 @@
 use super::*;
 use sunrise_gameplay_common::leash_knot::Knot;
 
-pub(in crate::game) struct ResidentEntities {
+pub struct ResidentEntities {
     pub table: Box<RefCell<sunrise_sim::join_seq::residency::table::EntityTable>>,
     pub local_player: sunrise_sim::join_seq::residency::member::Member,
     pub knots: sunrise_sim::join_seq::JoinList<Knot>,
@@ -32,6 +32,8 @@ impl Default for ResidentEntities {
     }
 }
 
+#[doc(hidden)]
+#[macro_export]
 macro_rules! bind_resident_list {
     (Mob, $list:expr, $journal:expr, $owner:expr) => {
         $list.bind_residency_with_subtype(
@@ -90,4 +92,4 @@ macro_rules! bind_resident_list {
         $list.bind_residency($journal, $owner, |entity| (entity.id, entity.join_seq()))
     };
 }
-pub use bind_resident_list;
+pub use crate::bind_resident_list;

@@ -26,7 +26,13 @@ pub use resource_load::{load_resources, load_resources_skip_lang, load_resources
 #[macro_export]
 macro_rules! world_items {
     ($s:ident) => {
-        match (&$s.server_items, $crate::game::Side::world_tables({ use $crate::game::SideGame as _; ($s).side_state() })) {
+        match (
+            &$s.server_items,
+            $crate::game::Side::world_tables({
+                use $crate::game::SideGame as _;
+                ($s).side_state()
+            }),
+        ) {
             (Some(items), _) => &**items,
             (None, Some(t)) => &t.items,
             (None, None) => $s.res.items(),
@@ -37,7 +43,10 @@ macro_rules! world_items {
 #[macro_export]
 macro_rules! world_recipes {
     ($s:ident) => {
-        match $crate::game::Side::world_tables({ use $crate::game::SideGame as _; ($s).side_state() }) {
+        match $crate::game::Side::world_tables({
+            use $crate::game::SideGame as _;
+            ($s).side_state()
+        }) {
             Some(t) => &t.recipes,
             None => $s.res.recipes(),
         }
@@ -47,7 +56,10 @@ macro_rules! world_recipes {
 #[macro_export]
 macro_rules! world_stations {
     ($s:ident) => {
-        match $crate::game::Side::world_tables({ use $crate::game::SideGame as _; ($s).side_state() }) {
+        match $crate::game::Side::world_tables({
+            use $crate::game::SideGame as _;
+            ($s).side_state()
+        }) {
             Some(t) => &t.stations,
             None => $s.res.stations(),
         }
@@ -97,14 +109,23 @@ macro_rules! game_side {
                 Some(mod_api::LevelRef::with_generation(
                     epoch,
                     key,
-                    $crate::game::Side::levels_generation({ use $crate::game::SideGame as _; ($s).side_state() }, id),
+                    $crate::game::Side::levels_generation(
+                        {
+                            use $crate::game::SideGame as _;
+                            ($s).side_state()
+                        },
+                        id,
+                    ),
                 ))
             }),
             facts: $s.res.facts(),
             biomes: $crate::world_biomes!($s),
             behaviours: $s.res.behaviours(),
             features: $crate::game::side_ops::tables::SideOps::side_level_features(
-                { use $crate::game::SideGame as _; ($s).side_state() },
+                {
+                    use $crate::game::SideGame as _;
+                    ($s).side_state()
+                },
                 $s.level.enabled_features.as_arc(),
             ),
             items: $s.res.items(),
@@ -114,12 +135,19 @@ macro_rules! game_side {
                 living_types: $s.res.living_type_keys(),
                 attributes: &$s.motion.attributes,
                 player_effects: &$s.potions.effects,
-                player_uuid: $crate::game::Side::lan_acting_uuid({ use $crate::game::SideGame as _; ($s).side_state() }),
+                player_uuid: $crate::game::Side::lan_acting_uuid({
+                    use $crate::game::SideGame as _;
+                    ($s).side_state()
+                }),
                 player_attachments: &$s.player_state.attachments,
                 entity_attachments: &*$s.entity_attachments,
             },
             tag_items: $crate::game::side_ops::tables::SideOps::side_game_tag_items(
-                { use $crate::game::SideGame as _; ($s).side_state() }, &$s.res,
+                {
+                    use $crate::game::SideGame as _;
+                    ($s).side_state()
+                },
+                &$s.res,
             ),
         }
     };
@@ -130,11 +158,20 @@ macro_rules! game_side {
             $s,
             (player_uuid, level, session_lock),
             $crate::game::side_ops::tables::SideOps::side_level_features(
-                { use $crate::game::SideGame as _; ($s).side_state() },
+                {
+                    use $crate::game::SideGame as _;
+                    ($s).side_state()
+                },
                 $s.level.enabled_features.as_arc()
             ),
             if $s.options.execution_role.is_client() {
-                $crate::game::side_ops::tables::SideOps::side_game_tag_items({ use $crate::game::SideGame as _; ($s).side_state() }, &$s.res)
+                $crate::game::side_ops::tables::SideOps::side_game_tag_items(
+                    {
+                        use $crate::game::SideGame as _;
+                        ($s).side_state()
+                    },
+                    &$s.res,
+                )
             } else {
                 session_lock.then(|| $s.res.items())
             }
@@ -904,7 +941,7 @@ pub struct GameLevel<'w> {
     attachment_query_scopes: &'w sunrise_mod_runtime::attachments::AttachmentQueryScopes,
     positions: piston_carry_common::PositionState<'w>,
     border: &'w sunrise_core::geometry::border::BorderGeometry,
-    world: &'w mut World,
+    pub world: &'w mut World,
     pub command_block_transition:
         Option<sunrise_gameplay_common::command_blocks::CommandBlockTransition>,
     redstone_experiments: bool,
@@ -1129,7 +1166,7 @@ pub struct LandingVibration {
 /// FallingBlockEntity carrying a block state.
 #[derive(Clone, Debug)]
 pub struct FallingBlock {
-    attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
+    pub attachment_lifetime: sunrise_mod_runtime::attachments::AttachmentLifetime,
     /// `Entity.yRot` and `xRot` (`/tp`, `/data get ... Rotation`).
     pub rotation: [f32; 2],
     /// When it joined its list (`sunrise_client::join_seq`); set by the list.
@@ -1150,7 +1187,7 @@ pub struct FallingBlock {
     /// `Entity.isNoGravity`.
     pub no_gravity: bool,
     /// `FallingBlockEntity.tick` handles portals after moving, before landing.
-    portal: sunrise_sim::nether_portal::PortalState,
+    pub portal: sunrise_sim::nether_portal::PortalState,
     /// `FallingBlockEntity.dropItem`.
     pub drop_item: bool,
     /// `Entity.fallDistance` (powder snow holds a block that fell far at 0.9).
@@ -1162,7 +1199,7 @@ pub struct FallingBlock {
     pub fire_ticks: i32,
     /// `Entity.syncVelocity`, set by `markHurt` (lava's hurt): a server sends
     /// its motion to the clients tracking it after its next update.
-    sync_velocity: bool,
+    pub sync_velocity: bool,
     /// `Entity.stuckSpeedMultiplier`: a cobweb it is in scales its next move.
     stuck: Vec3,
     pub damage: sunrise_sim::falling_block::Damage,
@@ -1191,7 +1228,7 @@ impl FallingBlock {
     /// `EntityType.FALLING_BLOCK.getDimensions()`: width, height and eye height.
     const DIMENSIONS: [f32; 3] = [0.98, 0.98, 0.833_000_06];
     /// Its box (`falling_block::bounds`), or its `entity_size` answer's.
-    fn bounds(&self) -> sunrise_core::geometry::Aabb {
+    pub fn bounds(&self) -> sunrise_core::geometry::Aabb {
         let vanilla = sunrise_sim::falling_block::bounds(self.position);
         sunrise_sim::pose::SizeAnswer::sized_box(
             self.size_answer,
@@ -1288,7 +1325,7 @@ pub struct WorldTables {
     pub loot: Arc<sunrise_world::loot::LootData>,
     pub loot_modifier_manager: Arc<mod_api::GlobalLootModifierManager>,
     pub recipes: Recipes,
-    pub(in crate::game) stations: sunrise_sim::stations::StationData,
+    pub stations: sunrise_sim::stations::StationData,
     reload_sources: Option<Arc<sunrise_sim::crafting::ResolvedSources>>,
     /// The values of the data map types native mods registered (`native_data_map_types`).
     pub data_maps: native_data_maps_common::DataMaps,
@@ -1345,24 +1382,24 @@ pub fn armor_slot(index: usize) -> sunrise_core::equipment_slot::EquipmentSlot {
 /// cloning shares the loaded data.
 #[derive(Clone)]
 pub struct PackResources {
-    pub(in crate::game) source: sunrise_assets::resource_source::ResourceSource,
-    pub(in crate::game) data_source: sunrise_assets::resource_source::ResourceSource,
-    pub(in crate::game) data_changes: sunrise_assets::resource_source::ResourceSource,
-    pub(in crate::game) additional_data: Arc<[Arc<sunrise_level::datapack::DataPack>]>,
-    pub(in crate::game) mod_layers: Arc<[sunrise_assets::resource_source::ResourceSource]>,
-    pub(in crate::game) assets: Arc<Assets>,
-    pub(in crate::game) block_registries: Arc<sunrise_command::args::Registries>,
-    pub(in crate::game) names: Arc<Names>,
-    pub(in crate::game) chunk_context: Arc<sunrise_level::chunk_streamer::ChunkWorkerContext>,
-    pub(in crate::game) item_models: Arc<sunrise_assets::item_model::ItemModels>,
+    pub source: sunrise_assets::resource_source::ResourceSource,
+    pub data_source: sunrise_assets::resource_source::ResourceSource,
+    pub data_changes: sunrise_assets::resource_source::ResourceSource,
+    pub additional_data: Arc<[Arc<sunrise_level::datapack::DataPack>]>,
+    pub mod_layers: Arc<[sunrise_assets::resource_source::ResourceSource]>,
+    pub assets: Arc<Assets>,
+    pub block_registries: Arc<sunrise_command::args::Registries>,
+    pub names: Arc<Names>,
+    pub chunk_context: Arc<sunrise_level::chunk_streamer::ChunkWorkerContext>,
+    pub item_models: Arc<sunrise_assets::item_model::ItemModels>,
     pub(in crate::game) item_ids: Arc<HashMap<String, i32>>,
 }
 
 /// A quick craft drag as the screen draws it: each dragged slot's count and
 /// whether the slot caps it (None: hidden), and what stays in hand.
 pub struct DragView {
-    slots: HashMap<usize, Option<(u32, bool)>>,
-    left: Option<u32>,
+    pub slots: HashMap<usize, Option<(u32, bool)>>,
+    pub left: Option<u32>,
 }
 pub fn equipment_modifier_applies(group: &str, slot: &str) -> bool {
     group == slot
@@ -1411,14 +1448,14 @@ pub fn select_creative_tab(
 /// (`GameRenderer.tryTakeScreenshotIfNeeded`): its path in the save, and when
 /// the last frame grab was asked for.
 pub struct WorldIcon {
-    path: PathBuf,
-    last_attempt: Option<Instant>,
+    pub path: PathBuf,
+    pub last_attempt: Option<Instant>,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct QueuedLevelEvent {
     pub kind: i32,
-    pos: [i32; 3],
+    pub pos: [i32; 3],
     data: i32,
     source: Option<sunrise_world::level::LevelEventPlayer>,
 }
@@ -1427,7 +1464,7 @@ pub struct QueuedLevelEvent {
 #[derive(Clone, Copy, PartialEq)]
 pub struct ResizeState {
     pub size: winit::dpi::PhysicalSize<u32>,
-    gui_size: [u32; 2],
+    pub gui_size: [u32; 2],
 }
 
 impl ResizeState {
@@ -3934,8 +3971,7 @@ impl crate::game::CommonGame<'_> {
 }
 
 pub trait GameGameExt2<'__sg>: crate::game::SideGame<'__sg> {
-
-     fn resident_source_target_visible(
+    fn resident_source_target_visible(
         &self,
         dimension: mod_api::DimensionKey,
         target: commands_common::Target,

@@ -59,7 +59,7 @@ pub mod decision;
 #[path = "transactions/entities.rs"]
 pub mod entities;
 #[allow(unused_imports)]
-pub(in crate::game) use entities::{Announcement, ArrivalRollback};
+pub use entities::{Announcement, ArrivalRollback};
 #[path = "transactions/scratch.rs"]
 pub mod scratch;
 
@@ -302,7 +302,7 @@ pub struct ClosingPhase<'a, 'g, S: crate::game::SideGame<'g> + ?Sized> {
 
 impl<'a, 'g, S: crate::game::SideGame<'g> + ?Sized> ClosingPhase<'a, 'g, S> {
     #[inline(always)]
-    pub(in crate::game) fn new(game: &'a mut S, outer: Option<TransactionLifecycle>) -> Self {
+    pub fn new(game: &'a mut S, outer: Option<TransactionLifecycle>) -> Self {
         Self {
             game,
             outer,

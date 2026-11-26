@@ -1,10 +1,9 @@
 pub use sunrise_gameplay_common::execution_role::ExecutionRole;
 
-
 use mod_api::HostSide;
 
 /// The hook host of `game`'s side.
-pub(super) fn host_side<'a, 'g, G: crate::game::SideGame<'g>>(game: &'a mut G) -> HostSide<'a> {
+pub fn host_side<'a, 'g, G: crate::game::SideGame<'g>>(game: &'a mut G) -> HostSide<'a> {
     game.host_side()
 }
 

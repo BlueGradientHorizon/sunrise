@@ -1,5 +1,7 @@
 //! Vanilla's logical side: the gameplay the server jar holds, common code included.
 #![forbid(unsafe_code)]
+#[macro_use]
+extern crate sunrise_gameplay_common;
 pub mod allays;
 pub mod block_entity_ticks;
 pub use sunrise_gameplay_common::{

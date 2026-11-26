@@ -1,5 +1,5 @@
 use self::block_entity_tick::ResidentBlockEntityAccess;
-use crate::game::server_side::{Game, GameLevel};
+use crate::game::server_side::Game;
 use mod_api::EffectKey;
 use mod_api::{
     self, BlockPlacement, EntityRef, GameRuleActor, LifecycleContext, Placement, PlayerRef,
@@ -12,6 +12,7 @@ use std::sync::Arc;
 use sunrise_core::{geometry::Direction, position::BlockPos};
 use sunrise_game_data::gamerules::Value as GameRuleValue;
 use sunrise_game_data::suggestion::Suggestion;
+use sunrise_gameplay_common::game::GameLevel;
 use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_gameplay_common::game::native_data_maps_common::DataMapType;
 #[cfg(test)]
@@ -19,7 +20,7 @@ use sunrise_gameplay_common::game::native_hooks::BLOCK_CONTACT_HOOKS;
 use sunrise_gameplay_common::game::native_hooks::HitLevel;
 use sunrise_gameplay_common::game::native_hooks::LiveDamageRead;
 use sunrise_gameplay_common::game::native_hooks::apply_menu_button_cursor;
-use sunrise_gameplay_common::game::native_hooks::mob_kind;
+pub use sunrise_gameplay_common::game::native_hooks::mob_kind;
 use sunrise_gameplay_common::game::native_hooks::mod_menu;
 use sunrise_gameplay_common::game::native_hooks::property_change;
 use sunrise_level::containers::ModBlockEntity as EngineBlockEntity;
@@ -29,7 +30,7 @@ use sunrise_sim::health::mob_source;
 use sunrise_sim::mobs::Damage;
 use sunrise_world::level::PlaceContext;
 use sunrise_world::level::flags;
-use {crate::game::native_hooks::*, sunrise_gameplay_common::game::native_hooks::*};
+pub use sunrise_gameplay_common::game::native_hooks::*;
 use {sunrise_core::nbt::Compound, sunrise_world::registry::BlockStateId};
 use {
     sunrise_game_data::text::Text, sunrise_items::items::ItemStack,

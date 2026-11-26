@@ -21,9 +21,9 @@ use sunrise_world::{block_collision::BlockCollisionRegistry, registry::BlockRegi
 /// What a location predicate reads of the game beyond the level's own fields.
 #[derive(Clone, Copy)]
 pub struct LocationRefs<'w> {
-    pub(in crate::game) dimension: &'static str,
-    pub(in crate::game) end: &'w EndState,
-    pub(in crate::game) tags: TagSources<'w>,
+    pub dimension: &'static str,
+    pub end: &'w EndState,
+    pub tags: TagSources<'w>,
 }
 
 /// One block behaviour's level, read for a location predicate.

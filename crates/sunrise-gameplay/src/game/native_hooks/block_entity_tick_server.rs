@@ -38,7 +38,7 @@ pub(in crate::game) enum Loan {
     OnLoad,
 }
 
-pub(in crate::game) struct ResidentBlockEntityAccess<'g, 'w> {
+pub struct ResidentBlockEntityAccess<'g, 'w> {
     pub(in crate::game) game: &'g mut crate::game::ServerGame<'w>,
     pub(in crate::game) subject: Option<BlockEntityRef>,
     pub(in crate::game) loan: Loan,

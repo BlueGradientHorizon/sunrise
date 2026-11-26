@@ -281,7 +281,7 @@ impl crate::game::CommonGame<'_> {
 /// Where an abort leaves the way back for a map whose entity was taken for a transfer and has
 /// not arrived yet: its arrival puts these contents in place of the map it carries. It lives
 /// with the transfer's own state, so it goes with it if the arrival never comes.
-pub(in crate::game) type ArrivalRollback =
+pub type ArrivalRollback =
     std::sync::Arc<std::sync::Mutex<Option<sunrise_mod_runtime::attachments::Attachments>>>;
 
 /// The index registration of an entity that left this level inside a transaction, with its

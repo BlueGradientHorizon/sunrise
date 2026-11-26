@@ -1178,7 +1178,7 @@ mod remote;
 #[path = "game/network/lan_actions/mod.rs"]
 mod lan_actions;
 
-mod native_hooks;
+pub mod native_hooks;
 
 #[path = "game/modding/native_server.rs"]
 pub mod native_server;

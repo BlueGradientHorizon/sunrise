@@ -201,7 +201,7 @@ pub(crate) struct GameBlockEntityDrawContext<'a, 'g> {
 #[cfg(feature = "client")]
 pub(crate) struct GameCameraDrawContext<'a, 'g> {
     pub(crate) game: &'a crate::game::ClientGame<'g>,
-    pub(crate) surface: &'a mut crate::screen_effects::CameraQuads,
+    pub(crate) surface: &'a mut sunrise_client_render::screen_effects::CameraQuads,
 }
 /// [`WorldDrawContext`] on the game's `crate::world_geometry::WorldGeometry`.
 #[cfg(feature = "client")]
