@@ -20,9 +20,9 @@ pub mod check;
 pub mod guard;
 pub mod stubs;
 
-use crate::check::{Problem, located, problem, translate_backends};
+use crate::check::{Problem, line_column, located, problem, translate_backends};
 use naga::front::glsl::InterfaceLimits;
-use sunrise_glsl::{Glue, Includes, Inputs, ResourceKind, Stages, Translated};
+use sunrise_glsl::{Expanded, Glue, Includes, Inputs, ResourceKind, Stages, Translated};
 
 /// The folder under `assets/<namespace>/` holding core shader programs (`.vsh` and `.fsh`).
 pub const CORE_FOLDER: &str = "shaders/core";
@@ -507,18 +507,29 @@ fn is_supported_vertex_glsl_type(ty: &str) -> bool {
     )
 }
 
+/// A refusal of the declaration at byte `at` of `stage`'s text, in the file and at the line that
+/// byte came from ([`Expanded::error_at`]: an `#include`d declaration is located in its own
+/// file), and at its column in the expanded text.
+fn refusal_at(stage: &Expanded, at: usize, message: String) -> Problem {
+    let error = stage.error_at(Some(at), message);
+    Problem {
+        file: error.file,
+        line: error.line as usize,
+        column: line_column(stage.text(), at).1,
+        message: error.message,
+    }
+}
+
 /// The vertex inputs `(name, glsl_type)` a vertex stage declares, from its expanded text
 /// ([`sunrise_glsl::stage_inputs`]: includes inlined, comments gone). Refuses an unsupported
-/// type, a name declared twice and more than 16 inputs, locating the refusal in `vertex_file`.
-fn declared_vertex_inputs(
-    vertex_file: &str,
-    vertex_expanded: &str,
-) -> Result<Vec<(String, String)>, Problem> {
-    let decls = sunrise_glsl::stage_inputs(vertex_expanded);
+/// type, a name declared twice and more than 16 inputs, locating the refusal in the file and at
+/// the line the declaration came from ([`refusal_at`]).
+fn declared_vertex_inputs(vertex: &Expanded) -> Result<Vec<(String, String)>, Problem> {
+    let decls = sunrise_glsl::stage_inputs(vertex.text());
     let mut seen = std::collections::HashSet::new();
     let mut out = Vec::with_capacity(decls.len());
     for (offset, name, ty) in decls {
-        let refuse = |message: String| located(vertex_file, vertex_expanded, Some(offset), message);
+        let refuse = |message: String| refusal_at(vertex, offset, message);
         if !is_supported_vertex_glsl_type(ty) {
             return Err(refuse(format!(
                 "unsupported vertex input type `{ty}` for `{name}`: expected float/vecN/int/ivecN/uint/uvecN"
@@ -569,29 +580,26 @@ fn program_includes<'a>(read: &'a dyn Fn(&str) -> Result<Option<String>, String>
 /// Refuse any top-level vertex `in` declaration ([`sunrise_glsl::stage_inputs`] of the expanded
 /// stage, comments gone) that is not listed in `vertex_inputs` or whose GLSL type disagrees with
 /// the pipeline's [`VertexFormat`]. A declaration is located by where its name stands in
-/// `vertex_expanded`.
+/// `vertex`, in the file and at the line it came from ([`refusal_at`]).
 fn validate_vertex_inputs(
-    vertex_file: &str,
-    vertex_expanded: &str,
+    vertex: &Expanded,
     vertex_inputs: &[(&str, &str)],
 ) -> Result<(), Problem> {
-    for (offset, name, ty) in sunrise_glsl::stage_inputs(vertex_expanded) {
+    for (offset, name, ty) in sunrise_glsl::stage_inputs(vertex.text()) {
         match vertex_inputs.iter().find(|(n, _)| *n == name) {
             None => {
-                return Err(located(
-                    vertex_file,
-                    vertex_expanded,
-                    Some(offset),
+                return Err(refusal_at(
+                    vertex,
+                    offset,
                     format!(
                         "undeclared vertex input `{name}`: declare it in RenderPipeline::vertex_binding"
                     ),
                 ));
             }
             Some((_, expected)) if *expected != ty => {
-                return Err(located(
-                    vertex_file,
-                    vertex_expanded,
-                    Some(offset),
+                return Err(refusal_at(
+                    vertex,
+                    offset,
                     format!(
                         "vertex input `{name}` declared as `{ty}` in shader, expected `{expected}` from VertexFormat"
                     ),
@@ -628,7 +636,8 @@ pub struct ProgramBindings {
 /// declares is the program's too (#5905), and one named only in a comment is not, nor does a
 /// sprite name in a comment make the program textured. A stage whose includes cannot be expanded
 /// refuses the program, as [`translate`] does, with the include's error, and so does a vertex
-/// input of an unsupported type, a duplicate one or a 17th, in the vertex file.
+/// input of an unsupported type, a duplicate one or a 17th, in the file and at the line that
+/// declares it, an included file's among them.
 /// [`SPRITE_INCLUDE`] is always pasted: including it is itself asking for the sprite texture.
 pub fn extract_program_bindings(
     sources: &ProgramSources<'_>,
@@ -665,7 +674,7 @@ pub fn extract_program_bindings(
     Ok(ProgramBindings {
         textured,
         bindings,
-        vertex_inputs: declared_vertex_inputs(sources.vertex_file, vertex.text())?,
+        vertex_inputs: declared_vertex_inputs(&vertex)?,
         push_constant_size,
         includes,
     })
@@ -736,12 +745,7 @@ fn translate_compute_inner(
     options: &ComputeOptions<'_>,
     include: &dyn Fn(&str) -> Result<Option<String>, String>,
 ) -> Result<sunrise_glsl::ComputeTranslated, Vec<Problem>> {
-    let includes = Includes {
-        read: &include,
-        namespace: "minecraft",
-        folder: INCLUDE_FOLDER,
-        once: &["moj_import"],
-    };
+    let includes = program_includes(include);
     let expanded = sunrise_glsl::expand_includes(
         sources.source,
         sources.file,
@@ -841,16 +845,15 @@ fn translate_inner(
     let read = |id: &str| read_include(id, options.textured, include);
     let includes = program_includes(&read);
 
-    let vertex_expanded = sunrise_glsl::expand_includes(
+    let vertex = sunrise_glsl::expand_includes(
         sources.vertex,
         sources.vertex_file,
         sources.vertex_dir,
         &includes,
         Some(defines),
     )
-    .map_err(|e| vec![problem(sources.vertex_file, e.to_string())])?
-    .text()
-    .to_owned();
+    .map_err(|e| vec![problem(sources.vertex_file, e.to_string())])?;
+    let vertex_expanded = vertex.text().to_owned();
     if let Some((at, msg)) = guard::refusal(&vertex_expanded) {
         return Err(vec![located(
             sources.vertex_file,
@@ -859,11 +862,7 @@ fn translate_inner(
             msg,
         )]);
     }
-    if let Err(prob) =
-        validate_vertex_inputs(sources.vertex_file, &vertex_expanded, options.vertex_inputs)
-    {
-        return Err(vec![prob]);
-    }
+    validate_vertex_inputs(&vertex, options.vertex_inputs).map_err(|prob| vec![prob])?;
 
     let fragment_expanded = sunrise_glsl::expand_includes(
         sources.fragment,
@@ -1844,7 +1843,8 @@ void main() {{
     }
 
     /// A vertex stage's `in`s are read from the text the translator reads, so those an included
-    /// file declares are the program's too, and a refused one is located in the vertex file.
+    /// file declares are the program's too, and a refused one is located in the file and at the line
+    /// it came from.
     #[test]
     fn vertex_inputs_come_from_the_expanded_vertex_stage() {
         let vsh = "#version 330\n#include <example:attributes.glsl>\nin vec2 UV0;\n\
@@ -1867,11 +1867,27 @@ void main() {{
         };
         let refused = extract_program_bindings(&sources(vsh, fsh), &[], &include)
             .expect_err("an unsupported vertex input type is refused");
-        assert_eq!(refused.file, "assets/example/shaders/core/glow.vsh");
+        assert_eq!(refused.file, "example:shaders/include/attributes.glsl");
+        assert_eq!(refused.line, 1);
         assert!(
             refused.message.contains("`mat4` for `Matrix`"),
             "{refused:?}"
         );
+
+        // The translator refuses an undeclared `in` of an include the same way, on a line
+        // that is no line of the expanded text.
+        let include = |id: &str| match id {
+            "example:shaders/include/attributes.glsl" => {
+                Ok(Some("in vec3 Position;\nin vec4 Stray;\n".to_owned()))
+            }
+            other => stub_include(other),
+        };
+        let refused = translate(&sources(vsh, fsh), &Options::default(), &include)
+            .expect_err("an undeclared vertex input is refused");
+        assert_eq!(refused.len(), 1, "{refused:?}");
+        assert_eq!(refused[0].file, "example:shaders/include/attributes.glsl");
+        assert_eq!(refused[0].line, 2);
+        assert!(refused[0].message.contains("`Stray`"), "{refused:?}");
     }
 
     /// A program whose include cannot be expanded is refused with the include's error, not read
