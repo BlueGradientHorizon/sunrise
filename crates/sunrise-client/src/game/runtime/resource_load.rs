@@ -191,6 +191,8 @@ pub(in crate::game) fn load_core(
     // second on the critical path, and warm it is still ~30 ms.
     // A server draws nothing and parses no models, so it skips this.
     let (assets, parsed_models, entity_models) = std::thread::scope(|scope| {
+        #[cfg(not(feature = "client"))]
+        let _ = scope;
         #[cfg(feature = "client")]
         let models = (parallel && is_client).then(|| {
             scope.spawn(|| {

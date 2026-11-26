@@ -2,7 +2,7 @@
 //! from a block face, boosting a gliding player, the 1.15 horizontal
 //! acceleration and 0.04 lift, the flight-duration lifetime, explosion
 //! damage with line of sight, and the client explosion (`createFireworks`).
-use super::{Game, Side, view_vector};
+use super::{Game, view_vector};
 use std::sync::Arc;
 use sunrise_core::{
     geometry::{Aabb, Vec3},

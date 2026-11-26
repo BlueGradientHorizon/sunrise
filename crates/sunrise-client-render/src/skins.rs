@@ -9,8 +9,10 @@ pub use sunrise_level::profile_lookup::{
     nbt_text, parse_profile, profile_texture_nbt, profile_uuid_nbt, property_signature, sha1,
     skin_location, texture_hash, unpack, valid_player_name,
 };
+#[cfg(test)]
+use sunrise_server_profiles_http::ProfileAnswer;
 pub use sunrise_server_profiles_http::fetch_own_properties;
-use sunrise_server_profiles_http::{ProfileAnswer, http_get};
+use sunrise_server_profiles_http::http_get;
 
 /// `MinecraftServicesDiscoveryService`'s valid texture URIs: the discovery
 /// document's `profiles` / `getTexture` `validUris`, which
@@ -108,6 +110,7 @@ impl Resolver {
         }
     }
     /// A resolver whose lookups `lookup` starts instead of the services.
+    #[cfg(test)]
     pub(crate) fn with_lookup(
         lookup: impl FnMut(NameOrId, ProfileAnswer) + Send + 'static,
     ) -> Self {
