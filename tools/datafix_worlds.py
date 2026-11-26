@@ -30,15 +30,16 @@ import zipfile
 import zlib
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import datafix_scene as scene  # noqa: E402
-import datafix_scene_12 as scene12  # noqa: E402
-import lab  # noqa: E402
+if __package__:
+    from . import datafix_paths, datafix_scene as scene, datafix_scene_12 as scene12, lab
+else:
+    import datafix_paths
+    import datafix_scene as scene
+    import datafix_scene_12 as scene12
+    import lab
 
 ROOT = Path(__file__).resolve().parent.parent
-from datafix_paths import writable_root
-
-LOCAL = writable_root()
+LOCAL = datafix_paths.writable_root()
 LEGACY = {'1.8.9', '1.9.4', '1.10.2', '1.11.2', '1.12.2', '1.13.2', '1.14.4', '1.15.2', '1.16.1', '1.16.5'}
 
 

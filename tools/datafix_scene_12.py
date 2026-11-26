@@ -23,7 +23,11 @@ import threading
 import time
 from pathlib import Path
 
-import lab
+if __package__:
+    from . import anvil_dump, lab
+else:
+    import anvil_dump
+    import lab
 
 BX, BZ, SIZE = 144, 144, 96          # south-west corner and size of the platforms (inside the spawn chunks)
 LAYERS = list(range(100, 245, 16))   # platform y levels: one chunk section each, the last one reaches y = 255
@@ -1709,7 +1713,6 @@ def spawn_origin(server, say):
     """Where to build: around the world spawn, whose chunks stay loaded (96 x 96 blocks, on chunk borders)."""
     say(['save-all'])
     time.sleep(2)
-    import anvil_dump
     level = anvil_dump.read_dat(str(server.directory / 'world' / 'level.dat'))['Data']
     return (level['SpawnX'] - 48) // 16 * 16, (level['SpawnZ'] - 48) // 16 * 16
 

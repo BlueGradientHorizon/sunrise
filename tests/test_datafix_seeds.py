@@ -142,7 +142,7 @@ class DatafixSeedKeyTests(unittest.TestCase):
         def refuse_server(*args, **kwargs):
             raise Stop
 
-        import lab
+        from tools import lab
         spy = Spy()
         with socket.socket() as listener:
             listener.bind(('127.0.0.1', 0))
