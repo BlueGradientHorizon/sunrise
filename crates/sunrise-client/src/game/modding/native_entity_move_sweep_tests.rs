@@ -246,6 +246,9 @@ fn every_walk_family_of_the_entity_lists_fires_its_case() {
                 owner: None,
                 custom_name: None,
                 custom_name_visible: false,
+                no_gravity: false,
+                on_ground: false,
+                fall_distance: 0.0,
                 uuid: [11, 12, 13, 14],
                 envelope: crate::game::general::GeneralTypeEnvelope {
                     type_key: "mymod:robot".to_owned(),
@@ -533,6 +536,102 @@ fn a_drowning_dolphins_goal_move_fires_too() {
                 "the drowning dolphin's round: the goal's own move beside travel's, \
                  vanilla's two Entity.move invocations"
             );
+        });
+    });
+}
+
+/// `Entity.move` ends the same way whatever moved the entity: a general row set down on a
+/// floor by a self move, a piston push or either lid's push stands on it, has collided
+/// vertically, loses only its vertical speed and forgets its fall; a row with `noPhysics`
+/// passes through the floor and keeps every flag false.
+#[test]
+#[ignore = "daily"]
+fn a_general_rows_collided_move_writes_its_flags_for_every_cause() {
+    use crate::game::general::{GeneralEntityRecord, GeneralTypeEnvelope};
+    use mod_api::EntityRef;
+    mod_platform::__private::initialize().unwrap();
+    let _registration = mod_platform::__private::RegistrationGuard::open();
+    let mods: mod_api::Mods =
+        vec![mod_api::ModEntry::new("mymod", Box::new(DeclareGeneral))].into();
+    mod_platform::testing::with_mods(mods, || {
+        with_game(|game| {
+            game.options.dedicated = Some(Vec::new());
+            game.native_level_opened(crate::game::Dim::Overworld);
+            game.build_registries();
+            game.reset_entity_residency();
+            let stone = game
+                .pack
+                .assets
+                .registry
+                .default_state("minecraft:stone")
+                .unwrap();
+            let mut chunk = sunrise_client::chunk::Chunk::empty(0, 0);
+            for x in 0..16 {
+                for z in 0..16 {
+                    chunk.set(x, 8, z, stone.0);
+                }
+            }
+            game.world.chunks.insert((0, 0), std::sync::Arc::new(chunk));
+            let epoch = game.native_lifecycle.epoch().unwrap();
+            // The floor's top is at y = 9: a row 0.3 above it, asked to drop 0.4, drops 0.3.
+            let causes = [
+                (MoveCause::SelfMovement, false),
+                (MoveCause::Piston, false),
+                (MoveCause::ShulkerBox, false),
+                (MoveCause::Shulker, false),
+                (MoveCause::SelfMovement, true),
+            ];
+            for (i, (cause, no_physics)) in causes.into_iter().enumerate() {
+                let record = GeneralEntityRecord {
+                    position: [2.5 + 2.0 * i as f64, 9.3, 5.5],
+                    velocity: [0.3, -0.4, 0.0],
+                    rotation: [0.0; 2],
+                    owner: None,
+                    custom_name: None,
+                    custom_name_visible: false,
+                    no_gravity: false,
+                    on_ground: false,
+                    fall_distance: 1.0,
+                    uuid: [1, 2, 3, i as i32],
+                    envelope: GeneralTypeEnvelope {
+                        type_key: "mymod:robot".to_owned(),
+                        payload_version: 3,
+                        payload_bytes: Vec::new(),
+                    },
+                    passengers: Vec::new(),
+                };
+                game.load_listed("mymod:robot", None, None, record.to_tag())
+                    .unwrap();
+                let row = game
+                    .resident_entities
+                    .general
+                    .rows
+                    .iter_mut()
+                    .last()
+                    .unwrap();
+                row.no_physics = no_physics;
+                let id = row.id;
+                let moved = game
+                    .entity_move_by(EntityRef::new(epoch, id), [0.0, -0.4, 0.0], cause)
+                    .unwrap();
+                let row = game.resident_entities.general.row(id).unwrap();
+                assert!(!row.horizontal_collision, "{cause:?}");
+                assert_eq!(row.velocity.x, 0.3, "{cause:?}");
+                if no_physics {
+                    assert!((moved[1] + 0.4).abs() < 1.0e-9, "{cause:?}: {moved:?}");
+                    assert!(!row.on_ground && !row.vertical_collision, "{cause:?}");
+                    assert_eq!(row.velocity.y, -0.4, "{cause:?}");
+                } else {
+                    assert!((moved[1] + 0.3).abs() < 1.0e-9, "{cause:?}: {moved:?}");
+                    assert!(row.on_ground, "{cause:?}");
+                    assert!(
+                        row.vertical_collision && row.vertical_collision_below,
+                        "{cause:?}"
+                    );
+                    assert_eq!(row.velocity.y, 0.0, "{cause:?}");
+                    assert_eq!(row.fall_distance, 0.0, "{cause:?}");
+                }
+            }
         });
     });
 }

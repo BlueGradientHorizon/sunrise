@@ -1686,6 +1686,12 @@ impl Game<'_> {
                 different(wanted.x, moved.x) || different(wanted.z, moved.z);
             return;
         }
+        // A general row's `Entity.move` end, for every cause: the flags, the fall check and
+        // the blocked axes; a `noPhysics` row never gets here.
+        if let EntityHandle::General(i) = handle {
+            self.resident_entities.general.rows[i].finish_move(wanted, moved);
+            return;
+        }
         let authoritative = match handle {
             EntityHandle::Boat(i) => self.boat_can_simulate_movement(self.boats[i].id),
             _ => !self.options.execution_role.is_client() && self.remote.is_none(),

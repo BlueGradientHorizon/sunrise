@@ -55,6 +55,17 @@ pub trait EntityPositionBackend {
     /// authority. None for a stale handle or an entity whose body the client doesn't keep.
     fn entity_on_ground(&self, entity: EntityRef) -> Option<bool>;
     /// Side: server.
+    /// Whether the entity's last collided move was stopped on a horizontal axis
+    /// (`Entity.horizontalCollision`): a general entity row's, written by every `Entity.move`
+    /// of any cause and cleared with it when the row has `noPhysics`. None for a stale handle
+    /// and for the other kinds, whose flag Sunrise keeps inside their own tick.
+    fn entity_horizontal_collision(&self, entity: EntityRef) -> Option<bool>;
+    /// Side: server.
+    /// Whether the entity's last collided move was stopped vertically
+    /// (`Entity.verticalCollision`): a general entity row's, as for
+    /// [`EntityRef::horizontal_collision`]. None for a stale handle and for the other kinds.
+    fn entity_vertical_collision(&self, entity: EntityRef) -> Option<bool>;
+    /// Side: server.
     /// `Entity.getOnPos()`: the supporting block when available, otherwise the feet block with
     /// vanilla's `1.0E-5F` subtracted from Y. Simulated bodies with retained support use
     /// `Entity.mainSupportingBlockPos` from their last support check, not a new collision query.

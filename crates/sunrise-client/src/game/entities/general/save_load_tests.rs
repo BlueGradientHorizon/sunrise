@@ -86,6 +86,9 @@ fn record_tag(type_key: &str, uuid: [i32; 4], payload: &[u8], riders: Vec<Tag>) 
         owner: None,
         custom_name: None,
         custom_name_visible: false,
+        no_gravity: false,
+        on_ground: false,
+        fall_distance: 0.0,
         uuid,
         envelope: GeneralTypeEnvelope {
             type_key: type_key.to_owned(),
@@ -1870,6 +1873,9 @@ fn a_general_records_custom_name_survives_save_and_load() {
         owner: None,
         custom_name: Some(Text::colored("Grumbles", 0xFF5555)),
         custom_name_visible: true,
+        no_gravity: false,
+        on_ground: false,
+        fall_distance: 0.0,
         uuid: [1, 2, 3, 4],
         envelope: GeneralTypeEnvelope {
             type_key: "mymod:robot".to_owned(),
@@ -1894,6 +1900,63 @@ fn a_general_records_custom_name_survives_save_and_load() {
     let loaded = record_from_compound(&old).unwrap();
     assert_eq!(loaded.custom_name, None);
     assert!(!loaded.custom_name_visible);
+}
+
+/// `Entity.saveWithoutId` and `Entity.load`: a general record's `NoGravity`, `OnGround` and
+/// `fall_distance` survive the save format, `NoGravity` is written only when set, and a record
+/// saved before they existed loads with false, false and no fall.
+#[test]
+fn a_general_records_no_gravity_ground_and_fall_survive_save_and_load() {
+    let mut record = GeneralEntityRecord {
+        position: [0.5, 64.0, 0.5],
+        velocity: [0.0; 3],
+        rotation: [0.0; 2],
+        owner: None,
+        custom_name: None,
+        custom_name_visible: false,
+        no_gravity: true,
+        on_ground: true,
+        fall_distance: 2.5,
+        uuid: [1, 2, 3, 4],
+        envelope: GeneralTypeEnvelope {
+            type_key: "mymod:robot".to_owned(),
+            payload_version: 3,
+            payload_bytes: Vec::new(),
+        },
+        passengers: Vec::new(),
+    };
+    let tag = record.to_tag();
+    assert_eq!(tag.get("NoGravity"), Some(&Tag::Byte(1)));
+    assert_eq!(tag.get("OnGround"), Some(&Tag::Byte(1)));
+    assert_eq!(
+        tag.get("fall_distance"),
+        Some(&Tag::Double(2.5f64.to_bits()))
+    );
+    assert_eq!(record_from_compound(&tag).unwrap(), record);
+
+    record.no_gravity = false;
+    record.on_ground = false;
+    let tag = record.to_tag();
+    assert_eq!(tag.get("NoGravity"), None);
+    assert_eq!(tag.get("OnGround"), Some(&Tag::Byte(0)));
+    assert_eq!(record_from_compound(&tag).unwrap(), record);
+
+    // An old record never wrote any of the three keys.
+    record.no_gravity = true;
+    record.on_ground = true;
+    let Tag::Compound(mut old) = record.to_tag() else {
+        panic!("a record is a compound");
+    };
+    for key in ["NoGravity", "OnGround", "fall_distance"] {
+        assert!(
+            old.remove(&sunrise_core::nbt::JavaString::from(key))
+                .is_some()
+        );
+    }
+    let loaded = record_from_compound(&Tag::Compound(old)).unwrap();
+    assert!(!loaded.no_gravity);
+    assert!(!loaded.on_ground);
+    assert_eq!(loaded.fall_distance, 0.0);
 }
 
 /// A live general row's name and visibility: loaded from its save, read through its handle
