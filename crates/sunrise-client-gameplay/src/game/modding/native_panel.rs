@@ -1413,8 +1413,10 @@ pub(in crate::game::client_side) fn browser_stack(
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
+    use super::BrowserStack;
+    #[cfg(test)]
     use super::{
-        BrowserStack, BrowserTooltip, DRAG_THRESHOLD, Held, Now, Owner, Panel, RecipePage, Release,
+        BrowserTooltip, DRAG_THRESHOLD, Held, Now, Owner, Panel, RecipePage, Release,
         browser_overlay,
     };
     use mod_api::FluidStack;

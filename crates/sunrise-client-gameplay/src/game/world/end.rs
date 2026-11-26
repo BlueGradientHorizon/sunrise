@@ -13,12 +13,7 @@ pub(crate) mod tests {
         }
     }
 
-    #[cfg(test)]
-    use super::*;
-
     use crate::game::client_side::end_client::eye_quad;
-    #[cfg(test)]
-    use sunrise_gameplay_common::game::end_state::{exact_teleport, flash_pose};
 
     #[test]
     fn a_thrown_eye_is_lifted_by_the_item_ground_transform() {

@@ -1,8 +1,6 @@
 //! `AbstractThrownPotion.onHit` reads the stack's whole `potion_contents`: the
 //! potion's effects and the stack's `custom_effects`, the colour they mix to
 //! (or `custom_color`) and its `potion_duration_scale`.
-#[cfg(test)]
-use super::*;
 use sunrise_core::geometry::Direction;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;

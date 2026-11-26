@@ -11,7 +11,6 @@ use sunrise_core::{
     random::RandomSource,
 };
 use sunrise_gameplay_common::game::{dragon_common::SPECIAL, level_sounds_common::LevelSound};
-use sunrise_items::items::ItemStack;
 use sunrise_sim::{
     entities::arrows::{Pickup, back_off, clip_block_hit},
     join_seq::JoinSeq,
@@ -1204,8 +1203,6 @@ impl crate::game::ServerGame<'_> {
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 use sunrise_gameplay_common::game::transactions::entities::EntityRemovalGameExt as _;
-
-use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
 
 use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
 

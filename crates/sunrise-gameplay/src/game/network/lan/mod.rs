@@ -432,21 +432,6 @@ impl crate::game::ServerGame<'_> {
         Ok(())
     }
 
-    /// IntegratedServer.unpublishServer: the guests are sent away.
-    pub(in crate::game) fn lan_close(&mut self, announce: bool) {
-        if self.serving() {
-            self.unpublish();
-            return;
-        }
-        self.native_players_leaving();
-        if self.server.lan.is_none() {
-            return;
-        }
-        self.award_leave_game_to_all();
-        self.save_leaving_guests();
-        self.lan_disconnect(announce);
-    }
-
     /// `ServerConnectionListener.stop`: stop accepting new connections and
     /// refuse incoming logins before player and world shutdown saves run,
     /// while keeping connected guest entries alive for `save_leaving_guests`
@@ -3209,7 +3194,7 @@ impl LanHost {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    use super::{EventTimings, Hub, LanHost, LanSettings, OFFHAND_SLOT, living_flags};
+    use super::{EventTimings, Hub, LanHost, OFFHAND_SLOT, living_flags};
     use sunrise_gameplay_common::game::lan_mob_metadata::{mob_freeze_meta, mob_meta};
     use sunrise_gameplay_common::game::{
         native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,

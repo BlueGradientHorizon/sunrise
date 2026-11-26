@@ -20,7 +20,7 @@ pub(crate) mod on_entity_item_update_tests {
     /// An item part that writes the entity's pickup delay to 7 on every update and
     /// records the entities it was told about; `cancels` ends the tick.
     #[derive(Clone)]
-    pub(in crate::game) struct Update {
+    pub(crate) struct Update {
         pub item: &'static str,
         pub(in crate::game) cancels: bool,
         pub(in crate::game) remove: bool,

@@ -1,8 +1,6 @@
 //! `Explosion.getIndirectSourceEntity` for a blast a mob caused: a mob-owned
 //! primed TNT spares vehicles without `mobGriefing`, and a mob's own blast
 //! hands its kind and UUID to the TNT it primes.
-#[cfg(test)]
-use super::*;
 use sunrise_core::geometry::Vec3;
 use sunrise_core::nbt::Tag;
 use sunrise_game_data::gamerules::Value;

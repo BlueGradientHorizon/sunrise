@@ -880,7 +880,7 @@ fn render_forwarders(
                 .is_some_and(|error| outer_type(error, "TextFormError"));
             let call = if text_output {
                 if text_result {
-                    format!("{call}.try_into_api().map_err(Into::into)")
+                    format!("{call}.try_into_api()")
                 } else {
                     format!("{call}.try_into_api().unwrap_or_else(|error| Err(error.into()))")
                 }
@@ -898,7 +898,12 @@ fn render_forwarders(
                     .receiver()
                     .is_some_and(|receiver| receiver.mutability.is_none());
                 if text_input && !read {
-                    format!("Ok({call})")
+                    if matches!(result_types(&entry.sig.output), Some((Type::Tuple(unit), _)) if unit.elems.is_empty())
+                    {
+                        format!("{{ {call}; Ok(()) }}")
+                    } else {
+                        format!("Ok({call})")
+                    }
                 } else {
                     call
                 }
@@ -1395,6 +1400,10 @@ fn contains_value(ty: &Type, names: &[&str]) -> bool {
 }
 
 fn result_error(output: &syn::ReturnType) -> Option<&Type> {
+    result_types(output).map(|(_, error)| error)
+}
+
+fn result_types(output: &syn::ReturnType) -> Option<(&Type, &Type)> {
     let syn::ReturnType::Type(_, ty) = output else {
         return None;
     };
@@ -1406,10 +1415,12 @@ fn result_error(output: &syn::ReturnType) -> Option<&Type> {
     let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
         return None;
     };
-    let syn::GenericArgument::Type(error) = args.args.last()? else {
+    let (Some(syn::GenericArgument::Type(value)), Some(syn::GenericArgument::Type(error))) =
+        (args.args.first(), args.args.last())
+    else {
         return None;
     };
-    Some(error)
+    Some((value, error))
 }
 
 fn outer_type(ty: &Type, expected: &str) -> bool {

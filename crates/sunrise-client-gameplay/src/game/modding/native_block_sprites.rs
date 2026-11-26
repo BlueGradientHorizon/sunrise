@@ -1,9 +1,7 @@
 //! Where blocks' textures are in the block sprite arrays, for a client mod drawing blocks with the player's own
 //! textures (resource packs included) in its own pass: with `WorldDrawn::block_sprites`, the arrays themselves.
 use crate::game::ClientGame;
-use mod_api::{
-    AtlasRegion, AtlasSpriteError, AtlasSpritePixels, ColorResolver, Identifier, LevelReadError,
-};
+use mod_api::{AtlasRegion, ColorResolver, Identifier, LevelReadError};
 use sunrise_client::block_sprites::{BlockSprites, Lookup, SpriteRef};
 use sunrise_client_render::assets::RenderAssets;
 use sunrise_level::chunk::Chunk;
@@ -59,15 +57,6 @@ impl ClientGame<'_> {
             .map(|name| sunrise_client::block_sprites::texture_at(atlas, split, name))
             .collect()
     }
-    #[inline(always)]
-    pub(in crate::game) fn native_atlas_sprite_pixels(
-        &self,
-        sprite: SpriteRef,
-    ) -> Result<AtlasSpritePixels, AtlasSpriteError> {
-        let (atlas, split) = self.sprite_atlas_and_split();
-        atlas.atlas_sprite_pixels(sprite, split)
-    }
-
     /// `ClientLevel.getBlockTint(pos, resolver)`, without consulting block or fluid tint sources.
     pub(in crate::game) fn biome_tint(
         &self,

@@ -81,7 +81,6 @@ fn level_container_reads_preserve_snapshot_and_unpack_comparator_once() {
             snapshot = Some((chunk, chest));
         });
         crate::game::server_side::native_entity_refs::tests::with_client_game(|game| {
-            use mod_api::LevelHost;
             let (chunk, chest) = snapshot.take().unwrap();
             let (client, _server) = sunrise_protocol::connection::Pipe::pair();
             game.connect_local(client, "ContainerReadTest").unwrap();

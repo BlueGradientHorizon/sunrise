@@ -15,8 +15,8 @@ use mod_api::InteractionResult as Answer;
 use mod_api::{
     self, BlockPart, ENTITY_ITEMS, Flow, Hooks, HostSide, HostTransaction, ItemPart, ItemResource,
     LivingEntityUseItemFinishEvent, LogicalSide, Registrar, RightClickBlockEvent,
-    RightClickItemEvent, ServerHost, TriState, UseItemEvent, UseItemOnBlockEvent, UseItemOnEvent,
-    UseOnEvent, UsePhase, UseWithoutItemEvent,
+    RightClickItemEvent, TriState, UseItemEvent, UseItemOnBlockEvent, UseItemOnEvent, UseOnEvent,
+    UsePhase, UseWithoutItemEvent,
 };
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
@@ -100,7 +100,7 @@ pub(in crate::game) struct Controls {
 }
 
 #[derive(Clone, Default)]
-pub(in crate::game) struct Observer(pub(in crate::game) Arc<Mutex<Controls>>);
+pub(crate) struct Observer(pub(in crate::game) Arc<Mutex<Controls>>);
 
 pub(crate) fn side(host: &HostSide<'_>) -> LogicalSide {
     match host {
@@ -690,9 +690,3 @@ fn a_server_client_keeps_a_bundle_use_until_the_server_completes_it() {
 }
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

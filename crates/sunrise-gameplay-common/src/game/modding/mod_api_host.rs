@@ -93,7 +93,7 @@ pub fn world_attachment_changed(
 }
 
 /// A level a both-side level hook reads, which knows the side it is on.
-pub(in crate::game) trait SidedLevel: mod_api::LevelHost {
+pub trait SidedLevel: mod_api::LevelHost {
     fn client_side(&self) -> bool;
 }
 
@@ -1542,8 +1542,3 @@ impl super::GameLevel<'_> {
         true
     }
 }
-
-#[cfg(test)]
-use crate::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
-#[cfg(test)]
-use crate::game::native_world_read_common::NativeWorldReadGameExt1 as _;

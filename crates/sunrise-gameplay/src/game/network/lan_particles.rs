@@ -668,14 +668,11 @@ pub mod tests {
     #[cfg(test)]
     use sunrise_core::random::LegacyRandom;
     #[cfg(test)]
-    use sunrise_gameplay_common::game::lan_particle_data::{
-        decode_mod_particle, particle_position_source, server_particle_from_options,
-    };
+    use sunrise_gameplay_common::game::lan_particle_data::particle_position_source;
     #[cfg(test)]
     use sunrise_level::particle_options::{ParticleOptions, ParticleType};
     #[cfg(test)]
     use sunrise_protocol::entity_data::{ParticleData, PositionSource as NetworkPositionSource};
-    use sunrise_protocol::packets::play;
     use sunrise_sim::lan::{
         Joined, Lan, NetConfig, Out, PlayerSender,
         chunks::ChunkEncoder,
@@ -908,6 +905,10 @@ pub mod tests {
     #[test]
     #[cfg(any())]
     fn typed_particle_packet_is_shared_by_spawns_and_kept_from_vanilla_peers() {
+        use sunrise_gameplay_common::game::lan_particle_data::{
+            decode_mod_particle, server_particle_from_options,
+        };
+
         let entries = [mod_api::ModEntry::new("test", Box::new(MeasuredParticle))];
         mod_platform::__private::part_tests::install_parts_fixture(&entries).unwrap();
         sunrise_gameplay_common::game::mods::resolve_particle_providers(&Default::default())

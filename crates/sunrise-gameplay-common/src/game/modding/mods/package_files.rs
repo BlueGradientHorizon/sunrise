@@ -205,13 +205,10 @@ pub fn sources(
 #[cfg(test)]
 pub(in crate::game) mod tests {
     use super::*;
-    use crate::game::{
-        api_values::TryIntoApi,
-        mods::{ContentRequest, read_contents, validate_startup_packages},
-    };
+    use crate::game::{api_values::TryIntoApi, mods::validate_startup_packages};
     use mod_api::{
         __private::{game::RegistrationContextNew, native::BuiltMod},
-        PackageFilesError, PackageReadError, RegistrationContext,
+        PackageFilesError, RegistrationContext,
     };
     use std::fs;
     use sunrise_mod_package::{mod_list::NATIVE_DIR, runtime::Runtime};
@@ -395,6 +392,7 @@ pub(in crate::game) mod tests {
         mods: &ModsState,
         path: &Path,
     ) -> (Content, sunrise_assets::resource_source::ResourceRoot) {
+        use crate::game::mods::{ContentRequest, read_contents};
         use sunrise_client::mod_content_client::resolved_resources;
         use sunrise_sim::mod_content::ContentMod;
         let id = &mods.selected[0].package.manifest.id;
@@ -460,6 +458,8 @@ pub(in crate::game) mod tests {
     #[test]
     #[cfg(any())]
     fn registration_declarations_and_resources_share_the_index_and_read_loose_bytes_live() {
+        use mod_api::PackageReadError;
+
         let dir = tempfile::tempdir().unwrap();
         let demo = folder(dir.path(), "demo", "");
         write(&demo, SCRIPT, b"return 1");

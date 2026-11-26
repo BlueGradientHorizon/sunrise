@@ -372,21 +372,18 @@ pub mod tests {
         path::{Path, PathBuf},
         sync::{Arc, Mutex},
     };
+    use sunrise_gameplay_common::game::mods::mod_list;
+    #[cfg(test)]
+    use sunrise_gameplay_common::game::mods::{
+        DeclarationError, DeclarationFailures, DeclarationKind, DeclarationRefusal,
+        DisabledServingHost, ExecutionRole, Installed, MissingJar, ModsState, RegistrationContext,
+        ServedContentLoadError, ServedContentStage, collect_key_mappings, content_layer_owner,
+        content_overlay, content_root, live_switch_of, living_mod_types, mob_effect_entries,
+        native_declared, native_mods_detail, not_built, refuse_primary_namespace_claims,
+        register_mob_effects, validate_entity_type_families, validate_startup_packages, verdict,
+    };
     #[allow(unused_imports)]
     use sunrise_mod_package::runtime::Runtime;
-    use {
-        crate::game::mods::*,
-        sunrise_gameplay_common::game::mods::{
-            DeclarationError, DeclarationFailures, DeclarationKind, DeclarationRefusal,
-            DisabledServingHost, ExecutionRole, Installed, MissingJar, ModsState,
-            RegistrationContext, ServedContentLoadError, ServedContentStage, collect_key_mappings,
-            content_layer_owner, content_overlay, content_root, freeze_declarations, lang,
-            live_switch_of, living_mod_types, mob_effect_entries, mod_list, native_declared,
-            native_mods_detail, not_built, refuse_primary_namespace_claims,
-            register_iterated_registries, register_mob_effects, validate_entity_type_families,
-            validate_startup_packages, verdict,
-        },
-    };
 
     #[test]
     fn a_package_cannot_claim_another_packages_primary_namespace() {
@@ -3046,6 +3043,7 @@ pub mod tests {
     }
 
     /// A content mod `plain` in `f`, declaring the effect `plain:stun` when given.
+    #[cfg(test)]
     fn plain_mod(f: &Fixture, stun: Option<&str>) -> sunrise_sim::mod_content::ContentMod {
         std::fs::write(
             f.0.join("sunrise-mod.toml"),

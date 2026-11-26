@@ -1,6 +1,4 @@
 //! A custom crafting remainder reaches the normal server toss moment.
-#[cfg(test)]
-use crate::game::*;
 use std::result::Result;
 use std::sync::{
     Arc,

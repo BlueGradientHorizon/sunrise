@@ -1,6 +1,4 @@
 //! Real assembler and template-placement regressions for position-sensitive rotate Parts.
-#[cfg(test)]
-use crate::game::native_rotate::*;
 use mod_api::{BlockPart, Hooks, ModEntry, Mods, RotateEvent, WorldgenHost};
 use serde_json::json;
 use std::{

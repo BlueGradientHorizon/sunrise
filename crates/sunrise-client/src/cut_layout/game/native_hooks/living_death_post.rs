@@ -16,7 +16,7 @@ pub(crate) mod tests {
     use sunrise_sim::mobs::DamageKind;
 
     #[derive(Default)]
-    pub(in crate::game) struct Post {
+    pub(crate) struct Post {
         pub(in crate::game) entity: Option<u32>,
         pub(in crate::game) damage_type: Option<String>,
         pub(in crate::game) attacker: Option<u32>,

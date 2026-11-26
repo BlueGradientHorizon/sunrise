@@ -2,9 +2,6 @@
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 #[cfg(test)]
-use sunrise_gameplay_common::game::native_item_entity_refs::NativeItemEntityRefsGameExt1 as _;
-
-#[cfg(test)]
 pub(crate) mod tests {
     use super::*;
     use mod_api::{self, ServerHost};

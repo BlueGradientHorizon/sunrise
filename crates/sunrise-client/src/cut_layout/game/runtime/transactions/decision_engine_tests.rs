@@ -229,11 +229,6 @@ fn actual_owner_nested_edit_and_panic_roll_back_before_the_next_click() {
     });
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

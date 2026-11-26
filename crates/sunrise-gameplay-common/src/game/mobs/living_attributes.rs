@@ -3,7 +3,7 @@ pub mod tests {
 
     use sunrise_items::items::ItemStack;
 
-    use mod_api::{AttributeModifier, AttributeOperation, Identifier, ModifierLifetime};
+    use mod_api::{AttributeModifier, AttributeOperation, Identifier};
 
     pub fn stack(item: &str) -> Option<ItemStack> {
         Some(ItemStack::new(item, 1))

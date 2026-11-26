@@ -524,8 +524,6 @@ use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(test)]
-    use std::path::Path;
 
     #[test]
     fn phantom_group_size_follows_difficulty() {

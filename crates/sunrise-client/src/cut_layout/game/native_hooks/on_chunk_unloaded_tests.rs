@@ -116,11 +116,7 @@ pub(crate) fn pump_until(game: &mut sunrise_gameplay::game::ServerGame<'_>, resi
 #[ignore = "daily"]
 fn a_client_tells_a_forgotten_column_but_not_its_level_going() {
     use sunrise_gameplay_common::game::execution_role::ExecutionRole;
-    use sunrise_level::{
-        chunk::Chunk,
-        containers::{ModBlockEntity, ModBlockEntityFields},
-        items::ItemStack,
-    };
+    use sunrise_level::{chunk::Chunk, containers::ModBlockEntity};
     use sunrise_protocol::connection::Pipe;
     if run_fresh_cases(
         "game::native_hooks::on_chunk_unloaded_tests::a_client_tells_a_forgotten_column_but_not_its_level_going",

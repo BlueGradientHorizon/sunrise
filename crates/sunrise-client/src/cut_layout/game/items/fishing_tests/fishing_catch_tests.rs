@@ -266,6 +266,3 @@ fn fishing_catch_invalid_drops_keep_the_earlier_listeners_outputs() {
         "{warnings:?}"
     );
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

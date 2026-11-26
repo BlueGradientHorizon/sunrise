@@ -13,14 +13,6 @@ use std::collections::HashSet;
 use sunrise_gameplay_common::game::entity_initialization_common::Construction;
 
 impl ServerGame<'_> {
-    pub(in crate::game) fn server_after_entity_constructing_fault(&mut self, _id: u32) {
-        #[cfg(test)]
-        {
-            use super::pending_births::escaping_fault::{self, At};
-            escaping_fault::reach(At::Constructed, _id);
-        }
-    }
-
     pub(in crate::game) fn server_bind_constructed_entity_attachments(&mut self, id: u32) {
         if self.native_authoritative()
             && self

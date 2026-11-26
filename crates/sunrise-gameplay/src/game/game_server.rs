@@ -1665,10 +1665,9 @@ impl crate::game::ServerGame<'_> {
                 .ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::ADVANCE_TIME)
+                && let Some((clock, target)) = self.sleep_finished_move()
             {
-                if let Some((clock, target)) = self.sleep_finished_move() {
-                    self.common.set_command_clock_time(&clock, target);
-                }
+                self.common.set_command_clock_time(&clock, target);
             }
             // Level.isRaining: the rain level is above 0.2.
             if self

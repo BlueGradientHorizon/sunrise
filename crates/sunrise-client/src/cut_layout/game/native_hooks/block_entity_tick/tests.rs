@@ -1700,12 +1700,6 @@ fn items_changed_tracks_committed_slot_writes_and_ignores_aborted_nested_transac
     });
 }
 
-#[cfg(test)]
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;

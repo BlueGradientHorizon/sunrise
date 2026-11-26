@@ -44,7 +44,7 @@ impl Hit {
 }
 
 #[derive(Default)]
-pub(in crate::game) struct Seen {
+pub(crate) struct Seen {
     pub(in crate::game) incoming: Vec<Hit>,
     pub(in crate::game) deaths: Vec<Hit>,
     pub(in crate::game) armor: Vec<Hit>,
@@ -918,6 +918,3 @@ fn mob_death_and_handle_preserve_namespaced_types() {
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

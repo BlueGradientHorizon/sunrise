@@ -1049,6 +1049,11 @@ borrow = "shared"
 kind = "shared_trait"
 owner = "::sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1<'_>"
 
+[host.client."PlayerMenusClientBackendMut::player_anvil_update"]
+borrow = "mutable"
+kind = "local"
+owner = "crate::game::ClientGame"
+
 [host.client."PlayerModesBackend::player_abilities"]
 borrow = "shared"
 kind = "shared_trait"
@@ -2233,6 +2238,11 @@ owner = "::sunrise_gameplay_common::game::native_server::NativeServerGameExt1<'_
 borrow = "shared"
 kind = "shared_trait"
 owner = "::sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1<'_>"
+
+[host.server."PlayerMenusBackendMut::player_anvil_update"]
+borrow = "mutable"
+kind = "local"
+owner = "crate::game::ServerGame"
 
 [host.server."PlayerModesBackend::player_abilities"]
 borrow = "shared"

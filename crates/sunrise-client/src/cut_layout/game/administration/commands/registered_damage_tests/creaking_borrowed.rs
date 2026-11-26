@@ -556,6 +556,3 @@ pub(crate) fn run_borrowed_creaking_hurt_finishes_before_the_tick_continues() {
         })
     });
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

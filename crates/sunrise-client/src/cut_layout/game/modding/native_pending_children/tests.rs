@@ -1,6 +1,6 @@
 use mod_api::{
     BabyEntitySpawnChild, Identifier, MobSplitChildren, PendingMobSpec, UnspawnedMob,
-    UnspawnedMobError, UnspawnedMobRead,
+    UnspawnedMobError,
 };
 use std::sync::{
     Arc,

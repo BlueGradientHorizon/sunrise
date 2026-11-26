@@ -4,10 +4,10 @@ pub(crate) mod tests {
     use mod_api::client::first_person::Hand;
 
     use mod_api::{
-        CanContinueUsingEvent, EntityRef, Flow, Hooks, Host, HostSide, Identifier, ItemPart,
+        CanContinueUsingEvent, Flow, Hooks, Host, HostSide, ItemPart,
         LivingEntityUseItemFinishEvent, LivingEntityUseItemStartEvent,
         LivingEntityUseItemStopEvent, LivingEntityUseItemTickEvent, LivingRef, OnStopUsingEvent,
-        OnUseTickEvent, Registrar, ReleaseUsingEvent, WorldEpoch,
+        OnUseTickEvent, Registrar, ReleaseUsingEvent,
     };
 
     use std::sync::{Arc, Mutex};

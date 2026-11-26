@@ -2025,9 +2025,6 @@ impl<'a> crate::game::ServerGame<'a> {
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
-#[cfg(test)]
-use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
-
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
 #[cfg(test)]

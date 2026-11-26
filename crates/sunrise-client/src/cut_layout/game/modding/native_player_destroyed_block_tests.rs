@@ -1148,7 +1148,4 @@ fn the_breaking_client_hears_its_predicted_break_with_a_client_host() {
 
 use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
 
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
-
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

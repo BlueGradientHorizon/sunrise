@@ -1,8 +1,7 @@
 use crate::game::held_items::OFFHAND_SLOT;
 use sunrise_core::use_animation::UseAnimation;
-use sunrise_items::items::{ConsumeEffect, ItemStack};
+use sunrise_items::items::ItemStack;
 use sunrise_sim::first_person_sim::Hand;
-use sunrise_world::consumable::Consumable;
 
 thread_local! {
     /// The items whose `use_animation` Part is being asked on this thread, innermost last: one

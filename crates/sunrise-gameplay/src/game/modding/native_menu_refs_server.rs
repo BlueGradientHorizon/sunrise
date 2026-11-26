@@ -783,8 +783,6 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;

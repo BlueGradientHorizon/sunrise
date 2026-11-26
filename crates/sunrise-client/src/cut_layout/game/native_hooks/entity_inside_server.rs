@@ -10,7 +10,6 @@ pub(crate) mod sweep_tests {
     use sunrise_gameplay_common::game::native_hooks::entity_inside::sweep_tests::{
         InsidePart, arrow_shot, install_inside_mod,
     };
-    use sunrise_items::items::ItemStack;
 
     fn fresh(name: &str) -> bool {
         let module = module_path!().split_once("::").unwrap().1;

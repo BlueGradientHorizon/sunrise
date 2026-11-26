@@ -931,6 +931,8 @@ pub(in crate::game) enum Struck {
     Landed,
 }
 
+use sunrise_gameplay_common::game::tables::GameItems as _;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1024,5 +1026,3 @@ mod tests {
         }
     }
 }
-
-use sunrise_gameplay_common::game::tables::GameItems as _;

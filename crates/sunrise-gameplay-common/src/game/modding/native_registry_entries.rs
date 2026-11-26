@@ -108,7 +108,8 @@ pub trait NativeRegistryReads<'g>: crate::game::SideGame<'g> {
         if self.is_logical_server() {
             self.mods.datapack_registries.clone()
         } else {
-            None
+            self.side_received_registry_datapacks()
+                .filter(|set| set.registry_available(registry))
         }
     }
 
@@ -389,6 +390,52 @@ fn visit_network_entries(
         .try_for_each(visit))
 }
 
+/// Bind mod registry tags against admitted entries, dropping only tags with missing required members.
+pub fn load_registry_tags(
+    root: &std::path::Path,
+    overlay: &sunrise_world::loot::PackOverlay<'_>,
+    folder: &str,
+    known: impl Fn(&str) -> bool,
+) -> Result<BTreeMap<String, Vec<String>>, String> {
+    use sunrise_world::{damage_source::resource_files, worldgen::tags::TagDefinitions};
+    let tag_folder = format!("tags/{folder}");
+    let mut files: BTreeMap<String, Vec<Vec<u8>>> = resource_files(root, &tag_folder)
+        .map_err(|error| error.to_string())?
+        .into_iter()
+        .map(|(id, bytes)| (id, vec![bytes]))
+        .collect();
+    for (id, versions) in overlay.tag_kind(folder) {
+        files
+            .entry(id)
+            .or_default()
+            .extend(versions.iter().cloned());
+    }
+    let mut files: Vec<_> = files.into_iter().collect();
+    files.sort_by_cached_key(|(id, _)| {
+        let (namespace, path) = id.split_once(':').unwrap_or(("minecraft", id));
+        (format!("{path}.json"), namespace.to_owned())
+    });
+    let mut definitions = TagDefinitions::default();
+    for (id, versions) in files {
+        for bytes in versions {
+            if let Ok(json) = std::str::from_utf8(&bytes) {
+                // TagLoader retains lower-priority members when a tag codec fails.
+                let _ = definitions.apply_json(&id, "registry tags", json);
+            }
+        }
+    }
+    Ok(definitions
+        .bind(|id, _| known(id).then(|| id.to_owned()))
+        .tags)
+}
+
+impl<'g, G: crate::game::SideGame<'g>> NativeRegistryReads<'g> for G {}
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+use crate::game::side_ops::modapi_hooks::ModapiHooksSideGameExt as _;
+use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
+use crate::game::tables::{GameItems, WorldTablesExt};
+
 #[cfg(test)]
 mod network_entry_tests {
     use super::*;
@@ -418,10 +465,3 @@ mod network_entry_tests {
         assert_eq!(items.id("minecraft:apple"), Some(5));
     }
 }
-
-impl<'g, G: crate::game::SideGame<'g>> NativeRegistryReads<'g> for G {}
-
-use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-use crate::game::side_ops::modapi_hooks::ModapiHooksSideGameExt as _;
-use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
-use crate::game::tables::{GameItems, WorldTablesExt};

@@ -286,6 +286,4 @@ use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 
 use crate::game::side_ops::player::PlayerSideGameExt as _;
 
-use crate::game::native_components::NativeComponentsGameExt1 as _;
-
 use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

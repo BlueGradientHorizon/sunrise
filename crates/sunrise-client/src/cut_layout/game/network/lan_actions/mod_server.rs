@@ -1323,9 +1323,6 @@ pub(crate) mod boat_holder_movement_tests;
 #[path = "tests/crack_feedback_tests_server.rs"]
 pub(crate) mod crack_feedback_tests;
 
-#[cfg(test)]
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
-
 #[path = "tick_server.rs"]
 pub(crate) mod tick;
 

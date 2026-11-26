@@ -1,5 +1,5 @@
 use crate::game::ServerGame;
-use std::{collections::BTreeMap, sync::Arc};
+use std::sync::Arc;
 use sunrise_sim::lan::data::SyncData;
 
 impl ServerGame<'_> {
@@ -39,45 +39,8 @@ impl ServerGame<'_> {
     }
 }
 
-/// Bind a mod registry's tags against the entries it just admitted. A missing
-/// required member prevents that tag from binding, not the other tags.
-pub(in crate::game) fn load_registry_tags(
-    root: &std::path::Path,
-    overlay: &sunrise_world::loot::PackOverlay<'_>,
-    folder: &str,
-    known: impl Fn(&str) -> bool,
-) -> Result<BTreeMap<String, Vec<String>>, String> {
-    use sunrise_world::{damage_source::resource_files, worldgen::tags::TagDefinitions};
-    let tag_folder = format!("tags/{folder}");
-    let mut files: BTreeMap<String, Vec<Vec<u8>>> = resource_files(root, &tag_folder)
-        .map_err(|error| error.to_string())?
-        .into_iter()
-        .map(|(id, bytes)| (id, vec![bytes]))
-        .collect();
-    for (id, versions) in overlay.tag_kind(folder) {
-        files
-            .entry(id)
-            .or_default()
-            .extend(versions.iter().cloned());
-    }
-    let mut files: Vec<_> = files.into_iter().collect();
-    files.sort_by_cached_key(|(id, _)| {
-        let (namespace, path) = id.split_once(':').unwrap_or(("minecraft", id));
-        (format!("{path}.json"), namespace.to_owned())
-    });
-    let mut definitions = TagDefinitions::default();
-    for (id, versions) in files {
-        for bytes in versions {
-            if let Ok(json) = std::str::from_utf8(&bytes) {
-                // TagLoader retains lower-priority members when a tag codec fails.
-                let _ = definitions.apply_json(&id, "registry tags", json);
-            }
-        }
-    }
-    Ok(definitions
-        .bind(|id, _| known(id).then(|| id.to_owned()))
-        .tags)
-}
+#[cfg(test)]
+pub(in crate::game) use sunrise_gameplay_common::game::native_registry_entries::load_registry_tags;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 

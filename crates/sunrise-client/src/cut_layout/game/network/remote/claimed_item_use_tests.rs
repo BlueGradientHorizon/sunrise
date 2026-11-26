@@ -18,14 +18,14 @@ pub(crate) const STICK: &str = "minecraft:stick";
 pub(crate) const CUSTOM_DATA: &str = "minecraft:custom_data";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::game) enum Phase {
+pub(crate) enum Phase {
     Start,
     Release(u32),
     Stop(u32),
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(in crate::game) struct Call {
+pub(crate) struct Call {
     pub(in crate::game) phase: Phase,
     pub(in crate::game) registered_for: &'static str,
     pub(in crate::game) item: ItemKey,
@@ -35,7 +35,7 @@ pub(in crate::game) struct Call {
 }
 
 #[derive(Clone, Default)]
-pub(in crate::game) struct Calls(pub(in crate::game) Arc<Mutex<Vec<Call>>>);
+pub(crate) struct Calls(pub(in crate::game) Arc<Mutex<Vec<Call>>>);
 
 impl Calls {
     pub(crate) fn take(&self) -> Vec<Call> {

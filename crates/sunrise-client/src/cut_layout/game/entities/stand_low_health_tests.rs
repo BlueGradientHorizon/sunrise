@@ -177,6 +177,3 @@ pub(crate) fn run_a_stand_breaks_on_low_health_only_through_damage_and_a_dead_on
         }
     });
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::tables::GameItems as _;

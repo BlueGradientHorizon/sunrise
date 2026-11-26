@@ -6,14 +6,13 @@ use crate::game::{
 };
 use core::ops::ControlFlow;
 use mod_api::{
-    BlockFace, BlockShapeKind, ClipBlock, ClipError, ClipFluid, ClipHit, ClipOutcome,
-    CollisionContext, DimensionKey, EntityRayHit, EntityReadError, EntityRef, EntityTypeKey,
-    LevelReadError, LevelRef, MobRef, PushReaction,
+    BlockFace, ClipBlock, ClipError, ClipFluid, ClipHit, ClipOutcome, CollisionContext,
+    DimensionKey, EntityRayHit, EntityReadError, EntityRef, EntityTypeKey, LevelReadError,
+    LevelRef, MobRef, PushReaction,
 };
 use sunrise_core::geometry::{Aabb, Vec3};
 use sunrise_items::items::ItemStack;
 use sunrise_sim::join_seq::residency::table::{EntityLookup, Location};
-use sunrise_world::registry::BlockStateId;
 
 /// The mod API face of an engine direction.
 fn api_face(direction: sunrise_core::geometry::Direction) -> BlockFace {
@@ -1037,9 +1036,6 @@ use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 
 use crate::game::side_ops::player::PlayerSideGameExt as _;
 
-#[cfg(test)]
-use crate::game::side_ops::world::WorldSideGameExt as _;
-
 use crate::game::tables::{GameItems as _, WorldTablesExt as _};
 
 use crate::game::block_props::BlockPropsGameExt2 as _;
@@ -1049,8 +1045,6 @@ use crate::game::bookshelves_common::BookshelvesCommonGameExt1 as _;
 use crate::game::commands_common::CommandsCommonGameExt2 as _;
 
 use crate::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
-
-use crate::game::native_state_shapes::NativeStateShapesGameExt1 as _;
 
 use crate::game::pick_entity_common::PickEntityCommonGameExt1 as _;
 use crate::game::remote::general::GeneralGameExt1 as _;

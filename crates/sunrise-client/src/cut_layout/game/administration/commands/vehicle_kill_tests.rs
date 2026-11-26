@@ -1,7 +1,5 @@
 use sunrise_core::geometry::Vec3;
 // Test module extracted without changing its logical path.
-#[cfg(test)]
-use crate::game::server_side::commands::*;
 use sunrise_core::nbt::parse_snbt;
 use sunrise_gameplay_common::game::BlockEntity;
 use sunrise_gameplay_common::game::commands_common::Target;

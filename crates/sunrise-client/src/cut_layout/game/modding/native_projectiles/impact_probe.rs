@@ -32,7 +32,7 @@ pub(crate) enum Action {
 
 /// The independently observable event payload.
 #[derive(Debug)]
-pub(in crate::game) struct Seen {
+pub(crate) struct Seen {
     pub projectile: u32,
     pub kind: String,
     pub owner: u32,
@@ -309,6 +309,3 @@ pub(crate) fn point(actual: [f64; 3], expected: [f64; 3]) {
 }
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

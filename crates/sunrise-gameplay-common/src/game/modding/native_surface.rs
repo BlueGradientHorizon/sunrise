@@ -403,13 +403,7 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> NativeSurfaceGameExt1<'__sg> for G 
 
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 
-#[cfg(test)]
-use crate::game::side_ops::world::WorldSideGameExt as _;
-
 use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-#[cfg(test)]
-use crate::game::native_world_read_common::NativeWorldReadGameExt1 as _;
 
 pub trait BoatFrictionGameExt<'g>: crate::game::SideGame<'g> {
     /// The friction of `state` at `pos` under the boat `b` (`AbstractBoat.getGroundFriction`,

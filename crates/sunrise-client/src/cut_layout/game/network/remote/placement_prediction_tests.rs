@@ -480,7 +480,7 @@ pub(crate) type BreakRead = (
 );
 
 #[derive(Clone, Default)]
-pub(in crate::game) struct BreakObserver(pub(in crate::game) Arc<std::sync::Mutex<Vec<BreakRead>>>);
+pub(crate) struct BreakObserver(pub(in crate::game) Arc<std::sync::Mutex<Vec<BreakRead>>>);
 
 #[mod_api::sunrise_part]
 impl BlockPart for BreakObserver {
@@ -1135,6 +1135,3 @@ fn blocks_answer_a_held_item_s_click_on_the_client_as_vanilla() {
         assert!(!click(game, "minecraft:shears").consumes_action());
     });
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;

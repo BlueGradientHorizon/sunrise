@@ -3,10 +3,7 @@ pub mod tests {
 
     use mod_api::ServerHost;
 
-    use mod_api::{
-        CraftedByError, ENTITY_AUTOMATION, ENTITY_ITEMS, ItemPlace, ItemPlaceEditError,
-        ItemResource, MenuRef, TransactionError,
-    };
+    use mod_api::{ItemResource, TransactionError};
 
     use std::sync::{Arc, atomic::AtomicI32, mpsc};
 
@@ -18,7 +15,7 @@ pub mod tests {
 
     use sunrise_protocol::packets::configuration::ClientInformation;
 
-    use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubConfig};
+    use sunrise_sim::lan::{Joined, PlayerSender, guest::Guest};
 
     /// A placed guest on connection `conn`, with UUID and entity id `conn + 122` and
     /// `conn + 19`.

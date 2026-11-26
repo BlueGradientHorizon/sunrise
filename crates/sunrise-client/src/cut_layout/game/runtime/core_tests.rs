@@ -111,7 +111,7 @@ use {
         FallingBlock, HashSet, Instant, Level, Options, PackResources, PathBuf, PlayerMotion,
         Progress, Resources, Screen, Vec3, WorldRestLoader, clip_start_source, execution_role,
         falling_block_visible, in_own_process, interact_location, outline_stop, ray_box,
-        tick_sleep_timer, vanilla_tool_state, write_level_for_role,
+        tick_sleep_timer, vanilla_tool_state,
     },
 };
 

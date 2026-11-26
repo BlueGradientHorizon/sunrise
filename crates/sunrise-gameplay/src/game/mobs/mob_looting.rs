@@ -9,8 +9,6 @@ use crate::game::ServerGame;
 use sunrise_gameplay::mob_looting::LootingLevel;
 use sunrise_gameplay_common::game::equip_answers::EquipAnswersGameExt1;
 use sunrise_items::items::ItemStack;
-#[cfg(test)]
-use sunrise_sim::mobs::finalize;
 use sunrise_sim::{
     entities::ItemEntity,
     mobs::{

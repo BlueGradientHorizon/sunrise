@@ -82,9 +82,7 @@ type Slot = Arc<OnceLock<std::result::Result<Arc<CachedEntry>, String>>>;
 const KEPT: usize = 4;
 static CACHE: Mutex<Vec<(CacheKey, Slot)>> = Mutex::new(Vec::new());
 
-pub(crate) use sunrise_gameplay_common::game::test_fixtures::{
-    acquire_fresh_child_permit, acquire_in_process_load_permit,
-};
+pub(crate) use sunrise_gameplay_common::game::test_fixtures::acquire_in_process_load_permit;
 
 fn file_stamp(path: &Path) -> FileStamp {
     std::fs::metadata(path)
@@ -132,7 +130,7 @@ fn load_inputs_are_vanilla(root: &Path, load_role: mods::LoadRole) -> bool {
         || !mod_api::__private::spawn_placement_declarations().is_empty()
         || !mod_api::__private::entity_part_state_declarations().is_empty()
         || !sunrise_world::fluid::mod_fluids().is_empty()
-        || sunrise_gameplay_common::game::general::general_type_catalog().len() != 0
+        || !sunrise_gameplay_common::game::general::general_type_catalog().is_empty()
         || mod_api::__private::listened(mod_api::HookId::ExtendPoiTypes)
         || mod_api::__private::listened(mod_api::HookId::RegisterCauldronFluidContent)
         || (load_role.owning == mods::item_data_load::OwningLoad::Startup
@@ -607,9 +605,6 @@ pub(crate) fn load(
         ),
     }
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::tables::GameItems as _;
 
 #[cfg(test)]
 mod tests {

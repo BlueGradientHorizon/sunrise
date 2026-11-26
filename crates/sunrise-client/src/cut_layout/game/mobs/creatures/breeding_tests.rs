@@ -263,6 +263,3 @@ fn the_player_who_fed_either_animal_is_credited() {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

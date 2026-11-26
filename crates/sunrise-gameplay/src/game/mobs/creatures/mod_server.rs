@@ -3245,23 +3245,22 @@ impl crate::game::ServerGame<'_> {
                 outcome = o;
                 o.hurt
             }
+            && o.knockback
         {
-            if o.knockback {
-                let (xd, zd) = from.map_or((0.0, 0.0), |from| {
-                    (from[0] - player.position.x, from[2] - player.position.z)
-                });
-                if o.blocked <= 0.0 {
-                    player.health.indicate_damage(xd, zd, player.yaw);
-                }
-                let source = HurtSource {
-                    damage_type,
-                    causing,
-                    direct: attack.projectile_direct(damage_type),
-                    position: None,
-                    direct_type: None,
-                };
-                default_push = Some(([xd, zd], source));
+            let (xd, zd) = from.map_or((0.0, 0.0), |from| {
+                (from[0] - player.position.x, from[2] - player.position.z)
+            });
+            if o.blocked <= 0.0 {
+                player.health.indicate_damage(xd, zd, player.yaw);
             }
+            let source = HurtSource {
+                damage_type,
+                causing,
+                direct: attack.projectile_direct(damage_type),
+                position: None,
+                direct_type: None,
+            };
+            default_push = Some(([xd, zd], source));
         }
         if let Some(p) = self.common.player.as_ref()
             && p.events.get(events_before..).is_some_and(|new| {

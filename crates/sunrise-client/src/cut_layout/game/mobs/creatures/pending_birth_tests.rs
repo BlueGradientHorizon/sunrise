@@ -14,7 +14,7 @@ use mod_api::{
 };
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicU32, AtomicUsize, Ordering},
+    atomic::{AtomicUsize, Ordering},
 };
 use sunrise_gameplay_common::game::{
     commands_common::Target,
@@ -91,10 +91,6 @@ pub(crate) use sunrise_gameplay::game::server_side::creatures_server::pending_bi
 
 #[allow(unused_imports)]
 pub(crate) use crate::game::server_side::creatures_server::pending_birth_tests::cube;
-
-pub(crate) fn near(a: f64, b: f64) -> bool {
-    (a - b).abs() < 1e-4
-}
 
 /// The mobs the split added, in order (the fixture world starts with none).
 pub(crate) fn spawned(game: &sunrise_gameplay::game::ServerGame<'_>) -> Vec<Mob> {
@@ -1039,40 +1035,6 @@ fn a_breeding_constructor_engine_fault_retires_only_the_unpublished_child() {
     });
 }
 
-#[derive(Default)]
-pub(in crate::game) struct DiscardParentOnPigJoin(pub(in crate::game) AtomicU32);
-
-#[mod_api::__subscriptions]
-impl Hooks for DiscardParentOnPigJoin {
-    fn baby_entity_spawn(
-        &self,
-        host: &mut dyn ServerHost,
-        event: &mut BabyEntitySpawnEvent<'_>,
-    ) -> Flow {
-        self.0.store(event.parent, Ordering::SeqCst);
-        assert!(host.commands().run_command("summon minecraft:pig 4 64 4"));
-        assert!(host.entity(event.parent).is_some(), "the join is deferred");
-        Flow::Continue
-    }
-
-    fn entity_join_level(
-        &self,
-        host: &mut dyn ServerHost,
-        event: &mut mod_api::EntityJoinLevelEvent<'_>,
-    ) -> Flow {
-        if event.kind == "minecraft:pig" {
-            let parent = self.0.load(Ordering::SeqCst);
-            // This fixture reserves the two parent IDs and then the original baby ID.
-            assert!(
-                host.entity(parent + 2).is_some(),
-                "apply precedes join publication"
-            );
-            assert!(host.entity(parent).unwrap().discard(host));
-        }
-        Flow::Continue
-    }
-}
-
 #[cfg(any())]
 #[test]
 #[ignore = "daily"]
@@ -1267,8 +1229,6 @@ fn mob_split_constructs_all_children_before_any_join_and_cleans_up_on_unwind() {
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 #[derive(Clone, Debug)]
 struct ReadyBreed(sunrise_sim::mobs::goals::Breed);

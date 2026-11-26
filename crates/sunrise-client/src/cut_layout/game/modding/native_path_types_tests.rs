@@ -404,9 +404,3 @@ fn a_block_part_gives_the_nodes_beside_its_block_a_path_type() {
         assert!(observed.contains(&([7, 64, 7], PathType::Blocked)));
     });
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -836,9 +836,6 @@ pub(crate) mod item_count_predicate_tests;
 #[cfg(test)]
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
-
 pub(crate) mod world_cmds;
 
 pub(crate) mod terrain_cmds;

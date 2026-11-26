@@ -1,5 +1,3 @@
-#[cfg(test)]
-use super::*;
 use mod_api::ExplosionStart;
 use mod_api::{
     BlockPart, BreakBlockEvent, CanDropFromExplosionEvent, CanEntityDestroyEvent, ExpDropEvent,

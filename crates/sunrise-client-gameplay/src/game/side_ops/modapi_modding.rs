@@ -229,6 +229,9 @@ impl SideOps for crate::game::client_side::ClientState {
     ) -> Option<Arc<DatapackRegistrySet>> {
         game.client_level_datapack_set(level)
     }
+    fn side_received_registry_datapacks(&self) -> Option<Arc<DatapackRegistrySet>> {
+        self.remote.as_ref()?.datapacks.received().cloned()
+    }
     fn side_level_handle_current(game: &Self::Game<'_>, level: LevelRef) -> bool {
         game.client_level_handle_current(level)
     }

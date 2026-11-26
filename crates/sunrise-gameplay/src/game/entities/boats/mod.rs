@@ -984,7 +984,7 @@ pub(in crate::game) mod tests {
 
     use super::*;
     use sunrise_gameplay_common::game::boats_common::{
-        Status, powder_snow_stuck, registered_boat, saved_ticks_frozen,
+        powder_snow_stuck, registered_boat, saved_ticks_frozen,
     };
 
     #[test]

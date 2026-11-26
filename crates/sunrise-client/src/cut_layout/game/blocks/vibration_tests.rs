@@ -457,6 +457,3 @@ fn a_cauldron_use_posts_its_fluid_event_after_the_sound() {
     );
     assert_eq!(events, vec![change]);
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::tables::GameItems as _;

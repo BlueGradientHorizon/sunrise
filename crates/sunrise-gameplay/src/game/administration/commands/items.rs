@@ -883,8 +883,6 @@ pub(in crate::game) mod registered_slot_source_read_tests {}
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod registered_slot_source_preservation_tests {
-    use super::*;
-
     #[allow(unused_imports)]
 #[cfg(any())]
 pub(in crate::game) use crate::game::server_side::commands_server::items::registered_slot_source_preservation_tests::scene;

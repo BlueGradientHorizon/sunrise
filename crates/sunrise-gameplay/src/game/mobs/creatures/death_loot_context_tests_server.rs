@@ -379,9 +379,6 @@ fn death_loot_uses_call_scoped_source_and_hand() {
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
-
 pub(in crate::game) struct BlockTool(pub(in crate::game) mod_api::ItemStack);
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for BlockTool {

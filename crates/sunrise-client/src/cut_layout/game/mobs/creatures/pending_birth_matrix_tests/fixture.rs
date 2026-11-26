@@ -195,6 +195,3 @@ pub fn baby_entity_spawn(host: &mut dyn ServerHost, event: &mut BabyEntitySpawnE
     }
     Flow::Continue
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

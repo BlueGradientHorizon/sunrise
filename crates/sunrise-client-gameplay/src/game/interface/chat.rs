@@ -216,7 +216,7 @@ pub struct ChatDraft {
 }
 /// `ChatScreen.ExitReason`: why the chat screen went away.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(in crate::game) enum ChatExit {
+pub enum ChatExit {
     /// Another screen replaced it (death, a container, a disconnect).
     Interrupted,
     /// The player closed it (Escape).

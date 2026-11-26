@@ -1213,7 +1213,13 @@ pub(super) fn emit<'a>(
                         .iter()
                         .chain(output.as_ref())
                         .zip(values)
-                        .map(|((arg, _), value)| format!("{arg}: {value}"))
+                        .map(|((arg, _), value)| {
+                            if *arg == value {
+                                value
+                            } else {
+                                format!("{arg}: {value}")
+                            }
+                        })
                         .collect::<Vec<_>>()
                         .join(", ");
                     passed.push(format!("mod_api::__private::{carrier} {{ {fields} }}"));

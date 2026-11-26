@@ -2137,7 +2137,7 @@ mod flight_pose_tests {
                     mob.extra.using_item = i32::from(using);
                     mob.extra.crouching = crouching;
                     let state = state(&mob, 0.5);
-                    let observed = state.clone().observed(&mob, Some(&observer));
+                    let observed = state.observed(&mob, Some(&observer));
                     for _ in 0..2 {
                         let before = observer.0.get();
                         let mut poses = make();

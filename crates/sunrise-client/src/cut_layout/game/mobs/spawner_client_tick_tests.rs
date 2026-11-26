@@ -961,6 +961,3 @@ fn a_campfires_smoke_joins_the_engine_in_the_tick_that_made_it() {
         );
     });
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::tables::GameItems as _;

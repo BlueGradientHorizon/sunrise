@@ -1,5 +1,3 @@
-#[cfg(test)]
-use super::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use sunrise_core::geometry::Vec3;
@@ -276,7 +274,6 @@ pub(crate) fn run_a_moved_thrown_item_projectile_saves_its_loaded_item() {
         }
         assert!(confirmed_moved > 0, "at least one projectile must move");
 
-        let keys = [key].into_iter().collect();
         let (records, refused) = game.unloading_entity_snapshots(&keys);
         assert!(refused.is_empty());
         game.server.save.0.save_entities(records).unwrap();

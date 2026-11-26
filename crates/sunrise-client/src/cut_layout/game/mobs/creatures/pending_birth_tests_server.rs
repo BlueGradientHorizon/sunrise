@@ -4,7 +4,6 @@ pub(crate) use crate::game::creatures::pending_birth_tests::SEED;
 pub(crate) use crate::game::creatures::pending_birth_tests::YAWS;
 use crate::game::creatures::pending_birth_tests::animals_bred;
 pub(crate) use crate::game::creatures::pending_birth_tests::find;
-pub(crate) use crate::game::creatures::pending_birth_tests::near;
 use crate::game::creatures::pending_birth_tests::spawned;
 use crate::game::creatures::pending_birth_tests::spec;
 use crate::game::creatures::pending_birth_tests::with_baby;
@@ -13,22 +12,11 @@ use crate::game::creatures::pending_birth_tests::{
     assert_vanilla_children, breed_pair, fixture_resident_column,
 };
 use crate::game::creatures::pending_birth_tests::{with_split, with_splits};
-use mod_api::{
-    __private::{HookPanicReport, take_hook_panics},
-    BlockState, BlockUpdateFlags, Flow, HostBlockStates, UnspawnedMobError,
-};
-use std::sync::{
-    Arc, Mutex,
-    atomic::{AtomicUsize, Ordering},
-};
+use mod_api::Flow;
+use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
 use sunrise_core::random::RandomSource;
-use sunrise_level::chunk::Chunk;
-use sunrise_sim::mobs::Mob;
-use {
-    sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases,
-    sunrise_gameplay::game::native_entity_refs::tests::with_game,
-};
+use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 
 #[cfg(any())]
 #[test]
@@ -403,6 +391,3 @@ fn size_four_slime_and_magma_split_three_children_and_draw_the_vanilla_yaws() {
         );
     }
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

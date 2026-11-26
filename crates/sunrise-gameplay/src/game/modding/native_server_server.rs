@@ -1,4 +1,4 @@
-use super::{Dim, commands::execute, respawn_anchor::RespawnConfig};
+use super::{Dim, respawn_anchor::RespawnConfig};
 use mod_api::__private::game::*;
 use mod_api::LevelRef;
 use mod_api::{
@@ -1919,19 +1919,6 @@ impl crate::game::ServerGame<'_> {
         Ok(self.native_invocation(context.literals, arguments))
     }
 
-    pub(in crate::game) fn native_online_mode(&self) -> Option<bool> {
-        Some(online_mode_of(&self.dedicated_lan()?.shared.config))
-    }
-
-    pub(in crate::game) fn native_server_port(&self) -> Option<u16> {
-        Some(self.dedicated_lan()?.port)
-    }
-
-    pub(in crate::game) fn dedicated_lan(&self) -> Option<&sunrise_sim::lan::Lan> {
-        self.common.options.dedicated.as_ref()?;
-        Some(&self.server.lan.as_ref()?.hub.lan)
-    }
-
     pub(in crate::game) fn server_crafting_remainder_hook(
         &self,
         stack: &ItemStack,
@@ -2033,6 +2020,22 @@ impl crate::game::ServerGame<'_> {
         pos: [i32; 3],
     ) -> Option<bool> {
         self.level_is_raining_at(level, pos)
+    }
+}
+
+#[expect(dead_code, reason = "dedicated settings stay engine-private")]
+impl crate::game::ServerGame<'_> {
+    pub(in crate::game) fn native_online_mode(&self) -> Option<bool> {
+        Some(online_mode_of(&self.dedicated_lan()?.shared.config))
+    }
+
+    pub(in crate::game) fn native_server_port(&self) -> Option<u16> {
+        Some(self.dedicated_lan()?.port)
+    }
+
+    fn dedicated_lan(&self) -> Option<&sunrise_sim::lan::Lan> {
+        self.common.options.dedicated.as_ref()?;
+        Some(&self.server.lan.as_ref()?.hub.lan)
     }
 }
 
@@ -2151,31 +2154,14 @@ use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
-
 #[cfg(test)]
 pub(in crate::game) mod fake_action_tests {
-    #[cfg(test)]
-    use sunrise_gameplay_common::game::api_values::test_snapshot;
-
-    #[cfg(test)]
-    use super::super::respawn_anchor::RespawnConfig;
-    use super::{Acting, ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
+    use super::{ActionOutcome, PlayerAction};
     use crate::game::native_server::fake_action_tests::fake;
     use crate::game::native_server::fake_action_tests::health;
-    #[cfg(test)]
-    use crate::game::native_server::fake_action_tests::held;
-    #[cfg(test)]
-    use crate::game::native_server::fake_action_tests::place;
     use crate::game::native_server::fake_action_tests::zombie;
-    #[cfg(test)]
-    use mod_api::{BlockHit, Hand};
     use sunrise_gameplay_common::game::native_server::fake_action_tests::AttackWatcher;
     use sunrise_gameplay_common::game::native_server::fake_action_tests::ChargeWatcher;
-    #[cfg(test)]
-    use sunrise_gameplay_common::game::native_server::fake_action_tests::on_top;
-    #[cfg(test)]
-    use sunrise_gameplay_common::game::stations_common::{Kind, Station};
     use sunrise_items::items::ItemStack;
 
     /// `attack_entity` runs at `Player.attack`'s start, before the blow and the

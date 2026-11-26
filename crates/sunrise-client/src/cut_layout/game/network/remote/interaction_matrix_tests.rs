@@ -15,7 +15,7 @@ impl Hooks for Native {
 }
 
 #[derive(Debug)]
-pub(in crate::game) struct Case {
+pub(crate) struct Case {
     pub(in crate::game) controls: [u8; 6],
     pub(in crate::game) held: bool,
     pub(in crate::game) other_held: bool,

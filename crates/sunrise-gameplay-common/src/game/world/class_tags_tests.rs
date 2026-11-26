@@ -130,6 +130,3 @@ fn class_tags_dispatch_and_failed_preparation_preserve_installed_snapshot() {
         assert_eq!(calls.load(Ordering::SeqCst), 0);
     });
 }
-
-#[cfg(test)]
-use crate::game::tables::WorldTablesExt as _;

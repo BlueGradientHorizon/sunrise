@@ -50,7 +50,7 @@ impl BoundProjectiles {
 }
 
 #[derive(Clone, Default)]
-pub(in crate::game) struct Observed {
+pub(crate) struct Observed {
     pub(in crate::game) impacts: Vec<u32>,
     pub(in crate::game) spawned: bool,
     pub(in crate::game) buffered: bool,
@@ -751,7 +751,7 @@ fn a_subscriber_enabled_by_a_section_callback_hears_the_flights_after_it() {
 }
 
 #[derive(Default)]
-pub(in crate::game) struct WindContinuationObserved {
+pub(crate) struct WindContinuationObserved {
     pub(in crate::game) launches: Mutex<Vec<u32>>,
     pub(in crate::game) alone_ticks: Mutex<Vec<u32>>,
     pub(in crate::game) buffered: Mutex<bool>,

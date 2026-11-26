@@ -1,5 +1,8 @@
 use super::*;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ShearDispatchRefused;
+
 /// The hook points. Each does nothing in Sunrise.
 pub trait GameHooks<'g>: crate::game::SideGame<'g> {
     /// `IShearable.onSheared` on the single entity part at `part_slot` whose `is_shearable`
@@ -12,7 +15,7 @@ pub trait GameHooks<'g>: crate::game::SideGame<'g> {
         drops: &mut Vec<mod_api::ItemStack>,
         part_slot: (usize, usize),
         entity_kind: &str,
-    ) -> Result<(), ()> {
+    ) -> Result<(), ShearDispatchRefused> {
         mod_api::dispatch_on_sheared(
             crate::game::execution_role::host_side(self),
             entity,
@@ -22,6 +25,7 @@ pub trait GameHooks<'g>: crate::game::SideGame<'g> {
             part_slot,
             entity_kind,
         )
+        .map_err(|()| ShearDispatchRefused)
     }
 }
 

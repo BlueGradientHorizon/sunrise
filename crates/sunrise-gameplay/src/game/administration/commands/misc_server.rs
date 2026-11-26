@@ -220,5 +220,3 @@ impl crate::game::ServerGame<'_> {
         Ok(receivers.len() as i32)
     }
 }
-
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

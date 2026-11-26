@@ -5,7 +5,6 @@ use sunrise_gameplay_common::game::native_hooks::{
     ModGameExt1 as _, SharedGameExt1 as _, StaleBlockClick,
 };
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 use sunrise_items::items::ItemStack;
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::first_person_sim::Hand;

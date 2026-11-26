@@ -345,9 +345,3 @@ fn an_item_use_opens_the_players_own_ender_chest_and_its_clicks_keep_every_stack
         });
     });
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_give_stack::NativeGiveStackGameExt1 as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

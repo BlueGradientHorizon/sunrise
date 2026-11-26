@@ -148,6 +148,3 @@ fn installed_native_listener_intercepts_ai_setter_and_preserves_species_effects(
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

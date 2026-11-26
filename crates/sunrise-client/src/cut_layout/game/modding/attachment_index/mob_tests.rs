@@ -423,7 +423,3 @@ fn mob_inner_first_binding_commit_outer_abort_invalidates_retained_row() {
         );
     });
 }
-
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -215,6 +215,3 @@ fn outside_the_border_a_cauldron_keeps_its_level_but_the_fire_goes_out() {
         .count();
     assert_eq!(server_hiss, 1, "the hiss still plays");
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::tables::GameItems as _;

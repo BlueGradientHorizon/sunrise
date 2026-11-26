@@ -369,15 +369,7 @@ use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 #[cfg(test)]
 mod tests {
-    #[cfg(test)]
-    use super::super::native_entity_refs::tests::with_game;
     use super::*;
-    #[cfg(test)]
-    use mod_api::prelude::ScoreboardServerHost;
-    use {
-        crate::game::server_side::native_scoreboard::tests::open_lan,
-        sunrise_gameplay_common::game::server_side::native_scoreboard::tests::guest,
-    };
 
     /// The API's visibility and rule names are the board's.
     #[test]
@@ -410,6 +402,11 @@ mod tests {
     #[ignore = "daily"]
     #[cfg(any())]
     fn teams_are_written_joined_synced_saved_and_stale_once_removed() {
+        use super::super::native_entity_refs::tests::with_game;
+        use crate::game::server_side::native_scoreboard::tests::open_lan;
+        use mod_api::prelude::ScoreboardServerHost;
+        use sunrise_gameplay_common::game::server_side::native_scoreboard::tests::guest;
+
         with_game(|game| {
             let saved_board = open_lan(game);
             game.server

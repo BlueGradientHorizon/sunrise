@@ -966,8 +966,6 @@ use sunrise_gameplay_common::game::menu_clicks::MenuClicksGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_hooks::item_smelted::GameHooks as _;
-
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
 
 use sunrise_gameplay_common::game::stations_common::StationsCommonGameExt1 as _;

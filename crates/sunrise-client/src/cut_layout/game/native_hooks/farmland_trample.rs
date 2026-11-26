@@ -2,9 +2,6 @@
 use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
 
 #[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-#[cfg(test)]
 pub(crate) mod tests {
     use crate::game::native_hooks::farmland_trample::*;
     use mod_api::*;
@@ -29,7 +26,7 @@ pub(crate) mod tests {
     pub(crate) const WALKING: Body = Body::Guest { sneaking: false };
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-    pub(in crate::game) enum Choice {
+    pub(crate) enum Choice {
         Absent,
         Allow,
         Trap,
@@ -42,14 +39,14 @@ pub(crate) mod tests {
     }
 
     #[derive(Clone, Copy)]
-    pub(in crate::game) enum Body {
+    pub(crate) enum Body {
         Guest { sneaking: bool },
         Pig,
         Cat { crouching: bool },
     }
 
     #[derive(Debug, PartialEq)]
-    pub(in crate::game) enum Moment {
+    pub(crate) enum Moment {
         Hook { y: f64, health: f32 },
         CropRemoved(mod_api::BlockState),
         Lift(u32, f64, Option<mod_api::BlockState>),

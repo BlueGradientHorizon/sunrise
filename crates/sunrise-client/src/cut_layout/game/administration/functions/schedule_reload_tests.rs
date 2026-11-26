@@ -3,8 +3,6 @@
 //! drop the event from the queue, and a reload only replaces the function
 //! library, so neither a fired nor a cleared event may come back. A pending
 //! one is still read from the world's saved file when the world is opened.
-#[cfg(test)]
-use super::*;
 use sunrise_gameplay::game::commands::execute::ExecState;
 
 /// A server game whose world is a fresh folder with one pack holding

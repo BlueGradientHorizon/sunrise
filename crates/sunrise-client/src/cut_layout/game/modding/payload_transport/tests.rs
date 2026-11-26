@@ -573,6 +573,3 @@ impl sunrise_client::net::PacketRecorder for WireReceipt {
         Ok(Default::default())
     }
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

@@ -1,5 +1,3 @@
-#[cfg(test)]
-use crate::game::*;
 use std::sync::{
     Arc,
     atomic::{AtomicUsize, Ordering},

@@ -4,9 +4,6 @@ use sunrise_sim::mobs::Mob;
 use sunrise_sim::mobs::finalize;
 
 #[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-#[cfg(test)]
 mod tests {
     use super::*;
     use std::sync::{Arc, Mutex};

@@ -174,6 +174,3 @@ fn bound_boat_client_case(tick: impl Fn(&mut sunrise_client_gameplay::game::Clie
         assert_eq!(after[0].entry.read(&VALUE), Ok(&20));
     });
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

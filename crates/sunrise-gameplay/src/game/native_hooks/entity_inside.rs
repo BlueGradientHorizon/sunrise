@@ -1,9 +1,5 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod sweep_tests {
-
-    #[cfg(test)]
-    use super::*;
-
     /// The game's player sweeps its move through two stone blocks, over the game's
     /// own world and assets, through the production `BLOCK_CONTACT_HOOKS` fire.
     /// Returns the player's velocity x before and after, and whether it died.

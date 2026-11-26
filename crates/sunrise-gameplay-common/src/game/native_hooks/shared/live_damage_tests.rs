@@ -633,6 +633,3 @@ fn production_crash_hook_contains_reduction_panics_on_server_thread() {
     assert_eq!(payload_drops.load(Ordering::Relaxed), 1);
     assert_eq!(panic_runs.load(Ordering::Relaxed), 1);
 }
-
-#[cfg(test)]
-use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

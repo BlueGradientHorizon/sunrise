@@ -7,7 +7,7 @@ use sunrise_gameplay_common::game::creatures::{ModGameExt1 as _, seen};
 use sunrise_gameplay_common::game::native_entity_refs_common::{
     NativeEntityRefsCommonGameExt1 as _, NativeEntityRefsCommonGameExt5 as _,
 };
-use sunrise_gameplay_common::game::native_server::{Acting, NativeServerGameExt1 as _};
+use sunrise_gameplay_common::game::native_server::Acting;
 use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_sim::mobs::{self, MobEvent, Who, goals::Cx};
 

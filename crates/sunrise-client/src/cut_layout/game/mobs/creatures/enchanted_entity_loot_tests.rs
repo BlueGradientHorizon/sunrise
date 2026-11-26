@@ -5,7 +5,7 @@ use sunrise_sim::mobs::Damage;
 
 /// What the mod read through its handles, of one question.
 #[derive(Debug, PartialEq)]
-pub(in crate::game) struct Heard {
+pub(crate) struct Heard {
     pub entity: Option<String>,
     pub attacker: Option<String>,
     pub(in crate::game) damage_type: String,
@@ -112,9 +112,3 @@ fn an_answer_of_the_same_level_leaves_the_drops_alone() {
     assert_eq!(deaths(listening), deaths(Vec::new().into()));
     assert_eq!(seen.lock().unwrap().len(), 8);
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

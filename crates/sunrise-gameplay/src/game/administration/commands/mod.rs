@@ -38,10 +38,7 @@ use sunrise_command::{
     vanilla::DIFFICULTIES,
 };
 use sunrise_core::{java_number::float_to_string, random::RandomSource};
-use sunrise_game_data::{
-    gamerules::{self, Value},
-    text::Text,
-};
+use sunrise_game_data::gamerules::{self, Value};
 use sunrise_gameplay_common::game::api_values::block_edit::block_predicate_matches_state;
 use sunrise_protocol::packets::play::{self, Clientbound as C};
 use sunrise_world::registry::BlockStateId;

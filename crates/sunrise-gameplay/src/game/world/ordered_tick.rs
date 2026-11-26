@@ -586,12 +586,6 @@ use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
 #[cfg(test)]
 mod tests {
     use super::first_join;
-    #[cfg(test)]
-    use std::sync::Arc;
-    #[cfg(test)]
-    use sunrise_core::position::ChunkPos;
-    #[cfg(test)]
-    use sunrise_level::chunk::Chunk;
     use sunrise_sim::join_seq::{JoinList, JoinSeq, Joined as _};
 
     #[test]

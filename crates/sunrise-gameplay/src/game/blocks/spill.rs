@@ -323,8 +323,6 @@ mod tests {
     use super::*;
     use sunrise_core::random::RandomSource;
     use sunrise_gameplay_common::game::spill_common::BlockDropEntity;
-    #[cfg(test)]
-    use sunrise_world::level::removal;
 
     #[test]
     #[ignore = "daily"]
@@ -391,8 +389,6 @@ mod tests {
 
     use sunrise_core::nbt::Tag;
     use sunrise_items::item_data;
-    #[cfg(test)]
-    use sunrise_sim::{block_entity_item, mobs::raider, save};
 
     #[test]
     fn a_used_run_is_retold_in_place() {
@@ -483,6 +479,8 @@ mod tests {
     #[test]
     #[cfg(any())]
     fn ominous_banner_survives_placement_save_and_drop() {
+        use sunrise_sim::{block_entity_item, mobs::raider, save};
+
         let original = raider::ominous_banner();
         let Tag::Compound(components) = item_data::component_snapshot(&original).unwrap() else {
             panic!("banner components");

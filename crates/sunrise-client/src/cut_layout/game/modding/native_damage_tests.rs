@@ -9,8 +9,6 @@ use mod_api::{
 use std::sync::{Arc, Mutex};
 use sunrise_command::args::GameMode;
 use sunrise_core::geometry::Vec3;
-#[cfg(test)]
-use sunrise_core::random::RandomSource;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::mobs::{Damage, DamageKind, Mob};
 use sunrise_sim::motion::PlayerMotion;
@@ -330,6 +328,8 @@ fn pre_fires_for_a_hit_its_reductions_took_to_zero() {
 #[ignore = "daily"]
 #[cfg(any())]
 fn pre_draws_from_the_level_random_of_the_hit() {
+    use sunrise_core::random::RandomSource as _;
+
     heard(|game| {
         let mut expected = game.world.random.clone();
         expected.next_int();

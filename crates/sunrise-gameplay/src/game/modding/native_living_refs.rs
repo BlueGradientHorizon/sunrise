@@ -1362,6 +1362,7 @@ pub mod tests {
     pub fn hurt_pig(game: &mut crate::game::ServerGame<'_>) -> (u32, u32) {
         use std::sync::Arc;
         use sunrise_gameplay_common::game::Dim;
+        use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
         game.server.world_root = game.server.save.0.root.clone();
         game.enter_level(Dim::Nether).unwrap();
         game.world
@@ -1459,8 +1460,6 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 use sunrise_gameplay_common::game::block_props::BlockPropsGameExt2 as _;
-
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

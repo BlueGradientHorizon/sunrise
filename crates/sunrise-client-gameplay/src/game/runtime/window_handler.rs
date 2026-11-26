@@ -656,8 +656,6 @@ fn track_window_state(
 #[cfg(all(test, feature = "client"))]
 mod tests {
     use super::*;
-    #[cfg(test)]
-    use crate::game::client_side::launch_options_client::{is_client_start, time_limit};
     use input_trace::InputOrigin;
     use winit::dpi::{PhysicalPosition, PhysicalSize};
     use winit::event::{Ime, Modifiers, TouchPhase};

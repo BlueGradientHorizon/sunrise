@@ -1,6 +1,5 @@
 use super::{stock_layer_mask::StockLayerMask, *};
 use sunrise_client::mobs::render;
-use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_sim::mobs::anim;
 
 impl render::RenderDataSource for crate::game::ClientGame<'_> {

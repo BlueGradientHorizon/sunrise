@@ -565,12 +565,9 @@ pub mod tests {
     use sunrise_gameplay_common::game::native_entity_state_common::{
         eye_fluid, max_air, visit_touched_fluids,
     };
-    use sunrise_sim::motion::PlayerMotion;
     #[cfg(test)]
-    use sunrise_sim::{
-        mobs::{Mob, Species},
-        thrown_trident::ThrownTrident,
-    };
+    use sunrise_sim::mobs::{Mob, Species};
+    use sunrise_sim::motion::PlayerMotion;
 
     #[cfg(test)]
     /// The reads' order: highest first, water before lava in a tie, an untouched fluid left

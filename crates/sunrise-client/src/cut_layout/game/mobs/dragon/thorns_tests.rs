@@ -1,6 +1,4 @@
 //! Exercise the server's attack entry points with real enchantment data.
-#[cfg(test)]
-use crate::game::*;
 use sunrise_gameplay_common::game::{Arc, ItemStack, Vec3};
 use sunrise_sim::{
     mobs::{Damage, Mob, MobEvent, Who, finalize as f},

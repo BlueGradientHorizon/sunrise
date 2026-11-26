@@ -32,13 +32,9 @@ use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 pub(in crate::game) mod tests {
 
     use mod_api::{self, BonemealEvent, BonemealSource, Flow, Hooks, HostSide};
-    #[cfg(test)]
-    use std::sync::Arc;
     use std::sync::{Mutex, MutexGuard, PoisonError};
-    use sunrise_core::{geometry::Direction, position::BlockPos};
-    use sunrise_gameplay_common::game::growth_features::{
-        build_live_features, install_live_features,
-    };
+    use sunrise_core::position::BlockPos;
+    use sunrise_gameplay_common::game::growth_features::build_live_features;
     use sunrise_items::items::ItemStack;
 
     /// Sets the stack's count to `count`, then cancels with `successful`.

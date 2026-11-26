@@ -1882,19 +1882,6 @@ impl crate::game::ClientGame<'_> {
             .collect()
     }
 
-    // ---- ghost recipe ----
-
-    /// `fillGhostRecipe`: the recipe's ingredients faded into the slots.
-    pub(in crate::game) fn fill_ghost(&mut self, book_type: BookType, entry: &Entry) {
-        let grid = self.common.craft_size;
-        let fuel_empty = self.slot_mut(301).is_none();
-        let Some(book) = self.client.recipe_ui.0.book.as_ref() else {
-            return;
-        };
-        let slots = book.ghost(entry, book_type, grid, fuel_empty, self.items());
-        self.client.recipe_ui.0.ghost = map_ghost_slots(book_type, slots);
-    }
-
     // ---- drawing ----
 
     /// The book button, ghost recipe and open book, returning its deferred tooltip.

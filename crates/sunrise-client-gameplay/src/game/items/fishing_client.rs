@@ -89,8 +89,8 @@ impl crate::game::ClientGame<'_> {
             })
             .collect()
     }
-    /// The local player's fishing hook: its position and whether a fish is biting
-    /// (`nibble > 0`, the server's DATA_BITING). None when no hook is out.
+    /// The local hook's position and whether a fish is biting (`nibble > 0`).
+    #[cfg(feature = "client")]
     pub(in crate::game) fn local_fishing_hook(&self) -> Option<(Vec3, bool)> {
         let hook = self.common.hook.as_ref()?;
         Some((hook.position, hook.nibble > 0))

@@ -2,7 +2,7 @@
 //! `Level.sendBlockUpdated` to `block_entity_sync`, on a real mod container. The fixture
 //! installs the process's block-entity type table, so the test runs in a fresh process.
 use crate::{game::load_resources, settings::Settings};
-use mod_api::{BlockEntityRef, ServerHost};
+use mod_api::BlockEntityRef;
 use std::{path::PathBuf, sync::Arc};
 use sunrise_core::nbt::Tag;
 use sunrise_game_data::block_entity_types::{BlockEntityTypes, install};

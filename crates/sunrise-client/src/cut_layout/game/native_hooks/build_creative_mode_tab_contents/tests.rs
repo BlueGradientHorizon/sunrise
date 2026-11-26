@@ -18,7 +18,7 @@ use {
 };
 
 #[derive(Default)]
-pub(in crate::game) struct Seen {
+pub(crate) struct Seen {
     pub(in crate::game) events: Vec<(LogicalSide, CreativeTabPermissions, String)>,
 }
 

@@ -30,5 +30,3 @@ impl crate::game::ServerGame<'_> {
         Some(&mut world.random)
     }
 }
-
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

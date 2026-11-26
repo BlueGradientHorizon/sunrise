@@ -1,5 +1,5 @@
 use super::*;
-use mod_api::{BlockEntityDataView, ModBlockEntity};
+use mod_api::BlockEntityDataView;
 
 #[inline(always)]
 pub(in crate::game) fn native_client_resources_reloaded(context: &dyn mod_api::ClientReloadHost) {

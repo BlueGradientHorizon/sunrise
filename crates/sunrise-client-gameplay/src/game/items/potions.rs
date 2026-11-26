@@ -9,16 +9,16 @@ use sunrise_client::{
     mesher::Vertex,
 };
 #[cfg(test)]
-use sunrise_core::{geometry::Aabb, nbt::Tag};
+use sunrise_core::geometry::Aabb;
 use sunrise_core::{geometry::Vec3, random::LegacyRandom};
 use sunrise_game_data::text::Text;
 use sunrise_gameplay_common::game::potions_common::{PotionState, ThrownPotion};
 use sunrise_items::items::ItemStack;
+#[cfg(test)]
+use sunrise_level::effects::EffectInstance;
 use sunrise_level::effects::PlayerEffects;
 #[cfg(test)]
-use sunrise_level::{brewing, effects::EffectInstance, particle_options::ParticleType};
-#[cfg(test)]
-use sunrise_sim::mobs::{Damage, NamedDamage, Who};
+use sunrise_sim::mobs::Who;
 
 /// The player (not one of `skip`, the thrower and who rides with them before
 /// it has left them) whose box, grown by `margin` (`ProjectileUtil.computeMargin`),
@@ -412,10 +412,6 @@ pub(in crate::game) mod tests {
     use super::super::sculk::darkness_blend_added;
     use super::*;
     use sunrise_client::screen_effects::nausea_blend_added;
-    #[cfg(test)]
-    use sunrise_gameplay_common::game::dragon_common::Breath;
-    #[cfg(test)]
-    use sunrise_gameplay_common::game::potions_common::{CloudSettings, PotionCloud};
 
     /// #5876: a potion thrown straight up from inside its thrower's box does
     /// not hit them while it climbs out, then hits them on the way down;

@@ -9,8 +9,6 @@ use std::collections::{HashMap, HashSet};
 use sunrise_game_data::text::Text;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_gameplay::game::server_side::persist::ChunkKey;
-#[cfg(test)]
-use sunrise_gameplay_common::game::general::Entity;
 use sunrise_gameplay_common::game::general::{
     GeneralEntityRecord, GeneralRow, GeneralTypeEnvelope, Tag, Target, Vec3, format, limits,
     nbt_size, record_from_compound,

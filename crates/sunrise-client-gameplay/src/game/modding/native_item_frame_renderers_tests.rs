@@ -509,6 +509,3 @@ fn a_failed_item_frame_renderer_falls_back_to_the_model_for_that_frame_only() {
         },
     );
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

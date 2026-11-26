@@ -5,9 +5,7 @@
 //! is here too: `hurtEnemy`, the post-attack enchantments and `postHurtEnemy`.
 use crate::game::ServerGame;
 use sunrise_core::geometry::{Aabb, Vec3};
-use sunrise_gameplay_common::game::mace_common::{
-    KNOCKBACK_RADIUS, can_smash, smash_damage, stack_smash_damage,
-};
+use sunrise_gameplay_common::game::mace_common::{KNOCKBACK_RADIUS, can_smash, smash_damage};
 use sunrise_items::{
     enchant::{EffectContext, Enchantments},
     items::{ItemStack, Items},

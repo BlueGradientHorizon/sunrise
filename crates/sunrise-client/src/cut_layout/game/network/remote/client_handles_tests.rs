@@ -183,7 +183,7 @@ fn client_handles_reach_a_custom_level() {
 #[test]
 #[ignore = "daily"]
 fn client_handle_reads_answer_from_the_clients_copy() {
-    use mod_api::{EntityReadError, EntityRef, EquipmentSlot, GlobalPos};
+    use mod_api::{EntityRef, EquipmentSlot, GlobalPos};
     use std::sync::Arc;
     use sunrise_core::geometry::Vec3;
     use sunrise_protocol::{
@@ -352,7 +352,8 @@ fn client_handle_reads_answer_from_the_clients_copy() {
                 vec![("minecraft:overworld".into(), None)],
             );
             Arc::new(registries)
-        });
+        })
+        .unwrap();
         game.handle_packet(C::SetTime(play::SetTime {
             game_time: 100,
             clocks: vec![play::ClockState {

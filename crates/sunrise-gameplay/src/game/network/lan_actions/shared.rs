@@ -1,3 +1,4 @@
+#[cfg(any(test, feature = "test-support"))]
 use sunrise_gameplay_common::game::Mining;
 
 #[cfg(any(test, feature = "test-support"))]

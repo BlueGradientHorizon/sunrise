@@ -327,7 +327,7 @@ pub(crate) mod tests {
     #[ignore = "daily"]
     fn built_in_levels_restore_saved_tickets_before_the_first_tick() {
         use mod_api::__private::game::{ticket_controller_id, ticket_controller_slot_by_id};
-        use mod_api::{Hooks, ModEntry, Registrar, RegistrationContext, ServerHost};
+        use mod_api::{Hooks, ModEntry, Registrar, RegistrationContext};
         use std::sync::atomic::{AtomicBool, Ordering};
         use sunrise_level::mod_chunk_tickets::{ModTicket, ModTickets, TicketOwner};
         use sunrise_sim::save::dimension_dir;

@@ -1,7 +1,5 @@
 //! Tests verifying that registered local coordinate commands preserve exact saved positions.
 
-#[cfg(test)]
-use crate::game::server_side::commands::*;
 use sunrise_core::nbt::Tag;
 use sunrise_core::position::BlockPos;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
@@ -204,6 +202,3 @@ fn h149_actual_registered_local_commands_preserve_exact_saved_positions() {
 }
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

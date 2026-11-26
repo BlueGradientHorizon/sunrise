@@ -583,6 +583,4 @@ use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 
-use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
-
 use sunrise_gameplay_common::game::native_hooks::block_entity_save_additional::BlockEntitySaveAdditionalGameExt1 as _;

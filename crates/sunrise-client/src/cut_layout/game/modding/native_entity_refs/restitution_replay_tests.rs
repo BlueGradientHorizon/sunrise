@@ -98,6 +98,3 @@ fn replayed_landing_reads_restitution_again_and_moves_identically() {
         });
     });
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::tables::GameItems as _;

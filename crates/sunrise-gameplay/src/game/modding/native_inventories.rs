@@ -38,5 +38,3 @@ impl crate::game::ServerGame<'_> {
         )
     }
 }
-
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

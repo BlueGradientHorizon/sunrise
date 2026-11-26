@@ -7,8 +7,6 @@ use mod_api::{
 };
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
-#[cfg(test)]
-use sunrise_core::random::RandomSource;
 use sunrise_sim::mobs::{Damage, DamageKind, Mob};
 
 #[derive(Default)]

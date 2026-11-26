@@ -13,7 +13,7 @@ use {
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(in crate::game) enum Family {
+pub(crate) enum Family {
     Damage,
     Shield,
     Totem,
@@ -42,12 +42,12 @@ impl Family {
 }
 
 #[derive(Debug)]
-pub(in crate::game) struct PanicToken(pub(in crate::game) u64);
+pub(crate) struct PanicToken(pub(in crate::game) u64);
 pub(crate) const LEVEL_SEED: i64 = 0x5eed;
 pub(crate) const FAILING_MOD: &str = "borrowed-panic";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(in crate::game) enum Proposal {
+pub(crate) enum Proposal {
     Cancelled(bool),
     Blocked(bool),
     Speed(f32),
@@ -55,7 +55,7 @@ pub(in crate::game) enum Proposal {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub(in crate::game) enum OutputNotice {
+pub(crate) enum OutputNotice {
     Guest(i32),
     Egg,
 }
@@ -378,7 +378,7 @@ impl Drop for Scratch {
     }
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(in crate::game) enum Output {
+pub(crate) enum Output {
     Quiet,
     Egg,
     Guest,
@@ -623,7 +623,7 @@ fn retained_reset() {
 }
 
 #[derive(Default)]
-pub(in crate::game) struct ConsumerProbe {
+pub(crate) struct ConsumerProbe {
     pub(in crate::game) calls: AtomicUsize,
     pub(in crate::game) eggs: Mutex<Vec<u32>>,
     pub(in crate::game) posts: Mutex<Vec<u32>>,
@@ -1030,9 +1030,3 @@ fn player_living_breathe_panic_rolls_back_transactional_writes() {
         .unwrap();
     });
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

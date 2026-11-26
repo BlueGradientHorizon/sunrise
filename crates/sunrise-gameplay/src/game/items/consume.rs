@@ -935,8 +935,7 @@ impl TeleportConsumeWorld for MobTeleporter<'_, '_> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod teleport_hook_tests {
-    use super::*;
-    use mod_api::{Flow, Hooks, ItemConsumptionTeleportEvent, ModEntry, ServerHost};
+    use mod_api::{Flow, Hooks, ItemConsumptionTeleportEvent, ServerHost};
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -974,6 +973,10 @@ pub mod teleport_hook_tests {
     #[cfg(test)]
     #[test]
     fn unregistered_consumed_stack_skips_the_snapshot() {
+        use super::consumed_snapshot;
+        use mod_api::ModEntry;
+        use sunrise_items::items::ItemStack;
+
         let heard = Arc::new(Mutex::new(Vec::new()));
         let mods = vec![ModEntry::new(
             "consumed-stack-proof",

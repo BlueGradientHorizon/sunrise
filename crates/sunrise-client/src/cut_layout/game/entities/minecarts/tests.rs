@@ -208,8 +208,6 @@ fn a_tnt_cart_detonates_only_when_a_collision_stops_a_moving_one() {
     assert!(!tnt_ignites_by_collision(true, 0.009), "a nudge");
     assert!(!tnt_ignites_by_collision(false, 0.36), "nothing in the way");
 }
-#[cfg(test)]
-use crate::game::minecarts::*;
 use sunrise_gameplay::game::server_side::minecarts_server::CartIndex;
 use sunrise_gameplay_common::game::minecarts::{
     BlockStateId, CartKind, Minecart, SEAT, Species, Vec3, can_ride_cart, cart_is_destroyed,

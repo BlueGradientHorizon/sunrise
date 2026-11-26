@@ -1,6 +1,5 @@
 use super::*;
 use crate::game::transactions::TransactionsGameExt as _;
-use mod_api::ModBlockEntity;
 
 fn qualified(id: &str) -> String {
     match id.split_once(':') {

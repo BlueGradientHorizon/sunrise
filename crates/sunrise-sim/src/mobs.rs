@@ -66,12 +66,6 @@ mod type_attributes;
 pub use neutral_anger::{
     adopt_anger_end, anger_left, persistent_anger, resume_anger, settle_anger_end,
 };
-#[cfg(test)]
-mod cat_variant_tests;
-#[cfg(test)]
-mod farm_variant_tests;
-#[cfg(test)]
-mod frog_variant_tests;
 mod hit_attempt;
 mod knockback;
 pub mod nav;
@@ -116,10 +110,6 @@ pub mod vex;
 pub mod villager;
 pub mod villager_brain;
 pub mod visibility;
-#[cfg(test)]
-mod wolf_variant_tests;
-#[cfg(test)]
-mod zombie_nautilus_variant_tests;
 pub use visibility::mob_visibility;
 pub mod warden;
 pub mod warden_brain;

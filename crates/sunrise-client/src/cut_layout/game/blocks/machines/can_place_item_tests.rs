@@ -1,5 +1,3 @@
-#[cfg(test)]
-use super::*;
 use mod_api::ItemResource;
 use mod_api::{
     BlockEntityPart, BlockPart, CanPlaceItemEvent, Hooks, ITEMS, ModEntry, Mods, Registrar,

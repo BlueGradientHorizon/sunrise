@@ -741,7 +741,6 @@ pub(in crate::game) struct WrappedServerInit {
     exec: server_side::ServerOnly<commands::execute::ExecState>,
 }
 
-use std::collections::HashMap;
 use sunrise_gameplay_common::game::spill_common;
 use sunrise_gameplay_common::game::{WorldTables, WrappedPrepInit};
 struct ConstructInit<const NO_SLOT: bool>;

@@ -1017,4 +1017,3 @@ use crate::game::native_hooks::block_use_item_on::GameHooks as _;
 use crate::game::native_hooks::block_use_without_item::GameHooks as _;
 use crate::game::native_hooks::stateful_block_entity::GameHooks as _;
 use crate::game::native_hooks::use_item_on_block::GameHooks as _;
-use crate::game::side_ops::modapi_hooks::ModapiHooksSideGameExt as _;

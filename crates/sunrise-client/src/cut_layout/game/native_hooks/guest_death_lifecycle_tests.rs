@@ -149,6 +149,3 @@ fn listener_healed_guest_stays_visible_through_player_tick_teleport() {
 }
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

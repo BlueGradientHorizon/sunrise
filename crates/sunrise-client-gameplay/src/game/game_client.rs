@@ -2648,7 +2648,7 @@ impl crate::game::ClientGame<'_> {
                 VanillaGuiLayer::SleepOverlay,
                 &mut batch,
                 &mut |g, batch| {
-                    let draws = hud_overlays::sleep_overlay(wi, hi, g.sleep_timer as i32);
+                    let draws = hud_overlays::sleep_overlay(wi, hi, g.sleep_timer);
                     hud_layout::paint(batch, &g.client.gui.atlas, &draws);
                 },
             );

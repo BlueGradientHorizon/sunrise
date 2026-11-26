@@ -331,8 +331,12 @@ fn plan(
     if package == GameplayPackage::Server {
         files.push((GOAL, crate::host::generate_gameplay_goal_view(areas)?));
     }
-    for (name, code) in &files {
-        syn::parse_file(code).map_err(|error| format!("{package:?}/{name}: {error}"))?;
+    for (name, code) in &mut files {
+        let parsed =
+            syn::parse_file(code).map_err(|error| format!("{package:?}/{name}: {error}"))?;
+        if *name == FIRE {
+            *code = prettyplease::unparse(&parsed);
+        }
     }
     Ok(files)
 }

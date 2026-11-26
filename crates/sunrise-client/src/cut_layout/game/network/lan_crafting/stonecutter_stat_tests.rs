@@ -2,8 +2,6 @@
 //! single-player window's clicks are a guest's, and the guest's statistics are
 //! the server's (`ServerPlayer.awardStat`).
 
-#[cfg(test)]
-use super::*;
 use sunrise_items::items::ItemStack;
 use sunrise_sim::menu::{Input, Kind, Menu};
 

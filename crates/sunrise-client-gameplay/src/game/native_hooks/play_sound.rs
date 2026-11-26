@@ -32,8 +32,6 @@ play_audio_forwards! {
     fn play_audio_on => play_on(source: usize, event: &str, at: Option<[f64; 3]>, volume: f32, pitch: f32);
     /// `Audio::play_on_seeded`.
     fn play_audio_on_seeded => play_on_seeded(source: usize, event: &str, at: Option<[f64; 3]>, volume: f32, pitch: f32, seed: i64);
-    /// `Audio::play_bound`.
-    fn play_audio_bound => play_bound(event: &str, source: usize, volume: f32, pitch: f32, entity: sunrise_client::sound_engine::SoundEntity, except_entity: Option<u32>);
     /// `Audio::play_entity_seeded`.
     fn play_audio_entity_seeded => play_entity_seeded(event: &str, source: usize, volume: f32, pitch: f32, seed: i64, entity: sunrise_client::sound_engine::SoundEntity);
     /// `Audio::play_button_click`.

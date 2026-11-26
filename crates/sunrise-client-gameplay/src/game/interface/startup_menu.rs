@@ -6,7 +6,6 @@ use crate::game::client_side::key_codes::glfw_modifiers;
 use crate::game::client_side::{
     key_focus::{self, Act},
     pack_discovery_client::{data_packs_with_icons, into_resource_pack, selection_with_icon},
-    resource_load_client::load_resources_for_mods,
 };
 use sunrise_client::{
     clipboard::{self, AppendSelection, SystemClipboard},

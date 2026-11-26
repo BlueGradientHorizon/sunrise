@@ -304,18 +304,9 @@ mod use_fixture_tests;
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[cfg(test)]
-    use super::super::native_entity_refs::tests::with_game;
     use super::Stuck;
     use super::observer_tests::tests::Uses;
     use mod_api::client::first_person::Hand;
-    use mod_api::{
-        EntityRef, Flow, Hooks, HostSide, Identifier, ItemPart, LivingEntityUseItemFinishEvent,
-        LivingEntityUseItemStartEvent, LivingEntityUseItemStopEvent, LivingEntityUseItemTickEvent,
-        LivingRef, OnUseTickEvent, Registrar, ReleaseUsingEvent, WorldEpoch,
-    };
-    #[cfg(test)]
-    use std::sync::{Arc, Mutex};
     use sunrise_core::geometry::Vec3;
     use sunrise_gameplay_common::game::{
         native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
@@ -323,8 +314,6 @@ pub(in crate::game) mod tests {
         player_identity::PlayerIdentityGameExt1 as _,
     };
     use sunrise_items::items::ItemStack;
-    #[cfg(test)]
-    use sunrise_sim::lan::waypoints::Icon;
     use sunrise_sim::mobs::Mob;
 
     #[allow(unused_imports)]

@@ -78,7 +78,7 @@ impl ServerGame<'_> {
 
     /// Reborrow the active server Host through the scoped editor to run the constructor now,
     /// not if and when the caller puts this detached mob in a slot or list.
-    pub(in crate::game::server_side) fn initialize_pending_child(
+    pub(in crate::game) fn initialize_pending_child(
         &mut self,
         child: UnspawnedMob,
         action: u64,

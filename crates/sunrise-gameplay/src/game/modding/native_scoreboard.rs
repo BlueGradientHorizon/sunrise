@@ -545,7 +545,7 @@ pub mod tests {
     #[cfg(test)]
     use super::*;
     #[cfg(test)]
-    use mod_api::{TeamColor, prelude::ScoreboardServerHost, text::TextStyle};
+    use mod_api::{TeamColor, text::TextStyle};
     use sunrise_sim::lan::{NetConfig, hub::HubConfig};
 
     #[cfg(test)]

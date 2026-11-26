@@ -18,10 +18,10 @@ use super::{
 };
 #[cfg(any())]
 use crate::game::client_side::integrated_client::Integrated;
-#[cfg(test)]
-use std::sync::Mutex;
 #[cfg(any(test, feature = "test-support"))]
 use std::sync::mpsc::channel;
+#[cfg(test)]
+use std::time::Duration;
 use std::{
     net::TcpListener,
     sync::{
@@ -29,7 +29,7 @@ use std::{
         atomic::Ordering,
         mpsc::{Receiver, Sender},
     },
-    time::{Duration, Instant},
+    time::Instant,
 };
 use sunrise_game_data::Result;
 #[cfg(test)]
@@ -1160,18 +1160,9 @@ pub mod tests {
     }
 }
 
-#[cfg(test)]
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
-#[cfg(test)]
-use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
-
 use sunrise_gameplay_common::game::mods::ModGameExt1 as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1 as _;
 

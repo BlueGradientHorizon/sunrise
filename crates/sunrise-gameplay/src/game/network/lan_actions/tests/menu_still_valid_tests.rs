@@ -410,6 +410,3 @@ fn a_blockless_mod_menu_closes_when_its_part_answers_false() {
         );
     });
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

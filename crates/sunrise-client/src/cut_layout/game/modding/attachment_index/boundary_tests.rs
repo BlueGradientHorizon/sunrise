@@ -1,5 +1,3 @@
-#[cfg(test)]
-use super::*;
 use mod_api::AttachmentHolder;
 use mod_api::{AttachmentDescriptor, AttachmentKey, AttachmentRowError, AttachmentWriteToken};
 use std::sync::Arc;
@@ -111,5 +109,3 @@ fn current_dimension_capture_and_foreign_residency_validation() {
         });
     });
 }
-
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;

@@ -14,7 +14,6 @@ pub(crate) mod tests {
     use sunrise_gameplay::game_tests::{Retry, TestError};
 
     pub use sunrise_gameplay::game::game_tests::tests::server_game;
-    pub use sunrise_gameplay_common::game::server_side::tnt::tests::on_big_stack;
 
     /// Puts the process-wide block namespaces back as it found them.
     pub(crate) struct Published(Option<Vec<String>>);
@@ -522,6 +521,3 @@ mod registered_game_test_tests {
     }
 }
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

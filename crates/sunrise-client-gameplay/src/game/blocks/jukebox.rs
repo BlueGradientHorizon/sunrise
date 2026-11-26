@@ -45,12 +45,13 @@ impl ClientGame<'_> {
         let Some((name, tag)) = registries.entry("minecraft:jukebox_song", data) else {
             return;
         };
-        let definition = match tag {
-            Some(tag) => Song::decode(&sunrise_game_data::scoreboard::tag_to_json(tag))
-                .inspect_err(|error| log::warn!("Sunrise: jukebox_song {name}: {error}"))
-                .ok(),
-            None => self.items().songs.get(name).cloned(),
+        let Some(tag) = tag else {
+            self.start_song(pos, name);
+            return;
         };
+        let definition = Song::decode(&sunrise_game_data::scoreboard::tag_to_json(tag))
+            .inspect_err(|error| log::warn!("Sunrise: jukebox_song {name}: {error}"))
+            .ok();
         self.play_song(pos, definition);
     }
 

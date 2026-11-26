@@ -679,12 +679,6 @@ impl VehicleMobs {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 #[cfg(test)]
-use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
-
-#[cfg(test)]
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 #[cfg(test)]

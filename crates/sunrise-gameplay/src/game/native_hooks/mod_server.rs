@@ -5,8 +5,6 @@ pub use sunrise_gameplay_common::game::native_hooks::mob_kind;
 pub use sunrise_gameplay_common::game::native_hooks::*;
 use sunrise_level::containers::ModBlockEntity as EngineBlockEntity;
 use sunrise_sim::block_contact::Pending;
-#[cfg(test)]
-use sunrise_sim::mobs::Damage;
 use sunrise_world::level::PlaceContext;
 use {
     sunrise_level::containers::ModContainer, sunrise_level::containers::ModEnergyBuffer,

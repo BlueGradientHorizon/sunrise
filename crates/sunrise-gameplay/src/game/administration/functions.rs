@@ -1871,8 +1871,6 @@ mod tests {
         });
         let _ = std::fs::remove_dir_all(root);
     }
-    #[cfg(test)]
-    use sunrise_gameplay_common::game::tables::GameItems as _;
 
     #[test]
     fn reload_failure_formats_nested_listener_error_source_chain() {
@@ -2453,6 +2451,7 @@ mod tests {
     #[cfg(any())]
     fn world_open_loads_functions_before_first_tick() {
         use crate::game::{native_entity_refs::tests::with_game, world_loading::WorldRequest};
+        use sunrise_gameplay_common::game::tables::GameItems as _;
 
         let root = std::env::current_dir()
             .unwrap()

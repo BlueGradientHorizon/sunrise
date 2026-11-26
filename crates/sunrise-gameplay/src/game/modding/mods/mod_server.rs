@@ -4,10 +4,6 @@ use mod_api::__private::game::*;
 #[allow(unused_imports)]
 use std::sync::Arc;
 use sunrise_gameplay_common::game::mods::ModsReload;
-#[cfg(test)]
-use sunrise_gameplay_common::game::mods::ModsState;
-#[cfg(test)]
-use sunrise_gameplay_common::game::mods::content_overlay;
 
 impl ServerGame<'_> {
     pub(in crate::game) fn begin_condition_reload(

@@ -68,7 +68,8 @@ impl crate::game::ServerGame<'_> {
         let shears_view = mod_api::ItemStackView::resident(metadata, &project);
         let boundary_items = self.stack_boundary_items();
         let mut drops = Vec::new();
-        self.native_on_sheared(entity, player, shears_view, &mut drops, part, &kind.id)?;
+        self.native_on_sheared(entity, player, shears_view, &mut drops, part, &kind.id)
+            .map_err(|_| ())?;
         // Invalid drops are skipped individually; the part's valid ones still fall.
         let accepted: Vec<ItemStack> = boundary_items.map_or_else(Vec::new, |items| {
             drops
@@ -186,8 +187,6 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
-
-use sunrise_gameplay_common::game::tables::GameItems as _;
 
 #[cfg(test)]
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;

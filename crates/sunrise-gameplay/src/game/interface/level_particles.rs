@@ -70,6 +70,7 @@ impl ServerGame<'_> {
         self.level_event_from(None, id, pos, data);
     }
 
+    #[cfg(test)]
     pub(in crate::game) fn level_event_at(&mut self, id: i32, pos: [i32; 3], data: i32) {
         self.server_level_event_at(id, pos, data);
     }

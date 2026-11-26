@@ -6,8 +6,6 @@ use crate::game::server_side::lan_actions_server::DisplacedPlayer;
 pub mod icons;
 use mod_api::{GameMode, ProgressType};
 use serde_json::Value;
-#[cfg(test)]
-use std::time::Instant;
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Arc,

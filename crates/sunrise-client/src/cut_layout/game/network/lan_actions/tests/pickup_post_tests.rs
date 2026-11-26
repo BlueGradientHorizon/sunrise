@@ -44,7 +44,7 @@ pub(in crate::game) struct State {
 pub(crate) type Notice = (u128, u32, Option<u32>);
 
 #[derive(Clone, Default)]
-pub(in crate::game) struct Probe(pub(in crate::game) Arc<Mutex<State>>);
+pub(crate) struct Probe(pub(in crate::game) Arc<Mutex<State>>);
 #[mod_api::__subscriptions]
 impl Hooks for Probe {
     fn item_picked_up(&self, host: &mut dyn ServerHost, event: &mut ItemPickedUpEvent<'_>) {

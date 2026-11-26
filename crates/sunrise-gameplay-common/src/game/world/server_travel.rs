@@ -1,7 +1,7 @@
 #[cfg(any(test, feature = "test-support"))]
 pub mod transfer_lifetime_tests {
 
-    use sunrise_mod_runtime::attachments::{AttachmentType, index::AttachmentIndex};
+    use sunrise_mod_runtime::attachments::AttachmentType;
 
     pub static VALUE: AttachmentType<i32> = AttachmentType {
         namespace: "test",

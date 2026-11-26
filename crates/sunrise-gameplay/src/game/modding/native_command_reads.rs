@@ -113,8 +113,6 @@ mod tests {
 
     use super::*;
     #[cfg(test)]
-    use sunrise_sim::advancements::{Criterion, Display, Rewards};
-
     #[test]
     fn a_loaded_advancement_crosses_with_its_parent_frame_icon_and_criteria() {
         sunrise_gameplay_common::game::api_values::install_parts(&[]).unwrap();

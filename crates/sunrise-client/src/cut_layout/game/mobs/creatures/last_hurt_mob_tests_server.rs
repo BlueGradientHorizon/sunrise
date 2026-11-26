@@ -221,6 +221,3 @@ fn last_hurt_mob_follows_the_attacking_entity() {
 use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

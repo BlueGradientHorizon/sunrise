@@ -2,7 +2,7 @@ use mod_api::{ClientHost, ClientPickEvent, CrosshairTarget, Hooks};
 use std::sync::{Arc, Mutex};
 
 #[derive(Default)]
-pub(in crate::game) struct Policy {
+pub(crate) struct Policy {
     pub(in crate::game) override_result: Option<Option<CrosshairTarget>>,
     pub(in crate::game) calls: usize,
 }

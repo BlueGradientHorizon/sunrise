@@ -31,8 +31,6 @@ use sunrise_gameplay_common::game::dragon_common::{
     BREATH_WAIT, Breath, Crystal, Dragon, FightWho, MAX_HEALTH, Path, PathBox, Phase, SPECIAL,
     breath_expired, dragon_part_id, wrap,
 };
-#[cfg(test)]
-use sunrise_protocol::entity_data::Value;
 use {
     crate::game::server_side::potions_server::mob_can_be_affected,
     sunrise_gameplay_common::game::potions_common::Victim,
@@ -4346,9 +4344,6 @@ use sunrise_gameplay_common::game::transactions::{
 };
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

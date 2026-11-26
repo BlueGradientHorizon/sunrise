@@ -12,7 +12,7 @@ use sunrise_sim::mobs::Mob;
 /// The `mob_despawn` facts a listener reads through its handle: its own
 /// position, and another mob's through a nested lookup.
 #[derive(Debug, Default)]
-pub(in crate::game) struct DespawnRecords(
+pub(crate) struct DespawnRecords(
     pub(in crate::game) Vec<(u32, Option<[f64; 3]>, Option<[f64; 3]>)>,
 );
 
@@ -215,7 +215,7 @@ fn entity_tick_pre_reads_and_moves_the_ticking_mob() {
 /// Observations made by the actual scoped despawn hook, not by the spawn
 /// fixture or a replacement host.
 #[derive(Debug, PartialEq)]
-pub(in crate::game) struct PassObservation {
+pub(crate) struct PassObservation {
     pub(in crate::game) actor: u32,
     pub(in crate::game) peer_velocity: Option<[f64; 3]>,
     pub(in crate::game) spawned_position: Option<[f64; 3]>,

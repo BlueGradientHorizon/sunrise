@@ -6,7 +6,7 @@ use crate::game::ServerGame;
 use std::sync::Arc;
 use sunrise_core::{nbt::Tag, position::ChunkPos};
 use sunrise_gameplay_common::game::{
-    GameGameExt1 as _, chat_common::ChatCommonGameExt1 as _,
+    chat_common::ChatCommonGameExt1 as _,
     native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _,
 };
 use sunrise_level::chunk::Chunk;

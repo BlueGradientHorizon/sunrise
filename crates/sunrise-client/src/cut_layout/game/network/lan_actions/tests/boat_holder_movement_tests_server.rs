@@ -1,5 +1,3 @@
-#[cfg(test)]
-use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_core::position::ChunkPos;
 use sunrise_items::items::ItemStack;

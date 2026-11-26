@@ -490,8 +490,6 @@ fn parts_answer_the_abilities_at_every_site_isolated() {
     });
 }
 
-use sunrise_gameplay_common::game::GameGameExt1 as _;
-
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
 use sunrise_gameplay_common::game::tool_modification::ToolModificationGameExt1 as _;

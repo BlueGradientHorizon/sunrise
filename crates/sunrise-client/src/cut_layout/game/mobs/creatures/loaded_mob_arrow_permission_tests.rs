@@ -187,6 +187,3 @@ fn loaded_mob_arrow_predicate_survives_model_and_controls_actual_block_hit() {
 }
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

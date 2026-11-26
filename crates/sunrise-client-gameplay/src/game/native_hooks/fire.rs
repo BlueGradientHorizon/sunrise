@@ -4,14 +4,11 @@ use mod_api::{
     ClientMiningPrediction, ClientPacket, ClientReloadListeners, ColoredLight,
     EmissiveSpriteRegistration, EntityLayers, EntityRef, FrameModel, FrameModelEdit, GameMode,
     GuiCanvas, GuiLayerRegistrar, HandDrawContext, HandRender, Identifier, InteractionAttempt,
-    InteractionKey, LevelRef, ModBlockEntity, NameTagLine, PanelEvent, PlayerRef, RandomSource,
-    ScreenOpening, ScreenView, ScreenWidgets, ScreenshotImage, SoundPlay, TooltipElement, TriState,
+    InteractionKey, LevelRef, NameTagLine, PanelEvent, PlayerRef, RandomSource, ScreenOpening,
+    ScreenView, ScreenWidgets, ScreenshotImage, SoundPlay, TooltipElement, TriState,
 };
 use std::time::Duration;
-use sunrise_client::{
-    extras_hud::Corners,
-    music::{Music, MusicLayer},
-};
+use sunrise_client::music::{Music, MusicLayer};
 use sunrise_core::{geometry::Direction, position::BlockPos};
 use sunrise_game_data::text::Text;
 use sunrise_items::items::ItemStack;

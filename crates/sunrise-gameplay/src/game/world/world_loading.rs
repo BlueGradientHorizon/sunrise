@@ -8,7 +8,7 @@ use sunrise_sim::vanillagen::{TerrainResources, shared_biome_source_data, shared
 use sunrise_world::worldgen::{
     biome_source::{BiomeSourceError, ResolvedBiomeSource},
     generator::data::{BiomeSourceData, GeneratorData},
-    mod_generators::{ModChunkGenerator, ModChunkGenerators, mod_chunk_generators},
+    mod_generators::{ModChunkGenerator, ModChunkGenerators},
 };
 
 pub struct WorldRequest {

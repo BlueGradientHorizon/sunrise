@@ -1711,8 +1711,7 @@ impl crate::game::ServerGame<'_> {
                 let _span = sunrise_level::spans::guard("late_portal_arrivals");
                 let mut moved = false;
                 for &earlier in &order[..k] {
-                    if !self.arrival_chunks(earlier).is_empty() && self.enter_level(earlier).is_ok()
-                    {
+                    if self.has_portal_arrivals(earlier) && self.enter_level(earlier).is_ok() {
                         self.land_portal_arrivals();
                         moved = true;
                     }
@@ -1945,7 +1944,7 @@ impl crate::game::ServerGame<'_> {
             || self.server.game_tests.0.has_tests_in(dim)
             || self.pregen_level() == Some(dim)
             // An arrival or its portal ticket keeps the destination level active.
-            || !self.arrival_chunks(dim).is_empty()
+            || self.has_portal_arrivals(dim)
             || self.server.server_trips.iter().any(|trip| trip.spawn_destination_areas(dim).next().is_some())
             || !self.portal_tickets_in(dim).is_empty()
             // A viewed `Ticking` area (#3716), for its chunks only.
@@ -2260,7 +2259,7 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-/// The steps a slow tick noted as its slowest (`spans::note`), whose packets or which player's event.
+#[cfg(test)]
 fn dim_fallback_key(dim: Dim) -> (u8, &'static str) {
     match dim {
         Dim::Overworld => (0, ""),
@@ -2481,8 +2480,6 @@ use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::clocks::ClocksGameExt1 as _;
 
-use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;
-
 use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
@@ -2493,9 +2490,6 @@ use sunrise_gameplay_common::game::piston_push::carrying::CarryingGameExt1 as _;
 
 #[cfg(test)]
 mod tests {
-    #[cfg(test)]
-    use sunrise_gameplay_common::game::in_own_process;
-
     use super::*;
 
     fn dirty_test_chunk(game: &mut crate::game::ServerGame<'_>) {

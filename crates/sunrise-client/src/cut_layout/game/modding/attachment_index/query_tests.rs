@@ -297,5 +297,3 @@ fn rolled_back_attachment_queries_cannot_read_or_write_a_resident_holder() {
         assert_eq!(values(game, key), [12]);
     });
 }
-
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;

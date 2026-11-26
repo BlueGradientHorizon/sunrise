@@ -139,10 +139,7 @@ pub mod tests {
     use sunrise_gameplay_common::game::server_side::view_pass::tests::sent;
 
     use super::*;
-    use sunrise_protocol::{
-        packets::play::Clientbound as C,
-        viewed_levels::{CHANNEL, Level::Index, Message, REVISION_3, ScopedPacket},
-    };
+    use sunrise_protocol::packets::play::Clientbound as C;
 
     /// Opens the world to the network with one player in the Overworld whose client, of revision
     /// 3, views 2 levels; its packets.

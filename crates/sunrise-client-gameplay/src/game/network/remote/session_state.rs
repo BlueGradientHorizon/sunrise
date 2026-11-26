@@ -5,7 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 use sunrise_client_lib::net::Session;
-use sunrise_core::{geometry::Vec3, profile::AccountProperty};
+use sunrise_core::geometry::Vec3;
 use sunrise_items::items::ItemStack;
 use sunrise_level::{
     chunk::Chunk,

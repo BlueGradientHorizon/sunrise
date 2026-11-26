@@ -2553,7 +2553,6 @@ pub(in crate::game) mod trident_selector_tests {
 pub(in crate::game) mod join_order_tests {
     use sunrise_gameplay_common::game::server_side::entity_server::join_order_tests::{at, mixed};
 
-    use sunrise_core::geometry::Vec3;
     use sunrise_gameplay_common::game::entity::{EntityHandle, JoinOrderError};
     use sunrise_sim::entities::ArmorStand;
     use sunrise_sim::join_seq::JoinList;

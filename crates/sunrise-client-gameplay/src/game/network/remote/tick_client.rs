@@ -1763,8 +1763,6 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
-use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
-
 use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1 as _;

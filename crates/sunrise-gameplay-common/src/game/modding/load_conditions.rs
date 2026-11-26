@@ -1,4 +1,5 @@
 //! Load-scoped registration and per-candidate condition lookup.
+use crate::game::native_registry_entries::load_registry_tags;
 use mod_api::__private::game::{
     CallbackOwner, DatapackCandidateBuilder, RegistrationContextNew, datapack_entry_id,
     datapack_registry_directory, decode_datapack_entry, valid_namespaced,
@@ -152,44 +153,6 @@ fn format_datapack_error(error: &mod_api::DatapackLoadError) -> String {
         "datapack registry {} entry {} (pack {}, file {}): {:?}",
         error.registry, error.entry, error.pack, error.file, error.reason
     )
-}
-
-fn load_registry_tags(
-    root: &Path,
-    overlay: &PackOverlay<'_>,
-    folder: &str,
-    known: impl Fn(&str) -> bool,
-) -> Result<BTreeMap<String, Vec<String>>, String> {
-    use sunrise_world::{damage_source::resource_files, worldgen::tags::TagDefinitions};
-    let tag_folder = format!("tags/{folder}");
-    let mut files: BTreeMap<String, Vec<Vec<u8>>> = resource_files(root, &tag_folder)
-        .map_err(|error| error.to_string())?
-        .into_iter()
-        .map(|(id, bytes)| (id, vec![bytes]))
-        .collect();
-    for (id, versions) in overlay.tag_kind(folder) {
-        files
-            .entry(id)
-            .or_default()
-            .extend(versions.iter().cloned());
-    }
-    let mut files: Vec<_> = files.into_iter().collect();
-    files.sort_by_cached_key(|(id, _)| {
-        let (namespace, path) = id.split_once(':').unwrap_or(("minecraft", id));
-        (format!("{path}.json"), namespace.to_owned())
-    });
-    let mut definitions = TagDefinitions::default();
-    for (id, versions) in files {
-        for bytes in versions {
-            if let Ok(json) = std::str::from_utf8(&bytes) {
-                let _ = definitions.apply_json(&id, "registry tags", json);
-            }
-        }
-    }
-    definitions
-        .build(|id, _| known(id).then(|| id.to_owned()))
-        .map(|built| built.tags)
-        .map_err(|error| error.to_string())
 }
 
 #[cfg(any(test, feature = "test-support"))]

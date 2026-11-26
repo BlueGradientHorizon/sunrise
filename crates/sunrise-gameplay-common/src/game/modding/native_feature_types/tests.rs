@@ -454,6 +454,3 @@ fn registry(mods: &[mod_api::ModEntry]) -> &'static BlockRegistry {
     crate::game::api_values::resolve_block_definitions(registry).unwrap();
     registry
 }
-
-#[cfg(test)]
-use crate::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;

@@ -512,7 +512,6 @@ pub(in crate::game) mod tests {
 #[cfg(any(test, feature = "test-support"))]
 pub mod loot_mine_component_tests {
     use super::*;
-    use std::sync::Arc;
     use sunrise_level::containers::BlockEntity;
 
     pub fn slot(game: &crate::game::ServerGame<'_>, index: usize) -> ItemStack {

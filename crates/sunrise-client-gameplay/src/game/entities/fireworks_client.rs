@@ -2,8 +2,6 @@ use super::item_draw::owner_at;
 use sunrise_assets::item_model::DisplayContext;
 use sunrise_client::{block_entity_render::vertex_light, mesher::Vertex};
 use sunrise_core::random::RandomSource;
-#[cfg(test)]
-use sunrise_gameplay_common::game::fireworks::FIREWORK_EXPLODE_EVENT;
 use sunrise_gameplay_common::game::fireworks::Rocket;
 use sunrise_level::particle_options::{ParticleOptions, ParticleType};
 

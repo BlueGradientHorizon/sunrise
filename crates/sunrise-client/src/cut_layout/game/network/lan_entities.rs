@@ -10,8 +10,6 @@ pub(crate) mod tests {
         }};
     }
 
-    use super::*;
-
     #[test]
     #[ignore = "daily"]
     fn tracking_ids_preserve_all_family_interleaving() {

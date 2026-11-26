@@ -177,18 +177,12 @@ macro_rules! game_side {
             $s,
             (player_uuid, level, session_lock),
             $crate::game::side_ops::tables::SideOps::side_level_features(
-                {
-                    use $crate::game::SideGame as _;
-                    ($s).side_state()
-                },
+                $crate::game::SideGame::side_state($s),
                 $s.level.enabled_features.as_arc()
             ),
             if $s.options.execution_role.is_client() {
                 $crate::game::side_ops::tables::SideOps::side_game_tag_items(
-                    {
-                        use $crate::game::SideGame as _;
-                        ($s).side_state()
-                    },
+                    $crate::game::SideGame::side_state($s),
                     &$s.res,
                 )
             } else {

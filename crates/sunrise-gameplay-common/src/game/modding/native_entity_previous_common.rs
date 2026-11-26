@@ -1,7 +1,7 @@
 //! Shared helpers for previous-tick entity position, rotation and alive queries (`Entity.xo`,
 //! `yo`, `zo`, `yRotO`, `xRotO`, `Entity.isAlive`) used by server and client adapters.
+use crate::game::commands_common::CommandsCommonGameExt2 as _;
 use crate::game::commands_common::Target;
-use crate::game::commands_common::{CommandsCommonGameExt1 as _, CommandsCommonGameExt2 as _};
 use crate::game::dragon_common::DragonCommonGameExt1 as _;
 use crate::game::entity::Entity;
 use crate::game::native_living_body::NativeLivingBodyGameExt1 as _;

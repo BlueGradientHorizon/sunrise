@@ -9,7 +9,6 @@ use mod_api::{
     CraftedByError, EquipmentSlot, ItemComponentEditor, ItemPlace, ItemPlaceEditError,
     ItemStackView, LivingRef, MenuSlotBacking, TransactionContext,
 };
-use sunrise_gameplay_common::game::api_values::TryIntoApi;
 use sunrise_gameplay_common::game::api_values::component_edit::{
     GearEdits, prepare_component_edit,
 };
@@ -1286,14 +1285,10 @@ pub mod tests {
     }
 }
 
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
 
 use sunrise_gameplay_common::game::transactions::scratch::ScratchGameExt1 as _;

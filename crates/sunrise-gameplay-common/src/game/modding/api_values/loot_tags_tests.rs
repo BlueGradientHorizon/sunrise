@@ -448,6 +448,3 @@ fn a_loot_function_lists_the_loot_datas_item_tags() {
         )]
     );
 }
-
-#[cfg(test)]
-use crate::game::tables::GameItems as _;

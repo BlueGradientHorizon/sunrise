@@ -549,10 +549,6 @@ impl crate::game::ClientGame<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(test)]
-    use crate::game::native_entity_refs::tests::with_client_game;
-    #[cfg(test)]
-    use sunrise_hooks::containers::{ContainerHooks, engine::with_registrants};
 
     #[test]
     fn a_local_container_has_vanillas_menu_id() {

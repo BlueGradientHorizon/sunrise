@@ -225,7 +225,7 @@ impl crate::game::ClientGame<'_> {
 
     /// `ClientPacketListener.sendChat` / `sendCommand`: the play listener, not
     /// the input box. The server still applies signatures, permissions and chat policy.
-    pub(in crate::game::client_side) fn send_chat(&mut self, message: &str) -> Result<(), String> {
+    pub(in crate::game) fn send_chat(&mut self, message: &str) -> Result<(), String> {
         if let Some(command) = message.strip_prefix('/') {
             return self.send_command(command).map(|_| ());
         }

@@ -14,7 +14,6 @@ use sunrise_gameplay_common::game::transactions::{
 };
 use sunrise_level::{
     block_edit::{BulkPublication, Run},
-    chunk::{Chunk, LevelShape},
     containers::BlockEntity,
     fast_hash::{FxHashMap, FxHashSet},
     world::World,
@@ -181,43 +180,6 @@ impl ServerGame<'_> {
     }
 }
 
-/// The vertical span `below + above` for one column read, bounded by the level's build height
-/// (`LevelHeightAccessor.getHeight`).
-pub(in crate::game) fn column_span(below: u32, above: u32, height: i32) -> Option<usize> {
-    below
-        .checked_add(above)
-        .filter(|&per| per > 0 && i64::from(per) <= i64::from(height))
-        .map(|per| per as usize)
-}
-
-/// Append one column in height order, using air outside the level or chunk.
-pub(in crate::game) fn fill_column_blocks(
-    air: BlockStateId,
-    chunk: &Chunk,
-    level: LevelShape,
-    x: i32,
-    z: i32,
-    base: i32,
-    below: u32,
-    above: u32,
-    out: &mut Vec<BlockStateId>,
-) {
-    // The chunk's storage may be taller than the level it belongs to.
-    let (bottom, top) = (
-        chunk.min_y().max(level.min_y),
-        chunk.max_y().min(level.max_y()),
-    );
-    let per = i64::from(below) + i64::from(above);
-    let y0 = i64::from(base) - i64::from(below);
-    for y in y0..y0 + per {
-        let state = match i32::try_from(y) {
-            Ok(y) if (bottom..top).contains(&y) => chunk.block(x & 15, y, z & 15),
-            _ => air,
-        };
-        out.push(state);
-    }
-}
-
 /// `edit`'s runs as `World::edit_runs` takes them: each palette entry `block`
 /// as its state in `palette`, each `y` counted from `height(surface, x, z)`
 /// when the run names a heightmap (read before any change, once a column).
@@ -364,8 +326,8 @@ mod tests {
     use super::*;
     #[cfg(test)]
     use mod_api::BlockRun;
-    #[cfg(test)]
-    use sunrise_world::heightmap::HeightmapType;
+    use sunrise_gameplay_common::game::block_edits_common::{column_span, fill_column_blocks};
+    use sunrise_level::chunk::{Chunk, LevelShape};
 
     #[test]
     #[ignore = "daily"]

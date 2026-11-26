@@ -163,6 +163,3 @@ fn copied_block_ticks_keep_order_priority_and_dedup() {
 }
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

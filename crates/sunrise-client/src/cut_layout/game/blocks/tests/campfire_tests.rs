@@ -2,8 +2,6 @@
 //! reached through `ServerPlayerGameMode.useItemOn`, which skips the block
 //! while sneaking with something in hand and then triggers
 //! ITEM_USED_ON_BLOCK for the use it consumed.
-#[cfg(test)]
-use crate::game::*;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay::game::game_tests::tests::server_game;

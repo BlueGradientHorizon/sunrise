@@ -44,5 +44,3 @@ impl crate::game::ClientGame<'_> {
         }
     }
 }
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

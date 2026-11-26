@@ -250,9 +250,11 @@ pub fn passage(f: &PassageForm) -> Passage {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use super::{HeldRefusal, PassageForm, Refused, check};
-    use mod_api::{DimensionKey, LevelRef, Passage, PassageId, PassageTurn, Vec3, WorldEpoch};
-    use std::sync::{Arc, mpsc};
+    use super::PassageForm;
+    #[cfg(test)]
+    use super::{Refused, check};
+    use mod_api::{Passage, PassageId, PassageTurn, Vec3};
+    use std::sync::mpsc;
     use sunrise_protocol::packets::play::Clientbound;
     use sunrise_protocol::passage_sync::Message;
 
@@ -385,6 +387,3 @@ pub mod tests {
         }
     }
 }
-
-#[cfg(test)]
-use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -382,8 +382,6 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
-use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
-
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

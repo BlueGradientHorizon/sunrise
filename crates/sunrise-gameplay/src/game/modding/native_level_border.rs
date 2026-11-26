@@ -78,5 +78,3 @@ impl ServerGame<'_> {
         report_border_write(level, "set_world_border_warning", result)
     }
 }
-
-use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

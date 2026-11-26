@@ -45,9 +45,6 @@ fn a_mod_halves_a_guests_visibility() {
     });
 }
 
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
-
 struct NamePlayer(Arc<Mutex<Vec<Option<u128>>>>);
 #[mod_api::__subscriptions]
 impl mod_api::Hooks for NamePlayer {

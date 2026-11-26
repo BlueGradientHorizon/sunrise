@@ -320,6 +320,3 @@ fn death_weapon_same_tick_stronger_arrow_replaces_weapon() {
         });
     });
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

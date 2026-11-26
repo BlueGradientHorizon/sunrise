@@ -13,7 +13,7 @@ pub(in crate::game) enum Output {
 
 /// Output sink owned by a native console command source.
 #[derive(Clone, Debug)]
-pub(in crate::game) enum ConsoleOutput {
+pub enum ConsoleOutput {
     Silent,
     Plain(Weak<Mutex<Vec<String>>>),
     Stream(Sender<Result<CommandFeedback, TextFormError>>),

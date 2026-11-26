@@ -143,7 +143,6 @@ pub trait CommandRegistriesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> CommandRegistriesGameExt1<'__sg> for G {}
 
-use crate::game::side_ops::presentation::PresentationSideGameExt as _;
 use crate::game::side_ops::tables::TablesSideGameExt as _;
 use crate::game::tables::GameItems as _;
 

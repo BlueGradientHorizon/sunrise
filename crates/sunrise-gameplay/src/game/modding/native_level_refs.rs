@@ -520,7 +520,7 @@ impl<'g> ServerGame<'g> {
         kind: BlockShapeKind,
     ) -> Option<Vec<[f64; 6]>> {
         let mut boxes = Vec::new();
-        self.level_visit_block_shape(level, state, pos, kind, &mut |bounds| {
+        let _ = self.level_visit_block_shape(level, state, pos, kind, &mut |bounds| {
             boxes.push(bounds);
             ControlFlow::Continue(())
         })?;

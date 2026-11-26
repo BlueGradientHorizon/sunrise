@@ -1797,8 +1797,6 @@ impl crate::game::ServerGame<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[cfg(test)]
-    use mod_api::ServerHost;
     use std::sync::Arc;
 
     /// A minecart a player rides through a portal rolls on at the motion it
@@ -1865,11 +1863,8 @@ mod transfer_lifetime_tests {
     use super::*;
     use std::sync::{Arc, Mutex};
     use sunrise_mod_runtime::attachments::{
-        AttachmentLifetime, AttachmentType, Attachments, HasAttachmentLifetime, Holder,
-        index::AttachmentIndex,
+        Attachments, HasAttachmentLifetime, Holder, index::AttachmentIndex,
     };
-    #[cfg(test)]
-    use sunrise_sim::join_seq::Joined;
 
     fn removal<T: Rideable + sunrise_sim::join_seq::Joined + HasAttachmentLifetime>(mut owner: T) {
         let index = Arc::new(Mutex::new(AttachmentIndex::default()));
@@ -1910,14 +1905,6 @@ pub mod credits_respawn_tests {
     use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_tests::ANCHOR;
 
     use sunrise_level::chunk::Chunk;
-    use sunrise_protocol::packets::{
-        configuration::ClientInformation,
-        play::{self, Clientbound as C, Serverbound as S},
-    };
-    use sunrise_sim::lan::{
-        guest::{Guest, InboxItem, SPECTATOR},
-        hub::HubConfig,
-    };
     use sunrise_world::registry::BlockStateId;
 
     pub fn light_spawn_chunks(game: &mut crate::game::ServerGame<'_>) {

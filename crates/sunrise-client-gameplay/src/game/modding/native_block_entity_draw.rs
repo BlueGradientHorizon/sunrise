@@ -2705,7 +2705,9 @@ fn part_transform(part: &ModelPart) -> Mat4 {
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
     use super::*;
-    use sunrise_level::containers::{ModBlockEntity, ModBlockEntityFields};
+    use sunrise_level::containers::ModBlockEntity;
+    #[cfg(test)]
+    use sunrise_level::containers::ModBlockEntityFields;
 
     pub fn sprite() -> Rect {
         Rect {
@@ -5011,12 +5013,14 @@ pub mod tests {
         assert_eq!(submits.get(), 3);
     }
 
+    #[cfg(test)]
     const CORNERS: [[f32; 3]; 4] = [
         [0.0, 1.0, 0.0],
         [0.0, 1.0, 1.0],
         [1.0, 1.0, 1.0],
         [1.0, 1.0, 0.0],
     ];
+    #[cfg(test)]
     const UNIT_UV: [[f32; 2]; 4] = [[0.0, 0.0], [0.0, 1.0], [1.0, 1.0], [1.0, 0.0]];
 
     /// Kept geometry marked with `crumbling` shows the crack as it is each frame without a new

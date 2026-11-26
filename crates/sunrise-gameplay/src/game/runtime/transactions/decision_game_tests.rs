@@ -5,15 +5,11 @@ use crate::game::native_entity_refs::tests::with_game;
 use std::sync::Arc;
 use sunrise_core::geometry::Vec3;
 use sunrise_gameplay_common::game::transactions::decision::storage::{ActionHost, GameHost};
+use sunrise_gameplay_common::game::transactions::decision::{
+    Effect, Identity, ItemStack, Menu, Mutation, Outcome, Reply, Side, Step, run, tests,
+};
 use sunrise_level::chunk::Chunk;
 use sunrise_sim::entities::ArmorStand;
-use {
-    crate::game::transactions::decision::*,
-    sunrise_gameplay_common::game::transactions::decision::{
-        Effect, Identity, ItemStack, Menu, Mutation, Outcome, Reply, Side, Step, run, storage,
-        tests,
-    },
-};
 
 fn identity(game: &mut crate::game::ServerGame<'_>) -> Identity {
     game.common

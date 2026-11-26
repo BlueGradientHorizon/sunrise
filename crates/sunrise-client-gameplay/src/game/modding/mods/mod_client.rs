@@ -2,7 +2,6 @@ use crate::game::ClientGame;
 #[allow(unused_imports)]
 use mod_api::__private::game::*;
 use mod_api::RegistrationContext;
-use sunrise_game_data::lang;
 use sunrise_gameplay_common::game::mods::ModsReload;
 use sunrise_gameplay_common::game::mods::ModsState;
 use sunrise_gameplay_common::game::owner_link::OwnerRequest;

@@ -238,6 +238,10 @@ pub trait ModapiModdingSideGameExt<'__sg>: crate::game::SideGame<'__sg> {
         <Self::State as SideOps>::side_level_datapack_set(self, level)
     }
 
+    fn side_received_registry_datapacks(&self) -> Option<Arc<DatapackRegistrySet>> {
+        <Self::State as SideOps>::side_received_registry_datapacks(self.side_state())
+    }
+
     fn side_level_handle_current(&self, level: LevelRef) -> bool {
         <Self::State as SideOps>::side_level_handle_current(self, level)
     }
@@ -573,6 +577,9 @@ pub trait SideOps: Sized {
         game: &Self::Game<'_>,
         level: LevelRef,
     ) -> Option<Arc<DatapackRegistrySet>>;
+    fn side_received_registry_datapacks(&self) -> Option<Arc<DatapackRegistrySet>> {
+        None
+    }
     fn side_level_handle_current(game: &Self::Game<'_>, level: LevelRef) -> bool;
     fn side_level_is_raining_at(
         game: &Self::Game<'_>,

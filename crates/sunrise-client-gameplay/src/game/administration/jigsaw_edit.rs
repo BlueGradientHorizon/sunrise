@@ -281,9 +281,6 @@ impl crate::game::ClientGame<'_> {
 }
 
 #[cfg(test)]
-use sunrise_gameplay_common::game::tables::GameItems as _;
-
-#[cfg(test)]
 mod tests {
     use super::*;
 

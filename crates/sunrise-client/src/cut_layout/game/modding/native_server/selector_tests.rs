@@ -1,7 +1,5 @@
 //! Acceptance tests through the registered native command dispatcher and real server selectors.
 
-#[cfg(test)]
-use crate::game::native_server::*;
 use mod_api::{CommandArgumentValue as Value, CommandInvocation};
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;
@@ -258,8 +256,5 @@ fn execute_moves_the_selector_source_to_its_level_and_entity() {
 }
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

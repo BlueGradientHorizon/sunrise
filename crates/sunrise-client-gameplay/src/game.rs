@@ -1,13 +1,11 @@
+#[cfg(all(test, feature = "client"))]
+use client_side::resource_load_client::load_resources_for_mods;
 #[cfg(feature = "client")]
 pub use client_side::resource_load_client::load_resources_for_mods_with_limit;
+#[cfg(feature = "client")]
+use client_side::resource_tables_client::{ClientPackResources, ClientResources};
 #[cfg(test)]
 use client_side::window_handler::follow_keymap;
-#[cfg(feature = "client")]
-use client_side::{
-    launch_options_client::is_client_start,
-    resource_load_client::{StartupLoadContext, load_resources_for_mods, load_resources_sync},
-    resource_tables_client::{ClientPackResources, ClientResources},
-};
 #[cfg(feature = "client")]
 #[allow(unused_imports)]
 use loading_screen::{App, Loading, leave_fullscreen_after, run_event_loop};
@@ -17,16 +15,14 @@ use motion_ids::{motion_at, motion_block_entity};
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::time::Instant;
+#[cfg(all(test, feature = "client"))]
+use sunrise_client::block_entity_render::CacheOptions;
 use sunrise_client::{
     assets::RenderAssets,
     audio::Audio,
-    block_entity_render::{
-        self, BlockEntityRenderer, CacheOptions, Scene as BlockEntityScene, StaticCacheFrameStats,
-        StaticSectionSnapshot,
-    },
+    block_entity_render::{self, BlockEntityRenderer},
     creative::Creative,
     gfx::{Frame, Renderer},
-    graphics::EntityCullingMode,
     hud::{HudAtlas, HudBatch, rgba},
     hud_layout, hud_overlays,
     keymapping::{KeyAction, SNEAK, SPRINT},

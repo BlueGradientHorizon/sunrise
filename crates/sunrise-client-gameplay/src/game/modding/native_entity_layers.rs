@@ -174,7 +174,7 @@ impl StockLayerContext<'_> {
     }
 }
 
-struct LayerOwner {
+pub(in crate::game) struct LayerOwner {
     layer: Weak<dyn EntityRenderLayer>,
     owner: CallbackOwner,
 }

@@ -323,5 +323,3 @@ impl crate::game::ClientGame<'_> {
         true
     }
 }
-
-use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

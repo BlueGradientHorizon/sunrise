@@ -4,7 +4,6 @@ use mod_api::MinecartKind;
 use mod_api::MinecartRef;
 use sunrise_gameplay_common::game::minecarts::CartKind;
 use sunrise_gameplay_common::game::minecarts::Minecart;
-use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 

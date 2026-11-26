@@ -88,8 +88,6 @@ use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
 
-use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1 as _;
-
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
 use sunrise_gameplay_common::game::item_abilities::ItemAbilitiesGameExt1 as _;

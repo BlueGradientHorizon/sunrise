@@ -9,7 +9,7 @@ use sunrise_sim::mobs::{Who, leash::Holder};
 use sunrise_sim::projectiles::{Projectile, ProjectileKind};
 
 #[derive(Deserialize)]
-pub(in crate::game) struct Witness {
+pub(crate) struct Witness {
     pub(in crate::game) game_version: String,
     pub(in crate::game) proj_seed: i64,
     pub(in crate::game) level_seed: i64,
@@ -22,7 +22,7 @@ pub(in crate::game) struct Witness {
 }
 
 #[derive(Deserialize)]
-pub(in crate::game) struct GameEventSnap {
+pub(crate) struct GameEventSnap {
     pub(in crate::game) id: String,
     pub(in crate::game) pos_bits: [String; 3],
 }
@@ -148,7 +148,7 @@ pub(in crate::game) struct ReviewTick {
 }
 
 #[derive(Deserialize)]
-pub(in crate::game) struct ReviewEntitySnap {
+pub(crate) struct ReviewEntitySnap {
     pub(in crate::game) present: bool,
     pub(in crate::game) alive: bool,
     pub(in crate::game) pos_bits: [String; 3],
@@ -1145,7 +1145,7 @@ pub(crate) fn run_witness_piercing_arrow_multihit_123() {
 }
 
 #[derive(Clone, Copy)]
-pub(in crate::game) enum Target124 {
+pub(crate) enum Target124 {
     Boat(u32),
     Cart(u32),
     Frame(u32),
@@ -1168,7 +1168,7 @@ fn witness_firework_rocket_targets_124() {
 pub(crate) use crate::game::server_side::creatures_server::projectiles_120_124_tests::run_witness_firework_rocket_targets_124;
 
 #[derive(Clone, Copy)]
-pub(in crate::game) enum ReviewTracked {
+pub(crate) enum ReviewTracked {
     Mob(u32),
     Stand(u32),
     Frame(u32),

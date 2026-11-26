@@ -37,5 +37,3 @@ fn a_mob_the_listener_removed_is_not_sheared() {
         },
     );
 }
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

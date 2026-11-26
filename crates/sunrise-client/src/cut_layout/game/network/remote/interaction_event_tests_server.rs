@@ -1553,9 +1553,6 @@ impl<'g> InteractionSide<'g> for sunrise_gameplay::game::ServerGame<'g> {
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
-#[cfg(test)]
-use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
-
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

@@ -10,7 +10,6 @@ pub fn native_register_enchantment_effects(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use mod_api::{
         EnchantmentEntityEffect, EnchantmentEntityEffectCodec, EnchantmentEntityEffectContext,
         EnchantmentValueEffect, EnchantmentValueEffectCodec, Hooks, ModEntry, RandomSource,

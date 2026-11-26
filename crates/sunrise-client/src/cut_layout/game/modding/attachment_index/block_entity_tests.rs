@@ -140,8 +140,4 @@ fn block_entity_rows_follow_load_restore_replacement_and_chunk_unload_in_their_d
     });
 }
 
-use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
-
 use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

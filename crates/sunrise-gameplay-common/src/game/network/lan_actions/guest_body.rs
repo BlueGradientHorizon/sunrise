@@ -1,6 +1,4 @@
 //! Restore the guest's first body without borrowing another player's RNG.
-#[cfg(test)]
-use super::*;
 use sunrise_core::geometry::Vec3;
 #[allow(unused_imports)]
 use sunrise_sim::{

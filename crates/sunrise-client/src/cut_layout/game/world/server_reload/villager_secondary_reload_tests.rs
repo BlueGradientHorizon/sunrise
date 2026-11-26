@@ -151,6 +151,3 @@ fn failed_reload_preparation_keeps_secondary_tag_entries() {
         assert_eq!(memory(game, mob), Some(vec![[0, 63, 1], [1, 63, 0]]));
     });
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

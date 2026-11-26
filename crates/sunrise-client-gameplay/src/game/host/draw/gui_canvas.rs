@@ -141,7 +141,10 @@ impl GameGuiCanvas<'_, '_> {
 
     /// An individual call can be refused even when the caller chooses to commit its group.
     fn paint(&mut self, emit: impl FnOnce(&mut HudBatch, &HudAtlas)) -> Result<(), GuiDrawError> {
-        self.paint_in_pose(self.pose, |batch, atlas| Ok(emit(batch, atlas)))
+        self.paint_in_pose(self.pose, |batch, atlas| {
+            emit(batch, atlas);
+            Ok(())
+        })
     }
 
     fn paint_in_pose<T>(

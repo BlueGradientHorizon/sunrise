@@ -1,8 +1,5 @@
 type Boxes = Vec<([f64; 3], [f64; 3])>;
-use {
-    crate::game::*,
-    sunrise_gameplay_common::game::{Dim, lan_actions},
-};
+use sunrise_gameplay_common::game::Dim;
 
 /// The other players' boxes in the Builder's turn: what blocks its placing.
 pub fn seen_by_builder(game: &mut crate::game::ServerGame<'_>) -> Boxes {

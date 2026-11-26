@@ -1,7 +1,6 @@
 //! ContentsSlotSource's live component collections; mutable until written back.
 use super::{ItemStack, Slot, SlotCandidate};
 use sunrise_gameplay_common::game::commands_common::Component;
-use sunrise_items::items::Items;
 
 pub(in crate::game) struct Provider<'a> {
     items: &'a [Option<ItemStack>],
@@ -226,6 +225,7 @@ fn find_nonempty(items: &[Option<ItemStack>], position: &mut usize, mode: &str) 
 mod tests {
     use super::*;
     use sunrise_core::nbt::Tag;
+    use sunrise_items::items::Items;
 
     #[test]
     fn failed_component_growth_keeps_air_for_the_next_source_term() {

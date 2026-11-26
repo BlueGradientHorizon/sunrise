@@ -2404,6 +2404,3 @@ fn piece_and_after_place_panics_poison_only_their_operation_with_toast_notices()
         });
     });
 }
-
-#[cfg(test)]
-use crate::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

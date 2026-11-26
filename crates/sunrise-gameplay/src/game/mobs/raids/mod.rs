@@ -11,7 +11,6 @@ use sunrise_core::{
     random::{LegacyRandom, LevelRandom, RandomSource},
 };
 use sunrise_gameplay::village_siege::{SiegeLevel, VillageSiege};
-use sunrise_gameplay_common::game::creatures::Finalized;
 use sunrise_level::{
     effects::{EffectInstance, OmenTick, TickingEffect},
     random_source,
@@ -1379,15 +1378,6 @@ impl crate::game::ServerGame<'_> {
             sunrise_level::effects::EffectInstance::new("bad_omen", 120_000, i32::from(amplifier));
         effect.visible = false;
         self.add_player_effect(effect);
-    }
-    /// The Raid Omen sound when the effect is first added
-    /// (`MobEffect.onEffectAdded`: at the player's feet).
-    pub(in crate::game) fn raid_omen_added(&mut self) {
-        let Some(p) = self.common.player.as_ref() else {
-            return;
-        };
-        let at = [p.position.x, p.position.y, p.position.z];
-        self.server_play_sound("minecraft:event.mob_effect.raid_omen", at, 1.0, 1.0);
     }
     /// Entity event 42 for villager `id`: the guests get the byte, and this
     /// game draws `AbstractVillager.addParticlesAroundSelf(SPLASH)` itself.

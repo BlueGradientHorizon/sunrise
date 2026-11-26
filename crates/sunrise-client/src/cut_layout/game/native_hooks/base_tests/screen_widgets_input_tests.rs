@@ -18,7 +18,7 @@ pub(in crate::game) enum Cancel {
 }
 
 #[derive(Debug, PartialEq)]
-pub(in crate::game) enum Seen {
+pub(crate) enum Seen {
     Activation(&'static str),
     PressPre,
     PressPost(String, bool),
@@ -38,7 +38,7 @@ pub(in crate::game) enum Seen {
 }
 
 #[derive(Default)]
-pub(in crate::game) struct State {
+pub(crate) struct State {
     pub(in crate::game) cancel: Cancel,
     /// Whether the moved and motion hooks record: the other tests do not look for them.
     pub(in crate::game) record_pointer: bool,

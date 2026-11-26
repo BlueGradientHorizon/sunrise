@@ -5,8 +5,6 @@ use sunrise_core::nbt::Tag;
 use sunrise_core::random::RandomSource;
 use sunrise_level::chunk::Chunk;
 // Test module extracted without changing its logical path.
-#[cfg(test)]
-use super::*;
 use sunrise_core::position::ChunkPos;
 use sunrise_gameplay_common::game::commands_common::Target;
 use sunrise_sim::motion::PlayerMotion;

@@ -619,8 +619,8 @@ impl ServerGame<'_> {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
-    use super::*;
     use sunrise_core::geometry::Vec3;
+    use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
     use sunrise_sim::{entities::ArmorStand, mobs::Mob};
 
     /// A zombie, an armor stand and the dragon, ids 12, 13 and 14.
@@ -657,5 +657,3 @@ pub mod tests {
 }
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

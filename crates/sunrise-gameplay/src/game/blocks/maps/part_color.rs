@@ -59,7 +59,6 @@ impl ServerGame<'_> {
 mod tests {
     use super::super::MapData;
     use crate::game::{ServerGame, native_entity_refs::tests::with_game};
-    use sunrise_gameplay_common::game::GameGameExt1 as _;
 
     /// The colour id of the pixel a map centred on the origin shows for block (5, 5), after
     /// the player at (5.5, 5.5) held it over a floor of the block `floor` at y 63.

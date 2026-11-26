@@ -2317,11 +2317,6 @@ impl ServerGame<'_> {
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
-    #[cfg(test)]
-    use sunrise_core::geometry::Vec3;
-    #[cfg(test)]
-    use sunrise_sim::mobs::{Mob, finalize};
-
     use super::{
         Enchantments, armor_changes, block_break_speed_factor, enchantment_sound,
         pick_mending_slot, repair_from_xp, repaired_and_left, soul_speed_particle,

@@ -1,7 +1,7 @@
 #[cfg(test)]
 pub(crate) mod tests {
 
-    use sunrise_core::geometry::{Aabb, Vec3};
+    use sunrise_core::geometry::Vec3;
 
     /// `FishingHookRenderer.getPlayerHandPos` in first person on HotSpot 25.0.4.1: the camera at
     /// yaw 30 looking straight up, fov 70 on 854 x 480, the right arm mid-swing (0.5). The

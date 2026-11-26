@@ -1,6 +1,5 @@
 use crate::game::ClientGame;
 use sunrise_client::{block_entity_anim::Ticker, block_entity_render::BlockAnim};
-use sunrise_core::nbt::Tag;
 
 /// What a client tick of the animated block entities shares between them.
 pub(in crate::game) struct AnimTick {

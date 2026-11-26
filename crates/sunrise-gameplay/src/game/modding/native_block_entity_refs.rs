@@ -1001,14 +1001,12 @@ mod tests {
     use super::*;
     use mod_api::HostTransaction;
     #[cfg(test)]
-    use mod_api::LevelRef;
     use mod_api::ServerHost;
     use mod_api::TransactionError;
     use std::sync::Arc;
     use sunrise_level::world::World;
     use sunrise_level::{chunk::Chunk, containers::ModBlockEntityFields};
     #[cfg(test)]
-    use sunrise_sim::lan::menu::Slots;
     use sunrise_world::registry::BlockStateId;
 
     #[test]

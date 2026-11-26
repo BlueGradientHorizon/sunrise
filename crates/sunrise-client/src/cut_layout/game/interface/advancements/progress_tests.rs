@@ -458,6 +458,3 @@ fn progress_events_capture_each_players_full_mutation_state() {
     });
     std::fs::remove_dir_all(scratch).unwrap();
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

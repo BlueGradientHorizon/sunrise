@@ -188,7 +188,4 @@ use crate::game::side_ops::lan::LanSideGameExt as _;
 
 use crate::game::tables::WorldTablesExt as _;
 
-#[cfg(test)]
-use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
-
 use crate::game::native_state_shapes::NativeStateShapesGameExt1 as _;

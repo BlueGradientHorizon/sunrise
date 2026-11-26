@@ -1242,10 +1242,6 @@ pub struct ServerState {
     /// (`player_open_ender_chest`), by connection, with their titles: opened as the turn
     /// ends, once the guest's own ender chest is back in their record.
     pub(in crate::game::server_side) lan_ender_menus: Vec<(u32, sunrise_core::nbt::Tag)>,
-    /// The block the acting player is breaking (`break_block`): its destroy
-    /// event, and the ones before it, are the player's own (`Level.levelEvent`
-    /// with the player excluded); the events after it are not.
-    pub(in crate::game::server_side) lan_break_pos: Option<[i32; 3]>,
     /// Active player breaks waiting on `break_block` listeners.
     pub(in crate::game) active_player_breaks: Vec<ActivePlayerBreak>,
     /// The name of the guest `lan_acting` acts for (`Player.getName`).
@@ -1523,7 +1519,6 @@ impl ServerState {
             interrupted_turns: Vec::new(),
             crash_save: Default::default(),
             lan_ender_menus: Vec::new(),
-            lan_break_pos: None,
             guest_packets: Vec::new(),
             guest_cooldowns: Vec::new(),
             guest_entity_events: Vec::new(),

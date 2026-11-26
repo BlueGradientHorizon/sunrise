@@ -3,11 +3,8 @@ mod tests {
     use crate::game::client_side::api_values_client::aggregates::scene_blocks;
     use mod_api::{Identifier, SceneBlockEntity};
     use sunrise_gameplay_common::game::api_values::TryIntoApi;
+    use sunrise_gameplay_common::game::api_values::aggregates::block_state;
     use sunrise_world::registry::{BlockRegistry, BlockStateId};
-    use {
-        crate::game::api_values::aggregates::*,
-        sunrise_gameplay_common::game::api_values::aggregates::block_state,
-    };
 
     #[test]
     fn aggregates_preserve_properties_reorder_and_refuse_whole_values() {

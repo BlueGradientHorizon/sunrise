@@ -1,8 +1,6 @@
 #![cfg(test)]
 use mod_api::{ArrowPickup, Deflection, EntityRef, PierceLevelError, ProjectileRef};
 use sunrise_core::geometry::Vec3;
-#[cfg(test)]
-use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_sim::entities::arrows::Pickup;
 use sunrise_sim::mobs::Who;
 use sunrise_sim::projectiles::Projectile;

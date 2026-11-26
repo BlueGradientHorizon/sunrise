@@ -421,5 +421,3 @@ mod ray_extent_tests {
         }
     }
 }
-
-use sunrise_gameplay_common::game::GameGameExt1 as _;

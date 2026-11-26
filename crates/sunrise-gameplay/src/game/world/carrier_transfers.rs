@@ -1082,19 +1082,6 @@ use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 #[cfg(test)]
 mod tests {
-    #[cfg(test)]
-    use super::*;
-    #[cfg(test)]
-    use crate::game::native_entity_refs::tests::with_game;
-    #[cfg(test)]
-    use std::sync::Arc;
-    #[cfg(test)]
-    use sunrise_core::geometry::Direction as CoreDirection;
-    #[cfg(test)]
-    use sunrise_core::position::BlockPos;
-    #[cfg(test)]
-    use sunrise_gameplay_common::game::spill_common;
-
     /// The store's default capacity is the contract's 4,096.
     #[test]
     fn the_default_index_capacity_is_4096() {

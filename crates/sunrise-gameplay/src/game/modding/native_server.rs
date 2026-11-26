@@ -13,7 +13,7 @@ pub mod fake_action_tests {
     use mod_api::PlayerRef;
 
     #[cfg(test)]
-    use mod_api::{BlockHit, Hand};
+    use mod_api::Hand;
 
     use sunrise_items::items::ItemStack;
 

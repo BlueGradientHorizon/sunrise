@@ -1058,7 +1058,6 @@ pub(in crate::game) mod provider_tests;
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
     use super::*;
-    use sunrise_items::items::ItemStack;
 
     #[cfg(any(test, feature = "test-support"))]
     pub type Heard = Vec<(&'static str, u32, u128, &'static str, [i32; 2])>;
@@ -2613,9 +2612,10 @@ pub mod tests {
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod fake_action_tests {
-    use super::{Acting, ActionOutcome, ActionRefused, FakeEffect, PlayerAction};
-    use mod_api::{BlockHit, Hand, PlayerRef};
-    use sunrise_items::items::ItemStack;
+    use super::PlayerAction;
+    #[cfg(test)]
+    use super::{Acting, FakeEffect};
+    use mod_api::{BlockHit, Hand};
 
     /// A click on the top of the block at `pos`.
     pub fn on_top(pos: [i32; 3]) -> PlayerAction {
@@ -2626,10 +2626,6 @@ pub mod fake_action_tests {
             hit: BlockHit::new([x + 0.5, y + 1.0, z + 0.5], [0, 1, 0], false),
         }
     }
-
-    use super::super::{
-        boats_common::Boat, minecarts::CART_KEY_Y, minecarts::CartKind, minecarts::Minecart,
-    };
 
     #[cfg(any(test, feature = "test-support"))]
     /// A listener on `attack_entity` records the target's health where the hook

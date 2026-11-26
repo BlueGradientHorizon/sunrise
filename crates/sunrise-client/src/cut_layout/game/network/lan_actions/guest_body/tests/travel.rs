@@ -20,7 +20,7 @@ pub(crate) const ACCEPTED: [f64; 3] = [3.25, 64.0, 5.0];
 pub(crate) const NEXT: [f64; 3] = [3.5, 64.0, 5.0];
 
 #[derive(Clone, Copy)]
-pub(in crate::game) enum Reply {
+pub(crate) enum Reply {
     Continue,
     Veto,
     Velocity,

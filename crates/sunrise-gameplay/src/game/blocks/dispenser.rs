@@ -2562,8 +2562,6 @@ use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 use sunrise_gameplay_common::game::GameGameExt1 as _;
 
-use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1 as _;
-
 use sunrise_gameplay_common::game::cart_rails::CartRailsGameExt1 as _;
 
 use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
@@ -2573,8 +2571,6 @@ use sunrise_gameplay_common::game::equip_answers::EquipAnswersGameExt1 as _;
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
 use sunrise_gameplay_common::game::item_abilities::ItemAbilitiesGameExt1 as _;
-
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 

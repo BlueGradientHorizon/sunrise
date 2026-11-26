@@ -1,7 +1,5 @@
 //! HUD slots in a real client: placement, scoped wrapping and replacement, and layer cancellation.
-use super::native_entity_refs::tests::{
-    fixture_root, run_fresh_cases, with_client_game, with_game_role,
-};
+use super::native_entity_refs::tests::{run_fresh_cases, with_client_game};
 use mod_api::{
     ClientHost, Flow, GuiLayerPlacement, GuiLayerPostEvent, GuiLayerPreEvent, Hooks, ModEntry,
     PlayerHeartTypeEvent, RegisterGuiLayersEvent, RegistrationContext, RenderGuiPostEvent,

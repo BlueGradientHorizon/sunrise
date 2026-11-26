@@ -1,5 +1,3 @@
-#[cfg(test)]
-use crate::game::minecarts::*;
 use std::sync::Mutex;
 use sunrise_core::nbt::Tag;
 use sunrise_gameplay_common::game::minecarts::{
@@ -408,6 +406,3 @@ pub(crate) fn assert_vehicle_residency_retired(
     );
     assert_eq!(game.resident_entities.table.get_mut().end_tick(), Ok(()));
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

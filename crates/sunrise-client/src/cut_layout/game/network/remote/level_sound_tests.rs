@@ -5,7 +5,7 @@ use sunrise_client_gameplay::game::client_side::native_client_session::tests::lo
 use sunrise_gameplay_common::game::remote::{C, PlayerMotion, Vec3, play};
 
 #[derive(Default)]
-pub(in crate::game) struct Log {
+pub(crate) struct Log {
     pub(in crate::game) requests: Vec<&'static str>,
     pub(in crate::game) played: Vec<SoundPlay>,
 }

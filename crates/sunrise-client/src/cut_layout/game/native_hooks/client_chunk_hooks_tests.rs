@@ -308,6 +308,3 @@ fn cache_packets_hide_replace_and_resize_slots() {
         },
     );
 }
-
-#[cfg(test)]
-use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

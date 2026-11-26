@@ -1,7 +1,5 @@
 use sunrise_core::use_animation::UseAnimation;
 #[cfg(test)]
-use sunrise_gameplay_common::game::held_items::OFFHAND_SLOT;
-#[cfg(test)]
 use sunrise_gameplay_common::game::item_use_common::ItemUseState;
 use sunrise_gameplay_common::game::item_use_common::hand_of;
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

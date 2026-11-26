@@ -1,8 +1,6 @@
 //! The player's `CombatTracker`: the damage taken lately, who dealt it and
 //! where the player fell from, turned into the vanilla death message.
 use super::commands_common::Target;
-#[cfg(test)]
-use sunrise_core::random::RandomSource;
 use sunrise_gameplay_common::game::combat_common::{DROWN_EVENT, PlayerCredit};
 use sunrise_gameplay_common::game::creatures::KnownCause;
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

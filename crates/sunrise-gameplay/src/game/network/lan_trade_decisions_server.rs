@@ -9,10 +9,7 @@ use std::cell::RefCell;
 use sunrise_gameplay_common::game::lan_menu_data::{
     Effect, Journal, KeptMerchantGuest, KeptMerchantMob, KeptMerchantWindow,
 };
-use sunrise_gameplay_common::game::transactions::{
-    After,
-    decision::{Identity, Reply, Side},
-};
+use sunrise_gameplay_common::game::transactions::decision::{Identity, Reply, Side};
 use sunrise_protocol::packets::play;
 use sunrise_sim::{
     lan::conn::transaction_packets::Scope,

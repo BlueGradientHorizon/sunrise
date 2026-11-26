@@ -1912,7 +1912,7 @@ pub(in crate::game) struct ClientConstructEffects {
 
 #[cfg(feature = "client")]
 impl ClientState {
-    #[cfg(any(test, feature = "test-support"))]
+    #[cfg(test)]
     pub(in crate::game) fn test_rain_sound_time(&self) -> i32 {
         self.rain_sound_time
     }

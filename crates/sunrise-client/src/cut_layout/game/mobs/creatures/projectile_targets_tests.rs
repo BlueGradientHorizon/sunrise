@@ -7,7 +7,7 @@ use sunrise_core::random::{LegacyRandom, RandomSource};
 use sunrise_sim::mobs::{Who, leash::Holder};
 
 #[derive(Deserialize)]
-pub(in crate::game) struct Witness {
+pub(crate) struct Witness {
     pub(in crate::game) game_version: String,
     pub(in crate::game) projectile_seed: i64,
     pub(in crate::game) level_seed: i64,
@@ -15,7 +15,7 @@ pub(in crate::game) struct Witness {
 }
 
 #[derive(Deserialize)]
-pub(in crate::game) struct Case {
+pub(crate) struct Case {
     pub(in crate::game) projectile: String,
     pub(in crate::game) target: String,
     pub(in crate::game) spawn_y: f64,
@@ -146,7 +146,7 @@ pub(crate) fn reset_arena(game: &mut sunrise_gameplay::game::ServerGame<'_>, tar
 pub(crate) use sunrise_gameplay::game::server_side::creatures_server::projectile_targets_tests::TrackedTarget;
 
 #[derive(Clone, Copy)]
-pub(in crate::game) enum TrackedProj {
+pub(crate) enum TrackedProj {
     Projectile(u32),
     Trident(u32),
 }
