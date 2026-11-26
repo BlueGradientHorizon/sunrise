@@ -3122,44 +3122,40 @@ fn main() {{ generated::dispatch_setting_changed(&mut (), "a", "toggle"); assert
     #[ignore = "daily"]
     fn settings_boundary_owns_and_caches_values() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-        let source = std::fs::read_to_string(
-            root.join("crates/sunrise-client/src/game/native_hooks/base.rs"),
-        )
-        .unwrap();
-        let source = source
-            + &std::fs::read_to_string(
-                root.join("crates/sunrise-client/src/game/native_hooks/shared.rs"),
+        let mut methods = String::new();
+        let mut ownership_check = String::new();
+        for path in ["base.rs", "mod_client.rs"] {
+            let source = std::fs::read_to_string(
+                root.join("crates/sunrise-client/src/game/native_hooks")
+                    .join(path),
             )
             .unwrap();
-        let file = syn::parse_file(&source).unwrap();
-        let methods: String = file
-            .items
-            .into_iter()
-            .filter_map(|item| match item {
-                syn::Item::Impl(i) => Some(
-                    i.items
-                        .into_iter()
-                        .filter_map(|item| match item {
-                            syn::ImplItem::Fn(f)
-                                if [
-                                    "setting",
-                                    "stored_setting",
-                                    "set_setting",
-                                    "store_setting",
-                                    "another_mods",
-                                    "native_setting_event",
-                                ]
-                                .contains(&f.sig.ident.to_string().as_str()) =>
+            for item in syn::parse_file(&source).unwrap().items {
+                match item {
+                    syn::Item::Fn(f) if f.sig.ident == "another_mods" => {
+                        ownership_check = f.to_token_stream().to_string();
+                    }
+                    syn::Item::Impl(i) => {
+                        for item in i.items {
+                            if let syn::ImplItem::Fn(f) = item
+                                && matches!(
+                                    f.sig.ident.to_string().as_str(),
+                                    "setting"
+                                        | "stored_setting"
+                                        | "set_setting"
+                                        | "store_setting"
+                                        | "native_setting_event"
+                                )
                             {
-                                Some(f.to_token_stream().to_string())
+                                let syn::ImplItemFn { sig, block, .. } = f;
+                                methods.push_str(&quote::quote!(#sig #block).to_string());
                             }
-                            _ => None,
-                        })
-                        .collect::<String>(),
-                ),
-                _ => None,
-            })
-            .collect();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
         let settings_source = std::fs::read_to_string(
             root.join("crates/sunrise-client/src/game/native_hooks/mod_settings.rs"),
         )
@@ -3189,29 +3185,29 @@ mod mod_api {{
 mod sunrise_world {{ pub mod native_load_context {{ pub fn read_setting(dir: &std::path::Path, key: &str) -> Option<String> {{ std::fs::read_to_string(dir.join(key)).ok() }} }} }}
 mod game {{
 use crate::mod_api;
+{ownership_check}
 mod mod_settings {{
 use crate::{{mod_api, sunrise_world}};
 use std::{{fs, path::{{Path, PathBuf}}, collections::HashMap, sync::{{LazyLock, Mutex}}}};
 {settings}
 pub(super) fn typed(dir: &Path, key: &str) -> Option<mod_api::SettingValue> {{ read_typed(dir, "a", key) }}
 }}
-use std::{{fs, path::PathBuf, cell::RefCell, collections::BTreeMap}};
-struct Context;
-impl Context {{ fn setting(&self, _: &str, _: &str) -> Option<String> {{ Some("loaded".into()) }} }}
+use std::{{fs, path::PathBuf}};
 enum NativeSettingValue {{ Toggle(bool), Choice {{ index: usize }}, Range {{ value: f64 }}, Color(u32) }}
 struct Setting {{ key: String, value: NativeSettingValue }}
 struct Page {{ settings: Vec<Setting> }}
 struct Row {{ id: String, native: Option<Page> }}
 struct Mods {{ installed: Vec<Row> }}
 struct Settings {{ mods: Mods }}
-struct Game {{ settings: Settings, notifications: usize, loop_context: Context, setting_overrides: RefCell<BTreeMap<(String, String), String>>, root: PathBuf }}
+struct ClientState {{ settings: Settings }}
+struct Game {{ side: ClientState, notifications: usize, root: PathBuf }}
 impl Game {{
     fn native_setting_changed(&mut self, _: &str, _: &str) {{ self.notifications += 1; }}
     fn native_data_dir(&self, id: &str) -> PathBuf {{ self.root.join(id) }}
     {methods}
 }}
 pub fn run(root: PathBuf) {{
-    let mut game = Game {{ settings: Settings {{ mods: Mods {{ installed: vec![Row {{ id: "a".into(), native: Some(Page {{ settings: vec![Setting {{ key: "toggle".into(), value: NativeSettingValue::Toggle(true) }}] }}) }}] }} }}, notifications: 0, loop_context: Context, setting_overrides: RefCell::new(BTreeMap::new()), root }};
+    let mut game = Game {{ side: ClientState {{ settings: Settings {{ mods: Mods {{ installed: vec![Row {{ id: "a".into(), native: Some(Page {{ settings: vec![Setting {{ key: "toggle".into(), value: NativeSettingValue::Toggle(true) }}] }}) }}] }} }} }}, notifications: 0, root }};
     assert_eq!(game.setting("a", "toggle"), None);
     assert_eq!(game.setting("b", "toggle"), None);
     game.set_setting("b", "toggle", "stolen");
