@@ -1,3 +1,5 @@
+use std::time::Instant;
+use sunrise_client::hud::HudBatch;
 use super::*;
 use {sunrise_gameplay_common::game::in_own_process, crate::game::server_side::native_entity_refs::tests::with_client_game};
 use sunrise_core::{nbt::Tag, vanilla_bytes::Writer};

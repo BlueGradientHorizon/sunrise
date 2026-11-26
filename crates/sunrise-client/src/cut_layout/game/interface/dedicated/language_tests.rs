@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use std::sync::Mutex;
+use sunrise_gameplay::game::world_loading::WorldRequest;
 use super::*;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{Hooks, ModEntry, ServerHost};

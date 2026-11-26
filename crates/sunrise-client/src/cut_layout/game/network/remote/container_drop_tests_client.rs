@@ -1,3 +1,7 @@
+use sunrise_items::items::ItemStack;
+use sunrise_protocol::packets::play::Clientbound as C;
+use sunrise_protocol::packets::play::Serverbound as S;
+use sunrise_sim::menu::Input;
 use super::super::*;
 use super::{connect_play_test, spawn_menu_test};
 use {sunrise_gameplay::game::lan::LanHost, sunrise_gameplay::game::server_side::lan_particles::tests::test_hub, sunrise_gameplay::game::native_entity_refs::tests::fixture_root, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::logged_in, crate::game::client_side::native_hotbar_slot::hotbar_slot_tests::sent};

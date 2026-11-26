@@ -1,6 +1,10 @@
 //! `fishing_medium` through the game's own bobber: no listener and a None answer leave the
 //! bobber falling; an answer floats it at its surface, tells the caster, and the catch rolls
 //! its checked table; the client keeps only the surface; the first mod in order wins.
+use sunrise_core::geometry::Vec3;
+use sunrise_core::random::LegacyRandom;
+use sunrise_gameplay_common::game::fishing_common::Hook;
+use sunrise_items::items::ItemStack;
 // Included as fishing's child so fixtures can construct its private hook state.
 use super::*;
 use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game};

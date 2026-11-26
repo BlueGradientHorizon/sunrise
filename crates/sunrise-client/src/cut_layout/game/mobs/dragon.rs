@@ -1,5 +1,11 @@
 
 
+use sunrise_core::geometry::Vec3;
+use sunrise_core::random::LegacyRandom;
+use sunrise_gameplay_common::game::creatures::SpawnSite;
+use sunrise_gameplay_common::game::dragon_common::Dragon;
+use sunrise_sim::mobs::DamageKind;
+use sunrise_sim::projectiles::ProjectileKind;
 #[cfg(test)]
 pub(crate) mod tests {
 

@@ -1,3 +1,12 @@
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::sync::Arc;
+use sunrise_core::geometry::Vec3;
+use sunrise_core::nbt::Tag;
+use sunrise_core::position::BlockPos;
+use sunrise_game_data::scoreboard::Scoreboard;
+use sunrise_level::chunk::Chunk;
+use sunrise_mod_runtime::attachments::ATTACHMENTS_KEY;
 // Test module extracted without changing its logical path.
 use super::*;
 

@@ -1,3 +1,5 @@
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::projectiles::Projectile;
 use super::*;
 use mod_api::{
     Flow, HearsProjectileImpactsEvent, Hooks, HostTransaction, ProjectileImpactEvent, ServerHost,

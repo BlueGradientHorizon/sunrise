@@ -1,5 +1,7 @@
 
 
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::Species;
 #[cfg(test)]
 mod tests {
     use super::*;

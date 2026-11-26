@@ -1,5 +1,7 @@
 //! Actual command execution with prepared resources. Canonical membership is
 //! installed only in a fresh process; no native mod bundle or trait hooks are used.
+use sunrise_core::nbt::Tag;
+use sunrise_core::nbt::parse_snbt;
 use super::*;
 use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
 use std::{path::PathBuf, sync::Arc};

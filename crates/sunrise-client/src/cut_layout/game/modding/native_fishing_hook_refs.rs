@@ -1,5 +1,6 @@
 
 
+use mod_api::EntityRef;
 #[cfg(test)]
 mod tests {
     use sunrise_gameplay_common::game::fishing_common::Hook;

@@ -1,5 +1,6 @@
 
 
+use sunrise_core::position::BlockPos;
 #[cfg(test)]
 mod landing_crossing_tests {
     use {crate::game::native_hooks::block_landing::*};

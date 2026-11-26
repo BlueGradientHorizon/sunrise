@@ -2,6 +2,10 @@
 //! fixtures A–K, two-pass draw order & geometry (including audit [87] zero-sized components),
 //! `render_tooltip_pre` font replacement & cancellation, `render_tooltip_texture` & line-only
 //! `ItemResource::tooltip`, `show_tooltip_with_item_in_hand`, audit [88], and panic containment.
+use std::borrow::Cow;
+use sunrise_client::hud::HudBatch;
+use sunrise_client::hud::rgba;
+use sunrise_items::items::ItemStack;
 use super::*;
 use sunrise_client_gameplay::game::host::draw::EngineTooltipFont;
 use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};

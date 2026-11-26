@@ -1,5 +1,7 @@
 
 
+use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
 #[cfg(test)]
 pub(crate) mod teleport_hook_tests {
 use sunrise_gameplay::game::server_side::consume::teleport_hook_tests::ConsumptionProbe;

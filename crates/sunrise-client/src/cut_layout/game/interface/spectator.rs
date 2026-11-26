@@ -1,5 +1,8 @@
 
 
+use sunrise_game_data::scoreboard::comp_text;
+use sunrise_game_data::text::Text;
+use sunrise_protocol::packets::play::Serverbound as S;
 #[cfg(test)]
 mod tests {
     use super::*;

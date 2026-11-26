@@ -2,6 +2,8 @@
 //! single-player window's clicks are a guest's, and the guest's statistics are
 //! the server's (`ServerPlayer.awardStat`).
 
+use sunrise_items::items::ItemStack;
+use sunrise_sim::menu::Input;
 use super::*;
 
 /// `StonecutterMenu.onTake` counts the taken result on the server's copy of

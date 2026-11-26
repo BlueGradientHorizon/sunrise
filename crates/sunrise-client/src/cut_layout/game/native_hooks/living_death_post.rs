@@ -1,5 +1,7 @@
 
 
+use sunrise_sim::mobs::Damage;
+use sunrise_sim::mobs::Who;
 #[cfg(test)]
 pub(crate) mod tests {
     use sunrise_gameplay::game::native_entity_refs::tests::with_game;

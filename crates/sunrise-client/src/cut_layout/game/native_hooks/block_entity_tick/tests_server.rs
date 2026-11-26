@@ -1,3 +1,5 @@
+use mod_api::BlockEntityScope;
+use sunrise_level::containers::BlockEntity;
 use super::tick_tests::*;
 use super::*;
 use sunrise_gameplay_common::game::Dim;

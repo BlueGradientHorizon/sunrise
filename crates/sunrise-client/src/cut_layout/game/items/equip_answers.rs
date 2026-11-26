@@ -1,5 +1,6 @@
 
 
+use sunrise_items::items::ItemStack;
 #[cfg(test)]
 mod tests {
     use {crate::game::equip_answers::*, sunrise_gameplay_common::game::equip_answers::{MenuEquip, take_equip_conversions}};

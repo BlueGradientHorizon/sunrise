@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use super::*;
 use sunrise_core::geometry::Vec3;
 

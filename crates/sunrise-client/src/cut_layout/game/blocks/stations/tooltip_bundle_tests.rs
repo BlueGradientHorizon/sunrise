@@ -1,3 +1,7 @@
+use mod_api::TooltipElement;
+use sunrise_client::hud::HudBatch;
+use sunrise_client::hud::rgba;
+use sunrise_items::items::ItemStack;
 use super::*;
 use sunrise_client_gameplay::game::host::draw::EngineTooltipFont;
 use mod_api::{ClientHost, Hooks, ModEntry, Mods, RenderTooltipGatherComponentsEvent};

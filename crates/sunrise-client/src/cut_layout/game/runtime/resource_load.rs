@@ -1,5 +1,7 @@
 
 
+use std::sync::Arc;
+use std::time::Instant;
 #[cfg(test)]
 #[path = "resource_load/test_cache.rs"]
 pub(crate) mod test_cache;

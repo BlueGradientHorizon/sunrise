@@ -1,5 +1,8 @@
 
 
+use std::sync::Arc;
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::Mob;
 #[cfg(test)]
 mod namespace_review_tests {
     use super::*;

@@ -3,6 +3,8 @@
 //! (`tools/test_block_entity_client_tick_parity.py`), the fixture compares particles, sounds,
 //! spins, beacon beams, animation state and the level random after each tick. Separate cases
 //! exercise ticker enabling, animation lifetimes and when particles join the engine.
+use sunrise_core::geometry::Vec3;
+use sunrise_level::containers::BlockEntity;
 use super::*;
 use std::sync::Arc;
 use sunrise_client::block_entity_anim::Ticker;

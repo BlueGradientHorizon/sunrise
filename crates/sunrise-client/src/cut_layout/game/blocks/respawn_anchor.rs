@@ -1,5 +1,7 @@
 
 
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::Dim;
 #[cfg(test)]
 pub(crate) mod connected_spawnpoint_rotation_tests {
     use sunrise_gameplay::game::lan::LanSettings;

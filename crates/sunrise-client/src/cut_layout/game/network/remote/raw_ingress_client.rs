@@ -1,5 +1,6 @@
 
 
+use sunrise_protocol::packets::play::Clientbound as C;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "bundle_parity_tests_client.rs"]

@@ -1,3 +1,9 @@
+use mod_api::BlockEntityRef;
+use mod_api::BlockEntityScope;
+use mod_api::ServerHost;
+use sunrise_core::nbt::Tag;
+use sunrise_level::containers::BlockEntity;
+use sunrise_world::registry::BlockStateId;
 use super::*;
 use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::native_entity_refs::tests::with_game_at};
 use mod_api::{

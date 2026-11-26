@@ -1,5 +1,10 @@
 
 
+use mod_api::ItemPlace;
+use mod_api::MenuRef;
+use mod_api::MenuSlotPlace;
+use mod_api::ServerHost;
+use sunrise_sim::lan::menu::NativeMenuEvent;
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_game as with_base_game;

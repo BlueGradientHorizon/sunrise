@@ -1,5 +1,6 @@
 
 
+use sunrise_core::geometry::Vec3;
 #[cfg(test)]
 pub(crate) mod nested_spawn_tests {
     use crate::game::server_side::entity_server::taken_pass_tests;

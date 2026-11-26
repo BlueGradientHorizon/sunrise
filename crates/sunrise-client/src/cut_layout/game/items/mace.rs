@@ -1,5 +1,6 @@
 
 
+use sunrise_items::items::ItemStack;
 #[cfg(test)]
 #[path = "tests/player_armor_weapon_tests.rs"]
 pub(crate) mod player_armor_weapon_tests;

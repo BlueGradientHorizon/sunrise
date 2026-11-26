@@ -3,6 +3,7 @@
 //! through the game: the answers each part gets, starting from vanilla's, and what the game does
 //! with what it leaves. Each test installs process-wide parts: run alone with the prepared
 //! resources (`SUNRISE_TEST_RESOURCES`).
+use sunrise_items::items::ItemStack;
 use super::*;
 use mod_api::{
     ApplyEnchantmentsEvent, Hooks, IsNotReplaceableByPickActionEvent, IsPrimaryItemForEvent,

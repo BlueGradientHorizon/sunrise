@@ -1,3 +1,6 @@
+use mod_api::InteractionAttempt;
+use mod_api::InteractionKey;
+use sunrise_client::hud::HudBatch;
 #[allow(unused_imports)]
 use {crate::game::native_hooks::base::*};
 use sunrise_client_gameplay::game::client_side::screen_build::ObservedScreen;

@@ -9,7 +9,7 @@ pub(crate) use sunrise_client_gameplay::game::client_side::test_key_codes::{
 pub(crate) use resource_load::{load_resources, load_resources_skip_lang, load_resources_uncached};
 #[path = "../benchmark_retention.rs"]
 pub(crate) mod benchmark_retention;
-#[cfg(not(feature = "client"))]
+#[cfg(any(test, not(feature = "client")))]
 #[path = "../server_startup_settings.rs"]
 mod server_startup_settings;
 use std::sync::Arc;
@@ -469,6 +469,10 @@ pub(crate) fn run_with(
     #[cfg(not(feature = "client"))]
     let read_auth = None;
     let mut options = Options::read(options, read_auth)?;
+    #[cfg(not(feature = "client"))]
+    if !options.execution_role.is_dedicated_server() {
+        return Err("this binary was built without the `client` feature; pass --dedicated".into());
+    }
     options.mods.native = Arc::new(native);
     #[cfg(feature = "client")]
     if options.mods.installation_side != sunrise_mod_package::manifest::Side::Server {
@@ -686,60 +690,8 @@ pub(crate) fn run_with(
             profile_resolver,
         );
     }
-    #[cfg(not(feature = "client"))]
-    if !options.execution_role.is_dedicated_server() {
-        return Err("this binary was built without the `client` feature; pass --dedicated".into());
-    }
-    if options.execution_role.is_dedicated_server() {
-        let base = mods::content_root(&vanilla_root, &options.mods)?;
-        let root = match preparation {
-            sunrise_core::prepared_profile::Profile::Full => base,
-            sunrise_core::prepared_profile::Profile::Server => base.with_server_profile(),
-        };
-        let prepared_root = root.prepared().to_path_buf();
-        #[cfg(feature = "client")]
-        let settings = early_settings.sim_settings();
-        #[cfg(not(feature = "client"))]
-        let settings = early_settings;
-        let (resources, pack) = load_resources_server(
-            root,
-            data_packs(&options.mods),
-            &vanilla_root,
-            &settings,
-            #[cfg(feature = "client")]
-            early_settings.sunrise.worker_threads(),
-            #[cfg(not(feature = "client"))]
-            workers.count(),
-            started,
-            &options.mods,
-            &Progress::new(),
-            cfg!(feature = "client"),
-        )?;
-        options.resources = prepared_root;
-        return start_dedicated_game(
-            &resources,
-            pack,
-            options,
-            settings,
-            started,
-            None,
-            dedicated_services(),
-            profile_resolver,
-            benchmark_retention::keep_benchmark,
-        );
-    }
-    #[cfg(not(feature = "client"))]
-    {
-        let _ = (
-            options,
-            early_settings,
-            vanilla_root,
-            started,
-        );
-        Err("this binary was built without the `client` feature; pass --dedicated".into())
-    }
     #[cfg(feature = "client")]
-    {
+    if !options.execution_role.is_dedicated_server() {
         let roots = startup_root(
             &vanilla_root,
             &early_settings.resource_packs,
@@ -791,8 +743,44 @@ pub(crate) fn run_with(
         if let Some(game) = game {
             run_event_loop(game)?;
         }
-        Ok(())
+        return Ok(());
     }
+    let base = mods::content_root(&vanilla_root, &options.mods)?;
+    let root = match preparation {
+        sunrise_core::prepared_profile::Profile::Full => base,
+        sunrise_core::prepared_profile::Profile::Server => base.with_server_profile(),
+    };
+    let prepared_root = root.prepared().to_path_buf();
+    #[cfg(feature = "client")]
+    let settings = early_settings.sim_settings();
+    #[cfg(not(feature = "client"))]
+    let settings = early_settings;
+    let (resources, pack) = load_resources_server(
+        root,
+        data_packs(&options.mods),
+        &vanilla_root,
+        &settings,
+        #[cfg(feature = "client")]
+        early_settings.sunrise.worker_threads(),
+        #[cfg(not(feature = "client"))]
+        workers.count(),
+        started,
+        &options.mods,
+        &Progress::new(),
+        cfg!(feature = "client"),
+    )?;
+    options.resources = prepared_root;
+    start_dedicated_game(
+        &resources,
+        pack,
+        options,
+        settings,
+        started,
+        None,
+        dedicated_services(),
+        profile_resolver,
+        benchmark_retention::keep_benchmark,
+    )
 }
 
 #[cfg(test)]

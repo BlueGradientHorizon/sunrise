@@ -1,5 +1,10 @@
 
 
+use mod_api::EntityRef;
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::Who;
+use sunrise_sim::projectiles::Projectile;
+use sunrise_sim::projectiles::ProjectileKind;
 #[cfg(test)]
 mod tests {
     use super::super::native_entity_refs::tests::with_game;

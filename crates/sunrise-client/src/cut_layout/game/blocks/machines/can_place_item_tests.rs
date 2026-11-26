@@ -1,3 +1,10 @@
+use mod_api::ItemResource;
+use sunrise_core::nbt::Tag;
+use sunrise_core::position::BlockPos;
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
+use sunrise_level::containers::ModContainer;
+use sunrise_world::registry::BlockStateId;
 use super::*;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{

@@ -1,3 +1,4 @@
+use sunrise_items::items::ItemStack;
 use super::tests::WeaponProbe;
 use super::*;
 use std::sync::{Arc, Mutex};

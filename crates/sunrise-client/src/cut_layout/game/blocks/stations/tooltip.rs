@@ -1,5 +1,8 @@
 
 
+use mod_api::TooltipElement;
+use sunrise_client::hud::HudBatch;
+use sunrise_items::items::ItemStack;
 #[cfg(test)]
 #[cfg(feature = "client")]
 pub(crate) mod tests {

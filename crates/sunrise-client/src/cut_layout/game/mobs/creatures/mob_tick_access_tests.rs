@@ -1,5 +1,7 @@
 //! #795, the mob slice: a handle fired inside a mob's own tick resolves the
 //! mob the tick holds out of the game, without a copy or a placeholder.
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::Mob;
 use {crate::game::creatures::borrowed_tick::*};
 use mod_api::{
     Despawn, EntityTickListenedEvent, EntityTickPreEvent, HostSide, ModEntry, ServerHost,

@@ -1,3 +1,5 @@
+use mod_api::LogicalSide;
+use std::sync::Arc;
 use super::*;
 use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 use {sunrise_gameplay::game::native_entity_refs::tests::fixture_root, crate::game::server_side::native_entity_refs::tests::with_client_game, sunrise_gameplay::game::native_entity_refs::tests::with_game_role};

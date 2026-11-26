@@ -1,3 +1,5 @@
+use mod_api::LogicalSide;
+use std::sync::Arc;
 use {crate::game::native_hooks::build_creative_mode_tab_contents::*, sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::{Catalog, CreativeModeTabs, CreativeTabEdit, CreativeTabEditError, CreativeTabList, CreativeTabPermissions, CreativeTabPlacement, CreativeTabReadError, CreativeTabVisibility, display_name, snapshot}};
 use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 use {sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::with_game_role};

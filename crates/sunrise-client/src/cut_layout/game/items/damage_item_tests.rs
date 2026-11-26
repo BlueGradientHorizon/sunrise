@@ -2,6 +2,7 @@
 //! `ItemPart::damage_item` on the wear of a player's held tool, and the part the tests of the other wear
 //! paths (the dispenser, the shield, the mace) share. Each installs process-wide parts: run alone with the
 //! prepared resources.
+use sunrise_items::items::ItemStack;
 use super::*;
 use mod_api::{DamageItemEvent, Flow, Hooks, ItemPart, ModEntry, Registrar, RegistrationContext};
 use std::sync::{Arc, Mutex};

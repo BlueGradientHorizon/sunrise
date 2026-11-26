@@ -1,4 +1,9 @@
 //! Added after the original old-fail module: context boundaries, not new runtime breadth.
+use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::Dim;
+use sunrise_sim::lan::Out;
+use sunrise_sim::lan::data::component_nbt;
+use sunrise_world::worldgen::structure::Rotation;
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_core::geometry::Vec3;

@@ -1,5 +1,8 @@
 
 
+use sunrise_core::geometry::Vec3;
+use sunrise_core::nbt::Tag;
+use sunrise_gameplay_common::game::boats_common::Boat;
 #[cfg(test)]
 pub(crate) mod tests {
 

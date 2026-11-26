@@ -1,5 +1,6 @@
 
 
+use sunrise_core::geometry::Vec3;
 #[cfg(test)]
 pub(crate) mod destroyed_contents_tests {
     use super::*;

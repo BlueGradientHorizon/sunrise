@@ -1,3 +1,8 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+use sunrise_core::geometry::Vec3;
+use sunrise_mod_runtime::pending_children::PendingChildren;
+use sunrise_sim::mobs::Mob;
 use super::*;
 use {sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::native_unspawned_mob::Edits};
 use mod_api::UnspawnedMobEdits;

@@ -1,5 +1,8 @@
 
 
+use sunrise_core::geometry::Aabb;
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::piston_push::Lid;
 #[cfg(test)]
 mod client_lid_tests {
     use super::*;

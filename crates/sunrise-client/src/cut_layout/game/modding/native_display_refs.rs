@@ -1,5 +1,11 @@
 
 
+use mod_api::EntityRef;
+use mod_api::ItemDisplayContext;
+use sunrise_core::nbt::Tag;
+use sunrise_game_data::scoreboard::comp_text;
+use sunrise_game_data::scoreboard::tag_to_json;
+use sunrise_items::items::ItemStack;
 #[cfg(test)]
 mod tests {
     use sunrise_gameplay_common::game::api_values::TryIntoApi;

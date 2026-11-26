@@ -1,4 +1,8 @@
 //! Installed native listeners intercept the AI setter through the real server host.
+use mod_api::EntityRef;
+use mod_api::LivingRef;
+use sunrise_sim::mobs::Mob;
+use sunrise_sim::mobs::Who;
 use super::*;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use std::sync::{Arc, Mutex};

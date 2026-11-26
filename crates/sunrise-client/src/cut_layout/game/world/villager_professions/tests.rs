@@ -1,4 +1,5 @@
 //! End-to-end registration and root publication, with unique resource and save roots.
+use std::sync::Arc;
 use super::*;
 use sunrise_gameplay_common::world_biomes;
 use mod_api::{

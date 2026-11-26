@@ -1,3 +1,8 @@
+use std::sync::Arc;
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::Dim;
+use sunrise_sim::mobs::Mob;
+use sunrise_sim::mobs::MobEvent;
 use super::*;
 use crate::game::creatures::borrowed_panic_tests::BreathPanic;
 use crate::game::creatures::borrowed_panic_tests::Breather;

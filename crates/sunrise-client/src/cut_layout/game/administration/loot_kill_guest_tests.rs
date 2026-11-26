@@ -3,6 +3,8 @@
 //! (`killed_by_player` holds) and its own weapon counts for looting, while
 //! the message goes to the issuer (tools/test_loot_kill_guest_parity.py
 //! measures the same on vanilla 26.3).
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::Dim;
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_items::items::ItemStack;

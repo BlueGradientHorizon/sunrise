@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::dragon_common::Dragon;
 use super::*;
 use {sunrise_gameplay_common::game::dragon_common::FightWho, sunrise_gameplay_common::game::dragon_common::SPECIAL};
 use crate::game::server_side::dragon::thorns_tests::thorny;

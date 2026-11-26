@@ -2,6 +2,7 @@
 //! (`BucketItem.java:59`), so on a dedicated server a guest who is not an
 //! operator neither empties nor fills a bucket inside the spawn protection
 //! radius, while an operator does both, and a non-operator outside it does.
+use sunrise_items::items::ItemStack;
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_core::position::ChunkPos;

@@ -2,11 +2,9 @@
 //! the processing order, per-option codecs and validation (`OptionInstance`),
 //! plain fields, key mappings, sound volumes and model parts. Typed access for
 //! the game lives in `settings`.
-use crate::{
-    java_text::{self, Json},
-    key_names,
-};
+use crate::java_text::{self, Json};
 use std::sync::LazyLock;
+use sunrise_game_data::key_names;
 
 /// A stored option value.
 #[derive(Clone, Debug, PartialEq)]
@@ -87,7 +85,7 @@ const MODEL_PARTS: [&str; 7] = [
 ];
 const GRAPHICS_BACKEND: &[&str] = &["default", "opengl", "vulkan"];
 const GRAPHICS_PRESET: &[&str] = &["fast", "fancy", "fabulous", "custom"];
-pub use sunrise_level::sim_settings::MAX_RENDER_DISTANCE;
+pub use crate::sim_settings::MAX_RENDER_DISTANCE;
 const INACTIVITY: &[&str] = &["minimized", "afk"];
 const CLOUDS: &[&str] = &["false", "fast", "true"];
 const MAIN_HAND: &[&str] = &["left", "right"];
@@ -248,14 +246,14 @@ static TABLE: LazyLock<Vec<Def>> = LazyLock::new(|| {
         n("musicToast", MUSIC_TOAST, 0),
         n("musicFrequency", MUSIC_FREQUENCY, 0),
     ];
-    for (name, key, _) in crate::keybinds::MAPPINGS {
+    for (name, key, _) in sunrise_game_data::key_mappings::MAPPINGS {
         t.push(def(
             &format!("key_{name}"),
             Kind::Key,
             V::Str((*key).to_owned()),
         ));
     }
-    for source in crate::settings::SOUND_SOURCES {
+    for source in sunrise_game_data::sound_source::SOUND_SOURCES {
         t.push(u(&format!("soundCategory_{source}"), 1.0));
     }
     for part in MODEL_PARTS {
@@ -292,7 +290,7 @@ fn double_range(v: f64, lo: f64, hi: f64) -> Option<f64> {
     // Double.compareTo: -0.0 sorts below 0.0 and NaN above everything.
     (v.total_cmp(&lo).is_ge() && v.total_cmp(&hi).is_le() && !v.is_nan()).then_some(v)
 }
-pub(crate) fn log_mouse(value: i32) -> f64 {
+pub fn log_mouse(value: i32) -> f64 {
     sunrise_core::jmath::pow(10.0, f64::from(value) / 100.0)
 }
 fn unit_alt(json: &Json) -> Option<f64> {

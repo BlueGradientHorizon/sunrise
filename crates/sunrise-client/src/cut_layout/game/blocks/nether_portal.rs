@@ -1,5 +1,9 @@
 
 
+use sunrise_core::geometry::Vec3;
+use sunrise_core::nbt::Tag;
+use sunrise_core::position::BlockPos;
+use sunrise_gameplay_common::game::Dim;
 #[cfg(test)]
 #[path = "tests/portal_spawn_tests.rs"]
 pub(crate) mod portal_spawn_tests;

@@ -1,3 +1,6 @@
+use std::sync::Arc;
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::boats_common::Boat;
 use super::*;
 use std::sync::Mutex;
 use sunrise_mod_runtime::attachments::{

@@ -3,6 +3,7 @@
 //! a worn-out piece of equipment (`ServerPlayer.onEquippedItemBroken`) and the
 //! bed slept in (`ServerPlayer.startSleepInBed`, whose statistic the bed picks:
 //! `StrawBedBlock.getSleptInBedStatType`).
+use sunrise_core::geometry::Vec3;
 use super::super::*;
 use sunrise_gameplay_common::game_side;
 use sunrise_gameplay::game::game_tests::tests::server_game;

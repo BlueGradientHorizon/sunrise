@@ -2,6 +2,8 @@
 //! and `look-at entity ID` wait for the next tick or frame pick (client_pick.rs) instead of
 //! picking themselves, so a `client_pick` listener runs only in those calls. `attack ID`
 //! reports what the pick its click was taken with held.
+use std::time::Instant;
+use winit::event::MouseButton;
 use super::*;
 use serde_json::json;
 use sunrise_client_gameplay::game::client_side::native_client_session::tests::logged_client;

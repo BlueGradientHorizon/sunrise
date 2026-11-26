@@ -1,5 +1,8 @@
 
 
+use std::sync::Arc;
+use std::time::Instant;
+use sunrise_level::chunk::Chunk;
 #[cfg(test)]
 mod tests {
     use super::*;

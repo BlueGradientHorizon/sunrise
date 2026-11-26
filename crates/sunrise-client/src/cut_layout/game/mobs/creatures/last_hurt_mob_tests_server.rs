@@ -1,3 +1,10 @@
+use std::sync::Arc;
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::Dim;
+use sunrise_sim::mobs::Damage;
+use sunrise_sim::mobs::MobEvent;
+use sunrise_sim::mobs::Who;
+use sunrise_sim::projectiles::ProjectileKind;
 use super::*;
 use sunrise_gameplay::game::creatures::last_hurt_mob_tests::MOB;
 use sunrise_gameplay::game::creatures::last_hurt_mob_tests::MOB_AGE;

@@ -1,5 +1,7 @@
 
 
+use sunrise_core::position::BlockPos;
+use sunrise_level::particle_options::ParticleType;
 #[cfg(feature = "client")]
 #[cfg(test)]
 pub(crate) mod shriek_capture_tests {

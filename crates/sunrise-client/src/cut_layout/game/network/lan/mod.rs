@@ -1,5 +1,8 @@
 
 
+use sunrise_protocol::packets::play::Clientbound as C;
+use sunrise_sim::lan::NetConfig;
+use sunrise_sim::lan::hub::HubConfig;
 #[cfg(test)]
 pub(crate) mod player_packet_tests;
 

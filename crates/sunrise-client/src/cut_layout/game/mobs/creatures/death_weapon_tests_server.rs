@@ -1,3 +1,11 @@
+use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::Damage;
+use sunrise_sim::mobs::DamageKind;
+use sunrise_sim::mobs::Mob;
+use sunrise_sim::mobs::Who;
+use sunrise_sim::projectiles::Projectile;
+use sunrise_sim::projectiles::ProjectileKind;
 use super::*;
 pub(crate) use crate::game::creatures::death_weapon::tests::WeaponProbe;
 pub(crate) use crate::game::creatures::death_weapon::tests::isolated;

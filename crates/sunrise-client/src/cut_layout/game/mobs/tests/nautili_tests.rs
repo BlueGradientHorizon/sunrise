@@ -3,6 +3,7 @@
 //! `Animal.mobInteract` gives a tame nautilus at full health the 600-tick love
 //! and the species' eating sound, the zombie nautilus too: `ZombieNautilus`
 //! overrides neither `isFood` nor `mobInteract`.
+use sunrise_items::items::ItemStack;
 use super::super::*;
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos};

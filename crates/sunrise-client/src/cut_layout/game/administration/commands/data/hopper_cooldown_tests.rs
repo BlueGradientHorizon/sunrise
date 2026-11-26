@@ -1,6 +1,7 @@
 //! `/data` on a hopper reads `HopperBlockEntity.saveAdditional`, which always
 //! writes `TransferCooldown` (#2356).
 
+use sunrise_core::nbt::Tag;
 use super::*;
 use sunrise_gameplay::game::game_tests::tests::server_game;
 use sunrise_core::position::BlockPos;

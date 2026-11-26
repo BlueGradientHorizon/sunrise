@@ -1,3 +1,8 @@
+use std::collections::HashSet;
+use std::sync::Arc;
+use sunrise_core::geometry::Vec3;
+use sunrise_core::nbt::Tag;
+use sunrise_level::chunk::Chunk;
 // Test module extracted without changing its logical path.
 use super::*;
 use sunrise_gameplay_common::game::commands_common::Target;

@@ -1,5 +1,9 @@
 
 
+use mod_api::DimensionKey;
+use mod_api::LevelReadError;
+use mod_api::LevelRef;
+use sunrise_core::geometry::Vec3;
 #[cfg(test)]
 mod tests {
     use super::*;

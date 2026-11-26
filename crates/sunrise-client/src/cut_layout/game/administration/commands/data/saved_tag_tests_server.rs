@@ -1,3 +1,4 @@
+use sunrise_game_data::text::Text;
 use super::*;
 use {sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, crate::settings::Settings, crate::game::load_resources};
 use sunrise_core::geometry::Vec3;

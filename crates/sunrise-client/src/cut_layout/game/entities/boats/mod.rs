@@ -1,4 +1,6 @@
 
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::boats_common::Boat;
 #[cfg(test)]
 pub(crate) mod friction_tests;
 #[cfg(test)]

@@ -1,4 +1,8 @@
 //! A target listener can choose a different real guest within a mob tick.
+use mod_api::EntityRef;
+use mod_api::LivingRef;
+use sunrise_sim::mobs::Mob;
+use sunrise_sim::mobs::Who;
 use super::*;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use std::sync::{Arc, Mutex};

@@ -1,5 +1,7 @@
 
 
+use sunrise_gameplay_common::game::pick_ray::PickAccumulator;
+use sunrise_gameplay_common::game::pick_ray::PickCandidate;
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -2,6 +2,11 @@
 //! families, of an entity spawned during play and of one that crosses into
 //! another section. `tools/test_chunk_entity_order_parity.py` compares the
 //! printed sequences with the real `PersistentEntitySectionManager`.
+use std::collections::HashSet;
+use std::sync::Arc;
+use sunrise_core::geometry::Vec3;
+use sunrise_core::nbt::Tag;
+use sunrise_level::chunk::Chunk;
 use super::*;
 use {sunrise_gameplay::game::native_entity_refs::tests::collect_game_all_entities, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 

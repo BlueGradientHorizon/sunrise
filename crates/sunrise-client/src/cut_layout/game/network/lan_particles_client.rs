@@ -1,5 +1,7 @@
 
 
+use sunrise_level::particle_options::ParticleType;
+use sunrise_protocol::entity_data::ParticleData;
 #[cfg(test)]
 mod tests {
     use super::*;

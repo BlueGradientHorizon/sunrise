@@ -1,5 +1,6 @@
 
 
+use sunrise_core::position::BlockPos;
 #[cfg(test)]
 mod tests {
     use {crate::game::native_hooks::fluid_tick::*};

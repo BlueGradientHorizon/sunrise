@@ -1,3 +1,4 @@
+use sunrise_core::geometry::Vec3;
 // Test module extracted without changing its logical path.
 use {crate::game::server_side::commands::*};
 use sunrise_gameplay_common::game::BlockEntity;

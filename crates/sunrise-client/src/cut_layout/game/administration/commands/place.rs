@@ -1,5 +1,7 @@
 
 
+use sunrise_core::nbt::Tag;
+use sunrise_core::position::BlockPos;
 #[cfg(test)]
 pub(crate) mod live_dungeon_spawner_tests {
     use super::*;

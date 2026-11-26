@@ -1,3 +1,4 @@
+use sunrise_sim::mobs::Mob;
 use super::*;
 use std::sync::{Arc, Mutex};
 use sunrise_core::geometry::Vec3;

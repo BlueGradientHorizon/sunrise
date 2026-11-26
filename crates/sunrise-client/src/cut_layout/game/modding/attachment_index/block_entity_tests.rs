@@ -1,3 +1,6 @@
+use mod_api::AttachmentHolder;
+use std::sync::Arc;
+use sunrise_gameplay_common::game::Dim;
 use super::*;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_core::nbt::Tag;

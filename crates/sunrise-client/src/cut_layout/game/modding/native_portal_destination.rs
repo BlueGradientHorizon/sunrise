@@ -1,5 +1,6 @@
 
 
+use sunrise_gameplay_common::game::Dim;
 #[cfg(test)]
 mod tests {
     use super::*;

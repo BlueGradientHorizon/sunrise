@@ -1,5 +1,10 @@
 
 
+use std::collections::HashSet;
+use std::sync::Arc;
+use sunrise_core::geometry::Vec3;
+use sunrise_core::nbt::Tag;
+use sunrise_level::chunk::Chunk;
 #[cfg(test)]
 #[path = "persist/anger_tests.rs"]
 mod anger_tests;

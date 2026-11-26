@@ -2,6 +2,7 @@
 //! old mob's name, silence, no-AI flag and effects to the new one, and the
 //! caller's `AfterConversion` step runs on it (`Pig.thunderHit`,
 //! `MushroomCow.shear`).
+use sunrise_items::items::ItemStack;
 use super::super::*;
 use std::sync::Arc;
 use sunrise_core::{geometry::Vec3, position::ChunkPos, random::RandomSource};

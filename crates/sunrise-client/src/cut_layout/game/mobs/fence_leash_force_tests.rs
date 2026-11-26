@@ -9,6 +9,8 @@
 //! `Holder::Knot([8,201,0])`, the hosted server gives that knot its entity
 //! (`knot_ids`, as it tracks it to a guest), the fence is there, and the knot
 //! the leash tick reads (`leash::knot_state`) is at (8.5, 201.375, 0.5).
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::Dim;
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_core::position::ChunkPos;

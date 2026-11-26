@@ -4,6 +4,7 @@
 //! hand from vanilla's loop: `repair = min(floor(experience × ratio), damage)`, then
 //! `experience − repair × experience / floor(experience × ratio)` goes round again. Each test installs
 //! process-wide parts: run alone with the prepared resources.
+use sunrise_items::items::ItemStack;
 use super::*;
 use mod_api::{Hooks, ItemPart, ModEntry, Registrar, RegistrationContext, XpRepairRatioEvent};
 use std::sync::{Arc, Mutex};

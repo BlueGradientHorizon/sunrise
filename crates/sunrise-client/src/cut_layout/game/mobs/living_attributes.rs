@@ -1,5 +1,6 @@
 
 
+use sunrise_world::attributes::Modifier;
 #[cfg(test)]
 pub(crate) mod tests {
 

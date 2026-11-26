@@ -1,6 +1,8 @@
 //! `LivingEntity.detectEquipmentUpdates` runs in the player's tick, after the tick's packets:
 //! a slot change and an attack sent in one tick act with the old item's attributes (the
 //! attribute swap, #637, #808).
+use sunrise_items::items::ItemStack;
+use sunrise_protocol::packets::play::Serverbound as S;
 use {crate::game::lan_actions::tick::*};
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use {sunrise_gameplay_common::game::server_side::native_item_places::tests::guest, sunrise_gameplay::game::server_side::native_item_places::tests::open_to_lan};

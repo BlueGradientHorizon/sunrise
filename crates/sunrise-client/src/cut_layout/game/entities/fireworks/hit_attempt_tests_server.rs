@@ -1,3 +1,6 @@
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::fireworks::Rocket;
+use sunrise_sim::mobs::Who;
 use super::*;
 use sunrise_gameplay_common::game::fireworks::hit_attempt_tests::Probe;
 use {sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::with_game};

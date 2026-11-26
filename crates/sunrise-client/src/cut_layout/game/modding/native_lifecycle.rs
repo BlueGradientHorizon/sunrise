@@ -1,5 +1,6 @@
 
 
+use mod_api::Authority;
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;

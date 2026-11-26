@@ -1,4 +1,6 @@
 //! Core gameplay regression tests.
+use winit::event::MouseButton;
+use winit::keyboard::KeyCode;
 use sunrise_gameplay::game::server_side::autosave_server::autosave_interval;
 
 #[test]

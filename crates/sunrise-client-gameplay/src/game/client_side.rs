@@ -89,7 +89,7 @@ pub(in crate::game) mod cloud_height_frame_tests;
 #[path = "interface/code_of_conduct.rs"]
 pub(in crate::game) mod code_of_conduct;
 #[path = "administration/command_blocks.rs"]
-pub(in crate::game) mod command_blocks;
+pub mod command_blocks;
 #[cfg(feature = "client")]
 #[path = "administration/command_minecarts.rs"]
 pub(in crate::game) mod command_minecarts;
@@ -248,7 +248,7 @@ pub(in crate::game) mod ime;
 pub(in crate::game) mod initial_client_models;
 #[cfg(feature = "client")]
 #[path = "runtime/input_trace.rs"]
-pub(in crate::game) mod input_trace;
+pub mod input_trace;
 #[cfg(feature = "client")]
 #[path = "world/integrated_client.rs"]
 pub mod integrated_client;
@@ -258,7 +258,7 @@ pub(in crate::game) mod interactions;
 #[path = "interface/inventory_input.rs"]
 pub(in crate::game) mod inventory_input;
 #[path = "interface/item_draw.rs"]
-pub(in crate::game) mod item_draw;
+pub mod item_draw;
 #[cfg(feature = "client")]
 #[path = "modding/item_model_context.rs"]
 pub(in crate::game) mod item_model_context;
@@ -330,7 +330,7 @@ pub mod model_baking_completed_tests;
 #[path = "blocks/motion_ids.rs"]
 pub(in crate::game) mod motion_ids;
 #[path = "interface/mount_menu.rs"]
-pub(in crate::game) mod mount_menu;
+pub mod mount_menu;
 #[cfg(feature = "client")]
 #[path = "interface/music.rs"]
 pub(in crate::game) mod music;
@@ -382,7 +382,7 @@ pub mod native_client_session;
 #[path = "modding/native_config_files.rs"]
 pub(in crate::game) mod native_config_files;
 #[path = "modding/native_connection_groups.rs"]
-pub(in crate::game) mod native_connection_groups;
+pub mod native_connection_groups;
 #[cfg(feature = "client")]
 #[path = "modding/native_custom_geometry.rs"]
 pub(in crate::game) mod native_custom_geometry;
@@ -397,7 +397,7 @@ pub(in crate::game) mod native_disconnect_tests;
 pub(in crate::game) mod native_dynamic_textures;
 #[cfg(feature = "client")]
 #[path = "modding/native_entity_layers.rs"]
-pub(in crate::game) mod native_entity_layers;
+pub mod native_entity_layers;
 #[cfg(feature = "client")]
 #[path = "modding/native_entity_refs_client.rs"]
 pub mod native_entity_refs_client;
@@ -413,7 +413,7 @@ pub(in crate::game) mod native_fluid_render;
 #[cfg(feature = "client")]
 pub use crate::game::native_hooks as native_hooks_client;
 #[path = "modding/native_hotbar_slot.rs"]
-pub(in crate::game) mod native_hotbar_slot;
+pub mod native_hotbar_slot;
 #[cfg(feature = "client")]
 #[path = "modding/native_instance_groups.rs"]
 pub(in crate::game) mod native_instance_groups;
@@ -447,7 +447,7 @@ pub mod native_menu_refs;
 pub(in crate::game) mod native_menu_slot_kinds;
 #[cfg(feature = "client")]
 #[path = "modding/native_mob_draw.rs"]
-pub(in crate::game) mod native_mob_draw;
+pub mod native_mob_draw;
 #[cfg(feature = "client")]
 #[path = "modding/native_model_3d.rs"]
 pub(in crate::game) mod native_model_3d;
@@ -592,7 +592,7 @@ pub(in crate::game) mod recipe_book;
 #[path = "network/remote_block_writes.rs"]
 pub(in crate::game) mod remote_block_writes;
 #[path = "network/remote_camera.rs"]
-pub(in crate::game) mod remote_camera;
+pub mod remote_camera;
 #[path = "network/remote_chat.rs"]
 pub(in crate::game) mod remote_chat;
 #[path = "network/remote_chunks.rs"]
@@ -651,7 +651,7 @@ pub(in crate::game) mod screen_build_fixture;
 #[path = "interface/screen_room.rs"]
 pub(in crate::game) mod screen_room;
 #[path = "interface/screen_widgets.rs"]
-pub(in crate::game) mod screen_widgets;
+pub mod screen_widgets;
 #[cfg(feature = "client")]
 #[path = "interface/screens.rs"]
 pub(in crate::game) mod screens;

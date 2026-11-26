@@ -1,5 +1,9 @@
 
 
+use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::Dim;
+use sunrise_sim::lan::Out;
+use sunrise_world::worldgen::structure::Rotation;
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;

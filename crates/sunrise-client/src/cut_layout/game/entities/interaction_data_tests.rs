@@ -3,6 +3,7 @@
 //! width, height, response and the attack/interaction records), keeping its
 //! UUID (tools/test_interaction_data_parity.py measures the same on vanilla
 //! 26.3).
+use sunrise_core::geometry::Vec3;
 use super::*;
 use std::sync::Arc;
 use sunrise_core::nbt::{Tag, parse_snbt};

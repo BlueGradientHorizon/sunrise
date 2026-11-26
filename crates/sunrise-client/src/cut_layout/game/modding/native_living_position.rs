@@ -1,5 +1,6 @@
 
 
+use sunrise_core::geometry::Vec3;
 #[cfg(test)]
 pub(crate) mod tests {
     use super::super::native_entity_refs::tests::with_game;

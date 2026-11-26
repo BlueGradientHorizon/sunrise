@@ -3,6 +3,8 @@
 //! gives each visible adult hoglin the nearer of its current target and the
 //! new one (`setAttackTargetIfCloserThanCurrent`)
 //! (tools/test_hoglin_repeat_attack_parity.py measures the same on vanilla 26.3).
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::Dim;
 use super::commands::Target;
 use super::*;
 use std::sync::Arc;

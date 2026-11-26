@@ -1,3 +1,5 @@
+use std::sync::Arc;
+use sunrise_sim::advancements::Tree;
 use super::*;
 use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_guest_turn_tests::with_guests};
 use mod_api::{

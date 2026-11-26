@@ -1,5 +1,6 @@
 //! `/random`'s roll line: who hears it and who it names, and the names
 //! `/random reset` completes (RandomCommand).
+use sunrise_game_data::text::Text;
 use super::*;
 use {sunrise_gameplay_common::game::Dim, sunrise_gameplay::game::game_tests::tests::server_game};
 use std::sync::{Arc, atomic::AtomicI32, mpsc};

@@ -1,5 +1,6 @@
 
 
+use sunrise_core::position::BlockPos;
 #[cfg(test)]
 pub(crate) mod client_screen_tests {
     use super::*;

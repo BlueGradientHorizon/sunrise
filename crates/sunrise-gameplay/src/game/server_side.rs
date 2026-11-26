@@ -84,7 +84,7 @@ pub(in crate::game) mod creaking;
 #[path = "mobs/creatures/mod_server.rs"]
 pub mod creatures_server;
 #[path = "items/crossbow.rs"]
-pub(in crate::game) mod crossbow;
+pub mod crossbow;
 #[path = "entities/cushions.rs"]
 pub(crate) mod cushions;
 #[path = "mobs/custom_spawner_level.rs"]
@@ -150,7 +150,7 @@ pub mod frames;
 #[path = "administration/functions.rs"]
 pub mod functions;
 #[path = "interface/game_mode.rs"]
-pub(in crate::game) mod game_mode;
+pub mod game_mode;
 #[path = "game_server.rs"]
 pub(in crate::game) mod game_server;
 #[path = "administration/game_tests.rs"]
@@ -170,13 +170,13 @@ pub mod integrated;
 #[path = "items/item_durability.rs"]
 pub(in crate::game) mod item_durability;
 #[path = "items/item_entities.rs"]
-pub(in crate::game) mod item_entities;
+pub mod item_entities;
 #[path = "entities/item_hurt.rs"]
 pub(in crate::game) mod item_hurt;
 #[path = "items/item_use.rs"]
-pub(in crate::game) mod item_use;
+pub mod item_use;
 #[path = "modding/journal_level_write.rs"]
-pub(in crate::game) mod journal_level_write;
+pub mod journal_level_write;
 #[path = "network/lan/mod.rs"]
 pub mod lan;
 #[path = "network/lan_attributes.rs"]
@@ -196,7 +196,7 @@ pub(in crate::game) mod lan_far;
 #[path = "network/lan_menus.rs"]
 pub(in crate::game) mod lan_menus;
 #[path = "network/lan_mobs.rs"]
-pub(in crate::game) mod lan_mobs;
+pub mod lan_mobs;
 #[path = "network/lan_particles.rs"]
 pub mod lan_particles;
 #[path = "network/lan_pickup.rs"]
@@ -208,11 +208,11 @@ pub(in crate::game) mod lan_quiet;
 #[path = "network/lan_trading.rs"]
 pub mod lan_trading;
 #[path = "network/lan_vehicles.rs"]
-pub(in crate::game) mod lan_vehicles;
+pub mod lan_vehicles;
 #[path = "network/lan_waypoints.rs"]
 pub(in crate::game) mod lan_waypoints;
 #[path = "entities/leads.rs"]
-pub(in crate::game) mod leads;
+pub mod leads;
 #[path = "interface/level_particles.rs"]
 pub(in crate::game) mod level_particles;
 #[path = "interface/level_sounds.rs"]
@@ -344,7 +344,7 @@ pub(in crate::game) mod native_fishing_hook_refs;
 #[path = "modding/native_game_event_context.rs"]
 pub(in crate::game) mod native_game_event_context;
 #[path = "modding/native_goal_ticks/mod.rs"]
-pub(in crate::game) mod native_goal_ticks;
+pub mod native_goal_ticks;
 #[path = "modding/native_hanging.rs"]
 pub(in crate::game) mod native_hanging;
 #[path = "modding/native_harvest_queries.rs"]
@@ -385,9 +385,9 @@ pub(in crate::game) mod native_lifecycle;
 #[path = "modding/native_living_effects.rs"]
 pub(in crate::game) mod native_living_effects;
 #[path = "modding/native_living_flags.rs"]
-pub(in crate::game) mod native_living_flags;
+pub mod native_living_flags;
 #[path = "modding/native_living_position.rs"]
-pub(in crate::game) mod native_living_position;
+pub mod native_living_position;
 #[path = "modding/native_living_refs.rs"]
 pub mod native_living_refs;
 #[path = "modding/native_living_writes.rs"]
@@ -441,7 +441,7 @@ pub(in crate::game) mod native_projectile_launch;
 #[path = "modding/native_projectile_refs.rs"]
 pub(in crate::game) mod native_projectile_refs;
 #[path = "modding/native_projectiles.rs"]
-pub(in crate::game) mod native_projectiles;
+pub mod native_projectiles;
 #[path = "modding/native_quick_move.rs"]
 pub(in crate::game) mod native_quick_move;
 #[path = "modding/native_raid_refs.rs"]
@@ -525,7 +525,7 @@ pub(in crate::game) mod pumpkin;
 #[path = "mobs/raids/mod.rs"]
 pub mod raids;
 #[path = "blocks/respawn_anchor.rs"]
-pub(in crate::game) mod respawn_anchor;
+pub mod respawn_anchor;
 #[path = "world/respawn_position.rs"]
 pub(in crate::game) mod respawn_position;
 #[path = "world/runtime_levels.rs"]
@@ -553,7 +553,7 @@ pub(in crate::game) mod shoulders;
 #[path = "interface/sign_edit_server.rs"]
 pub(in crate::game) mod sign_edit_server;
 #[path = "modding/slot_changes.rs"]
-pub(in crate::game) mod slot_changes;
+pub mod slot_changes;
 #[path = "modding/slot_takes.rs"]
 pub(in crate::game) mod slot_takes;
 #[path = "mobs/spawner.rs"]
@@ -617,13 +617,13 @@ pub(in crate::game) mod wake_time;
 #[path = "mobs/wandering_trader.rs"]
 pub(in crate::game) mod wandering_trader;
 #[path = "interface/wind.rs"]
-pub(in crate::game) mod wind;
+pub mod wind;
 #[path = "mobs/wither.rs"]
 pub(in crate::game) mod wither;
 #[path = "blocks/world_fluids.rs"]
 pub(in crate::game) mod world_fluids;
 #[path = "world/world_loading.rs"]
-pub(in crate::game) mod world_loading;
+pub mod world_loading;
 #[path = "world/world_update_server.rs"]
 pub(in crate::game) mod world_update_server;
 #[path = "mobs/xp_orb_targeting.rs"]

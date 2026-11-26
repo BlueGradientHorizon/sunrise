@@ -37,7 +37,7 @@ use winit::{
 use {crate::game::*, sunrise_gameplay_common::game::*};
 
 /// Window key parts used by IME and preset editor dispatch.
-pub(in crate::game) struct WindowKeyInput<'a> {
+pub struct WindowKeyInput<'a> {
     pub(in crate::game) physical: PhysicalKey,
     pub(in crate::game) state: ElementState,
     pub(in crate::game) repeat: bool,

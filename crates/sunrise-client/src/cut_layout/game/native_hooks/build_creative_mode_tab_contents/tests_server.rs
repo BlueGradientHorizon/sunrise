@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use super::*;
 use sunrise_gameplay::game::lan::LanHost;
 use crate::game::native_hooks::build_creative_mode_tab_contents::tests::definition;

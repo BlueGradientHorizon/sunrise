@@ -1,3 +1,5 @@
+use sunrise_client::hud::HudBatch;
+use sunrise_level::containers::BlockEntity;
 use super::*;
 use sunrise_client_gameplay::game::native_hooks::screen_position_tests::CRATE_MENU;
 use sunrise_client_gameplay::game::native_hooks::screen_position_tests::CrateMod;

@@ -1,4 +1,6 @@
 //! Observable host query semantics through real holder writes and transaction journals.
+use std::sync::Arc;
+use sunrise_gameplay_common::game::Dim;
 use super::*;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use mod_api::{AttachmentQueries, AttachmentQueriesMut, AttachmentType};

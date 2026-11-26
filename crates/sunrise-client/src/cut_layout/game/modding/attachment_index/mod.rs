@@ -1,5 +1,9 @@
 
 
+use mod_api::AttachmentHolder;
+use mod_api::ChunkRef;
+use std::sync::Arc;
+use sunrise_gameplay_common::game::Dim;
 #[cfg(test)]
 mod attached_storage_tests;
 #[cfg(test)]

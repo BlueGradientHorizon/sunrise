@@ -1,4 +1,6 @@
 //! Actual murder notification, with no server or world tick.
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::Mob;
 use super::*;
 use {sunrise_gameplay::game::native_entity_refs::tests::bind_acting_guest, sunrise_gameplay::game::native_entity_refs::tests::bind_local_player, sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, sunrise_gameplay::game::native_entity_refs::tests::with_game};
 use sunrise_sim::mobs::{Damage, Who};

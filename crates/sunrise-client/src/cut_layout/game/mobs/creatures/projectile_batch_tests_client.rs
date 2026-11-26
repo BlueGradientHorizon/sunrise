@@ -1,3 +1,4 @@
+use sunrise_core::geometry::Vec3;
 use super::*;
 use crate::game::creatures::projectile_batch_tests::shoot_arrow_at_wall;
 use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::native_projectiles::impact_probe::Action, crate::game::native_projectiles::impact_probe::with_probe};

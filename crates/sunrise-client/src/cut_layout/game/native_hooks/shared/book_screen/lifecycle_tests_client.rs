@@ -1,3 +1,5 @@
+use std::sync::Arc;
+use sunrise_client::hud::HudBatch;
 use sunrise_client_gameplay::game::client_side::native_hooks_client::book_screen::lifecycle_tests_shared::BookMod;
 use sunrise_client_gameplay::game::client_side::native_hooks_client::book_screen::lifecycle_tests_shared::BoundBookMod;
 use sunrise_client_gameplay::game::client_side::native_hooks_client::book_screen::lifecycle_tests_shared::BoundLayoutEdit;

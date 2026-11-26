@@ -1,5 +1,9 @@
 
 
+use mod_api::EntityRef;
+use mod_api::ItemEntityRef;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::lan::playerdata::uuid_ints;
 #[cfg(test)]
 pub(crate) mod tests {
     use super::super::native_entity_refs::tests::with_game;

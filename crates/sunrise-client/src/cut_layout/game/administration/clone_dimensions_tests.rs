@@ -3,6 +3,7 @@
 //! unknown one fails the command with `argument.dimension.invalid` before
 //! anything is cloned (tools/test_clone_dimensions_parity.py measures the
 //! same on vanilla 26.3).
+use sunrise_gameplay_common::game::Dim;
 use super::*;
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;

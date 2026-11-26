@@ -1,3 +1,8 @@
+use std::sync::Arc;
+use sunrise_client::hud::HudBatch;
+use winit::event::ElementState;
+use winit::event::MouseButton;
+use winit::event::WindowEvent;
 use super::*;
 
 #[path = "incoming_tests/pet_order_client.rs"]

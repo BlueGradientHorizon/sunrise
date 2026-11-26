@@ -1,5 +1,9 @@
 
 
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::join_seq::JoinList;
+use sunrise_sim::mobs::Who;
+use sunrise_sim::projectiles::Projectile;
 #[cfg(test)]
 #[path = "native_projectiles/impact_probe.rs"]
 pub(crate) mod impact_probe;

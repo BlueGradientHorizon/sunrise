@@ -1,3 +1,4 @@
+use sunrise_client::hud::HudBatch;
 use super::*;
 use sunrise_client_gameplay::game::input_trace::InputOrigin;
 use {sunrise_gameplay::game::native_entity_refs::tests::run_fresh_cases, crate::game::server_side::native_entity_refs::tests::with_client_game};

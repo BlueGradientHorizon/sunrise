@@ -1,3 +1,6 @@
+use mod_api::AttachmentHolder;
+use std::sync::Arc;
+use sunrise_gameplay_common::game::Dim;
 use super::*;
 use sunrise_gameplay::game::native_guest_turn_tests::with_guests;
 use mod_api::{AttachmentAccess, ServerHost};

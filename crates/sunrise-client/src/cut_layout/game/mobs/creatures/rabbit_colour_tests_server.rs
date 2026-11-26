@@ -1,3 +1,5 @@
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::Mob;
 use super::*;
 
 /// `Rabbit.getBreedOffspring`: the baby starts as a fresh biome variant

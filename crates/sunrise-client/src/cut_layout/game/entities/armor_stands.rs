@@ -1,5 +1,7 @@
 
 
+use std::sync::Arc;
+use sunrise_core::geometry::Vec3;
 #[cfg(test)]
 pub(crate) mod pumpkin_equippable_use_tests {
     use super::*;

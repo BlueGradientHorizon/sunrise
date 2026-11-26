@@ -1,3 +1,5 @@
+use mod_api::HookId;
+use mod_api::__private::reload::ReloadStageError;
 use super::*;
 use mod_api::{
     ClientReloadContext, ClientReloadListener, ClientReloadListeners, FileToIdConverter,

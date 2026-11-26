@@ -1,5 +1,7 @@
 
 
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::Mob;
 #[cfg(test)]
 mod tests {
     use super::*;

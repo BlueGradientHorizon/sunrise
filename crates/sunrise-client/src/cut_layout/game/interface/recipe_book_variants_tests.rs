@@ -4,6 +4,8 @@
 //! `minecraft:map_cloning`, a transmute recipe with a material count of 1 to 8,
 //! sends eight (tools/test_recipe_book_variants_parity.py measures the same on
 //! vanilla 26.3 with a real client).
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::Dim;
 use super::*;
 use std::sync::{Arc, atomic::AtomicI32, mpsc};
 use sunrise_level::chunk::Chunk;

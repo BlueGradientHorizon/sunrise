@@ -1,5 +1,7 @@
 
 
+use sunrise_core::nbt::Tag;
+use sunrise_level::containers::BlockEntity;
 #[cfg(test)]
 pub(crate) mod tests {
 

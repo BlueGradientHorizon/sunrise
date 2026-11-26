@@ -2,6 +2,7 @@
 //! own (`Entity.random`, `LivingEntity.createItemStackToDrop`) or a client's
 //! (`ClientPacketListener.random`), never the level's, whose draws are what
 //! random ticks, leaf decay and spawns come from.
+use sunrise_core::geometry::Vec3;
 use super::*;
 use sunrise_gameplay::game::game_tests::tests::server_game;
 use std::sync::Arc;

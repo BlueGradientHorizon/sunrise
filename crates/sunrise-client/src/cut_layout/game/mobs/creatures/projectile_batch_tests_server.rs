@@ -1,3 +1,6 @@
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::projectiles::Projectile;
+use sunrise_sim::projectiles::ProjectileKind;
 use super::*;
 use crate::game::creatures::projectile_batch_tests::WindContinuationObserved;
 use crate::game::creatures::projectile_batch_tests::WindContinuationObserver;

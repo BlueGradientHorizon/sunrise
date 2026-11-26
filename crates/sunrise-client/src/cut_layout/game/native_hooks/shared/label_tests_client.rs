@@ -1,3 +1,5 @@
+use sunrise_client::hud::HudBatch;
+use sunrise_client::hud::rgba;
 use super::*;
 
 #[test]

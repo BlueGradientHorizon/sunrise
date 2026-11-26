@@ -1,5 +1,10 @@
 
 
+use sunrise_core::geometry::Vec3;
+use sunrise_items::items::EntityTypeTags;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::Mob;
+use sunrise_sim::mobs::Who;
 #[cfg(test)]
 pub(crate) mod tests {
 

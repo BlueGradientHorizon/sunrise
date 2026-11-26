@@ -1,3 +1,7 @@
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::Who;
+use sunrise_sim::projectiles::Projectile;
+use sunrise_sim::projectiles::ProjectileKind;
 use super::*;
 use crate::game::creatures::mob_pearl_hook_tests::PlayerPearlProbe;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;

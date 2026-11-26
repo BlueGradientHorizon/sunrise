@@ -1,3 +1,7 @@
+use mod_api::ExplosionStart;
+use sunrise_core::geometry::Vec3;
+use sunrise_core::position::BlockPos;
+use sunrise_core::random::LegacyRandom;
 use super::*;
 use mod_api::{
     BlockPart, BreakBlockEvent, CanDropFromExplosionEvent, CanEntityDestroyEvent, ExpDropEvent,

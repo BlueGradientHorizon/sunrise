@@ -1,5 +1,8 @@
 
 
+use mod_api::EntityRef;
+use mod_api::MenuSlotBacking;
+use sunrise_items::items::ItemStack;
 #[cfg(test)]
 pub(crate) mod tests {
     use sunrise_gameplay_common::game::api_values::TryIntoApi;

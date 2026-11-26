@@ -1,5 +1,8 @@
 
 
+use sunrise_core::geometry::Vec3;
+use sunrise_core::random::LegacyRandom;
+use sunrise_gameplay_common::game::Dim;
 #[cfg(test)]
 #[path = "natural_spawning/spawn_obstruction_fixture.rs"]
 mod spawn_obstruction_fixture;

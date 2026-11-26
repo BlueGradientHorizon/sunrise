@@ -1,4 +1,8 @@
 
+use sunrise_command::args::ItemInput;
+use sunrise_command::args::Selector;
+use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
 #[cfg(test)]
 pub(crate) mod enchant_tests;
 

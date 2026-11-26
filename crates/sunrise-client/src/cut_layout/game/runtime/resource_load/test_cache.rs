@@ -1,4 +1,5 @@
 //! Process-wide cache of immutable loaded test resources, keyed by every load-affecting input.
+use std::time::Instant;
 use {crate::game::resource_load::*, sunrise_gameplay_common::game::resource_load::{BlockRegistry, Path, Progress, ResourceRoot, launch_world, publish_entity_type_defaults, with_skip_facts_memo}};
 #[cfg(feature = "client")]
 use sunrise_gameplay_common::game::api_values::TryIntoApi;

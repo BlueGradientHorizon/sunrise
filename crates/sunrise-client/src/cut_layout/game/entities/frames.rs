@@ -1,5 +1,8 @@
 
 
+use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::entities::ItemFrame;
 #[cfg(test)]
 pub(crate) mod map_limit_tests {
     use sunrise_gameplay_common::game::maps::{Decoration, Key, MapData};

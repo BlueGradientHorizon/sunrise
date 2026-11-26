@@ -1,3 +1,8 @@
+use sunrise_core::geometry::Vec3;
+use sunrise_protocol::packets::Empty;
+use sunrise_protocol::packets::play::Clientbound as C;
+use sunrise_protocol::packets::play::Serverbound as S;
+use sunrise_sim::sprint::Keys;
 use super::*;
 use sunrise_gameplay_common::game::boats_common::Boat;
 use crate::game::server_side::native_entity_refs::tests::with_client_game;

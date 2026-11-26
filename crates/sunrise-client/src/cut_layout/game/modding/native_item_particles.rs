@@ -1,5 +1,6 @@
 
 
+use sunrise_items::items::ItemStack;
 #[cfg(test)]
 mod tests {
     use super::*;

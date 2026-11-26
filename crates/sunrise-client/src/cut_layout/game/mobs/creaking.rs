@@ -1,5 +1,7 @@
 
 
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::Mob;
 #[cfg(test)]
 #[path = "tests/creaking_heart_events_tests.rs"]
 pub(crate) mod creaking_heart_events_tests;

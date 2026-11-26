@@ -4,6 +4,8 @@
 //! parse. The command never runs, an `execute store` around it stores
 //! nothing and no item is given
 //! (tools/test_inline_loot_reference_parity.py measures the same on vanilla 26.3).
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::motion::PlayerMotion;
 use super::*;
 use std::sync::Arc;
 use sunrise_core::position::ChunkPos;

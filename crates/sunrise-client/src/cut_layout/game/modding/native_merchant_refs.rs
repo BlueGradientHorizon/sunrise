@@ -1,5 +1,7 @@
 
 
+use mod_api::EntityRef;
+use sunrise_sim::merchant::Trader;
 #[cfg(test)]
 pub(crate) mod tests {
 

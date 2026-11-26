@@ -1,5 +1,6 @@
 
 
+use sunrise_client::hud::HudBatch;
 #[cfg(feature = "client")]
 #[cfg(test)]
 #[path = "recipe_book/check_mod_menu_tests.rs"]

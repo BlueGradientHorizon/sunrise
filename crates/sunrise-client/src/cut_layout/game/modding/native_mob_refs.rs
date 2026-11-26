@@ -1,5 +1,9 @@
 
 
+use mod_api::EntityRef;
+use mod_api::LivingRef;
+use mod_api::MobRef;
+use sunrise_sim::mobs::Who;
 #[cfg(test)]
 pub(crate) mod tests {
     use super::super::native_entity_refs::tests::with_game;

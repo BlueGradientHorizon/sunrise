@@ -1,5 +1,6 @@
 
 
+use sunrise_items::items::ItemStack;
 #[cfg(test)]
 mod item_destroyed_tests {
     use {crate::game::native_hooks::item_destroyed::*};

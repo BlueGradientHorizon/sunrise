@@ -1,3 +1,5 @@
+use sunrise_sim::motion::MotionWorld;
+use sunrise_sim::sprint::Keys;
 use super::*;
 use sunrise_gameplay_common::game_side;
 use crate::game::server_side::native_entity_refs::tests::with_client_game;

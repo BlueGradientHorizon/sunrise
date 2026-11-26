@@ -1,5 +1,6 @@
 
 
+use mod_api::LevelRef;
 #[cfg(test)]
 mod tests {
     use super::*;

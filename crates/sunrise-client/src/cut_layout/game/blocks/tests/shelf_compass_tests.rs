@@ -4,6 +4,7 @@
 //! `facing.getOpposite().toYRot()`. A compass on a shelf therefore points from the
 //! shelf's own block: two shelves at different places and facings draw different
 //! needles, where with no owner both drew the same one.
+use sunrise_client::mesher::Vertex;
 use super::*;
 use {crate::audio::Audio, crate::settings::Settings, sunrise_gameplay_common::game::Options, sunrise_gameplay_common::game::Progress, sunrise_gameplay_common::game::execution_role::ExecutionRole, crate::game::load_resources};
 use sunrise_core::nbt::{Compound, Tag};

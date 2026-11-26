@@ -1,5 +1,7 @@
 
 
+use mod_api::EntityRef;
+use sunrise_gameplay_common::game::minecarts::Minecart;
 #[cfg(test)]
 mod tests {
     use sunrise_gameplay_common::game::api_values::TryIntoApi;

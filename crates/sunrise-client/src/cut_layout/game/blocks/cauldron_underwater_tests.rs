@@ -3,6 +3,10 @@
 //! or a bubble column is water above it, so a lava or powder snow bucket on the
 //! cauldron there is `InteractionResult.CONSUME` (nothing happens) instead of
 //! filling it.
+use std::sync::Arc;
+use sunrise_core::geometry::Vec3;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::motion::PlayerMotion;
 use super::*;
 use sunrise_core::position::ChunkPos;
 use sunrise_level::chunk::Chunk;

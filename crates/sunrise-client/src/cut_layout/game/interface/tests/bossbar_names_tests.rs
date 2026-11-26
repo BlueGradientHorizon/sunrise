@@ -2,6 +2,8 @@
 //! (`BossBarCommands.getPlayers` → `ComponentUtils.formatList(players,
 //! Player::getDisplayName)`): the team's formatting, the `/tell` click, the
 //! entity hover and the name a shift-click inserts.
+use sunrise_game_data::text::Text;
+use sunrise_gameplay_common::game::Dim;
 use super::*;
 use {sunrise_gameplay::game::lan::LanSettings, sunrise_gameplay_common::game::lan_actions::GuestCommand};
 use std::sync::{Arc, atomic::AtomicI32, mpsc};

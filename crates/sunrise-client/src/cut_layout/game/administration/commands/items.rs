@@ -1,5 +1,6 @@
 
 
+use sunrise_items::items::ItemStack;
 #[cfg(test)]
 pub(crate) mod stand_equip_event_tests {
     use {crate::game::{Settings, load_resources}, sunrise_gameplay_common::game::{Options, Progress}};

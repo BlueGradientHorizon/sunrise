@@ -2,6 +2,7 @@
 //! readback of a pack-drawn light texture: the game asks for the readback exactly while the
 //! chart is on screen (`Game::debug_shows_lightmap`, given to `Renderer::set_lightmap_readback`
 //! each frame).
+use winit::keyboard::KeyCode;
 use {crate::game::*, sunrise_gameplay_common::game::{Screen}};
 use sunrise_client::debug_keys::KeyAction;
 

@@ -1,4 +1,5 @@
 //! The native travel decision affects real player reports and sends vanilla corrections.
+use sunrise_protocol::packets::play::Clientbound as C;
 use super::*;
 use sunrise_gameplay_common::game::execution_role::ExecutionRole;
 use {sunrise_gameplay::game::native_entity_refs::tests::fixture_root, sunrise_gameplay::game::native_entity_refs::tests::with_game_role};

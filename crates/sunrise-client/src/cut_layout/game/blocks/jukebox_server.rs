@@ -1,5 +1,7 @@
 
 
+use sunrise_items::items::ItemStack;
+use sunrise_level::containers::BlockEntity;
 #[cfg(test)]
 pub(crate) mod jukebox_play_tests {
     use super::*;

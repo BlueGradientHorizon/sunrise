@@ -1,3 +1,4 @@
+use sunrise_gameplay_common::game::Dim;
 use super::*;
 use sunrise_gameplay::game::lan_actions::tick::dig_tick_order_tests::DELAYED;
 use sunrise_gameplay::game::lan_actions::tick::dig_tick_order_tests::Event;

@@ -1,5 +1,6 @@
 
 
+use sunrise_core::position::BlockPos;
 #[cfg(test)]
 pub(crate) mod entity_inside_tests {
     use {crate::game::native_hooks::entity_inside::*};

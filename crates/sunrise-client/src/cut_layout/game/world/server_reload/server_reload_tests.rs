@@ -1,3 +1,5 @@
+use mod_api::FileToIdConverter;
+use mod_api::__private::reload::ReloadStageError;
 use super::*;
 use {sunrise_gameplay::game::native_entity_refs::tests::with_game, sunrise_gameplay::game::world_loading::WorldRequest};
 use mod_api::{

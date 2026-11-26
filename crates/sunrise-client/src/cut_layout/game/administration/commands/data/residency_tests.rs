@@ -1,3 +1,4 @@
+use sunrise_core::nbt::Tag;
 use super::*;
 use sunrise_gameplay::game::native_entity_refs::tests::with_game;
 use sunrise_mod_runtime::attachments::{AttachmentLifetime, Attachments, index::AttachmentIndex};

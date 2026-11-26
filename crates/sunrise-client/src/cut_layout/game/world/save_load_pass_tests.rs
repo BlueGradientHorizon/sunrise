@@ -1,4 +1,6 @@
 //! Reentrant saves during a loaded entity queue's per-row join notifications.
+use std::path::PathBuf;
+use sunrise_items::items::ItemStack;
 use super::*;
 use mod_api::{EntityJoinLevelEvent, Flow, Hooks, ServerHost};
 use std::sync::{

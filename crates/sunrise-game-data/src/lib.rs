@@ -13,6 +13,8 @@ pub mod fastutil_order;
 pub mod gamerules;
 pub mod identifier;
 pub mod key_display;
+pub mod key_mappings;
+pub mod key_names;
 pub mod lang;
 pub mod move_input;
 pub use sunrise_world::nbt_path;

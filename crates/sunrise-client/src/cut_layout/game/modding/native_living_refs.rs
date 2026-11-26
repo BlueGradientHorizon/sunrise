@@ -1,5 +1,9 @@
 
 
+use mod_api::LivingRef;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::mobs::Mob;
+use sunrise_sim::mobs::Who;
 #[cfg(test)]
 pub(crate) mod tests {
 

@@ -1,5 +1,10 @@
 
 
+use sunrise_game_data::text::Text;
+use sunrise_items::items::ItemStack;
+use sunrise_sim::lan::data::component_nbt;
+use sunrise_sim::lan::menu::NativeMenuEvent;
+use sunrise_sim::lan::menu::Slots;
 #[cfg(test)]
 #[path = "native_menus/container_counter_tests.rs"]
 mod container_counter_tests;

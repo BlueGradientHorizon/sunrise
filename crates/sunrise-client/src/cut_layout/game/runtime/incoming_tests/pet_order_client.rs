@@ -1,3 +1,5 @@
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::motion::PlayerMotion;
 use super::*;
 use crate::game::core_tests::pet_order_tests::WOLF;
 use std::sync::Arc;

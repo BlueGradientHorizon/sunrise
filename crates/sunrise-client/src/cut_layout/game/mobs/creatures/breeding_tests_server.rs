@@ -1,3 +1,7 @@
+use sunrise_core::geometry::Vec3;
+use sunrise_sim::mobs::Mob;
+use sunrise_sim::mobs::MobEvent;
+use sunrise_sim::mobs::MobWorld;
 use super::*;
 use crate::game::creatures::breeding_tests::Bred;
 use crate::game::creatures::breeding_tests::SeededBreed;

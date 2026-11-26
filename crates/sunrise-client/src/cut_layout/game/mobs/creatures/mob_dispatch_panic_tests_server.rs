@@ -1,3 +1,6 @@
+use sunrise_core::geometry::Vec3;
+use sunrise_gameplay_common::game::Dim;
+use sunrise_sim::mobs::Mob;
 use super::*;
 use sunrise_gameplay::game::creatures::mob_dispatch_panic_tests::Case;
 use sunrise_gameplay::game::creatures::mob_dispatch_panic_tests::LEVEL_VALUE;

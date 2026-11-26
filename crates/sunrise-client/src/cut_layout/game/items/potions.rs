@@ -1,5 +1,6 @@
 
 
+use sunrise_level::particle_options::ParticleType;
 #[cfg(test)]
 #[cfg(feature = "client")]
 pub(crate) mod tests {
