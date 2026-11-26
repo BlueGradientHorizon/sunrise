@@ -112,6 +112,10 @@ the slots of the ongoing click. Ask for an answer that includes Parts outside th
 If a part panics, its answers are discarded and that callback is disabled for the session.
 The log and error toast name the mod; other parts still answer the check.
 
+A stack that cannot cross to the API (an item with no API key, count 0, damage out of range) is never
+offered to the part: placing it into a slot of a menu type a part answers is refused, picking it up keeps
+the slot's own answer, and the game logs a warning.
+
 ## Slots that keep what they show
 
 On a mod menu type, `menu_slot_rules` also answers `Slot.mayPickup` in `event.may_pickup`. It arrives true and
