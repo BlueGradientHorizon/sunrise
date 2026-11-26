@@ -57,33 +57,6 @@ impl crate::game::CommonGame<'_> {
             .map(|i| DYE_DIFFUSE[i])
     }
 
-    /// `IBlockStateExtension.getBeaconColorMultiplier` of `state` at `pos` for `beacon`.
-    pub(in crate::game) fn beacon_color(
-        &self,
-        state: BlockStateId,
-        name: &str,
-        pos: [i32; 3],
-        beacon: [i32; 3],
-    ) -> Option<u32> {
-        let own = self.beam_color(name);
-        if !super::api_values::block_state::block_listens(
-            mod_api::HookId::BeaconColorMultiplier,
-            state,
-        ) {
-            return own;
-        }
-        let mut color = own;
-        let [x, y, z] = pos;
-        let [bx, by, bz] = beacon;
-        self.native_beacon_color_multiplier(
-            state,
-            BlockPos::new(x, y, z),
-            BlockPos::new(bx, by, bz),
-            &mut color,
-        );
-        color.map(|c| c & 0xFF_FFFF)
-    }
-
     /// `getHeight(WORLD_SURFACE)`: above the highest non-air block.
     pub fn world_surface(&self, x: i32, z: i32) -> i32 {
         self.world
@@ -117,8 +90,55 @@ impl crate::game::CommonGame<'_> {
         levels
     }
 
+    /// Opening the menu shows the beacon's current powers.
+    pub fn beacon_opened(&mut self) {
+        let Some(s) = self.station.as_ref().filter(|s| s.kind == Kind::Beacon) else {
+            return;
+        };
+        let pos = s.pos;
+        let (p, sec) = match self.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
+            Some(BlockEntity::Beacon(b)) => (b.primary.clone(), b.secondary.clone()),
+            _ => (None, None),
+        };
+        let index =
+            |e: Option<String>| e.and_then(|e| EFFECTS.iter().position(|(n, _)| e.ends_with(n)));
+        if let Some(s) = self.station.as_mut() {
+            s.beacon = [index(p), index(sec)];
+        }
+    }
+}
+
+pub trait BeaconCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+
+    /// `IBlockStateExtension.getBeaconColorMultiplier` of `state` at `pos` for `beacon`.
+     fn beacon_color(
+        &self,
+        state: BlockStateId,
+        name: &str,
+        pos: [i32; 3],
+        beacon: [i32; 3],
+    ) -> Option<u32> {
+        let own = self.beam_color(name);
+        if !super::api_values::block_state::block_listens(
+            mod_api::HookId::BeaconColorMultiplier,
+            state,
+        ) {
+            return own;
+        }
+        let mut color = own;
+        let [x, y, z] = pos;
+        let [bx, by, bz] = beacon;
+        self.native_beacon_color_multiplier(
+            state,
+            BlockPos::new(x, y, z),
+            BlockPos::new(bx, by, bz),
+            &mut color,
+        );
+        color.map(|c| c & 0xFF_FFFF)
+    }
+
     /// Shared 10-block beam & pyramid scan; returns `(previous_levels, ambient_ready, reached_surface)`.
-    pub fn advance_beacon_beam(
+     fn advance_beacon_beam(
         &self,
         (x, y, z): (i32, i32, i32),
         b: &mut Beacon,
@@ -177,23 +197,10 @@ impl crate::game::CommonGame<'_> {
         }
         (previous, ambient_ready, reached_surface)
     }
-
-    /// Opening the menu shows the beacon's current powers.
-    pub fn beacon_opened(&mut self) {
-        let Some(s) = self.station.as_ref().filter(|s| s.kind == Kind::Beacon) else {
-            return;
-        };
-        let pos = s.pos;
-        let (p, sec) = match self.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
-            Some(BlockEntity::Beacon(b)) => (b.primary.clone(), b.secondary.clone()),
-            _ => (None, None),
-        };
-        let index =
-            |e: Option<String>| e.and_then(|e| EFFECTS.iter().position(|(n, _)| e.ends_with(n)));
-        if let Some(s) = self.station.as_mut() {
-            s.beacon = [index(p), index(sec)];
-        }
-    }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> BeaconCommonGameExt1<'__sg> for G {}
+
 
 use crate::game::tables::GameItems as _;
+
+use crate::game::native_hooks::beacon_color_multiplier::GameHooks as _;

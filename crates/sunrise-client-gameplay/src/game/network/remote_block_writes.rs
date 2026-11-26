@@ -38,7 +38,7 @@ impl ClientGame<'_> {
         if mod_api::__private::has_scoped_hook(mod_api::HookId::OnBlockStateChange)
             && (listens(previous) || listens(state))
         {
-            self.common.with_level(|_, level, _| level.block_state_change(at, previous, state, predicted));
+            self.with_level(|_, level, _| level.block_state_change(at, previous, state, predicted));
         }
         // Then the client-wide listeners, a map's invalidation among them.
         if mod_api::__private::listened(mod_api::HookId::ClientBlockChanged)
@@ -52,3 +52,5 @@ impl ClientGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

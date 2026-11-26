@@ -15,9 +15,6 @@ pub use sunrise_core::{
     geometry::{Aabb, Vec3},
     random::LegacyRandom,
 };
-#[allow(unused_imports)]
-pub(in crate::game) use sunrise_gameplay_common::minecart_cells::CartCells;
-use sunrise_gameplay_common::minecart_seat::*;
 use sunrise_items::{
     blocks::Fluid,
     items::{ItemStack, Items},
@@ -25,6 +22,9 @@ use sunrise_items::{
 use sunrise_level::{containers::BlockEntity, random_source};
 pub use sunrise_sim::mobs::{Species, riders};
 pub use sunrise_world::registry::BlockStateId;
+#[allow(unused_imports)]
+pub(in crate::game) use sunrise_gameplay_common::minecart_cells::CartCells;
+use sunrise_gameplay_common::minecart_seat::*;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum CartKind {
     Rideable,
@@ -283,7 +283,11 @@ pub const CART_KEY_Y: i32 = sunrise_sim::lan::menu::VEHICLE_KEY_Y;
 /// `OldMinecartBehavior.pushAndPickupEntities`: living entities the cart
 /// offers `startRiding` instead of `Entity.push`. Players click to board;
 /// iron golems always push; a cart that already has a rider is `isVehicle`.
-pub fn pickup_instead_of_push(species: Species, is_passenger: bool, cart_is_vehicle: bool) -> bool {
+pub fn pickup_instead_of_push(
+    species: Species,
+    is_passenger: bool,
+    cart_is_vehicle: bool,
+) -> bool {
     !cart_is_vehicle && !is_passenger && species != Species::IronGolem
 }
 
@@ -480,59 +484,12 @@ pub fn container_keep(signal: i32, loot_pending: bool, in_water: bool) -> f64 {
     f64::from(keep)
 }
 impl crate::game::CommonGame<'_> {
-    /// `getCurrentBlockPosOrRailBelow`.
-    pub fn rail_block(&self, p: Vec3, improved: bool) -> [i32; 3] {
-        let (x, y, z) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
-        let below = if improved {
-            (p.y - 0.1 - f64::from(1.0e-5_f32)).floor() as i32
-        } else {
-            y - 1
-        };
-        if self.tagged_rail(self.world.block(x, below, z)) {
-            [x, below, z]
-        } else {
-            [x, y, z]
-        }
-    }
-    /// `OldMinecartBehavior.getPos`: the point on the rail under (x, y, z), on the track the
-    /// rail lays for `cart`.
-    pub fn rail_pos(&self, cart: Option<u32>, x: f64, y: f64, z: f64) -> Option<[f64; 3]> {
-        let [xt, yt, zt] = self.rail_block(Vec3::new(x, y, z), self.minecart_improvements());
-        let rail = self.rail(cart, xt, yt, zt)?;
-        let (e0, e1) = rail.shape.exits();
-        let (fx, fy, fz) = (f64::from(xt), f64::from(yt), f64::from(zt));
-        let x0 = fx + 0.5 + f64::from(e0[0]) * 0.5;
-        let y0 = fy + 0.0625 + f64::from(e0[1]) * 0.5;
-        let z0 = fz + 0.5 + f64::from(e0[2]) * 0.5;
-        let x1 = fx + 0.5 + f64::from(e1[0]) * 0.5;
-        let y1 = fy + 0.0625 + f64::from(e1[1]) * 0.5;
-        let z1 = fz + 0.5 + f64::from(e1[2]) * 0.5;
-        let (xd, yd, zd) = (x1 - x0, (y1 - y0) * 2.0, z1 - z0);
-        let progress = if xd == 0.0 {
-            z - fz
-        } else if zd == 0.0 {
-            x - fx
-        } else {
-            ((x - x0) * xd + (z - z0) * zd) * 2.0
-        };
-        let mut out = [x0 + xd * progress, y0 + yd * progress, z0 + zd * progress];
-        if yd < 0.0 {
-            out[1] += 1.0;
-        } else if yd > 0.0 {
-            out[1] += 0.5;
-        }
-        Some(out)
-    }
-    /// `AbstractMinecart`: `minecart_improvements` picks the smoother
-    /// physics.
-    pub fn minecart_improvements(&self) -> bool {
-        self.enabled_feature_ids()
-            .iter()
-            .any(|f| f == "minecraft:minecart_improvements")
-    }
     /// `positionRider` for the mobs in minecarts: each sits on the cart's
     /// passenger attachment, less its own vehicle attachment.
-    pub fn seat_cart_mobs(&mut self, riding: &crate::game::passengers_common::Riders) {
+    pub fn seat_cart_mobs(
+        &mut self,
+        riding: &crate::game::passengers_common::Riders,
+    ) {
         for i in 0..self.carts.len() {
             let id = self.carts[i].id;
             let Some(js) = riding.get(&id) else {
@@ -571,39 +528,6 @@ impl crate::game::CommonGame<'_> {
             && self.carts.store_back(index, cart)
     }
 
-    /// Where the cart at `i` lets a player off.
-    pub fn cart_player_dismount_target(&self, i: usize) -> Vec3 {
-        let c = &self.carts[i];
-        let (bx, by, bz) = (
-            c.position.x.floor() as i32,
-            c.position.y.floor() as i32,
-            c.position.z.floor() as i32,
-        );
-        let mut target = None;
-        let face = cart_motion_face(c.yaw, c.flipped, self.minecart_improvements());
-        'search: for dy in [0, 1, -1] {
-            for (dx, dz) in dismount_offsets(face) {
-                let (x, y, z) = (bx + dx, by + dy, bz + dz);
-                let below = self.res.facts().get(self.world.block(x, y - 1, z));
-                let here = self.res.facts().get(self.world.block(x, y, z));
-                let head = self.res.facts().get(self.world.block(x, y + 1, z));
-                if (below.full_collision || below.legacy_solid)
-                    && !here.full_collision
-                    && !head.full_collision
-                    && here.fluid == Fluid::None
-                {
-                    target = Some(Vec3::new(
-                        f64::from(x) + 0.5,
-                        f64::from(y),
-                        f64::from(z) + 0.5,
-                    ));
-                    break 'search;
-                }
-            }
-        }
-        let top = c.bounds().max_position().y;
-        target.unwrap_or(Vec3::new(c.position.x, top, c.position.z))
-    }
     /// A chest or hopper minecart or a chest boat is about to be removed
     /// (`Containers.dropContents` / `AbstractChestBoat.remove`): what an open
     /// menu edited goes back to the vehicle, so it is what drops or travels
@@ -878,7 +802,10 @@ pub fn cart_is_destroyed(creative: bool, damage: f32, ignites_tnt: bool) -> bool
 
 /// `MinecartTNT.tick`'s collision detonation: a cart still moving at a tenth
 /// of a block a tick or more when a block stops it blows up.
-pub fn tnt_ignites_by_collision(horizontal_collision: bool, speed_sqr: f64) -> bool {
+pub fn tnt_ignites_by_collision(
+    horizontal_collision: bool,
+    speed_sqr: f64,
+) -> bool {
     horizontal_collision && speed_sqr >= 0.009_999_999_776_482_582
 }
 
@@ -962,3 +889,102 @@ use crate::game::tables::WorldTablesExt as _;
 use crate::game::cart_rails::CartRailsGameExt1 as _;
 
 use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+pub trait MinecartRailGameExt<'g>: crate::game::SideGame<'g> {
+    /// `getCurrentBlockPosOrRailBelow`.
+    fn rail_block(&self, p: Vec3, improved: bool) -> [i32; 3] {
+        let (x, y, z) = (p.x.floor() as i32, p.y.floor() as i32, p.z.floor() as i32);
+        let below = if improved {
+            (p.y - 0.1 - f64::from(1.0e-5_f32)).floor() as i32
+        } else {
+            y - 1
+        };
+        if self.tagged_rail(self.world.block(x, below, z)) {
+            [x, below, z]
+        } else {
+            [x, y, z]
+        }
+    }
+
+    /// `OldMinecartBehavior.getPos`: the point on the rail under (x, y, z), on the track the
+    /// rail lays for `cart`.
+    fn rail_pos(
+        &self,
+        cart: Option<u32>,
+        x: f64,
+        y: f64,
+        z: f64,
+    ) -> Option<[f64; 3]> {
+        let [xt, yt, zt] = self.rail_block(Vec3::new(x, y, z), self.minecart_improvements());
+        let rail = self.rail(cart, xt, yt, zt)?;
+        let (e0, e1) = rail.shape.exits();
+        let (fx, fy, fz) = (f64::from(xt), f64::from(yt), f64::from(zt));
+        let x0 = fx + 0.5 + f64::from(e0[0]) * 0.5;
+        let y0 = fy + 0.0625 + f64::from(e0[1]) * 0.5;
+        let z0 = fz + 0.5 + f64::from(e0[2]) * 0.5;
+        let x1 = fx + 0.5 + f64::from(e1[0]) * 0.5;
+        let y1 = fy + 0.0625 + f64::from(e1[1]) * 0.5;
+        let z1 = fz + 0.5 + f64::from(e1[2]) * 0.5;
+        let (xd, yd, zd) = (x1 - x0, (y1 - y0) * 2.0, z1 - z0);
+        let progress = if xd == 0.0 {
+            z - fz
+        } else if zd == 0.0 {
+            x - fx
+        } else {
+            ((x - x0) * xd + (z - z0) * zd) * 2.0
+        };
+        let mut out = [x0 + xd * progress, y0 + yd * progress, z0 + zd * progress];
+        if yd < 0.0 {
+            out[1] += 1.0;
+        } else if yd > 0.0 {
+            out[1] += 0.5;
+        }
+        Some(out)
+    }
+
+    /// `AbstractMinecart`: `minecart_improvements` picks the smoother
+    /// physics.
+    fn minecart_improvements(&self) -> bool {
+        self.enabled_feature_ids()
+            .iter()
+            .any(|f| f == "minecraft:minecart_improvements")
+    }
+}
+impl<'g, G: crate::game::SideGame<'g>> MinecartRailGameExt<'g> for G {}
+
+pub trait CartDismountGameExt<'g>: crate::game::SideGame<'g> {
+    /// Where the cart at `i` lets a player off.
+    fn cart_player_dismount_target(&self, i: usize) -> Vec3 {
+        let c = &self.carts[i];
+        let (bx, by, bz) = (
+            c.position.x.floor() as i32,
+            c.position.y.floor() as i32,
+            c.position.z.floor() as i32,
+        );
+        let mut target = None;
+        let face = cart_motion_face(c.yaw, c.flipped, self.minecart_improvements());
+        'search: for dy in [0, 1, -1] {
+            for (dx, dz) in dismount_offsets(face) {
+                let (x, y, z) = (bx + dx, by + dy, bz + dz);
+                let below = self.res.facts().get(self.world.block(x, y - 1, z));
+                let here = self.res.facts().get(self.world.block(x, y, z));
+                let head = self.res.facts().get(self.world.block(x, y + 1, z));
+                if (below.full_collision || below.legacy_solid)
+                    && !here.full_collision
+                    && !head.full_collision
+                    && here.fluid == Fluid::None
+                {
+                    target = Some(Vec3::new(
+                        f64::from(x) + 0.5,
+                        f64::from(y),
+                        f64::from(z) + 0.5,
+                    ));
+                    break 'search;
+                }
+            }
+        }
+        let top = c.bounds().max_position().y;
+        target.unwrap_or(Vec3::new(c.position.x, top, c.position.z))
+    }
+}
+impl<'g, G: crate::game::SideGame<'g>> CartDismountGameExt<'g> for G {}

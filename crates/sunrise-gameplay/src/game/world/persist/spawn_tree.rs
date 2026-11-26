@@ -36,7 +36,7 @@ impl SpawnTree {
                 continue;
             };
             let (node, uuid) = if let Some(mob_type) = game.res.mob_types().get(&kind) {
-                Game::normalize_loaded_mob_tags(&mut tag);
+                crate::game::ServerGame::normalize_loaded_mob_tags(&mut tag);
                 let (random, fresh_uuid) = sunrise_sim::mobs::living_random();
                 let mob = entity_nbt::mob_from_nbt_deferred(
                     &tag,
@@ -48,7 +48,7 @@ impl SpawnTree {
                     Node::Mob(Box::new(mob)),
                     entity_nbt::uuid(&tag).unwrap_or(fresh_uuid),
                 )
-            } else if let Some((slot, record)) = Game::decode_general_spawn_passenger(&tag, &kind) {
+            } else if let Some((slot, record)) = crate::game::ServerGame::decode_general_spawn_passenger(&tag, &kind) {
                 let uuid = record.uuid;
                 (Node::General(slot, record), uuid)
             } else {

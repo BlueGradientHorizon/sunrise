@@ -518,7 +518,7 @@ impl crate::game::ServerGame<'_> {
         }
         let item = stack.item.to_string();
         // A stack able to `shears_harvest` is dispensed as shears are, whatever its item.
-        let shears = self.common.stack_shears(&stack, ability::SHEARS_HARVEST);
+        let shears = self.stack_shears(&stack, ability::SHEARS_HARVEST);
         let (left, event) = match item.as_str() {
             _ if shears => self.dispense_shears(pos, facing, stack)?,
 
@@ -1202,7 +1202,7 @@ impl crate::game::ServerGame<'_> {
     ) -> Result<Dispensed> {
         let target = Self::pos_of(offset(pos, facing));
         let picked =
-            self.common.with_level(|b, level, ticks| b.bucket_pickup(level, ticks, target, false));
+            self.with_level(|b, level, ticks| b.bucket_pickup(level, ticks, target, false));
         self.server_process_level_events()?;
         match picked {
             Some(filled) => {
@@ -1267,14 +1267,14 @@ impl crate::game::ServerGame<'_> {
             return Ok((self.hurt_and_break(stack, 1), CLICK));
         }
         if self
-            .common.with_level(|b, level, ticks| b.fire_can_be_placed_at(level, ticks, target_pos, facing))
+            .with_level(|b, level, ticks| b.fire_can_be_placed_at(level, ticks, target_pos, facing))
         {
-            if !self.common.native_block_ignite_allowed(target_pos, "flint_and_steel") {
+            if !self.native_block_ignite_allowed(target_pos, "flint_and_steel") {
                 return Ok((Some(stack), CLICK));
             }
             let fire =
-                self.common.with_level(|b, level, ticks| b.fire_state_for(level, ticks, target_pos));
-            self.common.level_set([target.0, target.1, target.2], fire)?;
+                self.with_level(|b, level, ticks| b.fire_state_for(level, ticks, target_pos));
+            self.level_set([target.0, target.1, target.2], fire)?;
             self.post_block_game_event(
                 "minecraft:block_place",
                 [target.0, target.1, target.2],
@@ -1283,7 +1283,7 @@ impl crate::game::ServerGame<'_> {
             );
         } else if self.can_light(state, &name) {
             if let Some(lit) = self.common.with_props(state, &[("lit", "true")]) {
-                self.common.level_set([target.0, target.1, target.2], lit)?;
+                self.level_set([target.0, target.1, target.2], lit)?;
             }
             self.post_block_game_event(
                 "minecraft:block_change",
@@ -1299,7 +1299,7 @@ impl crate::game::ServerGame<'_> {
                 && self.tnt_prime_allowed(target_pos)
             {
                 self.spawn_primed_tnt(target_pos, false, None, None);
-                self.common.with_level(|b, level, ticks| b.remove_block(level, ticks, target_pos, false));
+                self.with_level(|b, level, ticks| b.remove_block(level, ticks, target_pos, false));
                 self.server_process_level_events()?;
             } else {
                 success = false;
@@ -1320,7 +1320,7 @@ impl crate::game::ServerGame<'_> {
         let target = offset(pos, facing);
         let target_pos = Self::pos_of(target);
         let ask = self.bonemeal(target_pos, false, &mut stack);
-        let grown = self.common.with_level(|b, level, ticks| {
+        let grown = self.with_level(|b, level, ticks| {
             ask.crop
                 .unwrap_or_else(|| b.grow_crop(level, ticks, target_pos, ask.check))
                 || b.grow_water_plant(level, ticks, target_pos, None)
@@ -1377,7 +1377,7 @@ impl crate::game::ServerGame<'_> {
                 .default_state("minecraft:wither_skeleton_skull")
                 .and_then(|s| self.common.with_props(s, &[("rotation", &rotation.to_string())]));
             if let Some(skull) = skull {
-                self.common.level_set([target.0, target.1, target.2], skull)?;
+                self.level_set([target.0, target.1, target.2], skull)?;
                 if let Some(entity) = BlockEntity::for_block("minecraft:wither_skeleton_skull") {
                     self.common.world.block_entities.insert(target, entity);
                 }
@@ -1475,7 +1475,7 @@ impl crate::game::ServerGame<'_> {
             Self::shulker_box_place_context(front, facing, below_empty, stack.item.to_string());
         // DirectionalPlaceContext places at the front block or nowhere. A shulker box is
         // neither a slab nor snow, so `canPlace` always has an answer here.
-        if self.common.with_level(|b, level, ticks| b.directional_can_place(level, ticks, &ctx))
+        if self.with_level(|b, level, ticks| b.directional_can_place(level, ticks, &ctx))
             != Ok(true)
         {
             return Ok((Some(stack), FAIL));
@@ -1508,7 +1508,7 @@ impl crate::game::ServerGame<'_> {
         {
             // releaseBeesAndResetHoneyLevel.
             if let Some(reset) = self.common.with_props(state, &[("honey_level", "0")]) {
-                self.common.level_set([target.0, target.1, target.2], reset)?;
+                self.level_set([target.0, target.1, target.2], reset)?;
             }
             self.dispenser_empty_hive(target, state);
             let bottle = ItemStack::new("minecraft:honey_bottle", 1);
@@ -2057,7 +2057,7 @@ impl crate::game::ServerGame<'_> {
                 if let Some(next) =
                     self.common.with_props(state, &[("charges", &(charge + 1).to_string())])
                 {
-                    self.common.level_set([target.0, target.1, target.2], next)?;
+                    self.level_set([target.0, target.1, target.2], next)?;
                     // RespawnAnchorBlock.charge: Context.of(null, newState).
                     self.post_block_game_event(
                         "minecraft:block_change",
@@ -2094,7 +2094,7 @@ impl crate::game::ServerGame<'_> {
             ));
         };
         set_success("honeycomb", true);
-        self.common.level_set([target.0, target.1, target.2], waxed)?;
+        self.level_set([target.0, target.1, target.2], waxed)?;
         self.common.level_events
             .push(sunrise_world::level::LevelEvent::LevelEvent {
                 id: 3003,
@@ -2142,7 +2142,7 @@ impl crate::game::ServerGame<'_> {
         self.server_play_sound("minecraft:item.bottle.empty", Self::center(pos), 1.0, 1.0);
         self.post_block_game_event("minecraft:fluid_place", [pos.0, pos.1, pos.2], None, None);
         if let Some(mud) = self.common.pack.assets.registry.default_state("minecraft:mud") {
-            self.common.level_set([target.0, target.1, target.2], mud)?;
+            self.level_set([target.0, target.1, target.2], mud)?;
         }
         let bottle = ItemStack::new("minecraft:glass_bottle", 1);
         Ok((
@@ -2222,7 +2222,7 @@ impl crate::game::ServerGame<'_> {
             self.pop_resource(p, stack);
         }
         if let Some(reset) = self.common.with_props(state, &[("honey_level", "0")]) {
-            self.common.level_set(p, reset)?;
+            self.level_set(p, reset)?;
         }
         self.dispenser_empty_hive(target, state);
         self.post_block_game_event("minecraft:shear", p, None, None);
@@ -2492,6 +2492,8 @@ use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1 as _;
 
 use sunrise_gameplay_common::game::cart_rails::CartRailsGameExt1 as _;
@@ -2503,6 +2505,8 @@ use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
 use sunrise_gameplay_common::game::equip_answers::EquipAnswersGameExt1 as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_abilities::ItemAbilitiesGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 

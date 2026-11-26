@@ -68,14 +68,14 @@ impl ServerGame<'_> {
             return Ok(false);
         };
         let target_pos = Self::pos_of(target);
-        let emptied = self.common.with_level(|b, level, ticks| {
+        let emptied = self.with_level(|b, level, ticks| {
             b.bucket_empty(level, ticks, target_pos, None, content, sound, false, false)
         });
         self.server_process_level_events()?;
         if emptied.is_none() {
             return Ok(false);
         }
-        if self.common.dimension_type().water_evaporates
+        if self.dimension_type().water_evaporates
             && matches!(
                 content,
                 BucketContent::Fluid(FluidKind::Water) | BucketContent::MobWater
@@ -101,3 +101,5 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

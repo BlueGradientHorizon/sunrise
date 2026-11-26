@@ -281,7 +281,7 @@ impl crate::game::ServerGame<'_> {
         held: Option<&ItemStack>,
     ) -> Result<bool> {
         let Some(held) = held else { return Ok(false) };
-        let shears = self.common.stack_shears(held, ability::SHEARS_HARVEST);
+        let shears = self.stack_shears(held, ability::SHEARS_HARVEST);
         if !shears && &*held.item != "minecraft:glass_bottle" {
             return Ok(false);
         }
@@ -350,7 +350,7 @@ impl crate::game::ServerGame<'_> {
         }
         // resetHoneyLevel.
         if let Some(reset) = self.common.with_props(state, &[("honey_level", "0")]) {
-            self.common.level_set(pos, reset)?;
+            self.level_set(pos, reset)?;
         }
         if !smokey
             && let Some((lease, BlockEntity::Beehive(mut hive))) =
@@ -435,7 +435,11 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_abilities::ItemAbilitiesGameExt1 as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
 

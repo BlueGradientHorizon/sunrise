@@ -184,7 +184,7 @@ impl crate::game::ServerGame<'_> {
                     p.cause_food_exhaustion(0.005);
                 }
                 if let (Some((entity, _)), Some((generation, name, lock))) = (&live, mod_source) {
-                    let saved = self.common.encode_removed_block_entity(
+                    let saved = self.encode_removed_block_entity(
                         key,
                         entity,
                         generation,
@@ -257,7 +257,7 @@ impl crate::game::ServerGame<'_> {
                 // TurtleEggBlock.playerDestroy: after the drops, one egg of a
                 // mined stack is taken and the rest stay.
                 sunrise_threads::work::clear_work();
-                self.common.with_level(|b, level, ticks| {
+                self.with_level(|b, level, ticks| {
                     b.turtle_egg_destroyed_by_player(
                         level,
                         ticks,
@@ -273,7 +273,7 @@ impl crate::game::ServerGame<'_> {
                 .is_some_and(|h| h.enchantment_level("minecraft:silk_touch") > 0);
             if removed {
                 sunrise_threads::work::clear_work();
-                self.common.with_level(|b, level, ticks| {
+                self.with_level(|b, level, ticks| {
                     b.ice_destroyed_by_player(
                         level,
                         ticks,
@@ -442,7 +442,7 @@ impl crate::game::ServerGame<'_> {
         if self.common.is_logical_server() {
             self.read_raids();
         }
-        self.common.announce_data_bound(mod_api::TagsUpdateCause::ServerDataLoad { reload: false });
+        self.announce_data_bound(mod_api::TagsUpdateCause::ServerDataLoad { reload: false });
         self.announce_data_maps_updated(mod_api::DataMapsUpdateCause::ServerReload);
         self.sync_recipe_content();
         self.server.restore_player_state = true;
@@ -611,7 +611,7 @@ impl crate::game::ServerGame<'_> {
             return Some(hit);
         }
         let (origin, direction) = self.aim()?;
-        self.common.clip_ray(origin, direction, self.common.block_reach)
+        self.clip_ray(origin, direction, self.common.block_reach)
     }
     /// `LivingEntity.startSleeping`: the player takes the bed whose head
     /// `head` names, moved onto it and asleep from now on. False when the
@@ -930,7 +930,7 @@ impl crate::game::ServerGame<'_> {
                 }
                 // Handled as the behaviour emits it (GameLevel::emit).
                 LevelEvent::DropResources { pos, state } => {
-                    self.common.with_level(|_, level, _| level.drop_resources_now(pos, state));
+                    self.with_level(|_, level, _| level.drop_resources_now(pos, state));
                 }
                 LevelEvent::FallingBlock {
                     pos,
@@ -1185,7 +1185,7 @@ impl crate::game::ServerGame<'_> {
                 // EnderDragonFight.tick: while a player watches the fight, the arena holds a
                 // `DRAGON` ticket of radius 9 at (0, 0), so its island ticks out to 7 chunks
                 // whatever the watcher's simulation distance. The fight is where the type has one.
-                dragon: (self.common.dimension_type().has_ender_dragon_fight
+                dragon: (self.dimension_type().has_ender_dragon_fight
                     && self.server.fight.arena_watched())
                 .then_some((0, 0)),
                 viewed: self.viewed_tickets(),
@@ -1425,7 +1425,7 @@ impl crate::game::ServerGame<'_> {
             return Ok(());
         }
         if self.common.mining.as_ref().is_none_or(|m| m.pos != hit.pos) {
-            self.common.attack_block(hit.pos)?;
+            self.attack_block(hit.pos)?;
             self.common.mining = Some(Mining {
                 pos: hit.pos,
                 progress: 0.0,
@@ -1731,7 +1731,7 @@ impl crate::game::ServerGame<'_> {
         let pos = hit.pos;
         let face = hit.face;
         let Some((new, sound, loot, damage, particle, transform_type)) =
-            self.common.block_transform(stack, hit, self.server_acting_sneak())
+            self.block_transform(stack, hit, self.server_acting_sneak())
         else {
             return Ok(false);
         };
@@ -1742,7 +1742,7 @@ impl crate::game::ServerGame<'_> {
             self.pop_resource_from_face(pos, face, ItemStack::new("minecraft:hanging_roots", 1));
         }
         let old = self.common.world.block(pos[0], pos[1], pos[2]);
-        self.common.level_set(pos, new)?;
+        self.level_set(pos, new)?;
         // BlockTransformer.TransformParticle.send.
         self.transform_particle(&particle, pos);
         // `Level.playSound(player, ...)`: the actor's client already played
@@ -1812,7 +1812,7 @@ impl crate::game::ServerGame<'_> {
             let pos = BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]);
             let creative = self.common.creative;
             let Some(filled) =
-                self.common.with_level(|b, level, ticks| b.bucket_pickup(level, ticks, pos, creative))
+                self.with_level(|b, level, ticks| b.bucket_pickup(level, ticks, pos, creative))
             else {
                 return Ok(UseResult::Fail);
             };
@@ -1833,7 +1833,7 @@ impl crate::game::ServerGame<'_> {
                 None,
             );
             let filled = ItemStack::new(filled, 1);
-            self.common.filled_result(filled.clone());
+            self.filled_result(filled.clone());
             self.trigger_item("minecraft:filled_bucket", &filled);
             return Ok(UseResult::Success { swing: true });
         }
@@ -1885,7 +1885,7 @@ impl crate::game::ServerGame<'_> {
             let Some(emptied) = emptied else {
                 return Ok(UseResult::Fail);
             };
-            if self.common.dimension_type().water_evaporates && content.is_water() {
+            if self.dimension_type().water_evaporates && content.is_water() {
                 self.evaporation_smoke([emptied.x, emptied.y, emptied.z]);
             }
             // `BucketItem.emptyContents` uses `playSound(player, …)`: the
@@ -1919,7 +1919,7 @@ impl crate::game::ServerGame<'_> {
                 });
                 // HoneycombItem.useOn: ITEM_USED_ON_BLOCK before the swap.
                 self.trigger_block("minecraft:item_used_on_block", hit.pos, stack);
-                self.common.level_set(hit.pos, state)?;
+                self.level_set(hit.pos, state)?;
                 let source = self
                     .server
                     .lan_acting_uuid
@@ -1965,7 +1965,7 @@ impl crate::game::ServerGame<'_> {
                     .cloned()
                     .ok_or("missing lit block state")?;
                 state.properties.insert("lit".into(), "true".into());
-                self.common.level_set(hit.pos, registry.resolve(&state)?)?;
+                self.level_set(hit.pos, registry.resolve(&state)?)?;
                 let sound = if item == "fire_charge" {
                     "minecraft:item.firecharge.use"
                 } else {
@@ -1997,12 +1997,12 @@ impl crate::game::ServerGame<'_> {
                 hit.pos[1] + hit.face[1],
                 hit.pos[2] + hit.face[2],
             ];
-            if self.common.can_place_used_fire(target) {
+            if self.can_place_used_fire(target) {
                 // With mods, the fire goes in and `BaseFireBlock.onPlace`
                 // fills the frame, as vanilla's order is, so that
                 // `portal_spawn` is asked once, where vanilla asks it.
                 if !mod_api::__private::mods().is_empty() || !self.try_light_portal(target)? {
-                    self.common.place_used_fire(target)?;
+                    self.place_used_fire(target)?;
                 }
                 let sound = sunrise_items::items::fire_starter_sound(item == "fire_charge");
                 let pitch = sunrise_items::items::fire_starter_pitch(
@@ -2239,7 +2239,7 @@ impl crate::game::ServerGame<'_> {
         let dimension = self.common.dim.level();
         let rules = self.common.level_rules();
         let liquid_transaction_open = self.has_level_transaction();
-        let environment = self.common.res.environment_of(&self.common.dimension_type().id);
+        let environment = self.common.res.environment_of(&self.dimension_type().id);
         let other_entities = entity::entity_lists_of!(self, without_carts);
         let mut level = GameLevel {
             cake_probe: false,
@@ -2344,6 +2344,8 @@ use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1 as _;
 
 use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
@@ -2352,8 +2354,14 @@ use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
 
+use sunrise_gameplay_common::game::native_data_bound::NativeDataBoundGameExt1 as _;
+
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 
+use sunrise_gameplay_common::game::native_hooks::block_entity_save_additional::BlockEntitySaveAdditionalGameExt1 as _;
+
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
+use sunrise_gameplay_common::game::powder_snow::FilledResultGameExt as _;

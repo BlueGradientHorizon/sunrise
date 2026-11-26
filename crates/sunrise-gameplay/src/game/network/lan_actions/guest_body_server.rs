@@ -282,7 +282,7 @@ impl crate::game::ServerGame<'_> {
                         .as_ref()
                         .and_then(|host| host.hub.guest(conn))
                         .map(|g| g.uuid);
-                    if let Some(vibration) = self.common.landing_block_updates(player, &event) {
+                    if let Some(vibration) = self.landing_block_updates(player, &event) {
                         self.as_guest(conn, |game| game.post_landing_vibration(vibration));
                     }
                 }
@@ -692,4 +692,8 @@ impl crate::game::ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::can_start_swimming::GameHooks as _;

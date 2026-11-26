@@ -1,6 +1,7 @@
 //! Item abilities (`ItemAbility`): what a stack can do, asked where vanilla checks the item
 //! kind for an action. Vanilla's answer comes first, then the parts of the stack's item
 //! (`ItemPart::can_perform_action`, NeoForge's `IItemExtension.canPerformAction`).
+
 pub use crate::game::CommonGame;
 pub use sunrise_items::items::{ItemInfo, ItemStack};
 
@@ -14,11 +15,11 @@ pub mod ability {
     pub const SHEARS_CARVE: &str = "shears_carve";
 }
 
-impl crate::game::CommonGame<'_> {
+pub trait ItemAbilitiesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `ItemStack.canPerformAction(ability)`, once vanilla answered `vanilla`. A stack whose
     /// item has no part for it keeps `vanilla` at the cost of one table lookup, and the stack
     /// is not looked at.
-    pub(in crate::game) fn stack_can_perform(
+     fn stack_can_perform(
         &self,
         stack: &ItemStack,
         ability: &str,
@@ -33,14 +34,14 @@ impl crate::game::CommonGame<'_> {
 
     /// Whether `stack` shears as shears do (`ability`), vanilla's answer being that the item
     /// is the shears.
-    pub fn stack_shears(&self, stack: &ItemStack, ability: &str) -> bool {
+     fn stack_shears(&self, stack: &ItemStack, ability: &str) -> bool {
         self.stack_can_perform(stack, ability, &*stack.item == "minecraft:shears")
     }
 
     /// Whether `stack` carries the `blocks_attacks` component (its own, or its item's unless
     /// removed) as `getUseDuration` and the use animation read it, once the stack's item parts
     /// answered `shield_block`.
-    pub(in crate::game) fn stack_carries_blocks_attacks(
+     fn stack_carries_blocks_attacks(
         &self,
         stack: &ItemStack,
         info: Option<&ItemInfo>,
@@ -52,3 +53,7 @@ impl crate::game::CommonGame<'_> {
         )
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> ItemAbilitiesGameExt1<'__sg> for G {}
+
+
+use crate::game::native_hooks::can_perform_action::GameHooks as _;

@@ -1,4 +1,5 @@
 //! Shape queries for a supplied state without replacing the block in the world.
+
 use crate::game::CommonGame;
 pub use mod_api::BlockShapeKind;
 use sunrise_core::{geometry::VoxelShape, position::BlockPos};
@@ -72,8 +73,8 @@ pub(in crate::game) fn outline_offset(
     }
 }
 
-impl crate::game::CommonGame<'_> {
-    pub fn selected_outline<'a>(
+pub trait NativeStateShapesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+     fn selected_outline<'a>(
         &'a self,
         world: &'a World,
         state: BlockStateId,
@@ -117,7 +118,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// The same outline traversal without allocating a box list.
-    pub fn outline_boxes_iter<'a>(
+     fn outline_boxes_iter<'a>(
         &'a self,
         world: &'a World,
         state: BlockStateId,
@@ -130,7 +131,7 @@ impl crate::game::CommonGame<'_> {
         outline_boxes(outline, base)
     }
 
-    pub fn state_shape_boxes(
+     fn state_shape_boxes(
         &self,
         world: &World,
         shulkers: &FxHashMap<[i32; 3], Shulker>,
@@ -150,6 +151,8 @@ impl crate::game::CommonGame<'_> {
         }
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeStateShapesGameExt1<'__sg> for G {}
+
 
 pub(in crate::game) fn outline_boxes(
     outline: Outline<'_>,
@@ -171,3 +174,5 @@ pub(in crate::game) fn outline_boxes(
         .chain(defaults.iter().copied())
         .map(move |b| std::array::from_fn(|i| base[i % 3] + b[i]))
 }
+
+use crate::game::GameGameExt1 as _;

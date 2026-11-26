@@ -1,10 +1,10 @@
 use super::*;
 use crate::game::tables::BlockProviderQuery;
 
-impl crate::game::CommonGame<'_> {
+pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// One dynamic provider answer: outer `None` refuses an active cycle, `Some(None)` keeps
     /// the state's own value. Publication is separate from reading this raw answer.
-    pub(in crate::game) fn query_dynamic_light_emission(
+     fn query_dynamic_light_emission(
         &self,
         pos: BlockPos,
         state: BlockStateId,
@@ -25,15 +25,17 @@ impl crate::game::CommonGame<'_> {
 
     /// Raw Part dispatch shared by contextual reads and the light publication path.
     #[inline(always)]
-    pub(in crate::game) fn native_light_emission(
+     fn native_light_emission(
         &self,
         dimension: LevelDimension,
         pos: BlockPos,
         state: BlockStateId,
         emission: &mut Option<u8>,
     ) {
-        self.fire_light_emission(dimension, pos, state, emission);
+        crate::game::native_hooks::fire::FireHooks::fire_light_emission(self, dimension, pos, state, emission);
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> GameHooks<'__sg> for G {}
+
 
 use crate::game::tables::WorldTablesExt as _;

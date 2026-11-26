@@ -1,15 +1,16 @@
 //! A tool acting on a block (an axe strips, a shovel flattens or douses, a hoe tills): the
 //! block's parts say what the block becomes, then the global hook hears the result.
+
 use crate::game::CommonGame;
 use sunrise_items::items::ItemStack;
 use sunrise_world::registry::BlockStateId;
 
-impl crate::game::CommonGame<'_> {
+pub trait ToolModificationGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// What the tool action `tool` makes of the block `block`: `state` starts with vanilla's
     /// answer. The block's parts answer first (`tool_modified_state`,
     /// `IBlockExtension.getToolModifiedState`), and `block_tool_modification` hears their result
     /// unless they cancelled the action.
-    pub(in crate::game) fn mod_tool_modification(
+     fn mod_tool_modification(
         &self,
         stack: &ItemStack,
         block: BlockStateId,
@@ -32,3 +33,9 @@ impl crate::game::CommonGame<'_> {
         }
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> ToolModificationGameExt1<'__sg> for G {}
+
+
+use crate::game::native_hooks::block_tool_modification::GameHooks as _;
+
+use crate::game::native_hooks::tool_modified_state::GameHooks as _;

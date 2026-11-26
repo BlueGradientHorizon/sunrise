@@ -121,7 +121,7 @@ impl ClientGame<'_> {
         }
         self.bind_parts(parts);
         self.refresh_recipe_property_context();
-        self.common.announce_data_bound(mod_api::TagsUpdateCause::ClientPacketReceived {
+        self.announce_data_bound(mod_api::TagsUpdateCause::ClientPacketReceived {
             integrated_server: self.client.integrated.is_some(),
         });
         self.resolve_primary_items();
@@ -188,5 +188,7 @@ pub(in crate::game) mod tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::native_data_bound::NativeDataBoundGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_world_read_common::NativeWorldReadGameExt1 as _;

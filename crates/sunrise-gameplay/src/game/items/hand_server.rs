@@ -17,7 +17,7 @@ impl ServerGame<'_> {
         hand: Hand,
         animation: SwingAnimation,
     ) -> bool {
-        if self.common.native_entity_swing_event(hand) {
+        if self.native_entity_swing_event(hand) {
             return false;
         }
         let effects = &self.common.potions.effects;
@@ -63,3 +63,5 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::item_attack::ItemAttackGameExt2 as _;

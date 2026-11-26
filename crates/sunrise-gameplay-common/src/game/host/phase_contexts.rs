@@ -1,6 +1,5 @@
 //! Phase-scoped context trait implementations for [`Game`].
 
-use super::ServerGame;
 use mod_api::*;
 use std::sync::Arc;
 
@@ -153,5 +152,3 @@ macro_rules! impl_shared_phase_contexts {
         }
     };
 }
-
-impl_shared_phase_contexts!(ServerGame<'_>);

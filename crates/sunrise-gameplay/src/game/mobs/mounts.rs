@@ -667,7 +667,7 @@ impl ServerGame<'_> {
             return Some(self.boat_player_dismount_target(i, yaw));
         }
         if let Some(i) = self.common.carts.iter().position(|c| c.id == vehicle) {
-            return Some(self.common.cart_player_dismount_target(i));
+            return Some(self.cart_player_dismount_target(i));
         }
         let mount = self.common.mobs.iter().find(|m| m.id == vehicle)?;
         if mount.species() == Species::HappyGhast {
@@ -1597,3 +1597,5 @@ use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt2 as _;
 
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
+use sunrise_gameplay_common::game::minecarts::CartDismountGameExt as _;

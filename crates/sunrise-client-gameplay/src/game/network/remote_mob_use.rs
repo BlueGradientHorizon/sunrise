@@ -184,7 +184,7 @@ impl ClientGame<'_> {
             // not dancing).
             Species::Piglin => {
                 !baby
-                    && stack.is_some_and(|s| self.common.piglin_currency(s))
+                    && stack.is_some_and(|s| self.piglin_currency(s))
                     && (m.extra.scratch[0] > 0
                         || !m.extra.off_hand_id().is_some_and(|o| self.piglin_loved(o)))
             }

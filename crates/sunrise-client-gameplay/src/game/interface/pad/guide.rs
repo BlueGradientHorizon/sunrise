@@ -600,7 +600,7 @@ impl crate::game::ClientGame<'_> {
             }
             if self.may_build()
                 && self
-                    .common.block_transform(&stack, hit, self.held_mapping(Action::Sneak))
+                    .block_transform(&stack, hit, self.held_mapping(Action::Sneak))
                     .is_some()
             {
                 return Some(Verb::Use);
@@ -759,6 +759,8 @@ mod guide_equippable_tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::block_items::BlockItemsGameExt1 as _;
 

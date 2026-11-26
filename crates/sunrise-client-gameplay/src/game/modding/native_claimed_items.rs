@@ -35,7 +35,7 @@ impl crate::game::ClientGame<'_> {
         let eye = self.common.eye_position()?;
         let dir = super::view_vector(self.common.yaw, self.common.pitch);
         let reach = f64::from(RAYCAST_MAX);
-        let hit = self.common.clip_ray(eye, dir, reach)?;
+        let hit = self.clip_ray(eye, dir, reach)?;
         let (pos, point) = (hit.pos, hit.point);
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
         let distance = (0..3)
@@ -204,3 +204,5 @@ impl crate::game::ClientGame<'_> {
         invoke(self);
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

@@ -11,7 +11,7 @@ thread_local! {
     static ASKING_SLOT_RULES: RefCell<()> = const { RefCell::new(()) };
 }
 
-impl<__Side: crate::game::Side> SlotRules for Game<'_, __Side> {
+pub trait GameSlotRules<'g>: crate::game::SideGame<'g> {
     fn listens(&self, menu: &str) -> bool {
         mod_api::__private::has_part_hook(mod_api::HookId::MenuSlotRules)
             && mod_api::__private::menu_listens(mod_api::HookId::MenuSlotRules, menu)
@@ -56,3 +56,7 @@ impl<__Side: crate::game::Side> SlotRules for Game<'_, __Side> {
         });
     }
 }
+
+use crate::game::native_hooks::menu_slot_rules::GameHooks as _;
+
+impl<'g, G: crate::game::SideGame<'g>> GameSlotRules<'g> for G {}

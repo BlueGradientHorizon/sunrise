@@ -1,9 +1,9 @@
 //! The block ray of `Game::clip_ray` (`BlockGetter.clip`), with or without fluids.
 use super::*;
 
-impl crate::game::CommonGame<'_> {
+pub trait ClipRayGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `clip_ray`; with `fluids`, the first fluid block a hit too, at its near face (`ClipContext.Fluid.ANY`).
-    pub(super) fn clip_ray_fluids(
+     fn clip_ray_fluids(
         &self,
         origin: [f64; 3],
         dir: [f64; 3],
@@ -172,6 +172,8 @@ impl crate::game::CommonGame<'_> {
         None
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> ClipRayGameExt1<'__sg> for G {}
+
 
 /// `VoxelShape.clip`'s inside case: the start point nudged along the ray lies in
 /// one of the outline's boxes, so the hit is there, facing the look.
@@ -186,3 +188,5 @@ fn inside_hit(nudged: Vec3, sweep: Vec3, boxes: &[[f64; 6]], pos: [i32; 3]) -> O
         inside: true,
     })
 }
+
+use crate::game::GameGameExt1 as _;

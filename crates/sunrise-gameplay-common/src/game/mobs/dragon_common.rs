@@ -198,7 +198,7 @@ pub trait DragonCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The dragon the level holds and the index (`getSubEntities` order) of
     /// its part with that entity id, while the dragon is there, dying or
     /// not: a part is an entity for as long as its parent is.
-     fn resident_dragon_part(&self, id: u32) -> Option<(&Dragon, usize)> {
+     fn resident_dragon_part<'__loan>(&'__loan self, id: u32) -> Option<(&Dragon, usize)> where '__sg: '__loan {
         let part = self.side_resident_dragon_part_index(id)?;
         Some((self.dragon.as_ref()?, part))
     }

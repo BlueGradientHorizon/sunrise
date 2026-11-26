@@ -39,7 +39,14 @@ fn functions_store(stack: &PackStack) -> DataStore {
     store
 }
 
-impl PackStack {
+pub(in crate::game) trait PackStackServerExt: Sized {
+fn reload_context(
+        &self,
+        listener: &Identifier,
+        converter: &FileToIdConverter,
+    ) -> ServerReloadContext;
+}
+impl PackStackServerExt for PackStack {
     fn reload_context(
         &self,
         listener: &Identifier,

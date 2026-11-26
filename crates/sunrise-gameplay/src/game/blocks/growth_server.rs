@@ -50,7 +50,7 @@ impl ServerGame<'_> {
             1.0,
             1.0,
         );
-        self.common.level_set(pos, max_age)?;
+        self.level_set(pos, max_age)?;
         self.post_block_game_event(
             "minecraft:block_change",
             pos,
@@ -92,7 +92,7 @@ impl ServerGame<'_> {
             }
             *self.common.held_mut() = (held.count > 0).then(|| held.clone());
         }
-        let used = self.common.with_level(|b, level, ticks| {
+        let used = self.with_level(|b, level, ticks| {
             b.use_bone_meal(level, ticks, pos, face, ask.crop, ask.check)
         });
         // A canceled `BonemealEvent` that succeeded uses none of the meal.
@@ -120,6 +120,8 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
 

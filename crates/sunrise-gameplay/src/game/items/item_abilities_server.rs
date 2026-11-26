@@ -6,6 +6,8 @@ impl ServerGame<'_> {
     /// item parts let it.
     pub(in crate::game) fn held_shears(&self) -> bool {
         self.common.held()
-            .is_some_and(|stack| self.common.stack_shears(stack, ability::SHEARS_HARVEST))
+            .is_some_and(|stack| self.stack_shears(stack, ability::SHEARS_HARVEST))
     }
 }
+
+use sunrise_gameplay_common::game::item_abilities::ItemAbilitiesGameExt1 as _;

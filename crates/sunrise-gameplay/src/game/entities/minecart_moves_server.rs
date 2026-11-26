@@ -117,7 +117,7 @@ impl ServerGame<'_> {
         }
         // OldMinecartBehavior applies block effects here and at tick end.
         // NewMinecartBehavior applies them after recording each track step.
-        if !self.common.minecart_improvements() {
+        if !self.minecart_improvements() {
             self.cart_block_effects(c);
         }
         true
@@ -125,3 +125,5 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
+
+use sunrise_gameplay_common::game::minecarts::MinecartRailGameExt as _;

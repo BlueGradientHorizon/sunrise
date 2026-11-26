@@ -64,7 +64,7 @@ impl ServerGame<'_> {
         let mut stack = inventory[slot].clone();
         let ask = self.bonemeal(pos, false, &mut stack);
         let grown = ask.crop.unwrap_or_else(|| {
-            self.common.with_level(|b, level, ticks| b.grow_crop(level, ticks, pos, ask.check))
+            self.with_level(|b, level, ticks| b.grow_crop(level, ticks, pos, ask.check))
         });
         // A canceled `BonemealEvent` that succeeded uses none of the meal.
         if grown && ask.crop != Some(true) {
@@ -723,6 +723,8 @@ pub(in crate::game) mod entity_event_particle_tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
 

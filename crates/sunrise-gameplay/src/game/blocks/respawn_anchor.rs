@@ -136,7 +136,7 @@ impl crate::game::ServerGame<'_> {
     /// `RespawnAnchorBlock.canSetSpawn`: the `respawn_anchor_works` attribute
     /// (only the Nether's dimension type sets it).
     pub(in crate::game::server_side) fn anchor_works(&self) -> bool {
-        self.common.dimension_type().respawn_anchor_works
+        self.dimension_type().respawn_anchor_works
     }
     /// `RespawnAnchorBlock.useItemOn` with `held` in the hand that acts.
     pub(in crate::game::server_side) fn use_respawn_anchor(
@@ -280,7 +280,7 @@ impl crate::game::ServerGame<'_> {
         pos: [i32; 3],
         _state: BlockStateId,
     ) -> Result<()> {
-        self.common.level_set(pos, self.common.world.air)?;
+        self.level_set(pos, self.common.world.air)?;
         let horizontal = [[0, 0, -1], [0, 0, 1], [-1, 0, 0], [1, 0, 0]]
             .into_iter()
             .any(|d| self.water_would_flow([pos[0] + d[0], pos[1], pos[2] + d[2]]));
@@ -301,7 +301,7 @@ impl crate::game::ServerGame<'_> {
     /// `BedRule.destroyOnUse` of the dimension's `bed_rule` and
     /// `straw_bed_rule`: true in the Nether and the End.
     pub(in crate::game::server_side) fn beds_destroy_on_use(&self) -> bool {
-        self.common.dimension_type().bed_rule.destroy_on_use
+        self.dimension_type().bed_rule.destroy_on_use
     }
     /// `AbstractBedBlock.useWithoutItem` where the bed rule destroys on use
     /// (the bed's head at `head`): `BedBlock.destroyOnUse` removes both
@@ -334,7 +334,7 @@ impl crate::game::ServerGame<'_> {
             "west" => [1, 0, 0],
             _ => [-1, 0, 0],
         };
-        self.common.level_set(head, self.common.world.air)?;
+        self.level_set(head, self.common.world.air)?;
         let foot = [head[0] + back[0], head[1], head[2] + back[2]];
         if self
             .common.res
@@ -343,7 +343,7 @@ impl crate::game::ServerGame<'_> {
             .name
             == name
         {
-            self.common.level_set(foot, self.common.world.air)?;
+            self.level_set(foot, self.common.world.air)?;
         }
         self.block_explosion(center, None)
     }
@@ -470,7 +470,7 @@ impl crate::game::ServerGame<'_> {
     /// beds never.
     pub(in crate::game::server_side) fn bed_sets_spawn(&self, state: BlockStateId) -> bool {
         let straw = &*self.common.res.facts().get(state).name == "minecraft:straw_bed";
-        let facts = self.common.dimension_type();
+        let facts = self.dimension_type();
         let rule = if straw {
             facts.straw_bed_rule
         } else {
@@ -530,7 +530,7 @@ impl crate::game::ServerGame<'_> {
             && stand.is_some()
             && let Some(next) = self.anchor_with_charges(state, self.common.anchor_charges(state) - 1)
         {
-            self.common.level_set(c.pos, next)?;
+            self.level_set(c.pos, next)?;
         }
         Ok(stand)
     }
@@ -605,7 +605,7 @@ impl crate::game::ServerGame<'_> {
         let Some(next) = self.anchor_with_charges(state, self.common.anchor_charges(state) + 1) else {
             return Ok(());
         };
-        self.common.level_set(pos, next)?;
+        self.level_set(pos, next)?;
         self.post_block_game_event("minecraft:block_change", pos, who, Some(next));
         let at = [
             f64::from(pos[0]) + 0.5,
@@ -623,7 +623,7 @@ impl crate::game::ServerGame<'_> {
             f64::from(head[2]) + 0.5,
         ];
         self.server_play_sound("minecraft:block.straw_bed.break_leave", center, 1.0, 1.0);
-        self.common.level_set(head, self.common.world.air)
+        self.level_set(head, self.common.world.air)
     }
 }
 
@@ -675,6 +675,8 @@ pub(in crate::game) mod tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
 

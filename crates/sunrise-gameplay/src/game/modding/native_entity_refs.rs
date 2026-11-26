@@ -60,8 +60,7 @@ impl crate::game::ServerGame<'_> {
         let mut after = None;
         loop {
             let id = self
-                .common
-                .resident_entities
+                .common.resident_entities
                 .table
                 .borrow_mut()
                 .level_uuid_candidate(dimension, uuid, after)?;
@@ -94,8 +93,7 @@ impl crate::game::ServerGame<'_> {
         std::iter::from_fn(move || {
             // Copy the key and release the residency borrow before resolution or a visitor.
             let key = self
-                .common
-                .resident_entities
+                .common.resident_entities
                 .table
                 .borrow_mut()
                 .level_entity_candidate_after(level.dimension(), after)?;
@@ -104,8 +102,7 @@ impl crate::game::ServerGame<'_> {
         })
         .filter(move |id| {
             !self
-                .common
-                .persist
+                .common.persist
                 .removals
                 .iter()
                 .chain(self.common.persist.destroying_vehicles.iter())
@@ -187,9 +184,7 @@ impl crate::game::ServerGame<'_> {
         if !self.level_handle_current(level) {
             return Err(LevelReadError::Stale);
         }
-        if !min.iter().chain(&max).all(|v| v.is_finite())
-            || level.dimension() != self.common.dim.key()
-        {
+        if !min.iter().chain(&max).all(|v| v.is_finite()) || level.dimension() != self.common.dim.key() {
             return Err(LevelReadError::Unavailable);
         }
         let bounds = Aabb::new(
@@ -201,8 +196,7 @@ impl crate::game::ServerGame<'_> {
         let mut after = None;
         loop {
             let candidate = self
-                .common
-                .resident_entities
+                .common.resident_entities
                 .table
                 .borrow()
                 .level_section_candidate_after(level.dimension(), search, after);
@@ -299,13 +293,11 @@ impl crate::game::ServerGame<'_> {
                 .find_map(|(hook, _)| (hook.id() == id).then(|| hook.bounds())),
             Target::Dragon(_) => self.common.dragon.as_ref().map(|d| d.body_bounds()),
             Target::Frame(_) => self
-                .common
-                .item_frames
+                .common.item_frames
                 .get(self.common.item_frames.locate(join)?)
                 .map(|f| aabb_extents(f.bounds())),
             Target::Painting(_) => self
-                .common
-                .paintings
+                .common.paintings
                 .get(self.common.paintings.locate(join)?)
                 .map(|p| aabb_extents(p.bounds())),
             Target::Mob(_) => list_query_body(&self.common.mobs, join),
@@ -319,9 +311,7 @@ impl crate::game::ServerGame<'_> {
             Target::Projectile(_) => list_query_body(&self.common.creatures.projectiles, join),
             Target::Rocket(_) => list_query_body(&self.common.rockets, join),
             Target::Trident(_) => list_query_body(&self.common.tridents, join),
-            Target::General(_) => {
-                list_query_body(&self.common.resident_entities.general.rows, join)
-            }
+            Target::General(_) => list_query_body(&self.common.resident_entities.general.rows, join),
             _ => None,
         }
     }
@@ -363,9 +353,7 @@ impl crate::game::ServerGame<'_> {
         if self.entity_ids_exhausted() {
             return None;
         }
-        if !self.native_level_write_allowed(level, pos)
-            || self.common.dim.key() != level.dimension()
-        {
+        if !self.native_level_write_allowed(level, pos) || self.common.dim.key() != level.dimension() {
             return None;
         }
         if let Some(entity) = entity {
@@ -373,7 +361,7 @@ impl crate::game::ServerGame<'_> {
         }
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
-        Some(self.common.with_level(|_, level, _| {
+        Some(self.with_level(|_, level, _| {
             crate::game::server_side::spill::block_drops_of(level, at, state, tool, entity)
         }))
     }
@@ -452,7 +440,6 @@ impl crate::game::ServerGame<'_> {
         }
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
         let fitted = self
-            .common
             .with_level(|b, level, ticks| b.update_from_neighbour_shapes(level, ticks, at, state));
         let _ = self.server_process_level_events();
         Ok(fitted)
@@ -464,16 +451,14 @@ impl crate::game::ServerGame<'_> {
         pos: [i32; 3],
         moved: bool,
     ) -> bool {
-        if !self.native_level_write_allowed(level, pos)
-            || self.common.dim.key() != level.dimension()
-        {
+        if !self.native_level_write_allowed(level, pos) || self.common.dim.key() != level.dimension() {
             return false;
         }
         if let Some(mut host) = super::journal_level_write::JournalLevelWrite::new(self, level) {
             return mod_api::LevelWriteHost::remove_block(&mut host, pos, moved);
         }
         let (state, flags) = self.level_removal_write(pos, moved);
-        let changed = self.common.set_block_live(pos, state, flags, false);
+        let changed = self.set_block_live(pos, state, flags, false);
         let _ = self.server_process_level_events();
         changed
     }
@@ -496,7 +481,7 @@ impl crate::game::ServerGame<'_> {
             return Ok(false);
         }
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             b.neighbour_update(level, ticks, at, b.block(source), update)
         });
         let _ = self.server_process_level_events();
@@ -516,8 +501,7 @@ impl crate::game::ServerGame<'_> {
             return Ok(false);
         }
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
-        self.common
-            .with_level(|b, level, ticks| b.neighbor_changed_at(level, ticks, at, b.block(source)));
+        self.with_level(|b, level, ticks| b.neighbor_changed_at(level, ticks, at, b.block(source)));
         let _ = self.server_process_level_events();
         Ok(true)
     }
@@ -544,7 +528,7 @@ impl crate::game::ServerGame<'_> {
             return None;
         }
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
-        let (changed, drops) = self.common.with_level(|b, level, ticks| {
+        let (changed, drops) = self.with_level(|b, level, ticks| {
             level.drop_tool = Some(((pos[0], pos[1], pos[2]), tool.cloned()));
             level.drop_into = collect.then(Vec::new);
             let changed = b.destroy_block(level, ticks, at, drop);
@@ -563,9 +547,7 @@ impl crate::game::ServerGame<'_> {
         pos: [i32; 3],
         progress: i32,
     ) -> bool {
-        if !self.native_level_write_allowed(level, pos)
-            || self.common.dim.key() != level.dimension()
-        {
+        if !self.native_level_write_allowed(level, pos) || self.common.dim.key() != level.dimension() {
             return false;
         }
         self.after_commit(After::BreakProgress(breaker, pos, progress));
@@ -577,9 +559,7 @@ impl crate::game::ServerGame<'_> {
         level: LevelRef,
         pos: [i32; 3],
     ) -> bool {
-        if !self.native_level_write_allowed(level, pos)
-            || self.common.dim.key() != level.dimension()
-        {
+        if !self.native_level_write_allowed(level, pos) || self.common.dim.key() != level.dimension() {
             return false;
         }
         self.common.notify_block_clients((pos[0], pos[1], pos[2]));
@@ -590,22 +570,19 @@ impl crate::game::ServerGame<'_> {
     /// False for a refused write, a stale or parked handle, a client, and a block that did not
     /// grow.
     pub(in crate::game) fn level_bone_meal(&mut self, level: LevelRef, pos: [i32; 3]) -> bool {
-        if !self.native_level_write_allowed(level, pos)
-            || self.common.dim.key() != level.dimension()
-        {
+        if !self.native_level_write_allowed(level, pos) || self.common.dim.key() != level.dimension() {
             return false;
         }
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
         let mut stack = sunrise_items::items::ItemStack::new("minecraft:bone_meal", 1);
         let ask = self.bonemeal(at, false, &mut stack);
-        let grown = self.common.with_level(|b, level, ticks| {
+        let grown = self.with_level(|b, level, ticks| {
             ask.crop
                 .unwrap_or_else(|| b.grow_crop(level, ticks, at, ask.check))
                 || b.grow_water_plant(level, ticks, at, None)
         });
         if grown {
-            self.common
-                .level_events
+            self.common.level_events
                 .push(sunrise_world::level::LevelEvent::LevelEvent {
                     id: 1505,
                     pos: at,
@@ -624,9 +601,7 @@ impl crate::game::ServerGame<'_> {
         pos: [i32; 3],
         biome: &str,
     ) -> bool {
-        if !self.native_level_write_allowed(level, pos)
-            || self.common.dim.key() != level.dimension()
-        {
+        if !self.native_level_write_allowed(level, pos) || self.common.dim.key() != level.dimension() {
             return false;
         }
         self.set_biome_at(pos, biome)
@@ -681,8 +656,7 @@ impl crate::game::ServerGame<'_> {
             && self.mob_in_other_level(entity.id()).is_some()
         {
             return self
-                .common
-                .resident_entities
+                .common.resident_entities
                 .table
                 .borrow_mut()
                 .resident_uuid(entity.id())
@@ -808,6 +782,9 @@ pub(in crate::game) mod ray_tests {
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
+use sunrise_gameplay_common::game::GameGameExt3 as _;
 use sunrise_gameplay_common::game::GameGameExt2 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

@@ -117,7 +117,7 @@ impl crate::game::ServerGame<'_> {
             return Err(Refusal::Unavailable);
         }
         let before = self.mod_book_menu_snapshot(conn, window, menu.as_str())?;
-        self.common.ensure_mod_book_displays();
+        self.ensure_mod_book_displays();
         let index = self
             .common
             .recipe_tables
@@ -169,7 +169,7 @@ impl crate::game::ServerGame<'_> {
             menu,
             book,
         };
-        let storage = super::native_book_displays::Resources(self)
+        let storage = super::native_book_displays::Resources(self, std::marker::PhantomData)
             .menu_layout(identity.menu.as_str())
             .ok_or(Refusal::Unavailable)?;
         let displays = declarations
@@ -198,3 +198,5 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_book_displays::NativeBookDisplaysGameExt1 as _;

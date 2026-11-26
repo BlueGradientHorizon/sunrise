@@ -15,7 +15,7 @@ impl crate::game::ServerGame<'_> {
     ) -> Result<()> {
         self.bell_projectile_hit(projectile, pos, at, face);
         self.amethyst_projectile_hit(pos);
-        if self.common.with_level(|blocks, level, ticks| {
+        if self.with_level(|blocks, level, ticks| {
             blocks.big_dripleaf_projectile_hit(level, ticks, BlockPos::new(pos[0], pos[1], pos[2]))
         }) {
             self.server_process_level_events()?;
@@ -36,7 +36,7 @@ impl crate::game::ServerGame<'_> {
         let block = BlockPos::new(pos[0], pos[1], pos[2]);
         let arrow = p.arrow;
         let location = [at.x, at.y, at.z];
-        let hit = self.common.with_level(|b, level, ticks| {
+        let hit = self.with_level(|b, level, ticks| {
             b.target_projectile_hit(level, ticks, block, location, face, arrow)
         });
         if let Some(strength) = hit {
@@ -56,3 +56,5 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

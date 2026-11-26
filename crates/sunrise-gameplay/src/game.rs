@@ -1205,3 +1205,48 @@ mod host;
 
 #[path = "game/client_side.rs"]
 pub(in crate::game) mod client_side;
+
+impl sunrise_sim::crafting::CraftingRemainder for ServerGame<'_> {
+    fn crafting_remainder(&self, stack: &sunrise_items::items::ItemStack) -> Option<sunrise_items::items::ItemStack> {
+        sunrise_gameplay_common::game::native_block_states::NativeBlockStatesGameExt1::crafting_remainder(self, stack)
+    }
+}
+
+impl sunrise_sim::menu::SlotRules for ServerGame<'_> {
+    fn listens(&self, menu: &str) -> bool {
+        sunrise_gameplay_common::game::slot_rules::GameSlotRules::listens(self, menu)
+    }
+
+    fn rule(
+        &self,
+        menu: &str,
+        slot: usize,
+        stack: &sunrise_items::items::ItemStack,
+        context: sunrise_sim::menu::SlotContext<'_>,
+        may_place: &mut bool,
+        may_pickup: &mut bool,
+        max_stack: &mut u32,
+    ) {
+        sunrise_gameplay_common::game::slot_rules::GameSlotRules::rule(
+            self, menu, slot, stack, context, may_place, may_pickup, max_stack,
+        );
+    }
+}
+
+impl mod_api::AttachmentHost for ServerGame<'_> {
+    fn validate_attachment(&self, namespace: &str, name: &str, sync: bool) -> std::result::Result<(), mod_api::AttachmentError> {
+        sunrise_gameplay_common::game::mod_api_host_common::GameAttachmentHost::validate_attachment(self, namespace, name, sync)
+    }
+
+    fn attachments(&mut self, holder: mod_api::Holder, access: mod_api::AttachmentAccess) -> std::result::Result<&mut mod_api::Attachments, mod_api::AttachmentError> {
+        sunrise_gameplay_common::game::mod_api_host_common::GameAttachmentHost::attachments(self, holder, access)
+    }
+}
+
+impl_shared_phase_contexts!(ServerGame<'_>);
+
+impl sunrise_gameplay_common::game::item_snapshot::ItemBoundary for ServerGame<'_> {
+    fn boundary_items(&self) -> Option<&sunrise_items::items::Items> {
+        Some(sunrise_gameplay_common::game::tables::GameItems::items(self))
+    }
+}

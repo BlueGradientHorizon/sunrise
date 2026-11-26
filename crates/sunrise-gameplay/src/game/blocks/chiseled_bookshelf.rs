@@ -165,7 +165,7 @@ impl crate::game::ServerGame<'_> {
         };
         if self.common.transactions.is_empty() {
             let at = BlockPos::new(pos[0], pos[1], pos[2]);
-            self.common.with_level(|b, level, ticks| {
+            self.with_level(|b, level, ticks| {
                 b.set_block(level, ticks, at, new, flags::UPDATE_ALL)
             });
         } else {
@@ -206,5 +206,7 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

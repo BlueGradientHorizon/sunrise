@@ -42,11 +42,11 @@ impl crate::game::ServerGame<'_> {
             self.brushing_completed(pos, brush.hit_face, slot);
             return true;
         }
-        self.common.schedule_brushable_tick(pos);
+        self.schedule_brushable_tick(pos);
         let after = completion_state(brush.count);
         self.server.brushing.insert(pos, brush);
         if before != after {
-            self.common.set_dusted(pos, after);
+            self.set_dusted(pos, after);
         }
         false
     }
@@ -82,14 +82,14 @@ impl crate::game::ServerGame<'_> {
         let after = completion_state(brush.count);
         if brush.count != 0 {
             self.server.brushing.insert(pos, brush);
-            self.common.schedule_brushable_tick(pos);
+            self.schedule_brushable_tick(pos);
         } else if let Some(BlockEntity::Brushable(b)) =
             self.common.world.block_entities.get_mut(&(pos[0], pos[1], pos[2]))
         {
             b.hit_direction = None;
         }
         if before != after {
-            self.common.set_dusted(pos, after);
+            self.set_dusted(pos, after);
         }
     }
     /// `BrushableBlockEntity.brushingCompleted`: the item drops out of the
@@ -140,7 +140,7 @@ impl crate::game::ServerGame<'_> {
         // Level event 3008 for every player, then the block change.
         self.server_level_event_at(3008, pos, state.0 as i32);
         if let Some(base) = self.common.pack.assets.registry.default_state(turns_into) {
-            let _ = self.common.level_set(pos, base);
+            let _ = self.level_set(pos, base);
         }
     }
     /// `BrushItem.onUseTick` for a brush used `ticks` ticks so far, the
@@ -164,7 +164,7 @@ impl crate::game::ServerGame<'_> {
         // we cannot trace here, so only the local aim runs the entity test.
         if self.server.forced_hit.is_none()
             && let Some((eye, _)) = self.aim()
-            && let Some((_, mob, _)) = self.common.mob_hit_within(self.common.block_reach)
+            && let Some((_, mob, _)) = self.mob_hit_within(self.common.block_reach)
         {
             let block = (
                 hit.point[0] - eye[0],
@@ -240,6 +240,10 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
+use sunrise_gameplay_common::game::brush::BrushGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 

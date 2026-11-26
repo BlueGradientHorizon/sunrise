@@ -817,7 +817,7 @@ impl crate::game::ServerGame<'_> {
         // `time of <clock>` names the clock; otherwise the dimension's default clock.
         let clock = match ctx.get("clock") {
             Some(Arg::Resource(c)) => c.clone(),
-            _ => match self.common.dimension_type().default_clock.clone() {
+            _ => match self.dimension_type().default_clock.clone() {
                 Some(clock) => clock,
                 None => return Err(err("commands.time.no_default_clock", &[&self.common.dim.id()])),
             },
@@ -1090,7 +1090,7 @@ impl crate::game::ServerGame<'_> {
         if strict {
             return Ok(state);
         }
-        let updated = self.common.with_level(|b, level, ticks| {
+        let updated = self.with_level(|b, level, ticks| {
             let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
             let updated = b.update_from_neighbour_shapes(level, ticks, at, state);
             if b.is_air(updated) { state } else { updated }
@@ -1125,7 +1125,7 @@ impl crate::game::ServerGame<'_> {
         if previous == state {
             return Ok(false);
         }
-        self.common.ensure_stateful_entity_table();
+        self.ensure_stateful_entity_table();
         self.sculk_prepare();
         // A different block replaces the block entity (Level.setBlock).
         let (old, new) = (
@@ -1140,7 +1140,7 @@ impl crate::game::ServerGame<'_> {
             self.common.world.block_entities.remove(&key);
         }
         if strict {
-            self.common.with_level(|b, level, ticks| {
+            self.with_level(|b, level, ticks| {
                 b.set_block(
                     level,
                     ticks,
@@ -1153,7 +1153,7 @@ impl crate::game::ServerGame<'_> {
             self.server_process_level_events()
                 .map_err(|e| CommandError::new(Text::literal(e.to_string())))?;
         } else if command {
-            self.common.level_set_with_flags(
+            self.level_set_with_flags(
                 pos,
                 state,
                 sunrise_world::level::flags::UPDATE_CLIENTS
@@ -1161,7 +1161,7 @@ impl crate::game::ServerGame<'_> {
             )
             .map_err(|e| CommandError::new(Text::literal(e.to_string())))?;
         } else {
-            self.common.level_set(pos, state)
+            self.level_set(pos, state)
                 .map_err(|e| CommandError::new(Text::literal(e.to_string())))?;
         }
         // LevelChunk.setBlockState creates it when the block, not the state, is still
@@ -1171,7 +1171,7 @@ impl crate::game::ServerGame<'_> {
         if needs_entity
             && self.common.res.facts().get(landed).name == new
             && !self.sculk_place_entity(landed)
-            && let Some(entity) = self.common.new_block_entity_for_state(landed)
+            && let Some(entity) = self.new_block_entity_for_state(landed)
         {
             self.common.world.block_entities.insert(key, entity);
         }
@@ -1184,7 +1184,7 @@ impl crate::game::ServerGame<'_> {
         pos: [i32; 3],
         old: BlockStateId,
     ) -> R<()> {
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             b.update_neighbours_on_block_set(
                 level,
                 ticks,
@@ -1210,7 +1210,7 @@ impl crate::game::ServerGame<'_> {
     ) -> R<()> {
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
         let entity = self.loot_entity_ref(entity);
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             level.drop_entity = entity;
             level.drop_breaker_at = entity.map(|_| at);
             b.destroy_block(level, ticks, at, true)
@@ -1570,7 +1570,7 @@ impl crate::game::ServerGame<'_> {
                 self.give_levels(amount);
                 return true;
             } else {
-                self.common.give_experience_points(amount);
+                self.give_experience_points(amount);
             }
             return true;
         }
@@ -2440,8 +2440,12 @@ pub(in crate::game) mod forced_respawn_tests {
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;

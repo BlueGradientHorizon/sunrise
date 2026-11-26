@@ -456,7 +456,7 @@ impl ServerGame<'_> {
         // Fluids and other neighbours read the shape: tell them it changed (the shulker lid's
         // `doNeighborUpdates`, without its shape updates).
         let at = BlockPos::new(key.0, key.1, key.2);
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             let block = b.block(state);
             b.update_neighbors_at(level, ticks, at, block);
         });
@@ -1058,6 +1058,8 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;
 

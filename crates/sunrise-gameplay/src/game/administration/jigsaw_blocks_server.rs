@@ -117,7 +117,7 @@ impl ServerGame<'_> {
             position,
         };
         let keep = p.keep_jigsaws;
-        let (_, entities) = self.common.with_level(|b, level, ticks| {
+        let (_, entities) = self.with_level(|b, level, ticks| {
             b.place_jigsaw(level, ticks, position, keep, || {
                 terrain.jigsaw_pieces(&query)
             })
@@ -128,3 +128,5 @@ impl ServerGame<'_> {
         let _ = self.server_process_level_events();
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

@@ -71,7 +71,7 @@ impl ClientGame<'_> {
         }
         if distance > 0.0 {
             let dir = std::array::from_fn(|i| (point[i] - eye[i]) / distance);
-            if self.common.clip_ray(eye, dir, distance).is_some() {
+            if self.clip_ray(eye, dir, distance).is_some() {
                 return None;
             }
         }
@@ -206,6 +206,8 @@ use sunrise_gameplay_common::game::client_side::client_attack_targets::tests::re
 
     
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
 

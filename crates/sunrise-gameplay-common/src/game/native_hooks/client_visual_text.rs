@@ -1,7 +1,8 @@
 
 use crate::game::CommonGame;
 
-impl CommonGame<'_> {
+
+impl crate::game::CommonGame<'_> {
     pub fn text_visual_order(
         &self,
         text: &mod_api::Text,

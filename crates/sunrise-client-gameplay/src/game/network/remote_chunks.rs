@@ -76,7 +76,7 @@ impl ClientGame<'_> {
             self.native_client_chunk_unload(&dimension, [x, z]);
         }
         if level_stays && let Some(level) = self.native_client_level() {
-            self.common.notify_chunk_block_entities_unloaded(level, (x, z));
+            self.notify_chunk_block_entities_unloaded(level, (x, z));
         }
     }
 
@@ -552,3 +552,7 @@ mod tests {
 use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::on_chunk_unloaded::OnChunkUnloadedGameExt2 as _;
+
+use crate::game::client_side::remote_client::chat::ChatTrustClientExt as _;

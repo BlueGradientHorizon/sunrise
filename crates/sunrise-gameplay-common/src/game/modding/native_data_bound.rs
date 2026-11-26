@@ -1,14 +1,17 @@
 //! The notices a side's freshly bound data gives mods, in NeoForge's order.
 use crate::game::CommonGame;
 
-impl crate::game::CommonGame<'_> {
+
+pub trait NativeDataBoundGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Items' default components are bound (`DefaultDataComponentsBoundEvent`), then the
     /// tags (`TagsUpdatedEvent`), both for `cause`.
-    pub fn announce_data_bound(&mut self, cause: mod_api::TagsUpdateCause) {
+     fn announce_data_bound(&mut self, cause: mod_api::TagsUpdateCause) {
         self.native_default_components_bound(cause);
         self.native_tags_updated(cause);
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeDataBoundGameExt1<'__sg> for G {}
+
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
@@ -130,3 +133,7 @@ struct Probe(Arc<Mutex<Vec<(&'static str, TagsUpdateCause)>>>);
         })
     }
 }
+
+use crate::game::native_hooks::default_components_bound::GameHooks as _;
+
+use crate::game::native_hooks::tags_updated::GameHooks as _;

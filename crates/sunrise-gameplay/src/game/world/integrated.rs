@@ -363,7 +363,7 @@ impl crate::game::ServerGame<'_> {
     ) -> Result<()> {
         // The mods' server configs, read before the server starts.
         if let Ok(dir) = std::env::current_dir() {
-            self.common.native_configs_server_start(&dir.join("saves").join(&launch.folder), false);
+            self.native_configs_server_start(&dir.join("saves").join(&launch.folder), false);
         }
         let prepared = self.prepare_early_game_rules(opening.world?)?;
         self.native_server_about_to_start(false);
@@ -1215,6 +1215,8 @@ use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
 use sunrise_gameplay_common::game::mods::ModGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 

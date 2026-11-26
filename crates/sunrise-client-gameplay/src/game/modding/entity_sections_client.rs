@@ -36,7 +36,7 @@ impl ClientGame<'_> {
             sections.moved(scope, own as u32, None, [at.x, at.y, at.z]);
         }
         self.common.native_lifecycle.entity_sections = sections;
-        self.common.tell_entity_sections();
+        self.tell_entity_sections();
     }
     /// A client handles one packet from its server ([`Game::apply_packet`]). A packet that adds,
     /// moves or removes an entity is a position-update boundary. The add handler files an

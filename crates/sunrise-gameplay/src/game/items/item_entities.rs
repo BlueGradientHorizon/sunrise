@@ -819,7 +819,7 @@ impl crate::game::ServerGame<'_> {
             self.server_play_sound("minecraft:entity.experience_orb.pickup", at, 0.1, pitch);
         }
         if gained > 0 {
-            self.common.give_experience_points(gained as i32);
+            self.give_experience_points(gained as i32);
         }
     }
 
@@ -1145,6 +1145,8 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
 

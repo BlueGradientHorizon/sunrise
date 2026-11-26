@@ -112,7 +112,7 @@ impl crate::game::ServerGame<'_> {
                     Some(held) => (true, held),
                     None => (
                         matches!(
-                            self.side.command_source.map(|s| s.entity),
+                            self.server.command_source.map(|s| s.entity),
                             None | Some(Some(Target::Player))
                         ),
                         self.slot_get(&super::items::Slot::Inv(self.common.selected)),

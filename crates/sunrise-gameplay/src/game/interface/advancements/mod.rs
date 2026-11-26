@@ -1178,7 +1178,7 @@ impl crate::game::ServerGame<'_> {
         a: &adv::Advancement,
     ) -> Vec<String> {
         // AdvancementRewards.grant: giveExperiencePoints runs even for 0.
-        self.common.give_experience_points(a.rewards.experience);
+        self.give_experience_points(a.rewards.experience);
         // ServerPlayer.awardRecipesByKey: the rewards that name a recipe.
         let rewards: Vec<String> = a
             .rewards
@@ -2826,6 +2826,8 @@ use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
@@ -2837,6 +2839,8 @@ use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::enchantments::EnchantmentsGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_item_entity_refs::NativeItemEntityRefsGameExt1 as _;
 

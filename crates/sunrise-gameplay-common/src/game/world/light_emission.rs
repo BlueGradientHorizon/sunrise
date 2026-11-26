@@ -23,20 +23,6 @@ impl crate::game::CommonGame<'_> {
             None => answers.remove(&cell),
         };
     }
-
-    /// Query one cell's dynamic light emission, clamped to 15.
-    pub fn ask_light_emission(
-        &self,
-        dimension: LevelDimension,
-        x: i32,
-        y: i32,
-        z: i32,
-        state: u32,
-    ) -> Option<u8> {
-        self.query_dynamic_light_emission(BlockPos::new(x, y, z), BlockStateId(state), || dimension)
-            .flatten()
-            .map(|emission| emission.min(15))
-    }
 }
 
 pub trait LightEmissionGameExt1<'__sg>: crate::game::SideGame<'__sg> {
@@ -102,6 +88,20 @@ pub trait LightEmissionGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         self.native_current_level()
             .map_or_else(|| self.dim.level(), light_emission_dimension)
     }
+
+    /// Query one cell's dynamic light emission, clamped to 15.
+     fn ask_light_emission(
+        &self,
+        dimension: LevelDimension,
+        x: i32,
+        y: i32,
+        z: i32,
+        state: u32,
+    ) -> Option<u8> {
+        self.query_dynamic_light_emission(BlockPos::new(x, y, z), BlockStateId(state), || dimension)
+            .flatten()
+            .map(|emission| emission.min(15))
+    }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> LightEmissionGameExt1<'__sg> for G {}
 
@@ -133,3 +133,5 @@ pub fn light_emission_dimension(level: mod_api::LevelRef) -> LevelDimension {
 }
 
 use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use crate::game::native_hooks::light_emission::GameHooks as _;

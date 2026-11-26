@@ -15,11 +15,11 @@ impl GameLevel<'_> {
     }
 }
 
-impl crate::game::CommonGame<'_> {
+pub trait CanDropFromExplosionGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Whether the block `state` at `pos`, destroyed by `explosion`, drops, as its parts answer
     /// on a logical server. A panicking part is contained with a warning: None keeps vanilla's
     /// answer.
-    pub fn part_drops_from_explosion(
+     fn part_drops_from_explosion(
         &mut self,
         pos: [i32; 3],
         state: BlockStateId,
@@ -46,3 +46,7 @@ impl crate::game::CommonGame<'_> {
         drops
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> CanDropFromExplosionGameExt1<'__sg> for G {}
+
+
+use crate::game::GameGameExt1 as _;

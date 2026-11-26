@@ -51,7 +51,7 @@ impl ServerGame<'_> {
             return false;
         };
         let p = BlockPos::new(pos[0], pos[1], pos[2]);
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             b.set_block(level, ticks, p, new, level_flags::UPDATE_CLIENTS)
         });
         if notify {
@@ -77,7 +77,7 @@ impl ServerGame<'_> {
     pub(in crate::game) fn jukebox_changed(&mut self, pos: [i32; 3]) {
         let p = BlockPos::new(pos[0], pos[1], pos[2]);
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             let block = b.block(state);
             b.update_neighbors_at(level, ticks, p, block);
         });
@@ -332,5 +332,7 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

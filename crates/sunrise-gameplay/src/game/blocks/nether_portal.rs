@@ -660,7 +660,7 @@ impl crate::game::ServerGame<'_> {
         let border = self.border_bounds();
         let logical = if to_nether { 128 } else { 384 };
         let (approximate, x_axis) = (plan.approximate, plan.entry_x_axis);
-        let created = self.common.with_level(|b, level, ticks| {
+        let created = self.with_level(|b, level, ticks| {
             b.create_portal(level, ticks, approximate, x_axis, &border, logical)
         });
         let _ = self.server_process_level_events();
@@ -2353,7 +2353,7 @@ impl crate::game::ServerGame<'_> {
                     origin[2] + d[2] * (width - 1),
                 );
                 for pos in BlockPos::between_closed(first, last).expect("portal size is bounded") {
-                    self.common.level_set_with_flags(
+                    self.level_set_with_flags(
                         [pos.x, pos.y, pos.z],
                         id,
                         level_flags::UPDATE_CLIENTS | level_flags::UPDATE_KNOWN_SHAPE,
@@ -2367,6 +2367,8 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 

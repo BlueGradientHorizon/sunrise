@@ -14,7 +14,7 @@ impl crate::game::ServerGame<'_> {
                 }
                 let mismatches = self.common.level.mod_mismatches(&level_mods::Loaded::now().mods());
                 let mut resolved = Vec::new();
-                self.common.native_mod_mismatch(&mismatches, &mut resolved);
+                self.native_mod_mismatch(&mismatches, &mut resolved);
                 (mismatches, resolved)
             }
         };
@@ -68,3 +68,5 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_hooks::mod_mismatch::GameHooks as _;

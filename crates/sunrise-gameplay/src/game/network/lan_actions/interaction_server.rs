@@ -122,7 +122,7 @@ impl crate::game::ServerGame<'_> {
             return false;
         }
         let dir = [d[0] / dist, d[1] / dist, d[2] / dist];
-        self.common.clip_ray(eye, dir, dist).is_some_and(|h| {
+        self.clip_ray(eye, dir, dist).is_some_and(|h| {
             let hd = [
                 h.point[0] - eye[0],
                 h.point[1] - eye[1],
@@ -844,6 +844,8 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

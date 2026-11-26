@@ -456,7 +456,7 @@ impl ServerGame<'_> {
             point: hit.point,
             inside: hit.inside,
         };
-        let (state, sound, loot, durability, particle, _) = self.common.block_transform_in(
+        let (state, sound, loot, durability, particle, _) = self.block_transform_in(
             stack,
             &hit,
             super::TransformContext {
@@ -706,7 +706,7 @@ impl ServerGame<'_> {
             return false;
         }
         let at = block_pos(pos);
-        self.common.with_level(|b, level, ticks| b.due_block_tick(level, ticks, at));
+        self.with_level(|b, level, ticks| b.due_block_tick(level, ticks, at));
         let _ = self.server_process_level_events();
         true
     }
@@ -717,7 +717,7 @@ impl ServerGame<'_> {
             return false;
         }
         let at = block_pos(pos);
-        self.common.with_level(|b, level, ticks| b.scheduled_fluid_tick(level, ticks, at));
+        self.with_level(|b, level, ticks| b.scheduled_fluid_tick(level, ticks, at));
         let _ = self.server_process_level_events();
         true
     }
@@ -732,7 +732,7 @@ impl ServerGame<'_> {
             return false;
         }
         let at = block_pos(pos);
-        self.common.with_level(|b, level, ticks| b.random_tick(level, ticks, at));
+        self.with_level(|b, level, ticks| b.random_tick(level, ticks, at));
         let _ = self.server_process_level_events();
         true
     }
@@ -772,6 +772,8 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 

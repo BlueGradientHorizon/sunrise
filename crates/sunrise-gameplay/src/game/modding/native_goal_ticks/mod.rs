@@ -9,6 +9,7 @@
 //! makes apply to the mob in hand through the engine's own paths
 //! (`nav_move_to`, `ai.target`), behind the same input boundaries the mob
 //! handles take, and the write handles a `ServerHost` takes do not exist here.
+
 use super::Game;
 use mod_api::{
     BehaviorCxBackend, EntityRef, EntityTags, GoalCxBackend, Host, LivingRef, MobRef, PlayerRef,
@@ -711,11 +712,11 @@ impl mobs::part_goals::GoalHost for crate::game::ServerGame<'_> {
 
     fn mob_in_other_level(&self, entity: EntityRef) -> bool {
         self.common.native_lifecycle.epoch() == Some(entity.epoch())
-            && Game::mob_in_other_level(self, entity.id()).is_some()
+            && crate::game::ServerGame::mob_in_other_level(self, entity.id()).is_some()
     }
 
     fn living_last_hurt_record(&self, living: LivingRef) -> Option<(u32, i32)> {
-        Game::living_last_hurt_record(self, living)
+        crate::game::ServerGame::living_last_hurt_record(self, living)
     }
 
     fn mob_player_credit(&self, mob: &Mob) -> Option<Option<u32>> {
@@ -1028,6 +1029,8 @@ pub(in crate::game) mod generated {
     // backend read answers its typed refusal.
     include!(concat!(env!("OUT_DIR"), "/mod_api_goal_view_generated.rs"));
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::block_props::BlockPropsGameExt2 as _;
 

@@ -4,7 +4,7 @@ use sunrise_level::environment::Environment;
 
 pub trait EndGameExt<'__sg>: crate::game::SideGame<'__sg> {
     /// The environment attributes of the current dimension.
-     fn dim_environment(&self) -> &Environment {
+     fn dim_environment<'__loan>(&'__loan self) -> &Environment where '__sg: '__loan {
         Self::level_environment(
             self.side_state().side_remote_environment(),
             &self.res,
@@ -33,5 +33,7 @@ impl<'__sg, T: crate::game::SideGame<'__sg>> EndGameExt<'__sg> for T {}
 
 
 use crate::game::tables::WorldTablesExt as _;
+
+use crate::game::GameGameExt1 as _;
 
 use crate::game::pick_ray::PickRayGameExt1 as _;

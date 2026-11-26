@@ -110,7 +110,7 @@ impl crate::game::ClientGame<'_> {
         {
             return false;
         }
-        if self.common.native_entity_swing_event(hand) {
+        if self.native_entity_swing_event(hand) {
             return false;
         }
         let effects = &self.common.potions.effects;
@@ -254,7 +254,7 @@ impl crate::game::ClientGame<'_> {
         };
 
         let block_hit = (max_len > 0.0)
-            .then(|| self.common.clip_ray([eye.x, eye.y, eye.z], [look.x, look.y, look.z], max_len))
+            .then(|| self.clip_ray([eye.x, eye.y, eye.z], [look.x, look.y, look.z], max_len))
             .flatten();
         if let Some(hit) = block_hit {
             to = Vec3::new(hit.point[0], hit.point[1], hit.point[2]);
@@ -269,7 +269,7 @@ impl crate::game::ClientGame<'_> {
                 return None;
             }
             let d = b.subtract(a).scale(1.0 / length);
-            self.common.clip_ray([a.x, a.y, a.z], [d.x, d.y, d.z], length)
+            self.clip_ray([a.x, a.y, a.z], [d.x, d.y, d.z], length)
                 .map(|hit| Vec3::new(hit.point[0], hit.point[1], hit.point[2]))
         };
 
@@ -482,7 +482,7 @@ impl crate::game::ClientGame<'_> {
                 let length = from.distance_squared(to).sqrt();
                 let d = to.subtract(from).scale(1.0 / length);
                 (length > 0.0)
-                    .then(|| self.common.clip_ray([from.x, from.y, from.z], [d.x, d.y, d.z], length))
+                    .then(|| self.clip_ray([from.x, from.y, from.z], [d.x, d.y, d.z], length))
                     .flatten()
                     .map(|hit| Vec3::new(hit.point[0], hit.point[1], hit.point[2]))
             };
@@ -750,8 +750,14 @@ pub(in crate::game) mod tests {
     }
 }
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
+use sunrise_gameplay_common::game::native_hooks::item_attack::ItemAttackGameExt2 as _;
+
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
+use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;

@@ -1189,7 +1189,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
         loop {
-            self.common.update_chunk_tickets();
+            self.update_chunk_tickets();
             let levels = self.server.tickets.0.levels();
             let streaming = &self.server.streaming;
             let ready = streaming
@@ -1546,7 +1546,7 @@ impl crate::game::ServerGame<'_> {
         // tick's line and `sunrise-report` say when a mod's tick hook took it.
         if server {
             let _span = sunrise_level::spans::guard("mod_configs_poll");
-            self.common.native_configs_poll();
+            self.native_configs_poll();
         }
         if let Some(running) = running
             && server
@@ -2736,6 +2736,9 @@ use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
+use sunrise_gameplay_common::game::GameGameExt3 as _;
 use sunrise_gameplay_common::game::GameGameExt2 as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
@@ -2743,6 +2746,8 @@ use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 use sunrise_gameplay_common::game::clocks::ClocksGameExt1 as _;
 
 use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_configs::NativeConfigsGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 

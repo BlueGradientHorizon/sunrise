@@ -19,7 +19,7 @@ impl crate::game::ServerGame<'_> {
     /// many recipe book displays changed (a transmute recipe has one per
     /// material count).
     pub(in crate::game) fn change_recipes(&mut self, give: bool, recipes: &[String]) -> i32 {
-        let (recipes, custom_count) = self.common.change_mod_crafting_recipes(give, recipes);
+        let (recipes, custom_count) = self.change_mod_crafting_recipes(give, recipes);
         if give {
             return custom_count + self.award_recipes(&recipes) as i32;
         }
@@ -1013,5 +1013,7 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::mod_crafting_commands::ModCraftingCommandsGameExt1 as _;
 
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

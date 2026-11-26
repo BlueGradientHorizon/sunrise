@@ -433,7 +433,7 @@ impl crate::game::ServerGame<'_> {
         // The stored cart is the one a plate counts: it takes the moved cart
         // for the walk and hands back what the walk left.
         self.common.carts.update(i, |stored| std::mem::swap(stored, c));
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             for p in hits {
                 b.entity_inside(level, ticks, p);
             }
@@ -466,7 +466,7 @@ impl crate::game::ServerGame<'_> {
     /// `AbstractMinecart.getMaxSpeed`: the behavior's, which a furnace
     /// minecart cuts (`MinecartFurnace.getMaxSpeed`).
     pub(in crate::game::server_side) fn cart_max_speed(&self, c: &Minecart) -> f64 {
-        if self.common.minecart_improvements() {
+        if self.minecart_improvements() {
             furnace_speed(c, self.max_speed_new(c))
         } else {
             self.max_speed(c)
@@ -638,7 +638,7 @@ impl crate::game::ServerGame<'_> {
         c.fall_distance = 0.0;
         let ridden = self.has_seated_passengers(c.id);
         let (x, z) = (c.position.x, c.position.z);
-        let old = self.common.rail_pos(Some(c.id), x, c.position.y, z);
+        let old = self.rail_pos(Some(c.id), x, c.position.y, z);
         let mut y = f64::from(pos[1]);
         let (mut power, mut halt) = (false, false);
         if &*rail.name == "minecraft:powered_rail" {
@@ -723,7 +723,7 @@ impl crate::game::ServerGame<'_> {
         }
         c.velocity = self.natural_slowdown(c, ridden, 0.96);
         if let (Some(new), Some(old)) = (
-            self.common.rail_pos(Some(c.id), c.position.x, c.position.y, c.position.z),
+            self.rail_pos(Some(c.id), c.position.x, c.position.y, c.position.z),
             old,
         ) {
             let speed = (old[1] - new[1]) * 0.05;
@@ -782,7 +782,7 @@ impl crate::game::ServerGame<'_> {
         let mut step_start = c.previous;
         while first || movement_left > f64::from(1.0e-5_f32) {
             let initial = c.velocity;
-            let pos = self.common.rail_block(c.position, true);
+            let pos = self.rail_block(c.position, true);
             let Some(rail) = self.rail(Some(c.id), pos[0], pos[1], pos[2]) else {
                 c.on_rails = false;
                 if !self.come_off_track(c) {
@@ -1476,9 +1476,9 @@ impl crate::game::ServerGame<'_> {
         if c.damage > 0.0 {
             c.damage -= 1.0;
         }
-        let improved = self.common.minecart_improvements();
+        let improved = self.minecart_improvements();
         if improved && c.first_tick {
-            let pos = self.common.rail_block(c.position, true);
+            let pos = self.rail_block(c.position, true);
             if let Some(rail) = self.rail(Some(c.id), pos[0], pos[1], pos[2]) {
                 c.on_rails = true;
                 Self::adjust_cart_to_rails(c, pos, rail.shape);
@@ -1492,7 +1492,7 @@ impl crate::game::ServerGame<'_> {
                 return false;
             }
         } else {
-            let pos = self.common.rail_block(c.position, false);
+            let pos = self.rail_block(c.position, false);
             let rail = self.rail(Some(c.id), pos[0], pos[1], pos[2]);
             c.on_rails = rail.is_some();
             if let Some(rail) = rail {
@@ -1508,7 +1508,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
         c.first_tick = false;
-        if !self.common.minecart_improvements() {
+        if !self.minecart_improvements() {
             c.pitch = 0.0;
             let (xd, zd) = (c.previous.x - c.position.x, c.previous.z - c.position.z);
             if xd * xd + zd * zd > 0.001 {
@@ -1525,7 +1525,7 @@ impl crate::game::ServerGame<'_> {
             c.yaw %= 360.0;
             c.pitch %= 360.0;
         }
-        if !self.common.minecart_improvements() {
+        if !self.minecart_improvements() {
             self.cart_block_effects(c);
             let here = c.position;
             self.cart_inside_blocks(c, slot, here, here);
@@ -1701,6 +1701,8 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::cart_rails::CartRailsGameExt1 as _;
 
 use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
@@ -1714,3 +1716,5 @@ use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
 
 use sunrise_gameplay_common::game::scoreboard_common::CommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::minecarts::MinecartRailGameExt as _;

@@ -869,7 +869,7 @@ impl ServerGame<'_> {
         // FenceGateBlock.onExplosionHit tests power and toggles the gate
         // without turning it towards anyone, as a click would.
         if self.common.res.behaviours().data(state).is(Class::FenceGate) {
-            if self.common.with_level(|b, level, ticks| {
+            if self.with_level(|b, level, ticks| {
                 b.fence_gate_exploded(level, ticks, BlockPos::new(pos[0], pos[1], pos[2]))
             }) {
                 self.server_process_level_events()?;
@@ -888,7 +888,7 @@ impl ServerGame<'_> {
             // AbstractCandleBlock.onExplosionHit: extinguish(null, ...), the
             // candle's own sound and a block-change game event (the smoke is a
             // client-level particle, which a server level never draws).
-            self.common.with_level(|b, level, ticks| {
+            self.with_level(|b, level, ticks| {
                 b.extinguish_candle(level, ticks, BlockPos::new(pos[0], pos[1], pos[2]))
             });
             self.server_process_level_events()?;
@@ -901,7 +901,7 @@ impl ServerGame<'_> {
         // rings toward its facing, not the face the burst came from,
         // powered or not.
         if &*name == "minecraft:bell" {
-            self.common.with_level(|b, level, ticks| {
+            self.with_level(|b, level, ticks| {
                 b.bell_attempt_to_ring(level, ticks, BlockPos::new(pos[0], pos[1], pos[2]))
             });
             self.server_process_level_events()?;
@@ -928,7 +928,7 @@ impl ServerGame<'_> {
             game_master: false,
             respawn_point: None,
         };
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             b.use_without_item(
                 level,
                 ticks,
@@ -1013,6 +1013,8 @@ pub(in crate::game) mod tests {
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 

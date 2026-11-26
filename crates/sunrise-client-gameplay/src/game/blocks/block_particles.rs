@@ -10,7 +10,7 @@ impl crate::game::ClientGame<'_> {
         pos: [i32; 3],
         state: BlockStateId,
     ) -> Vec<[f64; 6]> {
-        self.common.state_shape_boxes(
+        self.state_shape_boxes(
             &self.common.world,
             &self.client.be_anims.shulkers,
             state,
@@ -42,3 +42,5 @@ impl crate::game::ClientGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_state_shapes::NativeStateShapesGameExt1 as _;

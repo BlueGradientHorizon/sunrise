@@ -18,7 +18,7 @@ impl crate::game::ServerGame<'_> {
             } else {
                 None
             };
-        self.common.with_level(|_, level, _| {
+        self.with_level(|_, level, _| {
             let pos = BlockPos::new(pos[0], pos[1], pos[2]);
             // with_level rebuilds GameLevel with both fields None on every call.
             level.drop_entity = breaker;
@@ -56,7 +56,7 @@ impl crate::game::ServerGame<'_> {
             Some(data) => BlockDropEntity::Saved(data),
             None => BlockDropEntity::None,
         };
-        self.common.with_level(|_, level, _| {
+        self.with_level(|_, level, _| {
             level.block_dropped(
                 BlockPos::new(x, y, z),
                 state,
@@ -84,7 +84,7 @@ impl crate::game::ServerGame<'_> {
         }
         let tool = self.common.held().cloned();
         let breaker = Some(self.native_acting_id());
-        *experience = self.common.with_level(|_, level, _| {
+        *experience = self.with_level(|_, level, _| {
             let pos = BlockPos::new(pos[0], pos[1], pos[2]);
             let block_entity = level.resident_block_entity(pos);
             let amount = level
@@ -116,6 +116,8 @@ impl crate::game::ServerGame<'_> {
 /// clears from the level.
 pub(in crate::game) type LiveBlockEntity =
     (sunrise_level::containers::BlockEntity, Option<Compound>);
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 

@@ -208,7 +208,7 @@ impl ServerGame<'_> {
             return Ok(());
         };
         let at = BlockPos::new(pos.0, pos.1, pos.2);
-        self.common.with_level(|b, level, ticks| b.set_block(level, ticks, at, next, flags::UPDATE_ALL));
+        self.with_level(|b, level, ticks| b.set_block(level, ticks, at, next, flags::UPDATE_ALL));
         self.common.world.modified.insert((pos.0 >> 4, pos.2 >> 4));
         if to_set == "dormant" {
             self.post_block_game_event(
@@ -303,3 +303,5 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

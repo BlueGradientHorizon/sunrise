@@ -1,6 +1,10 @@
 use super::*;
 
 impl crate::game::CommonGame<'_> {
+
+}
+
+pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// NeoForge's `ItemStackedOnOtherEvent`, before either item override: a pickup click on a menu
     /// slot, with the cursor and both stacks frozen in `event`. A listener sets `canceled` to skip
     /// the bundle override and answers in `result`: `handled` for a cancelled click that is done
@@ -8,21 +12,26 @@ impl crate::game::CommonGame<'_> {
     /// validates the answer once and applies it once. Authoritative server side only; only the
     /// `ItemPart` callback below runs on both sides.
     #[inline(never)]
-    pub(in crate::game) fn native_item_stacked_on_other(
+     fn native_item_stacked_on_other(
         &mut self,
         event: &mod_api::item::menu::StackedOnOther,
         result: &mut mod_api::item::menu::StackedOnOtherResult,
         canceled: &mut bool,
     ) {
-        self.fire_item_stacked_on_other(event, result, canceled);
+        crate::game::native_hooks::fire::FireHooks::fire_item_stacked_on_other(self, event, result, canceled);
     }
+}
+impl<'__sg, G: crate::game::SideGame<'__sg>> GameHooks<'__sg> for G {}
 
+
+
+pub trait ItemStackedPartGameExt<'g>: crate::game::SideGame<'g> {
     /// `ItemPart::item_stacked_on_other` for `item` (either the carried stack in
     /// `CarriedOnOther` or the clicked stack in `OtherStackedOnMe`), sharing `HookId`, event, and
     /// transaction with `native_item_stacked_on_other`. Both sides (server clicks, client
     /// prediction, and creative inventory-tab/hotbar pickups).
     #[inline(never)]
-    pub(in crate::game) fn item_stacked_on_other_part(
+    fn item_stacked_on_other_part(
         &mut self,
         item: &str,
         event: &mod_api::item::menu::StackedOnOther,
@@ -38,3 +47,4 @@ impl crate::game::CommonGame<'_> {
         );
     }
 }
+impl<'g, G: crate::game::SideGame<'g>> ItemStackedPartGameExt<'g> for G {}

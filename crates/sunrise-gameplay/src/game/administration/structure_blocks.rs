@@ -110,7 +110,7 @@ impl ServerGame<'_> {
                     let nbt = self.common.world.block_entities.get(&at).map(|entity| {
                         let name = &*self.common.res.facts().get(state).name;
                         let mut tag =
-                            self.common.encode_live_block_entity(at, entity, name, self.common.res.items());
+                            self.encode_live_block_entity(at, entity, name, self.common.res.items());
                         Self::write_pending_loot(&self.common.world, at, &mut tag);
                         let Tag::Compound(mut c) = tag else {
                             return Compound::new();
@@ -306,7 +306,7 @@ impl ServerGame<'_> {
         mirror: sunrise_world::worldgen::structure::Mirror,
         rotation: sunrise_world::worldgen::structure::Rotation,
     ) -> bool {
-        let placed = self.common.with_level(|behaviours, level, ticks| {
+        let placed = self.with_level(|behaviours, level, ticks| {
             behaviours.place_template(level, ticks, template, at, settings)
         });
         let _ = self.server_process_level_events();
@@ -423,7 +423,7 @@ impl ServerGame<'_> {
             // The block entity stays through the state change.
             let entity = self.common.world.block_entities.take(&pos);
             let at = BlockPos::new(pos.0, pos.1, pos.2);
-            self.common.with_level(|b, level, ticks| {
+            self.with_level(|b, level, ticks| {
                 b.set_block(level, ticks, at, id, flags::UPDATE_CLIENTS)
             });
             if let Some((lease, entity)) = entity {
@@ -466,7 +466,7 @@ impl ServerGame<'_> {
             return;
         }
         let at = BlockPos::new(pos.0, pos.1, pos.2);
-        let signal = self.common.with_level(|b, level, ticks| b.has_neighbor_signal(level, ticks, at));
+        let signal = self.with_level(|b, level, ticks| b.has_neighbor_signal(level, ticks, at));
         let powered = self.structure_block_at(pos).is_some_and(|b| b.powered);
         if signal && !powered {
             if let Some(b) = self.structure_block_mut(pos) {
@@ -578,3 +578,7 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::block_entity_save_additional::BlockEntitySaveAdditionalGameExt1 as _;

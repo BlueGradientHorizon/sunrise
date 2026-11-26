@@ -105,7 +105,7 @@ impl crate::game::ServerGame<'_> {
             || self.interact_boat(target)
             || self.interact_cart(target)
             || self.interact_mob(target)?
-            || self.common.item_interact_mob(target))
+            || self.item_interact_mob(target))
     }
     /// Whether `now` is still the stack `before` was: the same item and the
     /// same count, or both empty. The check after a hook that may change the
@@ -245,6 +245,8 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

@@ -32,9 +32,9 @@ pub enum Pickup {
 }
 
 /// The click, run with the mods' answer (`None`: no listener, the plain click).
-type Perform<'p, S> = Box<dyn FnOnce(&mut Game<'_, S>, Option<&StackedOutcome>) + 'p>;
+type Perform<'p, S> = Box<dyn FnOnce(&mut S, Option<&StackedOutcome>) + 'p>;
 /// What a click reads now, to compare with what it froze.
-type Current<'p, S> = Box<dyn Fn(&Game<'_, S>) -> Option<StackedClick> + 'p>;
+type Current<'p, S> = Box<dyn Fn(&S) -> Option<StackedClick> + 'p>;
 
 struct Shared<'p, S> {
     frozen: StackedClick,
@@ -69,7 +69,7 @@ struct PickupReads {
 /// The one thing a pickup decision plans: that the click runs. The write set is the click's own.
 struct PickupPlan;
 
-impl<'a, 'g, S: crate::game::Side> ActionTarget<GameHost<'a, 'g, S>> for PickupTarget<'_, S> {
+impl<'a, 'g, S: crate::game::SideGame<'g>> ActionTarget<GameHost<'a, 'g, S>> for PickupTarget<'_, S> {
     type Reads = PickupReads;
     type View = PickupReads;
     type Plan = PickupPlan;
@@ -250,10 +250,10 @@ pub fn stacked_listens_for(frozen: &StackedClick) -> bool {
 /// Fire the global hook (server side only) and item-part overrides in vanilla
 /// `AbstractContainerMenu.tryItemClickBehaviourOverride` order, validating each phase's answer.
 /// The accepted answer is kept for the click; any bad answer refuses it.
-fn fire<__Side: crate::game::Side>(
-    game: &mut Game<'_, __Side>,
+fn fire<'__sg, __Side: crate::game::SideGame<'__sg>>(
+    game: &mut __Side,
     shared: &Shared<'_, __Side>,
-    probe_carried: impl FnOnce(&mut Game<'_, __Side>, Option<ItemStack>, Option<ItemStack>) -> bool,
+    probe_carried: impl FnOnce(&mut __Side, Option<ItemStack>, Option<ItemStack>) -> bool,
 ) -> Reply {
     let frozen = &shared.frozen;
     let make_event =
@@ -277,7 +277,7 @@ fn fire<__Side: crate::game::Side>(
             )
             .with_direction(direction))
         };
-    let finish = |_game: &mut Game<'_, __Side>, outcome: StackedOutcome| -> Reply {
+    let finish = |_game: &mut __Side, outcome: StackedOutcome| -> Reply {
         *shared.answer.borrow_mut() = Some(outcome);
         Reply::Allow
     };
@@ -369,7 +369,7 @@ fn fire<__Side: crate::game::Side>(
         };
         let mut result = StackedOnOtherResult::default();
         let mut canceled = false;
-        game.item_stacked_on_other_part(&carried_stack.item, &event, &mut result, &mut canceled);
+        crate::game::native_hooks::item_stacked_on_other::ItemStackedPartGameExt::item_stacked_on_other_part(game, &carried_stack.item, &event, &mut result, &mut canceled);
         let part = match answer_part(game, canceled, &result, working_clicked.as_ref()) {
             Ok(part) => part,
             Err(reason) => return Reply::Invalid(reason),
@@ -439,7 +439,7 @@ fn fire<__Side: crate::game::Side>(
         };
         let mut result = StackedOnOtherResult::default();
         let mut canceled = false;
-        game.item_stacked_on_other_part(&clicked_stack.item, &event, &mut result, &mut canceled);
+        crate::game::native_hooks::item_stacked_on_other::ItemStackedPartGameExt::item_stacked_on_other_part(game, &clicked_stack.item, &event, &mut result, &mut canceled);
         let part = match answer_part(game, canceled, &result, working_clicked.as_ref()) {
             Ok(part) => part,
             Err(reason) => return Reply::Invalid(reason),
@@ -487,8 +487,8 @@ fn fire<__Side: crate::game::Side>(
 /// The global listener's typed answer, validated once: a stack may be set only by a cancelled
 /// click that is also handled, `ClickedStackResult::Take` is refused, and a set stack must be a
 /// valid one (a known item, a count within its maximum).
-fn answer_global<__Side: crate::game::Side>(
-    game: &Game<'_, __Side>,
+fn answer_global<'__sg, __Side: crate::game::SideGame<'__sg>>(
+    game: &__Side,
     canceled: bool,
     result: &StackedOnOtherResult,
 ) -> std::result::Result<StackedOutcome, InvalidReason> {
@@ -555,8 +555,8 @@ struct PartAnswer {
 ///
 /// Contradictory combinations (`canceled != result.handled`), `ClickedStackResult::Take` exceeding
 /// the clicked stack (or on an empty slot), or invalid stacks refuse the click.
-fn answer_part<__Side: crate::game::Side>(
-    game: &Game<'_, __Side>,
+fn answer_part<'__sg, __Side: crate::game::SideGame<'__sg>>(
+    game: &__Side,
     canceled: bool,
     result: &StackedOnOtherResult,
     current_clicked: Option<&ItemStack>,
@@ -600,3 +600,5 @@ fn answer_part<__Side: crate::game::Side>(
 use crate::game::tables::GameItems as _;
 
 use crate::game::transactions::TransactionsGameExt as _;
+
+use crate::game::native_hooks::item_stacked_on_other::GameHooks as _;

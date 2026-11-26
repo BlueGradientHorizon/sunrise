@@ -87,7 +87,7 @@ impl crate::game::ServerGame<'_> {
         filled_hive: bool,
     ) -> BlockStateId {
         let creative = self.common.creative;
-        let state = self.common.crack_mined_pot(pos, state);
+        let state = self.crack_mined_pot(pos, state);
         // Block.playerWillDestroy: mining their gold angers all nearby piglins.
         if self.guarded_by_piglins(&facts.name) {
             self.anger_piglins(false);
@@ -100,7 +100,7 @@ impl crate::game::ServerGame<'_> {
             && let Some(disarmed) = self.common.with_props(state, &[("disarmed", "true")])
         {
             let at = BlockPos::new(pos[0], pos[1], pos[2]);
-            self.common.with_level(|b, level, ticks| b.set_block(level, ticks, at, disarmed, 260));
+            self.with_level(|b, level, ticks| b.set_block(level, ticks, at, disarmed, 260));
             self.post_block_game_event("minecraft:shear", pos, self.sculk_actor(), None);
         }
         if creative && storage_common::is_shulker_box(&facts.name) {
@@ -123,6 +123,8 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::block_items::BlockItemsGameExt1 as _;
 

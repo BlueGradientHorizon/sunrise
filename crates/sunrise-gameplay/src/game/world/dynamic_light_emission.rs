@@ -31,7 +31,7 @@ impl crate::game::ServerGame<'_> {
         }
         let mut answers = FxHashMap::default();
         for (cell, [x, y, z], state) in cells {
-            if let Some(emission) = self.common.ask_light_emission(dimension, x, y, z, state) {
+            if let Some(emission) = self.ask_light_emission(dimension, x, y, z, state) {
                 answers.insert(cell, emission);
             }
         }
@@ -45,3 +45,5 @@ impl crate::game::ServerGame<'_> {
         sunrise_gameplay_common::game::light_emission::apply_chunk_light_emission(world, key, pending, answers);
     }
 }
+
+use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;

@@ -3,8 +3,22 @@ use super::*;
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
 impl crate::game::CommonGame<'_> {
+    /// Whether `stack` fits `ingredient` (`Ingredient.test`), matched with this
+    /// game's loop context.
+    pub fn recipe_ingredient_test(
+        &self,
+        ingredient: &Ingredient,
+        stack: &ItemStack,
+    ) -> bool {
+        ingredient.test_in(&self.loop_context, stack)
+    }
+}
+
+/// Helpers for native mods, kept as stable as the hook points.
+// Native mods use these; nothing in Sunrise does.
+pub trait IngredientTestGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Enumerate once at publication using the engine predicate, never a second matcher.
-    pub fn recipe_ingredient_item_keys(
+     fn recipe_ingredient_item_keys(
         &self,
         ingredient: &Ingredient,
     ) -> Result<std::sync::Arc<[mod_api::ItemKey]>, mod_api::IngredientKeysError> {
@@ -39,15 +53,8 @@ impl crate::game::CommonGame<'_> {
         }
         Ok(accepted.into())
     }
-    /// Whether `stack` fits `ingredient` (`Ingredient.test`), matched with this
-    /// game's loop context.
-    pub fn recipe_ingredient_test(
-        &self,
-        ingredient: &Ingredient,
-        stack: &ItemStack,
-    ) -> bool {
-        ingredient.test_in(&self.loop_context, stack)
-    }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> IngredientTestGameExt1<'__sg> for G {}
+
 
 use crate::game::tables::GameItems as _;

@@ -72,7 +72,7 @@ impl ServerGame<'_> {
         }
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
         let answer = self
-            .common.with_level(|b, level, ticks| {
+            .with_level(|b, level, ticks| {
                 if placed {
                     b.place_placed_feature(level, ticks, feature, at)
                         .map(|result| result.map_err(|_| PlaceFeatureRefusal::BiomeFilter))
@@ -85,5 +85,7 @@ impl ServerGame<'_> {
         answer
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

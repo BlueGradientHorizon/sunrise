@@ -729,7 +729,7 @@ impl crate::game::CommonGame<'_> {
 
 pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// The guest `conn` of the server’s LAN hub.
-     fn command_guest(&self, conn: u32) -> Option<&Guest> {
+     fn command_guest<'__loan>(&'__loan self, conn: u32) -> Option<&Guest> where '__sg: '__loan {
         crate::game::side_ops::player::SideOps::side_command_guest(self.side_state(), conn)
     }
 
@@ -926,7 +926,7 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
 
     /// The name of the player the game acts for: a guest's own while their
     /// command or action runs (`Player.getName`).
-     fn acting_player_name(&self) -> &str {
+     fn acting_player_name<'__loan>(&'__loan self) -> &str where '__sg: '__loan {
         crate::game::Side::lan_acting_name(self.side_state()).unwrap_or(PLAYER_NAME)
     }
 
@@ -955,7 +955,7 @@ pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `PlayerList.getPlayers` but the player in place: the guests who
     /// joined the world.
-     fn command_players(&self) -> impl Iterator<Item = &Guest> {
+     fn command_players<'__loan>(&'__loan self) -> impl Iterator<Item = &Guest> where '__sg: '__loan {
         let acting = crate::game::Side::lan_acting(self.side_state());
         crate::game::side_ops::lan::SideOps::side_command_players(self.side_state())
             .filter(move |g| Some(g.conn) != acting && self.native_command_player_available(g))

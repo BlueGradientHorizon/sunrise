@@ -19,10 +19,21 @@ impl crate::game::ClientGame<'_> {
     }
 }
 
-impl PackResources {
+pub(in crate::game) trait PackResourcesClientExt: Sized {
+fn load(
+        root: &sunrise_assets::resource_source::ResourceRoot,
+        assets: Arc<Assets>,
+        render: Arc<RenderAssets>,
+        facts: &BlockFacts,
+        biomes: Arc<Biomes>,
+        light: Arc<LightTables>,
+        item_data: &sunrise_world::item_defaults::ItemData,
+    ) -> Result<(PackResources, ClientPackResources)>;
+}
+impl PackResourcesClientExt for PackResources {
     /// Everything a pack overlay at `root` provides, over `assets` and `render`
     /// loaded from it.
-    pub(in crate::game) fn load(
+     fn load(
         root: &sunrise_assets::resource_source::ResourceRoot,
         assets: Arc<Assets>,
         render: Arc<RenderAssets>,

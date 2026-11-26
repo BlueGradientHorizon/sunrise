@@ -21,7 +21,7 @@ use sunrise_client_render::render_geometry::EntitySpan;
 
 /// The values the player chose for pack `name`'s options (`shaderpacks/<name>.txt`).
 pub(in crate::game::client_side) fn chosen_shader_options(name: &str) -> BTreeMap<String, String> {
-    let file = Game::shader_packs_dir().join(sunrise_shaders::chosen_file(name));
+    let file = crate::game::ClientGame::shader_packs_dir().join(sunrise_shaders::chosen_file(name));
     std::fs::read_to_string(file)
         .map(|text| sunrise_shaders::parse_chosen(&text))
         .unwrap_or_default()
@@ -37,7 +37,7 @@ pub(in crate::game::client_side) fn read_shader_options(
     if name.starts_with("sunrise:") {
         return None;
     }
-    let pack = match Pack::open(&Game::shader_packs_dir().join(name)) {
+    let pack = match Pack::open(&crate::game::ClientGame::shader_packs_dir().join(name)) {
         Ok(pack) => pack,
         Err(e) => {
             log::warn!("shader pack {name}: {e}");
@@ -62,7 +62,7 @@ pub(in crate::game::client_side) fn read_shader_options(
 
 /// Saves the values chosen on the Shader Options page; none chosen removes the file.
 pub(in crate::game::client_side) fn write_shader_options(options: &ShaderOptions) {
-    let file = Game::shader_packs_dir().join(sunrise_shaders::chosen_file(&options.pack));
+    let file = crate::game::ClientGame::shader_packs_dir().join(sunrise_shaders::chosen_file(&options.pack));
     let saved = if options.chosen.is_empty() {
         std::fs::remove_file(&file).or_else(|e| match e.kind() {
             std::io::ErrorKind::NotFound => Ok(()),
@@ -186,7 +186,7 @@ pub(in crate::game::client_side) fn picked_pack_shape(
     settings: &sunrise_client::settings::Settings,
 ) -> PickedPack {
     let picked = picked_pack(settings);
-    let dir = Game::shader_packs_dir();
+    let dir = crate::game::ClientGame::shader_packs_dir();
     let path = if dev_pack().is_some() {
         dir.join(picked)
     } else {
@@ -249,7 +249,7 @@ pub(in crate::game) fn picks_material_pack(settings: &sunrise_client::settings::
     if picked.is_empty() {
         return false;
     }
-    let dir = Game::shader_packs_dir();
+    let dir = crate::game::ClientGame::shader_packs_dir();
     let path = if dev.is_some() {
         dir.join(picked)
     } else {

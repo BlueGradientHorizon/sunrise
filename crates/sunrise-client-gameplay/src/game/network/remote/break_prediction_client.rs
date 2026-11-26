@@ -120,7 +120,7 @@ impl crate::game::ClientGame<'_> {
         // can correct them without running the local rules again.
         let [x, y, z] = pos;
         let pos = BlockPos::new(x, y, z);
-        let (mut changes, order) = self.common.with_level(|b, base, ticks| {
+        let (mut changes, order) = self.with_level(|b, base, ticks| {
             let mut level = DryLevel::new(base);
             level.reads = Some(ticks);
             level.notice_order = Some(Default::default());
@@ -380,6 +380,8 @@ impl crate::game::ClientGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
 

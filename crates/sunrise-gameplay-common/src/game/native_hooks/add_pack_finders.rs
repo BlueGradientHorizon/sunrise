@@ -27,17 +27,18 @@ pub(in crate::game) fn native_add_pack_finders(
     crate::game::native_hooks::fire::fire_add_pack_finders(context, register, enabled);
 }
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
+pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// Register sources when a resource or data pack repository is discovered.
-    pub(in crate::game) fn native_add_pack_finders(
+     fn native_add_pack_finders(
         &mut self,
         packs: &mut crate::game::pack_discovery::Registry,
     ) {
         let mods = self.mods.clone();
         native_add_pack_finders(
-            crate::game::Side::as_pack_discovery_context_mut(self),
+            <Self::State as crate::game::Side>::as_pack_discovery_context_mut(self),
             |listen| packs.register_listener(listen),
             |id| mods.code_owner_enabled(id),
         );
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> GameHooks<'__sg> for G {}

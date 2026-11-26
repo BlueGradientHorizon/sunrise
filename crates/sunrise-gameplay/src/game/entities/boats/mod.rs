@@ -197,7 +197,7 @@ impl crate::game::ServerGame<'_> {
                 boat.velocity = b.velocity;
                 boat.fire_ticks = b.fire_ticks;
             });
-            self.common.refresh_boat_status(i);
+            self.refresh_boat_status(i);
         }
         if self.common.boats[i].out_of_control >= 60.0 {
             self.eject_boat_riders(i);
@@ -1151,3 +1151,5 @@ use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
 
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
+use sunrise_gameplay_common::game::boats_common::BoatStatusGameExt as _;

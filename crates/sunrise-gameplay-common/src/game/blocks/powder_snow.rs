@@ -2,6 +2,7 @@
 //! bucket that picks it up (`BucketItem.use` on a `BucketPickup` block). The
 //! sinking, slowing, climbing and freezing are `PlayerMotion`'s
 //! (`crate::motion`); placing it is the powder snow bucket's `BlockItem.place`.
+
 use crate::game::CommonGame as Game;
 use sunrise_core::random::RandomSource;
 use sunrise_items::items::ItemStack;
@@ -21,16 +22,6 @@ impl crate::game::CommonGame<'_> {
             .get(self.world.block(pos[0], pos[1], pos[2]))
             .name
             == "minecraft:powder_snow"
-    }
-    /// `ItemUtils.createFilledResult(held, player, filled)` for the held stack.
-    pub fn filled_result(&mut self, filled: ItemStack) {
-        let slot = self.held_slot();
-        let mut held = HeldSlot {
-            game: self,
-            slot,
-            dropper: None,
-        };
-        cauldron::create_filled_result(&mut held, filled, true);
     }
 }
 
@@ -52,14 +43,14 @@ pub(in crate::game) fn added(
 
 /// The player acting, holding the stack in `slot` (`stack_in_mut`'s numbers), as
 /// `ItemUtils.createFilledResult` and the cauldron see them.
-pub struct HeldSlot<'g, 'a, S: crate::game::Side> {
-    pub(in crate::game) game: &'g mut Game<'a, S>,
+pub struct HeldSlot<'g, 'a, S: crate::game::SideGame<'a>> {
+    pub(in crate::game) game: &'g mut S,
     pub(in crate::game) slot: usize,
     /// The UUID of the player a mod's write acts as: what doesn't fit waits for the root
     /// commit of an open transaction. None for the game's own use.
-    pub(in crate::game) dropper: Option<u128>,
+    pub(in crate::game) dropper: Option<u128>, pub resource_lifetime: std::marker::PhantomData<fn(&'a ()) -> &'a ()>,
 }
-impl<S: crate::game::Side> cauldron::Player for HeldSlot<'_, '_, S> {
+impl<'__carrier, S: crate::game::SideGame<'__carrier>> cauldron::Player for HeldSlot<'_, '__carrier, S> {
     fn creative(&self) -> bool {
         self.game.creative
     }
@@ -126,3 +117,19 @@ pub(in crate::game) mod tests {
 use crate::game::transactions::TransactionsGameExt as _;
 
 use crate::game::held_items::HeldItemsGameExt1 as _;
+
+use crate::game::resident_state::ResidentStateGameExt1 as _;
+
+pub trait FilledResultGameExt<'g>: crate::game::SideGame<'g> {
+    /// `ItemUtils.createFilledResult(held, player, filled)` for the held stack.
+    fn filled_result(&mut self, filled: ItemStack) {
+        let slot = self.held_slot();
+        let mut held = HeldSlot {
+            game: self,
+            slot,
+            dropper: None, resource_lifetime: std::marker::PhantomData,
+        };
+        cauldron::create_filled_result(&mut held, filled, true);
+    }
+}
+impl<'g, G: crate::game::SideGame<'g>> FilledResultGameExt<'g> for G {}

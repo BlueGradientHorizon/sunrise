@@ -22,7 +22,7 @@ impl crate::game::ClientGame<'_> {
             .dynamic_cells(chunk, |s| sections.contains(&s));
         let dimension = self.current_light_emission_dimension();
         for (cell, [x, y, z], state) in cells {
-            let emission = self.common.ask_light_emission(dimension, x, y, z, state);
+            let emission = self.ask_light_emission(dimension, x, y, z, state);
             self.common.store_light_emission(key, cell, emission);
         }
     }

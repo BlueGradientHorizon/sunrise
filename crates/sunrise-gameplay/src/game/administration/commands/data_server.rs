@@ -978,12 +978,12 @@ impl crate::game::ServerGame<'_> {
         if after == before && !rolled && !lock_changed && !name_changed && !cooldown_changed {
             // BlockInput.place calls loadWithComponents even when its before/after
             // saves are equal. DataCommands instead rejects a no-op before setData.
-            self.common.notify_block_entity_load_additional(key);
+            self.notify_block_entity_load_additional(key);
             return false;
         }
         self.common.world.block_entities.insert(key, new);
         self.common.world.set_block_lock(key, &tag);
-        self.common.notify_block_entity_load_additional(key);
+        self.notify_block_entity_load_additional(key);
         // Tag-only /setblock or /fill edits must still notify clients of spawner display changes.
         if matches!(
             self.world.block_entities.get(&key),
@@ -1043,7 +1043,7 @@ impl crate::game::ServerGame<'_> {
                         self.common.world.block_entities.insert(key, new);
                     }
                     self.common.world.set_block_lock(key, &tag);
-                    self.common.notify_block_entity_load_additional(key);
+                    self.notify_block_entity_load_additional(key);
                     self.command_block_loaded(key, was_auto);
                     // BlockDataAccessor.setData: setChanged and sendBlockUpdated(3),
                     // even when the block state itself stays the same.
@@ -1147,3 +1147,5 @@ pub mod fire_tests;
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::block_entity_load_additional::BlockEntityLoadAdditionalGameExt1 as _;

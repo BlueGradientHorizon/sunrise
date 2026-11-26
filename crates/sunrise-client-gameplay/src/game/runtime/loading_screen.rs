@@ -433,7 +433,7 @@ impl Loading {
             "startedCleanly",
             sunrise_client::options_file::V::Bool(true),
         );
-        game.side.settings.save(&sunrise_gameplay_common::game::options_path());
+        game.client.settings.save(&sunrise_gameplay_common::game::options_path());
         log::info!(
             "Sunrise: startup handoff {} ms (renderer {} ms, start_game {} ms)",
             handoff_at.elapsed().as_millis(),
@@ -540,3 +540,5 @@ pub fn unclean_start_recovery(settings: &mut Settings) -> bool {
     }
     unclean
 }
+
+use sunrise_gameplay_common::game::native_hooks::game_shutting_down::GameHooks as _;

@@ -1,4 +1,5 @@
 //! `Game` as the `MobLevel` mob families run on: each service forwards to the game's own method.
+
 use super::Game;
 use sunrise_gameplay::mob_level::{MobLevel, MobParts};
 use sunrise_sim::entities::ItemEntity;
@@ -35,7 +36,7 @@ impl MobLevel for crate::game::ServerGame<'_> {
             .bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING)
     }
     fn entity_grief(&self, entity: u32, rule: bool) -> bool {
-        Game::entity_grief(self, entity, rule)
+        crate::game::ServerGame::entity_grief(self, entity, rule)
     }
     fn spawn_item_own(
         &mut self,
@@ -43,13 +44,13 @@ impl MobLevel for crate::game::ServerGame<'_> {
         position: [f64; 3],
         pickup_delay: u32,
     ) -> [f64; 3] {
-        Game::spawn_item_own(self, stack, position, pickup_delay)
+        crate::game::ServerGame::spawn_item_own(self, stack, position, pickup_delay)
     }
     fn just_spawned_item(&mut self) -> Option<&mut ItemEntity> {
-        Game::just_spawned_item(self)
+        crate::game::ServerGame::just_spawned_item(self)
     }
     fn mob_uuid(&mut self, id: u32) -> [i32; 4] {
-        Game::mob_uuid(self, id)
+        crate::game::ServerGame::mob_uuid(self, id)
     }
     fn play_sound(&mut self, event: &str, at: [f64; 3], volume: f32, pitch: f32) {
         self.server_play_sound(event, at, volume, pitch);

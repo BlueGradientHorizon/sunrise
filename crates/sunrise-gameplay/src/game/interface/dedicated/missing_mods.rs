@@ -57,7 +57,7 @@ impl crate::game::ServerGame<'_> {
     /// allows it; then the same list is a warning and the world opens.
     pub(super) fn check_missing_mods(&mut self, dir: &std::path::Path, flag: bool) -> Result<()> {
         let allowed = flag || allowed_by_server_toml()?;
-        let missing = self.common.ask_missing_mods(dir);
+        let missing = self.ask_missing_mods(dir);
         if missing.is_empty() {
             return Ok(());
         }
@@ -116,3 +116,5 @@ mod tests {
 
     
 }
+
+use sunrise_gameplay_common::game::native_hooks::mod_mismatch::GameHooks as _;

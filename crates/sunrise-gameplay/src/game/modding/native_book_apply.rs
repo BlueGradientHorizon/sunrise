@@ -83,7 +83,7 @@ impl crate::game::ServerGame<'_> {
         {
             return Err(R::UnknownDisplay);
         }
-        self.common.ensure_mod_book_displays();
+        self.ensure_mod_book_displays();
         let index = self
             .common
             .recipe_tables
@@ -360,3 +360,5 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_book_displays::NativeBookDisplaysGameExt1 as _;

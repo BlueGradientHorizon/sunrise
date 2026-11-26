@@ -34,7 +34,7 @@ impl crate::game::ServerGame<'_> {
 
     pub(in crate::game::server_side) fn schedule_command_block(&mut self, pos: Pos) {
         let at = BlockPos::new(pos.0, pos.1, pos.2);
-        self.common.with_level(|b, level, ticks| b.schedule_tick(level, ticks, at, 1));
+        self.with_level(|b, level, ticks| b.schedule_tick(level, ticks, at, 1));
     }
 
     /// `isAutomatic` of the command block at `pos`, before new data loads.
@@ -64,7 +64,7 @@ impl crate::game::ServerGame<'_> {
 
     pub(in crate::game::server_side) fn update_output_signal(&mut self, pos: Pos) {
         let at = BlockPos::new(pos.0, pos.1, pos.2);
-        self.common.with_level(|b, level, ticks| b.update_neighbour_for_output_signal(level, ticks, at));
+        self.with_level(|b, level, ticks| b.update_neighbour_for_output_signal(level, ticks, at));
     }
 
     /// `CommandBlock.setPlacedBy`: apply default flags unless item carried block entity data.
@@ -90,7 +90,7 @@ impl crate::game::ServerGame<'_> {
             c.auto = auto;
         }
         let at = BlockPos::new(pos.0, pos.1, pos.2);
-        let signal = self.common.with_level(|b, level, ticks| b.has_neighbor_signal(level, ticks, at));
+        let signal = self.with_level(|b, level, ticks| b.has_neighbor_signal(level, ticks, at));
         let registry = self.common.pack.assets.registry;
         if let Some((was, auto)) = set_powered(&mut self.common.world, registry, pos, signal)
             && signal
@@ -373,7 +373,7 @@ impl crate::game::ServerGame<'_> {
             let old = self.common.world.block(pos.0, pos.1, pos.2);
             let (lease, entity) = self.common.world.block_entities.take(&pos).unzip();
             let at = BlockPos::new(pos.0, pos.1, pos.2);
-            let lease = self.common.with_level(|b, level, ticks| {
+            let lease = self.with_level(|b, level, ticks| {
                 level.command_block_transition = lease.map(|lease| CommandBlockTransition {
                     lease,
                     old,
@@ -427,3 +427,5 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

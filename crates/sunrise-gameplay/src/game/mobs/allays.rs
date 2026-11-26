@@ -1,6 +1,7 @@
 //! Allays on the game side: spotting and picking up matching drops,
 //! throwing their load to the player or note block, dancing to jukeboxes,
 //! and the hand-over interaction (`Allay.mobInteract`).
+
 use super::Game;
 use super::level_sounds_common::LevelSound;
 use mod_api::SoundSource;
@@ -139,7 +140,7 @@ impl AllayLevel for crate::game::ServerGame<'_> {
         pitch: f32,
         except_actor: bool,
     ) {
-        Game::play_mob_bound_sound(self, index, event, source, volume, pitch, except_actor);
+        crate::game::ServerGame::play_mob_bound_sound(self, index, event, source, volume, pitch, except_actor);
     }
     fn with_sight_view<R>(&self, scan: impl FnOnce(SightView<'_>) -> R) -> R {
         let w = self.mob_world_base(&[]);
@@ -163,7 +164,7 @@ impl AllayLevel for crate::game::ServerGame<'_> {
         velocity: [f64; 3],
         pickup_delay: u32,
     ) {
-        Game::spawn_item(self, stack, position, velocity, pickup_delay);
+        crate::game::ServerGame::spawn_item(self, stack, position, velocity, pickup_delay);
     }
 }
 

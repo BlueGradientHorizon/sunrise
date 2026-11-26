@@ -74,10 +74,10 @@ impl ServerGame<'_> {
         let fire = self.named_block_in_tag("minecraft:fire", &name);
         if fire {
             // Level.destroyBlock(pos, false, this).
-            self.common.with_level(|b, level, ticks| b.destroy_block(level, ticks, at, false));
+            self.with_level(|b, level, ticks| b.destroy_block(level, ticks, at, false));
         }
         let candle =
-            !fire && self.common.with_level(|b, level, ticks| b.extinguish_candle(level, ticks, at));
+            !fire && self.with_level(|b, level, ticks| b.extinguish_candle(level, ticks, at));
         if !fire
             && !candle
             && let Some(mut lit) = self.lit_campfire(state, &name)
@@ -88,7 +88,7 @@ impl ServerGame<'_> {
             self.post_block_game_event("minecraft:block_change", pos, owner, None);
             lit.properties.insert("lit".into(), "false".into());
             if let Ok(unlit) = self.common.pack.assets.registry.resolve(&lit) {
-                let _ = self.common.level_set(pos, unlit);
+                let _ = self.level_set(pos, unlit);
             }
         }
         let _ = self.server_process_level_events();
@@ -274,3 +274,5 @@ impl ServerGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

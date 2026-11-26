@@ -343,7 +343,7 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         let pos = BlockPos::new(at.0, at.1, at.2);
-        self.common.with_level(|b, level, ticks| b.set_block(level, ticks, pos, id, flags));
+        self.with_level(|b, level, ticks| b.set_block(level, ticks, pos, id, flags));
     }
 
     /// `removeBarriers`.
@@ -544,3 +544,5 @@ impl crate::game::ServerGame<'_> {
         self.track_and_start_runner(vec![info], false, None, false);
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

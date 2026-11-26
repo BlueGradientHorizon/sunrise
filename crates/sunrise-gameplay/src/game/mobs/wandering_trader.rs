@@ -53,7 +53,7 @@ impl crate::game::ServerGame<'_> {
 }
 impl TraderLevel for crate::game::ServerGame<'_> {
     fn motion_top(&self, x: i32, z: i32) -> i32 {
-        Game::motion_top(self, x, z)
+        sunrise_gameplay_common::game::CommonGame::motion_top(self, x, z)
     }
     fn chunk_biome_has(&self, tag: &str, pos: [i32; 3]) -> bool {
         self.common.world

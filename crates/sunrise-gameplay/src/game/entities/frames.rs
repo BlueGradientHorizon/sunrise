@@ -424,7 +424,7 @@ impl crate::game::ServerGame<'_> {
     /// the comparators reading the frame take its new signal.
     pub(in crate::game) fn frame_output_changed(&mut self, pos: [i32; 3]) {
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
-        self.common.with_level(|b, level, ticks| b.update_neighbour_for_output_signal(level, ticks, at));
+        self.with_level(|b, level, ticks| b.update_neighbour_for_output_signal(level, ticks, at));
     }
     /// `ItemFrame.dropItem`: the frame (when breaking) and the held item.
     pub(in crate::game) fn drop_frame_items(
@@ -623,6 +623,8 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

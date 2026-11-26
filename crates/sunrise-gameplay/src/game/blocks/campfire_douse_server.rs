@@ -25,12 +25,14 @@ impl crate::game::ServerGame<'_> {
         // Level event 1009 (SOUND_EXTINGUISH_FIRE) goes to every player.
         self.server_level_event_at(1009, pos, 0);
         self.post_block_game_event("minecraft:block_change", pos, self.sculk_actor(), None);
-        self.common.level_set(pos, unlit)?;
+        self.level_set(pos, unlit)?;
         self.damage_held(1);
         // ServerPlayerGameMode.useItemOn: the action was consumed.
         self.trigger_block("minecraft:item_used_on_block", pos, &used);
         Ok(true)
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::campfire_douse::CampfireDouseGameExt1 as _;

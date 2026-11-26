@@ -7,7 +7,7 @@ use sunrise_protocol::packets::configuration::Transfer;
 #[cfg(feature = "client")]
 impl crate::game::ClientGame<'_> {
     pub(in crate::game::client_side) fn client_refresh_infiniburn(&mut self) {
-        self.common.world.infiniburn = Some(self.resolve_level_infiniburn(self.common.dimension_type()));
+        self.common.world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type()));
     }
     /// Close the transport before finishing any pack feedback, but keep the pack manager's
     /// prompt state until that feedback has been processed.
@@ -58,7 +58,7 @@ impl crate::game::ClientGame<'_> {
         if let Some(mut r) = self.client.remote.take() {
             r.session.disconnect();
             self.clear_spectated_entity_post_effect();
-            self.common.reset_creative_contents();
+            self.reset_creative_contents();
             self.refresh_creative_search_tags();
         }
         // Minecraft.disconnect -> updateLevelInEngines(null), after logout and level
@@ -1188,8 +1188,12 @@ use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::entity_initialization_common::EntityInitializationCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::GameHooks as _;
 
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

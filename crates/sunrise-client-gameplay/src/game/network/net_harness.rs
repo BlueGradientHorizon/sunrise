@@ -56,7 +56,7 @@ impl ClientGame<'_> {
             }
             if Instant::now() >= next {
                 next += Duration::from_millis(50);
-                self.common.tick()?;
+                self.tick()?;
                 // Gui.tick: ChatListener.tick, which the frame runs in play.
                 self.tick_chat_queue();
             }
@@ -180,3 +180,7 @@ impl ClientGame<'_> {
 use sunrise_gameplay_common::game::side_ops::events::EventsSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
+use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;

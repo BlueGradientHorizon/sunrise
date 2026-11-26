@@ -2031,7 +2031,7 @@ impl crate::game::ServerGame<'_> {
         // LevelChunk.registerAllBlockEntitiesAfterLevelLoad publishes saved data before
         // the first send, not on the first entity tick (which may be frozen or later).
         if self.common.is_logical_server() {
-            self.common.fire_pending_block_entity_loads();
+            self.fire_pending_block_entity_loads();
         }
         // A guest's mount fired its `started_riding` with that guest alone in
         // place (the hub held by its action): now every player on the vehicle
@@ -5770,6 +5770,8 @@ use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::block_entity_on_load::BlockEntityOnLoadGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
 

@@ -135,7 +135,7 @@ impl ServerGame<'_> {
             return false;
         }
         let holds_loved = m.extra.off_hand_id().is_some_and(|o| self.piglin_loved(o));
-        if self.common.piglin_currency(stack) {
+        if self.piglin_currency(stack) {
             return !holds_loved;
         }
         let space = self.piglin_can_add(m, stack);
@@ -411,7 +411,7 @@ impl ServerGame<'_> {
             || m.extra.using_item > 0
             || m.extra.piglin.seen_admire.present()
             || m.extra.piglin.admire_disabled.present()
-            || !self.common.piglin_currency(stack)
+            || !self.piglin_currency(stack)
         {
             return false;
         }
@@ -463,7 +463,7 @@ impl ServerGame<'_> {
             }
             return;
         }
-        if !self.common.piglin_currency(&stack) {
+        if !self.piglin_currency(&stack) {
             self.piglin_keep(i, stack);
             return;
         }

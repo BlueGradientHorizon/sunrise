@@ -45,7 +45,7 @@ impl ServerGame<'_> {
         if effects.update_neighbors {
             let at = BlockPos::new(pos.0, pos.1, pos.2);
             let state = self.common.world.block(pos.0, pos.1, pos.2);
-            self.common.with_level(|b, level, ticks| {
+            self.with_level(|b, level, ticks| {
                 let block = b.block(state);
                 b.update_neighbors_at(level, ticks, at, block);
             });
@@ -87,7 +87,7 @@ impl ServerGame<'_> {
             return;
         }
         let at = BlockPos::new(pos.0, pos.1, pos.2);
-        let signal = self.common.with_level(|b, level, ticks| b.has_neighbor_signal(level, ticks, at));
+        let signal = self.with_level(|b, level, ticks| b.has_neighbor_signal(level, ticks, at));
         let Some(effects) = self
             .test_block_mut(pos)
             .and_then(|b| b.neighbor_changed(signal))
@@ -128,3 +128,5 @@ impl ServerGame<'_> {
         self.mark_block_entity_updated(pos);
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

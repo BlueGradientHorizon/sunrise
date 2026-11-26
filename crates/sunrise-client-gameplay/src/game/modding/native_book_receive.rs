@@ -70,7 +70,7 @@ impl crate::game::ClientGame<'_> {
         let index = ModBookIndex::build(
             declarations,
             &RemoteResources {
-                inner: Resources(self),
+                inner: Resources(self, std::marker::PhantomData),
                 recipes,
                 types,
             },
@@ -108,7 +108,7 @@ impl crate::game::ClientGame<'_> {
                 let expected = mod_api::RecipeBookLayout::registered(identity.menu.as_str())
                     .map(|(_, _, layout)| layout);
                 let matches = expected.as_ref() == Some(&layout)
-                    && Resources(self).menu_layout(identity.menu.as_str()) == Some(storage);
+                    && Resources(self, std::marker::PhantomData).menu_layout(identity.menu.as_str()) == Some(storage);
                 let epoch = identity.epoch;
                 let started = self
                     .common.native_net
@@ -223,3 +223,5 @@ impl crate::game::ClientGame<'_> {
         }
     }
 }
+
+use crate::game::client_side::remote_client::chat::ChatTrustClientExt as _;

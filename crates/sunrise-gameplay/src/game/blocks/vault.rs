@@ -242,7 +242,7 @@ impl ServerGame<'_> {
             .properties
             .insert("vault_state".into(), state.name().into());
         let id = self.common.pack.assets.registry.resolve(&block)?;
-        self.common.level_set([key.0, key.1, key.2], id)?;
+        self.level_set([key.0, key.1, key.2], id)?;
         self.native_vault_change_state(self.common.dim.id(), [key.0, key.1, key.2], state.name());
         Ok(())
     }
@@ -278,5 +278,7 @@ impl ServerGame<'_> {
         Ok(())
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

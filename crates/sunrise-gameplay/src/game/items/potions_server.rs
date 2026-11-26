@@ -1332,7 +1332,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
         for at in chosen {
-            if self.common.set_state_named(at, "minecraft:cobweb", &[]).is_ok() {
+            if self.set_state_named(at, "minecraft:cobweb", &[]).is_ok() {
                 self.server_level_event_at(3018, at, 0);
             }
         }
@@ -1849,7 +1849,7 @@ impl crate::game::ServerGame<'_> {
                     self.fill_held(ItemStack::new("minecraft:dragon_breath", 1));
                     return Ok(true);
                 }
-                let Some(hit) = self.common.pick_fluid() else {
+                let Some(hit) = self.pick_fluid() else {
                     return Ok(false);
                 };
                 let state = self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
@@ -1924,7 +1924,7 @@ impl crate::game::ServerGame<'_> {
         self.server_play_sound("minecraft:item.bottle.empty", centre, 1.0, 1.0);
         self.post_block_game_event("minecraft:fluid_place", pos, None, None);
         if let Some(mud) = self.common.pack.assets.registry.default_state("minecraft:mud") {
-            self.common.level_set(pos, mud)?;
+            self.level_set(pos, mud)?;
         }
         self.award_stat("used", &stack.item, 1);
         self.swing_arm();
@@ -2351,6 +2351,8 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 

@@ -154,7 +154,7 @@ impl crate::game::ServerGame<'_> {
         let mut mob_events = Vec::new();
         for e in events {
             match e {
-                HeartEvent::SetBlock(at, state) => self.common.level_set(at, state)?,
+                HeartEvent::SetBlock(at, state) => self.level_set(at, state)?,
                 HeartEvent::Sound(name, at, volume, pitch) => {
                     self.server_play_sound(&format!("minecraft:{name}"), at, volume, pitch)
                 }
@@ -571,6 +571,8 @@ pub(in crate::game) mod tests {
         assert!(state.scanned.is_empty());
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
 

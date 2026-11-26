@@ -270,7 +270,7 @@ impl Trip {
             .filter(|_| self.dim == dim)
             .into_iter()
             .flat_map(|search| {
-                std::iter::once((Game::chunk_of(self.target), 2))
+                std::iter::once((crate::game::ServerGame::chunk_of(self.target), 2))
                     .chain(search.waiting_for.map(|chunk| (chunk, 0)))
             })
     }
@@ -1903,6 +1903,8 @@ use sunrise_gameplay_common::game::server_side::server_travel::credits_respawn_t
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

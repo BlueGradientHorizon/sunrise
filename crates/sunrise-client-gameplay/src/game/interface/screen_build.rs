@@ -636,7 +636,7 @@ impl crate::game::ClientGame<'_> {
         // Validate the assigned mod book before its flags can affect any
         // cached origin, slot rectangles or exclusion areas.
         if self.native_screen_book().is_some() {
-            self.common.ensure_mod_book_displays();
+            self.ensure_mod_book_displays();
         }
         // The container screens' layout is a build input: the frame's own
         // state, and the mods' effects answer, compared here so the panels and
@@ -1284,3 +1284,5 @@ mod tests {
         assert_eq!(state.builds, 1);
     }
 }
+
+use sunrise_gameplay_common::game::native_book_displays::NativeBookDisplaysGameExt1 as _;

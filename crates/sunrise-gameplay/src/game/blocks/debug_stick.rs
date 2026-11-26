@@ -114,7 +114,7 @@ impl ServerGame<'_> {
             let at = BlockPos::new(pos[0], pos[1], pos[2]);
             // `Level.setBlock(pos, newState, 18)`: clients and the known shape,
             // without neighbour updates.
-            self.common.with_level(|b, level, ticks| {
+            self.with_level(|b, level, ticks| {
                 b.set_block(
                     level,
                     ticks,
@@ -173,3 +173,5 @@ mod tests {
         assert_eq!(relative_index(4, Some(3), true), 2);
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

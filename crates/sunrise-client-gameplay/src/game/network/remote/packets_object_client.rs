@@ -99,7 +99,7 @@ impl crate::game::ClientGame<'_> {
         }
         // Entity.recreateFromPacket: objects must exist before applying motion.
         self.remote_motion(p.id, p.velocity);
-        if self.common.minecart_improvements()
+        if self.minecart_improvements()
             && self.common.carts.iter().any(|c| c.id == p.id as u32)
             && let Some(r) = self.client.remote.as_mut()
         {
@@ -583,3 +583,7 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 use sunrise_gameplay_common::game::entity_initialization_common::EntityInitializationCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;
+
+use sunrise_gameplay_common::game::minecarts::MinecartRailGameExt as _;

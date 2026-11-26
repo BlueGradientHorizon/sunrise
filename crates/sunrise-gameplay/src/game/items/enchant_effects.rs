@@ -1383,7 +1383,7 @@ impl ServerGame<'_> {
                     );
                     if x * x + z * z >= f64::from(radius * radius)
                         || !self.disk_predicate(&effect["predicate"], pos, new)
-                        || self.common.level_set(pos, new).is_err()
+                        || self.level_set(pos, new).is_err()
                     {
                         continue;
                     }
@@ -1450,7 +1450,7 @@ impl ServerGame<'_> {
                 })
             }
             // `UnobstructedPredicate`: no building-blocking entity in the block.
-            "minecraft:unobstructed" => self.common.with_level(|_, level, _| {
+            "minecraft:unobstructed" => self.with_level(|_, level, _| {
                 level.is_unobstructed(BlockPos::new(pos[0], pos[1], pos[2]), placed)
             }),
             _ => false,
@@ -2121,8 +2121,12 @@ pub(in crate::game) mod impulse_rounding_tests {
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::enchantments::EnchantmentsGameExt1 as _;
 
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

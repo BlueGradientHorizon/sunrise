@@ -62,7 +62,7 @@ impl crate::game::ServerGame<'_> {
         let air = self.common.world.air;
         let broke = !removed.is_empty();
         for (p, _) in removed {
-            let _ = self.common.level_set(p, air);
+            let _ = self.level_set(p, air);
         }
         if broke && let Some(d) = self.common.dragon.as_ref() {
             let p = d.parts[0].0;
@@ -80,3 +80,5 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

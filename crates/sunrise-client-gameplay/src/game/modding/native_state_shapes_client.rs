@@ -9,7 +9,7 @@ impl ClientGame<'_> {
         pos: [i32; 3],
     ) -> impl Iterator<Item = [f64; 6]> + '_ {
         let (outline, offset) =
-            self.common.selected_outline(&self.common.world, state, &self.client.be_anims.shulkers, pos, true);
+            self.selected_outline(&self.common.world, state, &self.client.be_anims.shulkers, pos, true);
         let (owned, cached) = match outline {
             Outline::Published(shape) => (shape.edges(), &[][..]),
             Outline::Declared(_, kind) => (
@@ -37,3 +37,5 @@ impl ClientGame<'_> {
             })
     }
 }
+
+use sunrise_gameplay_common::game::native_state_shapes::NativeStateShapesGameExt1 as _;

@@ -36,11 +36,11 @@ pub struct DryLevel<'w> {
     pub asks_mods: bool,
 }
 
-impl crate::game::CommonGame<'_> {
+pub trait DryLevelGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Ask for the candidate state without spending the level random or scheduling live ticks.
     /// A directional context's `replace_clicked` is read from the level; a question vanilla
     /// throws on is refused (`Behaviours::state_for_resolved_placement`).
-    pub fn preview_state_for_placement(
+     fn preview_state_for_placement(
         &mut self,
         block: BlockId,
         context: &PlacementContext,
@@ -55,7 +55,7 @@ impl crate::game::CommonGame<'_> {
 
     /// Trace the optional initial write and state-level callback off the live world.
     /// Both steps use the same scratch level so the callback sees the write's shape updates.
-    pub fn preview_set_placed_by(
+     fn preview_set_placed_by(
         &mut self,
         pos: BlockPos,
         state: BlockStateId,
@@ -80,10 +80,12 @@ impl crate::game::CommonGame<'_> {
         })
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> DryLevelGameExt1<'__sg> for G {}
+
 
 #[cfg(test)]
-impl crate::game::CommonGame<'_> {
-    pub(in crate::game) fn check_dry_fire_odds_view(
+pub trait DryLevelGameExt2<'__sg>: crate::game::SideGame<'__sg> {
+     fn check_dry_fire_odds_view(
         &mut self,
         stage: impl FnOnce(&sunrise_world::level::Behaviours, &mut dyn LevelAccess, &mut Ticks),
         check: impl FnOnce(&dyn mod_api::LevelHost),
@@ -99,6 +101,9 @@ impl crate::game::CommonGame<'_> {
         });
     }
 }
+#[cfg(test)]
+impl<'__sg, G: crate::game::SideGame<'__sg>> DryLevelGameExt2<'__sg> for G {}
+
 
 impl sunrise_world::level::BlockEntityNeighbors for DryLevel<'_> {}
 
@@ -484,3 +489,5 @@ impl<'w> DryLevel<'w> {
 }
 
 use crate::game::weather::WeatherGameExt as _;
+
+use crate::game::GameGameExt1 as _;

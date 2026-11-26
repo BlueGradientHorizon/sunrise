@@ -311,7 +311,7 @@ impl crate::game::ServerGame<'_> {
             .registry
             .default_state("minecraft:water")
             .unwrap();
-        self.common.level_set(block, water).unwrap();
+        self.level_set(block, water).unwrap();
         assert_eq!(
             self.world.block(block[0], block[1], block[2]),
             water,
@@ -357,7 +357,7 @@ impl crate::game::ServerGame<'_> {
             .registry
             .default_state("minecraft:stone")
             .unwrap();
-        self.common.level_set(block, stone).unwrap();
+        self.level_set(block, stone).unwrap();
         for (case, motion) in [
             Vec3::new(0.2, -0.4, 0.1),
             Vec3::new(-0.2, -0.4, 0.1),
@@ -388,7 +388,7 @@ impl crate::game::ServerGame<'_> {
         }
         self.common.offhand = old_offhand;
         self.common.player.as_mut().unwrap().position = old_position;
-        self.common.level_set(block, old_block).unwrap();
+        self.level_set(block, old_block).unwrap();
         rows
     }
     pub(in crate::game::server_side) fn holds_rod(&self) -> bool {
@@ -775,7 +775,7 @@ impl crate::game::ServerGame<'_> {
         let sky = self.common.world.light(above[0], above[1], above[2]) >> 4 == 15;
         // Level.isRainingAt: rain (not snow) reaches the position.
         if h.random.next_float() < 0.25
-            && self.common.with_level(|b, level, _| {
+            && self.with_level(|b, level, _| {
                 b.is_raining_at(level, BlockPos::new(above[0], above[1], above[2]))
             })
         {
@@ -2091,6 +2091,8 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
 

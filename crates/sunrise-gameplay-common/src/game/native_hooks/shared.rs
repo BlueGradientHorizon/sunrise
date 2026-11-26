@@ -233,7 +233,11 @@ pub struct NativeRecipes {
 
 /// `native_living_use_totem` for the damage code: whether it
 /// canceled the totem. The entity and the source are named as the damage hook names them.
-pub fn use_totem(level: DamageLevel<'_>, hurting: Hurting<'_>, off_hand: bool) -> bool {
+pub fn use_totem(
+    level: DamageLevel<'_>,
+    hurting: Hurting<'_>,
+    off_hand: bool,
+) -> bool {
     if !mod_api::__private::listened(mod_api::HookId::LivingUseTotem) {
         return false;
     }
@@ -258,7 +262,11 @@ pub fn use_totem(level: DamageLevel<'_>, hurting: Hurting<'_>, off_hand: bool) -
 pub struct HitLevel<'a>(pub(in crate::game) DamageLevel<'a>);
 
 /// Let listeners override the vanilla invulnerability decision for this hit.
-pub fn invulnerability_check(level: DamageLevel<'_>, hurting: Hurting<'_>, vanilla: bool) -> bool {
+pub fn invulnerability_check(
+    level: DamageLevel<'_>,
+    hurting: Hurting<'_>,
+    vanilla: bool,
+) -> bool {
     if !mod_api::__private::listened(mod_api::HookId::EntityInvulnerabilityCheck) {
         return vanilla;
     }
@@ -274,7 +282,9 @@ pub fn invulnerability_check(level: DamageLevel<'_>, hurting: Hurting<'_>, vanil
     invulnerable
 }
 
-pub fn engine_reduction(reduction: mod_api::Reduction) -> sunrise_world::living_damage::Reduction {
+pub fn engine_reduction(
+    reduction: mod_api::Reduction,
+) -> sunrise_world::living_damage::Reduction {
     match reduction {
         mod_api::Reduction::Invulnerability => {
             sunrise_world::living_damage::Reduction::Invulnerability
@@ -290,7 +300,9 @@ pub fn engine_reduction(reduction: mod_api::Reduction) -> sunrise_world::living_
     }
 }
 
-pub struct LiveDamageRead<'a>(pub(in crate::game) &'a sunrise_world::living_damage::DamageState);
+pub struct LiveDamageRead<'a>(
+    pub(in crate::game) &'a sunrise_world::living_damage::DamageState,
+);
 
 impl mod_api::__private::DamageContainerRead for LiveDamageRead<'_> {
     fn original(&self) -> f32 {
@@ -427,7 +439,11 @@ pub fn incoming_damage(
 }
 
 /// `native_living_damage_pre` for the damage code.
-pub fn damage_pre(level: DamageLevel<'_>, hurting: Hurting<'_>, container: &mut DamageContainer) {
+pub fn damage_pre(
+    level: DamageLevel<'_>,
+    hurting: Hurting<'_>,
+    container: &mut DamageContainer,
+) {
     if !mod_api::__private::listened(mod_api::HookId::LivingDamagePre) {
         return;
     }
@@ -445,7 +461,11 @@ pub fn damage_pre(level: DamageLevel<'_>, hurting: Hurting<'_>, container: &mut 
 }
 
 /// `native_living_damage_post` for the damage code.
-pub fn damage_post(level: DamageLevel<'_>, hurting: Hurting<'_>, container: &DamageContainer) {
+pub fn damage_post(
+    level: DamageLevel<'_>,
+    hurting: Hurting<'_>,
+    container: &DamageContainer,
+) {
     if !mod_api::__private::listened(mod_api::HookId::LivingDamagePost) {
         return;
     }
@@ -482,7 +502,11 @@ pub fn shield_block(
 /// `native_living_knockback` for the knockback code: whether it
 /// canceled the push. Its one caller. The pushed entity and the source are named as the
 /// damage hook names them.
-pub fn knockback(level: DamageLevel<'_>, pushed: Hurting<'_>, knock: &mut Knock) -> bool {
+pub fn knockback(
+    level: DamageLevel<'_>,
+    pushed: Hurting<'_>,
+    knock: &mut Knock,
+) -> bool {
     if !mod_api::__private::listened(mod_api::HookId::LivingKnockback) {
         return false;
     }
@@ -739,50 +763,6 @@ pub struct BonemealAsk {
 
 /// Where the game calls the hook points.
 impl crate::game::CommonGame<'_> {
-    /// `EntityBlock.newBlockEntity` of block `name`: Sunrise's own, else a
-    /// native mod's, made as a write of the level creates it
-    /// (`GameLevel::new_block_entity`). Only a declared mod type builds the
-    /// level.
-    #[cfg(test)]
-    pub(in crate::game) fn new_block_entity(&mut self, name: &str) -> Option<BlockEntity> {
-        if sunrise_game_data::block_entity_types::type_for(name).is_none() {
-            return block_entity_for_block(
-                self.pack.assets.registry,
-                self.res.facts(),
-                name,
-                Compound::default(),
-            );
-        }
-        self.with_level(|_, level, _| level.new_block_entity(name))
-    }
-    /// Compile static state-factory ownership once per level, including on clients.
-    pub fn ensure_stateful_entity_table(&mut self) {
-        if self.world.block_entities.has_stateful_entity_table() {
-            return;
-        }
-        let registry = self.pack.assets.registry;
-        let mut blocks = FxHashMap::default();
-        let states = (0..registry.len() as u32)
-            .map(|id| {
-                let Some(state) = registry.state(BlockStateId(id)) else {
-                    return false;
-                };
-                if state.name.starts_with("minecraft:") {
-                    return false;
-                }
-                *blocks.entry(state.name.as_str()).or_insert_with(|| {
-                    let mut stateful = false;
-                    self.native_stateful_block_entity(&state.name, &mut stateful);
-                    stateful
-                })
-            })
-            .collect();
-        self.world.block_entities.set_stateful_entities(states);
-    }
-    /// Create a block entity from an actual state using the level's creation hook.
-    pub fn new_block_entity_for_state(&mut self, state: BlockStateId) -> Option<BlockEntity> {
-        self.with_level(|_, level, _| level.new_block_entity_for_state(state))
-    }
     /// A mod block's container at `key` opens its menu: its slots grown to
     /// the menu's. False for any other block.
     pub fn open_mod_menu(&mut self, key: Pos) -> bool {
@@ -853,6 +833,53 @@ pub trait SharedGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     ) {
         self.side_chunks_unloaded(unloaded);
     }
+    /// `EntityBlock.newBlockEntity` of block `name`: Sunrise's own, else a
+    /// native mod's, made as a write of the level creates it
+    /// (`GameLevel::new_block_entity`). Only a declared mod type builds the
+    /// level.
+    #[cfg(test)]
+     fn new_block_entity(&mut self, name: &str) -> Option<BlockEntity> {
+        if sunrise_game_data::block_entity_types::type_for(name).is_none() {
+            return block_entity_for_block(
+                self.pack.assets.registry,
+                self.res.facts(),
+                name,
+                Compound::default(),
+            );
+        }
+        self.with_level(|_, level, _| level.new_block_entity(name))
+    }
+    /// Compile static state-factory ownership once per level, including on clients.
+     fn ensure_stateful_entity_table(&mut self) {
+        if self.world.block_entities.has_stateful_entity_table() {
+            return;
+        }
+        let registry = self.pack.assets.registry;
+        let mut blocks = FxHashMap::default();
+        let states = (0..registry.len() as u32)
+            .map(|id| {
+                let Some(state) = registry.state(BlockStateId(id)) else {
+                    return false;
+                };
+                if state.name.starts_with("minecraft:") {
+                    return false;
+                }
+                *blocks.entry(state.name.as_str()).or_insert_with(|| {
+                    let mut stateful = false;
+                    self.native_stateful_block_entity(&state.name, &mut stateful);
+                    stateful
+                })
+            })
+            .collect();
+        self.world.block_entities.set_stateful_entities(states);
+    }
+    /// Create a block entity from an actual state using the level's creation hook.
+     fn new_block_entity_for_state(
+        &mut self,
+        state: BlockStateId,
+    ) -> Option<BlockEntity> {
+        self.with_level(|_, level, _| level.new_block_entity_for_state(state))
+    }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> SharedGameExt1<'__sg> for G {}
 
@@ -906,7 +933,9 @@ pub fn config_dir(game_dir: &Path) -> std::io::Result<PathBuf> {
     Ok(dir)
 }
 
-pub fn client_packet_view(packet: &sunrise_protocol::packets::play::Clientbound) -> ClientPacket {
+pub fn client_packet_view(
+    packet: &sunrise_protocol::packets::play::Clientbound,
+) -> ClientPacket {
     use mod_api::Identifier;
     use std::sync::LazyLock;
     use sunrise_protocol::packets::play::Clientbound;
@@ -969,6 +998,12 @@ use crate::game::side_ops::events::EventsSideGameExt as _;
 
 use crate::game::side_ops::modapi_hooks::ModapiHooksSideGameExt as _;
 
+use crate::game::GameGameExt1 as _;
+
 use crate::game::held_items::HeldItemsGameExt1 as _;
 
 use crate::game::native_hooks::ModGameExt1 as _;
+
+use crate::game::native_hooks::stateful_block_entity::GameHooks as _;
+
+use crate::game::native_hooks::use_item_on_block::GameHooks as _;

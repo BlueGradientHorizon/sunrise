@@ -89,7 +89,7 @@ impl ClientGame<'_> {
     /// `Entity.pick(20, 0, false)` from the camera: the block outline hit.
     pub(in crate::game::client_side) fn debug_block_hit(&self) -> Option<[i32; 3]> {
         let (origin, dir) = self.aim()?;
-        Some(self.common.clip_ray(origin, dir, LOOKING_AT_RANGE)?.pos)
+        Some(self.clip_ray(origin, dir, LOOKING_AT_RANGE)?.pos)
     }
     /// `LevelExtractor.sectionStatistics`: the sections drawn of the view
     /// area's (smart culling is always on), the render distance, and
@@ -365,7 +365,7 @@ impl ClientGame<'_> {
     /// along the view, under its surface, before the block outline hit.
     pub(in crate::game::client_side) fn debug_fluid_hit(&self) -> Option<[i32; 3]> {
         let (origin, dir) = self.aim()?;
-        let block = self.common.clip_ray(origin, dir, LOOKING_AT_RANGE);
+        let block = self.clip_ray(origin, dir, LOOKING_AT_RANGE);
         let reach = block.map_or(LOOKING_AT_RANGE, |h| {
             (0..3)
                 .map(|i| (h.point[i] - origin[i]).powi(2))
@@ -523,6 +523,8 @@ impl ClientGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 

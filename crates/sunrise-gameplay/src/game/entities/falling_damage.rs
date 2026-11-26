@@ -181,7 +181,7 @@ impl crate::game::ServerGame<'_> {
             }
             return None;
         }
-        let landing = self.common.with_level(|b, level, ticks| {
+        let landing = self.with_level(|b, level, ticks| {
             b.falling_block_landed(
                 level,
                 ticks,
@@ -199,7 +199,7 @@ impl crate::game::ServerGame<'_> {
             // the falling entity has no supplied data.
             let key = (pos[0], pos[1], pos[2]);
             if !self.common.world.block_entities.stateful_entity(state.0)
-                && let Some(entity) = self.common.new_block_entity_for_state(state)
+                && let Some(entity) = self.new_block_entity_for_state(state)
             {
                 self.common.world.block_entities.insert(key, entity);
             }
@@ -209,7 +209,7 @@ impl crate::game::ServerGame<'_> {
                 .and_then(|saved| saved.1.get("TileEntityData"))
                 && let Some(entity) = self.common.world.block_entities.get(&key)
             {
-                let mut tag = self.common.encode_live_block_entity(key, entity, &name, self.common.res.items());
+                let mut tag = self.encode_live_block_entity(key, entity, &name, self.common.res.items());
                 // FallingBlockEntity.tick copies each supplied field over the
                 // new block entity's saved defaults before loadWithComponents.
                 if let sunrise_core::nbt::Tag::Compound(fields) = &mut tag {
@@ -310,3 +310,9 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::block_entity_save_additional::BlockEntitySaveAdditionalGameExt1 as _;

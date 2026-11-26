@@ -34,8 +34,10 @@ impl ClientGame<'_> {
             self.side_send_chat_command(&format!("/{}", words.join(" ")));
             return Ok(Some(json!({ "ok": true, "sent": true })));
         }
-        self.common.block_command_local(words)
+        self.block_command_local(words)
     }
 }
 
 use sunrise_gameplay_common::game::side_ops::ui::UiSideGameExt as _;
+
+use sunrise_gameplay_common::game::blockctl::BlockctlGameExt1 as _;

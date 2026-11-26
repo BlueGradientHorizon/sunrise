@@ -297,7 +297,7 @@ impl ServerGame<'_> {
             let y = (b.position.y - 0.500_001).floor() as i32;
             let state = self.common.world.block(x, y, z);
             let own = self.common.res.facts().get(state).friction;
-            self.common.boat_friction(b, BlockPos::new(x, y, z), state, own) * 0.91
+            self.boat_friction(b, BlockPos::new(x, y, z), state, own) * 0.91
         } else if b.in_liquid() {
             0.8
         } else {
@@ -627,8 +627,11 @@ pub(in crate::game) mod tests {
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
+use sunrise_gameplay_common::game::GameGameExt3 as _;
 use sunrise_gameplay_common::game::GameGameExt2 as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_surface::BoatFrictionGameExt as _;

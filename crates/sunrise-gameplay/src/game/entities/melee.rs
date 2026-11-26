@@ -42,7 +42,7 @@ impl crate::game::ServerGame<'_> {
         if let Ok(speed) = p.attribute("minecraft:movement_speed") {
             p.speed = speed as f32;
         }
-        if !self.common.sweep_decision(scale, crit, target) {
+        if !self.sweep_decision(scale, crit, target) {
             return None;
         }
         let p = self.common.player.as_ref()?;
@@ -175,7 +175,7 @@ impl crate::game::ServerGame<'_> {
             if self.extra_knockback(kind, scale).1 {
                 self.server_play_at_feet("minecraft:entity.player.attack.knockback");
             }
-            self.common.sweep_decision(scale, false, kind);
+            self.sweep_decision(scale, false, kind);
             self.server_play_at_feet("minecraft:entity.player.attack.nodamage");
         }
         self.post_piercing_attack();
@@ -532,6 +532,8 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 

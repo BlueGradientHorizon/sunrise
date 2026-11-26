@@ -1040,7 +1040,7 @@ impl crate::game::ServerGame<'_> {
                     if step.removed.is_some() && !step.replay.replay_removal {
                         self.common.world.block_entities.remove(&step.pos);
                     }
-                    self.common.set_block_live(
+                    self.set_block_live(
                         [x, y, z],
                         step.to,
                         step.replay.flags,
@@ -1112,10 +1112,10 @@ impl crate::game::ServerGame<'_> {
                         self.common.world.set_stored(pos.0, pos.1, pos.2, was);
                         let pos = [pos.0, pos.1, pos.2];
                         if level_host {
-                            self.common.set_block_live(pos, now, flags, true);
+                            self.set_block_live(pos, now, flags, true);
                             let _ = self.server_process_level_events();
                         } else {
-                            let _ = self.common.level_set_with_flags(pos, now, flags);
+                            let _ = self.level_set_with_flags(pos, now, flags);
                         }
                     } else if clear_connection_group {
                         // A round trip that preserves the block state can still end the
@@ -1375,7 +1375,7 @@ impl crate::game::ServerGame<'_> {
         for pos in reshaped {
             let at = BlockPos::new(pos.0, pos.1, pos.2);
             let state = self.common.world.block(pos.0, pos.1, pos.2);
-            self.common.with_level(|b, level, ticks| {
+            self.with_level(|b, level, ticks| {
                 let block = b.block(state);
                 b.update_neighbors_at(level, ticks, at, block);
             });
@@ -2176,8 +2176,12 @@ impl crate::game::ServerGame<'_> {
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
 
 use sunrise_gameplay_common::game::player_equip::PlayerEquipGameExt2 as _;
+
+use sunrise_gameplay_common::game::resident_state::ResidentStateGameExt1 as _;

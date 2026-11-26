@@ -1,11 +1,13 @@
 use super::*;
 
-impl crate::game::CommonGame<'_> {
+pub trait BlockEntityOnLoadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Drain attachment notices before either logical side runs block entity tickers.
-    pub fn fire_pending_block_entity_loads(&mut self) {
+     fn fire_pending_block_entity_loads(&mut self) {
         self.side_fire_pending_block_entity_loads();
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> BlockEntityOnLoadGameExt1<'__sg> for G {}
+
 
 pub fn authoritative_world_for_mods(
     resources: &crate::game::Resources,

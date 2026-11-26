@@ -100,7 +100,7 @@ impl crate::game::ServerGame<'_> {
             return None;
         }
         let top =
-            self.common.with_level(|b, level, _| b.motion_blocking_top(level, BlockPos::new(x, 0, z)));
+            self.with_level(|b, level, _| b.motion_blocking_top(level, BlockPos::new(x, 0, z)));
         if let Some(rod) = self.find_lightning_rod([x, top.y, z]) {
             return Some(rod);
         }
@@ -301,7 +301,7 @@ impl crate::game::ServerGame<'_> {
         // ServerLevel.canSpreadFireAround at the bolt: no fire at all, and no
         // draws for the extra sources, away from every player (#11376).
         let origin = BlockPos::new(base[0], base[1], base[2]);
-        if !self.common.with_level(|_, level, _| {
+        if !self.with_level(|_, level, _| {
             sunrise_world::level::LevelAccess::can_spread_fire_around(level, origin)
         }) {
             return 0;
@@ -318,15 +318,15 @@ impl crate::game::ServerGame<'_> {
             }
             // BaseFireBlock.getState and FireBlock/SoulFireBlock.canSurvive.
             let at = BlockPos::new(p[0], p[1], p[2]);
-            let fire = self.common.with_level(|b, level, ticks| {
+            let fire = self.with_level(|b, level, ticks| {
                 let fire = b.fire_state_for(level, ticks, at);
                 b.can_survive(level, ticks, at, fire).then_some(fire)
             });
             if let Some(fire) = fire {
-                if !self.common.native_block_ignite_allowed(at, "lightning") {
+                if !self.native_block_ignite_allowed(at, "lightning") {
                     continue;
                 }
-                let _ = self.common.level_set(p, fire);
+                let _ = self.level_set(p, fire);
                 set += 1;
             }
         }
@@ -495,8 +495,8 @@ impl crate::game::ServerGame<'_> {
         if let Some(mut s) = registry.state(state).cloned() {
             s.properties.insert("powered".into(), "true".into());
             if let Some(powered) = registry.id(&s) {
-                let _ = self.common.level_set(p, powered);
-                self.common.with_level(|b, level, ticks| {
+                let _ = self.level_set(p, powered);
+                self.with_level(|b, level, ticks| {
                     // `level.scheduleTick(pos, this, 8)`: the unpowering. A rod struck
                     // is the same block as before, so its placement does not schedule
                     // it, and without this it stayed powered for good.
@@ -527,7 +527,7 @@ impl crate::game::ServerGame<'_> {
             (at[1] - 1.0e-6).floor() as i32,
             at[2].floor() as i32,
         );
-        self.common.with_level(|b, level, ticks| b.lightning_clear_copper(level, ticks, p));
+        self.with_level(|b, level, ticks| b.lightning_clear_copper(level, ticks, p));
         let _ = self.server_process_level_events();
     }
     /// `LightningStrikeTrigger` at the bolt's discard: every player within 256
@@ -993,7 +993,7 @@ impl crate::game::ServerGame<'_> {
                 continue;
             };
             let p = BlockPos::new(pos[0], pos[1], pos[2]);
-            if !self.common.with_level(|b, level, _| b.is_raining_at(level, p)) {
+            if !self.with_level(|b, level, _| b.is_raining_at(level, p)) {
                 continue;
             }
             // Skeleton trap: the local effective difficulty / 100
@@ -1036,6 +1036,8 @@ impl crate::game::ServerGame<'_> {
         self.server.spawn_scratch = scratch;
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

@@ -157,7 +157,7 @@ impl ServerGame<'_> {
             // The oracle's settle takes its tickets at once (getChunk runs the
             // DistanceManager updates); a tick would refresh these too, but a
             // settle runs none, and `/execute if loaded` reads them.
-            self.common.update_chunk_tickets();
+            self.update_chunk_tickets();
             if let Some(p) = &self.common.player {
                 let (cx, cz) = (
                     (p.position.x.floor() as i32) >> 4,
@@ -1357,6 +1357,8 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

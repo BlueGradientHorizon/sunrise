@@ -137,7 +137,7 @@ impl crate::game::ClientGame<'_> {
     /// Iris's `endFlashIntensity` and the flash's direction (camera-relative, length 100: the
     /// sprite's centre), for shader packs; no flash outside the End.
     pub(in crate::game) fn end_flash_for_pack(&self, partial: f32) -> (f32, glam::Vec3) {
-        if self.common.dimension_type().skybox != sunrise_world::dimension_type::Skybox::End {
+        if self.dimension_type().skybox != sunrise_world::dimension_type::Skybox::End {
             return (0.0, glam::Vec3::ZERO);
         }
         let flash = &self.common.end.flash;
@@ -258,7 +258,7 @@ impl crate::game::ClientGame<'_> {
         sky: &mut sunrise_level::environment::Sky,
         partial: f64,
     ) {
-        if self.common.dimension_type().skybox == sunrise_world::dimension_type::Skybox::End
+        if self.dimension_type().skybox == sunrise_world::dimension_type::Skybox::End
             && !self.client.settings.file.bool("hideLightningFlashes")
         {
             let intensity = self.common.end.flash.intensity(partial as f32);
@@ -339,7 +339,7 @@ impl crate::game::ClientGame<'_> {
     /// its `DirectionalSoundInstance`, played 30 ticks later from the camera
     /// toward the flash.
     pub(in crate::game::client_side) fn tick_end_flash(&mut self) {
-        if self.common.dimension_type().skybox != sunrise_world::dimension_type::Skybox::End {
+        if self.dimension_type().skybox != sunrise_world::dimension_type::Skybox::End {
             return;
         }
         // getDefaultClockTime: the End's own clock (the client keeps the
@@ -387,3 +387,7 @@ pub(in crate::game) mod tests {
 }
 
 use sunrise_gameplay_common::game::end_common::EndGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
+use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;

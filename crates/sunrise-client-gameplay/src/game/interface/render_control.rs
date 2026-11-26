@@ -103,7 +103,7 @@ impl ClientGame<'_> {
                 let key = (int(1)?, int(2)?, int(3)?);
                 let state = self.common.world.block(key.0, key.1, key.2);
                 let entity = self
-                    .common.new_block_entity_for_state(state)
+                    .new_block_entity_for_state(state)
                     .filter(|e| matches!(e, sunrise_level::containers::BlockEntity::Sign(_)))
                     .ok_or("no sign there")?;
                 self.common.world.block_entities.get_or_insert_with(key, || entity);
@@ -147,3 +147,5 @@ pub(in crate::game::client_side) fn parse_state(
     }
     Ok(registry.resolve(&state)?)
 }
+
+use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;

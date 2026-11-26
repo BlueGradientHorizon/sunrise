@@ -459,7 +459,7 @@ impl crate::game::ServerGame<'_> {
                 }
             }
         }
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             for (pos, state) in cells {
                 b.set_block(level, ticks, pos, state, 2 | 16);
             }
@@ -684,7 +684,7 @@ impl crate::game::ServerGame<'_> {
         self.common.world.game_time += 1;
         // Scheduled block and fluid ticks, then block events.
         self.tick_scheduled()?;
-        self.common.with_level(|b, level, ticks| b.run_block_events(level, ticks));
+        self.with_level(|b, level, ticks| b.run_block_events(level, ticks));
         self.server_process_level_events()?;
         // The scenario's actions happen among the entities.
         for (tick, words) in &s.actions {
@@ -802,7 +802,7 @@ impl crate::game::ServerGame<'_> {
                     let n = |i: usize| words[i].parse::<i32>().unwrap_or(0);
                     let pos = BlockPos::new(n(1), n(2), n(3));
                     let state = self.fixture_state(&words[4])?;
-                    self.common.with_level(|b, level, ticks| {
+                    self.with_level(|b, level, ticks| {
                         b.set_block(level, ticks, pos, state, 3);
                     });
                     self.server_process_level_events()?;
@@ -828,7 +828,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
         // The player's tickets, as `tick_world` takes them.
-        self.common.update_chunk_tickets();
+        self.update_chunk_tickets();
         // Entities: the player's warden spawn tracker, then the mobs.
         self.tick_sculk_entities();
         // (ServerChunkCache.tick, natural spawning and its chunk shuffle, is not run.)
@@ -839,6 +839,8 @@ impl crate::game::ServerGame<'_> {
         Ok(())
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

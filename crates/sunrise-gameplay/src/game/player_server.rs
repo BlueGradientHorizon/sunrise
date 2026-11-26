@@ -228,7 +228,7 @@ impl crate::game::ServerGame<'_> {
             return Some(hit);
         }
         let (origin, dir) = self.server_aim()?;
-        self.common.clip_ray(origin, dir, self.common.block_reach.max(self.common.entity_reach))
+        self.clip_ray(origin, dir, self.common.block_reach.max(self.common.entity_reach))
     }
 
     /// Visits every authoritative server pickable entity intersecting `search_box`.
@@ -339,7 +339,7 @@ impl crate::game::ServerGame<'_> {
         };
 
         let block_hit = (max_len > 0.0)
-            .then(|| self.common.clip_ray(eye_arr, look_arr, max_len))
+            .then(|| self.clip_ray(eye_arr, look_arr, max_len))
             .flatten();
         if let Some(hit) = block_hit {
             to = v3(hit.point);
@@ -354,7 +354,7 @@ impl crate::game::ServerGame<'_> {
                 return None;
             }
             let d = b.subtract(a).scale(1.0 / length);
-            self.common.clip_ray([a.x, a.y, a.z], [d.x, d.y, d.z], length)
+            self.clip_ray([a.x, a.y, a.z], [d.x, d.y, d.z], length)
                 .map(|hit| v3(hit.point))
         };
 
@@ -714,6 +714,8 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

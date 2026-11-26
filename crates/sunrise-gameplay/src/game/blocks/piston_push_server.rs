@@ -197,7 +197,7 @@ impl crate::game::ServerGame<'_> {
         if sensing.is_empty() {
             return;
         }
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             for pos in sensing {
                 b.entity_inside(level, ticks, pos);
             }
@@ -968,7 +968,7 @@ impl crate::game::ServerGame<'_> {
         };
         if let Some(id) = id {
             self.entity_section_moved_id(id);
-            self.common.tell_entity_sections();
+            self.tell_entity_sections();
         }
     }
 
@@ -1501,6 +1501,8 @@ impl crate::game::ServerGame<'_> {
         });
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
 

@@ -305,10 +305,12 @@ impl crate::game::ClientGame<'_> {
             r.registries = registries;
             r.resolve_clocks();
             self.install_server_items();
-            self.common.reset_creative_contents();
+            self.reset_creative_contents();
             self.refresh_creative_search_tags();
         }
     }
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::GameHooks as _;

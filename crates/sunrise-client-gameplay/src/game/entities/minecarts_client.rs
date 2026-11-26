@@ -395,7 +395,7 @@ impl ClientGame<'_> {
                 continue;
             };
             let lerp = self.remote_minecart_lerp(c.id, a);
-            let new_render = self.common.minecart_improvements() || lerp.is_some();
+            let new_render = self.minecart_improvements() || lerp.is_some();
             let (x, y, z) = if let Some((p, _, _)) = lerp {
                 (p[0], p[1], p[2])
             } else {
@@ -438,7 +438,7 @@ impl ClientGame<'_> {
             let mut offset = glam::DVec3::ZERO;
             if new_render {
                 (yaw, pitch) = lerp.map_or((c.yaw, c.pitch), |(_, yaw, pitch)| (yaw, pitch));
-            } else if let Some(on) = self.common.rail_pos(Some(c.id), x, y, z) {
+            } else if let Some(on) = self.rail_pos(Some(c.id), x, y, z) {
                 // getPosOffs(..., 0.3F): the float widened.
                 let half = f64::from(0.3_f32);
                 let front = self.rail_pos_offs(Some(c.id), x, y, z, half).unwrap_or(on);
@@ -605,7 +605,7 @@ impl ClientGame<'_> {
         mut z: f64,
         offs: f64,
     ) -> Option<[f64; 3]> {
-        let [xt, yt, zt] = self.common.rail_block(Vec3::new(x, y, z), self.common.minecart_improvements());
+        let [xt, yt, zt] = self.rail_block(Vec3::new(x, y, z), self.minecart_improvements());
         let rail = self.rail(cart, xt, yt, zt)?;
         let mut y = f64::from(yt) + if rail.shape.is_slope() { 1.0 } else { 0.0 };
         let (e0, e1) = rail.shape.exits();
@@ -621,7 +621,7 @@ impl ClientGame<'_> {
         } else if e1[1] != 0 && at(e1) {
             y += f64::from(e1[1]);
         }
-        self.common.rail_pos(cart, x, y, z)
+        self.rail_pos(cart, x, y, z)
     }
     /// `MinecartTNT.handleEntityEvent`: event 70 calls `primeFuse`, which on a
     /// client only sets the fuse to 80. The window then counts it down
@@ -684,7 +684,7 @@ impl ClientGame<'_> {
     pub(in crate::game::client_side) fn start_cart_sounds(
         &mut self,
     ) -> (Option<u32>, Vec<CartSound>) {
-        let improved = self.common.minecart_improvements();
+        let improved = self.minecart_improvements();
         let carts: Vec<CartSound> = self
             .common.carts
             .iter()
@@ -790,3 +790,7 @@ impl PreparedModelFace {
 use sunrise_gameplay_common::game::cart_rails::CartRailsGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;
+
+use sunrise_gameplay_common::game::minecarts::MinecartRailGameExt as _;

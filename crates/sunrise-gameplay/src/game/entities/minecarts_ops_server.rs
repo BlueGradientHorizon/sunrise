@@ -19,7 +19,7 @@ impl ServerGame<'_> {
         if self.dismount_in_portal(self.common.carts[i].position) {
             return;
         }
-        let target = self.common.cart_player_dismount_target(i);
+        let target = self.cart_player_dismount_target(i);
         let from = self.common.player.as_ref().map(|player| player.position);
         if let Some(p) = self.common.player.as_mut() {
             p.position = target;
@@ -230,3 +230,5 @@ impl ServerGame<'_> {
         true
     }
 }
+
+use sunrise_gameplay_common::game::minecarts::CartDismountGameExt as _;

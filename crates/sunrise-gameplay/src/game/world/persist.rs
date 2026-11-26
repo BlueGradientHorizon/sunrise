@@ -2476,7 +2476,7 @@ impl crate::game::ServerGame<'_> {
 /// the same map a save writes them from (`mob_to_nbt`'s `uuid_of`).
 impl sunrise_sim::mobs::WhoLookup for crate::game::ServerGame<'_> {
     fn who_by_uuid(&self, uuid: [i32; 4]) -> Option<Who> {
-        Game::who_by_uuid(self, uuid)
+        crate::game::ServerGame::who_by_uuid(self, uuid)
     }
 
     fn mob_uuid(&self, id: u32) -> Option<[i32; 4]> {
@@ -2598,6 +2598,7 @@ fn join_saved_team(board: &mut Scoreboard, name: &str, tag: &Tag) -> bool {
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
+use sunrise_gameplay_common::game::GameGameExt3 as _;
 use sunrise_gameplay_common::game::GameGameExt2 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

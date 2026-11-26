@@ -21,9 +21,9 @@ impl crate::game::ClientGame<'_> {
         hand: Hand,
         stack: &ItemStack,
     ) -> Option<bool> {
-        if let Some(answer) = self.common.right_click_item(hand, stack) {
+        if let Some(answer) = self.right_click_item(hand, stack) {
             if answer == mod_api::InteractionResult::Success {
-                self.with_hand(hand, Game::swing_arm);
+                self.with_hand(hand, crate::game::ClientGame::swing_arm);
             }
             return Some(answer.consumes_action());
         }
@@ -34,5 +34,7 @@ impl crate::game::ClientGame<'_> {
 use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::item_fallthrough::ItemFallthroughGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::use_item_hand::UseItemHandGameExt1 as _;

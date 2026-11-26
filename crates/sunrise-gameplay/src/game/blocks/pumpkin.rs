@@ -15,7 +15,7 @@ impl crate::game::ServerGame<'_> {
         face: [i32; 3],
         held: Option<&ItemStack>,
     ) -> Result<bool> {
-        let Some(shears) = held.filter(|s| self.common.stack_shears(s, ability::SHEARS_CARVE)) else {
+        let Some(shears) = held.filter(|s| self.stack_shears(s, ability::SHEARS_CARVE)) else {
             return Ok(false);
         };
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
@@ -96,5 +96,7 @@ impl crate::game::ServerGame<'_> {
         Ok(true)
     }
 }
+
+use sunrise_gameplay_common::game::item_abilities::ItemAbilitiesGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

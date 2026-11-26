@@ -31,7 +31,7 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn client_on_start_using_item(&mut self, _stack: &ItemStack) {}
     pub(in crate::game) fn client_item_pick(&self) -> Option<Hit> {
         let (origin, direction) = self.aim()?;
-        self.common.clip_ray(origin, direction, self.common.block_reach)
+        self.clip_ray(origin, direction, self.common.block_reach)
     }
     pub(in crate::game) fn client_bucket_liquid_user_entity_id(&self) -> Option<u32> {
         (self.client.remote.is_some() || self.common.player.is_some()).then(|| self.own_entity_id() as u32)
@@ -46,6 +46,8 @@ impl crate::game::ClientGame<'_> {
         self.native_client_level()
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 

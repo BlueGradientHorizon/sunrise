@@ -92,7 +92,7 @@ impl crate::game::ServerGame<'_> {
         let kind = shooter.kind.id.clone();
         let vanilla = Self::mob_vanilla_ammo(&shooter.extra, weapon, world_items!(self));
         let mut projectile = Some(vanilla.clone());
-        self.common.native_living_get_projectile(None, "", Some(mob), &kind, weapon, &mut projectile);
+        self.native_living_get_projectile(None, "", Some(mob), &kind, weapon, &mut projectile);
         let Some(ammo) =
             projectile.filter(|ammo| *ammo != vanilla && is_arrow(world_items!(self), ammo))
         else {
@@ -152,7 +152,7 @@ impl crate::game::ServerGame<'_> {
             weapon,
             world_items!(self),
         ));
-        self.common.native_living_get_projectile(None, "", Some(mob), &kind, weapon, &mut projectile);
+        self.native_living_get_projectile(None, "", Some(mob), &kind, weapon, &mut projectile);
         // A crossbow takes arrows and firework rockets only.
         let projectile = projectile
             .filter(|ammo| is_arrow(world_items!(self), ammo) || &*ammo.item == FIREWORK_ROCKET);
@@ -483,3 +483,5 @@ use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::living_get_projectile::GameHooks as _;

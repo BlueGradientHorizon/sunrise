@@ -494,7 +494,7 @@ impl ServerGame<'_> {
             for _ in 0..tick.neighbor_updates {
                 let state = self.common.world.block(pos[0], pos[1], pos[2]);
                 let at = BlockPos::new(pos[0], pos[1], pos[2]);
-                self.common.with_level(|b, level, ticks| {
+                self.with_level(|b, level, ticks| {
                     b.shulker_neighbor_updates(level, ticks, at, state)
                 });
             }
@@ -523,7 +523,7 @@ impl ServerGame<'_> {
             return;
         }
         let at = BlockPos::new(pos.0, pos.1, pos.2);
-        self.common.with_level(|b, level, ticks| b.tick_daylight_detector(level, ticks, at));
+        self.with_level(|b, level, ticks| b.tick_daylight_detector(level, ticks, at));
         let _ = self.server_process_level_events();
     }
 }
@@ -623,6 +623,12 @@ pub mod own_block_entity_tests {
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::block_entity_on_load::BlockEntityOnLoadGameExt1 as _;

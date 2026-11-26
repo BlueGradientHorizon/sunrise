@@ -232,13 +232,13 @@ pub trait PistonPushGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         }
     }
 
-     fn pushed_living_collision(
-        &self,
+     fn pushed_living_collision<'__loan>(
+        &'__loan self,
         target: MoveWho,
     ) -> Option<(
         CollisionContext<'_>,
         sunrise_level::collisions::PowderSnowSubject<'_>,
-    )> {
+    )> where '__sg: '__loan {
         match target {
             MoveWho::Entity(EntityHandle::Mob(i)) => {
                 Some(self.mobs[i].support_collision(Some(&self.items().entity_type_tags)))

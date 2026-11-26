@@ -616,7 +616,7 @@ impl crate::game::ServerGame<'_> {
                 f64::from(pos.z) + 0.5,
             );
             let state = self.common.world.block(pos.x, pos.y, pos.z);
-            let result = self.common.with_level(|b, level, ticks| {
+            let result = self.with_level(|b, level, ticks| {
                 b.use_without_item(
                     level,
                     ticks,
@@ -1134,14 +1134,14 @@ impl crate::game::ServerGame<'_> {
             "set" => {
                 let state = BlockStateId(op["state"].as_u64().unwrap_or(0) as u32);
                 let flags = op["flags"].as_i64().unwrap_or(3) as i32;
-                self.common.with_level(|b, level, ticks| b.set_block(level, ticks, origin, state, flags));
+                self.with_level(|b, level, ticks| b.set_block(level, ticks, origin, state, flags));
             }
             "destroy" => {
                 let drop = op["drop"].as_bool().unwrap_or(true);
-                self.common.with_level(|b, level, ticks| b.destroy_block(level, ticks, origin, drop));
+                self.with_level(|b, level, ticks| b.destroy_block(level, ticks, origin, drop));
             }
             "remove" => {
-                self.common.with_level(|b, level, ticks| b.remove_block(level, ticks, origin, false));
+                self.with_level(|b, level, ticks| b.remove_block(level, ticks, origin, false));
             }
             "mine" => return self.fixture_mine(origin, op),
             other => return Err(format!("unknown removal {other}").into()),
@@ -1635,3 +1635,5 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

@@ -704,7 +704,7 @@ impl crate::game::ServerGame<'_> {
             // air was unnecessary. The unchanged air has no analog output or
             // removal side effects, so only its neighbours need notification.
             let remaining = self.common.world.block(pos[0], pos[1], pos[2]);
-            self.common.with_level(|b, level, ticks| {
+            self.with_level(|b, level, ticks| {
                 b.update_neighbors_at(
                     level,
                     ticks,
@@ -1955,6 +1955,8 @@ pub(in crate::game) mod forced_respawn_tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 

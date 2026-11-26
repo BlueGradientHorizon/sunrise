@@ -45,7 +45,9 @@ impl crate::game::ServerGame<'_> {
                     .pending_loot
                     .extend(payload.pending.map(|pending| (key, pending)));
             });
-            self.common.notify_block_entity_load_additional(key);
+            self.notify_block_entity_load_additional(key);
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_hooks::block_entity_load_additional::BlockEntityLoadAdditionalGameExt1 as _;

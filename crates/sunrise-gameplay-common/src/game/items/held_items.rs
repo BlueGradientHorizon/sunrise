@@ -658,10 +658,10 @@ pub trait HeldItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// The stack's `blocks_attacks`, gated by `shield_block` item abilities.
-     fn blocks_attacks(
-        &self,
+     fn blocks_attacks<'__loan>(
+        &'__loan self,
         stack: &ItemStack,
-    ) -> Option<std::borrow::Cow<'_, sunrise_items::items::BlocksAttacks>> {
+    ) -> Option<std::borrow::Cow<'_, sunrise_items::items::BlocksAttacks>> where '__sg: '__loan {
         let component =
             sunrise_items::items::BlocksAttacks::of_stack(stack, self.items().get(&stack.item));
         let ability = super::item_abilities::ability::SHIELD_BLOCK;
@@ -1176,7 +1176,7 @@ pub trait HeldItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `FishingRodCast`: the stack in the arm holding the rod while the hook is out.
-     fn cast_rod(&self) -> Option<&ItemStack> {
+     fn cast_rod<'__loan>(&'__loan self) -> Option<&ItemStack> where '__sg: '__loan {
         self.hook.as_ref()?;
         if self.main_hand_rod() {
             self.held()
@@ -1626,9 +1626,23 @@ use crate::game::tables::GameItems as _;
 
 use crate::game::tables::WorldTablesExt as _;
 
+use crate::game::GameGameExt1 as _;
+
 use crate::game::game_mode_common::GameModeCommonGameExt1 as _;
 
+use crate::game::item_abilities::ItemAbilitiesGameExt1 as _;
+
 use crate::game::native_components::NativeComponentsGameExt1 as _;
+
+use crate::game::native_hooks::can_harvest_block::GameHooks as _;
+
+use crate::game::native_hooks::fishing_medium::GameHooks as _;
+
+use crate::game::native_hooks::living_get_projectile::GameHooks as _;
+
+use crate::game::native_hooks::player_break_speed::GameHooks as _;
+
+use crate::game::native_hooks::player_harvest_check::GameHooks as _;
 
 use crate::game::pick_ray::PickRayGameExt1 as _;
 

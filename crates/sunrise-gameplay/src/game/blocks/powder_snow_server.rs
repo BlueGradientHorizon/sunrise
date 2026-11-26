@@ -17,7 +17,7 @@ impl ServerGame<'_> {
         if !self.common.is_powder_snow(at) || !self.may_interact_at(pos) {
             return;
         }
-        self.common.with_level(|b, level, ticks| b.destroy_block(level, ticks, pos, false));
+        self.with_level(|b, level, ticks| b.destroy_block(level, ticks, pos, false));
         let _ = self.server_process_level_events();
         self.common.world.modified.insert((at[0] >> 4, at[2] >> 4));
     }
@@ -28,7 +28,7 @@ impl ServerGame<'_> {
     pub(in crate::game) fn pick_up_powder_snow(&mut self, pos: [i32; 3]) -> Result<()> {
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
         let creative = self.common.creative;
-        let picked = self.common.with_level(|b, level, ticks| b.bucket_pickup(level, ticks, at, creative));
+        let picked = self.with_level(|b, level, ticks| b.bucket_pickup(level, ticks, at, creative));
         self.server_process_level_events()?;
         let Some(filled) = picked else {
             return Ok(());
@@ -44,7 +44,7 @@ impl ServerGame<'_> {
         }
         self.post_block_game_event("minecraft:fluid_pickup", pos, Some(Who::Player), None);
         let filled = ItemStack::new(filled, 1);
-        self.common.filled_result(filled.clone());
+        self.filled_result(filled.clone());
         self.trigger_item("minecraft:filled_bucket", &filled);
         self.swing_arm();
         Ok(())
@@ -68,3 +68,7 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
+use sunrise_gameplay_common::game::powder_snow::FilledResultGameExt as _;

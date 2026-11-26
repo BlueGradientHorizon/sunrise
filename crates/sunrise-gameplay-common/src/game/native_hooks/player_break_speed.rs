@@ -1,9 +1,9 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl crate::game::CommonGame<'_> {
+pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// A player's destroy speed for the block at `pos` may be changed or canceled.
-    pub(in crate::game) fn native_player_break_speed(
+     fn native_player_break_speed(
         &mut self,
         player: u32,
         pos: [i32; 3],
@@ -12,6 +12,7 @@ impl crate::game::CommonGame<'_> {
         new_speed: &mut f32,
         canceled: &mut bool,
     ) {
-        self.fire_player_break_speed(player, pos, state, original_speed, new_speed, canceled);
+        crate::game::native_hooks::fire::FireHooks::fire_player_break_speed(self, player, pos, state, original_speed, new_speed, canceled);
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> GameHooks<'__sg> for G {}

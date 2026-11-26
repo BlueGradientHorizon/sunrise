@@ -86,7 +86,7 @@ impl sunrise_sim::mobs::MobHooks for crate::game::ServerGame<'_> {
         self.entity_grief(mob, rule)
     }
     fn grief_hooked(&self) -> bool {
-        Game::grief_hooked(self)
+        crate::game::ServerGame::grief_hooked(self)
     }
     fn can_entity_destroy(&self, mob: u32, pos: [i32; 3], vanilla: bool) -> bool {
         self.entity_may_destroy(mob, pos, vanilla)

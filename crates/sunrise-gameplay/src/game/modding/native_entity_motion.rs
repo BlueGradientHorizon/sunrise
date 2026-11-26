@@ -748,7 +748,7 @@ use sunrise_gameplay_common::game::server_side::native_entity_motion::tests::ass
             assert_eq!(entity.set_on_ground(game, true), Ok(false), "no body yet");
             game.as_guest(12, |_| {}).unwrap();
             // The hub has the latest position; the parked motion still sits elsewhere.
-            game.side
+            game.server
                 .lan
                 .as_mut()
                 .unwrap()
@@ -775,7 +775,7 @@ use sunrise_gameplay_common::game::server_side::native_entity_motion::tests::ass
                     // The sneak callback runs after assigning the hub flag, before the body tick.
                     game.world.set(1, 64, 0, scaffolding).unwrap();
                     assert!(!game.player.as_ref().unwrap().shift_key_down);
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -784,7 +784,7 @@ use sunrise_gameplay_common::game::server_side::native_entity_motion::tests::ass
                         .unwrap();
                     assert_eq!(entity.set_on_ground(game, true), Ok(true));
                     assert_eq!(entity.on_block(game), Some([0, 64, 0]));
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()

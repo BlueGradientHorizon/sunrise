@@ -135,7 +135,7 @@ impl crate::game::ClientGame<'_> {
         let [x, y, z] = hit.pos;
         let state = self.common.world.block(x, y, z);
         let boxes =
-            self.common.outline_boxes_iter(&self.common.world, state, self.client.shulkers(), hit.pos, true);
+            self.outline_boxes_iter(&self.common.world, state, self.client.shulkers(), hit.pos, true);
         let uv = sunrise_client::gfx::lightning::white_uv(&self.client.gui.atlas.font.white());
         let [a, r, g, b] = argb.to_be_bytes();
         let color = u32::from_le_bytes([r, g, b, a]);
@@ -828,4 +828,8 @@ use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
 
 use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;
 
+use sunrise_gameplay_common::game::native_state_shapes::NativeStateShapesGameExt1 as _;
+
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
+use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;

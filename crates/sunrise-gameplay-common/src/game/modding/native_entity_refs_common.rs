@@ -1,4 +1,5 @@
 //! Dual-role entity and level handle lookups shared across server and client roles.
+
 use crate::game::CommonGame as Game;
 use crate::game::{
     collider_rays::{ClipData, ColliderRays},
@@ -15,14 +16,6 @@ use sunrise_sim::join_seq::residency::table::{EntityLookup, Location};
 use sunrise_world::registry::BlockStateId;
 
 impl crate::game::CommonGame<'_> {
-
-    /// Whether the entity is made of parts that are entities of their own (`Entity.isMultipartEntity`).
-    pub fn entity_is_multipart(&self, entity: EntityRef) -> Option<bool> {
-        Some(matches!(
-            self.native_entity_read_target(entity)?,
-            Target::Dragon(_)
-        ))
-    }
 
     /// The name of a dimension's key.
     pub fn dimension_key_id(&self, key: DimensionKey) -> Option<&str> {
@@ -42,6 +35,14 @@ pub trait NativeEntityRefsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         (self.native_entity_read_target(entity).is_some()
             || self.side_native_client_tracked(entity).is_some())
         .then_some(entity)
+    }
+
+    /// Whether the entity is made of parts that are entities of their own (`Entity.isMultipartEntity`).
+     fn entity_is_multipart(&self, entity: EntityRef) -> Option<bool> {
+        Some(matches!(
+            self.native_entity_read_target(entity)?,
+            Target::Dragon(_)
+        ))
     }
 
     /// The entities a multipart entity is made of (`Entity.getParts`), in `getSubEntities` order.
@@ -382,7 +383,7 @@ pub trait NativeEntityRefsCommonGameExt4<'__sg>: crate::game::SideGame<'__sg> {
         }
     }
 
-    fn native_entity_kind_name(&self, target: Target) -> Option<&str> {
+    fn native_entity_kind_name<'__loan>(&'__loan self, target: Target) -> Option<&str> where '__sg: '__loan {
         Some(match target {
             Target::Player | Target::Guest(_) => super::native_living_body::PLAYER,
             Target::Mob(id) => super::native_living_body::body_kind_name(
@@ -717,7 +718,7 @@ pub trait NativeEntityRefsCommonGameExt5<'__sg>: crate::game::SideGame<'__sg> {
     /// one in place, as a kill credit can name one (`getEntityInAnyDimension`):
     /// its identity reads (`entity_kind`, `entity_uuid`, `entity_level`)
     /// answer from there. None on a client or for anything else.
-     fn mob_in_other_level(&self, id: u32) -> Option<(super::Dim, &super::Mob)> {
+     fn mob_in_other_level<'__loan>(&'__loan self, id: u32) -> Option<(super::Dim, &super::Mob)> where '__sg: '__loan {
         if !self.is_logical_server() {
             return None;
         }
@@ -806,5 +807,7 @@ use crate::game::bookshelves_common::BookshelvesCommonGameExt1 as _;
 use crate::game::commands_common::CommandsCommonGameExt2 as _;
 
 use crate::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
+
+use crate::game::native_state_shapes::NativeStateShapesGameExt1 as _;
 
 use crate::game::remote::general::GeneralGameExt1 as _;

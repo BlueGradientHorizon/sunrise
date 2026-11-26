@@ -3,7 +3,7 @@ use super::*;
 
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn refresh_infiniburn(&mut self) {
-        self.common.world.infiniburn = Some(self.resolve_level_infiniburn(self.common.dimension_type()));
+        self.common.world.infiniburn = Some(self.resolve_level_infiniburn(self.dimension_type()));
         let parked: Vec<_> = self
             .server
             .levels
@@ -39,3 +39,5 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

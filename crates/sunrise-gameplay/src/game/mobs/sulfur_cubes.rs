@@ -142,7 +142,7 @@ impl ServerGame<'_> {
         self.break_leash(id, true, false);
         self.remove_mob_now(id, false);
         // ItemUtils.createFilledResult.
-        self.common.filled_result(filled);
+        self.filled_result(filled);
         if let (Some(player), Some(name)) =
             (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
         {
@@ -195,7 +195,7 @@ impl ServerGame<'_> {
                 m.position.z.floor() as i32,
             );
             let signal =
-                self.common.with_level(|b, level, ticks| b.best_neighbor_signal(level, ticks, at));
+                self.with_level(|b, level, ticks| b.best_neighbor_signal(level, ticks, at));
             if signal != 0 {
                 sulfur_cube::prime_with_fuse(&mut self.common.mobs[i], false, fuse);
             }
@@ -301,4 +301,8 @@ impl ServerGame<'_> {
     }
 }
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::powder_snow::FilledResultGameExt as _;

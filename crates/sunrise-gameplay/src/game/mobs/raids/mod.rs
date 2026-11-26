@@ -413,7 +413,7 @@ impl crate::game::ServerGame<'_> {
                     .clone()
             })
             .unwrap_or_default();
-        attributes.value(key, &self.common.dimension_type().id, &biome, self.common.world.day_time)
+        attributes.value(key, &self.dimension_type().id, &biome, self.common.world.day_time)
     }
 
     /// `BadOmenMobEffect` and `RaidOmenMobEffect.applyEffectTick` for the
@@ -1512,10 +1512,10 @@ impl crate::game::ServerGame<'_> {
 
 impl SiegeLevel for crate::game::ServerGame<'_> {
     fn sky_darken(&self) -> i32 {
-        Game::sky_darken(self)
+        crate::game::ServerGame::sky_darken(self)
     }
     fn surface_height(&self, x: i32, z: i32) -> i32 {
-        Game::surface_height(self, x, z)
+        crate::game::ServerGame::surface_height(self, x, z)
     }
     fn biome_tag(&self, tag: &str, pos: [i32; 3]) -> bool {
         self.natural_level().biome_tag(tag, pos[0], pos[1], pos[2])
@@ -1668,6 +1668,8 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

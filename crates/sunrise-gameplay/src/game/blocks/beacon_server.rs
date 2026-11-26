@@ -27,7 +27,7 @@ impl ServerGame<'_> {
     }
 
     fn server_tick_beacon(&mut self, key @ (x, y, z): (i32, i32, i32), b: &mut Beacon) {
-        let (previous, ambient_ready, reached_surface) = self.common.advance_beacon_beam(key, b);
+        let (previous, ambient_ready, reached_surface) = self.advance_beacon_beam(key, b);
         if ambient_ready {
             self.beacon_effects([x, y, z], b);
             self.beacon_sound([x, y, z], "minecraft:block.beacon.ambient");
@@ -120,3 +120,5 @@ impl ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::beacon_common::BeaconCommonGameExt1 as _;

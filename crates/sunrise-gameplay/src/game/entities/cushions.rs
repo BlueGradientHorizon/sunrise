@@ -38,7 +38,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game::server_side) fn cushion_survives(&self, c: &Cushion) -> bool {
-        sunrise_sim::cushion::survives(&PlacementWorld(self), aabb(c.bounds()))
+        sunrise_sim::cushion::survives(&PlacementWorld(self, std::marker::PhantomData), aabb(c.bounds()))
     }
 
     /// `Cushion.destroyIfInFire`: a fire-tagged block inside the deflated box.

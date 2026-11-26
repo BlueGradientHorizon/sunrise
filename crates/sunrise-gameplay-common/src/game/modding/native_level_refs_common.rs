@@ -128,10 +128,10 @@ pub trait NativeLevelRefsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// The single residency boundary for typed server-level reads.
-     fn native_level_world_result(
-        &self,
+     fn native_level_world_result<'__loan>(
+        &'__loan self,
         level: LevelRef,
-    ) -> Result<&World, mod_api::LevelReadError> {
+    ) -> Result<&World, mod_api::LevelReadError> where '__sg: '__loan {
         if !self.is_logical_server() {
             return Err(mod_api::LevelReadError::Unavailable);
         }
@@ -151,7 +151,7 @@ pub trait NativeLevelRefsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The world a handle names for a read that works on both sides: the
     /// server's level, or on a client the one it shows (`Minecraft.level`, its
     /// copy of the server's). None for a stale handle or another dimension.
-     fn native_level_read_world(&self, level: LevelRef) -> Option<&World> {
+     fn native_level_read_world<'__loan>(&'__loan self, level: LevelRef) -> Option<&World> where '__sg: '__loan {
         if self.is_logical_server() {
             return self.native_level_world(level);
         }
@@ -195,7 +195,7 @@ pub trait NativeLevelRefsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// The streaming of the level a handle names now, or None for a stale or
     /// foreign one.
-     fn native_level_streaming(&self, level: LevelRef) -> Option<&ChunkState> {
+     fn native_level_streaming<'__loan>(&'__loan self, level: LevelRef) -> Option<&ChunkState> where '__sg: '__loan {
         self.native_level_world(level)?;
         if level.dimension() == self.dim.key() {
             return Some(crate::game::Side::streaming_state(self.side_state()));
@@ -398,3 +398,5 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> NativeLevelRefsCommonGameExt1<'__sg
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 
 use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use crate::game::native_hooks::light_emission::GameHooks as _;

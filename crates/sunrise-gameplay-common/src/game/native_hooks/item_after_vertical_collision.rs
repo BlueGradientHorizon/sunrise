@@ -1,10 +1,11 @@
 use super::*;
-impl crate::game::CommonGame<'_> {
+pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// Dropped-item contact after vertical collision response and before block effects.
-    pub(in crate::game) fn native_item_after_vertical_collision(
+     fn native_item_after_vertical_collision(
         &mut self,
         call: crate::game::native_hooks::fire::ItemAfterVerticalCollisionCall<'_>,
     ) {
-        self.fire_item_after_vertical_collision(call);
+        crate::game::native_hooks::fire::FireHooks::fire_item_after_vertical_collision(self, call);
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> GameHooks<'__sg> for G {}

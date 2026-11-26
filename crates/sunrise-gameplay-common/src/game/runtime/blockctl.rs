@@ -1,5 +1,6 @@
 //! Control-socket block commands for scripted tests: `setblock`, `fill`,
 //! `getblock` and `container` (list or put items in a block entity).
+
 use crate::game::CommonGame;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -50,6 +51,9 @@ impl crate::game::CommonGame<'_> {
             .collect();
         format!("{}[{}]", s.name, props.join(","))
     }
+}
+
+pub trait BlockctlGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     fn put_block(&mut self, pos: [i32; 3], state: BlockStateId) -> Result<()> {
         self.world.block_entities.remove(&(pos[0], pos[1], pos[2]));
         self.level_set(pos, state)?;
@@ -62,7 +66,7 @@ impl crate::game::CommonGame<'_> {
         }
         Ok(())
     }
-    pub fn block_command_local(&mut self, words: &[&str]) -> Result<Option<Value>> {
+     fn block_command_local(&mut self, words: &[&str]) -> Result<Option<Value>> {
         if !self.is_logical_server() && matches!(words.first(), Some(&("setblock" | "fill"))) {
             return Err("cannot modify blocks without a world connection".into());
         }
@@ -156,3 +160,9 @@ impl crate::game::CommonGame<'_> {
         }
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> BlockctlGameExt1<'__sg> for G {}
+
+
+use crate::game::GameGameExt1 as _;
+
+use crate::game::native_hooks::SharedGameExt1 as _;

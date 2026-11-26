@@ -14,11 +14,11 @@ use sunrise_sim::{
     entities::{ArmorStand, ItemEntity, Painting},
 };
 
-pub struct PlacementWorld<'a, 'r, S: crate::game::Side>(
-    pub &'a Game<'r, S>,
+pub struct PlacementWorld<'a, 'r, S: crate::game::SideGame<'r>>(
+    pub(in crate::game) &'a S, pub std::marker::PhantomData<fn(&'r ()) -> &'r ()>,
 );
 
-impl<S: crate::game::Side> sunrise_sim::cushion::World for PlacementWorld<'_, '_, S> {
+impl<'__carrier, S: crate::game::SideGame<'__carrier>> sunrise_sim::cushion::World for PlacementWorld<'_, '__carrier, S> {
     fn outline_bounds(&self, p: [i32; 3]) -> Option<Aabb> {
         let boxes = self.0.outline_boxes(p);
         let mut shape = *boxes.first()?;
@@ -384,7 +384,7 @@ pub trait EntityCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             [position.x - 0.5, position.y, position.z - 0.5],
             [position.x + 0.5, position.y + 0.25, position.z + 0.5],
         ));
-        sunrise_sim::cushion::can_place(&PlacementWorld(self), bounds).then_some((position, bounds))
+        sunrise_sim::cushion::can_place(&PlacementWorld(self, std::marker::PhantomData), bounds).then_some((position, bounds))
     }
 
     /// Step on the retained block before the simulating body's inside scan.
@@ -508,5 +508,9 @@ impl<'__sg, G: crate::game::SideGame<'__sg>> EntityCommonGameExt1<'__sg> for G {
 use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
 
 use crate::game::tables::GameItems as _;
+
+use crate::game::GameGameExt1 as _;
+
+use crate::game::native_hooks::item_after_vertical_collision::GameHooks as _;
 
 use crate::game::native_world_read_common::NativeWorldReadGameExt1 as _;

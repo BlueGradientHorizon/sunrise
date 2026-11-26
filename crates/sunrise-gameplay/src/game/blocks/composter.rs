@@ -84,7 +84,7 @@ impl crate::game::ServerGame<'_> {
         let layers = self.composter_layers(pos, layers, interacting);
         let before = self.common.world.block(pos[0], pos[1], pos[2]);
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
-        let after = self.common.with_level(|b, level, ticks| b.composter_insert(level, ticks, at, layers));
+        let after = self.with_level(|b, level, ticks| b.composter_insert(level, ticks, at, layers));
         self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
         // The game event and level event 1500 happen here, before the caller goes on.
         let _ = self.server_process_level_events();
@@ -196,7 +196,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game) fn commit_composter_effects(&mut self, effects: Effects) {
-        self.common.with_level(|b, level, ticks| match effects {
+        self.with_level(|b, level, ticks| match effects {
             Effects::Insert { pos, before, after } => {
                 b.composter_insert_effects(
                     level,
@@ -231,7 +231,7 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         if before == 8 {
-            self.common.with_level(|b, level, ticks| b.composter_extract(level, ticks, at));
+            self.with_level(|b, level, ticks| b.composter_extract(level, ticks, at));
             let _ = self.server_process_level_events();
             before = 0;
         }
@@ -267,7 +267,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
         let after = self.composter_level(pos).unwrap_or(before);
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             b.composter_fill_effects(level, ticks, at, after != before)
         });
         let _ = self.server_process_level_events();
@@ -284,7 +284,7 @@ impl crate::game::ServerGame<'_> {
         let interacting = Some(Target::Mob(self.common.mobs[mob].id));
         let layers = self.composter_layers(pos, &layers, interacting);
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
-        self.common.with_level(|b, level, ticks| b.composter_layer(level, ticks, at, layers));
+        self.with_level(|b, level, ticks| b.composter_layer(level, ticks, at, layers));
         self.common.world.modified.insert((pos[0] >> 4, pos[2] >> 4));
         let _ = self.server_process_level_events();
         let inventory = &mut villager::ext_mut(&mut self.common.mobs[mob]).inventory;
@@ -300,5 +300,7 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

@@ -563,10 +563,10 @@ macro_rules! define_entity_handles {
             }
         }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+impl $crate::game::CommonGame<'_> {
             /// Every entity's handle: lengths read now, nothing allocated, and
             /// no borrow of `Game` held, so the caller can change it mid-walk.
-            pub fn entity_handles(&self) -> impl Iterator<Item = EntityHandle> + use<__Side> {
+            pub fn entity_handles(&self) -> impl Iterator<Item = EntityHandle> + use<> {
                 std::iter::empty()
                     $(.chain((0..self$(.$list)+.len()).map(EntityHandle::$kind)))*
             }

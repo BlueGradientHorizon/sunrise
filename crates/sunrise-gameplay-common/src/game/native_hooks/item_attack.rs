@@ -1,25 +1,27 @@
 use super::*;
 
-impl crate::game::CommonGame<'_> {
+pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// `IItemExtension.onEntitySwing`: the player in place (`entity`) is
     /// about to swing `stack` in `hand`, where `LivingEntity.swing` starts.
     /// Set `canceled` and no swing starts: no animation, no packet.
-    pub(in crate::game) fn native_on_entity_swing(
+     fn native_on_entity_swing(
         &mut self,
         stack: &ItemStack,
         entity: Option<i32>,
         hand: Hand,
         canceled: &mut bool,
     ) {
-        self.fire_on_entity_swing(stack, entity, hand, canceled);
+        crate::game::native_hooks::fire::FireHooks::fire_on_entity_swing(self, stack, entity, hand, canceled);
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> GameHooks<'__sg> for G {}
 
-impl crate::game::CommonGame<'_> {
+
+pub trait ItemAttackGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// `ItemStack.onEntitySwing` for the player in place swinging `hand`:
     /// true when the item's Part canceled the swing. Nothing runs for a hand
     /// holding nothing or an item without the Part.
-    pub fn native_entity_swing_event(&mut self, hand: Hand) -> bool {
+     fn native_entity_swing_event(&mut self, hand: Hand) -> bool {
         if !mod_api::__private::has_part_hook(mod_api::HookId::OnEntitySwing) {
             return false;
         }
@@ -40,3 +42,4 @@ impl crate::game::CommonGame<'_> {
         canceled
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> ItemAttackGameExt2<'__sg> for G {}

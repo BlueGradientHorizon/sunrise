@@ -87,7 +87,7 @@ impl crate::game::ServerGame<'_> {
                     let json = sunrise_game_data::scoreboard::tag_to_json(&tag).to_string();
                     let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
                     let placed = self
-                        .common.with_level(|b, level, ticks| {
+                        .with_level(|b, level, ticks| {
                             b.place_inline_feature(level, ticks, &json, at)
                         })
                         .ok_or_else(|| err("command.failed", &[]))?;
@@ -109,7 +109,7 @@ impl crate::game::ServerGame<'_> {
                 };
                 let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
                 let placed = self
-                    .common.with_level(|b, level, ticks| b.place_feature(level, ticks, &name, at))
+                    .with_level(|b, level, ticks| b.place_feature(level, ticks, &name, at))
                     .ok_or_else(|| err("command.failed", &[]))?;
                 self.server_process_level_events()
                     .map_err(|_| err("command.failed", &[]))?;
@@ -154,7 +154,7 @@ impl crate::game::ServerGame<'_> {
                     max_depth,
                     position: pos,
                 };
-                let (placed, entities) = self.common.with_level(|b, level, ticks| {
+                let (placed, entities) = self.with_level(|b, level, ticks| {
                     b.place_jigsaw(level, ticks, pos, false, || terrain.jigsaw_pieces(&query))
                 });
                 for entity in entities {
@@ -197,7 +197,7 @@ impl crate::game::ServerGame<'_> {
                 let (min, max) = (start.bounding_box.min, start.bounding_box.max);
                 self.place_check_loaded([min[0] >> 4, min[2] >> 4], [max[0] >> 4, max[2] >> 4])?;
                 let (placed, entities) =
-                    self.common.with_level(|b, level, ticks| b.place_structure(level, ticks, &start));
+                    self.with_level(|b, level, ticks| b.place_structure(level, ticks, &start));
                 for entity in entities {
                     self.spawn_entity_from_nbt(Tag::Compound(entity));
                 }
@@ -344,3 +344,5 @@ pub(in crate::game) mod source_tests {
         assert!(!scratch.0.join("data").exists());
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

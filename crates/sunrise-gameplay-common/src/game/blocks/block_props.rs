@@ -1,4 +1,5 @@
 //! Pure common block-state, bed, respawn-anchor, and portal-eligibility helpers.
+
 use crate::game::CommonGame as Game;
 use crate::game::Side;
 use sunrise_core::{
@@ -138,7 +139,7 @@ pub trait BlockPropsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             self.outline_boxes_iter(
                 &self.world,
                 self.world.block(at[0], at[1], at[2]),
-                self.side_state().shulkers(),
+                crate::game::Side::shulkers(self.side_state()),
                 at,
                 true,
             ),
@@ -216,3 +217,5 @@ use crate::game::side_ops::lan::LanSideGameExt as _;
 use crate::game::tables::WorldTablesExt as _;
 
 use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
+
+use crate::game::native_state_shapes::NativeStateShapesGameExt1 as _;

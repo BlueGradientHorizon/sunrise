@@ -300,7 +300,7 @@ impl ServerGame<'_> {
         let Some(id) = registry.id(&state) else {
             return false;
         };
-        if self.common.level_set(pos, id).is_err() {
+        if self.level_set(pos, id).is_err() {
             return false;
         }
         let mut components = Compound::new();
@@ -422,11 +422,13 @@ impl ServerGame<'_> {
             "minecraft:air"
         });
         if let Some(replacement) = replacement {
-            let _ = self.common.level_set(pos, replacement);
+            let _ = self.level_set(pos, replacement);
         }
         self.common.world.block_entities.remove(&(pos[0], pos[1], pos[2]));
         true
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

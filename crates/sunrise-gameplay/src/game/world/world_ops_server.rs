@@ -58,7 +58,7 @@ impl crate::game::ServerGame<'_> {
                 || self.common.world.block_entities.stateful_entity(previous.0)
                 || self.common.world.block_entities.get(&(x, y, z)).is_some())
         {
-            return self.common.with_level(|b, level, ticks| {
+            return self.with_level(|b, level, ticks| {
                 let changed = b.set_block(level, ticks, at, state, flags);
                 if create_entity {
                     level.finish_native_block(pos, previous, state, changed);
@@ -66,7 +66,7 @@ impl crate::game::ServerGame<'_> {
                 changed
             });
         }
-        self.common.ensure_stateful_entity_table();
+        self.ensure_stateful_entity_table();
         let Some((write, removal, spawns, orbs)) =
             self.with_level_access(false, |b, level, ticks| {
                 let write = b.begin_block_write(level, ticks, at, state, flags)?;
@@ -83,7 +83,7 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         self.publish_removal_spawns(spawns, orbs);
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             let removal_updates =
                 removal.map(|removal| level.finish_remove_entity(at, previous, removal));
             let changed = b.finish_block_write(level, ticks, write, removal_updates);
@@ -218,15 +218,10 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<sunrise_core::nbt::Tag> {
         let key = (pos[0], pos[1], pos[2]);
         match self.common.world.block_entities.get(&key) {
-            Some(entity) => Some(self.common.encode_live_block_entity(
-                key,
-                entity,
-                block,
-                self.common.res.items(),
-            )),
-            None => {
-                sunrise_gameplay_common::game::spill_common::saved_entity(&self.common.world, pos)
+            Some(entity) => {
+                Some(self.encode_live_block_entity(key, entity, block, self.common.res.items()))
             }
+            None => sunrise_gameplay_common::game::spill_common::saved_entity(&self.common.world, pos),
         }
     }
 
@@ -347,13 +342,7 @@ impl crate::game::ServerGame<'_> {
                         let block = registry
                             .state(c.block(pos.0 & 15, pos.1, pos.2 & 15))
                             .map_or("", |state| state.name.as_str());
-                        self.common
-                            .capture_block_entity_payload(
-                                *pos,
-                                block,
-                                entity,
-                                self.common.res.items(),
-                            )
+                        self.capture_block_entity_payload(*pos, block, entity, self.common.res.items())
                             .map(|edited| (*pos, edited))
                     })
                     .collect();
@@ -401,10 +390,7 @@ impl crate::game::ServerGame<'_> {
             _ => return,
         };
         let neighbour = [pos[0] + dx, pos[1], pos[2] + dz];
-        let state = self
-            .common
-            .world
-            .block(neighbour[0], neighbour[1], neighbour[2]);
+        let state = self.common.world.block(neighbour[0], neighbour[1], neighbour[2]);
         self.side_post_block_game_event(
             "minecraft:block_change",
             neighbour,
@@ -574,6 +560,12 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::block_entity_save_additional::BlockEntitySaveAdditionalGameExt1 as _;

@@ -237,7 +237,7 @@ impl crate::game::ClientGame<'_> {
             return Some(hit);
         }
         let (origin, dir) = self.client_aim()?;
-        self.common.clip_ray(origin, dir, self.common.block_reach.max(self.common.entity_reach))
+        self.clip_ray(origin, dir, self.common.block_reach.max(self.common.entity_reach))
     }
 
     pub(in crate::game) fn client_pick(&self) -> Option<Hit> {
@@ -748,6 +748,10 @@ impl crate::game::ClientGame<'_> {
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;

@@ -82,7 +82,7 @@ impl ServerGame<'_> {
         let Some(new_state) = registry.state(new).cloned() else {
             return;
         };
-        if !self.common.native_cauldron_level_change_allowed(
+        if !self.native_cauldron_level_change_allowed(
             pos,
             level(&old),
             level(&new_state),
@@ -95,8 +95,10 @@ impl ServerGame<'_> {
         if self.common.world.block(at[0], at[1], at[2]) != judged {
             return;
         }
-        if self.common.level_set(at, new).is_ok() {
+        if self.level_set(at, new).is_ok() {
             self.post_block_game_event("minecraft:block_change", at, None, Some(new));
         }
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

@@ -39,11 +39,11 @@ impl crate::game::ServerGame<'_> {
             .fluid()
             .filter(|_| mod_api::__private::has_scoped_hook(mod_api::HookId::PlaceLiquid))
         else {
-            return self.common.with_level(|b, level, ticks| {
+            return self.with_level(|b, level, ticks| {
                 b.bucket_empty_as(level, ticks, pos, beside, content, sound, sneaking, user)
             });
         };
-        let mut write = self.common.with_level(|b, level, ticks| {
+        let mut write = self.with_level(|b, level, ticks| {
             b.plan_bucket_pour(level, ticks, pos, beside, kind, sneaking, user)
         })?;
         if matches!(write.change, FluidChange::Fill(_))
@@ -53,7 +53,7 @@ impl crate::game::ServerGame<'_> {
             // BucketItem still empties on a container's false answer.
             write.change = FluidChange::Fill(None);
         }
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             b.apply_bucket_pour(
                 level,
                 ticks,
@@ -83,7 +83,7 @@ impl crate::game::ServerGame<'_> {
         let creative = self.creative(player);
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
         let Some(write) =
-            self.common.with_level(|b, level, ticks| b.plan_fluid_pickup(level, ticks, at, creative))
+            self.with_level(|b, level, ticks| b.plan_fluid_pickup(level, ticks, at, creative))
         else {
             return Ok(None);
         };
@@ -128,7 +128,7 @@ impl crate::game::ServerGame<'_> {
             })
             .unwrap_or_default();
         let at = BlockPos::new(pos[0], pos[1], pos[2]);
-        let Some(mut write) = self.common.with_level(|b, level, ticks| {
+        let Some(mut write) = self.with_level(|b, level, ticks| {
             b.plan_bucket_pour(level, ticks, at, None, kind, false, user)
         }) else {
             return Ok(false);
@@ -178,7 +178,7 @@ impl crate::game::ServerGame<'_> {
             self.journal_block_entity(key);
         }
         let drops = match write.broken() {
-            Some(broken) => self.common.with_level(|b, level, ticks| {
+            Some(broken) => self.with_level(|b, level, ticks| {
                 b.drop_resources(level, ticks, write.pos, broken);
                 std::mem::take(level.spill)
             }),
@@ -239,14 +239,14 @@ impl crate::game::ServerGame<'_> {
             pickup,
             player,
         } = written;
-        self.common.with_level(|b, level, ticks| b.fluid_write_ticks(level, ticks, &write));
+        self.with_level(|b, level, ticks| b.fluid_write_ticks(level, ticks, &write));
         debug_assert!(
             self.server.spill.0.is_empty(),
             "a spill left between level calls"
         );
         self.server.spill.0 = drops;
         self.flush_spill();
-        self.common.with_level(|b, level, ticks| b.fluid_write_effects(level, ticks, &write));
+        self.with_level(|b, level, ticks| b.fluid_write_effects(level, ticks, &write));
         let _ = self.server_process_level_events();
         if write.sounds() {
             let pos = [write.pos.x, write.pos.y, write.pos.z];
@@ -286,6 +286,8 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 

@@ -32,8 +32,7 @@ impl crate::game::ServerGame<'_> {
         // isSecondaryUseActive with something in either hand keeps blocks
         // from reacting.
         let sneaking = self.server_acting_sneak();
-        let hands_full =
-            self.common.stack_in(self.common.selected).is_some() || self.common.offhand.is_some();
+        let hands_full = self.common.stack_in(self.common.selected).is_some() || self.common.offhand.is_some();
         let mut anchor_passed = false;
         // Native mods, where ServerPlayerGameMode.useItemOn starts
         // (RightClickBlock): a cancel answers for the block and the item, and
@@ -188,9 +187,7 @@ impl crate::game::ServerGame<'_> {
                     .or_else(|| self.use_chiseled_bookshelf(hit, state, held.as_ref(), ItemOn));
             }
             // TRY_WITH_EMPTY_HAND: only the main hand's turn uses the block itself (useWithoutItem). The block's item behaviour hears both hands.
-            if !anchor_passed
-                && !chains_sign
-                && (self.common.hand == Hand::Main || block_answer.is_some())
+            if !anchor_passed && !chains_sign && (self.common.hand == Hand::Main || block_answer.is_some())
             {
                 let face = match hit.face {
                     [0, 1, 0] => Direction::Up,
@@ -209,16 +206,14 @@ impl crate::game::ServerGame<'_> {
                 };
                 let item = held.as_ref().map(|s| s.item.to_string());
                 let adds_candle = self
-                    .common
                     .with_level(|b, _, _| b.cake_candle_state(state, item.as_deref()).is_some());
                 let pots_flower = self
-                    .common
                     .with_level(|b, _, _| b.potted_flower_state(state, item.as_deref()).is_some());
                 let sign_consumes = self.sign_consumes_click(hit.pos);
                 use sunrise_world::level::{InteractionResult, UseBranch};
                 let item_result = match block_answer {
                     Some(answer) => native_hooks::block_use_result(answer),
-                    None => self.common.with_level(|b, level, ticks| {
+                    None => self.with_level(|b, level, ticks| {
                         b.block_use_item_on(level, ticks, state, block_hit, player, item.as_deref())
                     }),
                 };
@@ -239,8 +234,7 @@ impl crate::game::ServerGame<'_> {
                     }
                     if empty_answer.is_none()
                         && self
-                            .common
-                            .res
+                            .common.res
                             .behaviours()
                             .data(state)
                             .is(sunrise_world::level::classes::Class::Fence)
@@ -309,8 +303,7 @@ impl crate::game::ServerGame<'_> {
                 if empty_template_ran && result == sunrise_world::level::InteractionResult::Success
                 {
                     let name = self
-                        .common
-                        .res
+                        .common.res
                         .facts()
                         .get(self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]))
                         .name
@@ -380,8 +373,7 @@ impl crate::game::ServerGame<'_> {
                 .as_ref()
                 .zip(info.as_ref())
                 .is_none_or(|(stack, info)| {
-                    self.common
-                        .cooldowns
+                    self.common.cooldowns
                         .is_on_cooldown(&sunrise_items::cooldowns::group(
                             stack,
                             info.use_cooldown.as_ref(),
@@ -615,7 +607,7 @@ impl crate::game::ServerGame<'_> {
         let water_placement = matches!(&*stack.item, "minecraft:lily_pad" | "minecraft:frogspawn");
         let water_hit;
         let hit = if water_placement {
-            let Some(h) = self.common.pick_fluid() else {
+            let Some(h) = self.pick_fluid() else {
                 return Ok(false);
             };
             water_hit = Hit {
@@ -718,8 +710,7 @@ impl crate::game::ServerGame<'_> {
                         let commands::Target::Mob(id) = self.native_living_target(living)? else {
                             return None;
                         };
-                        self.common
-                            .mobs
+                        self.common.mobs
                             .iter_mut()
                             .find(|m| m.id == id)?
                             .random
@@ -789,11 +780,7 @@ impl crate::game::ServerGame<'_> {
                         let commands::Target::Mob(id) = self.native_living_target(living)? else {
                             return None;
                         };
-                        self.common
-                            .mobs
-                            .iter()
-                            .find(|m| m.id == id)
-                            .map(|m| m.position)?
+                        self.common.mobs.iter().find(|m| m.id == id).map(|m| m.position)?
                     }
                     None => self.common.player.as_ref()?.position,
                 };
@@ -927,8 +914,7 @@ impl crate::game::ServerGame<'_> {
         // BowItem.releaseUsing: `playSound(null, getX(), getY(), getZ(), ...)`, at
         // the feet: an eye-height source a few cm from the listener pans hard.
         let feet = self
-            .common
-            .player
+            .common.player
             .as_ref()
             .map_or(eye, |pl| [pl.position.x, pl.position.y, pl.position.z]);
         self.server_play_sound("minecraft:entity.arrow.shoot", feet, 1.0, pitch);
@@ -1009,6 +995,8 @@ pub mod scaffolding_inside_tests;
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::cake_eligibility::CakeEligibilityGameExt1 as _;
 

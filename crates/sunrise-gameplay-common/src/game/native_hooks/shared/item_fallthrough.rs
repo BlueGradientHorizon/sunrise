@@ -1,8 +1,8 @@
 use super::*;
 
-impl crate::game::CommonGame<'_> {
+pub trait ItemFallthroughGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Item.use after the same hand's target passed, or for a server UseItem packet.
-    pub fn right_click_item(
+     fn right_click_item(
         &mut self,
         hand: Hand,
         stack: &ItemStack,
@@ -39,6 +39,8 @@ impl crate::game::CommonGame<'_> {
         canceled.then_some(result)
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> ItemFallthroughGameExt1<'__sg> for G {}
+
 
 use crate::game::side_ops::modapi_hooks::ModapiHooksSideGameExt as _;
 
@@ -47,3 +49,5 @@ use crate::game::held_items::HeldItemsGameExt1 as _;
 use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use crate::game::native_hooks::ModGameExt1 as _;
+
+use crate::game::native_hooks::right_click_item::GameHooks as _;

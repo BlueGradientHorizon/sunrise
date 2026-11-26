@@ -265,7 +265,7 @@ impl crate::game::ServerGame<'_> {
         self.set_lectern_property(key, "powered", powered);
         let p = BlockPos::new(key.0, key.1, key.2);
         let state = self.common.world.block(key.0, key.1, key.2);
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             b.lectern_update_below(level, ticks, p, state);
         });
     }
@@ -304,7 +304,7 @@ impl crate::game::ServerGame<'_> {
         s.properties.insert(name.into(), value.to_string());
         if let Some(new) = registry.id(&s) {
             let p = BlockPos::new(key.0, key.1, key.2);
-            self.common.with_level(|b, level, ticks| {
+            self.with_level(|b, level, ticks| {
                 b.set_block(level, ticks, p, new, level_flags::UPDATE_ALL)
             });
         }
@@ -326,5 +326,7 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

@@ -34,7 +34,7 @@ impl ServerGame<'_> {
         for i in 0..self.common.mobs.len() {
             let m = &self.common.mobs[i];
             let (id, pose, vanilla, previous) = (m.id, m.pose(), m.vanilla_dims(), m.size_answer);
-            if let Some(answer) = self.common.ask_entity_size(id, pose, vanilla, previous)
+            if let Some(answer) = self.ask_entity_size(id, pose, vanilla, previous)
                 && let Some(m) = self.common.mobs.get_mut(i)
                 && m.id == id
             {
@@ -55,7 +55,7 @@ impl ServerGame<'_> {
                     .map(|vanilla| (e.id(), vanilla, e.size_answer()))
             });
             if let Some((id, vanilla, previous)) = asked
-                && let Some(answer) = self.common.ask_entity_size(id, Pose::Standing, vanilla, previous)
+                && let Some(answer) = self.ask_entity_size(id, Pose::Standing, vanilla, previous)
             {
                 with_entity_mut!(self, handle, e => e.set_size_answer(answer));
             }
@@ -66,7 +66,7 @@ impl ServerGame<'_> {
             let Some(vanilla) = e.vanilla_dimensions() else {
                 continue;
             };
-            if let Some(answer) = self.common.ask_entity_size(id, Pose::Standing, vanilla, previous) {
+            if let Some(answer) = self.ask_entity_size(id, Pose::Standing, vanilla, previous) {
                 self.server
                     .others
                     .0
@@ -81,7 +81,7 @@ impl ServerGame<'_> {
                 continue;
             }
             let vanilla = sunrise_gameplay_common::game::dragon_common::Crystal::DIMENSIONS;
-            if let Some(answer) = self.common.ask_entity_size(id, Pose::Standing, vanilla, previous) {
+            if let Some(answer) = self.ask_entity_size(id, Pose::Standing, vanilla, previous) {
                 self.common.crystals.update(i, |c| c.size_answer = Some(answer));
             }
         }
@@ -102,11 +102,11 @@ impl ServerGame<'_> {
             .iter()
             .filter_map(|guest| {
                 let body = guest.motion.as_deref()?;
-                let answer = self.common.ask_body_size(guest.entity_id as u32, body);
+                let answer = self.ask_body_size(guest.entity_id as u32, body);
                 Some((
                     guest.conn,
                     answer,
-                    self.common.body_fit_sizes(guest.entity_id as u32, body, answer.or(body.size_answer)),
+                    self.body_fit_sizes(guest.entity_id as u32, body, answer.or(body.size_answer)),
                 ))
             })
             .collect();
@@ -1090,3 +1090,5 @@ pub(in crate::game) mod tests {
 }
 
 use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sizes_common::EntitySizesCommonGameExt1 as _;

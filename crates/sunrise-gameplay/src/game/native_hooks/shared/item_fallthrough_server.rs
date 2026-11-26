@@ -9,7 +9,7 @@ impl crate::game::ServerGame<'_> {
         if on_block {
             return None;
         }
-        if let Some(answer) = self.common.right_click_item(self.common.hand, stack) {
+        if let Some(answer) = self.right_click_item(self.common.hand, stack) {
             if answer == mod_api::InteractionResult::SuccessServer {
                 self.swing_arm();
             }
@@ -41,5 +41,7 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::native_hooks::item_fallthrough::ItemFallthroughGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::use_item_hand::UseItemHandGameExt1 as _;

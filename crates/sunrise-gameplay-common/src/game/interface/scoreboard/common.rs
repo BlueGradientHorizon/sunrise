@@ -87,7 +87,7 @@ pub trait CommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// `Entity.getTeam`: the team holding this entity's scoreboard name (its UUID).
-     fn entity_team(&self, id: u32) -> Option<&sb::Team> {
+     fn entity_team<'__loan>(&'__loan self, id: u32) -> Option<&sb::Team> where '__sg: '__loan {
         if self.score.board.teams.is_empty() {
             return None;
         }
@@ -105,11 +105,11 @@ pub trait CommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     }
 
     /// A mob's own team, else its tamed owner's (`owner` is asked only then).
-     fn team_with_owner(
-        &self,
+     fn team_with_owner<'__loan>(
+        &'__loan self,
         id: u32,
         owner: impl FnOnce() -> Option<[i32; 4]>,
-    ) -> Option<&sb::Team> {
+    ) -> Option<&sb::Team> where '__sg: '__loan {
         let uuid = *self.persist.uuids.get(&id)?;
         let own = self.scoreboard_name(id, uuid);
         if let Some(team) = self.score.board.players_team(&own) {

@@ -17,8 +17,8 @@ fn trim_placement_stacks(drops: &mut [ItemStack], items: &sunrise_items::items::
     }
 }
 
-impl crate::game::CommonGame<'_> {
-    pub fn container_fill_hook(
+pub trait ContainerLootFilledGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+     fn container_fill_hook(
         &mut self,
         table: &str,
         target: LootTarget,
@@ -34,6 +34,8 @@ impl crate::game::CommonGame<'_> {
         });
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> ContainerLootFilledGameExt1<'__sg> for G {}
+
 impl GameLevel<'_> {
     pub(in crate::game) fn native_container_loot_filled(
         &self,
@@ -120,3 +122,5 @@ impl GameLevel<'_> {
         }
     }
 }
+
+use crate::game::GameGameExt1 as _;

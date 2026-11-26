@@ -49,7 +49,7 @@ impl ClientGame<'_> {
             return;
         }
         if let Some((pose, vanilla, previous)) = self.client_copy_size(id, pose)
-            && let Some(answer) = self.common.ask_entity_size(id, pose, vanilla, previous)
+            && let Some(answer) = self.ask_entity_size(id, pose, vanilla, previous)
         {
             self.set_client_copy_size(id, answer);
         }
@@ -66,7 +66,7 @@ impl ClientGame<'_> {
         }
         let vanilla =
             super::entity_type_rows::entity_type_rows(&self.common.options.resources).dimensions(kind)?;
-        self.common.ask_entity_size(id, Pose::Standing, vanilla, None)
+        self.ask_entity_size(id, Pose::Standing, vanilla, None)
     }
 
     /// Keep the constructor's answer on the copy it was asked for, now that it exists.
@@ -125,7 +125,7 @@ impl ClientGame<'_> {
         let Some(answers) = self
             .common.player
             .as_ref()
-            .map(|body| self.common.body_fit_sizes(id, body, body.size_answer))
+            .map(|body| self.body_fit_sizes(id, body, body.size_answer))
         else {
             return;
         };
@@ -150,7 +150,7 @@ impl ClientGame<'_> {
         let Some(answer) = self
             .common.player
             .as_ref()
-            .and_then(|body| self.common.ask_body_size(id, body))
+            .and_then(|body| self.ask_body_size(id, body))
         else {
             return;
         };
@@ -251,4 +251,8 @@ pub mod tests {
     }
 }
 
+use sunrise_gameplay_common::game::entity_sizes_common::EntitySizesCommonGameExt1 as _;
+
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;

@@ -975,7 +975,7 @@ impl crate::game::ClientGame<'_> {
                 let point = [0, 1, 2].map(|i| centre[i] + f64::from(f[i]) * inset);
                 let (yaw, pitch) = yaw_pitch(eye, point);
                 let dir = super::view_vector(yaw, pitch);
-                let hit = self.common.clip_ray(eye, dir, self.common.reach());
+                let hit = self.clip_ray(eye, dir, self.common.reach());
                 if let Some(hit) = &hit
                     && hit.pos == pos
                     && (face.is_none() || hit.face == f)
@@ -2614,5 +2614,7 @@ pub(in crate::game) mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

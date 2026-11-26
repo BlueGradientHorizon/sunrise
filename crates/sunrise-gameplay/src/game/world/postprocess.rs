@@ -38,7 +38,7 @@ impl ServerGame<'_> {
                 continue;
             };
             let marks = std::mem::take(&mut Arc::make_mut(chunk).postprocess);
-            self.common.with_level(|b, level, ticks| {
+            self.with_level(|b, level, ticks| {
                 for [x, y, z] in marks {
                     let pos = BlockPos::new(x, y, z);
                     let state = level.world.block(x, y, z);
@@ -65,3 +65,5 @@ impl ServerGame<'_> {
         self.server_process_level_events()
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

@@ -564,8 +564,8 @@ impl crate::game::ServerGame<'_> {
                             return Ok((false, 0));
                         };
                         let st =
-                            self.common.encode_live_block_entity((x, y, z), se, &name, self.common.res.items());
-                        let dt = self.common.encode_live_block_entity(
+                            self.encode_live_block_entity((x, y, z), se, &name, self.common.res.items());
+                        let dt = self.encode_live_block_entity(
                             (dx, dy, dz),
                             de,
                             &name,
@@ -678,3 +678,5 @@ pub mod passenger_relation_tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_hooks::block_entity_save_additional::BlockEntitySaveAdditionalGameExt1 as _;

@@ -1,14 +1,16 @@
 //! Hidden crafting recipe knowledge for /recipe, without recipe-book displays.
+
 use crate::game::CommonGame;
-impl crate::game::CommonGame<'_> {
-    pub fn change_mod_crafting_recipes(
+
+pub trait ModCraftingCommandsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+     fn change_mod_crafting_recipes(
         &mut self,
         give: bool,
         ids: &[String],
     ) -> (Vec<String>, i32) {
         let (custom, ordinary): (Vec<_>, Vec<_>) = ids.iter().cloned().partition(|id| {
             matches!(
-                self.recipes().recipe(id),
+                crate::game::tables::GameItems::recipes(self).recipe(id),
                 Some(sunrise_sim::crafting::Recipe::Mod(_))
             )
         });
@@ -24,3 +26,4 @@ impl crate::game::CommonGame<'_> {
         (ordinary, count)
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> ModCraftingCommandsGameExt1<'__sg> for G {}

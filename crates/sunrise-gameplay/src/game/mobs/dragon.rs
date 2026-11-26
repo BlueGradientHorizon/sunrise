@@ -1022,7 +1022,7 @@ impl crate::game::ServerGame<'_> {
     /// `EndCrystal.tick` in every dimension: the time (the spin and bob),
     /// and fire at its block where there is a dragon fight (the End).
     pub(in crate::game::server_side) fn tick_crystals(&mut self) {
-        let fire = (self.common.dimension_type().has_ender_dragon_fight)
+        let fire = (self.dimension_type().has_ender_dragon_fight)
             .then(|| self.common.pack.assets.registry.default_state("minecraft:fire"))
             .flatten();
         for i in 0..self.common.crystals.len() {
@@ -1034,7 +1034,7 @@ impl crate::game::ServerGame<'_> {
                 && self.common.res.facts().is_air(self.common.world.block(b[0], b[1], b[2]))
                 && self.common.world.loaded(b[0], b[2])
             {
-                let _ = self.common.level_set(b, fire);
+                let _ = self.level_set(b, fire);
             }
         }
     }
@@ -2499,7 +2499,7 @@ impl crate::game::ServerGame<'_> {
                 })
                 .map_or(64, |y| y + 1);
             let pos = BlockPos::new(0, y, 0);
-            let allowed = self.common.with_level(|_, level, _| {
+            let allowed = self.with_level(|_, level, _| {
                 let mut cancel = false;
                 if level.native_authoritative {
                     level.native_dragon_egg_form(level.dimension, pos, &mut cancel);
@@ -2507,7 +2507,7 @@ impl crate::game::ServerGame<'_> {
                 !cancel
             });
             if allowed {
-                let _ = self.common.level_set([0, y, 0], egg);
+                let _ = self.level_set([0, y, 0], egg);
             }
         }
         self.server.fight.previously_killed = true;
@@ -2783,7 +2783,7 @@ impl crate::game::ServerGame<'_> {
         at: [f64; 3],
         alive: bool,
     ) -> Option<f32> {
-        if !self.common.dimension_type().has_ender_dragon_fight
+        if !self.dimension_type().has_ender_dragon_fight
             || !alive
             || !self.server.fight.loaded
             || self.server.fight.killed
@@ -3075,7 +3075,7 @@ impl crate::game::ServerGame<'_> {
         // EndCrystalItem.useOn: ENTITY_PLACE at the block above, by the player.
         self.post_block_game_event("minecraft:entity_place", above, self.sculk_actor(), None);
         self.common.world.modified.insert((above[0] >> 4, above[2] >> 4));
-        if self.common.dimension_type().has_ender_dragon_fight {
+        if self.dimension_type().has_ender_dragon_fight {
             self.try_respawn();
         }
         if !self.common.creative {
@@ -3176,7 +3176,7 @@ impl crate::game::ServerGame<'_> {
                 for x in origin[0] - 3..=origin[0] + 3 {
                     let name = self.block_name_at([x, y, z]);
                     if matches!(&*name, "minecraft:bedrock" | "minecraft:end_portal") {
-                        let _ = self.common.set_state_named([x, y, z], "minecraft:end_stone", &[]);
+                        let _ = self.set_state_named([x, y, z], "minecraft:end_stone", &[]);
                     }
                 }
             }
@@ -3284,7 +3284,7 @@ impl crate::game::ServerGame<'_> {
             for z in cz - 10..=cz + 10 {
                 for x in cx - 10..=cx + 10 {
                     if !self.common.res.facts().is_air(self.common.world.block(x, y, z)) {
-                        let _ = self.common.level_set([x, y, z], air);
+                        let _ = self.level_set([x, y, z], air);
                     }
                 }
             }
@@ -3306,10 +3306,10 @@ impl crate::game::ServerGame<'_> {
                     let (dx, dz) = (f64::from(x - cx), f64::from(z - cz));
                     if dx * dx + dz * dz <= f64::from(r * r + 1) && y < h {
                         if &*self.block_name_at([x, y, z]) != "minecraft:obsidian" {
-                            let _ = self.common.set_state_named([x, y, z], "minecraft:obsidian", &[]);
+                            let _ = self.set_state_named([x, y, z], "minecraft:obsidian", &[]);
                         }
                     } else if y > 65 && !self.common.res.facts().is_air(self.common.world.block(x, y, z)) {
-                        let _ = self.common.level_set([x, y, z], air);
+                        let _ = self.level_set([x, y, z], air);
                     }
                 }
             }
@@ -3349,8 +3349,8 @@ impl crate::game::ServerGame<'_> {
             invulnerable: true,
             ..Crystal::new(crystal_id, at, true, time)
         });
-        let _ = self.common.set_state_named([cx, h, cz], "minecraft:bedrock", &[]);
-        let _ = self.common.set_state_named([cx, h + 1, cz], "minecraft:fire", &[]);
+        let _ = self.set_state_named([cx, h, cz], "minecraft:bedrock", &[]);
+        let _ = self.set_state_named([cx, h + 1, cz], "minecraft:fire", &[]);
         self.common.world.modified.insert((cx >> 4, cz >> 4));
     }
     /// Iron bars connected north, south, west and east.
@@ -3368,7 +3368,7 @@ impl crate::game::ServerGame<'_> {
                 .insert(name.into(), if on { "true" } else { "false" }.into());
         }
         if let Ok(id) = registry.resolve(&state) {
-            let _ = self.common.level_set(pos, id);
+            let _ = self.level_set(pos, id);
         }
     }
     /// `resetSpikeCrystals`: spike crystals lose their beams and protection.
@@ -3445,7 +3445,7 @@ impl crate::game::ServerGame<'_> {
     /// The dragon is the End fight's own (`EnderDragon.dragonFight`, set
     /// only for the dragon whose UUID is the fight's `dragonUUID`).
     pub(in crate::game::server_side) fn is_fight_dragon(&mut self) -> bool {
-        if !self.common.dimension_type().has_ender_dragon_fight {
+        if !self.dimension_type().has_ender_dragon_fight {
             return false;
         }
         match (
@@ -4837,6 +4837,8 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 

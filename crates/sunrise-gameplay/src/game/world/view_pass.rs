@@ -59,7 +59,7 @@ impl crate::game::ServerGame<'_> {
             self.postprocess_chunks()?;
             // Like LevelChunk.registerAllBlockEntitiesAfterLevelLoad, attaching a loaded
             // entity publishes it even when this level has no entity ticks.
-            self.common.fire_pending_block_entity_loads();
+            self.fire_pending_block_entity_loads();
             if self.needs_view_pass(dim) {
                 self.view_pass_send();
             }
@@ -321,5 +321,7 @@ use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::block_entity_on_load::BlockEntityOnLoadGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

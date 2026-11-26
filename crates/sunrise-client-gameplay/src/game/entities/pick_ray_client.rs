@@ -1,11 +1,19 @@
 use sunrise_gameplay_common::game::pick_ray::PickAccumulator;
 use sunrise_gameplay_common::game::pick_ray::PickCandidate;
 
-impl PickAccumulator {
-    pub(in crate::game) fn nearest_sq(&self) -> f64 {
+pub(in crate::game) trait PickRecordingExt: Sized {
+fn nearest_sq(&self) -> f64;
+fn recording_with(
+        max_distance_sq: f64,
+        mut candidates: Vec<PickCandidate>,
+    ) -> Self;
+fn take_candidates(&mut self) -> Vec<PickCandidate>;
+}
+impl PickRecordingExt for PickAccumulator {
+     fn nearest_sq(&self) -> f64 {
         self.nearest_sq
     }
-    pub(in crate::game::client_side) fn recording_with(
+     fn recording_with(
         max_distance_sq: f64,
         mut candidates: Vec<PickCandidate>,
     ) -> Self {
@@ -15,7 +23,7 @@ impl PickAccumulator {
             ..Self::new(max_distance_sq)
         }
     }
-    pub(in crate::game::client_side) fn take_candidates(&mut self) -> Vec<PickCandidate> {
+     fn take_candidates(&mut self) -> Vec<PickCandidate> {
         self.candidates.take().unwrap_or_default()
     }
 }

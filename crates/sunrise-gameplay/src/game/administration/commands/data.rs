@@ -456,7 +456,7 @@ impl crate::game::ServerGame<'_> {
                 hopper_cooldown: (name == "minecraft:hopper").then(|| self.hopper_cooldown(key)),
             },
             items,
-            |row| self.common.capture_block_entity_payload(key, &name, row, items),
+            |row| self.capture_block_entity_payload(key, &name, row, items),
         ))
     }
     /// `BlockEntity.loadWithComponents` for the block entity at `key` from its full saved
@@ -1010,3 +1010,5 @@ pub(in crate::game) mod modern_literal_tests {}
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_hooks::block_entity_save_additional::BlockEntitySaveAdditionalGameExt1 as _;

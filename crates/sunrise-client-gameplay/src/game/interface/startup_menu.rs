@@ -756,7 +756,7 @@ impl Loading {
                 }
                 Event::ListShaderPacks => {
                     let (key, _) = sunrise_client::shader_pack_list::resolve(
-                        &Game::shader_packs_dir(),
+                        &crate::game::ClientGame::shader_packs_dir(),
                         &self.settings.sunrise.shader_pack,
                     );
                     if key != self.settings.sunrise.shader_pack {
@@ -764,7 +764,7 @@ impl Loading {
                         self.save_menu_settings();
                     }
                     self.settings.shader_packs =
-                        sunrise_client::shader_pack_list::scan(&Game::shader_packs_dir());
+                        sunrise_client::shader_pack_list::scan(&crate::game::ClientGame::shader_packs_dir());
                 }
                 Event::ShaderPack => self.save_menu_settings(),
                 Event::OpenShaderOptions => {
@@ -781,11 +781,11 @@ impl Loading {
                 }
                 Event::NativePackOptions(i) => {
                     if let Some(pack) = self.settings.shader_packs.get(i) {
-                        pack.save_values(&Game::shader_packs_dir());
+                        pack.save_values(&crate::game::ClientGame::shader_packs_dir());
                     }
                 }
                 Event::OpenShaderPackFolder => {
-                    let dir = Game::shader_packs_dir();
+                    let dir = crate::game::ClientGame::shader_packs_dir();
                     let _ = std::fs::create_dir_all(&dir);
                     packs::open_folder(&dir);
                 }

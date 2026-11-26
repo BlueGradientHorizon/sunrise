@@ -89,10 +89,12 @@ impl crate::game::ClientGame<'_> {
             && name != "minecraft:petrified_oak_slab"
         {
             return self
-                .common.outline_boxes(pos)
+                .outline_boxes(pos)
                 .iter()
                 .any(|b| aabb(([b[0], b[1], b[2]], [b[3], b[4], b[5]])).intersects(near_plane));
         }
         self.common.state_suffocating(state)
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

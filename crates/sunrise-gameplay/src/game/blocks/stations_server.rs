@@ -102,11 +102,11 @@ impl ServerGame<'_> {
         if !creative && anvil && self.common.world.random.next_float() < 0.12 {
             match &*name {
                 "minecraft:anvil" => {
-                    let _ = self.common.set_state_named(pos, "minecraft:chipped_anvil", &["facing"]);
+                    let _ = self.set_state_named(pos, "minecraft:chipped_anvil", &["facing"]);
                     self.native_anvil_damaged(self.common.dim.id(), pos, &name, "minecraft:chipped_anvil");
                 }
                 "minecraft:chipped_anvil" => {
-                    let _ = self.common.set_state_named(pos, "minecraft:damaged_anvil", &["facing"]);
+                    let _ = self.set_state_named(pos, "minecraft:damaged_anvil", &["facing"]);
                     self.native_anvil_damaged(self.common.dim.id(), pos, &name, "minecraft:damaged_anvil");
                 }
                 _ => {
@@ -364,7 +364,7 @@ impl ServerGame<'_> {
                             .insert(format!("has_bottle_{i}"), has.to_string());
                     }
                     if let Ok(id) = self.common.pack.assets.registry.resolve(&s) {
-                        self.common.level_set_with_flags(
+                        self.level_set_with_flags(
                             [x, y, z],
                             id,
                             sunrise_world::level::flags::UPDATE_CLIENTS,
@@ -384,6 +384,8 @@ impl ServerGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::bookshelves_common::BookshelvesCommonGameExt1 as _;
 

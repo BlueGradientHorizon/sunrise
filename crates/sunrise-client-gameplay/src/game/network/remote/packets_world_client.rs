@@ -18,7 +18,7 @@ impl crate::game::ClientGame<'_> {
         // block plays); what it doesn't handle reaches the client copy of
         // the block entity (chest lids, shulker boxes).
         let pos = sunrise_core::position::BlockPos::new(p.pos[0], p.pos[1], p.pos[2]);
-        let triggered = self.common.with_level(|b, level, ticks| {
+        let triggered = self.with_level(|b, level, ticks| {
             b.client_block_event(level, ticks, pos, i32::from(p.b0), i32::from(p.b1))
         });
         self.client.moving_pistons_stale = true;
@@ -255,3 +255,5 @@ impl crate::game::ClientGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

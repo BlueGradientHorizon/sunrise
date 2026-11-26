@@ -30,7 +30,7 @@ impl ServerGame<'_> {
             collision: self.common.collision,
             // PlayerSpawnFinder.getLevelRespawnPos: a ceiling starts the walk
             // at the destination generator's spawn height.
-            has_ceiling: self.common.dimension_type().height.has_ceiling,
+            has_ceiling: self.dimension_type().height.has_ceiling,
             spawn_height: self.server.streaming.spawn_height(),
         }
     }
@@ -153,7 +153,7 @@ impl ServerGame<'_> {
                 );
                 for [dx, dz] in [[0, -1], [1, 0], [0, 1], [-1, 0]] {
                     let at = [x + dx, y, z + dz];
-                    let survives = self.common.with_level(|b, level, ticks| {
+                    let survives = self.with_level(|b, level, ticks| {
                         b.can_survive(level, ticks, BlockPos::new(at[0], at[1], at[2]), torch)
                     });
                     if survives {
@@ -167,7 +167,7 @@ impl ServerGame<'_> {
     }
     /// `Level.setBlock(pos, state, UPDATE_CLIENTS)`: no neighbour updates.
     fn set_block_clients(&mut self, pos: [i32; 3], state: BlockStateId) -> Result<()> {
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             b.set_block(
                 level,
                 ticks,
@@ -306,5 +306,7 @@ impl ServerGame<'_> {
         bottom_center([x, y + 1, z])
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

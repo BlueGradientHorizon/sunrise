@@ -538,7 +538,7 @@ impl crate::game::ClientGame<'_> {
                 .get(self.common.world.block(pos[0], pos[1], pos[2]))
         };
         let source = |want: Option<Fluid>| {
-            let fluid_hit = self.common.pick_fluid();
+            let fluid_hit = self.pick_fluid();
             // pick_fluid steps through waterlogged blocks, but their water is
             // a source the SOURCE_ONLY ray stops at (and a BucketPickup).
             if let Some(hit) = self.pick()
@@ -647,6 +647,8 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
 

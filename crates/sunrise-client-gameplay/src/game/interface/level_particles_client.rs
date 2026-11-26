@@ -199,7 +199,7 @@ impl ClientGame<'_> {
         };
         let above = self.common.world.block(pos.x, root_y + 1, pos.z);
         let above_facts = self.common.res.facts().get(above);
-        let evaporates = self.common.dimension_type().water_evaporates;
+        let evaporates = self.dimension_type().water_evaporates;
         let fluid = if &*above_facts.name == "minecraft:mud" && !evaporates {
             sunrise_items::blocks::Fluid::Water
         } else {
@@ -430,3 +430,5 @@ impl ClientGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

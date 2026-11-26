@@ -127,7 +127,7 @@ impl crate::game::ServerGame<'_> {
     ) {
         encoder.mod_update_tag = Some(|pos, entity| {
             let mut tag = None;
-            Game::api_block_entity_update_tag(pos, entity, &mut tag);
+            crate::game::ServerGame::api_block_entity_update_tag(pos, entity, &mut tag);
             tag
         });
         let registry = self.common.pack.assets.registry;
@@ -324,7 +324,7 @@ impl crate::game::ServerGame<'_> {
             .properties
             .insert("ominous".into(), ominous.to_string());
         let id = self.common.pack.assets.registry.resolve(&block)?;
-        self.common.level_set([key.0, key.1, key.2], id)
+        self.level_set([key.0, key.1, key.2], id)
     }
     /// `transformBadOmenIntoTrialOmen`: Bad Omen becomes Trial Omen, 15
     /// minutes per level, with Trial Omen's sound when it is new. `uuid` is
@@ -459,3 +459,5 @@ mod omen_tests {
         });
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

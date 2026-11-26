@@ -34,7 +34,7 @@ impl crate::game::ServerGame<'_> {
             let mut hand = sunrise_gameplay_common::game::powder_snow::HeldSlot {
                 game: self,
                 slot,
-                dropper: None,
+                dropper: None, resource_lifetime: std::marker::PhantomData,
             };
             let result =
                 cauldron::interact_selected(&state, under_water, entry.as_ref(), &mut hand);
@@ -61,7 +61,7 @@ impl crate::game::ServerGame<'_> {
             if let Some(block) = result.block
                 && let Ok(new) = registry.resolve(&block)
             {
-                self.common.level_set(pos, new)?;
+                self.level_set(pos, new)?;
                 if result.lower_fill_level {
                     self.post_block_game_event("minecraft:block_change", pos, None, Some(new));
                 }
@@ -85,7 +85,7 @@ impl crate::game::ServerGame<'_> {
             let mut hand = sunrise_gameplay_common::game::powder_snow::HeldSlot {
                 game,
                 slot,
-                dropper: Some(player),
+                dropper: Some(player), resource_lifetime: std::marker::PhantomData,
             };
             let result =
                 cauldron::interact_selected(&state, under_water, entry.as_ref(), &mut hand);
@@ -140,5 +140,7 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

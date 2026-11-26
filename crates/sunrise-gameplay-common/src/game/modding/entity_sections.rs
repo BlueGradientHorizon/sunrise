@@ -37,6 +37,7 @@ pub mod player;
 #[allow(unused_imports)]
 pub(in crate::game) use player::PlayerSectionObserver;
 
+
 use crate::game::CommonGame;
 use mod_api::__private::game::BackendRefOf;
 use mod_api::{DimensionKey, EntityRef, WorldEpoch};
@@ -346,44 +347,6 @@ impl crate::game::CommonGame<'_> {
                 .entered_section(id, to);
         }
     }
-
-    /// Tells `entity_entering_section` each crossing queued by a nested write, in order. Called
-    /// from inside a listener it does nothing: the outer write is still in progress.
-    pub fn tell_entity_sections(&mut self) {
-        let Some(batch) = self.native_lifecycle.entity_sections.begin_telling() else {
-            return;
-        };
-        if let Some(epoch) = self.native_lifecycle.epoch() {
-            for c in &batch {
-                let chunk_changed = c.old[0] != c.new[0] || c.old[2] != c.new[2];
-                self.native_entity_entering_section(
-                    EntityRef::new(epoch, c.id),
-                    c.old,
-                    c.new,
-                    chunk_changed,
-                );
-            }
-        }
-        self.native_lifecycle.entity_sections.end_telling(batch);
-    }
-
-    pub(in crate::game) fn tell_entity_sections_in(&mut self, sections: &mut EntitySections) {
-        let Some(batch) = sections.begin_telling() else {
-            return;
-        };
-        if let Some(epoch) = self.native_lifecycle.epoch() {
-            for c in &batch {
-                let chunk_changed = c.old[0] != c.new[0] || c.old[2] != c.new[2];
-                self.native_entity_entering_section(
-                    EntityRef::new(epoch, c.id),
-                    c.old,
-                    c.new,
-                    chunk_changed,
-                );
-            }
-        }
-        sections.end_telling(batch);
-    }
 }
 
 pub trait EntitySectionsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
@@ -551,6 +514,44 @@ pub trait EntitySectionsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             .entity_sections
             .placed(scope, id, now.unwrap_or(at));
     }
+
+    /// Tells `entity_entering_section` each crossing queued by a nested write, in order. Called
+    /// from inside a listener it does nothing: the outer write is still in progress.
+     fn tell_entity_sections(&mut self) {
+        let Some(batch) = self.native_lifecycle.entity_sections.begin_telling() else {
+            return;
+        };
+        if let Some(epoch) = self.native_lifecycle.epoch() {
+            for c in &batch {
+                let chunk_changed = c.old[0] != c.new[0] || c.old[2] != c.new[2];
+                self.native_entity_entering_section(
+                    EntityRef::new(epoch, c.id),
+                    c.old,
+                    c.new,
+                    chunk_changed,
+                );
+            }
+        }
+        self.native_lifecycle.entity_sections.end_telling(batch);
+    }
+
+     fn tell_entity_sections_in(&mut self, sections: &mut EntitySections) {
+        let Some(batch) = sections.begin_telling() else {
+            return;
+        };
+        if let Some(epoch) = self.native_lifecycle.epoch() {
+            for c in &batch {
+                let chunk_changed = c.old[0] != c.new[0] || c.old[2] != c.new[2];
+                self.native_entity_entering_section(
+                    EntityRef::new(epoch, c.id),
+                    c.old,
+                    c.new,
+                    chunk_changed,
+                );
+            }
+        }
+        sections.end_telling(batch);
+    }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> EntitySectionsGameExt1<'__sg> for G {}
 
@@ -567,3 +568,5 @@ impl LiveSectionObserver {
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 
 use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use crate::game::native_hooks::entity_entering_section::GameHooks as _;

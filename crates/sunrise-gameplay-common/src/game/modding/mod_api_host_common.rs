@@ -1,4 +1,5 @@
 //! Common `AttachmentHost` impl and shared level-weather helpers across server and client roles.
+
 use crate::game::CommonGame as Game;
 use mod_api::AttachmentAccess;
 
@@ -14,7 +15,7 @@ pub fn weather_for_level(
     }
 }
 
-impl<__Side: crate::game::Side> mod_api::AttachmentHost for Game<'_, __Side> {
+pub trait GameAttachmentHost<'g>: crate::game::SideGame<'g> {
     fn validate_attachment(
         &self,
         namespace: &str,
@@ -34,3 +35,5 @@ impl<__Side: crate::game::Side> mod_api::AttachmentHost for Game<'_, __Side> {
 }
 
 use crate::game::side_ops::modapi::ModapiSideGameExt as _;
+
+impl<'g, G: crate::game::SideGame<'g>> GameAttachmentHost<'g> for G {}

@@ -854,7 +854,7 @@ impl crate::game::ClientGame<'_> {
             .then(|| self.client.gui.atlas.sprites.get("misc/shadow").copied())
             .flatten();
         if let Some(sprite) = shadow_sprite {
-            let ambient = self.common.dimension_type().ambient_light;
+            let ambient = self.dimension_type().ambient_light;
             let darken = self.sky_darken();
             let a = alpha;
             let lerp = |p: Vec3, q: Vec3| {
@@ -1250,7 +1250,7 @@ impl crate::game::ClientGame<'_> {
         }
         // The save screen has finished every write before releasing storage.
         self.common.ui.dispatcher = Default::default();
-        self.common.reset_creative_contents();
+        self.reset_creative_contents();
         self.common.server_items = None;
         self.common.recipe_tables.clear_session();
         self.reset_client_recipe_book();
@@ -2192,7 +2192,7 @@ impl crate::game::ClientGame<'_> {
                 self.say_system_queued(&found);
             }
         }
-        if matches!(self.side.screen, Screen::DebugOptions | Screen::Mod)
+        if matches!(self.client.screen, Screen::DebugOptions | Screen::Mod)
             && self.client.title.0.is_some()
         {
             // DebugOptionsScreen or a mod's screen replaces the title; no level
@@ -4134,7 +4134,7 @@ impl crate::game::ClientGame<'_> {
             (*frame_rain, *frame_thunder) = (rain, thunder);
             (*game_time, *day_time) = (self.common.world.game_time, self.view_day_time());
             *render_distance = effective_render_distance;
-            *sky_type = match self.common.dimension_type().skybox {
+            *sky_type = match self.dimension_type().skybox {
                 sunrise_world::dimension_type::Skybox::Overworld => 1,
                 sunrise_world::dimension_type::Skybox::End => 2,
                 sunrise_world::dimension_type::Skybox::None => 0,
@@ -5429,6 +5429,8 @@ use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
@@ -5436,3 +5438,7 @@ use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::base::BaseGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::build_creative_mode_tab_contents::GameHooks as _;

@@ -194,7 +194,7 @@ impl ServerGame<'_> {
             &mut sequences,
             self.common.level.seed,
             context,
-            |items| self.common.container_fill_hook(&table, target, origin, player, items),
+            |items| self.container_fill_hook(&table, target, origin, player, items),
         );
         self.common.world.random = random;
         self.server.rand_sequences = sequences;
@@ -247,3 +247,5 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::native_hooks::container_loot_filled::ContainerLootFilledGameExt1 as _;

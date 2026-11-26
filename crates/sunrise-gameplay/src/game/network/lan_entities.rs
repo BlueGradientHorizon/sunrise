@@ -343,7 +343,7 @@ impl ServerGame<'_> {
             }
             e.defaults.push((13, serializer::INT, Value::Int(0)));
         }
-        let improvements = self.common.minecart_improvements();
+        let improvements = self.minecart_improvements();
         self.common.carts.for_each_mut(|c| {
             if c.id <= after {
                 return;
@@ -1429,3 +1429,5 @@ mod vehicle_meta_tests {
         assert_eq!(e.meta.len(), 3);
     }
 }
+
+use sunrise_gameplay_common::game::minecarts::MinecartRailGameExt as _;

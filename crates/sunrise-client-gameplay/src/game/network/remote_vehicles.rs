@@ -371,7 +371,7 @@ impl crate::game::ClientGame<'_> {
         subject: &super::remote_camera::ResolvedCameraEntity,
         partial: f32,
     ) -> Option<[f64; 3]> {
-        if !self.common.minecart_improvements() {
+        if !self.minecart_improvements() {
             return None;
         }
         let id = if subject.is_local_player {
@@ -503,7 +503,7 @@ impl crate::game::ClientGame<'_> {
             // The offset belongs to the cart, so switching vehicles cannot
             // transfer the previous vehicle's pending turn.
             let rotate =
-                self.common.minecart_improvements() && self.client.settings.file.bool("rotateWithMinecart");
+                self.minecart_improvements() && self.client.settings.file.bool("rotateWithMinecart");
             if let Some(i) = self.common.carts.iter().position(|c| c.id == id) {
                 self.common.carts.update(i, |c| {
                     c.passenger_yaw_delta = 0.0;
@@ -751,7 +751,7 @@ impl crate::game::ClientGame<'_> {
                 // cached motion into the next time this player drives it.
                 self.common.boats.update(i, |b| b.velocity = Vec3::ZERO);
                 self.common.boats.update(i, |b| b.delta_rotation = 0.0);
-                self.common.refresh_boat_status(i);
+                self.refresh_boat_status(i);
             }
             let touches = self.common.boat_bubble_columns(i);
             for pass in 0..2 {
@@ -811,7 +811,7 @@ impl crate::game::ClientGame<'_> {
     ) -> sunrise_game_data::Result<()> {
         let mount = self.common.mobs.iter().position(|m| self.drives(m));
         let can_sprint = mount.is_some_and(|i| equine::can_sprint(self.common.mobs[i].species()));
-        self.common.player_sprint_tick(keys, window, Some((can_sprint, mount.is_some())))
+        self.player_sprint_tick(keys, window, Some((can_sprint, mount.is_some())))
     }
 
     /// `LivingEntity.travelRidden`, then `LocalPlayer.aiStep`, on the
@@ -980,6 +980,8 @@ pub(in crate::game::client_side) fn generic_player_seat(
     )
 }
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
@@ -991,3 +993,11 @@ use sunrise_gameplay_common::game::mounts_common::MountsCommonGameExt1 as _;
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;
+
+use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;
+
+use sunrise_gameplay_common::game::minecarts::MinecartRailGameExt as _;
+
+use sunrise_gameplay_common::game::boats_common::BoatStatusGameExt as _;
+
+use sunrise_gameplay_common::game::native_hooks::can_start_swimming::SprintGameExt as _;

@@ -158,7 +158,7 @@ fn a_hand_egg_checks_and_spawns_the_type_named_by_its_component() {
     use sunrise_sim::mobs::spawner::{SpawnDataExt, SpawnerExt};
     peaceful_tests::with_types(ExecutionRole::IntegratedServer, |game| {
         game.set_mode_id(0);
-        game.side.forced_hit = Some(sunrise_gameplay_common::game::Hit {
+        game.server.forced_hit = Some(sunrise_gameplay_common::game::Hit {
             pos: [4, 64, 4],
             face: [0, 1, 0],
             point: [4.5, 65.0, 4.5],
@@ -167,14 +167,14 @@ fn a_hand_egg_checks_and_spawns_the_type_named_by_its_component() {
         let egg = peaceful_tests::trader_egg();
         game.inventory[game.selected] = Some(egg.clone());
         assert!(game.use_spawn_egg(&egg).unwrap());
-        assert!(game.side.use_failed);
+        assert!(game.server.use_failed);
         assert!(game.mobs.is_empty());
         assert_eq!(game.held().unwrap().count, 1);
 
-        game.side.use_failed = false;
+        game.server.use_failed = false;
         game.set_difficulty_forced(2);
         assert!(game.use_spawn_egg(&egg).unwrap());
-        assert!(!game.side.use_failed);
+        assert!(!game.server.use_failed);
         assert!(game.held().is_none());
         assert_eq!(game.mobs.len(), 1);
         assert_eq!(game.mobs[0].kind.id, peaceful_tests::TRADER);
@@ -189,7 +189,7 @@ fn a_hand_egg_checks_and_spawns_the_type_named_by_its_component() {
         );
         let key = (4, 64, 4);
         for op in [false, true] {
-            game.side.lan_acting_permission = Some(if op { 2 } else { 0 });
+            game.server.lan_acting_permission = Some(if op { 2 } else { 0 });
             game.world
                 .block_entities
                 .insert(key, BlockEntity::Spawner(Box::default()));
@@ -2109,7 +2109,7 @@ impl crate::game::ServerGame<'_> {
                 MobEvent::RingBell { bell } => {
                     let pos = BlockPos::new(bell[0], bell[1], bell[2]);
                     let rang = self
-                        .common.with_level(|b, level, ticks| b.bell_attempt_to_ring(level, ticks, pos));
+                        .with_level(|b, level, ticks| b.bell_attempt_to_ring(level, ticks, pos));
                     if rang {
                         let _ = self.server_process_level_events();
                     }
@@ -2325,7 +2325,7 @@ impl crate::game::ServerGame<'_> {
                 }
                 // `Level.setBlockAndUpdate`: neighbour and shape updates, so a crop
                 // above trampled farmland breaks and drops.
-                MobEvent::SetBlock { pos, state } => self.common.level_set(pos, state)?,
+                MobEvent::SetBlock { pos, state } => self.level_set(pos, state)?,
                 MobEvent::EndermanPlaceBlock {
                     mob,
                     pos,
@@ -2343,7 +2343,7 @@ impl crate::game::ServerGame<'_> {
                     old,
                     mob,
                 } => {
-                    self.common.level_set_with_flags(
+                    self.level_set_with_flags(
                         pos,
                         state,
                         sunrise_world::level::flags::UPDATE_CLIENTS,
@@ -2362,7 +2362,7 @@ impl crate::game::ServerGame<'_> {
                 MobEvent::BedOccupied { pos, occupied } => self.set_bed_occupied(pos, occupied),
                 MobEvent::SetDoorOpen { pos, open } => {
                     let pos = BlockPos::new(pos[0], pos[1], pos[2]);
-                    self.common.with_level(|b, level, ticks| b.set_door_open(level, ticks, pos, open));
+                    self.with_level(|b, level, ticks| b.set_door_open(level, ticks, pos, open));
                     self.server_process_level_events()?;
                 }
                 MobEvent::TakeBlock { mob, pos, state } => {
@@ -2371,7 +2371,7 @@ impl crate::game::ServerGame<'_> {
                         && self.mob_may_destroy(mob, pos)
                     {
                         let air = self.common.world.air;
-                        self.common.level_set(pos, air)?;
+                        self.level_set(pos, air)?;
                     } else if let Some(m) = self.common.mobs.iter_mut().find(|m| m.id == mob) {
                         m.extra.carried = None;
                     }
@@ -2411,7 +2411,7 @@ impl crate::game::ServerGame<'_> {
                         .unwrap_or_default();
                     let air = self.common.world.air;
                     let at = BlockPos::new(pos[0], pos[1], pos[2]);
-                    self.common.with_level(|b, level, ticks| b.set_block(level, ticks, at, air, 3));
+                    self.with_level(|b, level, ticks| b.set_block(level, ticks, at, air, 3));
                     self.server_process_level_events()?;
                     self.server_level_event_at(1021, pos, 0);
                     let left = self.common.world.block(pos[0], pos[1], pos[2]);
@@ -2471,7 +2471,7 @@ impl crate::game::ServerGame<'_> {
                             );
                         }
                         if !cancel {
-                            self.common.level_set_with_flags(pos, state, flags)?;
+                            self.level_set_with_flags(pos, state, flags)?;
                             if let Some(mob) = mob
                                 && let Some(m) = self.common.mobs.iter().find(|m| m.id == mob)
                             {
@@ -2496,7 +2496,7 @@ impl crate::game::ServerGame<'_> {
                         };
                         state.name = state.name.replacen(from, to, 1);
                         if let Ok(id) = registry.resolve(&state) {
-                            self.common.level_set(pos, id)?;
+                            self.level_set(pos, id)?;
                         }
                     }
                     if let Some(mob) = poof {
@@ -2589,7 +2589,7 @@ impl crate::game::ServerGame<'_> {
                     let b = self.common.res.behaviours();
                     let left = b.legacy_block(b.fluid(old));
                     if left != old {
-                        self.common.level_set(pos, left)?;
+                        self.level_set(pos, left)?;
                     }
                 }
                 MobEvent::Particles { kind, at, count } => {
@@ -4962,8 +4962,8 @@ impl crate::game::ServerGame<'_> {
                         {
                             let at = BlockPos::new(fire[0], fire[1], fire[2]);
                             let state = self
-                                .common.with_level(|b, level, ticks| b.fire_state_for(level, ticks, at));
-                            self.common.level_set(fire, state)?;
+                                .with_level(|b, level, ticks| b.fire_state_for(level, ticks, at));
+                            self.level_set(fire, state)?;
                         }
                     }
                     Hit::None => {}
@@ -6243,12 +6243,12 @@ impl crate::game::ServerGame<'_> {
                 BlockReaction::PrimeTnt => {
                     if self.tnt_prime_allowed(pos) {
                         self.spawn_primed_tnt(pos, false, owner, None);
-                        self.common.with_level(|b, level, ticks| b.remove_block(level, ticks, pos, false));
+                        self.with_level(|b, level, ticks| b.remove_block(level, ticks, pos, false));
                         let _ = self.server_process_level_events();
                     }
                 }
                 BlockReaction::Light(lit) => {
-                    let _ = self.common.level_set([pos.x, pos.y, pos.z], lit);
+                    let _ = self.level_set([pos.x, pos.y, pos.z], lit);
                 }
             },
             ArrowEvent::SplashEvent => {
@@ -7201,7 +7201,7 @@ impl crate::game::ServerGame<'_> {
             .and_then(|e| e.parse::<i32>().ok());
         if let Some(eggs) = eggs {
             let at = BlockPos::new(pos[0], pos[1], pos[2]);
-            self.common.with_level(|b, level, ticks| {
+            self.with_level(|b, level, ticks| {
                 b.turtle_egg_destroyed_by_player(level, ticks, at, state);
                 if eggs <= 1 {
                     b.destroy_block(level, ticks, at, false);
@@ -7828,7 +7828,7 @@ impl crate::game::ServerGame<'_> {
         };
         let block = BlockPos::new(pos[0], pos[1], pos[2]);
         let rang = self
-            .common.with_level(|b, level, ticks| b.bell_projectile_hit(level, ticks, block, face, at.y));
+            .with_level(|b, level, ticks| b.bell_projectile_hit(level, ticks, block, face, at.y));
         if rang {
             let _ = self.server_process_level_events();
             if p.owner == Some(Who::Player) {
@@ -7939,7 +7939,7 @@ impl crate::game::ServerGame<'_> {
                 let Ok(cracked) = registry.resolve(&pot) else {
                     return;
                 };
-                self.common.with_level(|b, level, ticks| b.set_block(level, ticks, at, cracked, 260));
+                self.with_level(|b, level, ticks| b.set_block(level, ticks, at, cracked, 260));
             }
             _ => return,
         }
@@ -8348,6 +8348,8 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
 

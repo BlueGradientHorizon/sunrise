@@ -1234,7 +1234,7 @@ impl ServerGame<'_> {
         } else if thrown_from_hand {
             self.player_drop(stack)
         } else {
-            self.common.drop_plain(stack)
+            self.drop_plain(stack)
         }
     }
     /// A mob's half of `living_drop`: the id of the item entity.
@@ -1478,3 +1478,5 @@ use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt4 
 use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt6 as _;
 
 use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+
+use sunrise_gameplay_common::game::resident_state::ResidentStateGameExt1 as _;

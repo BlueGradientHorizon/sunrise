@@ -302,7 +302,7 @@ impl ServerGame<'_> {
         let [x, y, z] = pos;
         let at = BlockPos::new(x, y, z);
         let state = self.common.world.block(x, y, z);
-        let replacement = self.common.with_level(|b, level, _| {
+        let replacement = self.with_level(|b, level, _| {
             level.adjust_remove_block(at, state, moved, b.legacy_block(b.fluid(state)))
         });
         let flags = flags::UPDATE_ALL
@@ -537,6 +537,8 @@ impl ServerGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
 

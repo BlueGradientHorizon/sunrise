@@ -15,7 +15,7 @@ impl crate::game::ServerGame<'_> {
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES),
         );
-        self.common.update_chunk_tickets();
+        self.update_chunk_tickets();
         self.score_destroyed_entities();
         sunrise_level::spans::time("tick_effects", || self.tick_effects(running));
         // Player.tick's ItemCooldowns.tick for the window's player (a
@@ -31,7 +31,7 @@ impl crate::game::ServerGame<'_> {
             // What the blocks spawned (a dispensed minecart, a lit TNT, a
             // placed boat) joins before the entities tick.
             span("mods_joins_flush", || self.native_joins_flush(false, 0));
-            if self.common.dimension_type().has_ender_dragon_fight {
+            if self.dimension_type().has_ender_dragon_fight {
                 // ServerLevel.tick runs the fight before visiting the entity tick list.
                 span("tick_dragon_fight", || self.tick_fight());
                 span("mods_joins_flush", || self.native_joins_flush(false, 0));
@@ -213,5 +213,7 @@ impl crate::game::ServerGame<'_> {
         Ok(())
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::mounts_common::MountsCommonGameExt1 as _;

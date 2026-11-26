@@ -684,7 +684,7 @@ macro_rules! define_server_entity_handles {
         }
 
 
-        impl Game<'_, crate::game::server_side::ServerState> {
+        impl $crate::game::ServerGame<'_> {
             /// Moves every list out; give it back with `restore_entities`.
             pub(in crate::game::server_side) fn take_entities(&mut self) -> TakenEntities {
                 TakenEntities {
@@ -776,7 +776,7 @@ macro_rules! hit_effects_of {
     ($game:ident, $lend:expr, in $sounds:expr) => {
         sunrise_sim::health::HitEffects::new(
             &mut $sounds,
-            $game.side.lan.as_ref().map(|lan| &lan.hub),
+            $game.server.lan.as_ref().map(|lan| &lan.hub),
             $game.dim.id(),
             $game.native_lifecycle.epoch(),
             $lend,
@@ -784,8 +784,8 @@ macro_rules! hit_effects_of {
     };
     ($game:ident, $lend:expr) => {
         sunrise_sim::health::HitEffects::new(
-            &mut $game.side.pending_native_sounds,
-            $game.side.lan.as_ref().map(|lan| &lan.hub),
+            &mut $game.server.pending_native_sounds,
+            $game.server.lan.as_ref().map(|lan| &lan.hub),
             $game.dim.id(),
             $game.native_lifecycle.epoch(),
             $lend,
@@ -807,7 +807,7 @@ macro_rules! hit_reads_of {
                 attributes: &$game.motion.attributes,
                 player_effects: Some(&$game.potions.effects),
                 player_equipment: acting_equipment!($game),
-                player_uuid: $game.side.lan_acting_uuid,
+                player_uuid: $game.server.lan_acting_uuid,
                 player_attachments: Some(&$game.player_state.attachments),
                 entity_attachments: Some(&*$game.entity_attachments),
             })
@@ -869,7 +869,7 @@ macro_rules! victim_and_causer {
                     )
                     .or_else(|| {
                         sunrise_sim::health::HitLend::parked_guest(
-                            $game.side.lan.as_ref().map(|lan| &lan.hub),
+                            $game.server.lan.as_ref().map(|lan| &lan.hub),
                             parked?,
                         )
                     })
@@ -898,7 +898,7 @@ macro_rules! player_victim_causer {
                 .and_then(sunrise_sim::health::HitLend::mob),
             None => parked.and_then(|conn| {
                 sunrise_sim::health::HitLend::parked_guest(
-                    $game.side.lan.as_ref().map(|lan| &lan.hub),
+                    $game.server.lan.as_ref().map(|lan| &lan.hub),
                     conn,
                 )
             }),
@@ -926,7 +926,7 @@ macro_rules! damage_level_of {
         )
         .attacked_by($attack)
         .no_push()
-        .with_mob_hurt_handoff(&mut $game.side.paused_mob_hurt.0)
+        .with_mob_hurt_handoff(&mut $game.server.paused_mob_hurt.0)
         .with_effects(crate::game::entity_server::hit_effects_of!($game, $lend))
         .with_reads(crate::game::entity_server::hit_reads_of!($game))
         $(.with_player_equipment($equipment))?
@@ -941,7 +941,7 @@ macro_rules! damage_level_of {
         )
         .attacked_by($attack)
         .with_knockback_credit($credit)
-        .with_mob_hurt_handoff(&mut $game.side.paused_mob_hurt.0)
+        .with_mob_hurt_handoff(&mut $game.server.paused_mob_hurt.0)
         .with_effects(crate::game::entity_server::hit_effects_of!($game, $lend))
         .with_reads(crate::game::entity_server::hit_reads_of!($game))
     };
@@ -955,13 +955,13 @@ macro_rules! player_resolver {
         sunrise_sim::health::PlayerResolver {
             in_place: $game.player.is_some().then(|| {
                 $game
-                    .side
+                    .server
                     .lan_acting_uuid
                     .map(sunrise_sim::lan::playerdata::uuid_ints)
                     .or($game.level.player_uuid)
                     .unwrap_or_default()
             }),
-            hub: $game.side.lan.as_ref().map(|lan| &lan.hub),
+            hub: $game.server.lan.as_ref().map(|lan| &lan.hub),
         }
     };
 }

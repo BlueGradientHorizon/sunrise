@@ -1,4 +1,5 @@
 //! Read-only block, tag and fluid queries for native mods.
+
 use crate::game::CommonGame as Game;
 use mod_api::BlockKey;
 use mod_api::{FluidKey, FluidState, LevelRef, LightLayer, UnresolvedFluid};
@@ -168,11 +169,11 @@ pub fn engine_fluid_kind(fluid: FluidKey) -> Option<FluidKind> {
 
 /// The blocks around one position of a level, as `FluidState.getHeight` reads them: an unloaded
 /// block is empty and has no sturdy underside.
-struct FluidColumn<'a, 'g, S: crate::game::Side> {
-    game: &'a Game<'g, S>,
-    level: LevelRef,
+struct FluidColumn<'a, 'g, S: crate::game::SideGame<'g>> {
+    game: &'a S,
+    level: LevelRef, pub resource_lifetime: std::marker::PhantomData<fn(&'g ()) -> &'g ()>,
 }
-impl<S: crate::game::Side> FluidColumn<'_, '_, S> {
+impl<'__carrier, S: crate::game::SideGame<'__carrier>> FluidColumn<'_, '__carrier, S> {
     fn fluid_at(&self, pos: [i32; 3]) -> EngineFluidState {
         self.game
             .level_block_state(self.level, pos)
@@ -181,7 +182,7 @@ impl<S: crate::game::Side> FluidColumn<'_, '_, S> {
             })
     }
 }
-impl<S: crate::game::Side> FluidHeightWorld for FluidColumn<'_, '_, S> {
+impl<'__carrier, S: crate::game::SideGame<'__carrier>> FluidHeightWorld for FluidColumn<'_, '__carrier, S> {
     type Error = std::convert::Infallible;
     fn fluid(&mut self, pos: [i32; 3]) -> Result<EngineFluidState, Self::Error> {
         Ok(self.fluid_at(pos))
@@ -295,7 +296,7 @@ pub trait NativeWorldReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         level: LevelRef,
         pos: [i32; 3],
     ) -> Option<f32> {
-        let mut column = FluidColumn { game: self, level };
+        let mut column = FluidColumn { game: self, level, resource_lifetime: std::marker::PhantomData };
         self.level_block_state(level, pos)?;
         let Ok(height) = column.fluid_at(pos).height_at(&mut column, pos);
         Some(height)
@@ -308,7 +309,7 @@ pub trait NativeWorldReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         level: LevelRef,
         pos: [i32; 3],
     ) -> Option<f32> {
-        let mut column = FluidColumn { game: self, level };
+        let mut column = FluidColumn { game: self, level, resource_lifetime: std::marker::PhantomData };
         self.level_block_state(level, pos)?;
         let Ok(height) = column.fluid_at(pos).camera_height_at(&mut column, pos);
         Some(height)
@@ -323,7 +324,7 @@ pub trait NativeWorldReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
         fluid: FluidKey,
         direction: Direction,
     ) -> Option<bool> {
-        let mut column = FluidColumn { game: self, level };
+        let mut column = FluidColumn { game: self, level, resource_lifetime: std::marker::PhantomData };
         self.level_block_state(level, pos)?;
         let here = column.fluid_at(pos);
         let Some(other) = engine_fluid_kind(fluid) else {

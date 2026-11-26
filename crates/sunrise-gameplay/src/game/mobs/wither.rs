@@ -64,11 +64,11 @@ impl ServerGame<'_> {
                 .common.res
                 .facts()
                 .is_air(self.common.world.block(pos[0], pos[1], pos[2]))
-            && self.common.with_level(|b, level, ticks| {
+            && self.with_level(|b, level, ticks| {
                 b.can_survive(level, ticks, BlockPos::new(pos[0], pos[1], pos[2]), rose)
             })
         {
-            let _ = self.common.level_set(pos, rose);
+            let _ = self.level_set(pos, rose);
             return;
         }
         self.spawn_item_own(ItemStack::new("minecraft:wither_rose", 1), position, 0);
@@ -487,3 +487,5 @@ mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

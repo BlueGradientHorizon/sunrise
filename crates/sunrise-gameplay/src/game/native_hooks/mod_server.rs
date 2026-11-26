@@ -346,7 +346,7 @@ impl crate::game::ServerGame<'_> {
             .name
             .clone();
         let to = facts.get(state).name.clone();
-        self.common.level_set(pos, state)?;
+        self.level_set(pos, state)?;
         if let Some(kind) = kind {
             self.native_entity_change_block(mob, &kind, pos, &from, &to);
         }
@@ -423,7 +423,7 @@ impl crate::game::ServerGame<'_> {
         self.native_acting_player()
     }
     pub(in crate::game) fn server_chunks_loaded(&mut self) {
-        self.common.fire_pending_block_entity_data_loads();
+        self.fire_pending_block_entity_data_loads();
         let loaded = std::mem::take(&mut self.common.world.loaded_chunks);
         let dimension = self.common.dim.id();
         for (x, z, new) in loaded {
@@ -596,9 +596,9 @@ impl crate::game::ServerGame<'_> {
         let has_part =
             mod_api::__private::item_listens(mod_api::HookId::PlacementContext, &stack.item);
         let placer = (has_part && by_player)
-            .then(|| self.common.placement_placer())
+            .then(|| self.placement_placer())
             .flatten();
-        let Some((decision, preview)) = self.common.with_level(|b, level, ticks| {
+        let Some((decision, preview)) = self.with_level(|b, level, ticks| {
             b.decide_placement(level, ticks, ctx, stack_state, |level, context| {
                 has_part
                     .then(|| level.rewrite_placement_context(stack, context, placer))
@@ -643,7 +643,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
         let Some(placed) = self
-            .common.with_level(|b, level, ticks| b.apply_placement(level, ticks, decision, stack_state))
+            .with_level(|b, level, ticks| b.apply_placement(level, ticks, decision, stack_state))
         else {
             return Ok(None);
         };
@@ -651,7 +651,7 @@ impl crate::game::ServerGame<'_> {
             let pos = placed.context.pos;
             let target = [pos.x, pos.y, pos.z];
             self.apply_block_item_data(target, placed.state, stack, game_master);
-            self.common.with_level(|b, level, ticks| b.placement_set_placed_by(level, ticks, &placed));
+            self.with_level(|b, level, ticks| b.placement_set_placed_by(level, ticks, &placed));
             let placer = by_player.then(|| self.native_acting_player()).flatten();
             self.set_placed_by(target, placer, Some(stack))?;
             self.block_item_placed(stack, placer, &placed.context);
@@ -659,7 +659,7 @@ impl crate::game::ServerGame<'_> {
                 self.trigger_block("minecraft:placed_block", target, stack);
             }
         }
-        self.common.with_level(|b, level, ticks| b.report_placement(level, ticks, &placed));
+        self.with_level(|b, level, ticks| b.report_placement(level, ticks, &placed));
         Ok(Some(placed))
     }
     /// `GameRuleChangedEvent` once the server set the rule `name` to `value`
@@ -902,6 +902,8 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
@@ -909,5 +911,9 @@ use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCo
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::block_entity_load_additional::BlockEntityLoadAdditionalGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::placement_context::PlacementContextGameExt1 as _;
 
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

@@ -67,7 +67,7 @@ impl crate::game::ClientGame<'_> {
                 self.client.options_from_title = true;
                 let resources = self.common.vanilla_root();
                 let additional = self
-                    .common.discover_mod_packs(mod_api::PackType::ServerData)
+                    .discover_mod_packs(mod_api::PackType::ServerData)
                     .into_iter()
                     .filter_map(|pack| {
                         crate::game::client_side::pack_discovery_client::selection_with_icon(
@@ -117,7 +117,7 @@ impl crate::game::ClientGame<'_> {
         if create.is_none() {
             let dir = std::env::current_dir()?.join("saves").join(folder);
             if !level_mods::is_confirmed(&dir) {
-                let missing = self.common.ask_missing_mods(&dir);
+                let missing = self.ask_missing_mods(&dir);
                 if !missing.is_empty() {
                     if let Some(title) = self.client.title.0.as_mut() {
                         title.ask_missing_mods(folder, missing);
@@ -270,3 +270,7 @@ impl crate::game::ClientGame<'_> {
         self.begin_closing_save(false)
     }
 }
+
+use sunrise_gameplay_common::game::native_hooks::mod_mismatch::GameHooks as _;
+
+use sunrise_gameplay_common::game::pack_finders_common::CommonGameExt1 as _;

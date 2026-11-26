@@ -1,5 +1,6 @@
 //! Block state ids and names, and item tags, for native mods:
 //! registry queries with no level, so they answer anywhere a host is given.
+
 use crate::game::CommonGame as Game;
 pub use mod_api::{
     BlockEntityTypeKey, BlockKey, EffectKey, EnchantmentKey, EntityTypeKey, FluidKey, FluidState,
@@ -160,7 +161,7 @@ pub trait NativeBlockStatesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             recipe,
             &self.craft_grid[..self.craft_size * self.craft_size],
             self.craft_size,
-            &|s| self.crafting_remainder(s),
+            &|s| NativeBlockStatesGameExt1::crafting_remainder(self, s),
         )
     }
 }
@@ -243,11 +244,7 @@ pub fn description_id(kind: &str, id: &str) -> Option<String> {
     Some(format!("{kind}.{namespace}.{}", path.replace('/', ".")))
 }
 
-impl<__Side: crate::game::Side> sunrise_sim::crafting::CraftingRemainder for Game<'_, __Side> {
-    fn crafting_remainder(&self, stack: &ItemStack) -> Option<ItemStack> {
-        Game::crafting_remainder(self, stack)
-    }
-}
+
 
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 

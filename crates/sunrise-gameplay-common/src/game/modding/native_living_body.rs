@@ -265,7 +265,7 @@ pub fn mob_effect(m: &Mob, e: &sunrise_sim::mobs::StoredEffect) -> ActiveEffect 
 pub trait NativeLivingBodyGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The body a living target names now, where its reads are: the player in place's own
     /// fields, a guest's hub record, a mob that is not removed, an armor stand or the dragon.
-     fn native_living_body(&self, target: Target) -> Option<LivingBody<'_>> {
+     fn native_living_body<'__loan>(&'__loan self, target: Target) -> Option<LivingBody<'_>> where '__sg: '__loan {
         Some(match target {
             Target::Player => {
                 let p = self.player.as_ref()?;
@@ -314,10 +314,10 @@ pub trait NativeLivingBodyGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// the acting player, and a game without a hub keeps its single
     /// player's the same way), any other guest's are their hub record's.
     /// None for another kind.
-     fn native_living_player_effects(
-        &self,
+     fn native_living_player_effects<'__loan>(
+        &'__loan self,
         t: Target,
-    ) -> Option<&PlayerEffects> {
+    ) -> Option<&PlayerEffects> where '__sg: '__loan {
         match t {
             Target::Player => Some(&self.potions.effects),
             Target::Guest(conn) if crate::game::Side::lan_acting(self.side_state()) == Some(conn) => {
@@ -761,10 +761,10 @@ pub trait NativeLivingBodyGameExt6<'__sg>: crate::game::SideGame<'__sg> {
     /// The entity's type key, for the catalog's attribute defaults: the same
     /// set the value and base reads answer for. On a client only the local
     /// player resolves (`native_living_read_target`).
-     fn native_living_attribute_entity(
-        &self,
+     fn native_living_attribute_entity<'__loan>(
+        &'__loan self,
         living: LivingRef,
-    ) -> Option<&str> {
+    ) -> Option<&str> where '__sg: '__loan {
         match self.native_living_read_target(living)? {
             Target::Player | Target::Guest(_) => Some("minecraft:player"),
             Target::Mob(id) => self

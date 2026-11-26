@@ -92,8 +92,8 @@ fn save_additional(
     Some(output)
 }
 
-impl crate::game::CommonGame<'_> {
-    pub fn capture_block_entity_payload(
+pub trait BlockEntitySaveAdditionalGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+     fn capture_block_entity_payload(
         &self,
         pos: Pos,
         block: &str,
@@ -144,7 +144,7 @@ impl crate::game::CommonGame<'_> {
 
     /// Save the retained block entity only once the removed block's loot will roll.
     /// The handle still names the captured generation, but its level slot may be gone.
-    pub fn encode_removed_block_entity(
+     fn encode_removed_block_entity(
         &self,
         pos: Pos,
         entity: &BlockEntity,
@@ -158,7 +158,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// Save the live entity for a command, a template, an item or a loot copy.
-    pub fn encode_live_block_entity(
+     fn encode_live_block_entity(
         &self,
         pos: Pos,
         entity: &BlockEntity,
@@ -170,6 +170,8 @@ impl crate::game::CommonGame<'_> {
         })
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> BlockEntitySaveAdditionalGameExt1<'__sg> for G {}
+
 
 impl GameLevel<'_> {
     /// `BlockEntity.saveAdditional` for a live block entity used in a loot roll.

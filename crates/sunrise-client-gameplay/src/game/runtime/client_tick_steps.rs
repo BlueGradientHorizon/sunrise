@@ -30,7 +30,7 @@ impl crate::game::ClientGame<'_> {
                 {
                     self.tick_script_step(event_loop);
                 }
-                sunrise_level::spans::time("tick", || self.common.tick())?;
+                sunrise_level::spans::time("tick", || self.tick())?;
                 self.tick_friends();
                 if self.client.remote.is_some() {
                     // Cave mood (a shader pack's playerMood) samples on a random
@@ -161,4 +161,8 @@ mod tests {
     }
 }
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;

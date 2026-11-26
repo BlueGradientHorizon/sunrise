@@ -20,7 +20,7 @@ pub enum Body<'a> {
 }
 
 pub trait NativeEntityStateCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
-     fn native_target_body(&self, target: Target) -> Option<Body<'_>> {
+     fn native_target_body<'__loan>(&'__loan self, target: Target) -> Option<Body<'_>> where '__sg: '__loan {
         Some(match target {
             Target::Player => Body::Player(self.player.as_ref()?),
             Target::Guest(conn) => Body::Player(

@@ -879,7 +879,7 @@ impl crate::game::ClientGame<'_> {
         // thousands of moves at once: the collision view and the renderer
         // take them all in one sync, before the tick or frame reads them.
         if std::mem::take(&mut self.client.moving_pistons_stale) {
-            self.common.sync_moving_pistons();
+            self.sync_moving_pistons();
         }
         polled
     }
@@ -959,7 +959,7 @@ impl crate::game::ClientGame<'_> {
         let pos = sunrise_core::position::BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]);
         let face = sunrise_core::geometry::Direction::ALL[face_direction(hit.face) as usize];
         let (ask, _) = self.held_bonemeal(pos, stack);
-        self.common.with_level(|b, level, _| {
+        self.with_level(|b, level, _| {
             b.bone_meal_succeeds_on_client(
                 &mut DryLevel::new(level),
                 pos,
@@ -1281,7 +1281,7 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         let crit = living && self.common.critical_attack(scale);
-        self.common.sweep_decision(scale, crit, target);
+        self.sweep_decision(scale, crit, target);
     }
 
     /// Minecraft.handleKeybinds, key.swapOffhand: the server swaps the hands
@@ -1415,6 +1415,12 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
+use crate::game::client_side::remote_client::chat::ChatTrustClientExt as _;
+
+use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;

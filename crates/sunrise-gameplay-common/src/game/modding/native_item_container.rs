@@ -7,6 +7,7 @@
 //! it, and the caller shrinks its stack by one and hands out the changed item
 //! they return. The contents live in `minecraft:container`, as a shulker box
 //! item keeps them. They hold no world state, so they work on any side.
+
 use crate::game::CommonGame;
 use sunrise_core::nbt::Tag;
 use sunrise_items::items::ItemStack;
@@ -177,12 +178,6 @@ impl crate::game::CommonGame<'_> {
     fn fits_inside_container_items(&self, item: &ItemStack) -> bool {
         sunrise_sim::menu::fits_inside_container_items(&self.loop_context, item)
     }
-    /// The slots a mod gave item `item`, clamped; none for any other item.
-    fn item_container_size(&self, item: &str) -> Option<u32> {
-        let mut slots = None;
-        self.native_item_container(item, &mut slots);
-        slots.filter(|s| *s >= 1).map(|s| s.min(MAX_SLOTS))
-    }
     /// `Container.getMaxStackSize(stack)`: the container's 99, or the stack's
     /// own limit (its `max_stack_size` component, else the item's) when less.
     fn item_container_limit(&self, stack: &ItemStack) -> u32 {
@@ -199,10 +194,19 @@ impl crate::game::CommonGame<'_> {
         };
         own.min(CONTAINER_MAX)
     }
+}
+
+pub trait NativeItemContainerGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+    /// The slots a mod gave item `item`, clamped; none for any other item.
+    fn item_container_size(&self, item: &str) -> Option<u32> {
+        let mut slots = None;
+        self.native_item_container(item, &mut slots);
+        slots.filter(|s| *s >= 1).map(|s| s.min(MAX_SLOTS))
+    }
     /// `Capabilities.Item.ITEM`, read: the slots of one item of `stack`,
     /// empty ones included, kept in its `minecraft:container`. None for an
     /// item without slots, and for an empty stack.
-    pub fn item_container_slots(
+     fn item_container_slots(
         &self,
         stack: &ItemStack,
     ) -> Option<Vec<Option<ItemStack>>> {
@@ -218,7 +222,7 @@ impl crate::game::CommonGame<'_> {
     /// becomes (the item itself when none did). The stack given is not
     /// changed: shrink it by one and hand out the result, or leave the result
     /// unused to simulate. None where the item has no slots.
-    pub fn item_container_insert(
+     fn item_container_insert(
         &self,
         stack: &ItemStack,
         item: &ItemStack,
@@ -231,7 +235,7 @@ impl crate::game::CommonGame<'_> {
     /// into slot `slot` alone: topped up when it holds the same item and
     /// components, filled when empty. Nothing goes into a slot past the
     /// item's slots or holding another item.
-    pub fn item_container_insert_slot(
+     fn item_container_insert_slot(
         &self,
         stack: &ItemStack,
         slot: usize,
@@ -252,7 +256,7 @@ impl crate::game::CommonGame<'_> {
     /// slot `slot` of one item of `stack` holds when empty. None of a stack that
     /// doesn't fit inside container items (a shulker box, unless its parts say
     /// so), nor into a slot past the item's slots.
-    pub fn item_container_capacity(
+     fn item_container_capacity(
         &self,
         stack: &ItemStack,
         slot: usize,
@@ -273,7 +277,7 @@ impl crate::game::CommonGame<'_> {
     /// item's slots), and the single item it becomes. The stack given is not
     /// changed, as with `item_container_insert`. None where the item
     /// has no slots.
-    pub fn item_container_extract(
+     fn item_container_extract(
         &self,
         stack: &ItemStack,
         slot: usize,
@@ -283,6 +287,8 @@ impl crate::game::CommonGame<'_> {
         extract_one(stack, size, slot, max)
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeItemContainerGameExt1<'__sg> for G {}
+
 
 #[cfg(test)]
 mod tests {
@@ -501,3 +507,5 @@ mod tests {
 }
 
 use crate::game::tables::GameItems as _;
+
+use crate::game::native_hooks::item_container::ItemContainerGameExt1 as _;

@@ -134,11 +134,11 @@ impl ServerGame<'_> {
             _ => sunrise_core::geometry::Direction::North,
         };
         let pos = sunrise_core::position::BlockPos::new(below[0], below[1], below[2]);
-        let chest = self.common.with_level(|b, level, ticks| {
+        let chest = self.with_level(|b, level, ticks| {
             b.copper_chest_from_block(level, ticks, copper, direction, pos)
         });
         if let Some(chest) = chest {
-            self.common.with_level(|b, level, ticks| b.set_block(level, ticks, pos, chest, 2));
+            self.with_level(|b, level, ticks| b.set_block(level, ticks, pos, chest, 2));
             if let Some(entity) =
                 sunrise_level::containers::BlockEntity::for_block(&self.common.res.facts().get(chest).name)
             {
@@ -197,10 +197,10 @@ impl ServerGame<'_> {
     ) -> Result<()> {
         if self.completes_golem(head) {
             let at = sunrise_core::position::BlockPos::new(head[0], head[1], head[2]);
-            self.common.with_level(|b, level, ticks| b.set_block(level, ticks, at, state, 2 | 16));
+            self.with_level(|b, level, ticks| b.set_block(level, ticks, at, state, 2 | 16));
             self.server_process_level_events()?;
         } else {
-            self.common.level_set(head, state)?;
+            self.level_set(head, state)?;
         }
         self.check_golem_spawn(head)
     }
@@ -237,7 +237,7 @@ impl ServerGame<'_> {
         for &p in cells {
             let state = self.common.world.block(p[0], p[1], p[2]);
             let pos = sunrise_core::position::BlockPos::new(p[0], p[1], p[2]);
-            self.common.with_level(|b, level, ticks| b.set_block(level, ticks, pos, air, 2));
+            self.with_level(|b, level, ticks| b.set_block(level, ticks, pos, air, 2));
             self.common.level_events
                 .push(sunrise_world::level::LevelEvent::LevelEvent {
                     id: 2001,
@@ -254,7 +254,7 @@ impl ServerGame<'_> {
         let air = self.common.world.air;
         for &p in cells {
             let pos = sunrise_core::position::BlockPos::new(p[0], p[1], p[2]);
-            self.common.with_level(|b, level, ticks| {
+            self.with_level(|b, level, ticks| {
                 b.update_neighbors_at(level, ticks, pos, b.block(air))
             });
         }
@@ -400,3 +400,5 @@ pub(in crate::game) mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

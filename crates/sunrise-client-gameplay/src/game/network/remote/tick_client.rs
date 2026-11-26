@@ -282,7 +282,7 @@ impl crate::game::ClientGame<'_> {
             [player.position.x, player.position.y, player.position.z],
         );
         let was_flying = player.flying;
-        self.common.sync_player_body();
+        self.sync_player_body();
         self.sync_remote_player_game_mode();
         let sleeping = self.common.sleeping;
         if let Some(at) = sleeping.and_then(|head| self.sleeping_position(head))
@@ -359,7 +359,7 @@ impl crate::game::ClientGame<'_> {
             } else {
                 None
             };
-            let answer = self.common.ask_swim_entry(decision);
+            let answer = self.ask_swim_entry(decision);
             let side_server = self.game_side_client();
             let side = client_game_side!(self, side_server);
             let Some(player) = self.common.player.as_mut().filter(|p| p.entity_id == body) else {
@@ -368,7 +368,7 @@ impl crate::game::ClientGame<'_> {
             let mut motion = motion_world!(side, player);
             motion.finish_fluid_tick(answer)?;
             let keys = motion.prepare_local_sprint(keys)?;
-            self.common.player_sprint_tick(keys, sprint_window, None)?;
+            self.player_sprint_tick(keys, sprint_window, None)?;
             if !self.common.player.as_ref().is_some_and(|p| p.entity_id == body) {
                 return Ok(None);
             }
@@ -405,7 +405,7 @@ impl crate::game::ClientGame<'_> {
                 } else {
                     None
                 };
-                let answer = self.common.ask_swim_entry(decision);
+                let answer = self.ask_swim_entry(decision);
                 let side_server = self.game_side_client();
                 let side = client_game_side!(self, side_server);
                 let Some(player) = self.common.player.as_mut().filter(|p| p.entity_id == body) else {
@@ -672,12 +672,12 @@ impl crate::game::ClientGame<'_> {
     /// and client ticks, and the moving pistons' pushes.
     pub(in crate::game) fn tick_remote_block_entities(&mut self) {
         self.tick_client_block_entities();
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             b.client_tick_block_entities(level, ticks);
         });
         let pushes = std::mem::take(&mut self.common.block_ticks.piston_pushes);
         self.push_piston_entities(pushes);
-        self.common.sync_moving_pistons();
+        self.sync_moving_pistons();
     }
     /// `ClientLevel.tickEntities`: the section index takes each crossing at its entity's turn.
     pub(in crate::game) fn tick_remote_entities(&mut self, running: bool) {
@@ -867,7 +867,7 @@ impl crate::game::ClientGame<'_> {
         }
         let game_time = self.common.world.game_time;
         // `AbstractPiglin.isConverting`: the dimension is not piglin safe.
-        let nether = !self.common.dimension_type().piglins_zombify;
+        let nether = !self.dimension_type().piglins_zombify;
         // What a wither's side heads can look at, by network entity id: the
         // mobs and the player (position and eye height).
         let wither_targets: Vec<(i32, [f64; 3], f64)> = if self
@@ -1743,6 +1743,8 @@ use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1 as _;
 
 use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
@@ -1755,6 +1757,8 @@ use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
 
+use sunrise_gameplay_common::game::native_hooks::can_start_swimming::GameHooks as _;
+
 use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
 
 use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;
@@ -1764,3 +1768,7 @@ use sunrise_gameplay_common::game::piston_push::PistonPushGameExt1 as _;
 use sunrise_gameplay_common::game::piston_push::carrying::CarryingGameExt1 as _;
 
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
+use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;
+
+use sunrise_gameplay_common::game::native_hooks::can_start_swimming::SprintGameExt as _;

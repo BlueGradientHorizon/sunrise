@@ -136,7 +136,7 @@ impl crate::game::ClientGame<'_> {
         // LevelChunk.setBlockState: another block's block entity goes, even
         // one of the same type (a mod's blocks may share one).
         let other_block = previous.is_some_and(|p| self.common.res.facts().get(p).name != name);
-        self.common.ensure_stateful_entity_table();
+        self.ensure_stateful_entity_table();
         // State-aware factories decide creation only. A valid same-block
         // instance survives even when the new state would create none.
         if !other_block
@@ -149,7 +149,7 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         // A mod block's is the mod's own, as on the server.
-        let removed = match self.common.new_block_entity_for_state(state) {
+        let removed = match self.new_block_entity_for_state(state) {
             Some(mut entity) => {
                 // PotentSulfurBlockEntity.setLevel: the eruption clock starts as it joins the
                 // level, not at its first tick.
@@ -177,3 +177,7 @@ impl crate::game::ClientGame<'_> {
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
+
+use crate::game::client_side::remote_client::chat::ChatTrustClientExt as _;

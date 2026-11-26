@@ -554,10 +554,10 @@ impl crate::game::ServerGame<'_> {
                             ) =>
                         {
                             *answers.entry(state).or_insert_with(|| {
-                                self.common.part_explosion_resistance(pos, state, explosion)
+                                self.part_explosion_resistance(pos, state, explosion)
                             })
                         }
-                        _ => self.common.part_explosion_resistance(pos, state, explosion),
+                        _ => self.part_explosion_resistance(pos, state, explosion),
                     };
                     asked.unwrap_or(own).max(fluid)
                 };
@@ -600,7 +600,7 @@ impl crate::game::ServerGame<'_> {
         portal_proof: bool,
         explosion: &ExplosionStart<'_>,
     ) -> Vec<[i32; 3]> {
-        let (min_y, max_y) = self.common.with_level(|_, level, _| {
+        let (min_y, max_y) = self.with_level(|_, level, _| {
             use sunrise_world::level::LevelAccess;
             (level.min_y(), level.max_y())
         });
@@ -1438,7 +1438,7 @@ impl crate::game::ServerGame<'_> {
     /// `canEntityGrief` refuses it: decorations take no harm.
     fn blast_mob_refused(&self) -> bool {
         // No listener and the rule on: no mob is refused, and no cause is looked up.
-        if !Game::grief_hooked(self)
+        if !crate::game::ServerGame::grief_hooked(self)
             && self
                 .common.ui
                 .rules
@@ -1855,8 +1855,8 @@ impl crate::game::ServerGame<'_> {
                     // fire shaped by its neighbours elsewhere.
                     let at = BlockPos::new(pos[0], pos[1], pos[2]);
                     let fire =
-                        self.common.with_level(|b, level, ticks| b.fire_state_for(level, ticks, at));
-                    self.common.level_set(pos, fire)?;
+                        self.with_level(|b, level, ticks| b.fire_state_for(level, ticks, at));
+                    self.level_set(pos, fire)?;
                 }
             }
         }
@@ -1912,7 +1912,7 @@ impl crate::game::ServerGame<'_> {
         // Block.dropFromExplosion (only TntBlock refuses), or what the
         // block's parts answer: it gates spawnAfterBreak and the loot.
         let drops = self
-            .common.part_drops_from_explosion(pos, state, explosion)
+            .part_drops_from_explosion(pos, state, explosion)
             .unwrap_or(!is_tnt);
         // Block.onExplosionHit runs spawnAfterBreak before the drops.
         if drops && name.starts_with("minecraft:infested_") {
@@ -1972,7 +1972,7 @@ impl crate::game::ServerGame<'_> {
         }
         self.common.pending.clear(pos);
         self.notify_block_exploded(pos, state, explosion);
-        self.common.level_set(pos, self.common.world.air)?;
+        self.level_set(pos, self.common.world.air)?;
         // BeehiveBlock.onExplosionHit: the bees about turn on the player.
         if is_hive {
             self.anger_nearby_bees(pos);
@@ -2828,6 +2828,8 @@ use sunrise_gameplay_common::game::server_side::explosion::tests::zombie_type;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::cart_rails::CartRailsGameExt1 as _;
 
 use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
@@ -2837,3 +2839,7 @@ use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
 use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::can_drop_from_explosion::CanDropFromExplosionGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::explosion_resistance::ExplosionResistanceGameExt1 as _;

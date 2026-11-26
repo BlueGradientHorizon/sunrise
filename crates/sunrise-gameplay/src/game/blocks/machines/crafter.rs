@@ -53,7 +53,7 @@ impl crate::game::ServerGame<'_> {
         let Ok(id) = registry.resolve(&state) else {
             return;
         };
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             b.set_block(level, ticks, BlockPos::new(pos.0, pos.1, pos.2), id, flags)
         });
         let _ = self.server_process_level_events();
@@ -471,5 +471,7 @@ pub(in crate::game) mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_block_states::NativeBlockStatesGameExt1 as _;

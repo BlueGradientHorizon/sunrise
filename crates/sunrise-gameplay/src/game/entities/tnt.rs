@@ -47,7 +47,7 @@ impl ServerGame<'_> {
         };
         if self.common.world.block(pos.x, pos.y, pos.z) == self.common.world.air {
             let flags = level_flags::UPDATE_CLIENTS | level_flags::UPDATE_SKIP_ON_PLACE;
-            self.common.with_level(|b, level, ticks| b.set_block(level, ticks, pos, tnt, flags));
+            self.with_level(|b, level, ticks| b.set_block(level, ticks, pos, tnt, flags));
         }
     }
     /// Adds primed TNT at the block's bottom centre, pushed along `rot`.
@@ -445,7 +445,7 @@ impl ServerGame<'_> {
         let guest = self.server.lan_acting;
         self.spawn_primed_tnt(pos, false, Some(Who::Player), guest);
         let air = self.common.world.air;
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             b.set_block(level, ticks, pos, air, level_flags::UPDATE_ALL_IMMEDIATE)
         });
         self.server_process_level_events()?;
@@ -1291,6 +1291,8 @@ use sunrise_gameplay_common::game::test_server_load;
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
 

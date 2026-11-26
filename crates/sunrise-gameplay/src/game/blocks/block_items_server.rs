@@ -17,7 +17,7 @@ impl ServerGame<'_> {
         entity: &BlockEntity,
         block: &str,
     ) -> Tag {
-        self.common.encode_live_block_entity(key, entity, block, self.common.res.items())
+        self.encode_live_block_entity(key, entity, block, self.common.res.items())
     }
 
     /// `ShulkerBoxBlock.playerWillDestroy`: a Creative player's filled box is
@@ -50,7 +50,7 @@ impl ServerGame<'_> {
     ) {
         let key = (pos[0], pos[1], pos[2]);
         if !self.common.world.block_entities.stateful_entity(state.0)
-            && let Some(entity) = self.common.new_block_entity_for_state(state)
+            && let Some(entity) = self.new_block_entity_for_state(state)
         {
             self.common.world.block_entities.insert(key, entity);
         }
@@ -74,7 +74,7 @@ impl ServerGame<'_> {
         self.sculk_place_entity(state);
         if let Some(custom_data_loaded) = self.apply_placed_item_common(pos, stack, game_master) {
             if custom_data_loaded {
-                self.common.notify_block_entity_load_additional(key);
+                self.notify_block_entity_load_additional(key);
             }
             self.side_update_spawner_display(key);
         }
@@ -86,3 +86,9 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::block_items::BlockItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::block_entity_load_additional::BlockEntityLoadAdditionalGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::block_entity_save_additional::BlockEntitySaveAdditionalGameExt1 as _;

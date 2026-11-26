@@ -138,7 +138,7 @@ impl ServerGame<'_> {
             target: BlockStateId,
             below: BlockStateId,
         }
-        let candidate = self.common.with_level(|b, level, ticks| {
+        let candidate = self.with_level(|b, level, ticks| {
             let target = level.block_state(at);
             let below = level.block_state(at.offset(0, -1, 0));
             // Must run even when eligibility fails: updateShape can schedule
@@ -195,7 +195,7 @@ impl ServerGame<'_> {
         let to = facts.get(candidate.state).name.clone();
         // AIR is a legitimate normalized state. setBlock may report no
         // change for it; the eligible operation still empties the hand.
-        let changed = self.common.with_level(|b, level, ticks| {
+        let changed = self.with_level(|b, level, ticks| {
             b.set_block(level, ticks, at, candidate.state, flags::UPDATE_ALL)
         });
         self.post_block_game_event(
@@ -265,6 +265,8 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
 

@@ -435,7 +435,7 @@ pub trait FireworksGameExt1<'__sg>: crate::game::SideGame<'__sg> {
             |s: Option<&ItemStack>| s.is_some_and(|s| &*s.item == "minecraft:firework_rocket");
         let main = self.stack_in(self.selected);
         let offhand_only = is_rocket(self.offhand.as_ref()) && !is_rocket(main);
-        let right = offhand_only == self.side_state().main_hand_left();
+        let right = offhand_only == crate::game::Side::main_hand_left(self.side_state());
         let arm = if right { 80 } else { -80 };
         let v = view_vector(self.yaw + arm as f32, 0.0);
         [v[0] * 0.5, v[1] * 0.5, v[2] * 0.5]

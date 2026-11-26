@@ -125,7 +125,7 @@ impl crate::game::ClientGame<'_> {
             "setblock" => {
                 let pos = [arg(1)?.parse()?, arg(2)?.parse()?, arg(3)?.parse()?];
                 let name = id(arg(4)?);
-                if !self.common.set_state_named(pos, &name, &[])? {
+                if !self.set_state_named(pos, &name, &[])? {
                     return Err(format!("cannot place {name}").into());
                 }
                 if let Some(entity) = sunrise_level::containers::BlockEntity::for_block(&name) {
@@ -290,4 +290,8 @@ impl crate::game::ClientGame<'_> {
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::enchantments::EnchantmentsGameExt1 as _;

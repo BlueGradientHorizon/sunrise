@@ -18,7 +18,7 @@ impl crate::game::ServerGame<'_> {
         {
             return false;
         }
-        let changed = self.common.set_block_live(pos, state, flags, true);
+        let changed = self.set_block_live(pos, state, flags, true);
         let _ = self.server_process_level_events();
         changed
     }
@@ -83,3 +83,5 @@ pub(in crate::game) fn box_meets(
         && lo.z < max[2]
         && hi.z > min[2]
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

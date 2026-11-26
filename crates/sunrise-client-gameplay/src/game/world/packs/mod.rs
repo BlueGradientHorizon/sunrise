@@ -287,7 +287,7 @@ impl crate::game::ClientGame<'_> {
     }
     pub(in crate::game::client_side) fn resource_pack_infos(&mut self) -> Vec<PackInfo> {
         let additional: Vec<_> = self
-            .common.discover_mod_packs(mod_api::PackType::ClientResources)
+            .discover_mod_packs(mod_api::PackType::ClientResources)
             .into_iter()
             .map(into_resource_pack)
             .collect();
@@ -396,7 +396,7 @@ impl crate::game::ClientGame<'_> {
         log::warn!("Sunrise: resource reload failed: {error}");
         let mut all = packs::discover(&self.common.vanilla_root(), &packs_dir());
         all.extend(
-            self.common.discover_mod_packs(mod_api::PackType::ClientResources)
+            self.discover_mod_packs(mod_api::PackType::ClientResources)
                 .into_iter()
                 .map(into_resource_pack),
         );
@@ -1047,3 +1047,9 @@ impl PackReload {
 use sunrise_gameplay_common::game::side_ops::tables::TablesSideGameExt as _;
 
 use sunrise_gameplay_common::game::mods::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::pack_finders_common::CommonGameExt1 as _;
+
+use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;
+
+use crate::game::client_side::resource_tables_client::PackResourcesClientExt as _;

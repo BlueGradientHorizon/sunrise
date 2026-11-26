@@ -67,27 +67,27 @@ pub trait EquipAnswersGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `can_equip` lent to a menu click that runs while the game is at hand (the player's own
     /// inventory menu, predicted or authoritative).
-     fn menu_can_equip(&self) -> MenuEquip<'_, '_, __Side> {
-        MenuEquip { game: self }
+     fn menu_can_equip(&self) -> MenuEquip<'_, '__sg, Self> {
+        MenuEquip { game: self, resource_lifetime: std::marker::PhantomData }
     }
 }
 impl<'__sg, G: crate::game::SideGame<'__sg>> EquipAnswersGameExt1<'__sg> for G {}
 
 
 /// The game lent to a menu click as its `CanEquip`.
-pub struct MenuEquip<'g, 'a, S: crate::game::Side> {
-    game: &'g Game<'a, S>,
+pub struct MenuEquip<'g, 'a, S: crate::game::SideGame<'a>> {
+    game: &'g S, pub resource_lifetime: std::marker::PhantomData<fn(&'a ()) -> &'a ()>,
 }
 
 /// Call-scoped `CanEquip` that lazily converts one unchanged `ItemStack` at most once across a
 /// synchronous candidate loop. Rust's `&'s ItemStack` borrow prevents mutation during the loop.
-struct ScopedMenuEquip<'g, 'a, 's, S: crate::game::Side> {
-    game: &'g Game<'a, S>,
+struct ScopedMenuEquip<'g, 'a, 's, S: crate::game::SideGame<'a>> {
+    game: &'g S,
     stack: &'s ItemStack,
-    prepared: std::cell::OnceCell<EquipStack>,
+    prepared: std::cell::OnceCell<EquipStack>, pub resource_lifetime: std::marker::PhantomData<fn(&'a ()) -> &'a ()>,
 }
 
-impl<S: crate::game::Side> CanEquip for ScopedMenuEquip<'_, '_, '_, S> {
+impl<'__carrier, S: crate::game::SideGame<'__carrier>> CanEquip for ScopedMenuEquip<'_, '__carrier, '_, S> {
     fn listens(&self, item: &str) -> bool {
         mod_api::__private::item_listens(mod_api::HookId::CanEquip, item)
     }
@@ -114,7 +114,7 @@ impl<S: crate::game::Side> CanEquip for ScopedMenuEquip<'_, '_, '_, S> {
     }
 }
 
-impl<S: crate::game::Side> CanEquip for MenuEquip<'_, '_, S> {
+impl<'__carrier, S: crate::game::SideGame<'__carrier>> CanEquip for MenuEquip<'_, '__carrier, S> {
     fn listens(&self, item: &str) -> bool {
         mod_api::__private::item_listens(mod_api::HookId::CanEquip, item)
     }
@@ -133,7 +133,7 @@ impl<S: crate::game::Side> CanEquip for MenuEquip<'_, '_, S> {
         let scoped = ScopedMenuEquip {
             game: self.game,
             stack,
-            prepared: std::cell::OnceCell::new(),
+            prepared: std::cell::OnceCell::new(), resource_lifetime: std::marker::PhantomData,
         };
         body(&scoped);
     }

@@ -7,7 +7,7 @@ impl ServerGame<'_> {
         let e = self.common.world.block_entities.get(&(pos[0], pos[1], pos[2]))?;
         let name = self.common.data_block_name(pos);
         let mut tag =
-            self.common.encode_live_block_entity((pos[0], pos[1], pos[2]), e, &name, self.common.res.items());
+            self.encode_live_block_entity((pos[0], pos[1], pos[2]), e, &name, self.common.res.items());
         if let Tag::Compound(c) = &mut tag {
             for key in ["id", "x", "y", "z", "keepPacked"] {
                 c.remove(&key.into());
@@ -18,3 +18,5 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::native_hooks::block_entity_save_additional::BlockEntitySaveAdditionalGameExt1 as _;

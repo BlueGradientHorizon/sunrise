@@ -64,25 +64,7 @@ pub struct CreativeCache {
     pub(in crate::game) active: Option<ActiveBuild>,
 }
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
-    /// Fire after one tab's generator with the live edit session installed.
-    pub(in crate::game) fn native_build_creative_mode_tab_contents(
-        &mut self,
-        tab: &str,
-        features: Vec<String>,
-        permissions: mod_api::CreativeTabPermissions,
-        edit: mod_api::CreativeTabEdit,
-    ) {
-        self.fire_build_creative_mode_tab_contents(tab, features, permissions, edit);
-    }
-
-    pub fn creative_permissions(&self) -> CreativeTabPermissions {
-        if self.can_use_game_master_blocks() && self.side.operator_items_tab() {
-            CreativeTabPermissions::Operator
-        } else {
-            CreativeTabPermissions::Normal
-        }
-    }
+impl crate::game::CommonGame<'_> {
 
     pub(in crate::game) fn creative_tab_entries(
         &self,
@@ -172,7 +154,47 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         })
     }
 
-    pub fn build_creative(
+    pub(in crate::game) fn edit_creative<T>(
+        &self,
+        edit: CreativeTabEdit,
+        apply: impl FnOnce(&mut TabContents, &Items) -> Result<T, CreativeTabEditError>,
+    ) -> Result<T, CreativeTabEditError> {
+        let Some(active) = &self.creative_contents.active else {
+            return Err(CreativeTabEditError::Stale);
+        };
+        let mut session = active
+            .edit
+            .try_borrow_mut()
+            .map_err(|_| CreativeTabEditError::Stale)?;
+        let session = session
+            .as_mut()
+            .filter(|s| s.token == edit)
+            .ok_or(CreativeTabEditError::Stale)?;
+        apply(&mut session.contents, &active.items)
+    }
+}
+
+pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
+    /// Fire after one tab's generator with the live edit session installed.
+     fn native_build_creative_mode_tab_contents(
+        &mut self,
+        tab: &str,
+        features: Vec<String>,
+        permissions: mod_api::CreativeTabPermissions,
+        edit: mod_api::CreativeTabEdit,
+    ) {
+        crate::game::native_hooks::fire::FireHooks::fire_build_creative_mode_tab_contents(self, tab, features, permissions, edit);
+    }
+
+     fn creative_permissions(&self) -> CreativeTabPermissions {
+        if self.can_use_game_master_blocks() && crate::game::Side::operator_items_tab(self.side_state()) {
+            CreativeTabPermissions::Operator
+        } else {
+            CreativeTabPermissions::Normal
+        }
+    }
+
+     fn build_creative(
         &mut self,
         permissions: CreativeTabPermissions,
     ) -> Result<Contents, CreativeTabReadError> {
@@ -271,7 +293,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     /// The last completed build's catalog, for a reader that cannot build: unavailable outside
     /// a live world's phase, and `None` before the side has built once.
-    pub(in crate::game) fn built_creative_tabs(
+     fn built_creative_tabs(
         &self,
     ) -> Result<Option<Arc<CreativeModeTabs>>, CreativeTabReadError> {
         if self.native_lifecycle.epoch().is_none() {
@@ -292,7 +314,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
 
     /// The search tab's canonical display list (not the client-only UI additions).
-    pub(in crate::game) fn creative_search_items(&mut self) -> Vec<ItemStack> {
+     fn creative_search_items(&mut self) -> Vec<ItemStack> {
         if self.native_lifecycle.epoch().is_none() {
             return Vec::new();
         }
@@ -302,7 +324,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         self.side_creative_catalog().search_display(&lists).to_vec()
     }
 
-    pub(in crate::game) fn creative_stack_key(&self, stack: &ItemStack) -> Option<ItemStack> {
+     fn creative_stack_key(&self, stack: &ItemStack) -> Option<ItemStack> {
         self.native_lifecycle.epoch()?;
         // Use the very same prototypes as the generator during a reentrant read.
         let items = self
@@ -313,7 +335,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         comparison_key(stack.clone(), items).ok()
     }
 
-    pub(in crate::game) fn creative_tabs(
+     fn creative_tabs(
         &mut self,
         permissions: CreativeTabPermissions,
     ) -> Result<Arc<CreativeModeTabs>, CreativeTabReadError> {
@@ -336,30 +358,13 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             .clone())
     }
 
-    pub(in crate::game) fn edit_creative<T>(
-        &self,
-        edit: CreativeTabEdit,
-        apply: impl FnOnce(&mut TabContents, &Items) -> Result<T, CreativeTabEditError>,
-    ) -> Result<T, CreativeTabEditError> {
-        let Some(active) = &self.creative_contents.active else {
-            return Err(CreativeTabEditError::Stale);
-        };
-        let mut session = active
-            .edit
-            .try_borrow_mut()
-            .map_err(|_| CreativeTabEditError::Stale)?;
-        let session = session
-            .as_mut()
-            .filter(|s| s.token == edit)
-            .ok_or(CreativeTabEditError::Stale)?;
-        apply(&mut session.contents, &active.items)
-    }
-
-    pub fn reset_creative_contents(&mut self) {
+     fn reset_creative_contents(&mut self) {
         self.creative_contents = CreativeCache::default();
         self.side_reset_creative_screen();
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> GameHooks<'__sg> for G {}
+
 
 pub(in crate::game) fn api_stacks(stacks: &[ItemStack]) -> Vec<mod_api::ItemStack> {
     stacks

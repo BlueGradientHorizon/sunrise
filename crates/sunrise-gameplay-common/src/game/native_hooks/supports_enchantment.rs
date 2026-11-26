@@ -1,13 +1,14 @@
 use super::*;
 
-impl crate::game::CommonGame<'_> {
+pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// Resolve the item's support answer with its default stack when parts install.
-    pub(in crate::game) fn native_supports_enchantment(
+     fn native_supports_enchantment(
         &self,
         stack: &ItemStack,
         enchantment: &str,
         answer: &mut Option<bool>,
     ) {
-        self.fire_supports_enchantment(stack, enchantment, answer);
+        crate::game::native_hooks::fire::FireHooks::fire_supports_enchantment(self, stack, enchantment, answer);
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> GameHooks<'__sg> for G {}

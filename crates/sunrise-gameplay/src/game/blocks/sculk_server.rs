@@ -1440,7 +1440,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn calibrated_signal(&mut self, key: (i32, i32, i32)) -> i32 {
         let pos = BlockPos::new(key.0, key.1, key.2);
         let mut value = 0;
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             value = b.calibrated_back_signal(level, ticks, pos);
         });
         value
@@ -1546,7 +1546,7 @@ impl crate::game::ServerGame<'_> {
                 let mut spreader = std::mem::take(&mut entity.spreader);
                 if !spreader.cursors.is_empty() {
                     let origin = BlockPos::new(key.0, key.1, key.2);
-                    self.common.with_level(|b, level, ticks| {
+                    self.with_level(|b, level, ticks| {
                         b.sculk_update_cursors(level, ticks, &mut spreader, origin, true);
                     });
                     self.server_process_level_events()?;
@@ -1659,7 +1659,7 @@ impl crate::game::ServerGame<'_> {
         frequency: i32,
     ) -> Result<()> {
         let pos = BlockPos::new(key.0, key.1, key.2);
-        self.common.with_level(|b, level, ticks| b.sculk_sensor_activate(level, ticks, pos, power));
+        self.with_level(|b, level, ticks| b.sculk_sensor_activate(level, ticks, pos, power));
         self.server_process_level_events()?;
         // tryResonateVibration.
         if (1..=15).contains(&frequency) {
@@ -1685,7 +1685,7 @@ impl crate::game::ServerGame<'_> {
         }
         let ctx = self.event_source_context(source, None);
         self.post_game_event(sculk::TENDRILS_CLICKING, center(key), ctx);
-        self.common.with_level(|b, level, ticks| b.sculk_sensor_click(level, ticks, pos));
+        self.with_level(|b, level, ticks| b.sculk_sensor_click(level, ticks, pos));
         self.server_process_level_events()
     }
     /// `SculkSensorBlock.stepOn` and `SculkShriekerBlock.stepOn`: standing on
@@ -1826,7 +1826,7 @@ impl crate::game::ServerGame<'_> {
     /// `SculkShriekerBlockEntity.shriek`.
     pub(in crate::game::server_side) fn shriek(&mut self, key: (i32, i32, i32)) -> Result<()> {
         let pos = BlockPos::new(key.0, key.1, key.2);
-        self.common.with_level(|b, level, ticks| b.sculk_shrieker_shriek(level, ticks, pos));
+        self.with_level(|b, level, ticks| b.sculk_shrieker_shriek(level, ticks, pos));
         self.server_process_level_events()?;
         let ctx = self.player_context(None);
         self.post_game_event(sculk::SHRIEK, center(key), ctx);
@@ -2011,7 +2011,7 @@ impl crate::game::ServerGame<'_> {
     }
     pub(in crate::game::server_side) fn catalyst_bloom(&mut self, key: (i32, i32, i32)) {
         let pos = BlockPos::new(key.0, key.1, key.2);
-        self.common.with_level(|b, level, ticks| b.sculk_catalyst_bloom(level, ticks, pos));
+        self.with_level(|b, level, ticks| b.sculk_catalyst_bloom(level, ticks, pos));
         self.native_sculk_bloom(self.common.dim.id(), [key.0, key.1, key.2]);
         let _ = self.server_process_level_events();
         let c = center(key);
@@ -2226,7 +2226,7 @@ impl crate::game::ServerGame<'_> {
         self.sculk_prepare();
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
         if self.state_is(&self.server.sculk.tables.redstone_ore, state) {
-            let _ = self.common.attack_block(pos);
+            let _ = self.attack_block(pos);
         }
     }
 
@@ -2245,7 +2245,7 @@ impl crate::game::ServerGame<'_> {
         ) {
             return Ok(None);
         }
-        self.common.attack_block(pos)?;
+        self.attack_block(pos)?;
         let block_item = held.is_some_and(|s| {
             self.common.res
                 .items()
@@ -2742,6 +2742,8 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
 

@@ -1,20 +1,22 @@
 use super::*;
 use mod_api::ModBlockEntity;
-impl crate::game::CommonGame<'_> {
-    pub(in crate::game) fn native_on_chunk_unloaded(
+pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
+     fn native_on_chunk_unloaded(
         &mut self,
         pos: [i32; 3],
         block_entity: BlockEntityRef,
         entity: &ModBlockEntity,
     ) {
-        self.fire_on_chunk_unloaded(pos, block_entity, entity);
+        crate::game::native_hooks::fire::FireHooks::fire_on_chunk_unloaded(self, pos, block_entity, entity);
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> GameHooks<'__sg> for G {}
 
-impl crate::game::CommonGame<'_> {
+
+pub trait OnChunkUnloadedGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// Tells the parts of the mod block entities in chunk `chunk` of `level` that it
     /// unloads, each once, while they are still in the world's block entities.
-    pub fn notify_chunk_block_entities_unloaded(
+     fn notify_chunk_block_entities_unloaded(
         &mut self,
         level: mod_api::LevelRef,
         chunk: (i32, i32),
@@ -44,3 +46,4 @@ impl crate::game::CommonGame<'_> {
         }
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> OnChunkUnloadedGameExt2<'__sg> for G {}

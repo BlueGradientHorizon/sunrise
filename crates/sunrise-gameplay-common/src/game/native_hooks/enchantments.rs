@@ -3,8 +3,17 @@ use super::*;
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
 impl crate::game::CommonGame<'_> {
+    /// `ItemStack.getHoverName()` as a component: each viewer renders it in their language.
+    pub fn hover_name(&self, stack: &ItemStack) -> sunrise_game_data::text::Text {
+        self.stack_hover_name_text(stack)
+    }
+}
+
+/// Helpers for native mods, kept as stable as the hook points.
+// Native mods use these; nothing in Sunrise does.
+pub trait EnchantmentsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Registered enchantments, in registry order.
-    pub fn enchantments(&self) -> Vec<EnchantmentInfo> {
+     fn enchantments(&self) -> Vec<EnchantmentInfo> {
         let enchantments = self.item_enchantments();
         enchantments
             .list
@@ -21,17 +30,13 @@ impl crate::game::CommonGame<'_> {
             .collect()
     }
     /// `Enchantment.getMinCost(level)`: the enchanting power needed, or None for an unknown id.
-    pub fn enchantment_min_cost(&self, id: &str, level: u32) -> Option<i32> {
+     fn enchantment_min_cost(&self, id: &str, level: u32) -> Option<i32> {
         self.item_enchantments()
             .get(id)
             .map(|e| e.min_cost.calculate(level))
     }
-    /// `ItemStack.getHoverName()` as a component: each viewer renders it in their language.
-    pub fn hover_name(&self, stack: &ItemStack) -> sunrise_game_data::text::Text {
-        self.stack_hover_name_text(stack)
-    }
     /// Whether enchantment `id` can go on `item` (`Enchantment.isSupportedItem`).
-    pub fn enchantment_supports(&self, id: &str, item: mod_api::ItemKey) -> bool {
+     fn enchantment_supports(&self, id: &str, item: mod_api::ItemKey) -> bool {
         let Some(item) = mod_api::__private::item_key_id(item) else {
             return false;
         };
@@ -40,5 +45,7 @@ impl crate::game::CommonGame<'_> {
         })
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> EnchantmentsGameExt1<'__sg> for G {}
+
 
 use crate::game::tables::GameItems as _;

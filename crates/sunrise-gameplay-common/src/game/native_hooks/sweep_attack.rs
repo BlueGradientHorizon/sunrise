@@ -1,7 +1,7 @@
 use super::*;
 
 /// The hook points. Each does nothing in Sunrise.
-impl crate::game::CommonGame<'_> {
+pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// NeoForge's `SweepAttackEvent`: a player's damaging melee hit on a
     /// `target` (`minecraft:zombie`, `minecraft:oak_boat`) is about to sweep or
     /// not, after `native_critical_hit`. `vanilla_sweep` is `Player.isSweepAttack`
@@ -11,13 +11,14 @@ impl crate::game::CommonGame<'_> {
     /// cancels with `sweeping` false). A critical hit that sweeps has both
     /// sounds. Fires on the Game that runs the attack, and on the attacking
     /// client, which only asks.
-    pub(in crate::game) fn native_sweep_attack(
+     fn native_sweep_attack(
         &mut self,
         target: &str,
         vanilla_sweep: bool,
         sweeping: &mut bool,
         canceled: &mut bool,
     ) {
-        self.fire_sweep_attack(target, vanilla_sweep, sweeping, canceled);
+        crate::game::native_hooks::fire::FireHooks::fire_sweep_attack(self, target, vanilla_sweep, sweeping, canceled);
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> GameHooks<'__sg> for G {}

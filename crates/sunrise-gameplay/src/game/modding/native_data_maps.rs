@@ -43,7 +43,7 @@ impl ServerGame<'_> {
         cause: mod_api::DataMapsUpdateCause,
     ) {
         for registry in self.server.data_map_registries.clone() {
-            self.common.native_data_maps_updated(&registry, cause);
+            self.native_data_maps_updated(&registry, cause);
         }
     }
 }
@@ -607,3 +607,5 @@ mod tests {
         assert_eq!(map.get("minecraft:oak_log"), Some(&json!(2)));
     }
 }
+
+use sunrise_gameplay_common::game::native_hooks::data_maps_updated::GameHooks as _;

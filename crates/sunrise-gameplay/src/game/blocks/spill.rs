@@ -88,7 +88,7 @@ impl crate::game::ServerGame<'_> {
         let source = self.common.pending.source(pos).or_else(|| {
             self.common.pack.assets.registry.state(state).and_then(|block| {
                 world_source(&self.common.world, pos, &block.name, |key, entity, block| {
-                    self.common.encode_live_block_entity(key, entity, block, world_items!(self))
+                    self.encode_live_block_entity(key, entity, block, world_items!(self))
                 })
             })
         });
@@ -98,7 +98,7 @@ impl crate::game::ServerGame<'_> {
                 if mod_api::__private::listened(mod_api::HookId::EnchantedBlockLoot) {
                     let at = BlockPos::new(pos[0], pos[1], pos[2]);
                     let entity = self.loot_entity_ref(entity);
-                    return self.common.with_level(|_, level, _| {
+                    return self.with_level(|_, level, _| {
                         level.roll_block_loot(at, state, entity, roll, source.as_deref())
                     });
                 }
@@ -451,4 +451,10 @@ mod tests {
     }
 }
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::base::BaseGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::block_entity_save_additional::BlockEntitySaveAdditionalGameExt1 as _;

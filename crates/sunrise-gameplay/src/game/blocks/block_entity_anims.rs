@@ -100,7 +100,7 @@ impl ServerGame<'_> {
         if before != count && self.common.res.facts().get(state).name.as_ref() == "minecraft:trapped_chest"
         {
             let p = BlockPos::new(pos[0], pos[1], pos[2]);
-            self.common.with_level(|b, level, ticks| {
+            self.with_level(|b, level, ticks| {
                 b.trapped_chest_update_neighbors(level, ticks, p, state);
             });
         }
@@ -145,7 +145,7 @@ impl ServerGame<'_> {
         // (`scheduleRecheck`, `CHECK_TICK_DELAY`).
         if open && before == 0 {
             let pos = BlockPos::new(key.0, key.1, key.2);
-            self.common.with_level(|b, level, ticks| b.schedule_tick(level, ticks, pos, 5));
+            self.with_level(|b, level, ticks| b.schedule_tick(level, ticks, pos, 5));
         }
         (before, after)
     }
@@ -478,7 +478,7 @@ impl ServerGame<'_> {
             return self.rain_falls_on(at, top);
         }
         let (p, up) = rain_positions(at, top);
-        self.common.with_level(|b, level, _| b.is_raining_at(level, p) || b.is_raining_at(level, up))
+        self.with_level(|b, level, _| b.is_raining_at(level, p) || b.is_raining_at(level, up))
     }
     /// [`Self::in_rain`] read without the level access (no snapshot, no flushes): a server's
     /// client asks the chunks and weather it was sent, single player the side's read-only
@@ -778,5 +778,7 @@ pub mod conduit_target_tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

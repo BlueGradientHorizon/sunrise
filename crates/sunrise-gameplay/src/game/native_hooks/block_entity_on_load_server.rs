@@ -4,7 +4,7 @@ use mod_api::{BlockEntityScope, BlockEntitySideScope};
 
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn server_fire_pending_block_entity_loads(&mut self) {
-        self.common.fire_pending_block_entity_data_loads();
+        self.fire_pending_block_entity_data_loads();
         if !self.common.world.block_entities.has_pending_on_load() {
             return;
         }
@@ -56,7 +56,7 @@ impl crate::game::ServerGame<'_> {
             || self.common.world.block_entities.has_pending_data_load()
         {
             let generation = self.common.world.block_entities.generation(&pos);
-            self.common.fire_pending_block_entity_loads();
+            self.fire_pending_block_entity_loads();
             if self.common.world.block_entities.generation(&pos) != generation {
                 return false;
             }
@@ -66,3 +66,7 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::block_entity_load_additional::BlockEntityLoadAdditionalGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::block_entity_on_load::BlockEntityOnLoadGameExt1 as _;

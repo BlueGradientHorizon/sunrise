@@ -55,11 +55,6 @@ pub trait ItemBoundary {
 }
 
 use crate::game::tables::GameItems as _;
-impl<'g, G: crate::game::SideGame<'g>> ItemBoundary for G {
-    fn boundary_items(&self) -> Option<&Items> {
-        Some(self.items())
-    }
-}
 
 impl ItemBoundary for super::GameLevel<'_> {
     fn boundary_items(&self) -> Option<&Items> {

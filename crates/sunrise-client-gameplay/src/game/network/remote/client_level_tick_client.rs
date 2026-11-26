@@ -17,7 +17,7 @@ impl crate::game::ClientGame<'_> {
         self.remote_send_carried();
         self.tick_chat_session();
         self.tick_debug_connection();
-        self.common.fire_pending_block_entity_loads();
+        self.fire_pending_block_entity_loads();
         self.common.ticks += 1;
         self.repro_tick();
         // Hud.tick ends with ChatComponent.tick.
@@ -99,4 +99,10 @@ impl crate::game::ClientGame<'_> {
 
 use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::block_entity_on_load::BlockEntityOnLoadGameExt1 as _;
+
+use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;

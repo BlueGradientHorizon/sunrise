@@ -23,11 +23,11 @@ use sunrise_world::{
     world_ray::{RayBlockMode, RayFluidMode, RayWorld, clip_world},
 };
 
-pub(in crate::game) struct OutlineFluidRay<'a, 'r, S: crate::game::Side>(
-    pub(in crate::game) &'a Game<'r, S>,
+pub(in crate::game) struct OutlineFluidRay<'a, 'r, S: crate::game::SideGame<'r>>(
+    pub(in crate::game) &'a S, pub std::marker::PhantomData<fn(&'r ()) -> &'r ()>,
 );
 
-impl<S: crate::game::Side> RayWorld for OutlineFluidRay<'_, '_, S> {
+impl<'__carrier, S: crate::game::SideGame<'__carrier>> RayWorld for OutlineFluidRay<'_, '__carrier, S> {
     type Error = io::Error;
     type Block = BlockStateId;
     type Fluid = Option<(f32, bool, Fluid)>;
@@ -101,23 +101,6 @@ impl<S: crate::game::Side> RayWorld for OutlineFluidRay<'_, '_, S> {
 }
 
 impl crate::game::CommonGame<'_> {
-    /// `Item.getPlayerPOVHitResult`: float view vector, OUTLINE and Fluid.ANY.
-    pub(in crate::game) fn boat_item_hit(&self) -> Option<[f64; 3]> {
-        let [x, y, z] = self.eye_position()?;
-        let start = Vec3::new(x, y, z);
-        let dir = sunrise_world::view_direction::view_vector(self.pitch, self.yaw);
-        let end = start.add_vector(dir.scale(self.reach()));
-        let hit = clip_world(
-            &mut OutlineFluidRay(self),
-            start,
-            end,
-            RayBlockMode::Outline,
-            RayFluidMode::Any,
-            256,
-        )
-        .ok()?;
-        (!hit.miss).then_some([hit.hit.location.x, hit.hit.location.y, hit.hit.location.z])
-    }
 
     pub fn fluid_height(&self, x: i32, y: i32, z: i32) -> Option<(f32, bool)> {
         self.fluid_height_of(x, y, z, Some(Fluid::Water))
@@ -174,130 +157,7 @@ impl crate::game::CommonGame<'_> {
         (i64::from(y1) + 1) as f32
     }
 
-    pub(in crate::game) fn boat_status(
-        &self,
-        b: &Boat,
-        water_level: &mut f64,
-        land_friction: &mut f32,
-    ) -> Status {
-        let bb = b.bounds();
-        let (lo, hi) = (bb.min_position(), bb.max_position());
-        // isUnderwater
-        let max_y = hi.y + 0.001;
-        let mut under = false;
-        for x in lo.x.floor() as i32..hi.x.ceil() as i32 {
-            for y in hi.y.floor() as i32..max_y.ceil() as i32 {
-                for z in lo.z.floor() as i32..hi.z.ceil() as i32 {
-                    if let Some((h, source)) = self.fluid_height(x, y, z)
-                        && max_y < f64::from(y as f32 + h)
-                    {
-                        if !source {
-                            *water_level = hi.y;
-                            return Status::UnderFlowingWater;
-                        }
-                        under = true;
-                    }
-                }
-            }
-        }
-        if under {
-            *water_level = hi.y;
-            return Status::UnderWater;
-        }
-        // checkInWater
-        let mut in_water = false;
-        *water_level = -f64::MAX;
-        for x in lo.x.floor() as i32..hi.x.ceil() as i32 {
-            for y in lo.y.floor() as i32..(lo.y + 0.001).ceil() as i32 {
-                for z in lo.z.floor() as i32..hi.z.ceil() as i32 {
-                    if let Some((h, _)) = self.fluid_height(x, y, z) {
-                        // `float height = y + getHeight`: summed in float.
-                        let level = f64::from(y as f32 + h);
-                        *water_level = water_level.max(level);
-                        in_water |= lo.y < level;
-                    }
-                }
-            }
-        }
-        if in_water {
-            return Status::InWater;
-        }
 
-        let friction = self.boat_ground_friction(b, bb);
-        if friction > 0.0 {
-            *land_friction = friction;
-            Status::OnLand
-        } else {
-            Status::InAir
-        }
-    }
-
-    /// `AbstractBoat.getGroundFriction`: average friction of the blocks whose
-    /// collision shape meets a thin slab just under the hull (lily pads skipped).
-    pub(in crate::game) fn boat_ground_friction(&self, b: &Boat, bb: Aabb) -> f32 {
-        let (lo, hi) = (bb.min_position(), bb.max_position());
-        let ground = Aabb::new(
-            Vec3::new(lo.x, lo.y - 0.001, lo.z),
-            Vec3::new(hi.x, lo.y, hi.z),
-        );
-        let (g_lo, g_hi) = (ground.min_position(), ground.max_position());
-        let (x0, x1, y0, y1, z0, z1) = (
-            (g_lo.x.floor() - 1.0) as i32,
-            (g_hi.x.ceil() + 1.0) as i32,
-            (g_lo.y.floor() - 1.0) as i32,
-            (g_hi.y.ceil() + 1.0) as i32,
-            (g_lo.z.floor() - 1.0) as i32,
-            (g_hi.z.ceil() + 1.0) as i32,
-        );
-        let slab = VoxelShape::from_box(ground).unwrap_or_else(|_| VoxelShape::empty());
-        let mut scene = SceneCollisions {
-            world: &self.world,
-            binding: self.collision,
-            subject: None,
-        };
-        let (mut friction, mut count) = (0.0f32, 0);
-        for x in x0..x1 {
-            for z in z0..z1 {
-                let edges = i32::from(x == x0 || x == x1 - 1) + i32::from(z == z0 || z == z1 - 1);
-                if edges == 2 {
-                    continue;
-                }
-                for y in y0..y1 {
-                    if edges == 1 && (y == y0 || y == y1 - 1) {
-                        continue;
-                    }
-                    let state = self.world.block(x, y, z);
-                    let f = self.res.facts().get(state);
-                    if f.name.as_ref() == "minecraft:air" || f.has_class("LilyPadBlock") {
-                        continue;
-                    }
-                    let Ok(shape) = self.collision.collision_shape_with_context(
-                        &mut scene,
-                        state,
-                        BlockPos::new(x, y, z),
-                        &CollisionContext::empty(false),
-                    ) else {
-                        continue;
-                    };
-                    let world_shape =
-                        shape.moved(Vec3::new(f64::from(x), f64::from(y), f64::from(z)));
-                    if world_shape
-                        .join_is_not_empty(&slab, ShapeOp::AND)
-                        .unwrap_or(false)
-                    {
-                        friction +=
-                            self.boat_friction(b, BlockPos::new(x, y, z), state, f.friction);
-                        count += 1;
-                    }
-                }
-            }
-        }
-        if count > 0 {
-            friction / count as f32
-        } else {
-            0.0
-        }
-    }
 
     /// `Entity.move`'s fall reset for an entity that keeps a fall and moves on
     /// by `moved` from `from`: a move of a block or more casts up to 8 blocks
@@ -361,14 +221,6 @@ impl crate::game::CommonGame<'_> {
         self.boats.store_back(index, boat)
     }
 
-    /// `AbstractBoat.tick`: `status = getStatus()` for a boat this window does not tick.
-    pub fn refresh_boat_status(&mut self, i: usize) {
-        let (mut water_level, mut land_friction) = (0.0, 0.0);
-        let status = self.boat_status(&self.boats[i], &mut water_level, &mut land_friction);
-        self.boats.update(i, |b| b.status = status);
-        self.boats.update(i, |b| b.status_known = true);
-        self.boats.update(i, Boat::tick_submersion);
-    }
 
     /// `BubbleColumnBlock.entityInside`: the bubble columns boat `i` touches.
     pub fn boat_bubble_columns(&self, i: usize) -> Vec<BubbleColumn> {
@@ -1422,6 +1274,8 @@ use crate::game::side_ops::modapi_hooks::ModapiHooksSideGameExt as _;
 
 use crate::game::tables::GameItems as _;
 
+use crate::game::GameGameExt1 as _;
+
 use crate::game::collision_source::CollisionSourceGameExt1 as _;
 
 use crate::game::entity_common::EntityCommonGameExt1 as _;
@@ -1429,3 +1283,163 @@ use crate::game::entity_common::EntityCommonGameExt1 as _;
 use crate::game::entity_sections::EntitySectionsGameExt1 as _;
 
 use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+pub trait BoatItemHitGameExt<'g>: crate::game::SideGame<'g> {
+    /// `Item.getPlayerPOVHitResult`: float view vector, OUTLINE and Fluid.ANY.
+    fn boat_item_hit(&self) -> Option<[f64; 3]> {
+        let [x, y, z] = self.eye_position()?;
+        let start = Vec3::new(x, y, z);
+        let dir = sunrise_world::view_direction::view_vector(self.pitch, self.yaw);
+        let end = start.add_vector(dir.scale(self.reach()));
+        let hit = clip_world(
+            &mut OutlineFluidRay(self, std::marker::PhantomData),
+            start,
+            end,
+            RayBlockMode::Outline,
+            RayFluidMode::Any,
+            256,
+        )
+        .ok()?;
+        (!hit.miss).then_some([hit.hit.location.x, hit.hit.location.y, hit.hit.location.z])
+    }
+}
+impl<'g, G: crate::game::SideGame<'g>> BoatItemHitGameExt<'g> for G {}
+
+use crate::game::native_surface::BoatFrictionGameExt as _;
+
+pub trait BoatStatusGameExt<'g>: crate::game::SideGame<'g> {
+    fn boat_status(
+        &self,
+        b: &Boat,
+        water_level: &mut f64,
+        land_friction: &mut f32,
+    ) -> Status {
+        let bb = b.bounds();
+        let (lo, hi) = (bb.min_position(), bb.max_position());
+        // isUnderwater
+        let max_y = hi.y + 0.001;
+        let mut under = false;
+        for x in lo.x.floor() as i32..hi.x.ceil() as i32 {
+            for y in hi.y.floor() as i32..max_y.ceil() as i32 {
+                for z in lo.z.floor() as i32..hi.z.ceil() as i32 {
+                    if let Some((h, source)) = self.fluid_height(x, y, z)
+                        && max_y < f64::from(y as f32 + h)
+                    {
+                        if !source {
+                            *water_level = hi.y;
+                            return Status::UnderFlowingWater;
+                        }
+                        under = true;
+                    }
+                }
+            }
+        }
+        if under {
+            *water_level = hi.y;
+            return Status::UnderWater;
+        }
+        // checkInWater
+        let mut in_water = false;
+        *water_level = -f64::MAX;
+        for x in lo.x.floor() as i32..hi.x.ceil() as i32 {
+            for y in lo.y.floor() as i32..(lo.y + 0.001).ceil() as i32 {
+                for z in lo.z.floor() as i32..hi.z.ceil() as i32 {
+                    if let Some((h, _)) = self.fluid_height(x, y, z) {
+                        // `float height = y + getHeight`: summed in float.
+                        let level = f64::from(y as f32 + h);
+                        *water_level = water_level.max(level);
+                        in_water |= lo.y < level;
+                    }
+                }
+            }
+        }
+        if in_water {
+            return Status::InWater;
+        }
+
+        let friction = self.boat_ground_friction(b, bb);
+        if friction > 0.0 {
+            *land_friction = friction;
+            Status::OnLand
+        } else {
+            Status::InAir
+        }
+    }
+
+    /// `AbstractBoat.getGroundFriction`: average friction of the blocks whose
+    /// collision shape meets a thin slab just under the hull (lily pads skipped).
+    fn boat_ground_friction(&self, b: &Boat, bb: Aabb) -> f32 {
+        let (lo, hi) = (bb.min_position(), bb.max_position());
+        let ground = Aabb::new(
+            Vec3::new(lo.x, lo.y - 0.001, lo.z),
+            Vec3::new(hi.x, lo.y, hi.z),
+        );
+        let (g_lo, g_hi) = (ground.min_position(), ground.max_position());
+        let (x0, x1, y0, y1, z0, z1) = (
+            (g_lo.x.floor() - 1.0) as i32,
+            (g_hi.x.ceil() + 1.0) as i32,
+            (g_lo.y.floor() - 1.0) as i32,
+            (g_hi.y.ceil() + 1.0) as i32,
+            (g_lo.z.floor() - 1.0) as i32,
+            (g_hi.z.ceil() + 1.0) as i32,
+        );
+        let slab = VoxelShape::from_box(ground).unwrap_or_else(|_| VoxelShape::empty());
+        let mut scene = SceneCollisions {
+            world: &self.world,
+            binding: self.collision,
+            subject: None,
+        };
+        let (mut friction, mut count) = (0.0f32, 0);
+        for x in x0..x1 {
+            for z in z0..z1 {
+                let edges = i32::from(x == x0 || x == x1 - 1) + i32::from(z == z0 || z == z1 - 1);
+                if edges == 2 {
+                    continue;
+                }
+                for y in y0..y1 {
+                    if edges == 1 && (y == y0 || y == y1 - 1) {
+                        continue;
+                    }
+                    let state = self.world.block(x, y, z);
+                    let f = self.res.facts().get(state);
+                    if f.name.as_ref() == "minecraft:air" || f.has_class("LilyPadBlock") {
+                        continue;
+                    }
+                    let Ok(shape) = self.collision.collision_shape_with_context(
+                        &mut scene,
+                        state,
+                        BlockPos::new(x, y, z),
+                        &CollisionContext::empty(false),
+                    ) else {
+                        continue;
+                    };
+                    let world_shape =
+                        shape.moved(Vec3::new(f64::from(x), f64::from(y), f64::from(z)));
+                    if world_shape
+                        .join_is_not_empty(&slab, ShapeOp::AND)
+                        .unwrap_or(false)
+                    {
+                        friction +=
+                            self.boat_friction(b, BlockPos::new(x, y, z), state, f.friction);
+                        count += 1;
+                    }
+                }
+            }
+        }
+        if count > 0 {
+            friction / count as f32
+        } else {
+            0.0
+        }
+    }
+
+    /// `AbstractBoat.tick`: `status = getStatus()` for a boat this window does not tick.
+    fn refresh_boat_status(&mut self, i: usize) {
+        let (mut water_level, mut land_friction) = (0.0, 0.0);
+        let status = self.boat_status(&self.boats[i], &mut water_level, &mut land_friction);
+        self.boats.update(i, |b| b.status = status);
+        self.boats.update(i, |b| b.status_known = true);
+        self.boats.update(i, Boat::tick_submersion);
+    }
+}
+impl<'g, G: crate::game::SideGame<'g>> BoatStatusGameExt<'g> for G {}

@@ -446,7 +446,7 @@ impl ServerGame<'_> {
             // Owned removal without drops or notifications: the carrier
             // takes the entity whole, and the cell becomes air through
             // the level's own write path.
-            self.common.with_level(|_b, level, ticks| {
+            self.with_level(|_b, level, ticks| {
                 level.remove_block_entity(*pos, old, false);
                 _b.set_block(level, ticks, *pos, air, 3);
             });
@@ -592,7 +592,7 @@ impl ServerGame<'_> {
                 .block_entities
                 .contains_key(&(world[0], world[1], world[2]));
             let replaceable =
-                self.common.with_level(|b, _level, _ticks| b.facts(state).flags & REPLACEABLE != 0);
+                self.with_level(|b, _level, _ticks| b.facts(state).flags & REPLACEABLE != 0);
             if sunrise_gameplay_common::game::spill_common::saved_entity(&self.common.world, world).is_some() {
                 return Err(TransferError::SavedBlockEntity(world));
             }
@@ -702,12 +702,12 @@ impl ServerGame<'_> {
             // The block through the level's own write path — neighbour
             // updates included — then the entity from the carrier's
             // payload.
-            self.common.with_level(|_b, level, ticks| {
+            self.with_level(|_b, level, ticks| {
                 _b.set_block(level, ticks, pos, state, 3);
             });
             self.common.world.modified.insert((pos.x >> 4, pos.z >> 4));
             if let Some(Tag::Compound(map)) = cell.after.entity.clone() {
-                self.common.with_level(|_b, level, _ticks| {
+                self.with_level(|_b, level, _ticks| {
                     level.load_block_entity(pos, map);
                 });
             }
@@ -781,7 +781,7 @@ impl ServerGame<'_> {
             let pos = cell.world;
             let state = self.common.world.block(pos[0], pos[1], pos[2]);
             let replaceable =
-                self.common.with_level(|b, _level, _ticks| b.facts(state).flags & REPLACEABLE != 0);
+                self.with_level(|b, _level, _ticks| b.facts(state).flags & REPLACEABLE != 0);
             let entity = self
                 .common.world
                 .block_entities
@@ -1160,5 +1160,7 @@ mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

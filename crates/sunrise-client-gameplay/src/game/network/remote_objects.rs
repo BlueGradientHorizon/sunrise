@@ -432,7 +432,7 @@ impl ClientGame<'_> {
         mut turn: impl FnMut(u32, f32) -> f32,
         mut lerp_cart: impl FnMut(&mut super::minecarts::Minecart) -> bool,
     ) {
-        let improved = self.common.minecart_improvements();
+        let improved = self.minecart_improvements();
         let mut cart = 0;
         while cart < self.common.carts.len() {
             let (id, from, to, kind, fuse, fuel) = self.common.carts.update(cart, |c| {
@@ -454,7 +454,7 @@ impl ClientGame<'_> {
             // NewMinecartBehavior.tick: sample the rail at the interpolated position,
             // even when this tick has no new movement.
             if improved {
-                let [x, y, z] = self.common.rail_block(to, true);
+                let [x, y, z] = self.rail_block(to, true);
                 let on_rails = self.is_rail(self.common.world.block(x, y, z));
                 if self.common.carts[cart].on_rails != on_rails {
                     self.common.carts.update(cart, |c| c.on_rails = on_rails);
@@ -685,3 +685,7 @@ use sunrise_gameplay_common::game::cart_rails::CartRailsGameExt1 as _;
 use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
 
 use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;
+
+use sunrise_gameplay_common::game::minecarts::MinecartRailGameExt as _;

@@ -116,7 +116,7 @@ impl crate::game::ServerGame<'_> {
         // simulation distance presses, burns and slows on nothing.
         let entity_ticking = self.entity_ticking_area();
         let first_contact_drop = self.server.next_entity + 1;
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             // LilyPadBlock.entityInside: a boat inside a lily pad breaks it.
             scratch.boat_cells.clear();
             for bounds in level.boat_trigger_boxes() {
@@ -225,10 +225,10 @@ impl crate::game::ServerGame<'_> {
             self.tick_scheduled()?;
         }
         // ServerLevel.tick runs DistanceManager.runAllUpdates after scheduled ticks and before random ticks and entities.
-        self.common.update_chunk_tickets();
+        self.update_chunk_tickets();
         self.random_tick_chunks(&mut scratch.ticking);
         sunrise_threads::work::clear_work();
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             // The masks the random ticks will read, built on helper threads first while the
             // parallel tick is on (`SUNRISE_PARALLEL_TICK`): the draws and ticks don't depend on them.
             if !debug && sunrise_sim::parallel::lanes() > 1 {
@@ -281,13 +281,13 @@ impl crate::game::ServerGame<'_> {
         let sent = self.lan_broadcast_changes();
         laps.lap("tb_broadcast");
         self.save_chunks_eagerly();
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             b.run_block_events(level, ticks);
         });
         laps.lap("tb_block_events");
         self.server_process_level_events()?;
         laps.lap("tb_level_events");
-        self.common.sync_moving_pistons();
+        self.sync_moving_pistons();
         laps.lap("tb_pistons");
         Ok(sent)
     }
@@ -346,11 +346,11 @@ impl crate::game::ServerGame<'_> {
 
     /// `ServerLevel.tick`: moving block entities push after entity travel.
     pub(in crate::game) fn tick_moving_pistons(&mut self) -> Result<()> {
-        self.common.with_level(|b, level, ticks| b.tick_block_entities(level, ticks));
+        self.with_level(|b, level, ticks| b.tick_block_entities(level, ticks));
         let pushes = std::mem::take(&mut self.common.block_ticks.piston_pushes);
         self.push_piston_entities(pushes);
         self.server_process_level_events()?;
-        self.common.sync_moving_pistons();
+        self.sync_moving_pistons();
         Ok(())
     }
 
@@ -361,7 +361,7 @@ impl crate::game::ServerGame<'_> {
         for fluids in [false, true] {
             let mut laps = sunrise_level::spans::laps();
             let name = if fluids { "tb_fluids" } else { "tb_scheduled" };
-            if !self.common.with_level(|b, level, ticks| b.scheduled_begin(level, ticks, fluids)) {
+            if !self.with_level(|b, level, ticks| b.scheduled_begin(level, ticks, fluids)) {
                 laps.lap(name);
                 continue;
             }
@@ -369,7 +369,7 @@ impl crate::game::ServerGame<'_> {
                 // Due ticks run against one level while each leaves nothing for
                 // the game to apply (level events, spilled items or orbs): the
                 // next one would see the same level built again.
-                let more = self.common.with_level(|b, level, ticks| {
+                let more = self.with_level(|b, level, ticks| {
                     loop {
                         let more = b.scheduled_step(level, ticks, fluids);
                         if !more || !level.events.is_empty() || !level.spill.is_empty() {
@@ -384,11 +384,13 @@ impl crate::game::ServerGame<'_> {
                     break;
                 }
             }
-            self.common.with_level(|b, _, ticks| b.scheduled_finish(ticks, fluids));
+            self.with_level(|b, _, ticks| b.scheduled_finish(ticks, fluids));
             laps.lap(name);
         }
         Ok(())
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::piston_push::PistonPushGameExt1 as _;

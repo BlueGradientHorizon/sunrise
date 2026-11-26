@@ -120,7 +120,7 @@ impl crate::game::ServerGame<'_> {
         let mut filled = state;
         filled.properties.insert("eye".into(), "true".into());
         let id = registry.resolve(&filled)?;
-        self.common.level_set(hit.pos, id)?;
+        self.level_set(hit.pos, id)?;
         // Block.pushEntitiesUp: the eye raises the frame's top from 13/16 to a full block.
         if let Some(p) = self.common.player.as_mut() {
             let top = f64::from(hit.pos[1]) + 1.0;
@@ -144,10 +144,10 @@ impl crate::game::ServerGame<'_> {
                 for dx in -1..=1 {
                     let p = [c[0] + dx, c[1], c[2] + dz];
                     let at = BlockPos::new(p[0], p[1], p[2]);
-                    self.common.with_level(|b, level, ticks| {
+                    self.with_level(|b, level, ticks| {
                         b.destroy_block(level, ticks, at, true);
                     });
-                    self.common.set_state_named(p, "minecraft:end_portal", &[])?;
+                    self.set_state_named(p, "minecraft:end_portal", &[])?;
                 }
             }
             self.server_process_level_events()?;
@@ -205,7 +205,7 @@ impl crate::game::ServerGame<'_> {
     /// End portals, End gateways and the exit portal, once per tick.
     pub(in crate::game::server_side) fn tick_end(&mut self) -> Result<()> {
         self.common.end.gateway_cooldown = self.common.end.gateway_cooldown.saturating_sub(1);
-        if self.common.dimension_type().has_ender_dragon_fight {
+        if self.dimension_type().has_ender_dragon_fight {
             // The fireballs fly with the other projectiles; the breath
             // clouds tick here, once.
             self.tick_breath();
@@ -216,7 +216,7 @@ impl crate::game::ServerGame<'_> {
         self.tick_crystals();
         self.clear_crystal_fire();
         self.tick_eyes();
-        if self.common.dimension_type().has_ender_dragon_fight {
+        if self.dimension_type().has_ender_dragon_fight {
             self.ensure_exit_portal()?;
         }
         Ok(())
@@ -312,7 +312,7 @@ impl crate::game::ServerGame<'_> {
                         };
                         if &*self.block_name(p) != name {
                             // Portal arrivals rebuild the platform with drops enabled.
-                            self.common.with_level(|b, level, ticks| {
+                            self.with_level(|b, level, ticks| {
                                 b.destroy_block(
                                     level,
                                     ticks,
@@ -320,7 +320,7 @@ impl crate::game::ServerGame<'_> {
                                     true,
                                 );
                             });
-                            self.common.set_state_named(p, name, &[])?;
+                            self.set_state_named(p, name, &[])?;
                         }
                     }
                 }
@@ -513,12 +513,12 @@ impl crate::game::ServerGame<'_> {
                     } else {
                         "minecraft:air"
                     };
-                    self.common.set_state_named([x, y, z], name, &[])?;
+                    self.set_state_named([x, y, z], name, &[])?;
                 }
             }
         }
         for dy in 0..4 {
-            self.common.set_state_named(
+            self.set_state_named(
                 [origin[0], origin[1] + dy, origin[2]],
                 "minecraft:bedrock",
                 &[],
@@ -537,7 +537,7 @@ impl crate::game::ServerGame<'_> {
             let mut state = registry.state(default).cloned().ok_or("wall torch")?;
             state.properties.insert("facing".into(), facing.into());
             let id = registry.resolve(&state)?;
-            self.common.level_set([origin[0] + d[0], origin[1] + 2, origin[2] + d[1]], id)?;
+            self.level_set([origin[0] + d[0], origin[1] + 2, origin[2] + d[1]], id)?;
         }
         Ok(())
     }
@@ -558,7 +558,7 @@ impl crate::game::ServerGame<'_> {
                     } else {
                         "minecraft:air"
                     };
-                    self.common.set_state_named([origin[0] + x, origin[1] + y, origin[2] + z], name, &[])?;
+                    self.set_state_named([origin[0] + x, origin[1] + y, origin[2] + z], name, &[])?;
                 }
             }
         }
@@ -810,7 +810,7 @@ impl crate::game::ServerGame<'_> {
             for x in (-size).floor() as i32..=size.ceil() as i32 {
                 for z in (-size).floor() as i32..=size.ceil() as i32 {
                     if (x * x + z * z) as f32 <= (size + 1.0) * (size + 1.0) {
-                        self.common.set_state_named(
+                        self.set_state_named(
                             [origin[0] + x, origin[1] + y, origin[2] + z],
                             "minecraft:end_stone",
                             &[],
@@ -1353,6 +1353,8 @@ pub(in crate::game) mod tests {
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;
 
 use sunrise_gameplay_common::game::block_props::BlockPropsGameExt2 as _;
 

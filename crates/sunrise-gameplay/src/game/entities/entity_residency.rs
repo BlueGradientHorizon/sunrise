@@ -199,6 +199,6 @@ impl crate::game::ServerGame<'_> {
         creatures.projectiles,
         resident_entities.knots,
         resident_entities.general.rows,
-        side.others.0
+        server.others.0
     );
 }

@@ -217,8 +217,8 @@ impl crate::game::ClientGame<'_> {
         };
         let has_part = asks_mods
             && mod_api::__private::item_listens(mod_api::HookId::PlacementContext, &stack.item);
-        let placer = has_part.then(|| self.common.placement_placer()).flatten();
-        self.common.with_level(|b, level, ticks| {
+        let placer = has_part.then(|| self.placement_placer()).flatten();
+        self.with_level(|b, level, ticks| {
             let mut dry = DryLevel::new(level);
             dry.reads = Some(ticks);
             dry.asks_mods = asks_mods;
@@ -393,7 +393,7 @@ impl crate::game::ClientGame<'_> {
             };
             let pos = sunrise_core::position::BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]);
             let creative = self.common.creative;
-            return self.common.with_level(|b, level, ticks| {
+            return self.with_level(|b, level, ticks| {
                 let mut level = DryLevel::new(level);
                 let picked = b.bucket_pickup(&mut level, ticks, pos, creative).is_some();
                 (
@@ -415,7 +415,7 @@ impl crate::game::ClientGame<'_> {
         let beside = Some(sunrise_core::position::BlockPos::new(x, y, z));
         let sneaking = self.remote_shift_down();
         let user = self.bucket_liquid_user();
-        self.common.with_level(|b, level, ticks| {
+        self.with_level(|b, level, ticks| {
             let mut level = DryLevel::new(level);
             let emptied = b.bucket_empty_as(
                 &mut level, ticks, pos, beside, content, sound, sneaking, user,
@@ -687,6 +687,8 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::cake_eligibility::CakeEligibilityGameExt1 as _;
 
 use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
@@ -694,5 +696,7 @@ use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
 use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::placement_context::PlacementContextGameExt1 as _;
 
 use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

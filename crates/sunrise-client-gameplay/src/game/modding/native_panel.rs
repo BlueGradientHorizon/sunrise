@@ -604,7 +604,7 @@ impl crate::game::ClientGame<'_> {
     /// The mod showing a panel, with its items made into stacks once per
     /// change; none while no mod shows one or no container screen is up.
     fn browser_sync(&mut self) -> Option<Owner> {
-        if !matches!(self.side.screen, Screen::Inventory | Screen::Creative)
+        if !matches!(self.client.screen, Screen::Inventory | Screen::Creative)
             || self.client.title.0.is_some()
         {
             return None;
@@ -1384,7 +1384,7 @@ impl crate::game::ClientGame<'_> {
     /// A key `key` (`key.keyboard.r`) went down: over an item on a container
     /// screen, a native mod's panel hears it as a `Key` event.
     pub(in crate::game) fn native_panel_key(&mut self, key: &str) {
-        if !matches!(self.side.screen, Screen::Inventory | Screen::Creative)
+        if !matches!(self.client.screen, Screen::Inventory | Screen::Creative)
             || self.client.title.0.is_some()
             || self.mod_browser_typing()
         {

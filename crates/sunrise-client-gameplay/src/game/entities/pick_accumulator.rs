@@ -3,9 +3,19 @@ use crate::game::ClientGame;
 
 pub(in crate::game) use sunrise_gameplay_common::game::pick_ray::{PickAccumulator, PickCandidate};
 
-impl PickAccumulator {
+pub(in crate::game) trait PickDispatchExt: Sized {
+fn recording(
+        max_distance_sq: f64,
+        mut candidates: Vec<PickCandidate>,
+    ) -> Self;
+fn dispatch(
+        &mut self,
+        game: &mut Game<'_, crate::game::client_side::ClientState>,
+    ) -> Vec<PickCandidate>;
+}
+impl PickDispatchExt for PickAccumulator {
     /// Reuses the caller's candidate buffer when `CanRiderInteract` is subscribed.
-    pub(in crate::game::client_side) fn recording(
+     fn recording(
         max_distance_sq: f64,
         mut candidates: Vec<PickCandidate>,
     ) -> Self {
@@ -13,7 +23,7 @@ impl PickAccumulator {
         Self::recording_with(max_distance_sq, candidates)
     }
 
-    pub(in crate::game::client_side) fn dispatch(
+     fn dispatch(
         &mut self,
         game: &mut crate::game::ClientGame<'_>,
     ) -> Vec<PickCandidate> {
@@ -130,3 +140,5 @@ impl ClientGame<'_> {
 use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
+use crate::game::client_side::pick_ray_client::PickRecordingExt as _;

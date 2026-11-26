@@ -916,13 +916,7 @@ impl GameLevel<'_> {
 
 /// Helpers for native mods, kept as stable as the hook points.
 // Native mods use these; nothing in Sunrise does.
-impl<__Side: crate::game::Side> Game<'_, __Side> {
-    /// The server-owned holders' attachments; `TYPE.get(host, holder)` reads
-    /// one. On a client it is the copy of what the server synced: `set` and
-    /// `remove` change only the copy.
-    pub(in crate::game) fn attachments(&mut self) -> &mut dyn AttachmentStore {
-        crate::game::Side::attachment_store(self)
-    }
+impl crate::game::CommonGame<'_> {
     /// Read a loaded, light-emitting block. No implicit chunk loading.
     pub(in crate::game) fn lit_block_name(&self, pos: [i32; 3]) -> Option<mod_api::BlockKey> {
         self.world
@@ -935,14 +929,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             })
             .filter(|f| f.emission > 0)
             .and_then(|f| mod_api::__private::block_key(&f.name))
-    }
-    /// Whether the player left mod `mod_id` on in Options > Mods. A mod
-    /// turned off does nothing (check this first in each hook) until the
-    /// launcher's next build leaves it out.
-    pub(in crate::game) fn on(&self, mod_id: &str) -> bool {
-        !self
-            .mods
-            .code_disabled(&self.side.mods_list().disabled, mod_id)
     }
     /// The most of the item `item` one slot holds (`Item.getDefaultMaxStackSize`),
     /// or `None` for an unknown item: for a mod's container that fills or
@@ -1002,6 +988,25 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     pub fn store_setting(&self, mod_id: &str, key: &str, value: &str) -> bool {
         mod_settings::store(&self.native_data_dir(mod_id), mod_id, key, value)
     }
+}
+
+/// Helpers for native mods, kept as stable as the hook points.
+// Native mods use these; nothing in Sunrise does.
+pub trait BaseGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+    /// The server-owned holders' attachments; `TYPE.get(host, holder)` reads
+    /// one. On a client it is the copy of what the server synced: `set` and
+    /// `remove` change only the copy.
+     fn attachments(&mut self) -> &mut dyn AttachmentStore {
+        <Self::State as crate::game::Side>::attachment_store(self)
+    }
+    /// Whether the player left mod `mod_id` on in Options > Mods. A mod
+    /// turned off does nothing (check this first in each hook) until the
+    /// launcher's next build leaves it out.
+     fn on(&self, mod_id: &str) -> bool {
+        !self
+            .mods
+            .code_disabled(&crate::game::Side::mods_list(self.side_state()).disabled, mod_id)
+    }
     /// The recipes of type `kind` (`minecraft:smelting`, `mymod:crusher`), vanilla's
     /// types and mods' own alike, from `data/<namespace>/recipe/*.json` of vanilla,
     /// the content mods (`.smod`) and the world's data packs, in file order: each
@@ -1017,7 +1022,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// single-player window included, sees vanilla's and the content mods' recipes,
     /// not the world's data packs', unless a mod had the server send it the type
     /// (`native_datapack_sync`).
-    pub(in crate::game) fn recipes_of_type(
+     fn recipes_of_type(
         &self,
         kind: &str,
     ) -> crate::game::api_values::RecipeListing {
@@ -1037,7 +1042,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// whether a stack fits. Items the game doesn't know are left out; None
     /// for missing tags, invalid inputs or when no named item is known, and
     /// outside a world. Existing-empty tags retain an empty ingredient.
-    pub(in crate::game) fn recipe_ingredient(
+     fn recipe_ingredient(
         &self,
         json: &str,
     ) -> Result<Option<Ingredient>, mod_api::RecipeJsonError> {
@@ -1074,7 +1079,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `minecraft:`), `count` (1 by default, up to 99) and `components`. None
     /// without an `id`, for an item the game doesn't know or a count outside
     /// that, and outside a world.
-    pub(in crate::game) fn recipe_result(
+     fn recipe_result(
         &self,
         json: &str,
     ) -> Result<Option<ItemStack>, mod_api::RecipeJsonError> {
@@ -1091,6 +1096,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         Ok(recipe_result(&json).filter(|s| self.items().get(&s.item).is_some()))
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> BaseGameExt1<'__sg> for G {}
+
 
 pub fn startup_setting(mod_id: &str, key: &str) -> Option<String> {
     if crate::game::another_mods(mod_id) {

@@ -1,4 +1,5 @@
 //! Shared `entity_size` helpers used by both server and client sizing passes.
+
 use crate::game::CommonGame;
 use mod_api::{EntityRef, Pose};
 use sunrise_sim::mobs::Mob;
@@ -14,9 +15,20 @@ pub fn synced_pose(m: &Mob) -> Pose {
 }
 
 impl crate::game::CommonGame<'_> {
+
+    pub(in crate::game) fn apply_body_size(
+        body: &mut sunrise_sim::motion::PlayerMotion,
+        answer: SizeAnswer,
+    ) {
+        body.size_answer = Some(answer);
+        body.dimensions = Dimensions::from_array(answer.effective());
+    }
+}
+
+pub trait EntitySizesCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Ask `entity_size` for an entity whose vanilla size in `pose` is `vanilla`, unless
     /// `previous` was already asked for both. `None`: nothing to ask, keep `previous`.
-    pub fn ask_entity_size(
+     fn ask_entity_size(
         &self,
         id: u32,
         pose: Pose,
@@ -41,7 +53,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// A body's pose or size changed since it was last asked: ask, and size it by the answer.
-    pub fn ask_body_size(
+     fn ask_body_size(
         &self,
         id: u32,
         body: &sunrise_sim::motion::PlayerMotion,
@@ -56,7 +68,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// Snapshot only the three candidate boxes the shared pose fit test asks about.
-    pub fn body_fit_sizes(
+     fn body_fit_sizes(
         &self,
         id: u32,
         body: &sunrise_sim::motion::PlayerMotion,
@@ -80,12 +92,8 @@ impl crate::game::CommonGame<'_> {
                 .or_else(|| previous.filter(|answer| answer.asked(pose.into(), vanilla)))
         })
     }
-
-    pub(in crate::game) fn apply_body_size(
-        body: &mut sunrise_sim::motion::PlayerMotion,
-        answer: SizeAnswer,
-    ) {
-        body.size_answer = Some(answer);
-        body.dimensions = Dimensions::from_array(answer.effective());
-    }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> EntitySizesCommonGameExt1<'__sg> for G {}
+
+
+use crate::game::native_hooks::entity_size::GameHooks as _;

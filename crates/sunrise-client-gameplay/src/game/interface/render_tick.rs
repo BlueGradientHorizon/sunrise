@@ -169,15 +169,15 @@ impl crate::game::ClientGame<'_> {
 
     /// `GameRenderer`'s cardinal light: the level's type uses the Nether's diffuse lights.
     pub(in crate::game) fn nether_lighting(&self) -> bool {
-        self.common.dimension_type().cardinal_light == CardinalLight::Nether
+        self.dimension_type().cardinal_light == CardinalLight::Nether
     }
     /// `SkyRenderer`'s overworld skybox: sun, moon and stars.
     pub(in crate::game::client_side) fn overworld_skybox(&self) -> bool {
-        self.common.dimension_type().skybox == Skybox::Overworld
+        self.dimension_type().skybox == Skybox::Overworld
     }
     /// `SkyRenderer`'s End skybox and its flashes.
     pub(in crate::game::client_side) fn end_skybox(&self) -> bool {
-        self.common.dimension_type().skybox == Skybox::End
+        self.dimension_type().skybox == Skybox::End
     }
     /// `LevelRenderer.prepareTranslucents`: prepare the clouds the frame draws.
     pub(in crate::game::client_side) fn frame_cloud_uv(
@@ -822,15 +822,15 @@ impl crate::game::ClientGame<'_> {
         let marker =
             marker_particle_target(self.common.mode, self.common.stack_in(self.common.selected));
         // The day timeline: firefly bush sounds from 12600 to 23400.
-        let firefly_bush_sounds = self.common.dimension_type().has_timeline("minecraft:day")
+        let firefly_bush_sounds = self.dimension_type().has_timeline("minecraft:day")
             && (12600..23401).contains(&self.common.world.day_time.rem_euclid(24000));
         // EnvironmentAttributes.CREAKING_ACTIVE: the same overworld night.
-        let creaking_active = self.common.dimension_type().has_timeline("minecraft:day")
+        let creaking_active = self.dimension_type().has_timeline("minecraft:day")
             && (12600..23401).contains(&self.common.world.day_time.rem_euclid(24000));
         // Level.isThundering: a thunder level above 0.9 where the sky is open.
         let thundering = self.can_have_weather() && self.common.world.weather.levels(1.0).1 > 0.9;
         let sky_darken = self.sky_darken();
-        let ultrawarm = self.common.dimension_type().water_evaporates;
+        let ultrawarm = self.dimension_type().water_evaporates;
         // Whether the picks ask for the mod block parts' `animate_tick`.
         let parts = self.mod_animate_parts();
         let block = eye.map(|e| e.map(|v| v.floor() as i32));
@@ -860,7 +860,7 @@ impl crate::game::ClientGame<'_> {
                     .as_ref()
                     .and_then(|r| r.level_environment.as_deref()),
                 &self.common.res,
-                &self.common.dimension_type().id,
+                &self.dimension_type().id,
             );
             let ui = &self.common.ui;
             let remote = self.client.remote.as_ref();
@@ -1460,6 +1460,10 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
 
+use sunrise_gameplay_common::game::GameGameExt1 as _;
+
 use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
 
 use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use crate::game::client_side::remote_client::minecarts::CartLerpClientExt as _;

@@ -231,8 +231,6 @@ pub mod block_items;
 pub mod block_notifications;
 #[path = "game/runtime/blockctl.rs"]
 pub mod blockctl;
-#[path = "game/interface/books_common.rs"]
-pub mod books_common;
 #[path = "game/mobs/breezes.rs"]
 pub mod breezes;
 #[path = "game/blocks/brush.rs"]
@@ -249,8 +247,6 @@ pub mod cartography;
 pub mod cauldron_prediction;
 #[path = "game/blocks/cauldrons.rs"]
 pub mod cauldrons;
-#[path = "game/interface/chat_common.rs"]
-pub mod chat_common;
 #[path = "game/world/class_tags.rs"]
 pub mod class_tags;
 #[cfg(test)]
@@ -258,26 +254,38 @@ pub mod class_tags;
 pub mod class_tags_tests;
 #[path = "game/items/clip_ray.rs"]
 pub mod clip_ray;
-#[path = "game/world/clocks.rs"]
-pub mod clocks;
 #[path = "game/entities/closest_space.rs"]
 pub mod closest_space;
 #[path = "game/entities/collision_source.rs"]
 pub mod collision_source;
+#[path = "game/interface/books_common.rs"]
+pub mod books_common;
+#[path = "game/interface/chat_common.rs"]
+pub mod chat_common;
+#[path = "game/world/clocks.rs"]
+pub mod clocks;
 #[path = "game/administration/command_blocks_common.rs"]
 pub mod command_blocks_common;
 #[path = "game/interface/command_registries.rs"]
 pub mod command_registries;
 #[path = "game/administration/commands_common.rs"]
 pub mod commands_common;
+#[path = "game/blocks/machines/crafter_common.rs"]
+pub mod crafter_common;
+#[path = "game/world/integrated_common.rs"]
+pub mod integrated_common;
+#[path = "game/runtime/memory_common.rs"]
+pub mod memory_common;
+#[path = "game/items/stack_names.rs"]
+pub mod stack_names;
+#[path = "game/world/world_entry_common.rs"]
+pub mod world_entry_common;
 #[path = "game/world/condition_reload_state.rs"]
 pub mod condition_reload_state;
 #[path = "game/modding/consume_effect_dispatch.rs"]
 pub mod consume_effect_dispatch;
 #[path = "game/mobs/copper_golems.rs"]
 pub mod copper_golems;
-#[path = "game/blocks/machines/crafter_common.rs"]
-pub mod crafter_common;
 #[path = "game/interface/creative_screen.rs"]
 pub mod creative_screen;
 #[path = "game/mobs/creatures/mod.rs"]
@@ -305,58 +313,32 @@ pub mod entity_type_rows;
 pub mod equip_answers;
 #[path = "game/runtime/execution_role.rs"]
 pub mod execution_role;
-#[path = "game/world/integrated_common.rs"]
-pub mod integrated_common;
 #[path = "game/modding/item_snapshot.rs"]
 pub mod item_snapshot;
-#[path = "game/runtime/memory_common.rs"]
-pub mod memory_common;
-#[path = "game/items/stack_names.rs"]
-pub mod stack_names;
 #[path = "game/world/tables.rs"]
 pub mod tables;
-#[path = "game/world/world_entry_common.rs"]
-pub mod world_entry_common;
 #[allow(unused_imports)]
 pub use tables::level_suffocation_of;
-#[path = "game/modding/api_values_common.rs"]
-pub mod api_values_common;
-#[path = "game/blocks/beacon_common.rs"]
-pub mod beacon_common;
-#[path = "game/mobs/beehives_common.rs"]
-pub mod beehives_common;
-#[path = "game/blocks/block_edits_common.rs"]
-pub mod block_edits_common;
-#[path = "game/blocks/block_entity_anims_common.rs"]
-pub mod block_entity_anims_common;
-#[path = "game/blocks/block_props.rs"]
-pub mod block_props;
-#[path = "game/entities/boats_common.rs"]
-pub mod boats_common;
-#[path = "game/blocks/bookshelves_common.rs"]
-pub mod bookshelves_common;
-#[path = "game/mobs/dragon_common.rs"]
-pub mod dragon_common;
-#[path = "game/entities/entity_common.rs"]
-pub mod entity_common;
-#[path = "game/modding/entity_initialization_common.rs"]
-pub mod entity_initialization_common;
-#[path = "game/modding/entity_sizes_common.rs"]
-pub mod entity_sizes_common;
-#[path = "game/mobs/fangs_common.rs"]
-pub mod fangs_common;
+#[path = "game/side_ops/mod.rs"]
+pub mod side_ops;
 #[path = "game/entities/fireworks.rs"]
 pub mod fireworks;
 #[path = "game/modding/fluid_interactions.rs"]
 pub mod fluid_interactions;
-#[path = "game/interface/game_mode_common.rs"]
-pub mod game_mode_common;
 #[path = "game/items/glide_wear.rs"]
 pub mod glide_wear;
 #[path = "game/modding/global_loot_modifiers.rs"]
 pub mod global_loot_modifiers;
+#[path = "game/interface/game_mode_common.rs"]
+pub mod game_mode_common;
 #[path = "game/items/held_items.rs"]
 pub mod held_items;
+#[path = "game/modding/native_entity_refs_common.rs"]
+pub mod native_entity_refs_common;
+#[path = "game/entities/pick_ray.rs"]
+pub mod pick_ray;
+#[path = "game/player_identity.rs"]
+pub mod player_identity;
 #[path = "game/interface/hit.rs"]
 pub mod hit;
 pub mod host;
@@ -374,8 +356,6 @@ pub mod item_entity_spawn;
 pub mod item_use_stacks;
 #[path = "game/administration/jigsaw_blocks.rs"]
 pub mod jigsaw_blocks;
-#[path = "game/blocks/jukebox_common.rs"]
-pub mod jukebox_common;
 #[path = "game/network/lan_actions/mod.rs"]
 pub mod lan_actions;
 #[path = "game/runtime/launch_api.rs"]
@@ -386,8 +366,6 @@ pub mod launch_options;
 pub mod level_access;
 #[path = "game/modding/level_control_hooks.rs"]
 pub mod level_control_hooks;
-#[path = "game/world/light_emission.rs"]
-pub mod light_emission;
 #[path = "game/modding/load_conditions.rs"]
 pub mod load_conditions;
 #[path = "game/blocks/location_world.rs"]
@@ -402,14 +380,10 @@ pub mod menu_clicks;
 pub mod minecarts;
 #[path = "game/modding/mod_api_host.rs"]
 pub mod mod_api_host;
-#[path = "game/modding/mod_api_host_common.rs"]
-pub mod mod_api_host_common;
 #[path = "game/modding/mod_crafting_commands.rs"]
 pub mod mod_crafting_commands;
 #[path = "game/modding/mods/mod.rs"]
 pub mod mods;
-#[path = "game/mobs/mounts_common.rs"]
-pub mod mounts_common;
 #[path = "game/entities/move_gate.rs"]
 pub mod move_gate;
 #[path = "game/blocks/moving_pistons.rs"]
@@ -430,8 +404,6 @@ pub mod native_block_tables;
 pub mod native_book_displays;
 #[path = "game/modding/native_book_placement.rs"]
 pub mod native_book_placement;
-#[path = "game/modding/native_bots_common.rs"]
-pub mod native_bots_common;
 #[path = "game/modding/native_cauldron_contents.rs"]
 pub mod native_cauldron_contents;
 #[path = "game/modding/native_chunk_generator.rs"]
@@ -459,8 +431,6 @@ pub mod native_effect_category;
 #[cfg(test)]
 #[path = "game/modding/native_entity_move_tests.rs"]
 pub mod native_entity_move_tests;
-#[path = "game/modding/native_entity_refs_common.rs"]
-pub mod native_entity_refs_common;
 #[path = "game/modding/native_entity_selectors.rs"]
 pub mod native_entity_selectors;
 #[path = "game/modding/native_feature_types.rs"]
@@ -473,8 +443,6 @@ pub mod native_game_rules_read;
 pub mod native_give_stack;
 #[path = "game/modding/native_ground.rs"]
 pub mod native_ground;
-#[path = "game/modding/native_harvest_queries_common.rs"]
-pub mod native_harvest_queries_common;
 #[path = "game/modding/native_hit_effects.rs"]
 pub mod native_hit_effects;
 pub mod native_hooks;
@@ -492,8 +460,6 @@ pub mod native_item_registry;
 pub mod native_knockback_credit;
 #[path = "game/modding/native_level_signals.rs"]
 pub mod native_level_signals;
-#[path = "game/modding/native_lifecycle_common.rs"]
-pub mod native_lifecycle_common;
 #[path = "game/modding/native_living_absorption.rs"]
 pub mod native_living_absorption;
 #[path = "game/modding/native_living_blocking.rs"]
@@ -503,8 +469,6 @@ pub mod native_living_body;
 #[cfg(test)]
 #[path = "game/modding/native_living_travel_tests.rs"]
 pub mod native_living_travel_tests;
-#[path = "game/modding/native_menu_refs_common.rs"]
-pub mod native_menu_refs_common;
 #[path = "game/modding/native_motion.rs"]
 pub mod native_motion;
 #[path = "game/modding/native_namespaced_id.rs"]
@@ -549,10 +513,6 @@ pub mod native_world_columns;
 pub mod native_worldgen;
 #[path = "game/modding/native_worldgen_parts.rs"]
 pub mod native_worldgen_parts;
-#[path = "game/mobs/ominous_item_spawner/common.rs"]
-pub mod ominous_item_spawner_common;
-#[path = "game/modding/pack_finders/common.rs"]
-pub mod pack_finders_common;
 #[cfg(sunrise_parity_fixtures)]
 #[path = "game/parity_fixtures.rs"]
 pub mod parity_fixtures;
@@ -561,16 +521,8 @@ pub mod part_admission;
 #[cfg(test)]
 #[path = "game/modding/part_admission_tests.rs"]
 pub mod part_admission_tests;
-#[path = "game/entities/passengers_common.rs"]
-pub mod passengers_common;
 #[path = "game/modding/payload_transport.rs"]
 pub mod payload_transport;
-#[path = "game/entities/pick_entity_common.rs"]
-pub mod pick_entity_common;
-#[path = "game/entities/pick_ray.rs"]
-pub mod pick_ray;
-#[path = "game/mobs/piglins_common.rs"]
-pub mod piglins_common;
 #[path = "game/blocks/piston_carry.rs"]
 pub mod piston_carry;
 #[path = "game/world/piston_nbt.rs"]
@@ -579,10 +531,6 @@ pub mod piston_nbt;
 pub mod piston_push;
 #[path = "game/entities/player_equip.rs"]
 pub mod player_equip;
-#[path = "game/player_identity.rs"]
-pub mod player_identity;
-#[path = "game/blocks/potent_sulfur_common.rs"]
-pub mod potent_sulfur_common;
 #[path = "game/blocks/powder_snow.rs"]
 pub mod powder_snow;
 #[path = "game/items/primary_items.rs"]
@@ -613,10 +561,10 @@ pub mod scheduled_tasks;
 #[cfg(feature = "client")]
 #[path = "game/interface/screen_backgrounds.rs"]
 pub mod screen_backgrounds;
-#[path = "game/blocks/shelf_common.rs"]
-pub mod shelf_common;
-#[path = "game/side_ops/mod.rs"]
-pub mod side_ops;
+#[path = "game/blocks/block_entity_anims_common.rs"]
+pub mod block_entity_anims_common;
+#[path = "game/world/light_emission.rs"]
+pub mod light_emission;
 #[path = "game/modding/slot_rules.rs"]
 pub mod slot_rules;
 #[path = "game/interface/smithing_icons.rs"]
@@ -634,10 +582,6 @@ pub mod startup_options;
 pub mod startup_progress;
 #[path = "game/modding/state_resolver.rs"]
 pub mod state_resolver;
-#[path = "game/blocks/stations_common.rs"]
-pub mod stations_common;
-#[path = "game/world/storage_common.rs"]
-pub mod storage_common;
 #[path = "game/administration/structures.rs"]
 pub mod structures;
 #[path = "game/administration/test_entities.rs"]
@@ -665,13 +609,69 @@ pub mod weather;
 pub mod world_entry;
 #[path = "game/items/worn_boots.rs"]
 pub mod worn_boots;
-#[allow(unused_imports)]
-pub use held_items::interact_location;
-pub use hit::Hit;
+#[path = "game/modding/api_values_common.rs"]
+pub mod api_values_common;
+#[path = "game/blocks/beacon_common.rs"]
+pub mod beacon_common;
+#[path = "game/mobs/beehives_common.rs"]
+pub mod beehives_common;
+#[path = "game/blocks/block_edits_common.rs"]
+pub mod block_edits_common;
+#[path = "game/blocks/block_props.rs"]
+pub mod block_props;
+#[path = "game/entities/boats_common.rs"]
+pub mod boats_common;
+#[path = "game/blocks/bookshelves_common.rs"]
+pub mod bookshelves_common;
+#[path = "game/mobs/dragon_common.rs"]
+pub mod dragon_common;
+#[path = "game/entities/entity_common.rs"]
+pub mod entity_common;
+#[path = "game/modding/entity_initialization_common.rs"]
+pub mod entity_initialization_common;
+#[path = "game/modding/entity_sizes_common.rs"]
+pub mod entity_sizes_common;
+#[path = "game/mobs/fangs_common.rs"]
+pub mod fangs_common;
+#[path = "game/blocks/jukebox_common.rs"]
+pub mod jukebox_common;
+#[path = "game/modding/mod_api_host_common.rs"]
+pub mod mod_api_host_common;
+#[path = "game/mobs/mounts_common.rs"]
+pub mod mounts_common;
+#[path = "game/modding/native_bots_common.rs"]
+pub mod native_bots_common;
+#[path = "game/modding/native_harvest_queries_common.rs"]
+pub mod native_harvest_queries_common;
+#[path = "game/modding/native_lifecycle_common.rs"]
+pub mod native_lifecycle_common;
+#[path = "game/modding/native_menu_refs_common.rs"]
+pub mod native_menu_refs_common;
+#[path = "game/mobs/ominous_item_spawner/common.rs"]
+pub mod ominous_item_spawner_common;
+#[path = "game/modding/pack_finders/common.rs"]
+pub mod pack_finders_common;
+#[path = "game/entities/passengers_common.rs"]
+pub mod passengers_common;
+#[path = "game/entities/pick_entity_common.rs"]
+pub mod pick_entity_common;
+#[path = "game/mobs/piglins_common.rs"]
+pub mod piglins_common;
+#[path = "game/blocks/potent_sulfur_common.rs"]
+pub mod potent_sulfur_common;
+#[path = "game/blocks/shelf_common.rs"]
+pub mod shelf_common;
+#[path = "game/blocks/stations_common.rs"]
+pub mod stations_common;
+#[path = "game/world/storage_common.rs"]
+pub mod storage_common;
 #[allow(unused_imports)]
 pub use sunrise_gameplay_common::lan::idle as lan_idle;
 #[allow(unused_imports)]
 pub use sunrise_gameplay_common::{interaction_shapes, item_areas, mob_index};
+#[allow(unused_imports)]
+pub use held_items::interact_location;
+pub use hit::Hit;
 #[allow(unused_imports)]
 pub use sunrise_level::random_source;
 // `Action` here is the title screen's buttons (`title::Action`).
@@ -711,7 +711,21 @@ pub use sunrise_mod_package::selection::{Argument, LaunchArguments};
 pub use sunrise_sim::item_names::Names;
 #[allow(unused_imports)]
 pub use {
-    sunrise_game_data::Result,
+    sunrise_client::assets::RenderAssets, sunrise_client::audio::Audio,
+    sunrise_client::block_entity_render, sunrise_client::block_entity_render::BlockEntityRenderer,
+    sunrise_client::block_entity_render::CacheOptions,
+    sunrise_client::block_entity_render::Scene as BlockEntityScene,
+    sunrise_client::block_entity_render::StaticCacheFrameStats,
+    sunrise_client::block_entity_render::StaticSectionSnapshot, sunrise_client::creative::Creative,
+    sunrise_client::gfx::Frame, sunrise_client::gfx::Renderer,
+    sunrise_client::graphics::EntityCullingMode, sunrise_client::hud::HudAtlas,
+    sunrise_client::hud::HudBatch, sunrise_client::hud::rgba, sunrise_client::hud_layout,
+    sunrise_client::hud_overlays, sunrise_client::keymapping::KeyAction,
+    sunrise_client::keymapping::SNEAK, sunrise_client::keymapping::SPRINT,
+    sunrise_client::mesher::MeshTables, sunrise_client::mesher::Vertex, sunrise_client::models,
+    sunrise_client::mouse::LookOptions, sunrise_client::mouse::MouseLook,
+    sunrise_client::particles::Particle, sunrise_client::settings::Settings,
+    sunrise_client::title::Action, sunrise_client::title::Title, sunrise_game_data::Result,
     sunrise_items::blocks::BlockFacts, sunrise_items::blocks::Fluid,
     sunrise_items::items::ItemStack, sunrise_items::items::Items, sunrise_level::assets::Assets,
     sunrise_level::biome::Biomes, sunrise_level::collisions,
@@ -1773,6 +1787,7 @@ pub struct CommonGame<'a> {
     pub border: sunrise_level::worldborder::WorldBorder,
     pub adv: advancements_common::AdvState,
     pub fangs: fangs_common::FangState,
+    
 }
 /// The open world's dimensions past vanilla's three. One per process, as a window
 /// and its server thread name the same dimensions.
@@ -2140,50 +2155,12 @@ pub struct OrbFrame {
     up: glam::Vec3,
 }
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
+impl crate::game::CommonGame<'_> {
     /// `Level.canHaveWeather`, from the level's dimension type (sky light, no
     /// ceiling) and the End, which vanilla names by id. Every rain, thunder
     /// and lightning rule asks this, never the dimension's id.
     fn level_key(&self) -> sunrise_core::LevelKey {
         sunrise_core::LevelKey::builtin_or_overworld(self.dim.id())
-    }
-    /// The level's dimension type: a mod's or a data pack's own when it has one, else the
-    /// built-in level's.
-    pub fn dimension_type(&self) -> &sunrise_world::dimension_type::DimensionFacts {
-        // A client of a server has the facts its server sent for the level, which are its own,
-        // not the table the server's levels (in this process, for an integrated server) read.
-        let remote = side_ops::world::SideOps::side_remote_dimension_context(&self.side);
-        if let Some((_, Some(facts))) = remote {
-            return facts;
-        }
-        // Else the level the server named, whether or not the client has the mod that
-        // registered it (`self.dim` is then the Overworld).
-        let level = remote
-            .map(|(name, _)| name)
-            .filter(|level| !level.is_empty())
-            .unwrap_or_else(|| self.dim.id());
-        self.dimension_facts_for(
-            sunrise_core::LevelKey::parse(level).unwrap_or(sunrise_core::LevelKey::OVERWORLD),
-        )
-    }
-    /// A client only knows its current level's type; other keys use built-in defaults.
-    fn dimension_facts_for(
-        &self,
-        key: sunrise_core::LevelKey,
-    ) -> &sunrise_world::dimension_type::DimensionFacts {
-        use sunrise_world::dimension_type::DimensionFacts;
-        if let Some((name, facts)) =
-            side_ops::world::SideOps::side_remote_dimension_context(&self.side)
-        {
-            if sunrise_core::LevelKey::parse(name).ok() == Some(key)
-                && let Some(facts) = facts
-            {
-                return facts;
-            }
-            DimensionFacts::of_builtin_level(key)
-        } else {
-            DimensionFacts::of_level(key)
-        }
     }
     pub fn dimension_type_of(
         &self,
@@ -2247,12 +2224,261 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
         Some(b)
     }
+    /// What the window decides for its player's body every tick: the look
+    /// (Player.travel steers sprint-swimming by the pitch), Auto Jump (LocalPlayer.sendPosition), the slowdown of an
+    /// item in use (LocalPlayer.modifyInput), the helmet's Respiration
+    /// (decreaseAirSupply), the wings, leather boots on powder snow
+    /// (PowderSnowBlock.canEntityWalkOnPowderSnow), freeze-immune wear
+    /// (LivingEntity.canFreeze), the dimension's FAST_LAVA, the sleeping
+    /// pose and blindness (Player.isMobilityRestricted, which stops a sprint).
+    /// The window's or the guest's own body reads the item in its selected slot
+    /// (`getMainHandItem`) for the shapes that depend on it.
+    pub fn sync_main_hand(&mut self) {
+        let held = self
+            .inventory
+            .get(self.selected)
+            .and_then(Option::as_ref)
+            .filter(|stack| stack.count > 0)
+            .map(|stack| stack.item.clone());
+        if let Some(player) = self.player.as_mut() {
+            player.main_hand = held;
+        }
+    }
+    /// Where a loot roll at `origin` happens, for a mod's own loot kinds:
+    /// the block entity it may copy from, and this level as
+    /// `LootContext.getLevel` gives it (`Level.isRaining`: rain above 0.2;
+    /// `isThundering`: thunder above 0.9; neither where `canHaveWeather` is
+    /// false: a level with a ceiling or no sky light, or the End).
+    pub fn loot_place_at(
+        &self,
+        origin: [f64; 3],
+        block_entity: Option<sunrise_core::nbt::Tag>,
+    ) -> sunrise_world::loot::LootPlace {
+        let (block_entity, block_components) = match block_entity {
+            Some(saved) => {
+                let source = spill_common::source_snapshot(saved, None, None);
+                (Some(source.nbt), Some(source.components))
+            }
+            None => (None, None),
+        };
+        let (rain, thunder) = self.world.weather.levels(1.0);
+        // Level.canHaveWeather: sky light, no ceiling and not the End.
+        let weather =
+            self.world.shape.sky_light && !self.world.shape.has_ceiling && self.dim != Dim::End;
+        sunrise_world::loot::LootPlace {
+            origin: Some(origin),
+            block_entity,
+            block_components,
+            storage: Some(self.score.storage.snapshot()),
+            level: Some(sunrise_world::loot::LootLevel {
+                dimension: self.dim.id().to_owned(),
+                game_time: self.world.game_time,
+                day_time: self.world.day_time,
+                raining: weather && rain > 0.2,
+                thundering: weather && thunder > 0.9,
+            }),
+        }
+    }
+    /// The item entities `tick_dropped_items` took out, back in the level,
+    /// before those its hooks spawned meanwhile (`addFreshEntity` appends).
+    /// They keep their join numbers; the spawned ones got theirs on joining.
+    pub fn put_back_dropped(&mut self, items: sunrise_sim::join_seq::JoinList<ItemEntity>) {
+        self.dropped
+            .restore(items, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
+    }
+    /// `AbstractCandleBlock.getParticleOffsets`, in sixteenths of a block:
+    /// `CandleBlock.PARTICLE_OFFSETS` by its `candles` (one to four wicks),
+    /// then `CandleCakeBlock.PARTICLE_OFFSETS`, whose one wick sits a block up.
+    fn candle_offsets(name: &str, candles: Option<usize>) -> &'static [[u8; 3]] {
+        const OFFSETS: [&[[u8; 3]]; 5] = [
+            &[[8, 8, 8]],
+            &[[6, 7, 8], [10, 8, 7]],
+            &[[8, 5, 10], [6, 7, 8], [9, 8, 7]],
+            &[[7, 5, 9], [10, 7, 9], [6, 7, 6], [9, 8, 6]],
+            &[[8, 16, 8]],
+        ];
+        if name.ends_with("candle_cake") {
+            OFFSETS[4]
+        } else {
+            OFFSETS[candles.unwrap_or(1).clamp(1, 4) - 1]
+        }
+    }
+    /// A column whose surface is a full solid, non-fluid, non-leaf block open to the sky.
+    pub fn land_column(&self, x: i32, z: i32) -> Option<i32> {
+        if self.dim == Dim::Nether {
+            // Below the bedrock ceiling: a solid floor with two air blocks above.
+            for y in (32..120).rev() {
+                let floor = self.res.facts().get(self.world.block(x, y - 1, z));
+                if floor.full_collision
+                    && floor.fluid == Fluid::None
+                    && self.res.facts().is_air(self.world.block(x, y, z))
+                    && self.res.facts().is_air(self.world.block(x, y + 1, z))
+                {
+                    return Some(y);
+                }
+            }
+            return None;
+        }
+        let mut y = self.world.top_y() - 1;
+        while y > self.world.bottom_y() {
+            let s = self.world.block(x, y, z);
+            if !self.res.facts().is_air(s) {
+                let f = self.res.facts().get(s);
+                let ok = f.full_collision
+                    && f.fluid == Fluid::None
+                    && !f.name.contains("leaves")
+                    && f.hardness >= 0.0;
+                return ok.then_some(y + 1);
+            }
+            y -= 1;
+        }
+        None
+    }
+    /// `Blocks.AIR.defaultBlockState`: what a landing's destroy leaves.
+    fn air_state(&self) -> BlockStateId {
+        self.pack
+            .assets
+            .registry
+            .default_state("minecraft:air")
+            .unwrap_or(BlockStateId(0))
+    }
+
+    /// The cauldron at `pos`, and whether water is above it
+    /// (`CauldronInteractions.isUnderWater`).
+    pub fn cauldron_at(
+        &self,
+        pos: [i32; 3],
+    ) -> Option<(sunrise_world::chunk::BlockState, bool)> {
+        let registry = self.pack.assets.registry;
+        let id = self.world.block(pos[0], pos[1], pos[2]);
+        let state = registry
+            .state(id)
+            .filter(|s| cauldron_interactions::snapshot().contains_block(&s.name))
+            .cloned()?;
+        let above = self.world.block(pos[0], pos[1] + 1, pos[2]);
+        let under_water = cauldrons::is_under_water(self.res.facts(), above);
+        Some((state, under_water))
+    }
+
+    pub fn bed_facing(&self, head: [i32; 3]) -> i32 {
+        let state = self.world.block(head[0], head[1], head[2]);
+        let facing = self
+            .pack
+            .assets
+            .registry
+            .state(state)
+            .and_then(|s| s.properties.get("facing"))
+            .map(String::as_str);
+        sunrise_sim::mobs::villager::bed_facing_code(facing)
+    }
+
+    /// Clear all entity collections shared by server and client games.
+    pub fn clear_shared_entities(&mut self) {
+        self.mobs.clear();
+        self.dropped.clear();
+        self.orbs.clear();
+        self.creatures.projectiles.clear();
+        self.falling.clear();
+        self.tnts.clear();
+        self.boats.clear();
+        self.carts.clear();
+        self.armor_stands.clear();
+        self.cushions.clear();
+        self.item_frames.clear();
+        self.paintings.clear();
+        self.dragon.discard();
+        self.crystals.clear();
+        self.breath_clouds.clear();
+        self.tridents.clear();
+        self.rockets.clear();
+        self.bolts.clear();
+        self.ominous_spawners.clear();
+        self.fangs.list.clear();
+        self.potions.clear_thrown();
+        self.end.clear_remote_eyes();
+        self.riding = None;
+        self.persist = Default::default();
+        self.entity_attachments.clear();
+    }
+
+    /// The non-air blocks of a box in this world, with counts per block.
+    pub fn blocks_json(&self, lo: [i32; 3], hi: [i32; 3]) -> serde_json::Value {
+        let mut list = Vec::new();
+        let mut census: std::collections::BTreeMap<String, u32> = std::collections::BTreeMap::new();
+        for y in lo[1]..=hi[1] {
+            for z in lo[2]..=hi[2] {
+                for x in lo[0]..=hi[0] {
+                    let state = self.world.block(x, y, z);
+                    if self.res.facts().is_air(state) {
+                        continue;
+                    }
+                    let name = self.res.facts().get(state).name.to_string();
+                    *census.entry(name).or_insert(0) += 1;
+                    list.push(serde_json::json!([x, y, z, self.state_string(state)]));
+                }
+            }
+        }
+        serde_json::json!({ "from": lo, "to": hi, "counts": census, "blocks": list })
+    }
+
+    pub fn state_string(&self, state: BlockStateId) -> String {
+        self.block_state_string(state).unwrap_or_else(|| "?".into())
+    }
+
+    pub fn vanilla_root(&self) -> PathBuf {
+        if self.ui.vanilla_root.as_os_str().is_empty() {
+            self.options.resources.clone()
+        } else {
+            self.ui.vanilla_root.clone()
+        }
+    }
+}
+
+pub trait GameGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+    /// The level's dimension type: a mod's or a data pack's own when it has one, else the
+    /// built-in level's.
+    fn dimension_type<'__loan>(&'__loan self) -> &sunrise_world::dimension_type::DimensionFacts where '__sg: '__loan {
+        // A client of a server has the facts its server sent for the level, which are its own,
+        // not the table the server's levels (in this process, for an integrated server) read.
+        let remote = side_ops::world::SideOps::side_remote_dimension_context(self.side_state());
+        if let Some((_, Some(facts))) = remote {
+            return facts;
+        }
+        // Else the level the server named, whether or not the client has the mod that
+        // registered it (`self.dim` is then the Overworld).
+        let level = remote
+            .map(|(name, _)| name)
+            .filter(|level| !level.is_empty())
+            .unwrap_or_else(|| self.dim.id());
+        self.dimension_facts_for(
+            sunrise_core::LevelKey::parse(level).unwrap_or(sunrise_core::LevelKey::OVERWORLD),
+        )
+    }
+    /// A client only knows its current level's type; other keys use built-in defaults.
+    fn dimension_facts_for<'__loan>(
+        &'__loan self,
+        key: sunrise_core::LevelKey,
+    ) -> &sunrise_world::dimension_type::DimensionFacts where '__sg: '__loan {
+        use sunrise_world::dimension_type::DimensionFacts;
+        if let Some((name, facts)) =
+            side_ops::world::SideOps::side_remote_dimension_context(self.side_state())
+        {
+            if sunrise_core::LevelKey::parse(name).ok() == Some(key)
+                && let Some(facts) = facts
+            {
+                return facts;
+            }
+            DimensionFacts::of_builtin_level(key)
+        } else {
+            DimensionFacts::of_level(key)
+        }
+    }
     fn outline_context_kind(&self) -> sunrise_world::collision_context::EntityContextKind {
         self.side_outline_camera_kind()
     }
     /// A block's outline boxes in world space (`getShape` plus the random offset).
-    pub fn outline_boxes(&self, pos: [i32; 3]) -> Vec<[f64; 6]> {
-        self.outline_boxes_in_context(&self.world, self.side.shulkers(), pos, true)
+    fn outline_boxes(&self, pos: [i32; 3]) -> Vec<[f64; 6]> {
+        self.outline_boxes_in_context(&self.world, self.side_state().shulkers(), pos, true)
     }
     fn outline_boxes_in_context(
         &self,
@@ -2288,7 +2514,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let cached = self.collision.cached_shapes();
         use native_state_shapes::Outline;
         let (outline, offset) =
-            self.selected_outline(&self.world, state, self.side.shulkers(), pos, true);
+            self.selected_outline(&self.world, state, self.side_state().shulkers(), pos, true);
         let boxes: Cow<'_, [Aabb]> = match outline {
             Outline::Published(shape) | Outline::Declared(shape, _) => Cow::Borrowed(shape.boxes()),
             Outline::Dynamic(b) => Cow::Owned(vec![Aabb::new(
@@ -2348,7 +2574,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
 
     /// The first block outline hit within `reach` along the unit `dir`.
-    pub fn clip_ray(&self, origin: [f64; 3], dir: [f64; 3], reach: f64) -> Option<Hit> {
+    fn clip_ray(&self, origin: [f64; 3], dir: [f64; 3], reach: f64) -> Option<Hit> {
         self.clip_ray_fluids(origin, dir, reach, false)
     }
     /// `LocalPlayer.moveTowardsClosestSpace` at the body's four corners
@@ -2364,27 +2590,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             _ => [None; 2],
         }
     }
-    /// What the window decides for its player's body every tick: the look
-    /// (Player.travel steers sprint-swimming by the pitch), Auto Jump (LocalPlayer.sendPosition), the slowdown of an
-    /// item in use (LocalPlayer.modifyInput), the helmet's Respiration
-    /// (decreaseAirSupply), the wings, leather boots on powder snow
-    /// (PowderSnowBlock.canEntityWalkOnPowderSnow), freeze-immune wear
-    /// (LivingEntity.canFreeze), the dimension's FAST_LAVA, the sleeping
-    /// pose and blindness (Player.isMobilityRestricted, which stops a sprint).
-    /// The window's or the guest's own body reads the item in its selected slot
-    /// (`getMainHandItem`) for the shapes that depend on it.
-    pub fn sync_main_hand(&mut self) {
-        let held = self
-            .inventory
-            .get(self.selected)
-            .and_then(Option::as_ref)
-            .filter(|stack| stack.count > 0)
-            .map(|stack| stack.item.clone());
-        if let Some(player) = self.player.as_mut() {
-            player.main_hand = held;
-        }
-    }
-    pub fn sync_player_body(&mut self) {
+     fn sync_player_body(&mut self) {
         self.sync_main_hand();
         let glider = self.glider_worn();
         let sleeping = self.sleeping.is_some();
@@ -2408,7 +2614,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let nudge = self.closest_space_nudge();
         let fast_lava = self.dimension_type().fast_lava;
         let blind = self.potions.effects.get("blindness").is_some();
-        let server_owns_glide = !side_ops::world::SideOps::side_client_has_integrated(&self.side);
+        let server_owns_glide = !side_ops::world::SideOps::side_client_has_integrated(self.side_state());
         let Some(player) = self.player.as_mut() else {
             return;
         };
@@ -2416,7 +2622,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         player.mobility_restricted = blind;
         player.yaw = self.yaw;
         player.pitch = self.pitch;
-        player.auto_jump_enabled = self.side.auto_jump();
+        player.auto_jump_enabled = self.side_state().auto_jump();
         player.item_use_speed = item_use_speed;
         player.item_use_slows_sprint = item_use_slows_sprint;
         player.respiration = respiration;
@@ -2431,62 +2637,20 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         player.freeze_immune = freeze_immune;
         player.fluids.fast_lava = fast_lava;
     }
-    /// Where a loot roll at `origin` happens, for a mod's own loot kinds:
-    /// the block entity it may copy from, and this level as
-    /// `LootContext.getLevel` gives it (`Level.isRaining`: rain above 0.2;
-    /// `isThundering`: thunder above 0.9; neither where `canHaveWeather` is
-    /// false: a level with a ceiling or no sky light, or the End).
-    pub fn loot_place_at(
-        &self,
-        origin: [f64; 3],
-        block_entity: Option<sunrise_core::nbt::Tag>,
-    ) -> sunrise_world::loot::LootPlace {
-        let (block_entity, block_components) = match block_entity {
-            Some(saved) => {
-                let source = spill_common::source_snapshot(saved, None, None);
-                (Some(source.nbt), Some(source.components))
-            }
-            None => (None, None),
-        };
-        let (rain, thunder) = self.world.weather.levels(1.0);
-        // Level.canHaveWeather: sky light, no ceiling and not the End.
-        let weather =
-            self.world.shape.sky_light && !self.world.shape.has_ceiling && self.dim != Dim::End;
-        sunrise_world::loot::LootPlace {
-            origin: Some(origin),
-            block_entity,
-            block_components,
-            storage: Some(self.score.storage.snapshot()),
-            level: Some(sunrise_world::loot::LootLevel {
-                dimension: self.dim.id().to_owned(),
-                game_time: self.world.game_time,
-                day_time: self.world.day_time,
-                raining: weather && rain > 0.2,
-                thundering: weather && thunder > 0.9,
-            }),
-        }
-    }
     /// `Player.drop(stack, false, thrown_from_hand)`: the stack thrown from the eyes along the
     /// view, the main hand swinging for every drop (`LivingEntity.drop`; `PREDICTED` only keeps
     /// the swing from being sent back to the player who made it). `thrown_from_hand` names the
     /// player as the thrower, as the drop key does. The item's id, none for an empty stack or a
     /// toss a mod canceled.
-    pub fn drop_stack_from_eyes(
+     fn drop_stack_from_eyes(
         &mut self,
         stack: ItemStack,
         thrown_from_hand: bool,
     ) -> Option<u32> {
         self.side_drop_stack_from_eyes(stack, thrown_from_hand)
     }
-    /// The item entities `tick_dropped_items` took out, back in the level,
-    /// before those its hooks spawned meanwhile (`addFreshEntity` appends).
-    /// They keep their join numbers; the spawned ones got theirs on joining.
-    pub fn put_back_dropped(&mut self, items: sunrise_sim::join_seq::JoinList<ItemEntity>) {
-        self.dropped
-            .restore(items, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
-    }
     /// Run vanilla block behaviour against the world through `LevelAccess`.
-    pub fn with_level<R>(
+    fn with_level<R>(
         &mut self,
         f: impl FnOnce(&Behaviours, &mut GameLevel<'_>, &mut Ticks) -> R,
     ) -> R {
@@ -2504,10 +2668,14 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         self.side_with_level_access(true, |behaviours, level, ticks| f(behaviours, level, ticks))
     }
 
-    pub fn native_block_ignite_allowed(&mut self, pos: BlockPos, cause: &'static str) -> bool {
+     fn native_block_ignite_allowed(
+        &mut self,
+        pos: BlockPos,
+        cause: &'static str,
+    ) -> bool {
         self.with_level(|_, level, _| level.allow_block_ignite(pos, cause))
     }
-    pub fn native_cauldron_level_change_allowed(
+     fn native_cauldron_level_change_allowed(
         &mut self,
         pos: BlockPos,
         from: i32,
@@ -2517,11 +2685,11 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         self.with_level(|_, level, _| level.allow_cauldron_level_change(pos, from, to, reason))
     }
     /// Level.setBlock(pos, state, UPDATE_ALL) with neighbour/shape updates.
-    pub fn level_set(&mut self, pos: [i32; 3], state: BlockStateId) -> Result<()> {
+    fn level_set(&mut self, pos: [i32; 3], state: BlockStateId) -> Result<()> {
         self.level_set_with_flags(pos, state, level_flags::UPDATE_ALL)
     }
     /// Level.setBlock with the caller's update flags.
-    pub fn level_set_with_flags(
+    fn level_set_with_flags(
         &mut self,
         pos: [i32; 3],
         state: BlockStateId,
@@ -2532,7 +2700,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
 
     /// `Level.setBlock` with the full server available at the block-entity drop site.
-    pub fn set_block_live(
+    fn set_block_live(
         &mut self,
         pos: [i32; 3],
         state: BlockStateId,
@@ -2541,7 +2709,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     ) -> bool {
         self.side_set_block_live(pos, state, flags, create_entity)
     }
-    pub fn attack_block(&mut self, pos: [i32; 3]) -> Result<()> {
+    fn attack_block(&mut self, pos: [i32; 3]) -> Result<()> {
         let note = self.with_level(|b, level, ticks| {
             b.attack_block(level, ticks, BlockPos::new(pos[0], pos[1], pos[2]))
         });
@@ -2551,29 +2719,12 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
         self.side_process_level_events()
     }
-    /// `AbstractCandleBlock.getParticleOffsets`, in sixteenths of a block:
-    /// `CandleBlock.PARTICLE_OFFSETS` by its `candles` (one to four wicks),
-    /// then `CandleCakeBlock.PARTICLE_OFFSETS`, whose one wick sits a block up.
-    fn candle_offsets(name: &str, candles: Option<usize>) -> &'static [[u8; 3]] {
-        const OFFSETS: [&[[u8; 3]]; 5] = [
-            &[[8, 8, 8]],
-            &[[6, 7, 8], [10, 8, 7]],
-            &[[8, 5, 10], [6, 7, 8], [9, 8, 7]],
-            &[[7, 5, 9], [10, 7, 9], [6, 7, 6], [9, 8, 6]],
-            &[[8, 16, 8]],
-        ];
-        if name.ends_with("candle_cake") {
-            OFFSETS[4]
-        } else {
-            OFFSETS[candles.unwrap_or(1).clamp(1, 4) - 1]
-        }
-    }
     /// `DistanceManager`'s tickets of the level in place, from every player in
     /// it (the local player, LAN guests, a server's players; a spectator the
     /// rule skips holds none), its forced chunks and its portal tickets. A game
     /// with neither a server nor a player (the headless fixtures) ticks
     /// everywhere.
-    pub fn update_chunk_tickets(&mut self) {
+    fn update_chunk_tickets(&mut self) {
         self.side_update_chunk_tickets();
     }
 
@@ -2583,7 +2734,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// A client runs this for every block change that ends a piston's move,
     /// so it stays linear in the pistons moving: a clock of a thousand pistons
     /// ends two thousand moves at once.
-    pub fn sync_moving_pistons(&mut self) {
+    fn sync_moving_pistons(&mut self) {
         use sunrise_level::fast_hash::{FxHashMap, FxHashSet};
         let previous = std::mem::take(&mut self.world.moving_pistons);
         let current: Vec<_> = self
@@ -2625,7 +2776,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `DecoratedPotBlock.playerWillDestroy`: a pot mined with an item in
     /// `breaks_decorated_pots`, unless an enchantment prevents shattering, is
     /// cracked first (flags 260), so it shatters into its sherds.
-    pub fn crack_mined_pot(&mut self, pos: [i32; 3], state: BlockStateId) -> BlockStateId {
+    fn crack_mined_pot(&mut self, pos: [i32; 3], state: BlockStateId) -> BlockStateId {
         let registry = &self.pack.assets.registry;
         let Some(mut pot) = registry
             .state(state)
@@ -2662,7 +2813,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
     /// The `ItemStack.interactLivingEntity` fallback in `Player.interactOn`,
     /// currently for native Mob entries after the entity's own action passed.
-    pub fn item_interact_mob(&mut self, target: Option<InteractTarget>) -> bool {
+    fn item_interact_mob(&mut self, target: Option<InteractTarget>) -> bool {
         if self.spectator() || !mod_api::__private::has_part_hook(mod_api::HookId::ItemInteractMob)
         {
             return false;
@@ -2685,37 +2836,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         self.native_item_interact_mob(self.hand, entity, &kind, &stack, &mut result);
         result.is_some_and(|answer| self.interaction_consumed(answer))
     }
-    /// A column whose surface is a full solid, non-fluid, non-leaf block open to the sky.
-    pub fn land_column(&self, x: i32, z: i32) -> Option<i32> {
-        if self.dim == Dim::Nether {
-            // Below the bedrock ceiling: a solid floor with two air blocks above.
-            for y in (32..120).rev() {
-                let floor = self.res.facts().get(self.world.block(x, y - 1, z));
-                if floor.full_collision
-                    && floor.fluid == Fluid::None
-                    && self.res.facts().is_air(self.world.block(x, y, z))
-                    && self.res.facts().is_air(self.world.block(x, y + 1, z))
-                {
-                    return Some(y);
-                }
-            }
-            return None;
-        }
-        let mut y = self.world.top_y() - 1;
-        while y > self.world.bottom_y() {
-            let s = self.world.block(x, y, z);
-            if !self.res.facts().is_air(s) {
-                let f = self.res.facts().get(s);
-                let ok = f.full_collision
-                    && f.fluid == Fluid::None
-                    && !f.name.contains("leaves")
-                    && f.hardness >= 0.0;
-                return ok.then_some(y + 1);
-            }
-            y -= 1;
-        }
-        None
-    }
     /// Landing rules (farmland trampling, turtle eggs) wrote or removed the block
     /// raw: finish `Level.setBlock`'s neighbour updates, so a crop on trampled
     /// farmland breaks. The local player's and every server player's landings.
@@ -2730,7 +2850,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     ///
     /// The game event the rule posts comes back for the caller to post with the
     /// landing player in place (`post_landing_vibration`).
-    pub fn landing_block_updates(
+    fn landing_block_updates(
         &mut self,
         player: Option<u128>,
         event: &sunrise_sim::landing::FallEvent,
@@ -2813,7 +2933,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// BLOCK_CHANGE, `TurtleEggBlock.decreaseEggs`' BLOCK_DESTROY) as the player
     /// whose landing it was, who must be in place (`as_guest`). A sculk sensor, a
     /// calibrated sensor and a warden hear it.
-    pub fn post_landing_vibration(&mut self, vibration: LandingVibration) {
+    fn post_landing_vibration(&mut self, vibration: LandingVibration) {
         let at = [
             vibration.position.x,
             vibration.position.y,
@@ -2824,18 +2944,10 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             .then_some(sunrise_sim::mobs::Who::Player);
         self.side_post_block_game_event(vibration.event, at, who, Some(vibration.state));
     }
-    /// `Blocks.AIR.defaultBlockState`: what a landing's destroy leaves.
-    fn air_state(&self) -> BlockStateId {
-        self.pack
-            .assets
-            .registry
-            .default_state("minecraft:air")
-            .unwrap_or(BlockStateId(0))
-    }
     /// Whether a mod cancelled a landing's block change
     /// (`native_entity_change_block_pre`): asked with the two blocks' names and
     /// the player whose landing it was (`None` when no player did it).
-    pub fn landing_change_cancelled(
+    fn landing_change_cancelled(
         &mut self,
         player: Option<u128>,
         position: BlockPos,
@@ -2844,19 +2956,12 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     ) -> bool {
         self.side_landing_change_cancelled(player, position, from, to)
     }
-    pub fn tick(&mut self) -> Result<()> {
+    fn tick(&mut self) -> Result<()> {
         self.side_tick()
     }
 
-    /// An item frame's held item, apart from the frame (one id may mark one run).
-    pub(super) const MOTION_FRAME_ITEM: u64 = 4 << 32;
-    /// A block a piston moves, by the cell it moves to (`motion_at`).
-    pub(super) const MOTION_MOVING_BLOCK: u64 = 6 << 32;
-    /// The local player's flame vertices are tracked separately from the body run.
-    const MOTION_OWN_PLAYER_FIRE: u64 = crate::game::MOTION_OWN_PLAYER | 1;
-
     /// The brush's `ProjectileUtil.getHitResultOnViewVector` excludes only the source entity.
-    pub fn mob_hit_within(&self, reach: f64) -> Option<(usize, f64, [f64; 3])> {
+     fn mob_hit_within(&self, reach: f64) -> Option<(usize, f64, [f64; 3])> {
         let source = self.side_pick_camera_id();
         let (eye, dir) = self.aim()?;
         let mut nearest = f64::INFINITY;
@@ -2882,7 +2987,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
     /// `Player.isSweepAttack` with the player's speed as it is, then
     /// `native_sweep_attack`, on either side: whether the hit on `target` sweeps.
-    pub fn sweep_decision(&mut self, scale: f32, crit: bool, target: &str) -> bool {
+     fn sweep_decision(&mut self, scale: f32, crit: bool, target: &str) -> bool {
         let Some(p) = self.player.as_ref() else {
             return false;
         };
@@ -2900,7 +3005,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         sweeping
     }
     /// Voxel traversal that also stops at fluid source blocks (bucket pick).
-    pub fn pick_fluid(&self) -> Option<Hit> {
+    fn pick_fluid(&self) -> Option<Hit> {
         let (origin, dir) = self.aim()?;
         let mut t = 0.0;
         let mut last = origin.map(|v| v.floor() as i32);
@@ -2962,25 +3067,12 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
         None
     }
-    /// The cauldron at `pos`, and whether water is above it
-    /// (`CauldronInteractions.isUnderWater`).
-    pub fn cauldron_at(&self, pos: [i32; 3]) -> Option<(sunrise_world::chunk::BlockState, bool)> {
-        let registry = self.pack.assets.registry;
-        let id = self.world.block(pos[0], pos[1], pos[2]);
-        let state = registry
-            .state(id)
-            .filter(|s| cauldron_interactions::snapshot().contains_block(&s.name))
-            .cloned()?;
-        let above = self.world.block(pos[0], pos[1] + 1, pos[2]);
-        let under_water = cauldrons::is_under_water(self.res.facts(), above);
-        Some((state, under_water))
-    }
 
     /// What `BlockTransformer.transformBlock` would do with a held axe, hoe
     /// or shovel on the block at `pos`, without doing it: the new state, its
     /// sound, loot table, the durability it costs, its particle and its
     /// transform type.
-    pub fn block_transform(
+     fn block_transform(
         &self,
         stack: &ItemStack,
         hit: &Hit,
@@ -3004,7 +3096,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         )
     }
 
-    pub fn block_transform_in(
+    fn block_transform_in(
         &self,
         stack: &ItemStack,
         hit: &Hit,
@@ -3124,7 +3216,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
         None
     }
-    pub fn set_state_named(&mut self, pos: [i32; 3], name: &str, keep: &[&str]) -> Result<bool> {
+    fn set_state_named(&mut self, pos: [i32; 3], name: &str, keep: &[&str]) -> Result<bool> {
         let registry = &self.pack.assets.registry;
         let old = self.world.block(pos[0], pos[1], pos[2]);
         let Some(default) = registry.default_state(name) else {
@@ -3142,7 +3234,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         self.level_set(pos, id)?;
         Ok(true)
     }
-    pub fn can_place_used_fire(&mut self, target: [i32; 3]) -> bool {
+     fn can_place_used_fire(&mut self, target: [i32; 3]) -> bool {
         let pos = BlockPos::new(target[0], target[1], target[2]);
         let direction = match ((self.yaw / 90.0 + 0.5).floor() as i32).rem_euclid(4) {
             0 => Direction::South,
@@ -3152,90 +3244,19 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         };
         self.with_level(|b, level, ticks| b.fire_can_be_placed_at(level, ticks, pos, direction))
     }
-    pub fn place_used_fire(&mut self, target: [i32; 3]) -> Result<()> {
+    fn place_used_fire(&mut self, target: [i32; 3]) -> Result<()> {
         let pos = BlockPos::new(target[0], target[1], target[2]);
         let state = self.with_level(|b, level, ticks| b.fire_state_for(level, ticks, pos));
         self.level_set(target, state)
     }
     /// `Player.giveExperiencePoints`: `add_experience_levels` runs once for each
     /// level gained or lost, and the mods hear of the level change once.
-    pub fn give_experience_points(&mut self, points: i32) {
+     fn give_experience_points(&mut self, points: i32) {
         self.side_give_experience_points(points);
     }
-
-    pub fn bed_facing(&self, head: [i32; 3]) -> i32 {
-        let state = self.world.block(head[0], head[1], head[2]);
-        let facing = self
-            .pack
-            .assets
-            .registry
-            .state(state)
-            .and_then(|s| s.properties.get("facing"))
-            .map(String::as_str);
-        sunrise_sim::mobs::villager::bed_facing_code(facing)
-    }
-
-    /// Clear all entity collections shared by server and client games.
-    pub fn clear_shared_entities(&mut self) {
-        self.mobs.clear();
-        self.dropped.clear();
-        self.orbs.clear();
-        self.creatures.projectiles.clear();
-        self.falling.clear();
-        self.tnts.clear();
-        self.boats.clear();
-        self.carts.clear();
-        self.armor_stands.clear();
-        self.cushions.clear();
-        self.item_frames.clear();
-        self.paintings.clear();
-        self.dragon.discard();
-        self.crystals.clear();
-        self.breath_clouds.clear();
-        self.tridents.clear();
-        self.rockets.clear();
-        self.bolts.clear();
-        self.ominous_spawners.clear();
-        self.fangs.list.clear();
-        self.potions.clear_thrown();
-        self.end.clear_remote_eyes();
-        self.riding = None;
-        self.persist = Default::default();
-        self.entity_attachments.clear();
-    }
-
-    /// The non-air blocks of a box in this world, with counts per block.
-    pub fn blocks_json(&self, lo: [i32; 3], hi: [i32; 3]) -> serde_json::Value {
-        let mut list = Vec::new();
-        let mut census: std::collections::BTreeMap<String, u32> = std::collections::BTreeMap::new();
-        for y in lo[1]..=hi[1] {
-            for z in lo[2]..=hi[2] {
-                for x in lo[0]..=hi[0] {
-                    let state = self.world.block(x, y, z);
-                    if self.res.facts().is_air(state) {
-                        continue;
-                    }
-                    let name = self.res.facts().get(state).name.to_string();
-                    *census.entry(name).or_insert(0) += 1;
-                    list.push(serde_json::json!([x, y, z, self.state_string(state)]));
-                }
-            }
-        }
-        serde_json::json!({ "from": lo, "to": hi, "counts": census, "blocks": list })
-    }
-
-    pub fn state_string(&self, state: BlockStateId) -> String {
-        self.block_state_string(state).unwrap_or_else(|| "?".into())
-    }
-
-    pub fn vanilla_root(&self) -> PathBuf {
-        if self.ui.vanilla_root.as_os_str().is_empty() {
-            self.options.resources.clone()
-        } else {
-            self.ui.vanilla_root.clone()
-        }
-    }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> GameGameExt1<'__sg> for G {}
+
 
 /// `mark_motion` ids of entities that aren't mobs or dropped items (boats, minecarts, armor
 /// stands, item frames, paintings, primed TNT, falling blocks, rockets, tridents, thrown
@@ -3254,6 +3275,7 @@ impl crate::game::CommonGame<'_> {}
 
 // Out-of-line init bundles for wrapped Game fields so finish_construct's unoptimised stack stays small.
 
+
 pub struct WrappedPrepInit {
     pub item_features: sunrise_items::creative_catalog::ItemFeatureRequirements,
     pub level: Level,
@@ -3271,6 +3293,10 @@ pub struct WrappedPrepInit {
 pub struct ConstructInit<const NO_SLOT: bool>;
 
 impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
+    
+    
+    
+    
     #[inline(never)]
     fn build_loop_context(
         res: &Resources,
@@ -3278,13 +3304,12 @@ impl<const NO_SLOT: bool> ConstructInit<NO_SLOT> {
     ) -> Arc<sunrise_world::native_load_context::LoopContext> {
         Arc::new(res.core.item_data.context().loop_context(loop_side, []))
     }
-
+    
+    
+    
     #[inline(never)]
     #[allow(clippy::boxed_local)]
-    pub fn assemble_common<'a>(
-        res: &'a Arc<Resources>,
-        wp: Box<WrappedPrepInit>,
-    ) -> CommonGame<'a> {
+    pub fn assemble_common<'a>(res: &'a Arc<Resources>, wp: Box<WrappedPrepInit>) -> CommonGame<'a> {
         let loop_side = wp.options.execution_role.loop_side();
         let mod_sources = wp.options.mods.clone();
         let creative = wp.options.creative;
@@ -3956,8 +3981,9 @@ impl crate::game::CommonGame<'_> {
     }
 }
 
-pub trait GameGameExt2<'__sg>: crate::game::SideGame<'__sg> {
-    fn resident_source_target_visible(
+pub trait GameGameExt3<'__sg>: crate::game::SideGame<'__sg> {
+
+     fn resident_source_target_visible(
         &self,
         dimension: mod_api::DimensionKey,
         target: commands_common::Target,
@@ -3986,7 +4012,7 @@ pub trait GameGameExt2<'__sg>: crate::game::SideGame<'__sg> {
             .is_none_or(|visible| visible && !self.removal_pending_in(dim, &target))
     }
 }
-impl<'__sg, G: crate::game::SideGame<'__sg>> GameGameExt2<'__sg> for G {}
+impl<'__sg, G: crate::game::SideGame<'__sg>> GameGameExt3<'__sg> for G {}
 
 pub use side_ops::blocks::BlocksSideGameExt as _;
 pub use side_ops::events::EventsSideGameExt as _;
@@ -4004,10 +4030,10 @@ pub use side_ops::ui::UiSideGameExt as _;
 pub use side_ops::world::WorldSideGameExt as _;
 pub use tables::GameItems as _;
 pub use tables::WorldTablesExt as _;
-pub use transactions::TransactionsGameExt as _;
 pub use weather::WeatherGameExt as _;
+pub use transactions::TransactionsGameExt as _;
 
-pub trait SideGame<'g>: std::ops::DerefMut<Target = CommonGame<'g>> + Sized {
+pub trait SideGame<'g>: std::ops::DerefMut<Target = CommonGame<'g>> + sunrise_sim::crafting::CraftingRemainder + sunrise_sim::menu::SlotRules + crate::game::item_snapshot::ItemBoundary + Sized {
     type State: Side<Nominal<'g> = Self>
         + crate::game::side_ops::blocks::SideOps<Game<'g> = Self>
         + crate::game::side_ops::events::SideOps<Game<'g> = Self>
@@ -4023,22 +4049,15 @@ pub trait SideGame<'g>: std::ops::DerefMut<Target = CommonGame<'g>> + Sized {
         + crate::game::side_ops::tables::SideOps<Game<'g> = Self>
         + crate::game::side_ops::ui::SideOps<Game<'g> = Self>
         + crate::game::side_ops::world::SideOps<Game<'g> = Self>;
-    fn common(&self) -> &CommonGame<'g> {
-        self
-    }
-    fn common_mut(&mut self) -> &mut CommonGame<'g> {
-        self
-    }
+    fn common(&self) -> &CommonGame<'g> { self }
+    fn common_mut(&mut self) -> &mut CommonGame<'g> { self }
     fn side_state(&self) -> &Self::State;
     fn side_state_mut(&mut self) -> &mut Self::State;
 
-    fn host_side(&mut self) -> mod_api::HostSide<'_> {
-        Self::State::host_side(self)
-    }
-    fn as_host(&self) -> &dyn mod_api::Host {
-        Self::State::as_host(self)
-    }
+    fn host_side(&mut self) -> mod_api::HostSide<'_> { Self::State::host_side(self) }
+    fn as_host(&self) -> &dyn mod_api::Host { Self::State::as_host(self) }
     fn common_and_state_mut(&mut self) -> (&mut CommonGame<'g>, &mut Self::State);
+
 }
 
 use crate::game::side_ops::events::EventsSideGameExt as _;
@@ -4049,20 +4068,38 @@ use crate::game::side_ops::world::WorldSideGameExt as _;
 
 use crate::game::tables::GameItems as _;
 
+use crate::game::clip_ray::ClipRayGameExt1 as _;
+
 use crate::game::commands_common::CommandsCommonGameExt2 as _;
 
 use crate::game::creatures::ModGameExt1 as _;
 
 use crate::game::held_items::HeldItemsGameExt1 as _;
 
+use crate::game::native_hooks::SharedGameExt1 as _;
+
+use crate::game::native_hooks::item_interact_mob::GameHooks as _;
+
+use crate::game::native_hooks::sweep_attack::GameHooks as _;
+
 use crate::game::native_hooks::use_item_hand::UseItemHandGameExt1 as _;
+
+use crate::game::native_state_shapes::NativeStateShapesGameExt1 as _;
 
 use crate::game::pick_ray::PickRayGameExt1 as _;
 
 use crate::game::player_identity::PlayerIdentityGameExt1 as _;
+
+use crate::game::tool_modification::ToolModificationGameExt1 as _;
 
 #[path = "game/server_side.rs"]
 pub mod server_side;
 
 #[path = "game/client_side.rs"]
 pub mod client_side;
+
+#[path = "game/modding/native_registry_entries.rs"]
+pub mod native_registry_entries;
+
+#[path = "game/modding/native_resources.rs"]
+pub mod native_resources;

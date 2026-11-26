@@ -121,7 +121,7 @@ impl ServerGame<'_> {
             .map(sunrise_world::level::LevelEventPlayer);
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
         let block_entity = self.removed_block_entity_data(pos, state);
-        let removed = self.common.with_level(|b, level, ticks| {
+        let removed = self.with_level(|b, level, ticks| {
             b.player_destroy_block(
                 level,
                 ticks,
@@ -137,3 +137,5 @@ impl ServerGame<'_> {
         removed
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt1 as _;

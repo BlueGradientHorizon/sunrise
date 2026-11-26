@@ -1,22 +1,22 @@
 use super::*;
 pub use sunrise_sim::save::level_mods;
 
-impl crate::game::CommonGame<'_> {
+pub trait GameHooks<'__sg>: crate::game::SideGame<'__sg> {
     /// Dispatch the saved list at the earliest Game Host boundary on either side.
     /// Each resolution keeps its first resolving listener across dispatch.
-    pub fn native_mod_mismatch(
+     fn native_mod_mismatch(
         &mut self,
         mismatches: &[mod_api::ModMismatch],
         resolved: &mut Vec<mod_api::ModMismatchResolution>,
     ) {
-        self.fire_mod_mismatch(mismatches, resolved);
+        crate::game::native_hooks::fire::FireHooks::fire_mod_mismatch(self, mismatches, resolved);
     }
 
     /// Before the world in `dir` opens: the saved mods whose content opening it would lose
     /// (`level_mods::missing`) that no `mod_mismatch` listener resolves. Only when one is missing
     /// do the mods hear the differences here, before the world opens; the open then uses this
     /// answer instead of asking again (`check_mod_mismatch`). Reads only: nothing in `dir` changes.
-    pub fn ask_missing_mods(
+     fn ask_missing_mods(
         &mut self,
         dir: &std::path::Path,
     ) -> Vec<level_mods::MissingMod> {
@@ -38,3 +38,4 @@ impl crate::game::CommonGame<'_> {
         missing
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> GameHooks<'__sg> for G {}
