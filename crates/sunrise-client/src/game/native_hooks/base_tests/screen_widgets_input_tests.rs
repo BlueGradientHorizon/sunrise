@@ -35,7 +35,7 @@ enum Seen {
     GameWheel([f64; 2], [i32; 2], [bool; 3], [f32; 2], u32),
     Moved([f32; 2], [f32; 2]),
     Motion(String, [f64; 2]),
-    Dropped(Vec<std::path::PathBuf>),
+    Dropped(String, Vec<std::path::PathBuf>),
 }
 
 #[derive(Default)]
@@ -233,11 +233,10 @@ impl Hooks for Observe {
         _: &dyn ClientHost,
         event: &mut mod_api::ScreenFilesDroppedEvent<'_>,
     ) {
-        self.0
-            .lock()
-            .unwrap()
-            .seen
-            .push(Seen::Dropped(event.paths.to_vec()));
+        self.0.lock().unwrap().seen.push(Seen::Dropped(
+            event.screen.id.to_owned(),
+            event.paths.to_vec(),
+        ));
     }
 
     fn screen_mouse_scrolled_pre(
@@ -834,7 +833,8 @@ fn hover_moves_fire_before_drag_and_a_screen_grab_ends_with_the_screen() {
 }
 
 /// A drop of two files, the second not UTF-8, reaches a mod screen's listener once, whole
-/// and in order, and the screen stays open (vanilla's `Screen.onFilesDrop`).
+/// and in order, when the event-loop pass ends (`Game::idle`), and the screen stays open
+/// (vanilla's `Screen.onFilesDrop`).
 #[cfg(unix)]
 #[test]
 #[ignore = "daily"]
@@ -852,7 +852,7 @@ fn dropped_files_reach_a_mod_screen_whole_and_in_order() {
         let second = PathBuf::from(OsStr::from_bytes(b"/tmp/a\xff.png"));
         // No screen open: the drop fires nothing.
         send(game, id, WindowEvent::DroppedFile(first.clone()));
-        game.fire_dropped_files();
+        game.idle(&NoLoop);
         assert!(take(state).is_empty());
 
         assert!(game.mod_screen_open("input_route"));
@@ -862,10 +862,10 @@ fn dropped_files_reach_a_mod_screen_whole_and_in_order() {
             take(state).is_empty(),
             "the list is fired when the pass ends"
         );
-        game.fire_dropped_files();
+        game.idle(&NoLoop);
         let seen = take(state);
-        assert_eq!(seen, [Seen::Dropped(vec![first, second])]);
-        let Seen::Dropped(paths) = &seen[0] else {
+        assert_eq!(seen, [Seen::Dropped("mod".into(), vec![first, second])]);
+        let Seen::Dropped(_, paths) = &seen[0] else {
             unreachable!()
         };
         assert_eq!(paths[1].as_os_str().as_bytes(), b"/tmp/a\xff.png");
@@ -874,7 +874,50 @@ fn dropped_files_reach_a_mod_screen_whole_and_in_order() {
             "observe only: the screen stays"
         );
         assert_eq!(game.mod_screen(), Some("input_route"));
-        game.fire_dropped_files();
+        game.idle(&NoLoop);
+        assert!(take(state).is_empty(), "a drop fires once");
+    });
+}
+
+/// A drop followed in the same event-loop pass by a click that closes its screen reaches
+/// the screen it was dropped on, before the click (`MouseHandler.onDrop`), and only once.
+#[test]
+#[ignore = "daily"]
+fn a_drop_reaches_its_screen_before_a_click_that_closes_it() {
+    if run_fresh_cases(
+        "game::native_hooks::base::screen_widgets_tests::input_routing::a_drop_reaches_its_screen_before_a_click_that_closes_it",
+        "SUNRISE_SCREEN_FILES_DROPPED_CLOSE_CHILD",
+        &["drop"],
+    ) {
+        return;
+    }
+    with_input_game_as("input_route", |game, id, state| {
+        game.pause_menu = true;
+        game.set_screen(Screen::Paused);
+        publish_frame(game, 1);
+        let (w, h) = game.gui_size();
+        let (x, y, _, _, _, _) = game.pause_layout(w, h).buttons[0];
+        move_mouse(game, id, f64::from(x + 10.0), f64::from(y + 10.0));
+        take(state);
+        let files = vec![
+            std::path::PathBuf::from("pack.zip"),
+            std::path::PathBuf::from("shot.png"),
+        ];
+        for file in &files {
+            send(game, id, WindowEvent::DroppedFile(file.clone()));
+        }
+        // Back to Game: the click closes the pause menu in this pass.
+        send_mouse_button(game, id, MouseButton::Left, true);
+        assert_eq!(game.screen, Screen::Playing);
+        assert_eq!(
+            take(state),
+            [
+                Seen::Dropped("paused".into(), files),
+                Seen::PressPre,
+                Seen::PressPost("paused".into(), true)
+            ]
+        );
+        game.idle(&NoLoop);
         assert!(take(state).is_empty(), "a drop fires once");
     });
 }
