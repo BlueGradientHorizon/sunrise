@@ -276,9 +276,8 @@ def copy_snapshot(snapshot_dir, dest_root):
             shutil.copytree(src, partial, symlinks=False, copy_function=copy_or_reflink)
             shutil.rmtree(dst, ignore_errors=True)
             partial.rename(dst)
-        except Exception:
+        finally:
             shutil.rmtree(partial, ignore_errors=True)
-            raise
 
 
 def stage_snapshot(src_root, staging_dir, expected):
