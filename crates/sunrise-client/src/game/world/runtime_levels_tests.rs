@@ -403,28 +403,29 @@ fn evicted_shape_tables_free_after_the_last_reader() {
 
     let limit = super::runtime_levels::RETAINED_TABLE_LIMIT;
     let mut cache = super::runtime_levels::ShapeTableCache::default();
-    let ids: Vec<&'static str> = (0..=limit)
-        .map(|index| {
-            let id = format!("table-cycle:level-{index}");
-            let key = mod_api::__private::dimension_key(&id);
-            mod_api::__private::dimension_id(key).expect("the test interned this id")
-        })
-        .collect();
+    let layout = |index: usize| ExtraLevel {
+        id: "cycle:a",
+        dimension_type: "minecraft:overworld",
+        shape: LevelShape {
+            logical_height: LevelShape::OVERWORLD.logical_height - index as i32,
+            ..LevelShape::OVERWORLD
+        },
+    };
     let mut tracked: Vec<Weak<[ExtraLevel]>> = Vec::new();
     let mut first_reader = None;
     let mut first_table = None;
+    let mut oldest = None;
     let mut live_after_round = None;
 
     for round in 0..3 {
-        for (index, &id) in ids.iter().enumerate() {
-            let table = cache.intern(vec![ExtraLevel {
-                id,
-                dimension_type: "minecraft:overworld",
-                shape: LevelShape::OVERWORLD,
-            }]);
+        for index in 0..=limit {
+            let table = cache.intern(vec![layout(index)]);
             let weak = Arc::downgrade(&table);
             if !tracked.iter().any(|known| Weak::ptr_eq(known, &weak)) {
                 tracked.push(weak.clone());
+            }
+            if index == 1 {
+                oldest = Some(weak.clone());
             }
             if round == 0 && index == 0 {
                 first_table = Some(weak);
@@ -453,14 +454,14 @@ fn evicted_shape_tables_free_after_the_last_reader() {
 
     let first_table = first_table.expect("the first table was allocated");
     assert_eq!(
-        first_reader.as_ref().unwrap().extra[0].id,
-        ids[0],
+        first_reader.as_ref().unwrap().extra[0],
+        layout(0),
         "a reader still sees its immutable snapshot after cache eviction"
     );
     drop(first_reader);
     assert!(
         first_table.upgrade().is_none(),
-        "eviction plus the final reader drop releases the table allocation"
+        "eviction plus the final reader drop leaves no strong owner"
     );
     assert_eq!(
         tracked
@@ -470,6 +471,15 @@ fn evicted_shape_tables_free_after_the_last_reader() {
         limit,
         "only the bounded cache's tables remain"
     );
+
+    // Layout 0 fell out of the cache, so layout 1 is now the oldest entry.
+    let promoted = Arc::downgrade(&cache.intern(vec![layout(1)]));
+    assert!(
+        oldest.unwrap().ptr_eq(&promoted),
+        "a cache hit reuses the table"
+    );
+    drop(cache.intern(vec![layout(0)]));
+    assert!(promoted.upgrade().is_some(), "a hit promotes the table");
 }
 
 #[test]
@@ -2123,12 +2133,21 @@ fn reopening_one_id_with_any_seed_reuses_the_metadata_its_first_open_leaked() {
     });
 }
 
-/// Churning ids, known dimension types and ordered level tables keeps only the bounded recent
-/// metadata needed by the renderer; the process does not retain one entry for every old open
-/// (#1367).
+/// Churning ids preserves publication order and bounds the retained facts and shape tables
+/// independently of how many levels have been opened (#1367).
 #[test]
 #[ignore = "daily"]
 fn churning_runtime_level_metadata_stays_within_the_retention_bound() {
+    use super::native_entity_refs::tests::run_fresh_cases;
+
+    // Real opens publish their ids in process-wide tables.
+    if run_fresh_cases(
+        "game::runtime_levels_tests::churning_runtime_level_metadata_stays_within_the_retention_bound",
+        "SUNRISE_RUNTIME_LEVEL_METADATA_CHILD",
+        &["churn"],
+    ) {
+        return;
+    }
     with_opener("cycle", "cycle:seed", flat(), |game, _| {
         for batch in 0..(super::runtime_levels::RETAINED_TABLE_LIMIT * 2) {
             let left = format!("cycle:left-{batch}");
@@ -2148,18 +2167,12 @@ fn churning_runtime_level_metadata_stays_within_the_retention_bound() {
                 ordered.reverse();
             }
             for (index, (id, dimension_type)) in ordered.iter().enumerate() {
-                game.levels
-                    .runtime
-                    .queue_open(
-                        "cycle",
-                        id,
-                        RuntimeLevel::new(
-                            *dimension_type,
-                            RuntimeGenerator::Flat,
-                            (batch * 2 + index) as i64,
-                        ),
-                    )
-                    .unwrap();
+                let level = RuntimeLevel::new(
+                    *dimension_type,
+                    RuntimeGenerator::Flat,
+                    (batch * 2 + index) as i64,
+                );
+                game.runtime_level_open(id, level).unwrap();
                 game.apply_runtime_levels();
                 assert!(game.runtime_level_is_open(id));
             }
@@ -2172,7 +2185,7 @@ fn churning_runtime_level_metadata_stays_within_the_retention_bound() {
                 ordered.iter().map(|(id, _)| *id).collect::<Vec<_>>()
             );
             for (id, _) in ordered.into_iter().rev() {
-                game.levels.runtime.queue_unload(id).unwrap();
+                unload_as(game, "cycle", id).unwrap();
                 game.apply_runtime_levels();
                 assert!(!game.runtime_level_is_open(id));
             }

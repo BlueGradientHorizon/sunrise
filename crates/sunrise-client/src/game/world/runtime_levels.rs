@@ -349,7 +349,7 @@ fn mod_stem(
 
 /// How many historical extra-level shape tables the process keeps so that a recent reopen can
 /// reuse the same table. Reader snapshots share ownership with this bounded cache (#1367).
-const RETAINED_TABLE_CAP: usize = DEFAULT_CAP;
+const RETAINED_TABLE_CAP: usize = 64;
 
 /// Recent extra-level shape tables. The cache owns one Arc per entry, while each current render or
 /// network snapshot owns another; eviction drops only the cache's Arc.
