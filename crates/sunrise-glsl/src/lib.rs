@@ -1901,8 +1901,8 @@ impl Names {
     }
 }
 
-/// One stage written again for naga (see the module's notes), each piece keeping where it came
-/// from. Generated declarations point back to the declarations they replace.
+/// One stage written again for naga (see the module's notes). Generated code points back to
+/// the declarations it replaces; copied block tails keep the positions of their own bytes.
 fn rewrite(
     source: &Expanded,
     stage: ShaderStage,
@@ -1991,9 +1991,13 @@ fn rewrite(
                     write(
                         &mut out,
                         &format!(
-                            "layout(std430, set = {set}, binding = {binding}) {qualifiers} buffer {name} {tail}\n"
+                            "layout(std430, set = {set}, binding = {binding}) {qualifiers} buffer {name} "
                         ),
                     );
+                    // `tail` is a suffix of the trimmed declaration, even if it is empty.
+                    let tail_at = from + line.trim_end().len() - tail.len();
+                    out.push_spanned(tail, origin, &source.lines, tail_at..tail_at + tail.len());
+                    write(&mut out, "\n");
                 }
                 Declared::Block {
                     name,
@@ -3333,6 +3337,21 @@ mod tests {
             panic!("`c` is an array");
         };
         assert_eq!(stride, 16);
+    }
+
+    /// An invalid member name points inside the storage block, not to its rewritten layout.
+    #[test]
+    fn an_error_in_a_rewritten_storage_block_names_the_member_column() {
+        let vsh = "#version 330\nlayout(std430) readonly buffer Data { vec4 in; };\n\
+            out vec4 vertexColor;\n\
+            void main() { vertexColor = vec4(1.0); gl_Position = vec4(0.0); }\n";
+        let errors = translate_storage(vsh).unwrap_err();
+        let error = &errors[0];
+        assert!(error.message.ends_with("found In"), "{errors:?}");
+        assert_eq!(
+            (error.file.as_str(), error.line, error.column),
+            (VSH_FILE, 2, 44)
+        );
     }
 
     /// A storage block that names another packing is refused, not rewritten to std430.
