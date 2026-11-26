@@ -11,7 +11,9 @@ impl Game<'_> {
     /// the right room all fit across the screen, the window and the book move right by half the
     /// left room less half the right room (each rounded down), so the four stay centred as
     /// vanilla's recipe book moves the window right to make room for itself
-    /// (`RecipeBookComponent.updateScreenPosition`); when they don't fit, nothing moves.
+    /// (`RecipeBookComponent.updateScreenPosition`); when they don't fit, or a mod menu's recipe
+    /// book toggle would leave the screen, nothing moves. Version 2: a left room was added, so
+    /// another mod's left answer can change or cancel the move a right-only answer gets.
     /// The query's `ScreenView::rect` is pre-reservation. Later draw/input views expose the
     /// shifted window; check the room you asked against the viewport before drawing in it.
     /// Keep this query pure and cheap. Its answer is memoized for the frame and screen; recursive

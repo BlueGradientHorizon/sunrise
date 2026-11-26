@@ -11,6 +11,10 @@ impl BookLayout {
     pub(super) fn shifted_toggle(&self, room_offset: f32) -> (f32, f32) {
         (self.toggle.0 + room_offset, self.toggle.1)
     }
+    /// The toggle's left and right edges before room moves it: 20 wide, as `layout` fits it.
+    pub(super) fn toggle_span(&self) -> [f32; 2] {
+        [self.toggle.0, self.toggle.0 + 20.0]
+    }
 }
 pub(super) fn layout(
     view: [f32; 2],

@@ -301,6 +301,12 @@ impl Game<'_> {
         ui.overlay = None;
         ui.presentation = Some(presentation);
     }
+    /// A mod menu's book toggle, `[left, right]`, before the mods' room moves it; none
+    /// without a mod menu's book.
+    pub(in crate::game) fn mod_book_toggle_span(&self, batch: &HudBatch) -> Option<[f32; 2]> {
+        let (open, _) = self.mod_book_flags()?;
+        Some(self.mod_book_layout(batch.width, open)?.toggle_span())
+    }
     fn mod_book_button(&self, batch: &HudBatch) -> (f32, f32) {
         self.mod_book_layout(batch.width, self.mod_book_open())
             .map_or((0.0, 0.0), |layout| {
