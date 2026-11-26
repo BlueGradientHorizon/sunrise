@@ -26,8 +26,8 @@ pub(crate) fn last_built(project: &Path) -> Option<String> {
 /// Record `build` as the one the project last compiled against.
 pub(crate) fn record_built(project: &Path, build: &str) -> Result<(), String> {
     crate::internals::check_output_dir(&project.join(".sunrise"))?;
-    let path = project.join(BUILT);
-    std::fs::write(&path, format!("{build}\n")).map_err(|e| format!("{}: {e}", path.display()))
+    // A link committed at `.sunrise/built` is replaced, never written through.
+    crate::internals::atomic_write(&project.join(BUILT), format!("{build}\n"))
 }
 
 /// A change note and the build whose `sdk.json` carried it.
@@ -150,13 +150,16 @@ pub(crate) fn explaining<'a>(
         .collect()
 }
 
-/// `error` followed by the notes that explain it and, after them, why the chain stopped early.
-/// With no note, `error` as it is.
+/// `error` followed by the notes that explain it and, after them, why the chain stopped early,
+/// which says how to read the older notes. With neither, `error` as it is.
 pub(crate) fn with_notes(error: String, explained: &[Explained<'_>], chain: &Chain) -> String {
-    if explained.is_empty() {
+    if explained.is_empty() && chain.stopped.is_none() {
         return error;
     }
-    let mut text = format!("{error}\n\nChange notes that explain it:\n");
+    let mut text = format!("{error}\n\n");
+    if !explained.is_empty() {
+        text.push_str("Change notes that explain it:\n");
+    }
     for item in explained {
         let names: Vec<String> = item.names.iter().map(|name| format!("`{name}`")).collect();
         text.push_str(&format!(

@@ -627,9 +627,9 @@ fn fetch_index_only_from(
         .map_err(|e| format!("game build {build} has no signed SDK (release {tag}): {e}"))?;
     let index = verified_index(&tag, keys, build, &fetched[0], &fetched[1], &fetched[2])?;
     fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    // A link committed in the cache is replaced, never written through.
     for (name, bytes) in names.iter().zip(&fetched) {
-        let path = dir.join(name);
-        fs::write(&path, bytes).map_err(|e| format!("{}: {e}", path.display()))?;
+        crate::internals::atomic_write(&dir.join(name), bytes)?;
     }
     Ok(index)
 }

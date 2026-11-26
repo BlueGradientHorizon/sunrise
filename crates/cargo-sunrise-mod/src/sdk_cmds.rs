@@ -1347,10 +1347,35 @@ mod tests {
         assert!(text.contains("changed in 42c5f70"), "{text}");
         assert!(text.contains("Use hook:new."), "{text}");
         assert!(text.contains("bbbbbbb"), "{text}");
+        // With no note, the line that says how to read older notes still follows.
+        let text = sdk_notes::with_notes("error: cargo failed".into(), &[], &chain);
+        assert!(text.starts_with("error: cargo failed\n"), "{text}");
+        assert!(
+            text.contains("bbbbbbb") && !text.contains("explain"),
+            "{text}"
+        );
+        let whole = sdk_notes::Chain {
+            notes: vec![],
+            stopped: None,
+        };
         assert_eq!(
-            sdk_notes::with_notes("error: cargo failed".into(), &[], &chain),
+            sdk_notes::with_notes("error: cargo failed".into(), &[], &whole),
             "error: cargo failed"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_linked_last_compiled_record_is_replaced_and_its_target_left_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("elsewhere");
+        std::fs::write(&target, "kept").unwrap();
+        std::fs::create_dir(dir.path().join(".sunrise")).unwrap();
+        std::os::unix::fs::symlink(&target, dir.path().join(".sunrise/built")).unwrap();
+        let build = "d".repeat(40);
+        sdk_notes::record_built(dir.path(), &build).unwrap();
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "kept");
+        assert_eq!(sdk_notes::last_built(dir.path()), Some(build));
     }
 
     fn argv(line: &str) -> Vec<String> {
