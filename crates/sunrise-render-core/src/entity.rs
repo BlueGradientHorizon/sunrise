@@ -54,9 +54,9 @@ pub const ARMOR_GLINT_ONLY_OVERLAY: u32 = 55;
 /// The overlays of a name tag's `Font.DisplayMode.NORMAL` copy when a pack's `core/text` draws
 /// it (`RenderTypes.text`, `RenderPipelines.TEXT`): opaque on no background, which
 /// `SubmitNodeCollection.canRenderAsSolid` puts in the solid phase, and translucent (a discrete
-/// tag on its background; `OIT_TEXT` under Improved Transparency). Their own materials, last,
-/// so the passes that draw the native entity layer (world views, a shader pack's shadow) draw
-/// them too.
+/// tag on its background; `OIT_TEXT` under Improved Transparency). Their own materials, stored
+/// last, which a world view draws after the native entity layer. A `shaders/` pack's shadow pass
+/// takes them with the rest of their entity's run (`pack_entities` spans), whatever the layer.
 pub const NAME_TAG_SOLID_OVERLAY: u32 = 57;
 pub const NAME_TAG_OVERLAY: u32 = 56;
 pub const WATER_MASK_OVERLAY: u32 = 13;

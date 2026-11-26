@@ -918,8 +918,8 @@ impl Game<'_> {
 /// world's text (`pack_text`; `RenderTypes.text`): `SubmitNodeCollection.submitNameTagPart` puts
 /// it in the solid phase when `canRenderAsSolid` (its text's alpha 255 and its background's 0, in
 /// a level), else with the translucent text (`OIT_TEXT` under Improved Transparency). Without
-/// one, the native entity layer (0), which world views and a shader pack's shadow pass also
-/// draw. `text_alpha` is 0 to 255, `background` ARGB.
+/// one, the native entity layer (0), which world views also draw. `text_alpha` is 0 to 255,
+/// `background` ARGB.
 pub(super) fn name_tag_layer(pack_text: bool, text_alpha: u32, background: u32) -> u32 {
     if !pack_text {
         0

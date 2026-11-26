@@ -242,8 +242,9 @@ const BEFORE_DYNAMIC: usize = 17;
 pub(super) fn dynamic_texture_start(materials: &[u32; MATERIALS]) -> u32 {
     materials[..BEFORE_DYNAMIC].iter().sum()
 }
-/// Every overlay id a quad's material or shader branch reads, each named once: a new overlay
-/// that reuses one of them fails to build instead of drawing as the other.
+/// Every named overlay id (a constant), each listed once: a new named overlay that reuses one of
+/// them fails to build instead of drawing as the other. The codes `entity.wgsl` reads only as
+/// literals (1, 2, 4 to 12, 36) are not listed.
 const _: () = assert!(distinct(&[
     WATER_MASK_OVERLAY,
     SHADOW_OVERLAY,
@@ -274,7 +275,7 @@ const _: () = assert!(distinct(&[
     NAME_TAG_OVERLAY,
     NAME_TAG_SOLID_OVERLAY,
 ]));
-/// Whether no two of `ids` are equal, and none is a creeper swell code (16 to 31).
+/// Whether no two of `ids` are equal, and none is a white-flash code (`WHITE_OVERLAY`, 16, to 31).
 const fn distinct(ids: &[u32]) -> bool {
     let mut i = 0;
     while i < ids.len() {
