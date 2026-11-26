@@ -5,11 +5,12 @@ a save and a restart keep."""
 import json
 import re
 
-try:
-    from . import lab, oracle_harness as harness
-except ImportError:
-    import lab
-    import oracle_harness as harness
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab, oracle_harness as harness
 
 
 def portal(x, z, level=30, left=None, kind='portal'):

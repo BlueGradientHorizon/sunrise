@@ -14,10 +14,11 @@ import os
 from pathlib import Path
 import subprocess
 import tempfile
-try:
-    from . import lab, oracle_harness as harness, test_rust_parity as base, integration_env
-except ImportError:
-    import lab, oracle_harness as harness, test_rust_parity as base, integration_env
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab, oracle_harness as harness, test_rust_parity as base, integration_env
 
 CASES = 2 * (5 * 8 + 1) * 6
 TESTS = [

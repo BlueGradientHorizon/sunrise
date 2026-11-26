@@ -37,10 +37,9 @@ import subprocess
 import sys
 import tempfile
 
-try:
-    from . import lab, test_rust_parity as base, test_model_baking_parity as baking
-except ImportError:
-    import lab, test_rust_parity as base, test_model_baking_parity as baking
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab, test_rust_parity as base, test_model_baking_parity as baking
 
 PARITY = lab.ROOT / 'mods/sunrise/src/test/java/dev/sunriselab/parity'
 TEST = 'game::spawner_client_tick_tests::client_ticks_match_the_vanilla_cases'

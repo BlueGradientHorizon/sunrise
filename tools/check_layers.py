@@ -30,6 +30,8 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
 CONFIG = ROOT / "tools" / "layers.json"
 CONFIG_PATH = "tools/layers.json"
 TOOL = "tool"
@@ -50,10 +52,7 @@ def base_config(base):
     merge_base = subprocess.run(["git", "merge-base", base, "HEAD"], capture_output=True, text=True, cwd=ROOT)
     if merge_base.returncode != 0:
         return None
-    if __package__:
-        from . import merge_base as shared
-    else:
-        import merge_base as shared
+    from tools import merge_base as shared
     # A baseline that is there but can't be read stops the check (merge_base.text_at).
     text = shared.text_at(merge_base.stdout.strip(), CONFIG_PATH, ROOT)
     return json.loads(text) if text is not None else None
@@ -234,10 +233,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--base", help="refuse 'allowed' entries added since this git ref")
     parser.add_argument("--list", action="store_true", help="print each crate's layer and the exceptions")
-    if __package__:
-        from . import merge_base
-    else:
-        import merge_base
+    from tools import merge_base
     parser.add_argument("--pull-request-merge", action="store_true", help=merge_base.PULL_REQUEST_MERGE_HELP)
     args = parser.parse_args(argv)
     if args.base:

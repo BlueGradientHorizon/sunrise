@@ -27,13 +27,10 @@ import tempfile
 import time
 import urllib.request
 
-try:
-    from . import datafix_paths, file_lock
-except ImportError:
-    import datafix_paths
-    import file_lock
-
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+from tools import datafix_paths, file_lock
+
 KEEP_VARIABLE = 'SUNRISE_DATAFIX_SEED_KEEP'
 MANIFEST_VARIABLE = 'SUNRISE_DATAFIX_MANIFEST'
 OUTCOME_VARIABLE = 'SUNRISE_DATAFIX_SEEDS_OUTCOME'

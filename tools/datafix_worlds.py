@@ -30,16 +30,11 @@ import zipfile
 import zlib
 from pathlib import Path
 
-if __package__:
-    from . import datafix_paths, datafix_scene as scene, datafix_scene_12 as scene12
-    from .lab import free_port, offline_uuid, parse_varint, varint
-else:
-    import datafix_paths
-    import datafix_scene as scene
-    import datafix_scene_12 as scene12
-    from lab import free_port, offline_uuid, parse_varint, varint
-
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+from tools import datafix_paths, datafix_scene as scene, datafix_scene_12 as scene12
+from tools.lab import free_port, offline_uuid, parse_varint, varint
+
 LOCAL = datafix_paths.writable_root()
 
 

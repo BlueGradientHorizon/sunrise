@@ -17,10 +17,11 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
-try:
-    from . import lab, oracle_harness as harness, test_rust_parity as base, integration_env
-except ImportError:
-    import lab, oracle_harness as harness, test_rust_parity as base, integration_env
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab, oracle_harness as harness, test_rust_parity as base, integration_env
 
 OUTPUTS = {'fox.txt': 13 * 3 * 2, 'dolphin.txt': 13 * 3, 'dragon.txt': 7 * 5 * 3 * 2, 'look_at.txt': 36}
 WITNESS_ENV = 'SUNRISE_MOB_TURN_WITNESS_DIR'

@@ -16,10 +16,9 @@ import subprocess
 import sys
 import tempfile
 
-try:
-    from . import lab
-except ImportError:
-    import lab
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import lab
 
 TESTS = [
     'game::fangs::ticking_tests::fangs_and_an_ominous_item_spawner_outside_the_ticking_chunks_do_not_tick',
