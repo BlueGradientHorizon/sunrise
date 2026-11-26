@@ -188,6 +188,7 @@ name = "saves"
 about = "saving and loading worlds, entities and players, region files, datafix"
 paths = [
   "crates/sunrise-client/src/save.rs", "crates/sunrise-client/src/save/*", "crates/sunrise-client/src/entity_nbt.rs",
+  "crates/sunrise-client/src/entity_nbt/*",
   "crates/sunrise-client/src/game/world/saving.rs", "crates/sunrise-client/src/game/world/persist*",
   "crates/sunrise-client/src/game/world/storage.rs", "crates/sunrise-client/src/game/world/autosave.rs",
   "crates/sunrise-world/src/region.rs", "crates/sunrise-world/src/datafix/*", "crates/sunrise-core/src/nbt.rs",

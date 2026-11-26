@@ -19,6 +19,7 @@ def main():
     report = build / 'report.json'
     report.unlink(missing_ok=True)
     paths = ['crates/sunrise-client/src/entity_nbt.rs',
+             'crates/sunrise-client/src/entity_nbt/common.rs',
              'crates/sunrise-client/src/game/mobs/creatures/mod.rs',
              'crates/sunrise-client/examples/probe/conversion_tags_fixture.rs',
              'mods/sunrise/src/test/java/dev/sunriselab/parity/VanillaConversionTagsOracle.java',
