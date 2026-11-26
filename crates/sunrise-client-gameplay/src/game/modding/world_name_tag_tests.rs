@@ -110,6 +110,39 @@ fn brightness(pixels: &[u8]) -> u64 {
     pixels.iter().map(|&c| u64::from(c)).sum()
 }
 
+/// #6143: `scale` sizes the text around the label's anchor; the default is a name tag's 0.025
+/// and draws exactly as before; a scale that isn't finite, zero or negative is refused.
+#[test]
+#[ignore = "daily"]
+fn a_labels_scale_sizes_its_text_and_the_default_is_a_name_tags() {
+    with_client_game(|game| {
+        let text = Text::literal("Label");
+        let at = [0.5, 70.0, 0.5];
+        let plain = NameTagOptions::new(false, false, 0xF0);
+        assert_eq!(plain.scale, NameTagOptions::NAME_TAG_SCALE);
+        assert_eq!(NameTagOptions::default().scale, 0.025);
+        let (ok, [one, _]) = labels(game, at, &text, plain);
+        assert_eq!(ok, Ok(()));
+        let explicit = labels(game, at, &text, plain.with_scale(0.025)).1[0].clone();
+        assert_eq!(bytes(&explicit), bytes(&one), "0.025 is the default");
+        let (ok, [two, _]) = labels(game, at, &text, plain.with_scale(0.05));
+        assert_eq!(ok, Ok(()));
+        assert_eq!(one.len(), two.len());
+        // Every vertex lies twice as far from the label's anchor, 0.5 above `at` (camera space).
+        let anchor = DVec3::from(at) + DVec3::new(0.0, 0.5, 0.0) - DVec3::from(CAMERA);
+        let anchor = anchor.as_vec3();
+        for (a, b) in one.iter().zip(&two) {
+            let (a, b) = (Vec3::from(a.pos) - anchor, Vec3::from(b.pos) - anchor);
+            assert!((b - a * 2.0).length() < 1e-4, "{a} -> {b}");
+        }
+        for bad in [0.0, -0.025, f32::NAN, f32::INFINITY] {
+            let (refused, drawn) = labels(game, at, &text, plain.with_scale(bad));
+            assert_eq!(refused, Err(DrawError::InvalidScale), "{bad}");
+            assert!(drawn.iter().all(Vec::is_empty), "{bad} drew nothing");
+        }
+    });
+}
+
 #[test]
 #[ignore = "daily"]
 fn a_label_hides_behind_a_wall_unless_it_is_see_through() {

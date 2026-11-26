@@ -75,6 +75,8 @@ pub enum DrawError {
     InvalidWidth,
     /// The selected stage has no render pass.
     NoRenderPass,
+    /// A name tag's [`NameTagOptions::scale`] is not finite, or is zero or negative.
+    InvalidScale,
 }
 
 // no wire: a draw handle only names a batch in the current in-process render view.
@@ -107,7 +109,7 @@ impl PreparedWorldDraw {
 pub struct PreparedWorldDrawError;
 
 /// How [`WorldDrawContext::name_tag`](crate::WorldDrawContext::name_tag) draws a label.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 // no wire: local world label drawing options.
 pub struct NameTagOptions {
@@ -136,8 +138,35 @@ pub struct NameTagOptions {
     /// raising each level to at least 2. No effect without `see_through`, which already draws
     /// in `light` as given.
     pub exact_light: bool,
+    /// The world size of one text pixel: the label is drawn under `PoseStack.scale(scale,
+    /// -scale, scale)` where a name tag uses `0.025` ([`NameTagOptions::NAME_TAG_SCALE`]), so
+    /// `0.05` draws text twice a name tag's size and `0.0125` half. The label still sits 0.5
+    /// above `at`, as a name tag sits above its entity. A scale that is not finite, or is zero
+    /// or negative, refuses the label with [`DrawError::InvalidScale`].
+    pub scale: f32,
 }
+impl Default for NameTagOptions {
+    fn default() -> Self {
+        Self::new(false, false, 0)
+    }
+}
+// The scale is compared by its bits, so the options stay `Eq` as before the field existed.
+impl PartialEq for NameTagOptions {
+    fn eq(&self, other: &Self) -> bool {
+        self.see_through == other.see_through
+            && self.background == other.background
+            && self.light == other.light
+            && self.faded_alpha == other.faded_alpha
+            && self.exact_light == other.exact_light
+            && self.scale.to_bits() == other.scale.to_bits()
+    }
+}
+impl Eq for NameTagOptions {}
 impl NameTagOptions {
+    /// A name tag's text pixel size in the world, `Matrix4f.scale(0.025F, -0.025F, 0.025F)`
+    /// in vanilla's name tag submit: the default [`NameTagOptions::scale`].
+    pub const NAME_TAG_SCALE: f32 = 0.025;
+
     /// Describe a label's drawing; the faded text's alpha follows the text background opacity
     /// and the light of the copy in the world is raised to at least 2.
     pub fn new(see_through: bool, background: bool, light: u8) -> Self {
@@ -147,7 +176,14 @@ impl NameTagOptions {
             light,
             faded_alpha: None,
             exact_light: false,
+            scale: Self::NAME_TAG_SCALE,
         }
+    }
+
+    /// Draw the text at `scale` world units per text pixel ([`NameTagOptions::scale`]).
+    pub fn with_scale(mut self, scale: f32) -> Self {
+        self.scale = scale;
+        self
     }
 
     /// Draw the faded text at alpha `alpha` ([`NameTagOptions::faded_alpha`]).

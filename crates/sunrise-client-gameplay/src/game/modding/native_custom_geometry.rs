@@ -336,6 +336,9 @@ impl ClientGame<'_> {
         options: NameTagOptions,
     ) -> Result<(), DrawError> {
         draw.check_label(at)?;
+        if !options.scale.is_finite() || options.scale <= 0.0 {
+            return Err(DrawError::InvalidScale);
+        }
         let text = sunrise_client_lib::api_text::to_engine_inprocess(text);
         let from_camera = DVec3::from(at) - DVec3::from(draw.camera());
         let o = from_camera + DVec3::new(0.0, 0.5, 0.0);
@@ -350,7 +353,8 @@ impl ClientGame<'_> {
             .faded_alpha
             .map_or_else(|| self.client.settings.faded_text_alpha(0.25), u32::from);
         let light = options.light;
-        let unit = super::names::NAME_TAG_UNIT;
+        // PoseStack.scale(s, -s, s) in place of the name tag's 0.025.
+        let unit = options.scale;
         let (mut world, mut see_through) = (Vec::new(), Vec::new());
         let quads = |alpha, backdrop, layer, light, out: &mut Vec<Vertex>| {
             self.styled_name_tag_quads(o, &lines, alpha, backdrop, layer, light, unit, out, None)
