@@ -102,7 +102,7 @@ def labels_of(runs_on, facts=None):
 
 def routed():
     """(where, triggers, workflow, job, runs-on, pools) for every job that can run on our runners."""
-    for path in sorted(WORKFLOWS.glob("*.yml")):
+    for path in sorted(WORKFLOWS.glob("*.y*ml")):
         document = workflow(path)
         on = triggers(document)
         for name, job in jobs(document):
@@ -209,10 +209,22 @@ jobs:
                 condition = parsed_expression(job.get("if", "true"))
                 if any(map(truthy, branch_values(condition, fork))):
                     self.assertFalse(labels_of(value, fork) & set(LIGHT), f"{where}: a fork's pull request")
-            if "pull_request_target" in on:
-                # main's code only: every checkout is main's.
-                for checkout in checkouts(job):
-                    self.assertEqual(checkout.get("with", {}).get("ref"), "main", where)
+            for checkout in checkouts(job):
+                options = checkout.get("with", {})
+                self.assertIn(options.get("repository"), (None, "${{ github.repository }}"),
+                              f"{where}: checkout of another repository")
+                ref = options.get("ref")
+                if on & {"pull_request_target", "issue_comment"}:
+                    # Bots acting on a PR must explicitly choose main, never the PR head or merge ref.
+                    self.assertIn(ref, ("main", "refs/heads/main"), f"{where}: checkout does not pin main")
+                elif where.startswith("dyna-ci.yml ") and ref == "${{ needs.changes.outputs.pr_merge }}":
+                    # The gate can check out a PR chosen on dispatch. Its trust output guards the label independently
+                    # of the event that started the job.
+                    self.assertFalse(labels_of(value, {TRUSTED: False}) & set(LIGHT),
+                                     f"{where}: checkout of an untrusted selected PR")
+                else:
+                    # A schedule uses main; a trusted push or dispatch may also use its own repository ref.
+                    self.assertIn(ref, (None, "main", "refs/heads/main"), f"{where}: checkout of an untrusted ref")
 
     def test_light_runner_guard_must_block_the_fork_branch(self):
         fixture = (
@@ -227,6 +239,19 @@ jobs:
             self.test_light_runners_take_main_code_only()
             path.write_text(fixture.replace("{guard}", "|| inputs.bypass"))
             with self.assertRaisesRegex(AssertionError, "a fork's pull request"):
+                self.test_light_runners_take_main_code_only()
+
+    def test_a_light_comment_job_checks_out_main_not_the_pull_request(self):
+        fixture = (
+            "on: issue_comment\njobs:\n  comment:\n    runs-on: sunrise-light\n"
+            "    steps:\n      - uses: actions/checkout@v7\n        with:\n          ref: "
+        )
+        with tempfile.TemporaryDirectory() as directory, patch(f"{__name__}.WORKFLOWS", Path(directory)):
+            path = Path(directory) / "fixture.yaml"
+            path.write_text(fixture + "main\n")
+            self.test_light_runners_take_main_code_only()
+            path.write_text(fixture + "refs/pull/1/head\n")
+            with self.assertRaisesRegex(AssertionError, "checkout"):
                 self.test_light_runners_take_main_code_only()
 
     def test_no_secret_or_writing_token_on_our_runners(self):
