@@ -1,4 +1,5 @@
 """The vendored PyYAML loader refuses an archive that is not the pinned one, and puts nothing on sys.path then."""
+import os
 import shutil
 import subprocess
 import sys
@@ -37,7 +38,7 @@ class VendoredYamlTests(unittest.TestCase):
             shutil.copytree(CI / "vendor", folder / "vendor")
             with (folder / "vendor/pyyaml-6.0.3.zip").open("ab") as archive:
                 archive.write(b"changed")
-            result = subprocess.run([sys.executable, "-S", "-c", PROBE], cwd=temp, env={"PYTHONPATH": temp},
+            result = subprocess.run([sys.executable, "-S", "-c", PROBE], cwd=temp, env={**os.environ, "PYTHONPATH": temp},
                                     capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("refused: vendored YAML parser checksum mismatch", result.stdout)
