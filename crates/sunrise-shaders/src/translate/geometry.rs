@@ -269,6 +269,7 @@ fn combine(
             file: geometry.files.first().cloned().unwrap_or_default(),
             line: 0,
             message,
+            unbound: None,
         }]
     };
     // Interface blocks first become plain varyings (`interface_blocks`), the vertex stage's

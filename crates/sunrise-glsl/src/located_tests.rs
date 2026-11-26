@@ -132,6 +132,7 @@ fn a_refused_include_names_the_directive_in_the_file_that_asks() {
             file: "minecraft:shaders/include/asks.glsl".into(),
             line: 2,
             message: "minecraft:shaders/include/absent.glsl not found".into(),
+            unbound: None,
         }]
     );
 }
@@ -150,6 +151,7 @@ fn a_location_no_stage_writes_names_the_input() {
             line: 3,
             message: "the fragment shader reads location 5, which the vertex shader doesn't write"
                 .into(),
+                unbound: None,
         }]
     );
 }

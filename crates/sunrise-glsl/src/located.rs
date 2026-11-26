@@ -11,6 +11,9 @@ pub struct Error {
     pub file: String,
     pub line: u32,
     pub message: String,
+    /// The name of the block or sampler the stage reads that its pipeline doesn't provide, for
+    /// the error that says so; none for any other error.
+    pub unbound: Option<String>,
 }
 
 impl std::fmt::Display for Error {
@@ -41,6 +44,7 @@ impl Location {
             file: self.file.clone(),
             line: self.line,
             message: message.to_string(),
+            unbound: None,
         }
     }
 }
@@ -407,6 +411,7 @@ mod tests {
             file: "minecraft:shaders/core/text.fsh".into(),
             line,
             message: "fragment shader: oops".into(),
+            unbound: None,
         };
         assert_eq!(
             describe(&[error(3), error(0)]),

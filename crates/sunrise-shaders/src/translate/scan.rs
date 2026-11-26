@@ -650,6 +650,7 @@ impl<'p> Stage<'p> {
                 .unwrap_or_default(),
             line: o.line,
             message: message.to_owned(),
+            unbound: None,
         }
     }
 
