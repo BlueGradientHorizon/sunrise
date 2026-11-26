@@ -214,7 +214,8 @@ pub trait GuiCanvas {
 
     /// Draw a region of a texture packed in the GUI atlas at `[x, y, w, h]`: `texture` is the
     /// packed name (a path under `textures/`, without `.png`) or a registered atlas's sprite
-    /// (`mymod:gui/atlases/icons/mymod/heart`). Accepts every [`Blend`]. A live dynamic texture
+    /// (`mymod:gui/atlases/icons/mymod/heart`); `minecraft:name` and `name` are the same texture.
+    /// Accepts every [`Blend`]. A live dynamic texture
     /// or a standalone resource-pack texture is not in the atlas and is refused with
     /// [`GuiDrawError::UnknownTexture`]: draw those with [`Self::texture`]. A non-finite `dst`
     /// or `uv` is refused with [`GuiDrawError::NotFinite`] and a zero `tex` side with

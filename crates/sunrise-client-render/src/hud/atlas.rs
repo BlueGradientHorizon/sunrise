@@ -364,7 +364,7 @@ impl HudAtlas {
     /// packed sprite no model or GUI entry owns, in that order; [`GuiSprite::Missing`] for an id the list removed or failed; none for an id the GUI
     /// atlas does not own. The sprite carries the scaling of the entry itself.
     pub fn gui_lookup(&self, id: &str) -> Option<GuiSprite> {
-        let id = id.strip_prefix("minecraft:").unwrap_or(id);
+        let id = default_namespace(id);
         match self.gui_present(id) {
             Some((rect, scaling)) => Some(GuiSprite::Present {
                 rect: *rect,
@@ -376,7 +376,7 @@ impl HudAtlas {
     /// The rect a GUI draw uses for GUI sprite `id`: [`HudAtlas::gui_lookup`]'s, the missing
     /// sprite for an id the list removed or failed, none for an id the atlas does not own.
     pub fn gui_rect(&self, id: &str) -> Option<&Rect> {
-        let id = id.strip_prefix("minecraft:").unwrap_or(id);
+        let id = default_namespace(id);
         match self.gui_present(id) {
             Some((rect, _)) => Some(rect),
             None => self
@@ -387,11 +387,15 @@ impl HudAtlas {
         }
     }
     pub(crate) fn gui_atlas_page(&self, name: &str) -> Option<usize> {
-        let name = name.strip_prefix("minecraft:").unwrap_or(name);
+        let name = default_namespace(name);
         if self.gui.contains_key(name) {
             return None;
         }
         self.registered_owners.get(name).copied()
+    }
+    /// Texture sampling flags for `name`, following [`HudAtlas::texture_rect`]'s `minecraft:` rule.
+    pub fn texture_flags(&self, name: &str) -> Option<TextureFlags> {
+        self.flags.get(default_namespace(name)).copied()
     }
     /// A raw texture uses its own page only if the base atlas has no sprite of that name. The
     /// name follows [`HudAtlas::texture_rect`]'s `minecraft:` rule.

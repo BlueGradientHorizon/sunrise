@@ -290,7 +290,10 @@ def surface_touched(changed, crates_of, dependencies, merge_base):
     when the branch changes no Rust: then only the notes, the manifest and the report's own files count."""
     folders = (SURFACE_NOTES, *(crates_of[name].rstrip("/") + "/" for name in surface_crates(dependencies)
                                 if name in crates_of))
-    if any(path in SURFACE_FILES or path.startswith(folders) for path in changed):
+    if any(
+        path in SURFACE_FILES or path.endswith(".extension-tags.json") or path.startswith(folders)
+        for path in changed
+    ):
         return True
     games = sorted(path for path in changed
                    if path.endswith(".rs") and (path == GAME_FILE or path.startswith(GAME_FOLDER)))

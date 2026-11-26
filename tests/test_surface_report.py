@@ -533,7 +533,7 @@ class MainTests(unittest.TestCase):
         built.assert_not_called()
         self.run_main(tool=None, env={"JOBS": "-j3"}, **shared)
         built.assert_called_once_with(["-j3"])
-        self.assertEqual(tools, ["/given/stage", "/built/sunrise-stage"])
+        self.assertEqual(tools, [["/given/stage"], ["/built/sunrise-stage"]])
 
     def test_build_tool_mode_appends_the_tool_to_the_github_environment(self):
         with tempfile.TemporaryDirectory() as directory:

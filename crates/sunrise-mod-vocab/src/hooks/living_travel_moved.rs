@@ -26,9 +26,9 @@ pub trait Hooks {
     /// velocity. If a listener panics or incurs a phase refusal, its edit is
     /// discarded and later listeners still run. A panic disables the failed
     /// callback for this hook for the session. The hook takes the loop context
-    /// of the side that runs the travel, not a `Host` (the maintainer ruling
-    /// for phases 2 to 5): read equipment, fluids and other state from what the
-    /// listener already knows and `context`, as `living_travel` does.
+    /// of the side that runs the travel, not a `Host`: read equipment, fluids
+    /// and other state from what the listener already knows and `context`, as
+    /// `living_travel` does.
     ///
     /// Fires on every side that simulates the body: the server for each living
     /// body it simulates, and a client for its own player and the living
