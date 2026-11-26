@@ -3,7 +3,7 @@ use std::{fs, process::Command};
 use sunrise_native_build::contract::CONTRACT;
 
 #[test]
-#[ignore]
+#[ignore = "daily"]
 fn the_rolling_tool_checks_for_updates_only_after_a_successful_everyday_command() {
     // A normal developer build would skip the reminder even with the old dispatch order.
     assert_eq!(
@@ -56,6 +56,10 @@ fn the_rolling_tool_checks_for_updates_only_after_a_successful_everyday_command(
         let error = String::from_utf8_lossy(&output.stderr);
         assert!(error.lines().next().unwrap().contains(reason), "{error}");
         assert!(!cache.exists(), "{args:?} checked for tool updates");
+        assert!(
+            !project.join("target").exists(),
+            "{args:?} left build output"
+        );
     }
     let fit = command()
         .args(["check", "--build", "nightly"])

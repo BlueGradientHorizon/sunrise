@@ -176,6 +176,11 @@ jobs:
           IGNORED_TESTS_PRIVATE_LOGS: ${{ runner.temp }}/ignored-tests-private
         run: |
           export SUNRISE_TEST_RESOURCES="$PWD/.local/sunrise-client/26.3"
+          # The update-notice fixture copies the real binary. Both the workspace prebuild and
+          # the Cargo fallback must build it as the rolling tool.
+          if [ "$SHARD" = daily-rows ]; then
+            export SUNRISE_TOOL_CHANNEL=mod-tool
+          fi
           python3 tools/ci/with_xvfb.py python3 tools/ci/ignored_tests.py --report "$RUNNER_TEMP/daily-report.json" "$SHARD"
       # The public log withholds panic payloads (they can carry vanilla data); a failed run's full output is copied
       # into this host's keep, as parity.yml keeps a failed share's logs, with the same three-day retention.
