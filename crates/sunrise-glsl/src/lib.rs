@@ -1547,19 +1547,21 @@ enum Declared<'a> {
 }
 
 /// What `line` declares, if it declares anything: a storage block first, then a uniform block,
-/// then any other declaration.
+/// then any other declaration. Its `layout(...)` is split off once ([`layout_prefix`]) and each
+/// reader gets the parts.
 fn declared(line: &str) -> Option<Declared<'_>> {
-    if let Some(block) = storage_block(line) {
+    let (layout, rest, rest_at) = layout_prefix(line)?;
+    if let Some(block) = storage_block(layout, rest) {
         return Some(Declared::Storage(block));
     }
-    if let Some((name, tail)) = block_name(line) {
+    if let Some((name, tail)) = block_name(rest) {
         return Some(Declared::Block {
             name,
             tail,
-            push_constant: is_push_constant_block(line),
+            push_constant: layout.split(',').any(|item| item.trim() == "push_constant"),
         });
     }
-    let decl = declaration(line)?;
+    let decl = declaration(layout, rest, rest_at)?;
     Some(match (decl.storage, decl.ty) {
         ("uniform", "isamplerBuffer" | "usamplerBuffer") => Declared::TexelBuffer(decl),
         ("uniform", "image2D") => Declared::Image(decl),
@@ -1625,9 +1627,9 @@ fn layout_prefix(line: &str) -> Option<(&str, &str, usize)> {
 /// qualifiers (`LEADING_QUALIFIERS`, `PRECISION_QUALIFIERS`, `MEMORY_QUALIFIERS`), then `in`,
 /// `out` or `uniform`, then precision and memory qualifiers, the type and the name. Any other
 /// word before the storage word makes it some other statement (`x = in vec2 y;`,
-/// `return out vec4 c;`).
-fn declaration(line: &str) -> Option<Decl<'_>> {
-    let (layout, rest, rest_at) = layout_prefix(line)?;
+/// `return out vec4 c;`). `layout`, `rest` and `rest_at` are the parts of the line
+/// [`layout_prefix`] split off.
+fn declaration<'a>(layout: &'a str, rest: &'a str, rest_at: usize) -> Option<Decl<'a>> {
     let location = layout.split(',').find_map(|q| {
         let (key, value) = q.split_once('=')?;
         (key.trim() == "location").then(|| value.trim().parse().ok())?
@@ -1723,10 +1725,9 @@ fn declaration_lines(line: &str) -> Vec<(usize, &str)> {
 }
 
 /// The block a `[layout(...)] uniform Name {` line opens, with its name and the line from the
-/// `uniform` token on (what the line leaves after its `layout(...)`, which is rewritten).
+/// `uniform` token on (`tail`, what the line leaves after its `layout(...)`, which is rewritten).
 /// `uniform` is a whole word, never the start of an identifier such as `uniformColor`.
-fn block_name(line: &str) -> Option<(&str, &str)> {
-    let (_, tail, _) = layout_prefix(line)?;
+fn block_name(tail: &str) -> Option<(&str, &str)> {
     let rest = tail
         .strip_prefix("uniform")
         .filter(|after| !after.starts_with(is_ident))?
@@ -1751,9 +1752,9 @@ struct StorageBlock<'a> {
     tail: &'a str,
 }
 
-/// The storage buffer block a line opens, if it opens one.
-fn storage_block(line: &str) -> Option<StorageBlock<'_>> {
-    let (layout, mut rest, _) = layout_prefix(line)?;
+/// The storage buffer block a line opens, if it opens one: `layout` is what stood inside its
+/// `layout(...)` and `rest` the line after it.
+fn storage_block<'a>(layout: &'a str, mut rest: &'a str) -> Option<StorageBlock<'a>> {
     let word_end = |s: &str| s.find(|c: char| !is_ident(c)).unwrap_or(s.len());
     let mut qualifiers = Vec::new();
     loop {
@@ -1779,12 +1780,6 @@ fn storage_block(line: &str) -> Option<StorageBlock<'_>> {
             _ => return None,
         }
     }
-}
-
-/// Whether the `layout(...)` qualifier of `line` names `push_constant`.
-fn is_push_constant_block(line: &str) -> bool {
-    layout_prefix(line)
-        .is_some_and(|(layout, _, _)| layout.split(',').any(|item| item.trim() == "push_constant"))
 }
 
 /// First set-0 binding strictly above every caller-declared block (`b`) and sampler (`b`, `b + 1`).
@@ -1923,7 +1918,10 @@ fn rewrite(
     let explicit: Vec<u32> = if vertex {
         text.lines()
             .flat_map(declaration_lines)
-            .filter_map(|(_, line)| declaration(line))
+            .filter_map(|(_, line)| {
+                let (layout, rest, rest_at) = layout_prefix(line)?;
+                declaration(layout, rest, rest_at)
+            })
             .filter(|d| d.storage == "out")
             .filter_map(|d| d.location)
             .collect()
@@ -3051,23 +3049,32 @@ mod tests {
         );
     }
 
+    fn block_named(line: &str) -> Option<(&str, &str)> {
+        block_name(layout_prefix(line)?.1)
+    }
+
+    fn storage_of(line: &str) -> Option<StorageBlock<'_>> {
+        let (layout, rest, _) = layout_prefix(line)?;
+        storage_block(layout, rest)
+    }
+
     /// Only a uniform block's declaration names a block, written over several lines or on one.
     #[test]
     fn block_names_are_read_from_block_declarations_only() {
-        let name = |line| block_name(line).map(|(name, _)| name);
+        let name = |line| block_named(line).map(|(name, _)| name);
         assert_eq!(name("layout(std140) uniform Day {"), Some("Day"));
         assert_eq!(name("uniform Day { float daylight; };"), Some("Day"));
         assert_eq!(name("uniform Foo{"), Some("Foo"));
         assert_eq!(name("uniform Globals"), Some("Globals"));
         assert_eq!(
-            block_name("layout(std140) uniform Day {").map(|(_, tail)| tail),
+            block_named("layout(std140) uniform Day {").map(|(_, tail)| tail),
             Some("uniform Day {")
         );
-        assert_eq!(block_name("uniform float x;"), None);
+        assert_eq!(block_named("uniform float x;"), None);
         // Only `layout(...)` may stand before `uniform`, and it must close.
-        assert_eq!(block_name("layout(std140) flat uniform Day {"), None);
-        assert_eq!(block_name("layout(std140 uniform Day {"), None);
-        assert_eq!(block_name("uniform sampler2D Sampler0;"), None);
+        assert_eq!(block_named("layout(std140) flat uniform Day {"), None);
+        assert_eq!(block_named("layout(std140 uniform Day {"), None);
+        assert_eq!(block_named("uniform sampler2D Sampler0;"), None);
     }
 
     /// `uniform` is a keyword only as a whole token: `uniformColor` opens no block, and a block
@@ -3220,20 +3227,20 @@ mod tests {
     /// Only a storage buffer's declaration names a storage block, with its memory qualifiers.
     #[test]
     fn storage_blocks_are_read_from_buffer_declarations_only() {
-        let block = storage_block("layout(std430) readonly buffer Quads {").unwrap();
+        let block = storage_of("layout(std430) readonly buffer Quads {").unwrap();
         assert_eq!(
             (block.name, block.qualifiers, block.tail),
             ("Quads", vec!["readonly"], "{")
         );
-        let block = storage_block("buffer Free { uint slots[]; };").unwrap();
+        let block = storage_of("buffer Free { uint slots[]; };").unwrap();
         assert_eq!((block.name, block.qualifiers.len()), ("Free", 0));
-        assert_eq!(storage_block("buffer Next").unwrap().tail, "");
-        assert_eq!(storage_block("uniform isamplerBuffer Faces;"), None);
-        assert_eq!(storage_block("uniform Day {"), None);
-        assert_eq!(storage_block("vec4 buffer;"), None);
-        assert_eq!(storage_block("uint data[];"), None);
+        assert_eq!(storage_of("buffer Next").unwrap().tail, "");
+        assert_eq!(storage_of("uniform isamplerBuffer Faces;"), None);
+        assert_eq!(storage_of("uniform Day {"), None);
+        assert_eq!(storage_of("vec4 buffer;"), None);
+        assert_eq!(storage_of("uint data[];"), None);
         assert_eq!(
-            storage_block("layout(std430, binding = 3) buffer Q {")
+            storage_of("layout(std430, binding = 3) buffer Q {")
                 .unwrap()
                 .layout,
             "std430, binding = 3"
