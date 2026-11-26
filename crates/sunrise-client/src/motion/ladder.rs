@@ -4,6 +4,7 @@
 //! down it is stopped unless the block is scaffolding, which the mods may also say
 //! (`native_is_scaffolding`, in `motion::surface`).
 use super::*;
+use sunrise_world::living_air;
 
 /// Whether an open trapdoor above a block climbs like a ladder
 /// (`IBlockExtension.makesOpenTrapdoorAboveClimbable`, which `LivingEntity.onClimbable` asks of
@@ -161,8 +162,45 @@ impl LivingAirWorld for MotionWorld<'_, '_, '_> {
     fn is_player_class(&self) -> bool {
         true
     }
-    fn move_self(&mut self, gate: &mut MoveGate, v: Vec3) -> Result<()> {
-        MotionWorld::move_self(self, gate, v)
+    fn move_self(&mut self, gate: &mut MoveGate, v: Vec3) -> Result<living_air::SelfMove> {
+        let before = (self.player.position, self.player.ground.on_ground);
+        MotionWorld::move_self(self, gate, v)?;
+        Ok(living_air::SelfMove {
+            moved: self.player.position.subtract(before.0),
+            on_ground_before: before.1,
+        })
+    }
+    /// `living_travel_moved` for the player: the server's, and this client's own prediction,
+    /// replayed ticks included.
+    fn travel_moved(
+        &mut self,
+        mode: sunrise_world::travel::TravelMode,
+        made: living_air::SelfMove,
+    ) -> Result<()> {
+        use sunrise_world::travel::TravelMode;
+        let flying = self.player.flying;
+        let mut velocity = self.player.velocity;
+        crate::travel_gate::moved_controlled(
+            self.loop_context,
+            self.player.entity_id as u32,
+            "minecraft:player",
+            || match mode {
+                TravelMode::Air if flying => TravelMode::Flying,
+                other => other,
+            },
+            crate::travel_gate::Moved {
+                moved: made.moved,
+                on_ground_before: made.on_ground_before,
+                on_ground: self.player.ground.on_ground,
+                jumping: self.player.jumping,
+            },
+            &mut velocity,
+            true,
+        );
+        if velocity != self.player.velocity {
+            self.player.set_velocity(velocity);
+        }
+        Ok(())
     }
     fn horizontal_collision(&self) -> bool {
         self.player.collision.horizontal

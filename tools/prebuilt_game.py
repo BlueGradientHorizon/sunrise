@@ -45,7 +45,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from tools import file_lock
+from tools import file_lock, lab
 PROFILE = "release"
 # What rustc writes for a dylib or proc macro on each OS, plus metadata and the MinGW import libraries.
 SUFFIXES = (".rmeta", ".so", ".dll", ".dll.a", ".dylib")
@@ -634,7 +634,7 @@ def assert_externs(out: Path, eligible: list[str]) -> None:
 def build(out: Path, server: bool) -> None:
     # Resolve before entering the staged copy. Keep its source and Cargo outputs exclusively owned until collection
     # and validation are done. Closing the file releases the lock; leave its name in place for future builds.
-    configured_target = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")).resolve() / "prebuilt"
+    configured_target = lab.cargo_target().resolve() / "prebuilt"
     target_dir = configured_target.resolve()
     # Collection empties the output. It must neither remove a path to the build's lock and stage
     # nor overlap the actual work directory when `prebuilt` is a symlink or junction.
@@ -979,9 +979,6 @@ def start(out: Path) -> None:
     a hang or any other stop, so an archive whose libraries disagree (two allocators, #3877) cannot ship. On Windows
     it runs without MinGW on PATH, as on a player's computer, so a runtime DLL the launcher would not install fails
     here (#3521)."""
-    # Run as a script, so lab sits on the path beside it; tests import this module without running `start`.
-    import lab
-
     client = json.loads((out / IDENTITY).read_text())["side"] == "client"
     for installed in (out.parent / SMOKE, out.parent / SMOKE_API):
         with tempfile.TemporaryDirectory(dir=out.parent) as scratch:
@@ -1147,7 +1144,7 @@ def programs(identity: dict, folder: Path) -> Path:
         cargo, build, *rest = shlex.split(inputs["how"][name].replace("PROFILE", "--release"))
         run([cargo, build, "--locked", *rest], cwd=ROOT)
     # Where the player folder's game program would be: its companions are beside it.
-    game = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")).resolve() / PROFILE / EXECUTABLE
+    game = lab.cargo_target().resolve() / PROFILE / EXECUTABLE
     run(["cargo", "run", "--locked", "-q", "-p", "xtask", "--", route, "--no-game", str(game), str(folder)], cwd=ROOT)
     if identity["side"] == "client" and identity["target"].startswith("x86_64-pc-windows"):
         run([sys.executable, str(ROOT / "tools/ci/fetch_dxc.py"), str(folder)], cwd=ROOT)
@@ -1162,7 +1159,7 @@ def tool(target: str) -> Path:
     environment = {**os.environ, "SUNRISE_TOOL_COMMIT": os.environ.get("SUNRISE_TOOL_COMMIT") or head()}
     run(["cargo", "build", "--locked", "--release", *(["--target", CROSS_TARGET] if CROSS_TARGET else []), "-p", TOOL, "--bin", TOOL],
         cwd=ROOT, env=environment)
-    folder = Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "target")).resolve() / (CROSS_TARGET or ".") / "release"
+    folder = lab.cargo_target().resolve() / (CROSS_TARGET or ".") / "release"
     if not (folder / TOOL_PROGRAM).is_file():
         sys.exit(f"cargo built no {folder / TOOL_PROGRAM}")
     # Only a debug-assertions build reads SUNRISE_SDK_TRUSTED_KEY (sunrise-release-sign's sdk_keys_for), and the

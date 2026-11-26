@@ -24,16 +24,12 @@ import urllib.request
 import uuid
 import zipfile
 
-try:
-    from . import file_lock
-except ImportError:
-    import file_lock
-
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from tools import file_lock
+
 LOCAL = ROOT / ".local"
 LOCK = ROOT / "research-lock.json"
-# The command every cargo run starts with.
-CARGO = ["cargo"]
 
 
 def pinned_version():
@@ -80,7 +76,7 @@ def parity_fixtures(default_features=True):
     other variant never changes it."""
     if default_features not in _PARITY_FIXTURES:
         features = 'fixtures,client-defaults' if default_features else 'fixtures'
-        command = [*CARGO, 'build', '--locked', '--profile', 'test', '-p', 'sunrise-parity-fixtures',
+        command = ['cargo', 'build', '--locked', '--profile', 'test', '-p', 'sunrise-parity-fixtures',
                    '--features', features, '--bin', 'sunrise-parity-fixtures',
                    '--message-format=json-render-diagnostics']
         cargo_target().mkdir(parents=True, exist_ok=True)

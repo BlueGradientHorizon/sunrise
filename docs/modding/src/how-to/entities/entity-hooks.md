@@ -168,6 +168,14 @@ The server does not send a separate position correction for a listener's edit or
 clamp later movement reports on a veto: vanilla's ordinary movement checks
 decide.
 
+`living_travel_moved` is the moment after the branch's own move (movement phase 4):
+the collision has happened and the branch's drag and gravity have not. A listener
+replaces `velocity` with a finite vector and the drag and gravity then act on it;
+`moved`, `on_ground_before`, `on_ground` and `jumping` say what the move did. It
+fires once per branch that moves, with a zero `moved` when `entity_move` vetoed the
+move, takes the loop context and no `Host`, and runs on every side that simulates the
+body. A `side = "server"` mod's listener is not called for a body a client controls.
+
 On an observing client, `EntityRef::interpolate_to(host, position, rotation)`
 updates client display state for a body the server owns (`Entity.moveOrInterpolateTo`),
 routing to the family's own interpolation handler or setting the pose directly

@@ -714,8 +714,9 @@ impl Game<'_> {
     /// A mod's general entity rows (#792), as the tracker reads them. Their type key is no
     /// entity type a client knows, so pairing introduces them on `sunrise:general_entity`
     /// (`lan/entity.rs`), to Sunrise clients only; their own data are their synced attachments.
-    /// Their custom name and its visibility go as vanilla's `Entity.DATA_CUSTOM_NAME` and
-    /// `DATA_CUSTOM_NAME_VISIBLE` (entries 2 and 3 of the base `Entity` block), never in that payload.
+    /// Their custom name, its visibility and their no-gravity flag go as vanilla's
+    /// `Entity.DATA_CUSTOM_NAME`, `DATA_CUSTOM_NAME_VISIBLE` and `DATA_NO_GRAVITY` (entries 2, 3
+    /// and 5 of the base `Entity` block), never in that payload.
     /// Only these states are marked general: a quarantined record, which keeps its type's key,
     /// is no row and is tracked as an unknown kind (never paired).
     pub(in crate::game) fn lan_general_states(&self, out: &mut States, after: u32) {

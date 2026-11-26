@@ -59,6 +59,27 @@ impl Preprocessed {
         let file = self.files.get(o.file as usize).map_or("?", String::as_str);
         format!("{file}:{}", o.line)
     }
+
+    /// The stage's own file: the first of [`Preprocessed::files`]. [`preprocess`] always reads it
+    /// first; only a stage file that could not be read (refused by its diagnostic before any
+    /// translation) or a `Preprocessed` built by hand has none, and then the name is empty.
+    pub(crate) fn file(&self) -> &str {
+        self.files.first().map_or("", String::as_str)
+    }
+
+    /// An error at output line `line` (from 0), at the pack's file and line it came from. A line
+    /// with no origin is one Sunrise added to the code (a declaration put in, say) after the
+    /// lines were mapped, or one of a `Preprocessed` built by hand: it names the stage file with
+    /// no line, as [`Origin::default`] does for the lines Sunrise writes.
+    pub(crate) fn error_at_line(&self, line: usize, message: impl Into<String>) -> crate::Error {
+        match self.lines.get(line) {
+            Some(o) => match self.files.get(o.file as usize) {
+                Some(file) => crate::Error::new(file.clone(), o.line, message),
+                None => crate::Error::new(self.file(), 0, message),
+            },
+            None => crate::Error::new(self.file(), 0, message),
+        }
+    }
 }
 
 /// Runs the preprocessor on the stage file `path` of `pack` with `macros` defined.

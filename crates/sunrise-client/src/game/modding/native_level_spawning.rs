@@ -183,6 +183,8 @@ impl Game<'_> {
             custom_name: None,
             custom_name_visible: false,
             base: Default::default(),
+            on_ground: false,
+            fall_distance: 0.0,
             envelope: GeneralTypeEnvelope {
                 type_key: kind.to_owned(),
                 payload_version: catalog.payload_version(slot),

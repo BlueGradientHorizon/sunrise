@@ -824,10 +824,15 @@ class OracleKeepTests(unittest.TestCase):
             (keep / "fresh-only.json").write_text(json.dumps({"peer": lately}))
             parity.remember_fresh_only(keep, {"light": {"status": "pass", "oracle_reuse": True}})
             self.assertEqual(parity.fresh_only(keep), {"peer": lately})
-            (keep / "fresh-only.json").write_text("[1, 2]")
-            self.assertEqual(parity.fresh_only(keep), {})
-            (keep / "fresh-only.json").write_text(json.dumps({"loot": 3, "light": lately}))
-            self.assertEqual(parity.fresh_only(keep), {"light": lately})
+
+    def test_a_fresh_only_list_of_the_wrong_shape_is_an_error(self):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            keep = Path(tmp)
+            for text in ("[1, 2]", json.dumps({"loot": 3, "light": "2026-11-20"})):
+                (keep / "fresh-only.json").write_text(text)
+                with self.assertRaises(ValueError):
+                    parity.fresh_only(keep)
 
     def kept_run(self, root, outputs):
         import json

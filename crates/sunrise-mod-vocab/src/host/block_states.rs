@@ -104,6 +104,18 @@ pub trait BlockStatesBackend {
         properties: &[StateConstraint],
     ) -> Result<BlockState, BlockStateError>;
     /// Side: both.
+    /// The key of the block registered as `id`, read by `BlockMetadata::key`.
+    fn block_metadata_key(&self, id: &str) -> Option<BlockKey>;
+    /// Side: both.
+    /// The properties of `block`, read by `BlockMetadata::state_definition`.
+    fn block_metadata_state_definition(
+        &self,
+        block: BlockKey,
+    ) -> Result<StateProperties<'_>, BlockStateError>;
+    /// Side: both.
+    /// The owned metadata read by `BlockStates::metadata`.
+    fn block_metadata_snapshot(&self) -> Option<std::sync::Arc<dyn BlockMetadata + Send + Sync>>;
+    /// Side: both.
     /// `BlockState.canBeReplaced()`: whether placing a block where this state stands
     /// replaces it (air, grass, water, snow layers). None for an unknown state.
     fn block_state_replaceable(&self, state: BlockState) -> Option<bool>;
@@ -197,6 +209,12 @@ pub trait BlockStatesBackend {
     /// None for an unknown state.
     fn block_state_is_solid_render(&self, state: BlockState) -> Option<bool>;
     /// Side: both.
+    /// `BlockState.isSolid()`, the cached `legacySolid`, read by `BlockStates::is_solid`.
+    fn block_state_is_solid(&self, state: BlockState) -> Option<bool>;
+    /// Side: both.
+    /// The cached `isCollisionShapeFullBlock`, read by `BlockStates::collision_is_full_block`.
+    fn block_state_collision_is_full_block(&self, state: BlockState) -> Option<bool>;
+    /// Side: both.
     /// `PoiTypes.forState`: the point of interest type the state belongs to (`minecraft:home`
     /// for a bed's head, `minecraft:librarian` for a lectern, `minecraft:meeting` for a bell),
     /// the states mods add with `extend_poi_types` included. None for a state that is in no
@@ -222,6 +240,12 @@ pub trait BlockStatesBackend {
         state: BlockState,
         class: BlockClass,
     ) -> Result<Option<bool>, LevelReadError>;
+    /// Side: both.
+    /// The read of `BlockStates::is_liquid_block_container`.
+    fn block_state_is_liquid_block_container(&self, state: BlockState) -> Option<bool>;
+    /// Side: both.
+    /// The read of `BlockStates::is_simple_waterlogged`.
+    fn block_state_is_simple_waterlogged(&self, state: BlockState) -> Option<bool>;
     /// Side: both.
     /// The resolved reaction read by `BlockStates::piston_push_reaction`.
     #[forward_api_inputs]

@@ -463,8 +463,10 @@ class DynaRoutingTests(unittest.TestCase):
 
     @unittest.skipUnless(POSIX_BASH and os.name != "nt", "needs the runner's bash and POSIX paths")
     def test_stage_artifact_handoff_selects_normal_binary_and_rejects_unsafe_paths(self):
+        import json
         runtime = workflow("dyna-ci.yml")["jobs"]["verify"]
         script = step_named(runtime, "Build the source stage generator (test profile)")["run"]
+        self.assertEqual(script, "python3 tools/ci/surface_report.py --build-tool")
         for case in ("normal-and-harness", "harness-only", "newline-path"):
             with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
                 root = Path(temporary)

@@ -15,7 +15,6 @@ sunrise-mod-api-macros = { path = "../sunrise-mod-api-macros" }
 # The GUI atlas's pixels, kept compressed once uploaded (hud/atlas.rs `pack_pixels`).
 lz4_flex = { version = "0.14", default-features = false, features = ["std", "safe-encode", "safe-decode", "checked-decode"] }
 sunrise-assets = { path = "../sunrise-assets" }
-sunrise-audio-input = { path = "../sunrise-audio-input", optional = true }
 sunrise-client-core = { path = "../sunrise-client-core" }
 sunrise-client-input = { path = "../sunrise-client-input" }
 sunrise-command = { path = "../sunrise-command" }
@@ -79,6 +78,11 @@ rustix = { version = "1", default-features = false, features = ["std", "time"] }
 # CPAL 0.16's ALSA enumeration drops failed opens and hides the PCM addresses.
 alsa = { version = "0.9", optional = true }
 libc = { version = "0.2", optional = true }
+
+# The microphone's native APIs (audio/mic.rs): ALSA's capture controls on Linux and the BSDs, CoreAudio's input
+# streams on macOS. Windows' microphone goes through cpal alone.
+[target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "netbsd", target_os = "macos"))'.dependencies]
+sunrise-audio-input = { path = "../sunrise-audio-input", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 wgpu = { version = "30.0.1", default-features = false, features = ["dx12"] }

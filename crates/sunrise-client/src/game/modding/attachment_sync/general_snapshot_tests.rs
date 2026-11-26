@@ -78,6 +78,8 @@ fn robot(game: &mut super::super::Game<'_>) -> u32 {
         custom_name: None,
         custom_name_visible: false,
         base: Default::default(),
+        on_ground: false,
+        fall_distance: 0.0,
         envelope: GeneralTypeEnvelope {
             type_key: "sync_route:robot".into(),
             payload_version: 1,

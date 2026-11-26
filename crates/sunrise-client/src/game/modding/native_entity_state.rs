@@ -62,7 +62,7 @@ fn player_pose(pose: Pose) -> &'static str {
 enum Body<'a> {
     Player(&'a PlayerMotion),
     Mob(&'a Mob),
-    Other,
+    Other(Target),
 }
 
 impl Game<'_> {
@@ -76,7 +76,7 @@ impl Game<'_> {
             Target::Player => Body::Player(self.player.as_ref()?),
             Target::Guest(conn) => Body::Player(self.command_guest(conn)?.motion.as_deref()?),
             Target::Mob(id) => Body::Mob(self.mobs.iter().find(|m| m.id == id)?),
-            _ => Body::Other,
+            t => Body::Other(t),
         })
     }
     /// `isSecondaryUseActive`: the local client's live semantic sneak state (not the
@@ -240,7 +240,10 @@ impl Game<'_> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(p) => Some(p.fluids.was_touching_water),
             Body::Mob(m) => Some(m.fluids.in_water),
-            Body::Other => None,
+            Body::Other(Target::General(id)) => {
+                Some(self.resident_entities.general.row(id)?.fluids.in_water)
+            }
+            Body::Other(_) => None,
         }
     }
     /// The player's swimming flag, distinct from its pose (which also covers crawling).
@@ -255,7 +258,10 @@ impl Game<'_> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(p) => Some(p.is_in_lava()),
             Body::Mob(m) => Some(m.fluids.in_lava),
-            Body::Other => None,
+            Body::Other(Target::General(id)) => {
+                Some(self.resident_entities.general.row(id)?.fluids.in_lava)
+            }
+            Body::Other(_) => None,
         }
     }
     /// Visit the cached fluid contacts of the player or mob, highest first.
@@ -275,6 +281,18 @@ impl Game<'_> {
                 (m.fluids.water, m.fluids.in_water),
                 (m.fluids.lava, m.fluids.in_lava),
             ),
+            Some(Body::Other(Target::General(id))) => {
+                let fluids = self
+                    .resident_entities
+                    .general
+                    .row(id)
+                    .ok_or(EntityReadError::Unavailable)?
+                    .fluids;
+                (
+                    (fluids.water, fluids.in_water),
+                    (fluids.lava, fluids.in_lava),
+                )
+            }
             _ => return Err(EntityReadError::Unavailable),
         };
         Ok(visit_touched_fluids(water, lava, visit))
@@ -288,7 +306,11 @@ impl Game<'_> {
             match self.native_target_body(self.native_entity_read_target(entity)?)? {
                 Body::Player(p) => eye_fluid(p.is_eye_in_fluid(WATER), p.is_eye_in_fluid(LAVA)),
                 Body::Mob(m) => eye_fluid(m.fluids.eye_in_water, m.fluids.eye_in_lava),
-                Body::Other => return None,
+                Body::Other(Target::General(id)) => {
+                    let fluids = self.resident_entities.general.row(id)?.fluids;
+                    eye_fluid(fluids.eye_in_water, fluids.eye_in_lava)
+                }
+                Body::Other(_) => return None,
             },
         )
     }
@@ -298,7 +320,10 @@ impl Game<'_> {
             Body::Player(p) if !self.is_logical_server() => Some(p.is_under_water()),
             Body::Player(p) => Some(p.fluids.was_eye_in_water && p.fluids.was_touching_water),
             Body::Mob(m) => Some(m.was_eye_in_water && m.fluids.in_water),
-            Body::Other => None,
+            Body::Other(Target::General(id)) => {
+                Some(self.resident_entities.general.row(id)?.under_water)
+            }
+            Body::Other(_) => None,
         }
     }
 
@@ -534,7 +559,7 @@ impl Game<'_> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(p) => Some(p.air),
             Body::Mob(m) => Some(m.air),
-            Body::Other => None,
+            Body::Other(_) => None,
         }
     }
     /// Sets the entity's air (`Entity.setAirSupply`).
@@ -673,6 +698,7 @@ impl Game<'_> {
             Target::Item(id) => self.dropped.iter().find(|i| i.id == id)?.ticks as i32,
             Target::Orb(id) => self.orbs.iter().find(|o| o.id == id)?.ticks as i32,
             Target::Cart(id) => self.carts.iter().find(|c| c.id == id)?.tick_count,
+            Target::General(id) => self.resident_entities.general.row(id)?.tick_count,
             _ => return None,
         })
     }
@@ -747,7 +773,7 @@ impl Game<'_> {
                     player_pose(m.extra.avatar_pose)
                 }
                 Body::Mob(m) => POSES.get(usize::from(sync::pose_id(m))).copied()?,
-                Body::Other => POSES[0],
+                Body::Other(_) => POSES[0],
             },
         )
     }
@@ -755,7 +781,7 @@ impl Game<'_> {
     pub(super) fn entity_is_sitting(&self, entity: EntityRef) -> Option<bool> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Mob(m) => m.sitting(),
-            Body::Player(_) | Body::Other => None,
+            Body::Player(_) | Body::Other(_) => None,
         }
     }
 }
