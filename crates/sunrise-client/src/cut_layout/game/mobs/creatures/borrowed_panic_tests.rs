@@ -1030,3 +1030,7 @@ fn player_living_breathe_panic_rolls_back_transactional_writes() {
         .unwrap();
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

@@ -111,3 +111,5 @@ fn a_bobber_rings_a_floor_bell_on_its_side() {
     cast_east(&mut game, Vec3::new(2.5, 64.6, 5.5), "minecraft:bell_ring");
     assert_eq!(game.stats.get("custom", "minecraft:bell_ring"), 1);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

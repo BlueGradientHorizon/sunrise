@@ -91,3 +91,5 @@ fn a_summoned_dragon_fireball_moves_like_a_fireball() {
     let dragon_moved = pos(&mut game, DRAGON);
     assert_ne!(dragon_moved, dragon, "the dragon fireball flies too");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

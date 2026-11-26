@@ -402,3 +402,9 @@ fn a_teleporting_shulker_posts_teleport_where_it_stood() {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -92,3 +92,5 @@ fn the_entity_destroy_block_names_reaches_the_listener() {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;

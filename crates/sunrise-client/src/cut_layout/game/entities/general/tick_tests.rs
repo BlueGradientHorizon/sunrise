@@ -1149,3 +1149,7 @@ fn spawn_entity_inserts_a_general_row_with_its_owner() {
         assert_eq!(game.mobs.len(), mobs);
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

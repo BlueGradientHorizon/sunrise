@@ -1539,3 +1539,7 @@ fn contact_hurt_uses_the_orbs_level_fall_immunity_tag() {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

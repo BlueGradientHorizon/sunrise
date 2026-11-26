@@ -410,7 +410,7 @@ pub fn rocket_draws(random: &mut sunrise_core::random::LegacyRandom, flight: u8)
         + random.next_int_bound(7).unwrap_or(0);
     (velocity, lifetime)
 }
-impl<__Side: crate::game::Side> Game<'_, __Side> {
+pub trait FireworksGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// A rocket built from `own`, the rocket's own random (`Entity.random`): the
     /// UUID, the motion and the lifetime draw from it in that order, and a rocket
     /// that is then shot (`Projectile.shoot`) goes on drawing from the same one.
@@ -418,7 +418,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// player: half a block out towards the hand holding the rocket while
     /// gliding, zero otherwise. A rocket only in the offhand is in the arm
     /// opposite the main one.
-    pub(in crate::game) fn rocket_hand_angle(&self) -> [f64; 3] {
+     fn rocket_hand_angle(&self) -> [f64; 3] {
         if !self.player.as_ref().is_some_and(|p| p.fall_flying) {
             return [0.0; 3];
         }
@@ -426,7 +426,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             |s: Option<&ItemStack>| s.is_some_and(|s| &*s.item == "minecraft:firework_rocket");
         let main = self.stack_in(self.selected);
         let offhand_only = is_rocket(self.offhand.as_ref()) && !is_rocket(main);
-        let right = offhand_only == self.side.main_hand_left();
+        let right = offhand_only == self.side_state().main_hand_left();
         let arm = if right { 80 } else { -80 };
         let v = view_vector(self.yaw + arm as f32, 0.0);
         [v[0] * 0.5, v[1] * 0.5, v[2] * 0.5]
@@ -434,7 +434,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// `FireworkRocketEntity.tick` for a rocket attached to the local player:
     /// a glide is boosted towards the look, and the rocket sits at the rocket
     /// hand with the player's motion.
-    pub fn follow_own_player(&mut self, r: &mut Rocket) {
+     fn follow_own_player(&mut self, r: &mut Rocket) {
         let hand = self.rocket_hand_angle();
         // getLookAngle reads Mth's float sine table, as the server does; the
         // f64 sin/cos of super::view_vector drift the boost off the server's
@@ -455,6 +455,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         r.velocity = p.velocity;
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> FireworksGameExt1<'__sg> for G {}
+
 
 /// `FireworkRocketItem.useOn` returns PASS while the player is fall flying,
 /// leaving the boost to `use` (a guest's UseItemOn must not launch a rocket).

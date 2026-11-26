@@ -2377,7 +2377,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
                 assert_eq!((d.vertices[i].color, d.vertices[i].light), (color, light));
             };
             let cuts = |game: &crate::game::ClientGame<'_>| {
-                game.side
+                game.client
                     .prepared_model_draws
                     .borrow()
                     .iter()
@@ -2933,7 +2933,7 @@ use sunrise_gameplay_common::game::client_side::native_block_entity_draw::tests:
             let tint = 0xFF80_C040;
             let light = LightCoords::new(3, 15).unwrap();
             let take_spans = |game: &crate::game::ClientGame<'_>| {
-                std::mem::take(&mut *game.side.entity_spans.borrow_mut())
+                std::mem::take(&mut *game.client.entity_spans.borrow_mut())
             };
             let batch = |game: &mut crate::game::ClientGame<'_>| {
                 let mut draw = crate::world_geometry::WorldGeometry::default();

@@ -633,3 +633,7 @@ fn a_plain_players_tree_and_completions_leave_out_the_paths_they_may_not_run() {
         "with the level, the path parses and runs"
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

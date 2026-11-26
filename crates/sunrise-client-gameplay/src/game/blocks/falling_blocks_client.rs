@@ -121,7 +121,7 @@ impl crate::game::ClientGame<'_> {
         let side = client_game_side!(self, side_server);
         let body = self.common.body_motion(&side);
         body.apply_block_speed(f.position, &mut f.velocity);
-        let _ = self.common.body_step_on(entity, (f.position, f.bounds()), &f.ground, &mut f.velocity);
+        let _ = self.body_step_on(entity, (f.position, f.bounds()), &f.ground, &mut f.velocity);
         let moved = movement.length_squared();
         let recorded = moved > 1.0e-7 || wanted.length_squared() - moved < 1.0e-7;
         let world = &self.common.world;
@@ -245,3 +245,5 @@ impl crate::game::ClientGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;

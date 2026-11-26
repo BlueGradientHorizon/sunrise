@@ -85,3 +85,5 @@ fn the_native_knockback_hook_changes_or_cancels_a_players_push() {
     assert_eq!(push(9203, 0.5), (0.0, 0.2, -0.2));
     assert_eq!(seen(9203)[0].2.strength, 0.4);
 }
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

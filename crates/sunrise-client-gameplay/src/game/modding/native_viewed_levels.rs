@@ -82,9 +82,11 @@ impl ClientGame<'_> {
         &self,
         level: LevelRef,
     ) -> Option<std::sync::Arc<mod_api::DatapackRegistrySet>> {
-        if self.common.native_client_level() != Some(level) {
+        if self.native_client_level() != Some(level) {
             return None;
         }
         sunrise_sim::datapack_net::received()
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

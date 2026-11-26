@@ -124,3 +124,5 @@ fn restoring_keeps_both_owners_bound_and_old_batches_immutable() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

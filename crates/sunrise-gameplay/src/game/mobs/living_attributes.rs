@@ -437,7 +437,7 @@ impl ServerGame<'_> {
         let catalog = self.common.motion.attributes.clone();
         let id = catalog.id(name)?;
         let default = match write {
-            AttributeWrite::ResetBase => catalog.default_base(&self.common.target_type(t), id)?,
+            AttributeWrite::ResetBase => catalog.default_base(&self.target_type(t), id)?,
             _ => 0.0,
         };
         match t {
@@ -644,3 +644,7 @@ pub mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -19,7 +19,7 @@ impl crate::game::ServerGame<'_> {
         let Ok(unlit) = self.common.pack.assets.registry.resolve(&state) else {
             return Ok(false);
         };
-        let Some(unlit) = self.common.modified_campfire(hit, &used, unlit) else {
+        let Some(unlit) = self.modified_campfire(hit, &used, unlit) else {
             return Ok(false);
         };
         // Level event 1009 (SOUND_EXTINGUISH_FIRE) goes to every player.
@@ -32,3 +32,5 @@ impl crate::game::ServerGame<'_> {
         Ok(true)
     }
 }
+
+use sunrise_gameplay_common::game::campfire_douse::CampfireDouseGameExt1 as _;

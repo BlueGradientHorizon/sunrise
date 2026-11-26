@@ -1382,7 +1382,7 @@ impl crate::game::ServerGame<'_> {
             return Some(self.mob_object_tree_nbt(object, transferring));
         }
         if self.common.boats.iter().any(|b| b.id == root)
-            && self.common.resident_source_target_visible(
+            && self.resident_source_target_visible(
                 self.common.dim.key(),
                 sunrise_gameplay_common::game::commands_common::Target::Boat(root),
             )
@@ -1399,7 +1399,7 @@ impl crate::game::ServerGame<'_> {
         }
         let uuid = self.uuid_for(root);
         let mut tag = if self.common.carts.iter().any(|c| c.id == root)
-            && self.common.resident_source_target_visible(
+            && self.resident_source_target_visible(
                 self.common.dim.key(),
                 sunrise_gameplay_common::game::commands_common::Target::Cart(root),
             ) {
@@ -1501,12 +1501,12 @@ impl crate::game::ServerGame<'_> {
             (found == uuid
                 && (self.common.mobs.iter().any(|mob| mob.id == id && !mob.removed)
                     || (self.common.boats.iter().any(|boat| boat.id == id)
-                        && self.common.resident_source_target_visible(
+                        && self.resident_source_target_visible(
                             self.common.dim.key(),
                             sunrise_gameplay_common::game::commands_common::Target::Boat(id),
                         ))
                     || (self.common.carts.iter().any(|cart| cart.id == id)
-                        && self.common.resident_source_target_visible(
+                        && self.resident_source_target_visible(
                             self.common.dim.key(),
                             sunrise_gameplay_common::game::commands_common::Target::Cart(id),
                         ))
@@ -1726,7 +1726,7 @@ impl crate::game::ServerGame<'_> {
         // is already live (told before) keeps it, as before.
         let live = self.common.entity_attachments.contains_key(&id);
         if let Some(kind) = text(tag.get("id")) {
-            self.common.initialize_entity(mod_api::Holder::Entity(id), &kind);
+            self.initialize_entity(mod_api::Holder::Entity(id), &kind);
         }
         read_attachments(tag, id, &mut self.common.entity_attachments, live);
         self.load_saved_collider(id, tag);
@@ -1775,7 +1775,7 @@ impl crate::game::ServerGame<'_> {
     ) -> std::result::Result<bool, mod_api::LevelWriteError> {
         use sunrise_gameplay_common::game::commands_common::Target;
         let id = entity.id();
-        match self.common.native_entity_target(entity) {
+        match self.native_entity_target(entity) {
             None | Some(Target::Player | Target::Guest(_) | Target::DragonPart(_)) => {
                 return Ok(false);
             }
@@ -2190,7 +2190,7 @@ impl crate::game::ServerGame<'_> {
             p.owner = self.mob_by_uuid(uuid).map(Who::Mob);
         }
         use sunrise_gameplay_common::game::commands_common::Target;
-        p.owner_vehicle = match self.common.target_by_uuid(sunrise_sim::lan::playerdata::ints_uuid(uuid)) {
+        p.owner_vehicle = match self.target_by_uuid(sunrise_sim::lan::playerdata::ints_uuid(uuid)) {
             Some(Target::Boat(id) | Target::Cart(id)) => Some(id),
             _ => None,
         };
@@ -2597,3 +2597,15 @@ fn join_saved_team(board: &mut Scoreboard, name: &str, tag: &Tag) -> bool {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt2 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::entity_initialization_common::EntityInitializationCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

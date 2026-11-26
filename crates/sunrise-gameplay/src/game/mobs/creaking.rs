@@ -177,7 +177,7 @@ impl crate::game::ServerGame<'_> {
                 HeartEvent::Mob(event) => mob_events.push(event),
             }
         }
-        self.common.handle_mob_events(mob_events)?;
+        self.handle_mob_events(mob_events)?;
         let _ = key;
         Ok(())
     }
@@ -226,7 +226,7 @@ impl crate::game::ServerGame<'_> {
         {
             let mut events = Vec::new();
             sunrise_sim::mobs::creaking::sway(mob, &mut events);
-            let _ = self.common.handle_mob_events(events);
+            let _ = self.handle_mob_events(events);
         }
     }
     /// `CreakingHeartBlock.playerWillDestroy`: the heart's creaking twitches to
@@ -571,3 +571,7 @@ pub(in crate::game) mod tests {
         assert!(state.scanned.is_empty());
     }
 }
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

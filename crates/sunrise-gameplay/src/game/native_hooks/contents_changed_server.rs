@@ -7,7 +7,7 @@ struct ContentsChangedGuard<'a, 'game> {
 
 impl Drop for ContentsChangedGuard<'_, '_> {
     fn drop(&mut self) {
-        self.game.side.contents_changing.pop();
+        self.game.server.contents_changing.pop();
     }
 }
 
@@ -68,3 +68,5 @@ impl crate::game::ServerGame<'_> {
         self.server.contents_changing.contains(&(level, pos))
     }
 }
+
+use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;

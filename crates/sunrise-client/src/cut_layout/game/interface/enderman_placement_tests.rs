@@ -415,3 +415,5 @@ fn an_air_normalized_placement_empties_the_hand_without_a_block_change_notice() 
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;

@@ -215,3 +215,5 @@ fn targeted_item_fallthrough_keeps_hand_and_fail_vetoes_item_action() {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

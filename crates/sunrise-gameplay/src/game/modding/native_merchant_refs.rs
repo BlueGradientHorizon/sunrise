@@ -21,7 +21,7 @@ fn registry_index(id: &str, names: &[&str]) -> Option<u8> {
 
 impl crate::game::ServerGame<'_> {
     fn native_merchant_index(&self, merchant: MerchantRef) -> Option<usize> {
-        let Target::Mob(id) = self.common.native_entity_target(merchant.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(merchant.entity())? else {
             return None;
         };
         self.common.mobs.iter().position(|m| {
@@ -218,7 +218,7 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<PlayerRef> {
         let index = self.native_merchant_index(merchant)?;
         let conn = self.lan_trade_conn(self.common.mobs[index].id)?;
-        self.common.player(self.lan_trade_player(conn)?)
+        self.player(self.lan_trade_player(conn)?)
     }
 
     /// `VillagerData.profession`, a registry id (`minecraft:farmer`; none is
@@ -370,3 +370,9 @@ pub mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

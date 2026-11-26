@@ -314,3 +314,7 @@ pub(in crate::game) fn run_portal_arrival_effects_explicit_tnt_teleports_protect
         });
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

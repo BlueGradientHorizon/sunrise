@@ -175,7 +175,7 @@ impl Station {
     }
 }
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// The anvil name the menu works with (`AnvilScreen.onNameChanged`).
     pub fn anvil_item_name(&self, s: &Station) -> String {
         match &s.inputs[0] {
@@ -193,11 +193,6 @@ impl CommonGame<'_> {
         }
     }
 
-    /// `slotsChanged` / `createResult` for the open station.
-    pub fn station_changed(&mut self) {
-        self.side_station_changed();
-    }
-
     pub fn max_stack(&self, stack: &ItemStack) -> u32 {
         self.res
             .items()
@@ -205,6 +200,16 @@ impl CommonGame<'_> {
             .map_or(64, |i| i.max_stack)
     }
 }
+
+pub trait StationsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+
+    /// `slotsChanged` / `createResult` for the open station.
+     fn station_changed(&mut self) {
+        self.side_station_changed();
+    }
+}
+impl<'__sg, G: crate::game::SideGame<'__sg>> StationsCommonGameExt1<'__sg> for G {}
+
 
 use crate::game::side_ops::blocks::BlocksSideGameExt as _;
 

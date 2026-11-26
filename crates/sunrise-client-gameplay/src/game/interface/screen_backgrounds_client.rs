@@ -185,7 +185,7 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn menu_blur(&self) -> Option<f32> {
         let blurred = self.remote_loading()
             || self.client.title.0.as_ref().is_some_and(|t| {
-                matches!(self.side.screen, Screen::Options | Screen::Win)
+                matches!(self.client.screen, Screen::Options | Screen::Win)
                     || !matches!(t.mode, sunrise_client::title::Mode::Main)
             })
             || (self.client.title.0.is_none()

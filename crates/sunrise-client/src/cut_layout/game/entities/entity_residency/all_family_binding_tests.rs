@@ -137,3 +137,5 @@ fn every_ordinary_resident_family_binds_its_actual_owned_slot() {
         assert_eq!(index.lock().unwrap().snapshot(&key).len(), 23);
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

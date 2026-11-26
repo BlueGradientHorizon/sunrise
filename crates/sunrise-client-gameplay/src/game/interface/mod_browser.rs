@@ -188,7 +188,7 @@ impl ClientGame<'_> {
         }
         if installed {
             self.client.settings.save(&sunrise_gameplay_common::game::options_path());
-            self.common.start_mods();
+            self.start_mods();
             self.switch_mods();
             // A mod with blocks, items or worldgen waits for a restart: the
             // project page says so instead of "installed and on".
@@ -281,3 +281,5 @@ mod tests {
         assert!(jobs.running.is_none());
     }
 }
+
+use sunrise_gameplay_common::game::mods::ModGameExt1 as _;

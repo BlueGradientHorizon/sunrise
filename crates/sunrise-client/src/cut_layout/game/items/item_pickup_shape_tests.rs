@@ -280,3 +280,7 @@ fn indexed_pickup_keeps_bound_survivors_and_processes_shifted_tail() {
         assert_eq!(loaded, 2, "both resource fixtures executed");
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;

@@ -756,7 +756,7 @@ impl crate::game::ClientGame<'_> {
 
     pub(in crate::game::client_side) fn record_status(&self, inputs: u64) -> Value {
         json!({
-            "recording": self.side.repro.0.recording.as_ref().map(|r| json!({
+            "recording": self.client.repro.0.recording.as_ref().map(|r| json!({
                 "name": r.name,
                 "dir": r.dir.display().to_string(),
                 "seconds": r.started.elapsed().as_secs_f64(),
@@ -768,7 +768,7 @@ impl crate::game::ClientGame<'_> {
                 "mode": r.mode,
                 "world": r.world,
             })),
-            "replay": self.side.repro.0.replay.as_ref().map(|r| json!({
+            "replay": self.client.repro.0.replay.as_ref().map(|r| json!({
                 "name": r.name,
                 "sent": r.sent,
                 "skipped": r.skipped,

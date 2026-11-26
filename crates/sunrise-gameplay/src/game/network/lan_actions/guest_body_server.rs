@@ -63,7 +63,7 @@ impl crate::game::ServerGame<'_> {
             self.guest_jump(conn, from, yaw);
         }
         if sunrise_gameplay_common::game::entity_sections::crossed(from, at) {
-            self.common.entity_section_step(id, from, at);
+            self.entity_section_step(id, from, at);
         }
         if spectator {
             return;
@@ -691,3 +691,5 @@ impl crate::game::ServerGame<'_> {
         self.wear_armor(events);
     }
 }
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;

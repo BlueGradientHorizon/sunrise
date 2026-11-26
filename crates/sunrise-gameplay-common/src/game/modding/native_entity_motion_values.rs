@@ -33,27 +33,30 @@ pub fn corners(b: Aabb) -> [[f64; 3]; 2] {
     [axes.map(|a| b.min(a)), axes.map(|a| b.max(a))]
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+impl crate::game::CommonGame<'_> {
     /// The simulated entity (one of the shared entity walk's lists) with `id`.
     pub fn native_walk_entity(&self, id: u32) -> Option<EntityHandle> {
         self.entity_handles()
             .find(|h| with_entity!(self, *h, e => e.id() == id))
     }
+}
+
+pub trait NativeEntityMotionValuesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// The server's copy of the player a target names.
-    pub fn native_target_guest(
+     fn native_target_guest(
         &self,
         t: Target,
     ) -> Option<&sunrise_sim::lan::guest::Guest> {
         match t {
-            Target::Player => self.command_guest(crate::game::Side::lan_acting(&self.side)?),
+            Target::Player => self.command_guest(crate::game::Side::lan_acting(self.side_state())?),
             Target::Guest(conn) => self.command_guest(conn),
             _ => None,
         }
     }
 
     /// Whether the entity stands on a block (`Entity.onGround`). API 379.
-    pub fn entity_on_ground(&self, entity: EntityRef) -> Option<bool> {
+     fn entity_on_ground(&self, entity: EntityRef) -> Option<bool> {
         let t = self.native_entity_read_target(entity)?;
         if t == Target::Player
             && let Some(p) = self.player.as_ref()
@@ -77,10 +80,18 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// The unit vector that points up out of the entity's head
     /// (`Entity.getUpVector`): its view vector turned a quarter of a turn
     /// toward the zenith.
-    pub(in crate::game) fn entity_up_vector(&self, entity: EntityRef) -> Option<[f64; 3]> {
+     fn entity_up_vector(&self, entity: EntityRef) -> Option<[f64; 3]> {
         let [yaw, pitch] = self.entity_rotation(entity)?;
         Some(turned_view_vector(yaw, pitch, -90.0))
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeEntityMotionValuesGameExt1<'__sg> for G {}
+
 
 use crate::game::side_ops::items::ItemsSideGameExt as _;
+
+use crate::game::commands_common::CommandsCommonGameExt2 as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

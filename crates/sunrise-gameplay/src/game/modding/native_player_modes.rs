@@ -31,7 +31,7 @@ impl ServerGame<'_> {
     /// `Player.hasInfiniteMaterials`: the `instabuild` ability, which
     /// creative mode gives.
     pub(in crate::game) fn player_has_infinite_materials(&self, player: PlayerRef) -> Option<bool> {
-        self.common.player_is_creative(player)
+        self.player_is_creative(player)
     }
     /// `Player.canUseGameMasterBlocks`: creative and a permission level of
     /// at least 2, as command blocks, structure blocks and jigsaws ask.
@@ -39,7 +39,7 @@ impl ServerGame<'_> {
         &self,
         player: PlayerRef,
     ) -> Option<bool> {
-        let creative = self.common.player_is_creative(player)?;
+        let creative = self.player_is_creative(player)?;
         Some(creative && self.player_permission_level(player)? >= 2)
     }
     /// `ServerPlayerGameMode.getPreviousGameModeForPlayer`: the mode the
@@ -73,11 +73,8 @@ impl ServerGame<'_> {
         {
             return None;
         }
-        let may_build = self.common.player_may_build(player)?;
-        Some(
-            self.common
-                .may_use_item_at(may_build, pos, block_face_direction(face), stack),
-        )
+        let may_build = self.player_may_build(player)?;
+        Some(self.may_use_item_at(may_build, pos, block_face_direction(face), stack))
     }
     /// `ServerPlayer.canHarmPlayer(other)`: the `pvp` rule and the two
     /// players' teams, as an attack, an arrow or a trident asks them
@@ -89,9 +86,8 @@ impl ServerGame<'_> {
     ) -> Option<bool> {
         self.player_handle_read(player)?;
         self.player_handle_read(other)?;
-        let attacker =
-            self.native_target_team(self.common.native_entity_target(player.entity())?)?;
-        let victim = self.native_target_team(self.common.native_entity_target(other.entity())?)?;
+        let attacker = self.native_target_team(self.native_entity_target(player.entity())?)?;
+        let victim = self.native_target_team(self.native_entity_target(other.entity())?)?;
         Some(self.player_may_harm(
             player.entity().id() as i32,
             other.entity().id() as i32,
@@ -100,3 +96,11 @@ impl ServerGame<'_> {
         ))
     }
 }
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

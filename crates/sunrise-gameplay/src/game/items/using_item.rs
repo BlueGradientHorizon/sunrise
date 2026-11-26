@@ -12,12 +12,12 @@ impl crate::game::ServerGame<'_> {
         let Some(stack) = self.common.held().cloned() else {
             return false;
         };
-        let Some(consumable) = self.common.consumable(&stack) else {
+        let Some(consumable) = self.consumable(&stack) else {
             return false;
         };
         if sunrise_sim::item_sync::food(&stack, info.food).is_some()
             && (self.common.player.is_none()
-                || !self.common.can_eat(
+                || !self.can_eat(
                     Some(&stack),
                     sunrise_sim::item_sync::can_always_eat(&stack, info.can_always_eat),
                 ))
@@ -31,7 +31,7 @@ impl crate::game::ServerGame<'_> {
             self.finish_consuming(info, &consumable, &stack);
             return true;
         }
-        self.common.start_using_item();
+        self.start_using_item();
         true
     }
     /// `InstrumentItem.use` for a goat horn: the player holds it up for the
@@ -43,7 +43,7 @@ impl crate::game::ServerGame<'_> {
         let Some(instrument) = self.common.res.items().instrument(stack) else {
             return;
         };
-        self.common.start_using_item();
+        self.start_using_item();
         self.server_play_player_bound_sound(
             &instrument.sound,
             2,
@@ -76,7 +76,7 @@ impl crate::game::ServerGame<'_> {
         let Some(hand) = self.common.used_hand() else {
             return;
         };
-        self.common.with_hand(hand, Self::tick_used_item);
+        self.with_hand(hand, Self::tick_used_item);
     }
     /// `LivingEntity.updatingUsingItem` for the item in use, its hand acting.
     pub(in crate::game::server_side) fn tick_used_item(&mut self) {
@@ -109,7 +109,7 @@ impl crate::game::ServerGame<'_> {
             self.common.using = None;
             return;
         };
-        let going_on = self.common.use_item_ticked(&stack, ticks);
+        let going_on = self.use_item_ticked(&stack, ticks);
         // A mod's tick released it: nothing of this use is left to run.
         if self.common.using != Some((slot, ticks)) {
             return;
@@ -140,9 +140,9 @@ impl crate::game::ServerGame<'_> {
         stack: &ItemStack,
         info: &sunrise_items::items::ItemInfo,
     ) {
-        if self.common.blocks_attacks(stack).is_some() {
+        if self.blocks_attacks(stack).is_some() {
             // ShieldItem: used for 72000 ticks, i.e. until released.
-            if self.common.item_on_use_tick(stack, ticks) {
+            if self.item_on_use_tick(stack, ticks) {
                 self.common.using = Some((slot, ticks + 1));
             }
             return;
@@ -192,11 +192,11 @@ impl crate::game::ServerGame<'_> {
             self.tick_bundle(slot, ticks);
             return;
         }
-        if self.common.mod_use(stack) {
+        if self.mod_use(stack) {
             self.tick_mod_use(slot, ticks, stack);
             return;
         }
-        let Some(consumable) = self.common.consumable(stack) else {
+        let Some(consumable) = self.consumable(stack) else {
             self.common.using = None;
             return;
         };
@@ -206,9 +206,9 @@ impl crate::game::ServerGame<'_> {
         // Start and Tick left it.
         let remaining = self.common.use_duration - ticks as i32;
         if remaining > 0 && consumable.should_emit(remaining) {
-            self.common.emit_consume(&consumable, stack, 5);
+            self.emit_consume(&consumable, stack, 5);
         }
-        if !self.common.item_on_use_tick(stack, ticks) {
+        if !self.item_on_use_tick(stack, ticks) {
             return;
         }
         match item_use::count_down(ticks, self.common.use_duration) {
@@ -237,16 +237,16 @@ impl crate::game::ServerGame<'_> {
         ticks: u32,
         hand_changed: bool,
     ) {
-        let canceled = !hand_changed && !self.common.use_item_stopped(stack, ticks);
+        let canceled = !hand_changed && !self.use_item_stopped(stack, ticks);
         let (release, spyglass) = item_use::release_parts(canceled, hand_changed);
         match &*stack.item {
-            "minecraft:bow" if release => self.release_bow(stack, self.common.ticks_held(stack, ticks)),
-            "minecraft:trident" if release => self.release_trident(self.common.ticks_held(stack, ticks)),
+            "minecraft:bow" if release => self.release_bow(stack, self.ticks_held(stack, ticks)),
+            "minecraft:trident" if release => self.release_trident(self.ticks_held(stack, ticks)),
             "minecraft:spyglass" if spyglass => self.stop_spyglass(),
             _ => {}
         }
         if release {
-            self.common.mod_release_using(stack, ticks);
+            self.mod_release_using(stack, ticks);
         }
         self.stop_using_item(stack);
     }
@@ -325,3 +325,5 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

@@ -320,18 +320,12 @@ impl ClientGame<'_> {
                     .carts
                     .iter()
                     .filter(|o| o.id != c.id)
-                    .map(|c| {
-                        cart(
-                            |id, p, bounds| self.common.client_copy_box(id, p, bounds),
-                            c,
-                        )
-                    })
-                    .chain(self.common.boats.iter().map(|b| {
-                        boat(
-                            |id, p, bounds| self.common.client_copy_box(id, p, bounds),
-                            b,
-                        )
-                    }))
+                    .map(|c| cart(|id, p, bounds| self.client_copy_box(id, p, bounds), c))
+                    .chain(
+                        self.common.boats
+                            .iter()
+                            .map(|b| boat(|id, p, bounds| self.client_copy_box(id, p, bounds), b)),
+                    )
                 {
                     if solids.accepts(&o, || None) {
                         each(&o, None);
@@ -373,19 +367,13 @@ impl ClientGame<'_> {
                     .iter()
                     .map(|b| {
                         (
-                            boat(
-                                |id, p, bounds| self.common.client_copy_box(id, p, bounds),
-                                b,
-                            ),
+                            boat(|id, p, bounds| self.client_copy_box(id, p, bounds), b),
                             Target::Boat(b.id),
                         )
                     })
                     .chain(self.common.carts.iter().map(|c| {
                         (
-                            cart(
-                                |id, p, bounds| self.common.client_copy_box(id, p, bounds),
-                                c,
-                            ),
+                            cart(|id, p, bounds| self.client_copy_box(id, p, bounds), c),
                             Target::Cart(c.id),
                         )
                     }))
@@ -551,3 +539,5 @@ pub(in crate::game) fn draw_runs(
         pending = next_extra();
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -128,3 +128,5 @@ impl GameLevel<'_> {
         crate::game::native_hooks::fire::fire_block_entity_load_additional(id, subject, tag);
     }
 
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

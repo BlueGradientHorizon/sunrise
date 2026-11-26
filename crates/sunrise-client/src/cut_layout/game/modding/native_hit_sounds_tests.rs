@@ -235,3 +235,5 @@ fn a_cancelled_mob_hit_on_the_player_plays_sounds_and_draws_the_attacking_mobs_r
         game.mob_hits_player_caused(4.0, [0.0, 0.0, 0.0], "minecraft:mob_attack", Some(302));
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

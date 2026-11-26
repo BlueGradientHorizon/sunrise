@@ -219,7 +219,7 @@ mod tests {
             with_client_game(|game| {
                 let _event_loop = frame_scene(game);
                 let social = |game: &crate::game::ClientGame<'_>| {
-                    let search = &game.side.social.search;
+                    let search = &game.client.social.search;
                     (search.value.clone(), search.cursor, search.highlight)
                 };
 

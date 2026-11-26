@@ -531,8 +531,8 @@ mod tests {
         uploaded: u64,
         view: Mat4,
     ) -> (u8, [u8; 4], [u8; 4]) {
-        let pixels = game.side.gui.atlas.pixels().to_vec();
-        let size = [game.side.gui.atlas.width, game.side.gui.atlas.height];
+        let pixels = game.client.gui.atlas.pixels().to_vec();
+        let size = [game.client.gui.atlas.width, game.client.gui.atlas.height];
         let cpu = sunrise_client::gfx::entity_pixel_test::render(
             cpu_vertices,
             size,
@@ -541,7 +541,7 @@ mod tests {
             false,
         )
         .expect("software Vulkan entity pixels");
-        let (vertices, ranges) = game.side.standalone_geometry.prepared_upload();
+        let (vertices, ranges) = game.client.standalone_geometry.prepared_upload();
         let gpu = sunrise_client::gfx::entity_pixel_test::render_instance(
             sunrise_client::gfx::entity_pixel_test::PreparedInstanceDraw {
                 vertices: &vertices,
@@ -762,9 +762,9 @@ mod tests {
                 Err(InstanceError::CapacityExceeded)
             );
             let render = |game: &crate::game::ClientGame<'_>| {
-                let staged = game.side.prepared_model_draws.borrow();
+                let staged = game.client.prepared_model_draws.borrow();
                 assert_eq!(staged.len(), 1, "the far copy must be culled");
-                let (vertices, ranges) = game.side.standalone_geometry.prepared_upload();
+                let (vertices, ranges) = game.client.standalone_geometry.prepared_upload();
                 sunrise_client::gfx::entity_pixel_test::render_instance(
                     sunrise_client::gfx::entity_pixel_test::PreparedInstanceDraw {
                         vertices: &vertices,
@@ -775,8 +775,8 @@ mod tests {
                         instances: &[staged[0].instance],
                         per_copy: false,
                         hdr: false,
-                        atlas_size: [game.side.gui.atlas.width, game.side.gui.atlas.height],
-                        atlas: &game.side.gui.atlas.pixels(),
+                        atlas_size: [game.client.gui.atlas.width, game.client.gui.atlas.height],
+                        atlas: &game.client.gui.atlas.pixels(),
                         view_proj: Mat4::IDENTITY,
                     },
                 )
@@ -979,8 +979,8 @@ mod tests {
             let pixels = |game: &crate::game::ClientGame<'_>, vertices: &[Vertex]| {
                 sunrise_client::gfx::entity_pixel_test::render(
                     vertices,
-                    [game.side.gui.atlas.width, game.side.gui.atlas.height],
-                    &game.side.gui.atlas.pixels(),
+                    [game.client.gui.atlas.width, game.client.gui.atlas.height],
+                    &game.client.gui.atlas.pixels(),
                     Mat4::IDENTITY,
                     false,
                 )
@@ -1632,3 +1632,7 @@ mod tests {
         });
     }
 }
+
+use sunrise_gameplay_common::game::mods::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

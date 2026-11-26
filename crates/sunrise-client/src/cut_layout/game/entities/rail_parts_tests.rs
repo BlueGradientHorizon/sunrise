@@ -78,3 +78,7 @@ fn rail_parts_decide_the_track_carts_and_connections_follow() {
         std::fs::remove_dir_all(scratch).ok();
     });
 }
+
+use sunrise_gameplay_common::game::cart_rails::CartRailsGameExt1 as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -214,3 +214,4 @@ pub(in crate::game) mod command_damage_listener_tests {
         }
     }
 }
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

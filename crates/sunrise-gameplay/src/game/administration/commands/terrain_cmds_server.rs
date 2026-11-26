@@ -89,14 +89,14 @@ impl crate::game::ServerGame<'_> {
                 let Some(t) = targets.first().copied() else {
                     return Ok(0);
                 };
-                let ty = self.common.target_type(t);
+                let ty = self.target_type(t);
                 // `EntityType.getDefaultLootTable`, in the type's namespace.
                 let (namespace, path) = ty.split_once(':').unwrap_or(("minecraft", ty.as_str()));
                 let table = format!("{namespace}:entities/{path}");
                 if t == Target::Player || !world_items!(self).has_loot_table(&table) {
                     return Err(err(
                         "commands.drop.no_loot_table.entity",
-                        &[&self.common.target_name(t).plain()],
+                        &[&self.target_name(t).plain()],
                     ));
                 }
                 // LootCommand.dropKillLoot: the source's entity is the killer.
@@ -153,7 +153,7 @@ impl crate::game::ServerGame<'_> {
                 }
                 // LootCommand: the source's entity is `this`, if it has one.
                 let entity = match self.server.command_source.map(|s| s.entity) {
-                    None | Some(Some(Target::Player)) => Some(self.common.native_clicker().1 as u32),
+                    None | Some(Some(Target::Player)) => Some(self.native_clicker().1 as u32),
                     Some(Some(Target::Guest(conn))) => self
                         .player_entity_id_by_connection(Some(conn))
                         .map(|id| id as u32),
@@ -339,7 +339,7 @@ impl crate::game::ServerGame<'_> {
         let mut tracker = Tracker::default();
         for u in &used {
             // LootCommand's feedback names each drop by `getDisplayName`.
-            let name = self.common.stack_display_name(u);
+            let name = self.stack_display_name(u);
             // CommandResponseTracker.track(drop): one per stack, so the
             // command returns how many stacks it used, not how many items.
             tracker.track(&holder(name), 1);
@@ -410,3 +410,11 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

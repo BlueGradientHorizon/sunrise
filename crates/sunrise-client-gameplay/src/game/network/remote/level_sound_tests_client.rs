@@ -194,3 +194,7 @@ fn local_level_requests_can_mute_sound_without_undoing_prediction() {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

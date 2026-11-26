@@ -89,9 +89,9 @@ impl LevelAccess for RainView<'_> {
     }
 }
 
-impl crate::game::CommonGame<'_> {
+pub trait NativeRainReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `Level.getSkyDarken` for an active or parked level, without switching dimensions.
-    pub(in crate::game) fn level_get_sky_darken(&self, level: LevelRef) -> Option<i32> {
+     fn level_get_sky_darken(&self, level: LevelRef) -> Option<i32> {
         let world = self.native_level_read_world(level)?;
         if level.dimension() == self.native_level_key() {
             return Some(self.sky_darken());
@@ -100,7 +100,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// Dimension shape of a loaded server level, including parked levels.
-    pub(in crate::game) fn level_dimension_shape(
+     fn level_dimension_shape(
         &self,
         level: LevelRef,
     ) -> Option<LevelDimensionShape> {
@@ -115,7 +115,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// The level's dimension type with its gameplay attributes, from the facts the game uses.
-    pub(in crate::game) fn level_dimension_type(
+     fn level_dimension_type(
         &self,
         level: LevelRef,
     ) -> Option<LevelDimensionType> {
@@ -176,7 +176,7 @@ impl crate::game::CommonGame<'_> {
     /// `getThunderLevel` at partial tick 1.0): both 0 in a level with no weather.
     /// Reads any open server level or the client's current synchronized level;
     /// None for a stale handle, an unavailable level or a client not logged in.
-    pub(in crate::game) fn level_weather(&self, level: LevelRef) -> Option<(f32, f32)> {
+     fn level_weather(&self, level: LevelRef) -> Option<(f32, f32)> {
         let world = self.native_level_read_world(level)?;
         Some(weather_for_world(
             world,
@@ -184,5 +184,11 @@ impl crate::game::CommonGame<'_> {
         ))
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeRainReadGameExt1<'__sg> for G {}
+
 
 use crate::game::weather::WeatherGameExt as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use crate::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

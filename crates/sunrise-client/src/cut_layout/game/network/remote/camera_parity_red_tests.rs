@@ -729,3 +729,5 @@ fn review_followup_camera_parity_26_3() {
 
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::client_side::remote_client::tests::camera_parity_red_tests::run_review_followup_camera_parity_26_3;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

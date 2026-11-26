@@ -277,3 +277,11 @@ fn a_client_keeps_only_the_surface_and_draws_the_bobber_floating() {
         });
     });
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

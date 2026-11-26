@@ -30,9 +30,8 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let block_entity = self
-            .common
             .level(self.common.dim.id())
-            .and_then(|level| self.common.block_entity(level, pos));
+            .and_then(|level| self.block_entity(level, pos));
         self.contained_block_exploded(
             BlockPos::new(pos[0], pos[1], pos[2]),
             state,
@@ -41,3 +40,6 @@ impl crate::game::ServerGame<'_> {
         );
     }
 }
+use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

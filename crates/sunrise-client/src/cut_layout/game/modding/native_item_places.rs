@@ -64,7 +64,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             let host_before = game.inventory.clone();
             let dropped_before = game.dropped.len();
             let inventory = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-                game.side.lan.as_ref().unwrap().hub.guests[0]
+                game.server.lan.as_ref().unwrap().hub.guests[0]
                     .inventory
                     .clone()
             };
@@ -160,7 +160,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             player.inventory[1] = Some(ItemStack::new("minecraft:paper", 16));
             game.side.lan.as_mut().unwrap().hub.guests.push(player);
             let inventory = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-                game.side.lan.as_ref().unwrap().hub.guests[0]
+                game.server.lan.as_ref().unwrap().hub.guests[0]
                     .inventory
                     .clone()
             };
@@ -206,7 +206,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 hand: Hand::Main,
             };
             let has_body = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-                game.side.lan.as_ref().unwrap().hub.guests[0]
+                game.server.lan.as_ref().unwrap().hub.guests[0]
                     .motion
                     .is_some()
             };
@@ -292,7 +292,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                     })
                 };
             let inventory = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-                game.side.lan.as_ref().unwrap().hub.guests[0]
+                game.server.lan.as_ref().unwrap().hub.guests[0]
                     .inventory
                     .clone()
             };
@@ -341,7 +341,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             game.side.lan.as_mut().unwrap().hub.guests.push(guest);
             let host_before = game.inventory.clone();
             let guest_inventory = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-                game.side.lan.as_ref().unwrap().hub.guests[0]
+                game.server.lan.as_ref().unwrap().hub.guests[0]
                     .inventory
                     .clone()
             };
@@ -480,9 +480,9 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             assert!(super::super::dispense_fixture::stop_recording().is_empty());
 
             let tracked = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
-                game.side.level_pass.packets_drained = true;
+                game.server.level_pass.packets_drained = true;
                 game.tick_lan(false);
-                let hub = &game.side.lan.as_ref().unwrap().hub;
+                let hub = &game.server.lan.as_ref().unwrap().hub;
                 rx.try_iter()
                     .flat_map(|message| match message {
                         Out::Packet(body) => vec![body],
@@ -1124,7 +1124,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
             game: &mut sunrise_gameplay::game::ServerGame<'_>,
             stack: &Option<ItemStack>,
         ) -> Option<Hashed> {
-            let hub = &mut game.side.lan.as_mut().unwrap().hub;
+            let hub = &mut game.server.lan.as_mut().unwrap().hub;
             let net = hub.stack(stack)?;
             let sync = hub.sync_data();
             let names = SyncedNames {
@@ -1426,7 +1426,7 @@ use sunrise_sim::lan::{Joined, NetConfig, PlayerSender, guest::Guest, hub::HubCo
                 .unwrap();
             };
             let banner = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-                game.side.lan.as_ref().unwrap().hub.guests[0].inventory[3]
+                game.server.lan.as_ref().unwrap().hub.guests[0].inventory[3]
                     .clone()
                     .unwrap()
             };
@@ -2774,7 +2774,7 @@ pub(in sunrise_gameplay::game::server_side) fn with_crafted_by_handler_map(
                 else {
                     panic!("no chest")
                 };
-                let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let g = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 (
                     items[0].clone(),
                     g.inventory[9].clone(),
@@ -2924,7 +2924,7 @@ pub(in sunrise_gameplay::game::server_side) fn with_crafted_by_handler_map(
                     .unwrap(),
             );
             let result = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-                game.side.lan.as_ref().unwrap().hub.guests[0]
+                game.server.lan.as_ref().unwrap().hub.guests[0]
                     .craft_result
                     .clone()
             };
@@ -2959,7 +2959,7 @@ pub(in sunrise_gameplay::game::server_side) fn with_crafted_by_handler_map(
             game.side.lan.as_mut().unwrap().hub.guests.push(guest(1));
             let title = sunrise_core::nbt::Tag::String("shop".into());
             let open = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
-                let hub = &mut game.side.lan.as_mut().unwrap().hub;
+                let hub = &mut game.server.lan.as_mut().unwrap().hub;
                 hub.open_native_menu(1, 1, title.clone(), vec![]).unwrap();
                 menu_of(game)
             };
@@ -2968,7 +2968,7 @@ pub(in sunrise_gameplay::game::server_side) fn with_crafted_by_handler_map(
                 slot: 2,
             };
             let shown = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-                game.side.lan.as_ref().unwrap().hub.guests[0].native_menu[2].clone()
+                game.server.lan.as_ref().unwrap().hub.guests[0].native_menu[2].clone()
             };
             assert_eq!(write(game, &shop, "minecraft:diamond", 5, false), 5);
             assert_eq!(shown(game), None);

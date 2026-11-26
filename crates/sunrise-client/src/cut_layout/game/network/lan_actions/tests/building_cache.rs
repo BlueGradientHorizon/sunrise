@@ -170,3 +170,5 @@ fn a_guest_put_in_spectator_mid_tick_no_longer_blocks() {
     assert!(!mover_at(&cached, 8.5));
     assert_eq!(cached, fresh);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

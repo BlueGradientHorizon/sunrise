@@ -144,3 +144,7 @@ fn a_block_part_can_deny_a_shovel_putting_out_a_campfire() {
         }
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

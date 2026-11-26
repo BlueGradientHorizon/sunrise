@@ -45,7 +45,7 @@ pub fn run_event_loop(
     }
     let result = EventLoop::new()?.run_app(&mut game);
     narrator::stop();
-    leave_fullscreen_after(&result, &mut game.side.settings);
+    leave_fullscreen_after(&result, &mut game.client.settings);
     let result = result
         .map_err(Into::into)
         .and_then(|()| write_report(&game))
@@ -420,8 +420,8 @@ impl Loading {
         };
         drop(game_step);
         let game_ms = game_at.elapsed().as_millis();
-        game.side.fullscreen = self.fullscreen;
-        game.side.panorama_rotation = self.panorama_rotation;
+        game.client.fullscreen = self.fullscreen;
+        game.client.panorama_rotation = self.panorama_rotation;
         self.menu.handoff(&mut game);
         game.apply_settings();
         if let Err(error) = clouds {
@@ -429,7 +429,7 @@ impl Loading {
         }
         game.previous = Instant::now();
         // Minecraft.onGameLoadFinished: a start that made it this far is clean.
-        game.side.settings.file.set(
+        game.client.settings.file.set(
             "startedCleanly",
             sunrise_client::options_file::V::Bool(true),
         );

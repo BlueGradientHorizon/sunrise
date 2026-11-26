@@ -105,7 +105,7 @@ use std::path::Path;
             let save = |game: &sunrise_gameplay::game::ServerGame<'_>| {
                 game.save_stats();
                 game.save_advancements();
-                let host = game.side.lan.as_ref().unwrap();
+                let host = game.server.lan.as_ref().unwrap();
                 let guest = host.hub.guests.iter().find(|g| g.conn == 12).unwrap();
                 game.save_guest_records(host, guest);
             };

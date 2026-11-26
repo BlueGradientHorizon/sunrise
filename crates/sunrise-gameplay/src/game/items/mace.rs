@@ -335,7 +335,7 @@ impl ServerGame<'_> {
         });
         self.common.mobs[index].outbox = rest;
         let killed = hurt && old_health > 0.0 && !self.common.mobs[index].alive();
-        let _ = self.common.handle_mob_events(hits);
+        let _ = self.handle_mob_events(hits);
         let Some(index) = self
             .common.mob_index
             .find(&self.common.mobs, id)
@@ -793,3 +793,7 @@ pub(in crate::game) mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

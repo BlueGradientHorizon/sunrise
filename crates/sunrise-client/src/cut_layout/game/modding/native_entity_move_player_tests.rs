@@ -312,3 +312,5 @@ fn a_cancelled_vehicle_packet_sends_the_guest_a_correction() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

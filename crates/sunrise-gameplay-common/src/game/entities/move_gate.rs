@@ -20,13 +20,24 @@ pub enum MoveWho {
     Entity(EntityHandle),
 }
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
+
+    /// The kind name (`minecraft:zombie`) a move is for, built on demand.
+    fn move_who_kind(&self, who: MoveWho) -> Cow<'_, str> {
+        match who {
+            MoveWho::Player | MoveWho::Guest(_) => Cow::Borrowed("minecraft:player"),
+            MoveWho::Entity(handle) => with_entity!(self, handle, entity => entity.native_type()),
+        }
+    }
+}
+
+pub trait MoveGateGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Arm one physical `Entity.move` invocation (#2414) for `who` with `cause`
     /// and hand back its gate: the caller then runs the kind's physics with
     /// the movement the gate decided (`delta`), and skips it when the gate
     /// says so. A pusher arms before its own restrictions — the piston limit
     /// included — so a cancelled move spends none of them.
-    pub fn entity_move(
+     fn entity_move(
         &mut self,
         who: MoveWho,
         cause: MoverType,
@@ -52,14 +63,8 @@ impl CommonGame<'_> {
             MoveWho::Entity(handle) => with_entity!(self, handle, entity => entity.id()),
         }
     }
-
-    /// The kind name (`minecraft:zombie`) a move is for, built on demand.
-    fn move_who_kind(&self, who: MoveWho) -> Cow<'_, str> {
-        match who {
-            MoveWho::Player | MoveWho::Guest(_) => Cow::Borrowed("minecraft:player"),
-            MoveWho::Entity(handle) => with_entity!(self, handle, entity => entity.native_type()),
-        }
-    }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> MoveGateGameExt1<'__sg> for G {}
+
 
 use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;

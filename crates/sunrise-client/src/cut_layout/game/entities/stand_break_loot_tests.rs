@@ -200,3 +200,5 @@ fn a_broken_stand_item_keeps_its_styled_custom_name() {
     assert!(game.run_command("damage 00005b1e-0000-0000-0000-000000000009 1 minecraft:arrow"));
     assert!(game.run_command(r#"execute if entity @e[type=item,nbt={Item:{id:"minecraft:armor_stand",count:1,components:{"minecraft:custom_name":{text:"Named",bold:1b}}}}]"#));
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

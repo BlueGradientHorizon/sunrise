@@ -146,3 +146,5 @@ fn visibility_unwind_save() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -794,7 +794,7 @@ impl crate::game::ClientGame<'_> {
                     let Some((predicted, dropped)) = step_result else {
                         return (Err(None), false);
                     };
-                    if tracks_craft_result && let Some(r) = game.side.remote.as_mut() {
+                    if tracks_craft_result && let Some(r) = game.client.remote.as_mut() {
                         for (.., changed, _) in &predicted {
                             if let Some((_, result)) = changed.iter().find(|(slot, _)| *slot == 0) {
                                 r.craft_result = result.clone();
@@ -820,7 +820,7 @@ impl crate::game::ClientGame<'_> {
                     let Some((predicted, dropped)) = step_result.filter(|_| modeled) else {
                         return (Err(None), false);
                     };
-                    if tracks_craft_result && let Some(r) = game.side.remote.as_mut() {
+                    if tracks_craft_result && let Some(r) = game.client.remote.as_mut() {
                         for (.., changed, _) in &predicted {
                             if let Some((_, result)) = changed.iter().find(|(slot, _)| *slot == 0) {
                                 r.craft_result = result.clone();
@@ -1044,3 +1044,7 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::stacked_on_other::StackedOnOtherGameExt1 as _;

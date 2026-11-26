@@ -154,3 +154,5 @@ fn a_marker_takes_no_rider() {
         p.y
     );
 }
+
+use sunrise_gameplay_common::game::mounts_common::MountsCommonGameExt1 as _;

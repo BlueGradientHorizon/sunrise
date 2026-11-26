@@ -71,7 +71,7 @@ impl crate::game::ServerGame<'_> {
             // Admission is irreversible: a duplicate is rejected now,
             // not retried after its current owner has left the level.
             let duplicate = entity_nbt::uuid(&tag).is_some_and(|uuid| {
-                self.restored_vehicle(uuid).is_some() || self.common.target_with_uuid(uuid).is_some()
+                self.restored_vehicle(uuid).is_some() || self.target_with_uuid(uuid).is_some()
             });
             if !duplicate {
                 self.common.persist.unknown.entry(key).or_default().push(tag);
@@ -153,3 +153,5 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

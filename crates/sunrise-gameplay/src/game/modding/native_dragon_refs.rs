@@ -6,7 +6,7 @@ use mod_api::{DragonPhase, DragonRef, EntityRef, LivingRef, MobRef};
 impl crate::game::ServerGame<'_> {
     /// The dragon an entity handle names now.
     pub(in crate::game::server_side) fn native_dragon(&self, entity: EntityRef) -> Option<&Dragon> {
-        let Target::Dragon(id) = self.common.native_entity_target(entity)? else {
+        let Target::Dragon(id) = self.native_entity_target(entity)? else {
             return None;
         };
         self.common.dragon.as_ref().filter(|d| d.id == id)
@@ -15,7 +15,7 @@ impl crate::game::ServerGame<'_> {
         &mut self,
         entity: EntityRef,
     ) -> Option<&mut Dragon> {
-        let Target::Dragon(id) = self.common.native_entity_target(entity)? else {
+        let Target::Dragon(id) = self.native_entity_target(entity)? else {
             return None;
         };
         self.common.dragon.as_mut().filter(|d| d.id == id)
@@ -95,9 +95,9 @@ impl crate::game::ServerGame<'_> {
         &self,
         entity: EntityRef,
     ) -> Option<LivingRef> {
-        let target = self.common.entity(self.native_dragon(entity)?.target?)?;
-        self.native_dragon_valid_target(self.common.native_entity_target(target)?)
-            .then(|| self.common.living(target))?
+        let target = self.entity(self.native_dragon(entity)?.target?)?;
+        self.native_dragon_valid_target(self.native_entity_target(target)?)
+            .then(|| self.living(target))?
     }
 
     /// `Mob.setTarget` for the dragon; None clears it. An invalid target is
@@ -113,7 +113,7 @@ impl crate::game::ServerGame<'_> {
         }
         if let Some(target) = target
             && !self
-                .common.native_entity_target(target.entity())
+                .native_entity_target(target.entity())
                 .is_some_and(|t| self.native_dragon_valid_target(t))
         {
             return false;
@@ -125,7 +125,7 @@ impl crate::game::ServerGame<'_> {
             None => None,
             Some(target) => {
                 let valid = self
-                    .common.native_entity_target(target.entity())
+                    .native_entity_target(target.entity())
                     .is_some_and(|t| self.native_dragon_valid_target(t));
                 if !valid {
                     return false;
@@ -140,3 +140,7 @@ impl crate::game::ServerGame<'_> {
         true
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

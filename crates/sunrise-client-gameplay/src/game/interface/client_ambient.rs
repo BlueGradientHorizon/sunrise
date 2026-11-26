@@ -145,7 +145,7 @@ impl ClientGame<'_> {
                 // its own here; the particles' random stands in for it.
                 let r = match mob {
                     Some(i) => &mut game.mobs.get_mut(i)?.random,
-                    None => game.side.particles.0.random(),
+                    None => game.client.particles.0.random(),
                 };
                 Some((r.next_double(), r.next_double()))
             });
@@ -160,13 +160,13 @@ impl ClientGame<'_> {
         let Some(target) = self.native_client_entity_target(entity) else {
             return false;
         };
-        let Some([x, y, z]) = self.common.entity_position(entity) else {
+        let Some([x, y, z]) = self.entity_position(entity) else {
             return false;
         };
-        let Some([vx, vy, vz]) = self.common.entity_velocity(entity) else {
+        let Some([vx, vy, vz]) = self.entity_velocity(entity) else {
             return false;
         };
-        let Some([min, max]) = self.common.entity_bounding_box(entity) else {
+        let Some([min, max]) = self.entity_bounding_box(entity) else {
             return false;
         };
         let support = match target {
@@ -195,7 +195,7 @@ impl ClientGame<'_> {
             |game| {
                 let random = match mob {
                     Some(id) => &mut game.mob_index.get_mut(&mut game.mobs, id)?.random,
-                    None => game.side.particles.0.random(),
+                    None => game.client.particles.0.random(),
                 };
                 Some((random.next_double(), random.next_double()))
             },
@@ -417,3 +417,5 @@ mod sprint_handle_tests {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

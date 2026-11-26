@@ -137,7 +137,7 @@ impl crate::game::ClientGame<'_> {
             // dataChanged shows the menu's).
             (Kind::Beacon, 0) => {
                 debug_assert!(
-                    self.side.station_ui.is_some(),
+                    self.client.station_ui.is_some(),
                     "open client station missing StationUi"
                 );
                 if let Some(ui) = self.client.station_ui.as_mut() {

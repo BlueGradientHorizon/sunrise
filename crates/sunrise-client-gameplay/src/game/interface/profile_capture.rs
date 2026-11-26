@@ -652,7 +652,7 @@ impl ClientGame<'_> {
 
     /// Asks the server thread to write its side into the running capture, once there is a server thread to ask.
     pub(in crate::game::client_side) fn join_server_capture(&mut self) {
-        if !matches!(self.side.profile.link, ServerLink::Pending) {
+        if !matches!(self.client.profile.link, ServerLink::Pending) {
             return;
         }
         let (Some(integrated), Some(join)) = (&self.client.integrated, self.client.profile.perf.join())
@@ -1097,7 +1097,7 @@ impl ClientGame<'_> {
         if !self.client.profile.perf.capturing() {
             self.client.profile.gpu = GpuSwitch::Off;
         }
-        if matches!(self.side.profile.link, ServerLink::Pending) {
+        if matches!(self.client.profile.link, ServerLink::Pending) {
             self.join_server_capture();
         }
         if !self.client.profile.hardware_warmed {

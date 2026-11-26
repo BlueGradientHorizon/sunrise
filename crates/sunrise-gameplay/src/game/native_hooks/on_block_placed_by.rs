@@ -23,7 +23,7 @@ impl crate::game::ServerGame<'_> {
         if !mod_api::__private::item_listens(mod_api::HookId::OnBlockPlacedBy, &stack.item) {
             return;
         }
-        let Some(level) = self.common.level(self.common.dim.id()) else {
+        let Some(level) = self.level(self.common.dim.id()) else {
             return;
         };
         // setPlacedBy (for example a jukebox) can change the state again.
@@ -48,3 +48,4 @@ impl crate::game::ServerGame<'_> {
         });
     }
 }
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -91,3 +91,5 @@ fn a_saved_vibration_names_its_source() {
     );
     assert!(read(&mut game, "listener.selector.event.projectile_owner").is_none());
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

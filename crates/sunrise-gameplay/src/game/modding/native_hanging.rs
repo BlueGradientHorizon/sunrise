@@ -11,7 +11,7 @@ impl crate::game::ServerGame<'_> {
         entity: EntityRef,
         direction: Direction,
     ) -> bool {
-        let pos = match self.common.native_entity_target(entity) {
+        let pos = match self.native_entity_target(entity) {
             Some(Target::Frame(id)) => {
                 let Some(frame) = self.common.item_frames.iter_mut().find(|f| f.id == id) else {
                     return false;
@@ -41,7 +41,7 @@ impl crate::game::ServerGame<'_> {
         entity: EntityRef,
         rotation: u8,
     ) -> bool {
-        let Some(Target::Frame(id)) = self.common.native_entity_target(entity) else {
+        let Some(Target::Frame(id)) = self.native_entity_target(entity) else {
             return false;
         };
         let Some(frame) = self.common.item_frames.iter_mut().find(|f| f.id == id) else {
@@ -78,3 +78,5 @@ fn data_2d(direction: Direction) -> Option<u8> {
         Direction::Down | Direction::Up => None,
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

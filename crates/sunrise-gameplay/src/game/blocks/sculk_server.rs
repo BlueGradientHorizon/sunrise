@@ -761,7 +761,7 @@ impl crate::game::ServerGame<'_> {
             // level random: the follow range bonus and left-handedness.
             let mut events = Vec::new();
             warden::finalize(&mut mob, true, &mut events);
-            let _ = self.common.handle_mob_events(events);
+            let _ = self.handle_mob_events(events);
             let r = &mut self.common.world.random;
             let bonus = r.triangle(0.0, 0.11485000000000001);
             mob.attrs.follow_range += mob.kind.follow_range * bonus;
@@ -839,10 +839,10 @@ impl crate::game::ServerGame<'_> {
             .collect();
         serde_json::json!({
             "listeners": listeners,
-            "warning_level": self.side.sculk.tracker.warning_level,
-            "cooldown": self.side.sculk.tracker.cooldown_ticks,
+            "warning_level": self.server.sculk.tracker.warning_level,
+            "cooldown": self.server.sculk.tracker.cooldown_ticks,
             "darkness": 0.0,
-            "chunks_known": self.side.sculk.known.len(),
+            "chunks_known": self.server.sculk.known.len(),
         })
     }
     /// `WardenSpawnTrackerCommand`: clear the player's tracker or set its
@@ -2742,3 +2742,7 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

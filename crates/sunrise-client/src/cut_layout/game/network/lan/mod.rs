@@ -471,5 +471,7 @@ pub(in crate::game) mod login_profile_tests;
 pub(in crate::game) mod no_gravity_sync_tests;
 #[cfg(test)]
 pub(in crate::game) mod tracking_hook_tests;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
 #[cfg(test)]
 include!("advancement_save_tests.rs");

@@ -157,3 +157,5 @@ fn save_requested_during_pickup_keeps_lifted_items_on_disk() {
     }
     assert!(missing.is_empty(), "{}", missing.join("\n"));
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

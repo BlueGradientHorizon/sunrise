@@ -80,3 +80,7 @@ fn a_summoned_mobs_name_shows_the_entity_on_hover() {
     assert_eq!(name["insertion"], uuid.as_str());
     assert_eq!(name["hover_event"]["uuid"], uuid.as_str());
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

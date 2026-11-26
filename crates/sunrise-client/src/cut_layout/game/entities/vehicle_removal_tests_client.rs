@@ -85,3 +85,7 @@ fn wind_charged_mob_removal_cannot_reenter_through_its_own_burst() {
         game.stop_audio_capture();
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt2 as _;

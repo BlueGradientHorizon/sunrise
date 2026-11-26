@@ -1165,7 +1165,7 @@ impl crate::game::ServerGame<'_> {
     /// `ServerLevel.dragonParts`: where the part with that entity id is
     /// and its box.
     pub(in crate::game::server_side) fn dragon_part(&self, id: u32) -> Option<(Vec3, Aabb)> {
-        let (d, i) = self.common.resident_dragon_part(id)?;
+        let (d, i) = self.resident_dragon_part(id)?;
         d.alive().then(|| d.part_geometry(i))
     }
     /// Damage to a special id (from projectiles and melee): what the
@@ -1210,18 +1210,15 @@ impl crate::game::ServerGame<'_> {
             let creative = match owner {
                 Some(Who::Player) => match guest {
                     Some(conn) if self.server.lan_acting == Some(conn) => self.common.creative,
-                    Some(conn) => self
-                        .common
-                        .command_guest(conn)
-                        .is_some_and(|g| g.creative()),
+                    Some(conn) => self.command_guest(conn).is_some_and(|g| g.creative()),
                     None => self.common.creative,
                 },
                 _ => false,
             };
             let causing = match owner {
                 Some(Who::Player) => match guest {
-                    Some(conn) => self.common.command_guest(conn).map_or(0, |g| g.entity_id),
-                    None => self.common.own_entity_id(),
+                    Some(conn) => self.command_guest(conn).map_or(0, |g| g.entity_id),
+                    None => self.own_entity_id(),
                 },
                 Some(Who::Mob(oid)) => oid as i32,
                 None => 0,
@@ -1342,7 +1339,7 @@ impl crate::game::ServerGame<'_> {
         let no_knockback = self.damage_in_tag(ty, "minecraft:no_knockback");
         let level = super::entity_server::damage_level_of!(
             self,
-            self.side.combat.0.attack(),
+            self.server.combat.0.attack(),
             no_push,
             None
         );
@@ -1368,7 +1365,7 @@ impl crate::game::ServerGame<'_> {
                 };
                 let level = super::entity_server::damage_level_of!(
                     self,
-                    self.side.combat.0.attack(),
+                    self.server.combat.0.attack(),
                     no_push,
                     None
                 );
@@ -1437,10 +1434,11 @@ impl crate::game::ServerGame<'_> {
         let bypass = self.damage_in_tag(ty, "minecraft:bypasses_invulnerability") || creative;
         let vanilla = (self.common.crystals[index].invulnerable && !bypass) || is_fire(kind);
         let entity_id = |target| match target {
-            Some(Target::Player) => self.common.own_entity_id(),
-            Some(Target::Guest(conn)) => self.common.command_guest(conn).map_or(0, |g| g.entity_id),
-            Some(target) => sunrise_gameplay_common::game::commands_common::target_id(target)
-                .map_or(0, |id| id as i32),
+            Some(Target::Player) => self.own_entity_id(),
+            Some(Target::Guest(conn)) => self.command_guest(conn).map_or(0, |g| g.entity_id),
+            Some(target) => {
+                sunrise_gameplay_common::game::commands_common::target_id(target).map_or(0, |id| id as i32)
+            }
             None => 0,
         };
         let source = HurtSource {
@@ -1560,7 +1558,7 @@ impl crate::game::ServerGame<'_> {
                 self.saved_refuses_damage(id, hit_source.damage_type, creative) || is_fire(kind);
             let level = super::entity_server::damage_level_of!(
                 self,
-                self.side.combat.0.attack(),
+                self.server.combat.0.attack(),
                 no_push,
                 None
             );
@@ -1589,7 +1587,7 @@ impl crate::game::ServerGame<'_> {
         let (cooldown, last_hurt) = (d.invulnerable, d.last_hurt);
         let level = super::entity_server::damage_level_of!(
             self,
-            self.side.combat.0.attack(),
+            self.server.combat.0.attack(),
             &mut credit,
             None
         );
@@ -2466,7 +2464,7 @@ impl crate::game::ServerGame<'_> {
                 .map(|m| {
                     sunrise_game_data::scoreboard::teams_allow_damage(
                         self.mob_team(d.id),
-                        self.common.mob_team_of(m),
+                        self.mob_team_of(m),
                     )
                 })
                 .collect();
@@ -3092,22 +3090,22 @@ impl crate::game::ServerGame<'_> {
                 "strafing": match &d.phase {
                     Phase::Strafe { player: Some(FightWho::Host), .. } => serde_json::json!("host"),
                     Phase::Strafe { player: Some(FightWho::Guest(conn)), .. } => serde_json::json!(
-                        self.side.lan.as_ref().and_then(|h| h.hub.guest(*conn)).map(|g| g.entity_id)
+                        self.server.lan.as_ref().and_then(|h| h.hub.guest(*conn)).map(|g| g.entity_id)
                     ),
                     _ => serde_json::Value::Null,
                 },
             })),
-            "players": self.side.fight.players,
+            "players": self.server.fight.players,
             "crystals": self.crystals.len(),
             // The tracked id (0 until tracked) and position of each crystal.
             "crystal_list": self.crystals.iter().map(|c| serde_json::json!({
                 "id": c.id,
                 "position": [c.position.x, c.position.y, c.position.z],
             })).collect::<Vec<_>>(),
-            "alive_crystals": self.side.fight.alive_crystals,
-            "killed": self.side.fight.killed,
-            "exit_portal": self.side.fight.exit_portal,
-            "respawn": self.side.fight.respawn.map(|(s, t)| format!("{} {t}", s.name())),
+            "alive_crystals": self.server.fight.alive_crystals,
+            "killed": self.server.fight.killed,
+            "exit_portal": self.server.fight.exit_portal,
+            "respawn": self.server.fight.respawn.map(|(s, t)| format!("{} {t}", s.name())),
         })
     }
 }
@@ -3120,7 +3118,7 @@ impl crate::game::ServerGame<'_> {
         hit: &super::Hit,
         stack: &sunrise_items::items::ItemStack,
     ) -> bool {
-        if &*stack.item != "minecraft:end_crystal" || !self.common.end_crystal_fits(hit.pos) {
+        if &*stack.item != "minecraft:end_crystal" || !self.end_crystal_fits(hit.pos) {
             return false;
         }
         let above = [hit.pos[0], hit.pos[1] + 1, hit.pos[2]];
@@ -3149,7 +3147,7 @@ impl crate::game::ServerGame<'_> {
             self.try_respawn();
         }
         if !self.common.creative {
-            self.common.consume_held();
+            self.consume_held();
         }
         // ItemStack.useOn counts the use.
         self.award_stat("used", &stack.item, 1);
@@ -4916,3 +4914,17 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
+use sunrise_gameplay_common::game::scoreboard_common::CommonGameExt1 as _;

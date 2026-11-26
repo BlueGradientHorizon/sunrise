@@ -182,15 +182,15 @@ impl crate::game::ServerGame<'_> {
         }
         if stack.data().is_some_and(|d| !d.charged.is_empty()) {
             self.shoot_crossbow();
-        } else if self.common.get_projectile(stack).is_some() {
-            self.common.start_using_item();
+        } else if self.get_projectile(stack).is_some() {
+            self.start_using_item();
         }
         true
     }
     /// `CrossbowItem.onUseTick` for the charge in progress.
     pub(in crate::game) fn tick_crossbow(&mut self, slot: usize, ticks: u32, stack: &ItemStack) {
         // getUseDuration - the ticks left, as a mod's Start or Tick left them.
-        let held = self.common.ticks_held(stack, ticks);
+        let held = self.ticks_held(stack, ticks);
         self.common.using = Some((slot, ticks + 1));
         let charge = Self::charge_ticks(stack).max(1) as f32;
         let now = (held + 1) as f32 / charge;
@@ -215,7 +215,7 @@ impl crate::game::ServerGame<'_> {
             } else {
                 1
             };
-            let Some(ammo) = self.common.get_projectile(stack) else {
+            let Some(ammo) = self.get_projectile(stack) else {
                 return;
             };
             // The projectile hook may have changed the selected ammunition or weapon.
@@ -235,7 +235,7 @@ impl crate::game::ServerGame<'_> {
             // A pack can make the weapon its own ammo. Debit it without
             // charging it, so the destruction notice sees the original stack.
             if !creative && ammo.slot == Some(slot) {
-                self.common.consume_player_slot(slot, 1);
+                self.consume_player_slot(slot, 1);
                 return;
             }
             // Store the projectile before debiting the ammo slot: its destruction
@@ -245,7 +245,7 @@ impl crate::game::ServerGame<'_> {
                 .map(|i| sunrise_sim::arrows::drawn_ammo(&ammo.stack, creative || i > 0))
                 .collect();
             if !creative && let Some(i) = ammo.slot {
-                self.common.consume_player_slot(i, 1);
+                self.consume_player_slot(i, 1);
             }
             let pitch = 1.0 / (self.common.world.random.next_float() * 0.5 + 1.0) + 0.2;
             if let Some(at) = at {
@@ -341,7 +341,7 @@ impl crate::game::ServerGame<'_> {
                 self.spawn_projectile(arrow, ammo);
                 let (player, name, projectile) = (
                     sunrise_sim::lan::playerdata::ints_uuid(self.acting_player_uuid()),
-                    self.common.acting_player_name().to_owned(),
+                    self.acting_player_name().to_owned(),
                     self.server.next_entity,
                 );
                 self.native_entity_shoot_bow(player, &name, projectile, power as f32);
@@ -477,3 +477,9 @@ pub(in crate::game) mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

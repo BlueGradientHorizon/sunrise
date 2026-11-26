@@ -17,7 +17,7 @@ impl crate::game::ServerGame<'_> {
     /// Whether a mod paused the mob's AI step. None for a stale or held-out
     /// handle, anything but a mob, the dragon, or on a client.
     pub(in crate::game) fn mob_ai_paused(&self, mob: MobRef) -> Option<bool> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         let m = self.common.mobs.iter().find(|m| m.id == id && !m.removed)?;
@@ -60,7 +60,7 @@ impl crate::game::ServerGame<'_> {
         if self.server.held_out.contains(&entity.id()) {
             return Err(MobAiPauseRefusal::HeldOut);
         }
-        match self.common.native_entity_target(entity) {
+        match self.native_entity_target(entity) {
             Some(Target::Mob(id)) => Ok(id),
             Some(Target::Dragon(_) | Target::DragonPart(_)) => Err(MobAiPauseRefusal::NoAiStep),
             Some(_) => Err(MobAiPauseRefusal::NotAMob),
@@ -71,3 +71,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

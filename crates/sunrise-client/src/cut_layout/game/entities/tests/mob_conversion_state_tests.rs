@@ -209,3 +209,7 @@ fn a_zombifying_piglin_leaves_a_nauseous_zombified_piglin() {
         "nauseous for 200 ticks, as `MobEffectInstance(NAUSEA, 200, 0)`"
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;

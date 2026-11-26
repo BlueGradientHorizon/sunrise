@@ -168,3 +168,5 @@ fn a_chest_cart_broken_by_a_player_angers_the_piglins_that_see_them() {
     );
     assert_eq!(m.ai.target, Some(Who::Player));
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

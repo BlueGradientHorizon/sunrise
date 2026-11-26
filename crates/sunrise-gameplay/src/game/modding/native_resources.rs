@@ -28,7 +28,7 @@ impl<__Side: sunrise_gameplay_common::game::Side> crate::game::Game<'_, __Side> 
             }
             sources.push(&self.pack.data_changes);
             if self.options.execution_role.is_logical_server() {
-                ModdingSideOps::side_append_function_pack_sources(&self.side, &mut sources);
+                ModdingSideOps::side_append_function_pack_sources(&self.server, &mut sources);
             }
             ("data", sources)
         })

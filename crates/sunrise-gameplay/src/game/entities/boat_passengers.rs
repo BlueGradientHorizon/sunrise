@@ -244,7 +244,7 @@ impl crate::game::ServerGame<'_> {
             && !self.common.spectator()
             && !p.health.dead_or_dying()
         {
-            out.push((p.bounds(), Target::Player, self.common.own_entity_id() as u32));
+            out.push((p.bounds(), Target::Player, self.own_entity_id() as u32));
         }
         if let Some(host) = self.server.lan.as_ref() {
             for g in host.hub.guests.iter().filter(|g| {
@@ -470,7 +470,7 @@ impl crate::game::ServerGame<'_> {
         &mut self,
         riding: &sunrise_gameplay_common::game::passengers_common::Riders,
     ) {
-        self.common.seat_boat_mobs_with_order(riding, |game, id| game.passenger_order(id));
+        self.seat_boat_mobs_with_order(riding, |game, id| game.passenger_order(id));
     }
     /// `Entity.setRemoved` for a killed boat or cart; false on a reentrant
     /// removal of the same object while its dismount callbacks are running.
@@ -727,3 +727,15 @@ mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

@@ -156,3 +156,7 @@ fn riptide_ground_release_keeps_launch_velocity() {
         },
     );
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

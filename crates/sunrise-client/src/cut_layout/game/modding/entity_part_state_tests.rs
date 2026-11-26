@@ -807,3 +807,7 @@ fn entity_part_state_on_a_player_a_vanilla_family_or_an_unknown_type_refuses_the
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

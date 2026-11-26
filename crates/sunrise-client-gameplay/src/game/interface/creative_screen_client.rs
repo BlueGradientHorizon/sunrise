@@ -64,7 +64,7 @@ impl crate::game::ClientGame<'_> {
                     self.common.offhand = None;
                     self.common.equipment = Default::default();
                     self.common.craft_grid[..4].fill(None);
-                    self.common.apply_equipment();
+                    self.apply_equipment();
                     if self.client.remote.is_some() {
                         self.send_creative_slots();
                     }
@@ -495,7 +495,7 @@ impl crate::game::ClientGame<'_> {
             let w = HudBatch::text_width(atlas, label);
             batch.text(atlas, label, x + (20.0 - w) / 2.0, y + 6.0, color, true);
         }
-        let text = format!("{} / {}", self.side.creative_screen.0.page + 1, pages);
+        let text = format!("{} / {}", self.client.creative_screen.0.page + 1, pages);
         let w = HudBatch::text_width(atlas, &text);
         batch.text(
             atlas,
@@ -519,3 +519,5 @@ impl crate::game::ClientGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

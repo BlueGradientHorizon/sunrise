@@ -96,3 +96,5 @@ fn converted_mobs_keep_command_tags_at_the_new_id_and_on_save() {
         assert_eq!(game.tags_of(Target::Mob(reloaded)), ["subject", from]);
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

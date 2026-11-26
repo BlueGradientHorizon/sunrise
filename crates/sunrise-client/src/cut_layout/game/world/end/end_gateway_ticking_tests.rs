@@ -138,3 +138,5 @@ fn a_ticking_gateway_counts_its_age_in_its_block_entity() {
     }
     assert_eq!(age(&game), Some(25));
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

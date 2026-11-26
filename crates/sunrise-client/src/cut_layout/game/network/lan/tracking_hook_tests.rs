@@ -326,3 +326,7 @@ fn a_leaving_player_hears_its_stops_after_logging_out() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

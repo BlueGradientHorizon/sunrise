@@ -299,3 +299,7 @@ fn client_menu_kind_names_the_server_menu_type() {
         },
     );
 }
+
+use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

@@ -7,7 +7,7 @@ use sunrise_core::nbt::{self, Tag};
 use sunrise_game_data::text::Text;
 use sunrise_sim::text_grammar::build;
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// A component read as `/tellraw` takes it; None when it isn't one (an object with no
     /// content key, an empty list, a content key of the wrong kind).
     pub(super) fn text_from_json(&self, json: &str) -> Read {

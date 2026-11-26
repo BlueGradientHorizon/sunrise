@@ -251,3 +251,5 @@ fn remaining_hit_callers_observe_refusals_and_zero_damage() {
         })
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

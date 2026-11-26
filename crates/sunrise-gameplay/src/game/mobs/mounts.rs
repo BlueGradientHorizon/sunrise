@@ -104,7 +104,7 @@ impl ServerGame<'_> {
                     };
                     self.player_equipment_broke(equipment, &broken);
                     self.award_stat("broken", &broken.item, 1);
-                    self.common.player_item_destroyed(&stack, Some(hand));
+                    self.player_item_destroyed(&stack, Some(hand));
                     // hurtAndConvertOnBreak keeps the broken stick's components.
                     if self.common.stack_in(slot).is_none() {
                         let mut rod = stack.transmute("minecraft:fishing_rod", 1);
@@ -175,7 +175,7 @@ impl ServerGame<'_> {
         ) {
             Some(equine::HeldItem::Feed) => return self.feed_mount(index, item),
             Some(equine::HeldItem::Refused) => {
-                let _ = self.common.handle_mob_events(events);
+                let _ = self.handle_mob_events(events);
                 return true;
             }
             None => {}
@@ -252,7 +252,7 @@ impl ServerGame<'_> {
                     None => self.server_play_sound(sound, feet, 1.0, pitch),
                 }
             }
-            self.common.consume_held();
+            self.consume_held();
             if !chest {
                 let id = self.common.mobs[index].id;
                 let pos = self.common.mobs[index].position;
@@ -299,7 +299,7 @@ impl ServerGame<'_> {
             };
             self.common.mobs[index].set_saddle(held.map(|s| ItemStack { count: 1, ..s }));
             self.server_play_sound(sound, at, 1.0, 1.0);
-            self.common.consume_held();
+            self.consume_held();
             let id = self.common.mobs[index].id;
             let pos = self.common.mobs[index].position;
             self.mob_equip_event(id, [pos.x, pos.y, pos.z], true);
@@ -477,7 +477,7 @@ impl ServerGame<'_> {
             self.native_entity_enter_love_mode(id, &kind, self.server.lan_acting_uuid);
             self.mob_event_particles(id, 18);
         }
-        self.common.consume_held();
+        self.consume_held();
         true
     }
     /// Whether the rider's eyes are in water (`Entity.updateFluidOnEyes` then `isEyeInFluid(WATER)`),
@@ -579,7 +579,7 @@ impl ServerGame<'_> {
     }
     /// This player's index in `vehicle`'s `getPassengers`, 0 when it is not listed.
     pub(in crate::game::server_side) fn own_passenger_index(&self, vehicle: u32) -> usize {
-        let own = self.common.riding_player().map(|(id, _)| id);
+        let own = self.riding_player().map(|(id, _)| id);
         self.seated_passengers(vehicle)
             .iter()
             .position(|&(_, id, player)| player && Some(id) == own)
@@ -683,12 +683,12 @@ impl ServerGame<'_> {
         // instead. Inside a guest's turn the acting ids are the guest's.
         let index = self.common.mobs.iter().position(|m| m.id == mob);
         if let Some(index) = index {
-            let (tamer, tamer_entity_id) = (self.common.native_acting_id(), self.common.own_entity_id());
+            let (tamer, tamer_entity_id) = (self.native_acting_id(), self.own_entity_id());
             if self.animal_tame_cancelled(index, tamer, tamer_entity_id) {
                 let m = &mut self.common.mobs[index];
                 let mut events = Vec::new();
                 sunrise_sim::mobs::equine::refuse_rider(m, &mut events);
-                if let Err(e) = self.common.handle_mob_events(events) {
+                if let Err(e) = self.handle_mob_events(events) {
                     log::warn!("failed horse taming: {e}");
                 }
                 return;
@@ -874,7 +874,7 @@ impl ServerGame<'_> {
                 }
                 resume = Some(pause);
             }
-            let _ = self.common.handle_mob_events(events);
+            let _ = self.handle_mob_events(events);
         }
     }
     /// The player this game runs (the local one, or the server player it acts
@@ -1512,7 +1512,7 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::rider;
         crate::game::sculk::TEST_POSTED_EVENTS
             .with(|events| *events.borrow_mut() = Some(Vec::new()));
         let used = game.interact_mount(0, item);
-        let sounds = std::mem::take(&mut game.side.pending_sounds)
+        let sounds = std::mem::take(&mut game.server.pending_sounds)
             .into_iter()
             .map(|s| (s.event, s.position, s.volume, s.pitch))
             .collect();
@@ -1562,7 +1562,7 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::rider;
         crate::game::sculk::TEST_POSTED_EVENTS
             .with(|events| *events.borrow_mut() = Some(Vec::new()));
         let used = game.interact_mount(0, item);
-        let sounds = std::mem::take(&mut game.side.pending_sounds)
+        let sounds = std::mem::take(&mut game.server.pending_sounds)
             .into_iter()
             .map(|s| (s.event, s.position, s.volume, s.pitch))
             .collect();
@@ -1587,3 +1587,13 @@ use sunrise_gameplay_common::game::server_side::mounts::tests::rider;
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

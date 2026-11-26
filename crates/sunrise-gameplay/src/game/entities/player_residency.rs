@@ -30,7 +30,7 @@ impl crate::game::ServerGame<'_> {
         &self,
     ) -> Option<Location> {
         match self.server.lan_acting {
-            Some(conn) => self.common.command_guest(conn)?.residency.location(),
+            Some(conn) => self.command_guest(conn)?.residency.location(),
             None => self.common.resident_entities.local_player.location(),
         }
     }
@@ -53,7 +53,7 @@ impl crate::game::ServerGame<'_> {
         match target {
             Target::Player => match self.server.lan_acting {
                 Some(conn) => self
-                    .common.command_guest(conn)?
+                    .command_guest(conn)?
                     .residency
                     .identity()
                     .map(|identity| identity.id.get()),
@@ -64,7 +64,7 @@ impl crate::game::ServerGame<'_> {
                     .map(|identity| identity.id.get()),
             },
             Target::Guest(conn) => self
-                .common.command_guest(conn)?
+                .command_guest(conn)?
                 .residency
                 .identity()
                 .map(|identity| identity.id.get()),
@@ -77,7 +77,7 @@ impl crate::game::ServerGame<'_> {
     ) -> sunrise_sim::join_seq::JoinSeq {
         self.server
             .lan_acting
-            .and_then(|conn| self.common.command_guest(conn))
+            .and_then(|conn| self.command_guest(conn))
             .map_or_else(
                 || self.common.resident_entities.local_player.join(),
                 |guest| guest.residency.join(),
@@ -344,8 +344,12 @@ impl crate::game::ServerGame<'_> {
             id: source.value.0.id(),
             value: (
                 target,
-                self.common.resident_source_target_visible(at.owner.dimension, target),
+                self.resident_source_target_visible(at.owner.dimension, target),
             ),
         })
     }
 }
+
+use sunrise_gameplay_common::game::GameGameExt2 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

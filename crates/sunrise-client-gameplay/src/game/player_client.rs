@@ -15,7 +15,7 @@ impl crate::game::ClientGame<'_> {
 
     pub(in crate::game) fn client_on_inventory_item_added(&mut self, stack: &ItemStack) {
         if matches!(
-            self.side.tutorial.step,
+            self.client.tutorial.step,
             tutorial::Step::FindTree | tutorial::Step::PunchTree | tutorial::Step::CraftPlanks
         ) {
             self.tutorial_get_item(Some(stack));
@@ -75,7 +75,7 @@ impl crate::game::ClientGame<'_> {
 
     pub(in crate::game) fn client_apply_equipment(&mut self) {
         let mut applied = std::mem::take(&mut self.client.predicted_equipment_modifiers);
-        let ran = self.common.apply_equipment_modifiers_with(&mut applied);
+        let ran = self.apply_equipment_modifiers_with(&mut applied);
         self.client.predicted_equipment_modifiers = applied;
         if ran && let Some(player) = self.common.player.as_mut() {
             let _ = player.clamp_health_to_max();
@@ -684,7 +684,7 @@ impl crate::game::ClientGame<'_> {
     }
 
     pub(in crate::game) fn client_native_current_level(&self) -> Option<LevelRef> {
-        self.common.native_client_level()
+        self.native_client_level()
     }
 
     // Remote motion client helpers.
@@ -747,3 +747,7 @@ impl crate::game::ClientGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

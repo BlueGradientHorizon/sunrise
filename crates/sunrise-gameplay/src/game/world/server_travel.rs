@@ -614,7 +614,6 @@ impl crate::game::ServerGame<'_> {
         if visited.contains(&id)
             || (!self.server.held_out.contains(&id)
                 && self
-                    .common
                     .native_entity_target(mod_api::EntityRef::new(epoch, id))
                     .is_none())
         {
@@ -643,7 +642,6 @@ impl crate::game::ServerGame<'_> {
             return true;
         }
         if self
-            .common
             .native_entity_target(mod_api::EntityRef::new(epoch, id))
             .is_none()
         {
@@ -679,8 +677,7 @@ impl crate::game::ServerGame<'_> {
                 let _ = self.entity_start_riding(rider, entity, true);
             }
         }
-        self.common
-            .native_entity_target(mod_api::EntityRef::new(epoch, id))
+        self.native_entity_target(mod_api::EntityRef::new(epoch, id))
             .is_some()
     }
 
@@ -1560,7 +1557,7 @@ impl crate::game::ServerGame<'_> {
 
     fn apply_level_teleport(&mut self, t: LevelTeleport, kind: LevelTeleportKind) {
         let back = self.common.dim;
-        let Some(player) = self.common.command_guest(t.conn) else {
+        let Some(player) = self.command_guest(t.conn) else {
             return;
         };
         let source = Dim::from_id(&player.dimension);
@@ -1649,7 +1646,7 @@ impl crate::game::ServerGame<'_> {
                 self.tell_mods_changed_dimension(t.conn, Some(source), t.dim);
             }
             LevelTeleportKind::Direct => {
-                if let Some(player) = self.common.command_guest(t.conn) {
+                if let Some(player) = self.command_guest(t.conn) {
                     let (uuid, name) = (player.uuid, player.name.clone());
                     self.as_guest(t.conn, |g| {
                         g.trigger_dimension(source, t.dim, origin);
@@ -1884,7 +1881,7 @@ pub mod credits_respawn_tests {
     pub fn light_spawn_chunks(game: &mut crate::game::ServerGame<'_>) {
         for x in -2..=2 {
             for z in -2..=2 {
-                game.side
+                game.server
                     .streaming
                     .insert_remote(&mut game.world, Chunk::empty(x, z));
             }
@@ -1904,3 +1901,9 @@ pub mod credits_respawn_tests {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

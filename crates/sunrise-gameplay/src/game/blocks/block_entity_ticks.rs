@@ -336,8 +336,8 @@ impl ServerGame<'_> {
         let ticking = this.block_ticking_area();
         this.spawner_tick_positions.clear();
         this.trial_spawner_tick_positions.clear();
-        this.side.item_columns = Some(Default::default());
-        this.side.pass_mobs = Some(Default::default());
+        this.server.item_columns = Some(Default::default());
+        this.server.pass_mobs = Some(Default::default());
         let tickers = this.world.block_entity_tickers();
         let mut last_chunk = (i32::MIN, i32::MIN);
         let mut last_chunk_ticking = false;
@@ -446,8 +446,8 @@ impl ServerGame<'_> {
         }
         sunrise_threads::work::clear_work();
         // Items move between passes: the columns hold for this one only.
-        this.side.item_columns = None;
-        this.side.pass_mobs = None;
+        this.server.item_columns = None;
+        this.server.pass_mobs = None;
         this.tick_sign_editors();
         this.scan_for_hearts();
         // `ShulkerBoxBlockEntity.tick`: the lids of the boxes this level
@@ -622,3 +622,7 @@ pub mod own_block_entity_tests {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

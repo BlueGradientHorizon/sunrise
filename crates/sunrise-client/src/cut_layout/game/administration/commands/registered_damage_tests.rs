@@ -821,3 +821,5 @@ fn live_damage_and_blast_ghast_reflected_fireball() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

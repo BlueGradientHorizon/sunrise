@@ -29,7 +29,6 @@ impl ServerGame<'_> {
         }
         let [x, z] = chunk.pos();
         let column = self
-            .common
             .native_level_world(chunk.level())?
             .chunks
             .get(&(x, z))?;
@@ -51,3 +50,7 @@ impl ServerGame<'_> {
         )
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

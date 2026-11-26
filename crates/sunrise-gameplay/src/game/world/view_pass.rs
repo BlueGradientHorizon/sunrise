@@ -198,13 +198,13 @@ use sunrise_gameplay_common::game::server_side::view_pass::tests::sent;
             address: "127.0.0.1:25565".parse().unwrap(),
             expected: false,
         };
-        game.side.next_entity += 1;
-        let mut guest = Guest::new(joined, game.side.next_entity as i32, [0.5, 80.0, 0.5], 0);
+        game.server.next_entity += 1;
+        let mut guest = Guest::new(joined, game.server.next_entity as i32, [0.5, 80.0, 0.5], 0);
         guest.placed = true;
         guest.loaded = true;
         guest.dimension = Dim::Overworld.id().into();
         guest.max_unacknowledged = 1000;
-        let hub = &mut game.side.lan.as_mut().unwrap().hub;
+        let hub = &mut game.server.lan.as_mut().unwrap().hub;
         // Its client was told at Login the levels the server has now.
         guest.viewed.logged_in_with(hub.level_keys());
         hub.guests.push(guest);
@@ -262,14 +262,14 @@ use sunrise_gameplay_common::game::server_side::view_pass::tests::sent;
 
     /// The viewer, a server player.
     pub fn viewer<'h>(game: &'h crate::game::ServerGame<'_>) -> &'h sunrise_sim::lan::guest::Guest {
-        let hub = &game.side.lan.as_ref().unwrap().hub;
+        let hub = &game.server.lan.as_ref().unwrap().hub;
         hub.guests.iter().find(|g| g.uuid == 2).unwrap()
     }
 
     /// Sends the viewer (connection 2) into level `dim` at `at`, as `/tp` into another level
     /// does (`ServerPlayer.teleport(TeleportTransition)`).
     pub fn travel(game: &mut crate::game::ServerGame<'_>, dim: Dim, at: [f64; 3]) {
-        game.side
+        game.server
             .level_teleports
             .push(crate::game::server_travel::LevelTeleport {
                 conn: 2,
@@ -315,3 +315,11 @@ use sunrise_gameplay_common::game::server_side::view_pass::tests::sent;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

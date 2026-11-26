@@ -73,3 +73,5 @@ pub(in crate::game) fn with_role_game(
     assert!(game.side.tickets.0.levels().block_ticking(0, 0));
     test(&mut game);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

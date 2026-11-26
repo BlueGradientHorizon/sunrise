@@ -91,7 +91,7 @@ impl crate::game::ServerGame<'_> {
             return Ok(false);
         }
         // ServerPlayerGameMode.destroyBlock.
-        if self.common.block_action_restricted(pos) {
+        if self.block_action_restricted(pos) {
             return Ok(false);
         }
         if !self
@@ -209,7 +209,7 @@ impl crate::game::ServerGame<'_> {
                     .is_some_and(|h| h.enchantment_level("minecraft:silk_touch") > 0);
                 // Block.dropResources: the item entities, then spawnAfterBreak's
                 // experience, with the mods' say between the two.
-                let breaker = Some(self.common.native_acting_id());
+                let breaker = Some(self.native_acting_id());
                 let block_entity_data = live
                     .as_ref()
                     .and_then(|(_, data)| data.as_ref())
@@ -292,8 +292,7 @@ impl crate::game::ServerGame<'_> {
                 });
             }
             if let Some(original) = broken_tool {
-                self.common
-                    .player_item_destroyed(&original, Some(Hand::Main));
+                self.player_item_destroyed(&original, Some(Hand::Main));
             }
         }
         self.common.pending.clear(pos);
@@ -350,7 +349,7 @@ impl crate::game::ServerGame<'_> {
         let mut returned: Vec<ItemStack> = self.common.carried.take().into_iter().collect();
         returned.extend(self.common.craft_grid.iter_mut().filter_map(Option::take));
         for stack in returned {
-            if let Some(rest) = self.common.add_stack_to_inventory(stack)
+            if let Some(rest) = self.add_stack_to_inventory(stack)
                 && let Some(eye) = self.common.eye_position()
             {
                 // AbstractContainerMenu.dropOrPlaceInInventory: `drop(stack, false)`.
@@ -626,9 +625,8 @@ impl crate::game::ServerGame<'_> {
         if let Some(hit) = self.server.forced_hit {
             return Some(hit);
         }
-        let (origin, direction) = self.common.aim()?;
-        self.common
-            .clip_ray(origin, direction, self.common.block_reach)
+        let (origin, direction) = self.aim()?;
+        self.common.clip_ray(origin, direction, self.common.block_reach)
     }
     /// `LivingEntity.startSleeping`: the player takes the bed whose head
     /// `head` names, moved onto it and asleep from now on. False when the
@@ -638,7 +636,7 @@ impl crate::game::ServerGame<'_> {
         // A straw bed's head answers with its foot's shape, and with no foot
         // of its own there is none, so the player stays up as
         // `startSleeping` returning false leaves them.
-        let Some(at) = self.common.sleeping_position(head) else {
+        let Some(at) = self.sleeping_position(head) else {
             return false;
         };
         // LivingEntity.startSleeping: stopRiding once the bed is valid.
@@ -1008,7 +1006,7 @@ impl crate::game::ServerGame<'_> {
                     }
                     PlayerEffect::Sleep => self.try_sleep([pos.x, pos.y, pos.z]),
                     PlayerEffect::GiveItem(item) => {
-                        if let Some(rest) = self.common.add_stack_to_inventory(ItemStack {
+                        if let Some(rest) = self.add_stack_to_inventory(ItemStack {
                             item,
                             count: 1,
                             damage: 0,
@@ -1440,13 +1438,13 @@ impl crate::game::ServerGame<'_> {
             self.common.mining = None;
             return Ok(());
         }
-        let Some(hit) = self.common.pick() else {
+        let Some(hit) = self.pick() else {
             self.common.mining = None;
             return Ok(());
         };
         // Player.blockActionRestricted: spectators, and adventure players
         // without a matching can_break item.
-        if self.common.block_action_restricted(hit.pos)
+        if self.block_action_restricted(hit.pos)
             || !self
                 .common
                 .res
@@ -1485,7 +1483,7 @@ impl crate::game::ServerGame<'_> {
             self.destroy_progress_event(pos, hit.face, ticks);
             return Ok(());
         }
-        let progress = self.common.destroy_progress(hit.pos);
+        let progress = self.destroy_progress(hit.pos);
         self.swing_arm();
         let m = self.common.mining.as_mut().ok_or("mining")?;
         m.per_tick = progress;
@@ -1533,7 +1531,7 @@ impl crate::game::ServerGame<'_> {
             // setPosToBed: the bed's top (`getSleepHeight`) and 0.125 above
             // it. A sleeper whose bed no longer gives a shape to lie on stays
             // where it is: vanilla only ever places a sleeper when it starts.
-            let at = self.common.sleeping_position(head);
+            let at = self.sleeping_position(head);
             if let (Some(p), Some(at)) = (self.common.player.as_mut(), at) {
                 p.position = at;
                 p.velocity = Vec3::ZERO;
@@ -1841,13 +1839,13 @@ impl crate::game::ServerGame<'_> {
         };
         // BucketItem has no useOn: a guest's UseItemOn leaves it to UseItem.
         let bucket = sunrise_items::items::bucket_contents(&stack.item);
-        if matches!(self.side.guest_use, Some(GuestUse::OnBlock { .. }))
+        if matches!(self.server.guest_use, Some(GuestUse::OnBlock { .. }))
             && (item == "bucket" || bucket.is_some())
         {
             return Ok(UseResult::Pass);
         }
         if item == "bucket" {
-            let Some(hit) = self.common.bucket_hit() else {
+            let Some(hit) = self.bucket_hit() else {
                 return Ok(UseResult::Pass);
             };
             // `BucketItem.use`: `level.mayInteract` and `mayUseItemAt`.
@@ -1901,7 +1899,7 @@ impl crate::game::ServerGame<'_> {
         let hit = if bucket.is_some() {
             self.item_pick()
         } else {
-            self.common.pick()
+            self.pick()
         };
         let Some(hit) = hit else {
             return Ok(UseResult::Pass);
@@ -1911,7 +1909,7 @@ impl crate::game::ServerGame<'_> {
             if self.bucket_use_refused(hit.pos) {
                 return Ok(UseResult::Fail);
             }
-            let target = self.common.bucket_target(content, &hit);
+            let target = self.bucket_target(content, &hit);
             let mut canceled = false;
             self.native_fill_bucket(stack, target, &mut canceled);
             // `mayUseItemAt(blockPos2)`: a block that refuses the fluid passes
@@ -2005,17 +2003,17 @@ impl crate::game::ServerGame<'_> {
                 }
                 self.award_stat("used", &stack.item, 1);
                 if !self.common.creative {
-                    self.common.consume_held();
+                    self.consume_held();
                 }
                 return Ok(UseResult::Success { swing: true });
             }
         }
         if item == "flint_and_steel" || item == "fire_charge" {
-            if !self.common.may_build() && !self.common.can_place_on_in_adventure(hit.pos) {
+            if !self.may_build() && !self.can_place_on_in_adventure(hit.pos) {
                 return Ok(UseResult::Fail);
             }
             let name = self.common.res.facts().get(clicked).name.clone();
-            if self.common.can_light(clicked, &name) {
+            if self.can_light(clicked, &name) {
                 let registry = self.common.pack.assets.registry;
                 let mut state = registry
                     .state(clicked)
@@ -2043,7 +2041,7 @@ impl crate::game::ServerGame<'_> {
                 );
                 self.award_stat("used", &stack.item, 1);
                 if item == "fire_charge" {
-                    self.common.consume_held();
+                    self.consume_held();
                 } else {
                     self.damage_held(1);
                 }
@@ -2082,7 +2080,7 @@ impl crate::game::ServerGame<'_> {
                 );
                 self.award_stat("used", &stack.item, 1);
                 if item == "fire_charge" {
-                    self.common.consume_held();
+                    self.consume_held();
                 } else {
                     self.damage_held(1);
                 }
@@ -2323,7 +2321,7 @@ impl crate::game::ServerGame<'_> {
             cake_probe: false,
             cake_requested: std::cell::Cell::new(false),
             cake_answer: None,
-            api_level: self.common.level(self.common.dim.id()),
+            api_level: self.level(self.common.dim.id()),
             part_state_index: self.common.attachment_indexes.get(&self.common.dim),
             attachment_query_scopes: &self.common.transactions.attachment_query_scopes,
             command_block_transition: None,
@@ -2426,3 +2424,17 @@ use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1 as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

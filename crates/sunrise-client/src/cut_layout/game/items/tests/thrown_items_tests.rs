@@ -254,3 +254,5 @@ fn a_burning_items_sound_is_not_drawn_from_the_levels_random() {
         "the burn sound drew from the level's random"
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

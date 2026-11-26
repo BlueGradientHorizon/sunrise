@@ -340,3 +340,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

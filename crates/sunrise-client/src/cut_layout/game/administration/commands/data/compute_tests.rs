@@ -68,3 +68,5 @@ fn compute_sources_store_the_providers_value() {
     )));
     assert_eq!(stored(&game, "z"), Some(Tag::Int(2)));
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

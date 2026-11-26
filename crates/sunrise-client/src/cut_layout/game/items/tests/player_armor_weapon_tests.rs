@@ -59,3 +59,5 @@ fn a_mobs_breach_mace_thins_a_players_armour() {
     assert_eq!(breach, 4.25);
     assert_eq!(taken(None), plain);
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

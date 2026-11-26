@@ -480,3 +480,5 @@ fn size_four_slime_and_magma_split_three_children_and_draw_the_vanilla_yaws() {
         );
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

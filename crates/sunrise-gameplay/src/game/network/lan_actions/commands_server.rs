@@ -253,7 +253,7 @@ impl crate::game::ServerGame<'_> {
         c: GuestCommand,
     ) -> Option<(bool, Vec<sunrise_game_data::text::Text>)> {
         let (ok, mut lines) = self.with_guest_swap(c.conn, self.common.dim, |game| {
-            game.side.chat_capture = Some(Vec::new());
+            game.server.chat_capture = Some(Vec::new());
             let level = std::mem::replace(&mut game.ui.registries.permission, c.permission);
             let ok = match game.perform_native_command(c.conn, c.permission, &c.command, c.quiet) {
                 Some(ok) => ok,
@@ -261,7 +261,7 @@ impl crate::game::ServerGame<'_> {
                 None => game.run_command(&c.command),
             };
             game.ui.registries.permission = level;
-            (ok, game.side.chat_capture.take().unwrap_or_default())
+            (ok, game.server.chat_capture.take().unwrap_or_default())
         })?;
         if std::mem::take(&mut self.server.save_after_guest_turn) {
             lines.push(self.save_all_reply());
@@ -336,3 +336,5 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

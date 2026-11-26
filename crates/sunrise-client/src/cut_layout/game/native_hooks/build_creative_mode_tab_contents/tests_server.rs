@@ -63,3 +63,5 @@ pub(in crate::game) fn install_dedicated_holders(
     game.native_lifecycle_open_started();
     game.native_lifecycle.world_open_ready();
 }
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

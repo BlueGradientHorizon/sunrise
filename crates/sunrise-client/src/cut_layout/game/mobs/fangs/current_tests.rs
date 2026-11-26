@@ -338,3 +338,7 @@ pub(in sunrise_gameplay::game::server_side) fn run_fangs_in_a_current_are_pushed
 
     assert_eq!(checked, expected.len(), "every witness row must be checked");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

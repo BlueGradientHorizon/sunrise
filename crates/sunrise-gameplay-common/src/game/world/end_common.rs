@@ -33,3 +33,5 @@ impl<'__sg, T: crate::game::SideGame<'__sg>> EndGameExt<'__sg> for T {}
 
 
 use crate::game::tables::WorldTablesExt as _;
+
+use crate::game::pick_ray::PickRayGameExt1 as _;

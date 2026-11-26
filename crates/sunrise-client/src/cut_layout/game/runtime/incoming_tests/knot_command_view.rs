@@ -140,3 +140,7 @@ fn moving_commands_leave_natural_knots_out() {
     assert!(without_knots(vec![Target::Knot(3)]).is_err());
     assert!(without_knots(Vec::new()).unwrap().is_empty());
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

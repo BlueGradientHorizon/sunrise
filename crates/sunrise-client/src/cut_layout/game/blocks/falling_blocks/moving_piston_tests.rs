@@ -125,3 +125,5 @@ pub(in sunrise_gameplay::game::server_side) fn run_a_falling_block_resting_in_a_
         assert!(checked > 0, "witness must check recorded assertions");
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

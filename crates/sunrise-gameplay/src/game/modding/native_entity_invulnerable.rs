@@ -14,7 +14,7 @@ impl crate::game::ServerGame<'_> {
     /// Whether a named causing entity is a creative player.
     pub(in crate::game::server_side) fn creative_damage_source_id(&self, id: i32) -> bool {
         id != 0
-            && ((id == self.common.own_entity_id() && self.common.creative)
+            && ((id == self.own_entity_id() && self.common.creative)
                 || self.server.lan.as_ref().is_some_and(|host| {
                     host.hub
                         .guests
@@ -32,7 +32,7 @@ impl crate::game::ServerGame<'_> {
     ) -> bool {
         crate::game::server_side::entity_server::damage_level_of!(
             self,
-            self.side.combat.0.attack(),
+            self.server.combat.0.attack(),
             no_push,
             None
         )
@@ -91,7 +91,7 @@ impl crate::game::ServerGame<'_> {
         &self,
         entity: EntityRef,
     ) -> Option<bool> {
-        match self.common.native_entity_target(entity)? {
+        match self.native_entity_target(entity)? {
             Target::Mob(id) => Some(self.common.mobs.iter().find(|m| m.id == id)?.invulnerable_flag),
             t @ (Target::Player | Target::Guest(_)) => {
                 Some(self.native_player_body(t)?.health.permanently_invulnerable)
@@ -108,7 +108,7 @@ impl crate::game::ServerGame<'_> {
         entity: EntityRef,
         invulnerable: bool,
     ) -> bool {
-        match self.common.native_entity_target(entity) {
+        match self.native_entity_target(entity) {
             Some(Target::Mob(id)) => match self.common.mobs.iter_mut().find(|m| m.id == id) {
                 Some(m) => {
                     m.invulnerable_flag = invulnerable;
@@ -160,7 +160,7 @@ impl crate::game::ServerGame<'_> {
     /// Counted down by the base tick; `isTemporarilyInvulnerable` is it above
     /// zero. None for a stale handle or a kind that keeps none.
     pub(in crate::game) fn entity_invulnerable_time(&self, entity: EntityRef) -> Option<i32> {
-        match self.common.native_entity_target(entity)? {
+        match self.native_entity_target(entity)? {
             Target::Mob(id) => Some(self.common.mobs.iter().find(|m| m.id == id)?.invulnerable_time),
             t @ (Target::Player | Target::Guest(_)) => {
                 Some(self.native_player_body(t)?.health.invulnerable_time)
@@ -177,7 +177,7 @@ impl crate::game::ServerGame<'_> {
         ticks: i32,
     ) -> bool {
         let ticks = ticks.max(0);
-        match self.common.native_entity_target(entity) {
+        match self.native_entity_target(entity) {
             Some(Target::Mob(id)) => match self.common.mobs.iter_mut().find(|m| m.id == id) {
                 Some(m) => {
                     m.invulnerable_time = ticks;
@@ -272,7 +272,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn creative_source_of(&self, cause: Option<Target>) -> bool {
         match cause {
             Some(Target::Player) => self.common.creative,
-            Some(Target::Guest(conn)) => self.common.command_guest(conn).is_some_and(|g| g.creative()),
+            Some(Target::Guest(conn)) => self.command_guest(conn).is_some_and(|g| g.creative()),
             _ => false,
         }
     }
@@ -331,9 +331,9 @@ impl crate::game::ServerGame<'_> {
         direct: Option<EntityRef>,
         causing: Option<EntityRef>,
     ) -> Option<bool> {
-        let target = self.common.native_entity_target(entity)?;
-        let direct = direct.and_then(|e| self.common.native_entity_target(e));
-        let causing = causing.and_then(|e| self.common.native_entity_target(e));
+        let target = self.native_entity_target(entity)?;
+        let direct = direct.and_then(|e| self.native_entity_target(e));
+        let causing = causing.and_then(|e| self.native_entity_target(e));
         // `DamageSource(type, cause, at)`: the source position the knockback
         // pushes away from is the direct entity's.
         let from = direct.and_then(|t| self.target_position(t));
@@ -351,7 +351,7 @@ impl crate::game::ServerGame<'_> {
         entity: EntityRef,
         damage_type: &str,
     ) -> Option<bool> {
-        let Target::Mob(id) = self.common.native_entity_target(entity)? else {
+        let Target::Mob(id) = self.native_entity_target(entity)? else {
             return None;
         };
         let m = self.common.mobs.iter().find(|m| m.id == id)?;
@@ -388,7 +388,7 @@ impl crate::game::ServerGame<'_> {
         id: u32,
         kind: &str,
     ) -> bool {
-        let attacker = self.common.own_entity_id();
+        let attacker = self.own_entity_id();
         let source = sunrise_sim::health::HurtSource {
             damage_type: "minecraft:player_attack",
             causing: attacker,
@@ -408,8 +408,8 @@ impl crate::game::ServerGame<'_> {
         entity: EntityRef,
         source: EntityRef,
     ) -> Option<bool> {
-        let own = self.native_target_team(self.common.native_entity_target(entity)?)?;
-        let their = self.native_target_team(self.common.native_entity_target(source)?)?;
+        let own = self.native_target_team(self.native_entity_target(entity)?)?;
+        let their = self.native_target_team(self.native_entity_target(source)?)?;
         Some(sunrise_game_data::scoreboard::teams_allow_damage(
             own, their,
         ))
@@ -426,7 +426,7 @@ impl crate::game::ServerGame<'_> {
             Target::Guest(conn) => self
                 .common.score
                 .board
-                .players_team(&self.common.command_guest(conn)?.name),
+                .players_team(&self.command_guest(conn)?.name),
             Target::Mob(id) => self.mob_team(id),
             _ => None,
         })
@@ -441,7 +441,7 @@ impl crate::game::ServerGame<'_> {
         &self,
         entity: EntityRef,
     ) -> Option<bool> {
-        match self.common.native_entity_target(entity)? {
+        match self.native_entity_target(entity)? {
             Target::Mob(id) => Some(self.common.mobs.iter().find(|m| m.id == id)?.is_invulnerable()),
             t @ (Target::Player | Target::Guest(_)) => {
                 let p = self.native_player_body(t)?;
@@ -462,7 +462,7 @@ impl crate::game::ServerGame<'_> {
     /// while it is above 10 a hit does only what it deals beyond the last
     /// one. Mobs and players.
     pub(in crate::game) fn entity_damage_cooldown_time(&self, entity: EntityRef) -> Option<i32> {
-        match self.common.native_entity_target(entity)? {
+        match self.native_entity_target(entity)? {
             Target::Mob(id) => Some(self.common.mobs.iter().find(|m| m.id == id)?.invulnerable),
             t => Some(self.native_player_body(t)?.health.hurt.cooldown),
         }
@@ -474,7 +474,7 @@ impl crate::game::ServerGame<'_> {
         entity: EntityRef,
         ticks: i32,
     ) -> bool {
-        let Some(t) = self.common.native_entity_target(entity) else {
+        let Some(t) = self.native_entity_target(entity) else {
             return false;
         };
         match t {
@@ -495,3 +495,9 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

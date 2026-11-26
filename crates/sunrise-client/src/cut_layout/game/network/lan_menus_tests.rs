@@ -174,3 +174,5 @@ fn removing_a_fake_player_drops_its_menu_owners() {
         ));
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

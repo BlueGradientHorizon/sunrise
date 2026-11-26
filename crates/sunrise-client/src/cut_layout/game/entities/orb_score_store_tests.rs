@@ -96,3 +96,5 @@ fn an_orb_stores_into_its_own_score() {
     assert_eq!(store(&mut game, ORB, "result", "Value"), (true, Some(7)));
     assert_eq!(store(&mut game, ORB, "success", "Value"), (true, Some(1)));
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

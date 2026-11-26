@@ -119,7 +119,7 @@ impl crate::game::ServerGame<'_> {
             self.composter_add(pos, &layers, Some(Target::Player));
             self.native_compost_item(pos, &stack.item);
             self.award_stat("used", &stack.item, 1);
-            self.common.consume_held();
+            self.consume_held();
         }
         // ServerPlayerGameMode.useItemOn: the action was consumed.
         self.trigger_block("minecraft:item_used_on_block", pos, stack);
@@ -319,3 +319,5 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

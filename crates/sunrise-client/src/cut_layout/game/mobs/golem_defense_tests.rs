@@ -260,3 +260,5 @@ fn control_a_hated_host_does_not_turn_the_golem_on_the_selected_guest() {
         "the target is the host, not the guest"
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

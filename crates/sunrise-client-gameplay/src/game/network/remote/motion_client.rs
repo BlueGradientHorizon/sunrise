@@ -59,7 +59,7 @@ impl crate::game::ClientGame<'_> {
         let to = m.position;
         if to != before.0 {
             let from = before.0;
-            self.common.entity_section_step(id as u32, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+            self.entity_section_step(id as u32, [from.x, from.y, from.z], [to.x, to.y, to.z]);
         }
         Some(before)
     }
@@ -514,3 +514,5 @@ impl crate::game::ClientGame<'_> {
 use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;

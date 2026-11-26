@@ -281,3 +281,5 @@ fn a_loaded_cushion_keeps_its_motion_and_pitch_through_tick_and_reload() {
         Some(&floats([game.cushions[0].yaw, 0.0]))
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -193,3 +193,5 @@ fn the_live_settings_are_what_the_interaction_saves() {
         assert_eq!(find(game, [66, 0, 0, 1]).id, interaction.id);
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

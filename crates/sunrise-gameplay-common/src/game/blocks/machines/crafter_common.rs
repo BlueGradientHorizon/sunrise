@@ -1,7 +1,7 @@
 use crate::game::CommonGame;
 use sunrise_level::containers::{BlockEntity, Crafter};
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     pub fn crafter_open(&self) -> bool {
         matches!(self.container_kind(), Some(BlockEntity::Crafter(_)))
     }

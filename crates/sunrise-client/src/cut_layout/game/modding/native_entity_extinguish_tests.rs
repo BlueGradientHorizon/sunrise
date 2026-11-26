@@ -135,3 +135,7 @@ fn extinguish_fire_preserves_player_guest_stand_and_item_sound_routes() {
         assert_eq!(game.side.effect_rng.next_float(), FIRST);
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

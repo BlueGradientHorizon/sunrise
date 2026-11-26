@@ -119,3 +119,5 @@ fn a_fixed_frame_refuses_the_arrow() {
         "the arrow went through the frame"
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -36,7 +36,7 @@ impl crate::game::ServerGame<'_> {
             mod_api::HookId::OnDestroyedByPlayer,
             state,
         ) {
-            let player = self.common.native_acting_id();
+            let player = self.native_acting_id();
             self.native_on_destroyed_by_player(
                 player,
                 pos,
@@ -60,7 +60,7 @@ impl crate::game::ServerGame<'_> {
                 .data(state)
                 .is(sunrise_world::level::classes::Class::Door)
         {
-            correct_tool = self.common.acting_can_harvest(pos, state);
+            correct_tool = self.acting_can_harvest(pos, state);
         }
         let removed = self.remove_block_as_player(pos, creative, correct_tool);
         (removed, state, self.harvest_after_removal(pos, state))
@@ -73,7 +73,7 @@ impl crate::game::ServerGame<'_> {
         if self.common.creative {
             return false;
         }
-        self.common.acting_can_harvest(pos, state)
+        self.acting_can_harvest(pos, state)
     }
 
     /// The block side effects of `Block.playerWillDestroy` that run before the vanilla
@@ -114,7 +114,7 @@ impl crate::game::ServerGame<'_> {
                 .common.ui
                 .rules
                 .bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS)
-            && let Some(stack) = self.common.picked_stack(pos, true)
+            && let Some(stack) = self.picked_stack(pos, true)
         {
             self.spawn_item_own(stack, pos.map(f64::from), 10);
         }
@@ -123,3 +123,9 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::block_items::BlockItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

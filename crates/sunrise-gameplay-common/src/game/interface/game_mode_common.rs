@@ -44,40 +44,57 @@ impl crate::game::CommonGame<'_> {
     pub fn has_miss_time(&self) -> bool {
         self.mode != GameMode::Creative
     }
-    /// `AbstractClientPlayer.gameMode()` on a client (`PlayerInfo.getGameMode()`), or `self.mode` on a server.
-    pub fn player_info_game_mode(&self) -> Option<GameMode> {
-        self.side_player_info_game_mode()
-    }
-    /// `Player.isSpectator()`: reads `PlayerInfo` on a client and `self.mode` on a server.
-    pub fn own_player_is_spectator(&self) -> bool {
-        self.player_info_game_mode() == Some(GameMode::Spectator)
-    }
-    /// `Player.isCreative()`: reads `PlayerInfo` on a client and `self.mode` on a server.
-    pub fn own_player_is_creative(&self) -> bool {
-        self.player_info_game_mode() == Some(GameMode::Creative)
-    }
-    /// `Abilities.mayBuild`.
-    pub fn may_build(&self) -> bool {
-        self.side_may_build()
-    }
-    /// `Abilities.instabuild`. A client reads its live `Remote::abilities`.
-    pub fn instabuild(&self) -> bool {
-        self.side_instabuild()
-    }
     pub fn mode_id(&self) -> i32 {
         self.mode.id()
     }
+    /// A `HolderSet<Block>` entry: a block id or a `#tag`.
+    pub(in crate::game) fn block_in_holder_set(&self, entry: &str, block: &str) -> bool {
+        let namespaced = |id: &str| {
+            if id.contains(':') {
+                id.to_owned()
+            } else {
+                format!("minecraft:{id}")
+            }
+        };
+        match entry.strip_prefix('#') {
+            Some(tag) => self.res.items().block_in_tag(&namespaced(tag), block),
+            None => namespaced(entry) == block,
+        }
+    }
+}
+
+pub trait GameModeCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+    /// `AbstractClientPlayer.gameMode()` on a client (`PlayerInfo.getGameMode()`), or `self.mode` on a server.
+     fn player_info_game_mode(&self) -> Option<GameMode> {
+        self.side_player_info_game_mode()
+    }
+    /// `Player.isSpectator()`: reads `PlayerInfo` on a client and `self.mode` on a server.
+     fn own_player_is_spectator(&self) -> bool {
+        self.player_info_game_mode() == Some(GameMode::Spectator)
+    }
+    /// `Player.isCreative()`: reads `PlayerInfo` on a client and `self.mode` on a server.
+     fn own_player_is_creative(&self) -> bool {
+        self.player_info_game_mode() == Some(GameMode::Creative)
+    }
+    /// `Abilities.mayBuild`.
+     fn may_build(&self) -> bool {
+        self.side_may_build()
+    }
+    /// `Abilities.instabuild`. A client reads its live `Remote::abilities`.
+     fn instabuild(&self) -> bool {
+        self.side_instabuild()
+    }
     /// `Player.getAbilities`; Paper `Player#getAllowFlight/isFlying/getFlySpeed/getWalkSpeed`.
-    pub(in crate::game) fn player_abilities(&self, player: PlayerRef) -> Option<PlayerAbilities> {
+     fn player_abilities(&self, player: PlayerRef) -> Option<PlayerAbilities> {
         self.side_player_abilities(player)
     }
     /// `ItemStack.canBreakBlockInAdventureMode` / `canPlaceOnBlockInAdventureMode` for the main hand.
-    pub(in crate::game) fn adventure_predicate(&self, component: &str, pos: [i32; 3]) -> bool {
+     fn adventure_predicate(&self, component: &str, pos: [i32; 3]) -> bool {
         self.held()
             .is_some_and(|stack| self.stack_adventure_predicate(stack, component, pos))
     }
     /// `adventure_predicate` for any `stack`, not only the main hand's.
-    pub fn stack_adventure_predicate(
+     fn stack_adventure_predicate(
         &self,
         stack: &ItemStack,
         component: &str,
@@ -89,7 +106,7 @@ impl crate::game::CommonGame<'_> {
         self.adventure_predicate_at(tag, pos)
     }
     /// Supported block/state/NBT portion of `AdventureModePredicate.test`.
-    pub fn adventure_predicate_at(
+     fn adventure_predicate_at(
         &self,
         tag: &sunrise_core::nbt::Tag,
         pos: [i32; 3],
@@ -165,37 +182,23 @@ impl crate::game::CommonGame<'_> {
             single => matches(single),
         }
     }
-    /// A `HolderSet<Block>` entry: a block id or a `#tag`.
-    pub(in crate::game) fn block_in_holder_set(&self, entry: &str, block: &str) -> bool {
-        let namespaced = |id: &str| {
-            if id.contains(':') {
-                id.to_owned()
-            } else {
-                format!("minecraft:{id}")
-            }
-        };
-        match entry.strip_prefix('#') {
-            Some(tag) => self.res.items().block_in_tag(&namespaced(tag), block),
-            None => namespaced(entry) == block,
-        }
-    }
     /// `Player.blockActionRestricted` for the block at `pos`.
-    pub fn block_action_restricted(&self, pos: [i32; 3]) -> bool {
+     fn block_action_restricted(&self, pos: [i32; 3]) -> bool {
         if self.spectator() {
             return true;
         }
         !self.may_build() && !self.can_break_in_adventure(pos)
     }
     /// `ItemStack.canBreakBlockInAdventureMode`.
-    pub fn can_break_in_adventure(&self, pos: [i32; 3]) -> bool {
+     fn can_break_in_adventure(&self, pos: [i32; 3]) -> bool {
         self.adventure_predicate("minecraft:can_break", pos)
     }
     /// `ItemStack.useOn` in adventure mode (`Player.mayUseItemAt`).
-    pub fn can_place_on_in_adventure(&self, clicked: [i32; 3]) -> bool {
+     fn can_place_on_in_adventure(&self, clicked: [i32; 3]) -> bool {
         self.adventure_predicate("minecraft:can_place_on", clicked)
     }
     /// `Player.mayUseItemAt(pos, face, stack)`.
-    pub fn may_use_item_at(
+     fn may_use_item_at(
         &self,
         may_build: bool,
         pos: [i32; 3],
@@ -210,17 +213,21 @@ impl crate::game::CommonGame<'_> {
             )
     }
     /// `Entity.doWaterSplashEffect` for a dropped item: server plays sound, client adds particles.
-    pub fn apply_item_splash(&mut self, splash: sunrise_sim::entities::ItemSplash) {
+     fn apply_item_splash(&mut self, splash: sunrise_sim::entities::ItemSplash) {
         self.side_apply_item_splash(splash);
     }
     /// `Level.getMinY`: the current dimension type's minimum y.
-    pub fn level_min_y(&self) -> i32 {
+     fn level_min_y(&self) -> i32 {
         self.side_level_min_y()
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> GameModeCommonGameExt1<'__sg> for G {}
+
 
 use crate::game::side_ops::player::PlayerSideGameExt as _;
 
 use crate::game::side_ops::ui::UiSideGameExt as _;
 
 use crate::game::tables::GameItems as _;
+
+use crate::game::native_world_read_common::NativeWorldReadGameExt1 as _;

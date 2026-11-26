@@ -18,7 +18,7 @@ impl ServerGame<'_> {
     ) -> Option<[f64; 3]> {
         let from = self.place_teleport_in_level(t, pos, rotation, relative, turn_riders);
         if let (Some(entity), Some(to)) = (self.network_entity_id(t), self.target_position(t)) {
-            self.common.entity_section_moved(entity as u32, from, to);
+            self.entity_section_moved(entity as u32, from, to);
         }
         from
     }
@@ -29,3 +29,5 @@ impl ServerGame<'_> {
 
     pub(in crate::game) fn server_pick_section_remove(&mut self, _id: u32) {}
 }
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;

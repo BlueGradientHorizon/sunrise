@@ -130,7 +130,7 @@ impl crate::game::ServerGame<'_> {
                 .common.player
                 .as_ref()
                 .map_or(1.62, |p| f64::from(p.dimensions.eye_height)),
-            Target::Guest(conn) => self.common.command_guest(conn).map_or(1.62, |g| g.eye_height()),
+            Target::Guest(conn) => self.command_guest(conn).map_or(1.62, |g| g.eye_height()),
             Target::Mob(id) => self
                 .common.mobs
                 .iter()
@@ -141,7 +141,7 @@ impl crate::game::ServerGame<'_> {
             Target::Stand(id) => match self.common.armor_stands.iter().find(|a| a.id == id) {
                 Some(a) if a.marker => 0.0,
                 Some(a) if a.small => f64::from(0.9875f32),
-                _ => self.common.type_eye_height(&self.common.target_type(t)),
+                _ => self.common.type_eye_height(&self.target_type(t)),
             },
             Target::Other(id) => self
                 .server
@@ -151,11 +151,11 @@ impl crate::game::ServerGame<'_> {
                 .find(|o| o.id == id)
                 .and_then(|o| o.interaction)
                 .map_or_else(
-                    || self.common.type_eye_height(&self.common.target_type(t)),
+                    || self.common.type_eye_height(&self.target_type(t)),
                     |i| f64::from(i.height * 0.85),
                 ),
             // Entity.getEyeHeight: the type's dimensions.
-            _ => self.common.type_eye_height(&self.common.target_type(t)),
+            _ => self.common.type_eye_height(&self.target_type(t)),
         }
     }
     /// EntityAnchorArgument.Anchor.apply.
@@ -237,7 +237,7 @@ impl crate::game::ServerGame<'_> {
                     let level = self.target_level(t);
                     Some(Source {
                         pos: self.target_position(t)?,
-                        rot: self.common.target_rotation(t),
+                        rot: self.target_rotation(t),
                         dimension: level,
                         level: (level != self.common.dim).then_some(level),
                         ..s
@@ -282,7 +282,7 @@ impl crate::game::ServerGame<'_> {
             "rotated" if c.has("as") => targets(self)?
                 .into_iter()
                 .map(|t| Source {
-                    rot: self.common.target_rotation(t),
+                    rot: self.target_rotation(t),
                     ..s
                 })
                 .collect(),
@@ -676,3 +676,5 @@ pub mod passenger_relation_tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

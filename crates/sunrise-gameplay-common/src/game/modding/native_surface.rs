@@ -367,7 +367,33 @@ fn query_friction(
 }
 
 impl crate::game::CommonGame<'_> {
-    pub(in crate::game) fn level_friction(
+
+    /// The friction of `state` at `pos` under the boat `b` (`AbstractBoat.getGroundFriction`,
+    /// `Leashable.angularFriction`), from `own`, the block's value.
+    pub fn boat_friction(
+        &self,
+        b: &Boat,
+        pos: BlockPos,
+        state: BlockStateId,
+        own: f32,
+    ) -> f32 {
+        if !block_state::block_listens(mod_api::HookId::Friction, state) {
+            return own;
+        }
+        let facts = self.res.facts();
+        let level = FrictionLevel {
+            world: &self.world,
+            registry: self.pack.assets.registry,
+            context: &self.loop_context,
+            side: self,
+            coefficient: &|id| facts.states.get(id.0 as usize).map(|facts| facts.friction),
+        };
+        read_friction(level, Some((b.id, b.entity_type_name())), pos, state, own).unwrap_or(own)
+    }
+}
+
+pub trait NativeSurfaceGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+     fn level_friction(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -398,29 +424,15 @@ impl crate::game::CommonGame<'_> {
         };
         Ok(query_friction(level, pos, state, entity))
     }
-
-    /// The friction of `state` at `pos` under the boat `b` (`AbstractBoat.getGroundFriction`,
-    /// `Leashable.angularFriction`), from `own`, the block's value.
-    pub fn boat_friction(
-        &self,
-        b: &Boat,
-        pos: BlockPos,
-        state: BlockStateId,
-        own: f32,
-    ) -> f32 {
-        if !block_state::block_listens(mod_api::HookId::Friction, state) {
-            return own;
-        }
-        let facts = self.res.facts();
-        let level = FrictionLevel {
-            world: &self.world,
-            registry: self.pack.assets.registry,
-            context: &self.loop_context,
-            side: self,
-            coefficient: &|id| facts.states.get(id.0 as usize).map(|facts| facts.friction),
-        };
-        read_friction(level, Some((b.id, b.entity_type_name())), pos, state, own).unwrap_or(own)
-    }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeSurfaceGameExt1<'__sg> for G {}
+
 
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
+
+
+use crate::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use crate::game::native_world_read_common::NativeWorldReadGameExt1 as _;

@@ -39,7 +39,7 @@ use sunrise_client::hud::{GuiScale, HudBatch};
             game.side.screen = Screen::Chat;
             game.build_screen();
             let input = |game: &sunrise_client_gameplay::game::ClientGame<'_>| {
-                let i = &game.side.chat_ui.chat_screen.as_ref().unwrap().input;
+                let i = &game.client.chat_ui.chat_screen.as_ref().unwrap().input;
                 [i.x, i.y, i.width, i.height]
             };
             assert_eq!(input(game), [4, 228, 423, 12]);

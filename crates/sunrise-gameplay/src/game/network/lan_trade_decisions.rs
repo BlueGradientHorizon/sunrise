@@ -178,7 +178,7 @@ impl crate::game::ServerGame<'_> {
         if !self.merchant_take_active() {
             return false;
         }
-        let uuid = self.common.native_acting_id();
+        let uuid = self.native_acting_id();
         self.after_commit(After::Trade(Box::new(Effect::Reward(
             uuid,
             advancement.clone(),
@@ -207,3 +207,5 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

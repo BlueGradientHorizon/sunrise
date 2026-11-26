@@ -150,3 +150,5 @@ fn a_client_answers_its_own_connections_registries() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::native_registry_ids::NativeRegistryIdsGameExt1 as _;

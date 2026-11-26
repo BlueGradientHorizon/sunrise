@@ -87,7 +87,7 @@ impl crate::game::ServerGame<'_> {
                     self.tnts,
                     deferred.0,
                     e,
-                    &mut self.side.next_entity,
+                    &mut self.server.next_entity,
                     None
                 ))
             }
@@ -96,7 +96,7 @@ impl crate::game::ServerGame<'_> {
                     self.falling,
                     deferred.1,
                     f,
-                    &mut self.side.next_entity,
+                    &mut self.server.next_entity,
                     Some(&f.attachment_lifetime)
                 ))
             }
@@ -105,7 +105,7 @@ impl crate::game::ServerGame<'_> {
                     self.rockets,
                     deferred.2,
                     e,
-                    &mut self.side.next_entity,
+                    &mut self.server.next_entity,
                     None
                 ))
             }
@@ -257,7 +257,7 @@ impl crate::game::ServerGame<'_> {
             } else {
                 self.remember_join(id, kind);
                 // `addEntity` files it under its section, untold.
-                self.common.entity_section_joined(id, [at.x, at.y, at.z]);
+                self.entity_section_joined(id, [at.x, at.y, at.z]);
                 if let Some((id, item, count, position)) = spawn {
                     self.native_item_spawn(id, &item, count, position);
                 }
@@ -273,8 +273,7 @@ impl crate::game::ServerGame<'_> {
     /// `Entity.<init>` comes before `addFreshEntity`: an entity that started on a path that
     /// doesn't tell it (`entity_initialization.rs`) is told here.
     fn construct_joining(&mut self, id: u32, kind: &str) {
-        self.common
-            .initialize_entity(mod_api::Holder::Entity(id), kind);
+        self.initialize_entity(mod_api::Holder::Entity(id), kind);
         // Constructor writes were canonical but unbound before insertion.
         // The real lifetime is now resident, before join listeners query it.
         if self
@@ -291,21 +290,21 @@ impl crate::game::ServerGame<'_> {
     fn assign_pending_join_ids(&mut self) {
         self.assign_dragon_and_crystal_ids();
         use super::entity_residency::assign_resident_ids;
-        assign_resident_ids!(self.tnts, t, &mut self.side.next_entity, None);
+        assign_resident_ids!(self.tnts, t, &mut self.server.next_entity, None);
         assign_resident_ids!(
             self.falling,
             f,
-            &mut self.side.next_entity,
+            &mut self.server.next_entity,
             Some(&f.attachment_lifetime)
         );
         assign_resident_ids!(
             self.creatures.projectiles,
             p,
-            &mut self.side.next_entity,
+            &mut self.server.next_entity,
             Some(&p.attachment_lifetime)
         );
-        assign_resident_ids!(self.tridents, t, &mut self.side.next_entity, None);
-        assign_resident_ids!(self.rockets, r, &mut self.side.next_entity, None);
+        assign_resident_ids!(self.tridents, t, &mut self.server.next_entity, None);
+        assign_resident_ids!(self.rockets, r, &mut self.server.next_entity, None);
     }
     /// The entity inserted earliest after `mark` (and, with a `through`, no later than it), but
     /// the `skipped`.
@@ -452,7 +451,7 @@ impl crate::game::ServerGame<'_> {
     /// An entity taken out of the level without leaving it (an item through
     /// an End gateway): forgotten, not told of.
     pub(in crate::game::server_side) fn native_leave_skip(&mut self, id: u32) {
-        self.common.entity_section_forget(id);
+        self.entity_section_forget(id);
         if let Ok(i) = self.common.persist.live.binary_search_by_key(&id, |l| l.0) {
             self.common.persist.live.remove(i);
         }
@@ -470,7 +469,7 @@ impl crate::game::ServerGame<'_> {
     /// [`Self::native_entity_left`] told now, though a transaction or a commit holds the rest:
     /// the root commit's own telling.
     pub(in crate::game::server_side) fn entity_left_now(&mut self, id: u32) {
-        self.common.entity_section_forget(id);
+        self.entity_section_forget(id);
         if let Ok(i) = self.common.persist.live.binary_search_by_key(&id, |l| l.0) {
             let (id, kind, _) = self.common.persist.live.remove(i);
             let dimension = self.common.dim.id();
@@ -519,7 +518,7 @@ impl crate::game::ServerGame<'_> {
         }
         while let Some(i) = self.common.persist.live.iter().position(|l| !l.2) {
             let (id, kind, _) = self.common.persist.live.remove(i);
-            self.common.entity_section_forget(id);
+            self.entity_section_forget(id);
             let dimension = self.common.dim.id();
             self.native_entity_leave_level(dimension, id, &kind);
         }
@@ -577,3 +576,9 @@ mod tests {
         assert!(!position_ok([0.5, f64::NAN, 0.5]));
     }
 }
+
+use sunrise_gameplay_common::game::entity_initialization_common::EntityInitializationCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

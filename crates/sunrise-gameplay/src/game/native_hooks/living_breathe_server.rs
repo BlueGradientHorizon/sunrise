@@ -36,9 +36,8 @@ impl crate::game::ServerGame<'_> {
         pause: &sunrise_sim::mobs::ai::AirPause,
     ) -> Option<sunrise_sim::breathing::Breath> {
         let living = self
-            .common
             .entity(pause.mob)
-            .and_then(|entity| self.common.living(entity))?;
+            .and_then(|entity| self.living(entity))?;
         self.ask_breath(living, pause.step.vanilla, |game| {
             game.mobs.iter().any(|m| pause.still_valid(m))
         })
@@ -50,10 +49,7 @@ impl crate::game::ServerGame<'_> {
         step: sunrise_sim::breathing::AirStep,
     ) -> Option<sunrise_sim::breathing::Breath> {
         let id = self.native_acting_entity();
-        let living = self
-            .common
-            .entity(id)
-            .and_then(|entity| self.common.living(entity))?;
+        let living = self.entity(id).and_then(|entity| self.living(entity))?;
         self.ask_breath(living, step.vanilla, move |game| {
             game.player
                 .as_ref()
@@ -66,10 +62,7 @@ impl crate::game::ServerGame<'_> {
         id: u32,
         step: sunrise_sim::breathing::AirStep,
     ) -> Option<sunrise_sim::breathing::Breath> {
-        let living = self
-            .common
-            .entity(id)
-            .and_then(|entity| self.common.living(entity))?;
+        let living = self.entity(id).and_then(|entity| self.living(entity))?;
         self.ask_breath(living, step.vanilla, move |game| {
             game.armor_stands
                 .iter()
@@ -79,3 +72,5 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

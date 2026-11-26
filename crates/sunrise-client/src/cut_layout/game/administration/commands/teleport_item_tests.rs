@@ -91,3 +91,5 @@ pub(in crate::game) fn run_portal_arrival_effects_command_items_merge_immediatel
         assert_eq!(game.persist.uuids.get(&item.id), Some(&incoming_uuid));
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

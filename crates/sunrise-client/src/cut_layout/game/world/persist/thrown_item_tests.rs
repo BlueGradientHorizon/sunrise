@@ -324,3 +324,7 @@ pub(in sunrise_gameplay::game::server_side) fn run_a_moved_thrown_item_projectil
         }
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

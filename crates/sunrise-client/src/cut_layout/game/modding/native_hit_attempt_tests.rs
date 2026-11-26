@@ -489,3 +489,5 @@ fn hit_attempts_reach_the_listener_once_including_refusals() {
         })
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

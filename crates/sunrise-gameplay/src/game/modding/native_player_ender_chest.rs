@@ -60,11 +60,11 @@ impl crate::game::ServerGame<'_> {
         let mut set = false;
         let ran = self.native_as_player_handle(player, |game| {
             game.journal_player(player.uuid());
-            if let Some(key) = game.side.ender_open {
+            if let Some(key) = game.server.ender_open {
                 game.journal_block_entity(key);
             }
-            if game.side.ender_items.len() < SLOTS {
-                game.side.ender_items.resize(SLOTS, None);
+            if game.server.ender_items.len() < SLOTS {
+                game.server.ender_items.resize(SLOTS, None);
             }
             set = game.slot_set(&Slot::Ender(slot as usize), stack.filter(|s| s.count > 0));
         });

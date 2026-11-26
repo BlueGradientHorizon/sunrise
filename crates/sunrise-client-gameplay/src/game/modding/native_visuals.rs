@@ -16,13 +16,13 @@ impl FrameVisuals {
         camera: glam::DVec3,
     ) -> Vec<dynamic_light::Colored> {
         let particle_lights = game
-            .side
+            .client
             .renderer
             .0
             .as_ref()
             .and_then(|r| r.particle_lights())
             .map_or_else(Vec::new, |entries| {
-                game.side
+                game.client
                     .particles
                     .0
                     .lights(entries, game.clock.camera_fraction() as f32)

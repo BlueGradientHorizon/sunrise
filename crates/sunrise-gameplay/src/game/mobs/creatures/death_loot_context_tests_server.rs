@@ -258,3 +258,7 @@ fn death_loot_uses_call_scoped_source_and_hand() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

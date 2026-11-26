@@ -214,7 +214,7 @@ use super::*;
                         );
                         assert!(!store.functions.contains_key("fnmod:unknown"));
                         let refusal = |game: &sunrise_gameplay::game::ServerGame<'_>, id: &str| {
-                            game.side
+                            game.server
                                 .fns
                                 .0
                                 .store
@@ -561,7 +561,7 @@ use super::*;
         }
         game.side.world_root = dir.clone();
         let run = |game: &mut sunrise_gameplay::game::ServerGame<'_>, line: &str| {
-            game.side.exec.0 = ExecState::default();
+            game.server.exec.0 = ExecState::default();
             let source = game.player_source();
             game.execute_line(line, source)
         };
@@ -727,7 +727,7 @@ use super::*;
         }
         game.side.world_root = dir.clone();
         let run = |game: &mut sunrise_gameplay::game::ServerGame<'_>, line: &str| {
-            game.side.exec.0 = ExecState::default();
+            game.server.exec.0 = ExecState::default();
             let source = game.player_source();
             game.execute_line(line, source)
         };
@@ -806,7 +806,7 @@ use super::*;
         game.set_allow_commands(true);
         game.side.fns.0.loaded = true;
         let run = |game: &mut sunrise_gameplay::game::ServerGame<'_>, line: &str| {
-            game.side.exec.0 = ExecState::default();
+            game.server.exec.0 = ExecState::default();
             let source = game.player_source();
             game.execute_line(line, source).unwrap();
         };
@@ -1563,5 +1563,7 @@ mod required_tag_tests {
 #[cfg(test)]
 #[path = "functions/schedule_reload_tests.rs"]
 mod schedule_reload_tests;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
 #[cfg(test)]
 include!("functions/typed_state_range_tests.rs");

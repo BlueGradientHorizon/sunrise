@@ -212,3 +212,4 @@ pub(in crate::game) mod shriek_capture_tests {
 #[cfg(test)]
 #[path = "tests/farm_animal_interaction_tests.rs"]
 pub(in crate::game) mod farm_animal_interaction_tests;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -174,3 +174,5 @@ fn the_last_tag_leaves_no_key_and_a_spawner_keeps_its_tags() {
         assert_eq!(game.tags_of(Target::Spawner(reloaded)), ["audit"]);
     });
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

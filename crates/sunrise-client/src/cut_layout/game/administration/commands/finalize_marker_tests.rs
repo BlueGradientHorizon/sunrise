@@ -185,3 +185,5 @@ fn a_data_merged_finalize_marker_is_not_honoured() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

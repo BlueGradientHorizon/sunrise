@@ -387,7 +387,7 @@ impl crate::game::ClientGame<'_> {
         // player who arrives standing in a portal gets no overlay from it.
         self.common.portal_player.cooldown = spawn.portal_cooldown;
         if let Some(profile) = self.client.remote.as_ref().map(|remote| remote.profile) {
-            self.common.initialize_entity(Holder::Player(profile), "minecraft:player");
+            self.initialize_entity(Holder::Player(profile), "minecraft:player");
         }
         self.finish_remote_level();
         if let Some(registration) = transition_factory
@@ -494,7 +494,7 @@ impl crate::game::ClientGame<'_> {
             total: 0,
         };
         self.common.ui.registries = Default::default();
-        self.common.build_registries();
+        self.build_registries();
         self.common.ui.registries.permission = 0;
         self.client.chat_ui.chat.clear();
         self.set_screen(Screen::Playing);
@@ -774,7 +774,7 @@ impl crate::game::ClientGame<'_> {
         // joins here), so load the registries its argument parsers and local
         // suggestions need before receiving the server's command tree.
         self.common.ui.registries = Default::default();
-        self.common.build_registries();
+        self.build_registries();
         self.common.ui.registries.permission = 0;
         self.client.chat_ui.chat.clear();
         self.set_screen(Screen::Playing);
@@ -1110,7 +1110,7 @@ impl crate::game::ClientGame<'_> {
             self.client.chat_ui.death_time = 0;
             self.input_player_replaced();
         }
-        self.common.bind_local_player_residency();
+        self.bind_local_player_residency();
     }
     /// `handleTransfer`: close the old connection and start the new one now.
     /// Keep the old listener installed for the remaining handlers of this bundle.
@@ -1187,3 +1187,9 @@ impl crate::game::ClientGame<'_> {
 use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_initialization_common::EntityInitializationCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

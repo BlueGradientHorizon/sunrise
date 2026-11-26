@@ -163,3 +163,5 @@ fn resident_new_family_lifetimes_bind_move_and_retire() {
         assert!(index.lock().unwrap().snapshot(&key).is_empty());
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

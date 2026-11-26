@@ -601,7 +601,7 @@ impl ServerGame<'_> {
                 bursts.push((radius, knockback, e["attribute_to_user"] == true));
             }
         }
-        let wielder = self.common.own_entity_id() as u32;
+        let wielder = self.own_entity_id() as u32;
         for (radius, knockback, attributed) in bursts {
             let cause = super::wind::BurstCause {
                 source: attributed.then_some(wielder),
@@ -1014,7 +1014,7 @@ impl ServerGame<'_> {
     pub(in crate::game) fn mending(&mut self, amount: u32) -> u32 {
         let mut amount = amount;
         let player = (self.server.serving.is_some() || self.common.options.dedicated.is_some())
-            .then(|| self.common.native_acting_id());
+            .then(|| self.native_acting_id());
         loop {
             // EnchantmentHelper.getRandomItemWith(REPAIR_WITH_XP, damaged), in
             // EquipmentSlot order, drawn from the player's own random.
@@ -2145,3 +2145,9 @@ pub(in crate::game) mod impulse_rounding_tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

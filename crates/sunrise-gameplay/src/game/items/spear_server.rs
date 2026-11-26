@@ -73,7 +73,7 @@ impl crate::game::ServerGame<'_> {
         let look = Vec3::new(look[0], look[1], look[2]);
         // The attack damage attribute.
         let damage = self.attack_damage();
-        let movement = self.common.known_player_movement();
+        let movement = self.known_player_movement();
         let mut last_mob = None;
         let mut on_players = Vec::new();
         for (contact, target) in self
@@ -105,7 +105,7 @@ impl crate::game::ServerGame<'_> {
         let swings = self.common.swings_started;
         self.swing_hand(Hand::Main, kinetic.attack_animation());
         if self.common.swings_started != swings {
-            self.common.reset_attack_strength();
+            self.reset_attack_strength();
         }
         Some(kinetic.attack_sound)
     }
@@ -155,7 +155,7 @@ impl crate::game::ServerGame<'_> {
         let eye = Vec3::new(eye[0], eye[1], eye[2]);
         let look = view_vector(self.common.yaw, self.common.pitch);
         let look = Vec3::new(look[0], look[1], look[2]);
-        let movement = self.common.known_player_movement();
+        let movement = self.known_player_movement();
         let attacker_speed = look.dot(movement.scale(20.0));
         let now = self.common.world.game_time;
         let actor = self.server.lan_acting;
@@ -386,7 +386,7 @@ impl crate::game::ServerGame<'_> {
         let Some(kinetic) = Kinetic::of(&stack.item) else {
             return false;
         };
-        if self.common.start_using_item() {
+        if self.start_using_item() {
             let actor = self.server.lan_acting;
             self.server.stabbed.retain(|(who, _), _| *who != actor);
             if let Some(p) = &self.common.player {
@@ -401,3 +401,5 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

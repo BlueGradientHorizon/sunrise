@@ -76,8 +76,7 @@ impl ServerGame<'_> {
             .as_mut()
             .and_then(|host| host.hub.guests.attachments_mut(conn))
             .map(|attachments| attachments.to_nbt());
-        self.common
-            .initialize_entity(Holder::Player(uuid), "minecraft:player");
+        self.initialize_entity(Holder::Player(uuid), "minecraft:player");
         if let Some(data) = data
             && let Some(attachments) = self
                 .server
@@ -204,3 +203,5 @@ impl ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::entity_initialization_common::EntityInitializationCommonGameExt1 as _;

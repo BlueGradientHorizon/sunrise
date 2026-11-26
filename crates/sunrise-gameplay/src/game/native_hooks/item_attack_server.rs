@@ -17,7 +17,7 @@ impl crate::game::ServerGame<'_> {
             return false;
         }
         let stack = stack.clone();
-        let player = self.common.native_acting_id();
+        let player = self.native_acting_id();
         let mut canceled = false;
         self.native_on_left_click_entity(player, &stack, entity, kind, &mut canceled);
         canceled
@@ -42,3 +42,5 @@ impl crate::game::ServerGame<'_> {
         self.fire_on_left_click_entity(player, stack, entity, kind, canceled);
     }
 }
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

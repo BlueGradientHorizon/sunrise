@@ -129,7 +129,7 @@ pub fn local_pickup_id() -> MenuId {
     *ID.get_or_init(MenuId::fresh)
 }
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
+pub trait StackedOnOtherGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The pickup click whose frozen stacks are `frozen`, decided by the mods and then run by
     /// `perform`, which is given their answer. `current` reads the same stacks again, for the
     /// check that nothing changed them. `probe_carried` runs the shared vanilla carried override
@@ -139,13 +139,13 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     ///
     /// With no listener on this side this is `perform(self, None)` and nothing else: no
     /// transaction, no decision, no allocation.
-    pub fn stacked_pickup<'p>(
+     fn stacked_pickup<'p>(
         &mut self,
         route: MenuId,
         frozen: StackedClick,
-        current: impl Fn(&Game<'_, __Side>) -> Option<StackedClick> + 'p,
-        probe_carried: impl FnOnce(&mut Game<'_, __Side>, Option<ItemStack>, Option<ItemStack>) -> bool,
-        perform: impl FnOnce(&mut Game<'_, __Side>, Option<&StackedOutcome>) + 'p,
+        current: impl Fn(&Self) -> Option<StackedClick> + 'p,
+        probe_carried: impl FnOnce(&mut Self, Option<ItemStack>, Option<ItemStack>) -> bool,
+        perform: impl FnOnce(&mut Self, Option<&StackedOutcome>) + 'p,
     ) -> Pickup {
         let server = self.is_logical_server();
         if !stacked_listened_for_side(server) {
@@ -214,6 +214,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> StackedOnOtherGameExt1<'__sg> for G {}
+
 
 /// Whether any listener active on `server` side answers `item_stacked_on_other`.
 pub fn stacked_listened_for_side(server: bool) -> bool {

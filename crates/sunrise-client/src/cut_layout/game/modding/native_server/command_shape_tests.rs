@@ -264,3 +264,5 @@ fn a_usage_merged_into_a_vanilla_command_keeps_its_usages() {
         },
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

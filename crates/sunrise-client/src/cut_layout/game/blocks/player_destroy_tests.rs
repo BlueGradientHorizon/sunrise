@@ -296,3 +296,5 @@ fn denied_ice_does_not_melt_above_solid_ground() {
         std::fs::remove_dir_all(scratch).unwrap();
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

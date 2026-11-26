@@ -29,12 +29,12 @@ impl crate::game::ServerGame<'_> {
                 self.cart_dismount_mob(vehicle_id, rider)
             }
         } else if let Some(mount) = vehicle {
-            match self.common.native_entity_target(passenger)? {
+            match self.native_entity_target(passenger)? {
                 Target::Player => {
                     Some(self.player_dismount_from_lent_mob(mount, self.common.yaw, self.common.player.as_ref()?))
                 }
                 Target::Guest(conn) => {
-                    let guest = self.common.command_guest(conn)?;
+                    let guest = self.command_guest(conn)?;
                     Some(self.player_dismount_from_lent_mob(
                         mount,
                         guest.yaw,
@@ -44,15 +44,15 @@ impl crate::game::ServerGame<'_> {
                 _ => None,
             }
         } else {
-            let vehicle = self.common.entity(vehicle_id)?;
+            let vehicle = self.entity(vehicle_id)?;
             return self.entity_dismount_location(vehicle, LivingRef::new(passenger));
         };
         if let Some(at) = at {
             return Some([at.x, at.y, at.z]);
         }
-        let vehicle = self.common.entity(vehicle_id)?;
-        let [x, _, z] = self.common.entity_position(vehicle)?;
-        let [_, [_, top, _]] = self.common.entity_bounding_box(vehicle)?;
+        let vehicle = self.entity(vehicle_id)?;
+        let [x, _, z] = self.entity_position(vehicle)?;
+        let [_, [_, top, _]] = self.entity_bounding_box(vehicle)?;
         Some([x, top, z])
     }
 
@@ -64,14 +64,14 @@ impl crate::game::ServerGame<'_> {
     ) -> bool {
         // A retained mob has no handle: its own object is its target.
         let target = self
-            .common.entity(mount)
-            .and_then(|entity| self.common.native_entity_target(entity))
+            .entity(mount)
+            .and_then(|entity| self.native_entity_target(entity))
             .or_else(|| {
                 self.common.mob_object(mount)
                     .filter(|mob| !mob.removed)
                     .map(|_| Target::Mob(mount))
             });
-        self.common.entity(root).is_some()
+        self.entity(root).is_some()
             && target.is_some_and(|target| self.native_root_vehicle_id(mount, target) == Some(root))
     }
 
@@ -82,7 +82,7 @@ impl crate::game::ServerGame<'_> {
         &self,
         entity: EntityRef,
     ) -> Option<Vec<EntityRef>> {
-        self.common.native_entity_target(entity)?;
+        self.native_entity_target(entity)?;
         let mut all: Vec<EntityRef> = Vec::new();
         // This vector allocates only when a retained, unrepresentable object is
         // actually encountered; ordinary resident-only trees keep two buffers.
@@ -100,7 +100,7 @@ impl crate::game::ServerGame<'_> {
             {
                 continue;
             }
-            if let Some(handle) = self.common.entity(passenger) {
+            if let Some(handle) = self.entity(passenger) {
                 all.push(handle);
             } else {
                 visited_off_level.push(passenger);
@@ -123,7 +123,7 @@ impl crate::game::ServerGame<'_> {
         let (main, offhand) = match t {
             Target::Player => (self.common.held(), self.common.offhand.as_ref()),
             Target::Guest(conn) => {
-                let Some(guest) = self.common.command_guest(conn) else {
+                let Some(guest) = self.command_guest(conn) else {
                     return false;
                 };
                 (
@@ -166,10 +166,10 @@ impl crate::game::ServerGame<'_> {
         &self,
         entity: EntityRef,
     ) -> Option<LivingRef> {
-        let vehicle = self.common.native_entity_target(entity)?;
+        let vehicle = self.native_entity_target(entity)?;
         let first_id = self.first_seated_passenger(entity.id())?.1;
-        let first = self.common.entity(first_id)?;
-        let rider = self.common.native_entity_target(first)?;
+        let first = self.entity(first_id)?;
+        let rider = self.native_entity_target(first)?;
         let is_player = matches!(rider, Target::Player | Target::Guest(_));
         match vehicle {
             Target::Boat(_) if is_player => Some(LivingRef::new(first)),
@@ -197,8 +197,8 @@ impl crate::game::ServerGame<'_> {
         entity: EntityRef,
         other: EntityRef,
     ) -> Option<bool> {
-        let target = self.common.native_entity_target(entity)?;
-        let other_target = self.common.native_entity_target(other)?;
+        let target = self.native_entity_target(entity)?;
+        let other_target = self.native_entity_target(other)?;
         Some(
             self.native_root_vehicle_id(entity.id(), target)?
                 == self.native_root_vehicle_id(other.id(), other_target)?,
@@ -220,13 +220,13 @@ impl crate::game::ServerGame<'_> {
         vehicle: EntityRef,
         passenger: LivingRef,
     ) -> Option<[f64; 3]> {
-        self.common.native_entity_target(vehicle)?;
+        self.native_entity_target(vehicle)?;
         let id = vehicle.id();
-        let at = match self.common.native_entity_target(passenger.entity())? {
+        let at = match self.native_entity_target(passenger.entity())? {
             Target::Mob(rider) => self.mob_dismount_point(id, rider),
             Target::Player => self.player_dismount_point(id, self.common.yaw, self.common.player.as_ref()?),
             Target::Guest(conn) => {
-                let guest = self.common.command_guest(conn)?;
+                let guest = self.command_guest(conn)?;
                 self.player_dismount_point(id, guest.yaw, guest.motion.as_deref()?)
             }
             _ => return None,
@@ -234,8 +234,8 @@ impl crate::game::ServerGame<'_> {
         if let Some(at) = at {
             return Some([at.x, at.y, at.z]);
         }
-        let [x, _, z] = self.common.entity_position(vehicle)?;
-        let [_, [_, top, _]] = self.common.entity_bounding_box(vehicle)?;
+        let [x, _, z] = self.entity_position(vehicle)?;
+        let [_, [_, top, _]] = self.entity_bounding_box(vehicle)?;
         Some([x, top, z])
     }
     /// A lead's live holder as a handle: `None` when it is out of reach.
@@ -248,27 +248,27 @@ impl crate::game::ServerGame<'_> {
             None => LeashHolder::Unleashed,
             Some(Holder::Knot(pos)) => LeashHolder::Knot(pos),
             Some(Holder::Mob(id)) => {
-                let entity = self.common.entity(id)?;
+                let entity = self.entity(id)?;
                 if !matches!(self.native_entity_target(entity), Some(Target::Mob(_))) {
                     return None;
                 }
                 LeashHolder::Entity(entity)
             }
             Some(Holder::Boat(id)) => {
-                let entity = self.common.entity(id)?;
+                let entity = self.entity(id)?;
                 if !matches!(self.native_entity_target(entity), Some(Target::Boat(_))) {
                     return None;
                 }
                 LeashHolder::Entity(entity)
             }
-            Some(Holder::Player) => LeashHolder::Entity(self.common.player(ints_uuid(player?))?.entity()),
+            Some(Holder::Player) => LeashHolder::Entity(self.player(ints_uuid(player?))?.entity()),
         })
     }
     /// The live holder of a mob's or boat's lead (`Leashable.getLeashHolder`), or `Unleashed`
     /// when no lead exists. `None` means an entity that takes no lead, or that the entity,
     /// holder or saved holder is unavailable, stale or in a parked level. Does not load a level.
     pub(in crate::game) fn entity_leash_holder(&self, entity: EntityRef) -> Option<LeashHolder> {
-        match self.common.native_entity_target(entity)? {
+        match self.native_entity_target(entity)? {
             Target::Mob(id) => {
                 let mob = self.common.mobs.iter().find(|m| m.id == id)?;
                 if mob.extra.leash_pending.is_some() {
@@ -297,8 +297,8 @@ impl crate::game::ServerGame<'_> {
         holder: EntityRef,
     ) -> bool {
         let (Some(target), Some(by)) = (
-            self.common.native_entity_target(entity),
-            self.common.native_entity_target(holder),
+            self.native_entity_target(entity),
+            self.native_entity_target(holder),
         ) else {
             return false;
         };
@@ -324,7 +324,7 @@ impl crate::game::ServerGame<'_> {
         entity: EntityRef,
         pos: [i32; 3],
     ) -> bool {
-        let Some(target) = self.common.native_entity_target(entity) else {
+        let Some(target) = self.native_entity_target(entity) else {
             return false;
         };
         let block = self
@@ -359,7 +359,7 @@ impl crate::game::ServerGame<'_> {
         entity: EntityRef,
         drop_lead: bool,
     ) -> bool {
-        self.common.native_entity_target(entity)
+        self.native_entity_target(entity)
             .is_some_and(|target| self.detach_leash(target, drop_lead))
     }
     /// Attempts one mount, shared by handle writes and the ride command.
@@ -394,7 +394,7 @@ impl crate::game::ServerGame<'_> {
     ) -> Result<(), StartRidingRefusal> {
         if let Target::Guest(conn) = rider {
             if self
-                .common.command_guest(conn)
+                .command_guest(conn)
                 .is_none_or(|guest| guest.dimension != self.common.dim.id())
             {
                 return Err(StartRidingRefusal::NoEntity);
@@ -406,13 +406,13 @@ impl crate::game::ServerGame<'_> {
                 .unwrap_or(Err(StartRidingRefusal::NoEntity));
         }
         let vehicle_id = self.native_riding_preconditions(rider, vehicle, force, onto_player)?;
-        let previous_vehicle = self.common.native_vehicle_id(rider);
+        let previous_vehicle = self.native_vehicle_id(rider);
         let allowed = match rider {
             Target::Player => self.native_may_board(vehicle_id),
             Target::Mob(id) | Target::General(id) => self.native_mob_may_ride(id, vehicle_id, true),
             _ => false,
         };
-        if !allowed || self.common.native_vehicle_id(rider) != previous_vehicle {
+        if !allowed || self.native_vehicle_id(rider) != previous_vehicle {
             return Err(StartRidingRefusal::Canceled);
         }
         self.native_riding_preconditions(rider, vehicle, force, onto_player)?;
@@ -435,7 +435,7 @@ impl crate::game::ServerGame<'_> {
                 Target::General(id) => self.dismount_general(id, previous),
                 _ => return Err(StartRidingRefusal::UnsupportedRider),
             }
-            if self.common.native_vehicle_id(rider).is_some() {
+            if self.native_vehicle_id(rider).is_some() {
                 return Err(StartRidingRefusal::Canceled);
             }
         }
@@ -492,7 +492,7 @@ impl crate::game::ServerGame<'_> {
         rider: Target,
         vehicle_id: u32,
     ) -> Result<(), StartRidingRefusal> {
-        if self.common.native_vehicle_id(rider) == Some(vehicle_id) {
+        if self.native_vehicle_id(rider) == Some(vehicle_id) {
             Ok(())
         } else {
             Err(StartRidingRefusal::Canceled)
@@ -525,7 +525,7 @@ impl crate::game::ServerGame<'_> {
             Target::Player | Target::Guest(_) => return Err(R::PlayerVehicle),
             _ => return Err(R::UnsupportedVehicle),
         };
-        if self.common.entity(vehicle_id).is_none()
+        if self.entity(vehicle_id).is_none()
             || matches!(rider, Target::Mob(id) if self.mobs.iter().all(|m| m.id != id || m.removed))
             || matches!(rider, Target::General(id) if self.general_row(id).is_none())
         {
@@ -537,7 +537,7 @@ impl crate::game::ServerGame<'_> {
         if rider == vehicle {
             return Err(R::SameEntity);
         }
-        if self.common.native_vehicle_id(rider) == Some(vehicle_id) {
+        if self.native_vehicle_id(rider) == Some(vehicle_id) {
             return Err(R::AlreadyRiding);
         }
         if let Target::General(id) = vehicle {
@@ -600,7 +600,7 @@ impl crate::game::ServerGame<'_> {
                 let full = if force {
                     self.seated_passenger_count(id) >= self.common.boats[index].max_passengers()
                 } else {
-                    !self.common.boat_has_room(index)
+                    !self.boat_has_room(index)
                 };
                 if full {
                     return Err(R::Full);
@@ -662,10 +662,10 @@ impl crate::game::ServerGame<'_> {
         force: bool,
     ) -> Result<(), StartRidingRefusal> {
         let rider = self
-            .common.native_entity_target(entity)
+            .native_entity_target(entity)
             .ok_or(StartRidingRefusal::NoEntity)?;
         let vehicle = self
-            .common.native_entity_target(vehicle)
+            .native_entity_target(vehicle)
             .ok_or(StartRidingRefusal::NoEntity)?;
         self.try_start_riding_target(rider, vehicle, force)
     }
@@ -674,10 +674,10 @@ impl crate::game::ServerGame<'_> {
     /// vehicle lets it out, as `/ride ... dismount` does. False when it rode
     /// nothing, a mod's `mob_ride` hook kept it on, or for a stale handle.
     pub(in crate::game) fn entity_stop_riding(&mut self, entity: EntityRef) -> bool {
-        let Some(t) = self.common.native_entity_target(entity) else {
+        let Some(t) = self.native_entity_target(entity) else {
             return false;
         };
-        let Some(vehicle) = self.common.native_vehicle_id(t) else {
+        let Some(vehicle) = self.native_vehicle_id(t) else {
             return false;
         };
         match t {
@@ -688,7 +688,7 @@ impl crate::game::ServerGame<'_> {
             Target::General(id) => self.dismount_general(id, vehicle),
             _ => return false,
         }
-        let stopped = self.common.native_vehicle_id(t).is_none();
+        let stopped = self.native_vehicle_id(t).is_none();
         if stopped {
             self.release_removed_vehicle(vehicle);
         }
@@ -696,7 +696,7 @@ impl crate::game::ServerGame<'_> {
     }
     pub(in crate::game::server_side) fn dismount_general(&mut self, id: u32, vehicle: u32) {
         if self.native_mob_may_ride(id, vehicle, false)
-            && self.common.native_vehicle_id(Target::General(id)) == Some(vehicle)
+            && self.native_vehicle_id(Target::General(id)) == Some(vehicle)
         {
             self.set_general_mount(id, None);
             self.release_removed_vehicle(vehicle);
@@ -734,13 +734,13 @@ impl crate::game::ServerGame<'_> {
                     self.player_vehicle(id)
                 };
                 if let Some(target) = target
-                    && self.common.native_vehicle_id(target) == Some(vehicle)
+                    && self.native_vehicle_id(target) == Some(vehicle)
                 {
                     self.for_player(target, |g| g.stop_riding_from_removed_vehicle(vehicle, y));
                 }
-            } else if self.common.native_vehicle_id(Target::Mob(id)) == Some(vehicle) {
+            } else if self.native_vehicle_id(Target::Mob(id)) == Some(vehicle) {
                 self.dismount_mob_from_removed_vehicle(id, y);
-            } else if self.common.native_vehicle_id(Target::General(id)) == Some(vehicle) {
+            } else if self.native_vehicle_id(Target::General(id)) == Some(vehicle) {
                 self.dismount_general(id, vehicle);
             }
         }
@@ -753,7 +753,7 @@ impl crate::game::ServerGame<'_> {
             .collect();
         passengers.sort_unstable();
         for (_, rider) in passengers.into_iter().rev() {
-            if self.common.native_vehicle_id(Target::General(rider)) == Some(vehicle) {
+            if self.native_vehicle_id(Target::General(rider)) == Some(vehicle) {
                 self.dismount_general(rider, vehicle);
             }
         }
@@ -777,14 +777,14 @@ impl crate::game::ServerGame<'_> {
 impl crate::game::ServerGame<'_> {
     /// What the entity rides (`Entity.getVehicle`), if its vehicle has a handle.
     pub(in crate::game) fn entity_vehicle(&self, entity: EntityRef) -> Option<EntityRef> {
-        let target = self.common.native_entity_target(entity)?;
-        self.common.entity(self.common.native_vehicle_id(target)?)
+        let target = self.native_entity_target(entity)?;
+        self.entity(self.native_vehicle_id(target)?)
     }
 
     /// Whether the entity rides another object, even one without a handle.
     pub(in crate::game) fn entity_is_passenger(&self, entity: EntityRef) -> Option<bool> {
-        let target = self.common.native_entity_target(entity)?;
-        let vehicle = self.common.native_vehicle_id(target);
+        let target = self.native_entity_target(entity)?;
+        let vehicle = self.native_vehicle_id(target);
         Some(vehicle.is_some())
     }
 
@@ -792,31 +792,31 @@ impl crate::game::ServerGame<'_> {
     /// entity itself when it rides nothing. Off-level intermediaries are traversed;
     /// an off-level root or a cycle returns no handle, never a descendant substitute.
     pub(in crate::game) fn entity_root_vehicle(&self, entity: EntityRef) -> Option<EntityRef> {
-        let target = self.common.native_entity_target(entity)?;
-        self.common.entity(self.native_root_vehicle_id(entity.id(), target)?)
+        let target = self.native_entity_target(entity)?;
+        self.entity(self.native_root_vehicle_id(entity.id(), target)?)
     }
 
     /// The entities riding this one (`Entity.getPassengers`), in `addPassenger`'s order.
     pub(in crate::game) fn entity_passengers(&self, entity: EntityRef) -> Option<Vec<EntityRef>> {
-        self.common.native_entity_target(entity)?;
+        self.native_entity_target(entity)?;
         Some(
             self.seated_passengers(entity.id())
                 .into_iter()
-                .filter_map(|(_, id, _)| self.common.entity(id))
+                .filter_map(|(_, id, _)| self.entity(id))
                 .collect(),
         )
     }
 
     /// Whether any object rides the entity, even one without a handle.
     pub(in crate::game) fn entity_is_vehicle(&self, entity: EntityRef) -> Option<bool> {
-        self.common.native_entity_target(entity)?;
+        self.native_entity_target(entity)?;
         Some(self.has_seated_passengers(entity.id()))
     }
 
     /// Follow full object links, returning no root for a cycle without allocating a visited set.
     pub(in crate::game) fn native_root_vehicle_id(&self, id: u32, target: Target) -> Option<u32> {
         let mut root = id;
-        let mut next = self.common.native_vehicle_id(target);
+        let mut next = self.native_vehicle_id(target);
         for _ in 0..=self.riding_link_limit() {
             let Some(vehicle) = next else {
                 return Some(root);
@@ -845,3 +845,15 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

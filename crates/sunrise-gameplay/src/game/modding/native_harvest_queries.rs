@@ -13,7 +13,7 @@ impl ServerGame<'_> {
         pos: [i32; 3],
         state: BlockStateId,
     ) -> Option<f32> {
-        if self.common.native_level_world(level).is_none() || level.dimension() != self.common.dim.key() {
+        if self.native_level_world(level).is_none() || level.dimension() != self.common.dim.key() {
             return None;
         }
         let mut answer = None;
@@ -30,7 +30,7 @@ impl ServerGame<'_> {
         pos: [i32; 3],
         state: BlockStateId,
     ) -> Option<bool> {
-        if self.common.native_level_world(level).is_none() || level.dimension() != self.common.dim.key() {
+        if self.native_level_world(level).is_none() || level.dimension() != self.common.dim.key() {
             return None;
         }
         let mut answer = None;
@@ -40,3 +40,7 @@ impl ServerGame<'_> {
         answer
     }
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

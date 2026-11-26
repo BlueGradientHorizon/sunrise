@@ -103,7 +103,7 @@ impl crate::game::ServerGame<'_> {
         &self,
         player: PlayerRef,
     ) -> Option<MenuRef> {
-        self.common.player_read_both(player)?;
+        self.player_read_both(player)?;
         let guest = self.native_menu_player(player)?;
         let menu = mod_api::__private::game::menu_ref(
             player,
@@ -167,9 +167,7 @@ impl crate::game::ServerGame<'_> {
         let acting = self.server.lan_acting == Some(guest.conn);
         Some(match backing {
             MenuSlotBacking::BlockEntity { .. } | MenuSlotBacking::Entity { .. } => {
-                let world = self
-                    .common
-                    .native_level_world(self.common.level(&guest.dimension)?)?;
+                let world = self.native_level_world(self.level(&guest.dimension)?)?;
                 guest.menu.as_ref()?.slots.get(world, guest, slot)
             }
             MenuSlotBacking::Player(n @ 0..36) => {
@@ -232,8 +230,8 @@ impl crate::game::ServerGame<'_> {
         if slot >= open.slot_count() {
             return None;
         }
-        let level = self.common.level(&guest.dimension)?;
-        let world = self.common.native_level_world(level)?;
+        let level = self.level(&guest.dimension)?;
+        let world = self.native_level_world(level)?;
         if open
             .slots
             .block_slots(world)
@@ -396,9 +394,7 @@ impl crate::game::ServerGame<'_> {
         let (kind, disabled, menu_id) = match &guest.menu {
             None => (Kind::Inventory, None, None),
             Some(open) => {
-                let world = self
-                    .common
-                    .native_level_world(self.common.level(&guest.dimension)?)?;
+                let world = self.native_level_world(self.level(&guest.dimension)?)?;
                 let name = self
                     .server
                     .lan
@@ -437,9 +433,7 @@ impl crate::game::ServerGame<'_> {
         let mut rules = Box::new(Menu::new(kind));
         rules.set_registry_id(menu_id);
         if let Some(open) = guest.menu.as_ref() {
-            let world = self
-                .common
-                .native_level_world(self.common.level(&guest.dimension)?)?;
+            let world = self.native_level_world(self.level(&guest.dimension)?)?;
             let limits = open.slots.stack_limits(world, open.size);
             rules.set_container_limits(limits);
             rules.set_block_pos(
@@ -466,7 +460,7 @@ impl crate::game::ServerGame<'_> {
             }
             rules.set_player_item(40, self.common.offhand.clone());
             rules.selected = self.common.selected;
-            rules.creative = self.common.instabuild();
+            rules.creative = self.instabuild();
             rules.levels = self.common.experience.level;
             rules.carried = self.common.carried.clone();
         } else {
@@ -510,3 +504,11 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

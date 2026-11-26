@@ -345,14 +345,96 @@ pub fn owner_permission(allow_commands: bool) -> u8 {
     if allow_commands { 4 } else { 0 }
 }
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// `PlayerList.isOp` for the single-player owner: the world's Allow Commands.
     pub fn allow_commands(&self) -> bool {
         self.level.allow_commands == Some(true)
     }
 
+    /// The canonical loaded inventory, with code targets resolved from the native runtime.
+    pub fn perf_mods(&self) -> Vec<sunrise_perf_format::v1::Mod> {
+        self.mods
+            .perf_metadata(mod_api::__private::loaded_mods().iter())
+    }
+
+    /// `Heightmap.getFirstAvailable`: one above the highest block the heightmap counts.
+    pub fn column_height(&self, kind: HeightmapType, x: i32, z: i32) -> i32 {
+        let properties = &self.pack.assets.properties;
+        let surface = self
+            .world
+            .world_surface(x, z, |s| properties.heightmap_state(s).is_air());
+        if kind == HeightmapType::WorldSurface {
+            return surface;
+        }
+        (self.world.bottom_y()..surface)
+            .rev()
+            .find(|&y| kind.is_opaque(properties.heightmap_state(self.world.block(x, y, z))))
+            .map_or(self.world.bottom_y(), |y| y + 1)
+    }
+
+    /// The engine-side rule values (block behaviour and health).
+    pub fn level_rules(&self) -> sunrise_world::level::GameRules {
+        let r = &self.ui.rules;
+        sunrise_world::level::GameRules {
+            water_source_conversion: r
+                .bool_at(sunrise_game_data::gamerules::vanilla::WATER_SOURCE_CONVERSION),
+            lava_source_conversion: r
+                .bool_at(sunrise_game_data::gamerules::vanilla::LAVA_SOURCE_CONVERSION),
+            random_tick_speed: r.int_at(sunrise_game_data::gamerules::vanilla::RANDOM_TICK_SPEED),
+            block_drops: r.bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS),
+            mob_griefing: r.bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING),
+            max_snow_accumulation_height: r
+                .int_at(sunrise_game_data::gamerules::vanilla::MAX_SNOW_ACCUMULATION_HEIGHT),
+            spawn_mobs: r.bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS),
+            spawn_monsters: r.bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MONSTERS),
+            fire_spread_radius_around_player: r
+                .int_at(sunrise_game_data::gamerules::vanilla::FIRE_SPREAD_RADIUS_AROUND_PLAYER),
+            spread_vines: r.bool_at(sunrise_game_data::gamerules::vanilla::SPREAD_VINES),
+        }
+    }
+
+    /// Apply rules mirrored in other state (natural regeneration, difficulty).
+    pub fn sync_rules(&mut self) {
+        self.world.health_rules.natural_regeneration = self
+            .ui
+            .rules
+            .bool_at(sunrise_game_data::gamerules::vanilla::NATURAL_HEALTH_REGENERATION);
+        // Player.isInvulnerableTo: the damage-type rules.
+        self.world.health_rules.drowning_damage = self
+            .ui
+            .rules
+            .bool_at(sunrise_game_data::gamerules::vanilla::DROWNING_DAMAGE);
+        self.world.health_rules.fall_damage = self
+            .ui
+            .rules
+            .bool_at(sunrise_game_data::gamerules::vanilla::FALL_DAMAGE);
+        self.world.health_rules.fire_damage = self
+            .ui
+            .rules
+            .bool_at(sunrise_game_data::gamerules::vanilla::FIRE_DAMAGE);
+        self.world.health_rules.freeze_damage = self
+            .ui
+            .rules
+            .bool_at(sunrise_game_data::gamerules::vanilla::FREEZE_DAMAGE);
+        sunrise_sim::mobs::sulfur_cube::set_tnt_explodes(
+            self.ui
+                .rules
+                .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES),
+        );
+        use sunrise_world::food::Difficulty;
+        self.world.health_rules.difficulty = match self.ui.difficulty {
+            0 => Difficulty::Peaceful,
+            1 => Difficulty::Easy,
+            3 => Difficulty::Hard,
+            _ => Difficulty::Normal,
+        };
+    }
+}
+
+pub trait ChatCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+
     /// Registry contents for argument parsing (built when a world opens).
-    pub fn build_registries(&mut self) {
+     fn build_registries(&mut self) {
         let permission = owner_permission(self.allow_commands());
         let reg = &mut self.ui.registries;
         reg.permission = permission;
@@ -529,87 +611,12 @@ impl CommonGame<'_> {
         self.sync_stat_registries();
         self.side_sync_pack_tag_ids();
     }
-
-    /// The canonical loaded inventory, with code targets resolved from the native runtime.
-    pub fn perf_mods(&self) -> Vec<sunrise_perf_format::v1::Mod> {
-        self.mods
-            .perf_metadata(mod_api::__private::loaded_mods().iter())
-    }
-
-    /// `Heightmap.getFirstAvailable`: one above the highest block the heightmap counts.
-    pub fn column_height(&self, kind: HeightmapType, x: i32, z: i32) -> i32 {
-        let properties = &self.pack.assets.properties;
-        let surface = self
-            .world
-            .world_surface(x, z, |s| properties.heightmap_state(s).is_air());
-        if kind == HeightmapType::WorldSurface {
-            return surface;
-        }
-        (self.world.bottom_y()..surface)
-            .rev()
-            .find(|&y| kind.is_opaque(properties.heightmap_state(self.world.block(x, y, z))))
-            .map_or(self.world.bottom_y(), |y| y + 1)
-    }
-
-    /// The engine-side rule values (block behaviour and health).
-    pub fn level_rules(&self) -> sunrise_world::level::GameRules {
-        let r = &self.ui.rules;
-        sunrise_world::level::GameRules {
-            water_source_conversion: r
-                .bool_at(sunrise_game_data::gamerules::vanilla::WATER_SOURCE_CONVERSION),
-            lava_source_conversion: r
-                .bool_at(sunrise_game_data::gamerules::vanilla::LAVA_SOURCE_CONVERSION),
-            random_tick_speed: r.int_at(sunrise_game_data::gamerules::vanilla::RANDOM_TICK_SPEED),
-            block_drops: r.bool_at(sunrise_game_data::gamerules::vanilla::BLOCK_DROPS),
-            mob_griefing: r.bool_at(sunrise_game_data::gamerules::vanilla::MOB_GRIEFING),
-            max_snow_accumulation_height: r
-                .int_at(sunrise_game_data::gamerules::vanilla::MAX_SNOW_ACCUMULATION_HEIGHT),
-            spawn_mobs: r.bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MOBS),
-            spawn_monsters: r.bool_at(sunrise_game_data::gamerules::vanilla::SPAWN_MONSTERS),
-            fire_spread_radius_around_player: r
-                .int_at(sunrise_game_data::gamerules::vanilla::FIRE_SPREAD_RADIUS_AROUND_PLAYER),
-            spread_vines: r.bool_at(sunrise_game_data::gamerules::vanilla::SPREAD_VINES),
-        }
-    }
-
-    /// Apply rules mirrored in other state (natural regeneration, difficulty).
-    pub fn sync_rules(&mut self) {
-        self.world.health_rules.natural_regeneration = self
-            .ui
-            .rules
-            .bool_at(sunrise_game_data::gamerules::vanilla::NATURAL_HEALTH_REGENERATION);
-        // Player.isInvulnerableTo: the damage-type rules.
-        self.world.health_rules.drowning_damage = self
-            .ui
-            .rules
-            .bool_at(sunrise_game_data::gamerules::vanilla::DROWNING_DAMAGE);
-        self.world.health_rules.fall_damage = self
-            .ui
-            .rules
-            .bool_at(sunrise_game_data::gamerules::vanilla::FALL_DAMAGE);
-        self.world.health_rules.fire_damage = self
-            .ui
-            .rules
-            .bool_at(sunrise_game_data::gamerules::vanilla::FIRE_DAMAGE);
-        self.world.health_rules.freeze_damage = self
-            .ui
-            .rules
-            .bool_at(sunrise_game_data::gamerules::vanilla::FREEZE_DAMAGE);
-        sunrise_sim::mobs::sulfur_cube::set_tnt_explodes(
-            self.ui
-                .rules
-                .bool_at(sunrise_game_data::gamerules::vanilla::TNT_EXPLODES),
-        );
-        use sunrise_world::food::Difficulty;
-        self.world.health_rules.difficulty = match self.ui.difficulty {
-            0 => Difficulty::Peaceful,
-            1 => Difficulty::Easy,
-            3 => Difficulty::Hard,
-            _ => Difficulty::Normal,
-        };
-    }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> ChatCommonGameExt1<'__sg> for G {}
+
 
 use crate::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use crate::game::tables::GameItems as _;
+
+use crate::game::command_registries::CommandRegistriesGameExt1 as _;

@@ -129,3 +129,5 @@ fn a_refused_trident_contact_keeps_the_contact_and_finishes_the_tick() {
         )));
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

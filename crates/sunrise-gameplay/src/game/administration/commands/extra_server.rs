@@ -197,12 +197,12 @@ impl crate::game::ServerGame<'_> {
         if t != Target::Player {
             return Err(tr_error(
                 "commands.fetchprofile.no_profile",
-                &[self.common.target_name(t)],
+                &[self.target_name(t)],
             ));
         }
         // The player in place: a guest's own profile while their command runs.
         let id = sunrise_sim::lan::playerdata::ints_uuid(self.acting_uuid());
-        let name = self.common.acting_player_name().to_owned();
+        let name = self.acting_player_name().to_owned();
         self.report_resolved_profile(
             "commands.fetchprofile.entity.success",
             Text::literal(&name),
@@ -274,16 +274,16 @@ impl crate::game::ServerGame<'_> {
         if !self.common.spectator() {
             return Err(tr_error(
                 "commands.spectate.not_spectator",
-                &[self.common.target_name(player)],
+                &[self.target_name(player)],
             ));
         }
         // EntityType.clientTrackingRange: only a marker's is zero.
         if let Some(t) = target
-            && self.common.target_type(t) == "minecraft:marker"
+            && self.target_type(t) == "minecraft:marker"
         {
             return Err(tr_error(
                 "commands.spectate.cannot_spectate",
-                &[self.common.target_name(t)],
+                &[self.target_name(t)],
             ));
         }
         // A guest's camera is the hub's: the view moves in the guests' tick.
@@ -301,7 +301,7 @@ impl crate::game::ServerGame<'_> {
         }
         match target {
             Some(t) => {
-                let name = self.common.target_name(t);
+                let name = self.target_name(t);
                 self.feedback(Text::translate(
                     "commands.spectate.success.started",
                     &[name],
@@ -331,7 +331,7 @@ impl crate::game::ServerGame<'_> {
         };
         match conn {
             Some(conn) => self
-                .common.command_guest(conn)
+                .command_guest(conn)
                 .map(|g| g.post_effects.clone())
                 .unwrap_or_default(),
             None => self.server.cmds.0.post_effects.clone(),
@@ -347,7 +347,7 @@ impl crate::game::ServerGame<'_> {
             .0
             .profile_fetches
             .iter()
-            .any(|f| matches!(self.side.profile_resolver.lookup(&f.key), Resolve::Pending))
+            .any(|f| matches!(self.server.profile_resolver.lookup(&f.key), Resolve::Pending))
     }
     /// `ServerPlayer.openDialog` for each target: the packet to a guest, the
     /// acting player's packet queue otherwise.
@@ -432,7 +432,7 @@ impl crate::game::ServerGame<'_> {
         let sneaking = self.server_acting_sneak();
         match self.target_position(t) {
             Some(p) if !sneaking => {
-                let rot = self.common.target_rotation(t);
+                let rot = self.target_rotation(t);
                 if let Some(player) = self.common.player.as_mut() {
                     player.position = sunrise_core::geometry::Vec3::new(p[0], p[1], p[2]);
                 }
@@ -583,3 +583,5 @@ impl crate::game::ServerGame<'_> {
             .collect()
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

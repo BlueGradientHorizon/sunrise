@@ -65,7 +65,7 @@ impl crate::game::ClientGame<'_> {
         let (carried, resolved_slot, primary) =
             (frozen.carried.clone(), frozen.slot, frozen.primary);
         let clicks = mapped;
-        let pickup = self.common.stacked_pickup(
+        let pickup = self.stacked_pickup(
             local_pickup_id(),
             frozen.clone(),
             move |game| (game.carried == carried).then(|| frozen.clone()),
@@ -121,3 +121,7 @@ impl crate::game::ClientGame<'_> {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::stacked_on_other::StackedOnOtherGameExt1 as _;

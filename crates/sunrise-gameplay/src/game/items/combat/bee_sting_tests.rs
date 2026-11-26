@@ -32,5 +32,9 @@ pub fn sting(game: &mut crate::game::ServerGame<'_>, bee_id: u32, who: Who) {
     }
     game.common.mobs
         .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SpawnsFirst);
-    game.common.handle_mob_events(events).unwrap();
+    game.handle_mob_events(events).unwrap();
 }
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

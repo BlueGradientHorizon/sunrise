@@ -145,3 +145,5 @@ fn pitch_wraps_before_clamping() {
     assert_eq!(super::wrap_degrees(190.0), -170.0);
     assert_eq!(super::wrap_degrees(540.0), -180.0);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

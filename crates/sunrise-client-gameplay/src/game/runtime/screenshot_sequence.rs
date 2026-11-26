@@ -109,10 +109,10 @@ impl crate::game::ClientGame<'_> {
                     yaw.to_bits(),
                     pitch.to_bits()
                 ),
-                format!("{:?}", self.side.camera_type),
-                format!("{:?}", self.side.settings),
+                format!("{:?}", self.client.camera_type),
+                format!("{:?}", self.client.settings),
                 (
-                    &self.side.native_shaders.picked,
+                    &self.client.native_shaders.picked,
                     renderer.shader_pack_kind()
                 ),
                 [renderer.config.width, renderer.config.height],

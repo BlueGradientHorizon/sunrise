@@ -487,3 +487,7 @@ fn enchant_particles_share_native_power_and_rebuild_only_on_parts_reload() {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::bookshelves_common::BookshelvesCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

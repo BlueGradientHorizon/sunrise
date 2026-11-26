@@ -20,10 +20,10 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game::server_side) fn attack_dragon(&mut self) -> bool {
-        let Some((id, d)) = self.common.dragon_hit() else {
+        let Some((id, d)) = self.dragon_hit() else {
             return false;
         };
-        if !self.common.before_block(d) || self.common.mob_hit().is_some_and(|m| m.1 < d) {
+        if !self.before_block(d) || self.mob_hit().is_some_and(|m| m.1 < d) {
             return false;
         }
         // A dragon part is no LivingEntity: `canCriticalAttack` is false.
@@ -55,10 +55,10 @@ impl crate::game::ServerGame<'_> {
     }
     /// `VehicleEntity.hurtServer` from the player's attack.
     pub(in crate::game::server_side) fn attack_cart(&mut self) -> bool {
-        let Some((i, d)) = self.common.cart_hit() else {
+        let Some((i, d)) = self.cart_hit() else {
             return false;
         };
-        if !self.common.before_block(d) || self.common.mob_hit().is_some_and(|m| m.1 < d) {
+        if !self.before_block(d) || self.mob_hit().is_some_and(|m| m.1 < d) {
             return false;
         }
         let burning = self
@@ -70,7 +70,7 @@ impl crate::game::ServerGame<'_> {
         let kind = self.common.carts[i].kind.id();
         let (damage, scale, _, magic) = self.melee_damage(kind, false, Some(id as u32));
         let sweep = self.sweep_before_hit(kind, false);
-        let attacker = self.common.own_entity_id();
+        let attacker = self.own_entity_id();
         let source = sunrise_sim::health::HurtSource {
             damage_type: "minecraft:player_attack",
             causing: attacker,
@@ -81,7 +81,7 @@ impl crate::game::ServerGame<'_> {
             self.saved_refuses_damage(id as u32, "minecraft:player_attack", self.common.creative);
         if !crate::game::entity_server::damage_level_of!(
             self,
-            self.side.combat.0.attack(),
+            self.server.combat.0.attack(),
             no_push,
             None
         )
@@ -105,3 +105,9 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

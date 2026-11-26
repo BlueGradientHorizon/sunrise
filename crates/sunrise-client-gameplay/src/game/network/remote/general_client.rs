@@ -185,7 +185,7 @@ impl crate::game::ClientGame<'_> {
         }));
         riders.sort_unstable();
         for &(_, id, vehicle, _) in &riders {
-            if let Some(at) = self.common.general_passenger_position(vehicle, id as u32)
+            if let Some(at) = self.general_passenger_position(vehicle, id as u32)
                 && let Some(remote) = self.client.remote.as_mut()
                 && let Some(row) = remote.general.rows.get_mut(&id)
             {
@@ -236,3 +236,5 @@ impl RemoteGenerals {
         self.rows.clear();
     }
 }
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;

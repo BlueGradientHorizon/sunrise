@@ -952,3 +952,4 @@ pub(in crate::game) mod cart_cost_bench {
         );
     }
 }
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

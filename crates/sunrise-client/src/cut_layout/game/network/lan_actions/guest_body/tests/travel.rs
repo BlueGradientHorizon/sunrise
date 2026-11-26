@@ -442,3 +442,5 @@ fn a_tiny_travel_edit_and_move_veto_leave_the_player_outcome_unchanged() {
         });
     }
 }
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

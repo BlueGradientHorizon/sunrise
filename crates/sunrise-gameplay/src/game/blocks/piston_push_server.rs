@@ -299,7 +299,7 @@ impl crate::game::ServerGame<'_> {
         let vehicle_root = |v: u32| self.native_root_vehicle_id(v, Named::Mob(v));
         match target {
             MoveWho::Player => self.common.riding.and_then(vehicle_root),
-            MoveWho::Guest(conn) => self.common.command_guest(conn)?.vehicle.and_then(vehicle_root),
+            MoveWho::Guest(conn) => self.command_guest(conn)?.vehicle.and_then(vehicle_root),
             MoveWho::Entity(handle) => {
                 let (id, named) =
                     with_entity!(self, handle, entity => (entity.id(), entity.selector_target()));
@@ -333,7 +333,7 @@ impl crate::game::ServerGame<'_> {
         let Some(selected) = self.stable_push_target(target) else {
             return;
         };
-        let mut gate = self.common.entity_move(target, mover, movement);
+        let mut gate = self.entity_move(target, mover, movement);
         if gate.skipped() {
             return;
         }
@@ -356,14 +356,14 @@ impl crate::game::ServerGame<'_> {
                     entity_collision_bounds(movement, body.bounds, body.step_height).inflate(
                         Vec3::new(COLLISION_EPSILON, COLLISION_EPSILON, COLLISION_EPSILON),
                     );
-                self.common.entity_collisions(Mover::Boat {
+                self.entity_collisions(Mover::Boat {
                     id: self.common.boats[i].id,
                     area,
                 })
             }
-            _ => self.common.pushed_entity_colliders(target),
+            _ => self.pushed_entity_colliders(target),
         };
-        let collision = self.common.pushed_living_collision(target);
+        let collision = self.pushed_living_collision(target);
         let Ok(moved) = pushed_movement(
             &mut gate,
             SceneCollisions {
@@ -404,7 +404,7 @@ impl crate::game::ServerGame<'_> {
         self.set_pushed_on_ground(target, movement, moved, None);
         if lid_move && let MoveWho::Entity(EntityHandle::Boat(i)) = target {
             let boat = &self.common.boats[i];
-            if self.common.boat_can_simulate_movement(boat.id) {
+            if self.boat_can_simulate_movement(boat.id) {
                 let fall = self.common.boat_fall(boat, moved.y);
                 self.common.boats.update(i, |boat| boat.fall_distance = fall);
             }
@@ -428,7 +428,7 @@ impl crate::game::ServerGame<'_> {
         let from = with_entity!(self, handle, entity => entity.position());
         let body = self.common.listed_body(handle, None);
         if self.common.pushed_no_physics(target) {
-            let mut gate = self.common.entity_move(target, cause, movement);
+            let mut gate = self.entity_move(target, cause, movement);
             let movement = gate.delta();
             self.apply_push(&mut gate, target, movement);
             if let Some(target) = self.resolve_push_target(selected) {
@@ -797,7 +797,7 @@ impl crate::game::ServerGame<'_> {
             MoveWho::Entity(handle) => with_entity!(self, handle, entity => entity.position()),
             _ => Vec3::ZERO,
         };
-        let mut gate = self.common.entity_move(target, cause, movement);
+        let mut gate = self.entity_move(target, cause, movement);
         if gate.skipped() {
             return;
         }
@@ -848,11 +848,11 @@ impl crate::game::ServerGame<'_> {
             }
             _ => None,
         };
-        let entities = self.common.pushed_entity_colliders(target);
+        let entities = self.pushed_entity_colliders(target);
         with_piston_noclip(piston_direction, || {
             let collision = tnt
                 .map(|(_, _, subject, context)| (context, subject))
-                .or_else(|| self.common.pushed_living_collision(target));
+                .or_else(|| self.pushed_living_collision(target));
             let resolved = pushed_movement(
                 &mut gate,
                 SceneCollisions {
@@ -945,7 +945,7 @@ impl crate::game::ServerGame<'_> {
                 if let Some(p) = self.common.player.as_mut() {
                     p.position = p.position.add_vector(movement);
                 }
-                u32::try_from(self.common.own_entity_id()).ok()
+                u32::try_from(self.own_entity_id()).ok()
             }
             MoveWho::Guest(conn) => self.server.lan.as_mut().and_then(|host| {
                 host.hub.update_guest(conn, |g| {
@@ -967,7 +967,7 @@ impl crate::game::ServerGame<'_> {
             }
         };
         if let Some(id) = id {
-            self.common.entity_section_moved_id(id);
+            self.entity_section_moved_id(id);
             self.common.tell_entity_sections();
         }
     }
@@ -1014,7 +1014,7 @@ impl crate::game::ServerGame<'_> {
             let authoritative = if server {
                 use super::commands::Target;
                 let own = (self.common.riding == Some(mob.id))
-                    .then(|| self.common.riding_player())
+                    .then(|| self.riding_player())
                     .flatten();
                 let guests = self.server.lan.as_ref().into_iter().flat_map(|host| {
                     host.hub
@@ -1078,7 +1078,7 @@ impl crate::game::ServerGame<'_> {
             return Some(target);
         }
         let can_simulate = match handle {
-            EntityHandle::Boat(i) => self.common.boat_can_simulate_movement(self.common.boats[i].id),
+            EntityHandle::Boat(i) => self.boat_can_simulate_movement(self.common.boats[i].id),
             EntityHandle::Item(_)
             | EntityHandle::Tnt(_)
             | EntityHandle::Orb(_)
@@ -1367,7 +1367,7 @@ impl crate::game::ServerGame<'_> {
             };
             let to = [from.x, from.y + dy, from.z];
             *moved = Some((from, to, motion_y));
-            self.common.entity_section_moved_id(id);
+            self.entity_section_moved_id(id);
         }
         if write(self) {
             for (_, id, _, moved) in lift {
@@ -1402,7 +1402,7 @@ impl crate::game::ServerGame<'_> {
                     *entity.position_mut() = from;
                 }),
             }
-            self.common.entity_section_joined(id, from.components());
+            self.entity_section_joined(id, from.components());
         }
         false
     }
@@ -1436,7 +1436,7 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let authoritative = match handle {
-            EntityHandle::Boat(i) => self.common.boat_can_simulate_movement(self.common.boats[i].id),
+            EntityHandle::Boat(i) => self.boat_can_simulate_movement(self.common.boats[i].id),
             _ => self.common.is_logical_server(),
         };
         if let EntityHandle::ArmorStand(i) = handle {
@@ -1501,3 +1501,19 @@ impl crate::game::ServerGame<'_> {
         });
     }
 }
+
+use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::move_gate::MoveGateGameExt1 as _;
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::piston_push::PistonPushGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

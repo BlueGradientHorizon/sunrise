@@ -37,11 +37,11 @@ impl ServerGame<'_> {
         let Some(stack) = self.common.stack_in(slot) else {
             return false;
         };
-        if self.common.blocks_attacks(stack).is_none() {
+        if self.blocks_attacks(stack).is_none() {
             return false;
         }
         if self.server.shield_cooldown == 0 {
-            self.common.start_using_item();
+            self.start_using_item();
         }
         true
     }
@@ -54,7 +54,7 @@ impl ServerGame<'_> {
         pierce: bool,
     ) -> Option<Blocking> {
         let (slot, ticks) = self.common.using?;
-        let component = self.common.blocks_attacks(self.common.stack_in(slot)?)?;
+        let component = self.blocks_attacks(self.common.stack_in(slot)?)?;
         if !block_delay_passed(&component, ticks) {
             return None;
         }
@@ -114,7 +114,7 @@ impl ServerGame<'_> {
             return;
         };
         let Some(component) = self
-            .common.blocks_attacks(&stack)
+            .blocks_attacks(&stack)
             .map(std::borrow::Cow::into_owned)
         else {
             return;
@@ -156,7 +156,7 @@ impl ServerGame<'_> {
                         sunrise_core::equipment_slot::EquipmentSlot::MainHand
                     };
                     self.player_equipment_broke(hand, &broken);
-                    self.common.player_item_destroyed(&stack, self.common.item_slot_hand(slot));
+                    self.player_item_destroyed(&stack, self.common.item_slot_hand(slot));
                     self.award_stat("broken", &broken.item, 1);
                     return;
                 }
@@ -221,7 +221,7 @@ impl ServerGame<'_> {
                 };
                 p.velocity = p.velocity.add_vector(push);
             }
-            let _ = self.common.handle_mob_events(events);
+            let _ = self.handle_mob_events(events);
             return;
         }
         self.blocked_by_attacker(
@@ -307,3 +307,9 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

@@ -383,9 +383,7 @@ impl crate::game::ServerGame<'_> {
             );
             let mut random = LegacyRandom::new(0);
             for tick in 0..5 {
-                state = self
-                    .common
-                    .client_hook_step(1, None, false, state, &mut random);
+                state = self.client_hook_step(1, None, false, state, &mut random);
                 rows.push(serde_json::json!({
                     "case": case, "tick": tick,
                     "position": [state.0.x - f64::from(block[0]), state.0.y, state.0.z - f64::from(block[2])],
@@ -403,16 +401,12 @@ impl crate::game::ServerGame<'_> {
         rows
     }
     pub(in crate::game::server_side) fn holds_rod(&self) -> bool {
-        self.common.held().is_some_and(|s| self.common.is_rod(s))
-            || self
-                .common
-                .offhand
-                .as_ref()
-                .is_some_and(|s| self.common.is_rod(s))
+        self.common.held().is_some_and(|s| self.is_rod(s))
+            || self.common.offhand.as_ref().is_some_and(|s| self.is_rod(s))
     }
     /// `FishingRodItem.use`.
     pub(in crate::game::server_side) fn use_fishing_rod(&mut self, stack: &ItemStack) -> bool {
-        if !self.common.is_rod(stack) {
+        if !self.is_rod(stack) {
             return false;
         }
         // The mods hear a server player's cast or reel-in first.
@@ -694,7 +688,7 @@ impl crate::game::ServerGame<'_> {
                     position: [hook.position.x, hook.position.y, hook.position.z],
                 });
                 let mut cancel = false;
-                let entity_id = self.common.own_entity_id();
+                let entity_id = self.own_entity_id();
                 self.native_item_fished(
                     player,
                     entity_id,
@@ -929,8 +923,7 @@ impl crate::game::ServerGame<'_> {
             Some(hook) => {
                 let to = hook.position;
                 self.common.hook.put_back(hook);
-                self.common
-                    .entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+                self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
             }
             None => self.common.hook.retire_extracted(id, join),
         }
@@ -987,7 +980,7 @@ impl crate::game::ServerGame<'_> {
         let medium = if liquid > 0.0 || hooked {
             None
         } else {
-            self.common.hook_medium(h.id, h.position, Some(owner), true)
+            self.hook_medium(h.id, h.position, Some(owner), true)
         };
         let surface = medium.as_ref().map(|m| m.answer.surface);
         match medium {
@@ -1056,7 +1049,7 @@ impl crate::game::ServerGame<'_> {
                 });
                 let hit = best.finish().map(|(who, at)| {
                     let id = match who {
-                        sunrise_sim::mobs::Who::Player => self.common.own_entity_id() as u32,
+                        sunrise_sim::mobs::Who::Player => self.own_entity_id() as u32,
                         sunrise_sim::mobs::Who::Mob(id) => id,
                     };
                     (id, at)
@@ -1441,9 +1434,7 @@ impl crate::game::ServerGame<'_> {
         let side = game_side!(self);
         let motion = self.common.body_motion(&side);
         motion.apply_block_speed(position, velocity);
-        let writes =
-            self.common
-                .body_step_on(entity, (position, bounds(position)), ground, velocity);
+        let writes = self.body_step_on(entity, (position, bounds(position)), ground, velocity);
         super::entity::apply_contact_writes(writes, velocity, None, None, None);
     }
     /// The players a hook can catch: everyone but spectators and the dead
@@ -2169,3 +2160,13 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

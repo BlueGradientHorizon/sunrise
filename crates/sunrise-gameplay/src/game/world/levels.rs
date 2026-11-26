@@ -399,9 +399,7 @@ impl crate::game::ServerGame<'_> {
                 ..
             } = table.entity_lookup(&dimension, id.get(), |at| {
                 self.locate_server_resident_owner(at)
-            }) && self
-                .common
-                .resident_source_target_visible(dimension, target)
+            }) && self.resident_source_target_visible(dimension, target)
             {
                 return Some(target);
             }
@@ -1350,7 +1348,7 @@ impl crate::game::ServerGame<'_> {
         if let Some(h) = self.server.lan.as_mut() {
             h.hub.set_dimension(target.id());
         }
-        self.common.sync_hub_clocks();
+        self.sync_hub_clocks();
         Ok(())
     }
 
@@ -1619,7 +1617,7 @@ impl crate::game::ServerGame<'_> {
                 running,
                 packets_drained: false,
             };
-            if observe_level && let Some(level) = self.common.level(dim.id()) {
+            if observe_level && let Some(level) = self.level(dim.id()) {
                 self.native_level_tick_pre(level);
             }
             // ServerChunkCache.tick's purge, before the update that may unload the columns.
@@ -1674,7 +1672,7 @@ impl crate::game::ServerGame<'_> {
                     self.common.tick,
                     (self.server.serving.is_some() || self.common.options.dedicated.is_some())
                         .then_some(dim.id()),
-                    || self.common.carry_pass(&colliders),
+                    || self.carry_pass(&colliders),
                 );
             }
             drop(parts);
@@ -1683,7 +1681,7 @@ impl crate::game::ServerGame<'_> {
             if result.is_err() {
                 break;
             }
-            if observe_level && let Some(level) = self.common.level(dim.id()) {
+            if observe_level && let Some(level) = self.level(dim.id()) {
                 self.native_level_tick_post(level);
             }
             #[cfg(feature = "state-digest")]
@@ -2104,7 +2102,7 @@ impl crate::game::ServerGame<'_> {
         let back = self.common.dim;
         self.enter_level(dim)?;
         // Vanilla saves the level's chunks before their unload hooks.
-        self.common.native_chunks_loaded();
+        self.native_chunks_loaded();
         self.abort_abandoned_transactions(0);
         if let Err(why) = self.save_level(true) {
             // Not saved: the level stays parked, and the level in place is the one before.
@@ -2112,7 +2110,7 @@ impl crate::game::ServerGame<'_> {
             return Err(why);
         }
         let chunks: Vec<_> = self.common.world.chunks.values().cloned().collect();
-        self.common.native_chunks_unloaded(&chunks);
+        self.native_chunks_unloaded(&chunks);
         // Save and unload listeners can leave frames open; undo them before dropping the level.
         self.abort_abandoned_transactions(0);
         // Its entities' attachments are saved with them; they leave memory too.
@@ -2292,8 +2290,8 @@ impl crate::game::ServerGame<'_> {
     /// own update tells them (`native_chunks_loaded`), their `dynamic_light` cells asked first.
     fn announce_synchronous_loads(&mut self, parked: Option<mod_api::LevelRef>) {
         let Some(level) = parked else {
-            self.common.ask_loaded_light_emission();
-            self.common.native_chunks_loaded();
+            self.ask_loaded_light_emission();
+            self.native_chunks_loaded();
             return;
         };
         let id = level.dimension_id();
@@ -2326,7 +2324,7 @@ impl crate::game::ServerGame<'_> {
         if !slot.is_bound() {
             return;
         }
-        let Some(level) = self.common.level(self.common.dim.id()) else {
+        let Some(level) = self.level(self.common.dim.id()) else {
             return;
         };
         let Some(map) = self.common.entity_attachments.get_mut(&id) else {
@@ -2728,3 +2726,19 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt2 as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::clocks::ClocksGameExt1 as _;
+
+use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::piston_push::carrying::CarryingGameExt1 as _;

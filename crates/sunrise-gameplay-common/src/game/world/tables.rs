@@ -554,3 +554,5 @@ impl<'__sg, T: crate::game::SideGame<'__sg>> WorldTablesExt<'__sg> for T {}
 use crate::game::side_ops::tables::TablesSideGameExt as _;
 
 use crate::game::side_ops::world::WorldSideGameExt as _;
+
+use crate::game::player_identity::PlayerIdentityGameExt1 as _;

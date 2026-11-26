@@ -535,3 +535,7 @@ fn a_light_update_asks_the_part_again_on_the_client() {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

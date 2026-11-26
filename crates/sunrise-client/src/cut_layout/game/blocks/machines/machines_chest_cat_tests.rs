@@ -135,3 +135,7 @@ fn a_conductor_above_a_chest_still_silences_the_comparator() {
     poke(&mut game, "stone");
     assert_eq!(wire_power(&game), 0, "a conductor above blocks the chest");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

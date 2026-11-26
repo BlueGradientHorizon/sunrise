@@ -1731,7 +1731,7 @@ use sunrise_sim::lan::{Out, PlayerSender};
                             Err(MenuDataRefusal::InvalidIndex)
                         );
                         let resend = |game: &mut sunrise_gameplay::game::ServerGame<'_>| {
-                            game.side
+                            game.server
                                 .lan
                                 .as_mut()
                                 .unwrap()

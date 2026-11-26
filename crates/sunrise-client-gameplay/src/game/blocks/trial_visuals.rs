@@ -66,7 +66,7 @@ impl ClientGame<'_> {
             T::Flame
         };
         let sound = |game: &mut Self, name: &str, volume: f32| {
-            let pitch = event_pitch(game.side.particles.0.level_random());
+            let pitch = event_pitch(game.client.particles.0.level_random());
             game.local_sound(name, pos, volume, pitch);
         };
         match id {

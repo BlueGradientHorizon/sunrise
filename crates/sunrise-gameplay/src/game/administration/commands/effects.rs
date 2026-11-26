@@ -76,7 +76,7 @@ impl crate::game::ServerGame<'_> {
             ([], Some(_)) => return Err(err("commands.effect.clear.specific.failed", &[])),
             ([one], None) => Text::translate(
                 "commands.effect.clear.everything.success.single",
-                &[self.common.target_name(*one)],
+                &[self.target_name(*one)],
             ),
             (many, None) => Text::translate(
                 "commands.effect.clear.everything.success.multiple",
@@ -84,7 +84,7 @@ impl crate::game::ServerGame<'_> {
             ),
             ([one], Some(e)) => Text::translate(
                 "commands.effect.clear.specific.success.single",
-                &[effect_name(e.id), self.common.target_name(*one)],
+                &[effect_name(e.id), self.target_name(*one)],
             ),
             (many, Some(e)) => Text::translate(
                 "commands.effect.clear.specific.success.multiple",
@@ -125,7 +125,7 @@ impl crate::game::ServerGame<'_> {
                 _ if single => {
                     let name = self
                         .in_target_level(t, |g| g.target_name(t))
-                        .unwrap_or_else(|| self.common.target_name(t));
+                        .unwrap_or_else(|| self.target_name(t));
                     return Err(err("commands.enchant.failed.entity", &[&name.plain()]));
                 }
                 _ => None,
@@ -142,10 +142,10 @@ impl crate::game::ServerGame<'_> {
             [] => return Err(err("commands.enchant.failed", &[])),
             [one] => {
                 let target = if one.is_player() {
-                    self.common.target_name(*one)
+                    self.target_name(*one)
                 } else {
                     self.in_target_level(*one, |g| g.target_name(*one))
-                        .unwrap_or_else(|| self.common.target_name(*one))
+                        .unwrap_or_else(|| self.target_name(*one))
                 };
                 Text::translate("commands.enchant.success.single", &[full, target])
             }
@@ -182,7 +182,7 @@ impl crate::game::ServerGame<'_> {
             return if single {
                 Err(err(
                     "commands.enchant.failed.itemless",
-                    &[&self.common.target_name(t).plain()],
+                    &[&self.target_name(t).plain()],
                 ))
             } else {
                 Ok(false)
@@ -307,7 +307,7 @@ impl crate::game::ServerGame<'_> {
                 "commands.effect.give.success.single",
                 &[
                     effect_name(effect.id),
-                    self.common.target_name(*one),
+                    self.target_name(*one),
                     Text::literal((duration / 20).to_string()),
                 ],
             ),
@@ -326,3 +326,5 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

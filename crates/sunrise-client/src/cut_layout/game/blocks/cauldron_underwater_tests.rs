@@ -118,3 +118,5 @@ fn a_cauldron_under_water_swallows_a_lava_or_powder_snow_bucket() {
         }
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

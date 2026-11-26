@@ -37,7 +37,7 @@ impl ServerGame<'_> {
             .explosion_direct
             .or(self.server.combat.0.explosion_source);
         let mut entities = self
-            .common.level(self.common.dim.id())
+            .level(self.common.dim.id())
             .and_then(|level| self.level_entities_in(level, min, max))
             .unwrap_or_default();
         entities.retain(|entity| Some(entity.id()) != source);
@@ -47,7 +47,7 @@ impl ServerGame<'_> {
         // The walks follow the list: one a listener added is walked as any
         // other, so a handle that names nothing real is refused here, and a
         // repeated id is taken once (`getEntities` lists an entity once).
-        entities.retain(|entity| self.common.native_entity_target(*entity).is_some());
+        entities.retain(|entity| self.native_entity_target(*entity).is_some());
         let mut seen = HashSet::new();
         entities.retain(|entity| seen.insert(entity.id()));
         self.server.combat.0.blast_hit_ids = seen;
@@ -153,3 +153,7 @@ impl ServerGame<'_> {
         None
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

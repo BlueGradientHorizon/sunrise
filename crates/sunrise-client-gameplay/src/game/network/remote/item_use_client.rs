@@ -26,7 +26,7 @@ impl crate::game::ClientGame<'_> {
         if !(sneaking && hands_full) && &*name == "minecraft:tnt" {
             return true;
         }
-        if self.common.can_light(clicked, &name) {
+        if self.can_light(clicked, &name) {
             let registry = self.common.pack.assets.registry;
             if let Some(mut state) = registry.state(clicked).cloned() {
                 state.properties.insert("lit".into(), "true".into());
@@ -50,7 +50,7 @@ impl crate::game::ClientGame<'_> {
                 sunrise_items::items::fire_starter_pitch(is_fire_charge, &mut self.common.world.random);
             self.client.audio.0.play(sound, Some(at), 1.0, pitch);
             if is_fire_charge && !self.common.creative {
-                self.common.with_hand(hand, Game::consume_held);
+                self.with_hand(hand, Game::consume_held);
             }
             return true;
         }
@@ -73,7 +73,7 @@ impl crate::game::ClientGame<'_> {
             ];
             self.client.audio.0.play(sound, Some(target_at), 1.0, pitch);
             if is_fire_charge && !self.common.creative {
-                self.common.with_hand(hand, Game::consume_held);
+                self.with_hand(hand, Game::consume_held);
             }
             return true;
         }
@@ -82,3 +82,7 @@ impl crate::game::ClientGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

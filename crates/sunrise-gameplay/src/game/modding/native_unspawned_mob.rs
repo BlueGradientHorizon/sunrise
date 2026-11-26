@@ -73,7 +73,7 @@ struct Withdraw<'a, 'g, 'm> {
 impl Drop for Withdraw<'_, '_, '_> {
     fn drop(&mut self) {
         let lent = {
-            let mut lent = self.game.side.lent_mobs.0.borrow_mut();
+            let mut lent = self.game.server.lent_mobs.0.borrow_mut();
             let at = lent.lends.iter().rposition(|l| l.handle == self.handle);
             at.map(|at| lent.lends.remove(at))
         };

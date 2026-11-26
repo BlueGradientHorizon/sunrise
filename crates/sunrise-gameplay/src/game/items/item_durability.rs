@@ -52,7 +52,7 @@ impl crate::game::ServerGame<'_> {
         if let Some(damage) = hit.helmet_damage() {
             let hit_source = hit.source(attack);
             self.hurt_helmet(&hit_source, damage);
-            self.common.refresh_armor_protection();
+            self.refresh_armor_protection();
         }
         let armor_damage = self
             .common.player
@@ -72,7 +72,7 @@ impl crate::game::ServerGame<'_> {
         if let Some(damage) = armor_damage {
             let hit_source = hit.source(attack);
             self.hurt_armor(&hit_source, damage);
-            self.common.refresh_armor_protection();
+            self.refresh_armor_protection();
         }
         self.common.player
             .as_mut()
@@ -172,7 +172,7 @@ impl crate::game::ServerGame<'_> {
                 || component("minecraft:unbreakable").is_some()
                 || component("!minecraft:max_damage").is_some()
                 || component("!minecraft:damage").is_some()
-                || !self.common.stack_can_be_hurt_by(&stack, name).unwrap_or(true)
+                || !self.stack_can_be_hurt_by(&stack, name).unwrap_or(true)
             {
                 return None;
             }
@@ -237,8 +237,8 @@ impl crate::game::ServerGame<'_> {
                 self.common.armor[index] = updated;
                 if let Some(stack) = broken {
                     self.player_equipment_broke(armor_slot(index), &stack);
-                    self.common.player_item_destroyed(&before, None);
-                    self.common.apply_equipment();
+                    self.player_item_destroyed(&before, None);
+                    self.apply_equipment();
                 }
             }
         }
@@ -258,7 +258,7 @@ impl crate::game::ServerGame<'_> {
     ) {
         let hand = self.common.hand;
         if let Some(original) = self.apply_held_damage(amount, break_slot) {
-            self.common.player_item_destroyed(&original, Some(hand));
+            self.player_item_destroyed(&original, Some(hand));
         }
     }
 
@@ -307,7 +307,7 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         let amount = self.wear(&held, amount);
-        let max = self.common.trident_max_damage(&held);
+        let max = self.trident_max_damage(&held);
         if amount == 0 || max == 0 {
             return;
         }
@@ -318,3 +318,9 @@ impl crate::game::ServerGame<'_> {
         });
     }
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1 as _;

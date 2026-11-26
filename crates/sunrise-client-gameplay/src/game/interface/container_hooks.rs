@@ -216,13 +216,13 @@ impl Container for Open<'_, '_> {
     }
     fn spread(&self) -> usize {
         self.game()
-            .side
+            .client
             .inv_drag
             .as_ref()
             .map_or(0, |(_, slots)| slots.len())
     }
     fn cursor(&self) -> (f32, f32) {
-        let (x, y) = self.game().side.cursor;
+        let (x, y) = self.game().client.cursor;
         (x - self.origin.0, y - self.origin.1)
     }
     fn shift(&self) -> bool {

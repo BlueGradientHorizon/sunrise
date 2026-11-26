@@ -397,3 +397,5 @@ pub(in crate::game) mod tests {
         );
     }
 }
+
+use sunrise_gameplay_common::game::memory_common::MemoryCommonGameExt1 as _;

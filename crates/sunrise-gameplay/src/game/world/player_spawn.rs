@@ -101,10 +101,14 @@ impl crate::game::ServerGame<'_> {
         self.common.player_state.attachments.retire();
         self.common.resident_entities.local_player.renew();
         self.common.player = Some(player);
-        self.common.bind_local_player_residency();
-        self.common.apply_equipment();
+        self.bind_local_player_residency();
+        self.apply_equipment();
         self.common.eye = 1.62;
         self.common.clock.reset();
         Ok(())
     }
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

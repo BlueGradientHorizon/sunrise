@@ -194,3 +194,5 @@ fn the_parse_check_is_the_live_feature_codec_and_only_where_it_exists() {
         Some("An unexpected error occurred while trying to execute that command")
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

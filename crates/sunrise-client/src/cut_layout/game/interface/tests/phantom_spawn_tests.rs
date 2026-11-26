@@ -168,3 +168,5 @@ fn no_phantoms_under_a_roof_the_sky_light_does_not_reach() {
         assert!(phantoms.is_empty(), "no phantom under {roof}");
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

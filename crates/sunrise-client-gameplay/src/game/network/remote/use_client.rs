@@ -11,7 +11,7 @@ impl crate::game::ClientGame<'_> {
     ) {
         if done
             && self.common.swings_started != swings
-            && let Some(after) = self.common.with_hand(hand, |g| g.held().map(|s| s.count))
+            && let Some(after) = self.with_hand(hand, |g| g.held().map(|s| s.count))
             && (Some(after) != before || self.common.creative)
         {
             self.client.heights.item_used(hand);
@@ -86,7 +86,7 @@ impl crate::game::ClientGame<'_> {
         let player = sunrise_world::level::PlayerContext {
             yaw: self.common.yaw,
             pitch: self.common.pitch,
-            may_build: self.common.may_build(),
+            may_build: self.may_build(),
             can_eat: self.common.creative
                 || self
                     .common.player
@@ -95,7 +95,7 @@ impl crate::game::ClientGame<'_> {
             game_master: self.common.can_use_game_master_blocks(),
             respawn_point: None,
         };
-        self.common.with_block_use_level(|b, level, live| {
+        self.with_block_use_level(|b, level, live| {
             let mut level = DryLevel::new(level);
             level.reads = Some(live);
             level.asks_mods = asks_mods;
@@ -168,8 +168,8 @@ impl crate::game::ClientGame<'_> {
         };
         // Consumable.onConsume's emitParticlesAndSounds(16): the last crumbs
         // and bite, which the server plays for the others only.
-        if let Some(consumable) = self.common.consumable(&stack) {
-            self.common.emit_consume(&consumable, &stack, 16);
+        if let Some(consumable) = self.consumable(&stack) {
+            self.emit_consume(&consumable, &stack, 16);
         }
         if let Some((nutrition, saturation)) = info.food
             && let Some(r) = self.client.remote.as_mut()
@@ -190,7 +190,7 @@ impl crate::game::ClientGame<'_> {
         stack: &ItemStack,
         asks_mods: bool,
     ) -> Option<DryPlace> {
-        if !self.common.may_build() && !self.stack_can_place_on_in_adventure(stack, hit.pos) {
+        if !self.may_build() && !self.stack_can_place_on_in_adventure(stack, hit.pos) {
             return None;
         }
         let ctx = sunrise_world::level::PlaceContext {
@@ -298,19 +298,19 @@ impl crate::game::ClientGame<'_> {
             // BundleItem.use: always starts; the server drops the contents.
             _ if bundle => true,
             // BowItem.use: with an arrow, or in creative.
-            "minecraft:bow" => self.common.get_projectile(held).is_some() || self.common.creative,
+            "minecraft:bow" => self.get_projectile(held).is_some() || self.common.creative,
             // CrossbowItem.use: charging when not charged and with ammunition;
             // a charged one shoots on the server.
             "minecraft:crossbow" => {
                 if held.data().is_some_and(|d| !d.charged.is_empty()) {
                     return true;
                 }
-                self.common.get_projectile(held).is_some()
+                self.get_projectile(held).is_some()
             }
             // TridentItem.use: not about to break, Riptide only in water or rain.
             "minecraft:trident" => {
                 // FAIL: no dip, and the off hand gets its turn.
-                return self.common.use_trident(held);
+                return self.use_trident(held);
             }
             // SpyglassItem.use (its sound is the server's).
             "minecraft:spyglass" => true,
@@ -334,18 +334,18 @@ impl crate::game::ClientGame<'_> {
                     .get(&held.item)
                     .and_then(|i| i.use_cooldown.as_ref());
                 let group = sunrise_items::cooldowns::group(held, default);
-                if self.common.blocks_attacks(held).is_some() {
+                if self.blocks_attacks(held).is_some() {
                     if !self.common.cooldowns.is_on_cooldown(&group) {
-                        self.common.start_using_item();
+                        self.start_using_item();
                     }
                 } else if self.patched_held_use(held) {
-                    self.common.start_using_item();
+                    self.start_using_item();
                 }
                 return true;
             }
         };
         if start {
-            self.common.start_using_item();
+            self.start_using_item();
         }
         start || !matches!(&*held.item, "minecraft:bow" | "minecraft:crossbow")
     }
@@ -358,7 +358,7 @@ impl crate::game::ClientGame<'_> {
         attempt: mod_api::InteractionAttempt,
         hit: Option<Hit>,
     ) -> bool {
-        let before = self.common.with_hand(hand, |g| g.held().map(|s| s.count));
+        let before = self.with_hand(hand, |g| g.held().map(|s| s.count));
         let swings = self.common.swings_started;
         let done = self.remote_use_item_on(hand, attempt, hit);
         self.finish_remote_use_block(hand, before, swings, done);
@@ -377,18 +377,18 @@ impl crate::game::ClientGame<'_> {
     ) -> (bool, Option<DryChanges>, Vec<DrySound>) {
         // `BucketItem.use`: `level.mayInteract` and `mayUseItemAt`.
         // `Player.mayUseItemAt` tests the clicked block against `can_place_on`.
-        if !self.common.may_build() {
+        if !self.may_build() {
             let aim = if &*stack.item == "minecraft:bucket" {
-                self.common.bucket_hit()
+                self.bucket_hit()
             } else {
-                self.common.pick()
+                self.pick()
             };
-            if !aim.is_some_and(|hit| self.common.can_place_on_in_adventure(hit.pos)) {
+            if !aim.is_some_and(|hit| self.can_place_on_in_adventure(hit.pos)) {
                 return (false, None, Vec::new());
             }
         }
         if &*stack.item == "minecraft:bucket" {
-            let Some(hit) = self.common.bucket_hit() else {
+            let Some(hit) = self.bucket_hit() else {
                 return (false, None, Vec::new());
             };
             let pos = sunrise_core::position::BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]);
@@ -406,15 +406,15 @@ impl crate::game::ClientGame<'_> {
         let Some((content, sound, _)) = self.predicted_bucket_contents(stack) else {
             return (false, None, Vec::new());
         };
-        let Some(hit) = self.common.pick() else {
+        let Some(hit) = self.pick() else {
             return (false, None, Vec::new());
         };
-        let target = self.common.bucket_target(content, &hit);
+        let target = self.bucket_target(content, &hit);
         let pos = sunrise_core::position::BlockPos::new(target[0], target[1], target[2]);
         let [x, y, z] = hit.beside();
         let beside = Some(sunrise_core::position::BlockPos::new(x, y, z));
         let sneaking = self.remote_shift_down();
-        let user = self.common.bucket_liquid_user();
+        let user = self.bucket_liquid_user();
         self.common.with_level(|b, level, ticks| {
             let mut level = DryLevel::new(level);
             let emptied = b.bucket_empty_as(
@@ -440,8 +440,8 @@ impl crate::game::ClientGame<'_> {
         let miss = block_hit.is_none()
             && mod_api::__private::listened(mod_api::HookId::RightClickEmpty)
             && !self.entity_targeted()
-            && self.common.pick().is_none();
-        if miss && self.common.with_hand(hand, |g| g.held().is_none()) {
+            && self.pick().is_none();
+        if miss && self.with_hand(hand, |g| g.held().is_none()) {
             self.native_right_click_empty(hand);
         }
         // A successful Item.use always drops the hand (LocalPlayer.itemUsed).
@@ -487,8 +487,8 @@ impl crate::game::ClientGame<'_> {
         if self.common.cooldowns.is_on_cooldown(&group) {
             return;
         }
-        self.common.start_using_item();
-        self.common.play_player_bound_sound(&instrument.sound, 2, instrument.range / 16.0, 1.0, true);
+        self.start_using_item();
+        self.play_player_bound_sound(&instrument.sound, 2, instrument.range / 16.0, 1.0, true);
         if instrument.use_duration > 0.0 {
             self.common.cooldowns.add(group, instrument.use_ticks());
         }
@@ -515,7 +515,7 @@ impl crate::game::ClientGame<'_> {
             r.destroy_delay -= 1;
             return true;
         }
-        let Some(hit) = self.common.pick() else {
+        let Some(hit) = self.pick() else {
             self.set_client_mining(None);
             return true;
         };
@@ -566,7 +566,7 @@ impl crate::game::ClientGame<'_> {
         // The server's own getDestroyProgress: under water, off the ground,
         // with haste, fatigue and efficiency, so the client stops digging
         // when the server is done too (#1254).
-        let progress = self.common.destroy_progress(hit.pos);
+        let progress = self.destroy_progress(hit.pos);
         if !same || start {
             let proposed = if progress >= 1.0 { 1.0 } else { 0.0 };
             if self.veto_mining_prediction(hit.pos, hit.face, true, proposed) {
@@ -686,3 +686,13 @@ use sunrise_gameplay_common::game::end_common::EndGameExt as _;
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::cake_eligibility::CakeEligibilityGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

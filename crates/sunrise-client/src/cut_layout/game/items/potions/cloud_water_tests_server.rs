@@ -194,3 +194,7 @@ pub(in crate::game) fn run_a_cloud_in_water_resets_its_fall_distance_and_a_dry_o
         );
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

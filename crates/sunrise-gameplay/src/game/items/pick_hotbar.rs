@@ -15,7 +15,7 @@ impl crate::game::ServerGame<'_> {
         // With no such part, no player id is made and each hotbar stack costs nothing more.
         let player =
             mod_api::__private::has_part_hook(mod_api::HookId::IsNotReplaceableByPickAction)
-                .then(|| self.common.native_acting_id());
+                .then(|| self.native_acting_id());
         let picked = sunrise_sim::pick_item::plan(
             &self.common.inventory[..36],
             self.common.selected,
@@ -49,3 +49,5 @@ impl crate::game::ServerGame<'_> {
         not_replaceable
     }
 }
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

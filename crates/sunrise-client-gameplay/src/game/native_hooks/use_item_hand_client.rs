@@ -7,12 +7,12 @@ impl crate::game::ClientGame<'_> {
             return None;
         }
         let kind = self.client_entity_interaction_kind(id)?;
-        let stack = self.common.with_hand(hand, |g| g.held().cloned());
+        let stack = self.with_hand(hand, |g| g.held().cloned());
         let mut result = None;
         self.native_entity_interact(hand, id, &kind, stack.as_ref(), &mut result);
         match result? {
             mod_api::InteractionResult::Pass | mod_api::InteractionResult::TryWithEmptyHand => None,
-            answer => Some(self.common.with_hand(hand, |g| g.interaction_consumed(answer))),
+            answer => Some(self.with_hand(hand, |g| g.interaction_consumed(answer))),
         }
     }
 
@@ -23,12 +23,16 @@ impl crate::game::ClientGame<'_> {
     ) -> Option<bool> {
         if let Some(answer) = self.common.right_click_item(hand, stack) {
             if answer == mod_api::InteractionResult::Success {
-                self.common.with_hand(hand, Game::swing_arm);
+                self.with_hand(hand, Game::swing_arm);
             }
             return Some(answer.consumes_action());
         }
-        self.common.with_hand(hand, |g| g.use_item_in_hand(stack))
+        self.with_hand(hand, |g| g.use_item_in_hand(stack))
     }
 }
 
 use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::use_item_hand::UseItemHandGameExt1 as _;

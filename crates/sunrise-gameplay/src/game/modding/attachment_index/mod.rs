@@ -29,7 +29,7 @@ impl crate::game::ServerGame<'_> {
         if !self.native_authoritative() {
             return;
         }
-        let Some(level) = self.common.level(self.common.dim.id()) else {
+        let Some(level) = self.level(self.common.dim.id()) else {
             return;
         };
         let Some(map) = self
@@ -49,7 +49,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Publish the dimension's saved maps before listeners observe its load.
     pub(in crate::game) fn bind_dimension_attachments(&mut self, dim: Dim) {
-        let Some(level) = self.common.level(dim.id()) else {
+        let Some(level) = self.level(dim.id()) else {
             return;
         };
         let index = self.common.attachment_indexes.entry(dim).or_default();
@@ -81,3 +81,5 @@ impl crate::game::ServerGame<'_> {
             )));
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

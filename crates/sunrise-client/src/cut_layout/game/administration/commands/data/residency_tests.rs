@@ -182,3 +182,5 @@ fn data_edits_keep_hit_cooldown_separate_from_saved_immunity() {
         assert_eq!(mob.invulnerable_time, 7);
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

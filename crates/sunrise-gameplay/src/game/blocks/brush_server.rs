@@ -134,7 +134,7 @@ impl crate::game::ServerGame<'_> {
             let mut drops = vec![item];
             let tool = self.common.stack_in(slot).cloned();
             let origin = pos.map(|c| f64::from(c) + 0.5);
-            let player = Some(self.common.native_acting_id());
+            let player = Some(self.native_acting_id());
             self.native_use_drops(
                 "",
                 origin,
@@ -174,7 +174,7 @@ impl crate::game::ServerGame<'_> {
         // the same way. A guest acts on its client's targeted block, whose view
         // we cannot trace here, so only the local aim runs the entity test.
         if self.server.forced_hit.is_none()
-            && let Some((eye, _)) = self.common.aim()
+            && let Some((eye, _)) = self.aim()
             && let Some((_, mob, _)) = self.common.mob_hit_within(self.common.block_reach)
         {
             let block = (
@@ -257,3 +257,7 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

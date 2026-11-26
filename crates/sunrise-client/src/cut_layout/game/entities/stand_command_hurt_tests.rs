@@ -513,3 +513,5 @@ fn an_always_killing_source_posts_only_entity_die_for_a_stand_without_a_cause() 
     });
     assert!(matches!(&posted[..], [("minecraft:entity_die", None)]));
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -23,10 +23,10 @@ impl crate::game::ServerGame<'_> {
             Target::Player => self
                 .common.player
                 .as_ref()
-                .map(|_| self.common.own_entity_id() as u32)
+                .map(|_| self.own_entity_id() as u32)
                 .filter(|&id| id != 0),
             Target::Guest(conn) => self
-                .common.command_guest(conn)
+                .command_guest(conn)
                 .filter(|g| g.dimension == self.common.dim.id())
                 .map(|g| g.entity_id as u32),
             _ => None,
@@ -43,10 +43,10 @@ impl crate::game::ServerGame<'_> {
         force: bool,
     ) -> Result<(), RidePlayerRefusal> {
         let rider = self
-            .common.native_entity_target(entity)
+            .native_entity_target(entity)
             .ok_or(RidePlayerRefusal::NoEntity)?;
         let vehicle = self
-            .common.native_entity_target(player)
+            .native_entity_target(player)
             .ok_or(RidePlayerRefusal::NoEntity)?;
         if !matches!(vehicle, Target::Player | Target::Guest(_)) {
             return Err(RidePlayerRefusal::NotAPlayer);
@@ -99,13 +99,13 @@ impl crate::game::ServerGame<'_> {
     /// hears it); one a listener kept on is taken off anyway. Nothing to do, and nothing
     /// allocated, while no mob rides a player, which is every vanilla game.
     pub(in crate::game) fn eject_player_riders(&mut self, vehicle: Option<u32>) {
-        let own = self.common.player.as_ref().map(|_| self.common.own_entity_id() as u32);
+        let own = self.common.player.as_ref().map(|_| self.own_entity_id() as u32);
         let is_player =
             |game: &Self, v: u32| match vehicle {
                 Some(only) => v == only,
                 None => {
                     own == Some(v)
-                        || game.side.lan.as_ref().is_some_and(|host| {
+                        || game.server.lan.as_ref().is_some_and(|host| {
                             host.hub.guests.iter().any(|g| g.entity_id as u32 == v)
                         })
                 }
@@ -162,12 +162,12 @@ impl crate::game::ServerGame<'_> {
         if self.player_vehicle(vehicle).is_none() {
             return false;
         }
-        let Some(player) = self.common.entity(vehicle) else {
+        let Some(player) = self.entity(vehicle) else {
             return false;
         };
         let (Some([x, _, z]), Some([low, high])) = (
-            self.common.entity_position(player),
-            self.common.entity_bounding_box(player),
+            self.entity_position(player),
+            self.entity_bounding_box(player),
         ) else {
             return false;
         };
@@ -237,10 +237,10 @@ impl crate::game::ServerGame<'_> {
     /// player in place or a guest here. None on a client, or for any other id.
     pub(in crate::game) fn player_vehicle(&self, id: u32) -> Option<Target> {
         let entity = EntityRef::new(self.common.native_lifecycle.epoch()?, id);
-        match self.common.native_entity_target(entity)? {
+        match self.native_entity_target(entity)? {
             Target::Player => self.common.player.as_ref().map(|_| Target::Player),
             Target::Guest(conn) => self
-                .common.command_guest(conn)
+                .command_guest(conn)
                 .filter(|g| g.dimension == self.common.dim.id())
                 .map(|_| Target::Guest(conn)),
             _ => None,
@@ -253,16 +253,26 @@ impl crate::game::ServerGame<'_> {
         match self.player_vehicle(id) {
             Some(player) => self.native_player_vehicle_id(player),
             None => self
-                .common.native_vehicle_id(Target::Mob(id))
-                .or_else(|| self.common.native_vehicle_id(Target::General(id))),
+                .native_vehicle_id(Target::Mob(id))
+                .or_else(|| self.native_vehicle_id(Target::General(id))),
         }
     }
 
     fn native_player_vehicle_id(&self, player: Target) -> Option<u32> {
         match player {
             Target::Player => self.common.riding,
-            Target::Guest(conn) => self.common.command_guest(conn)?.vehicle,
+            Target::Guest(conn) => self.command_guest(conn)?.vehicle,
             _ => None,
         }
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

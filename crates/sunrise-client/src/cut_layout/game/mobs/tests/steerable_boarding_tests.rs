@@ -258,3 +258,5 @@ pub(in sunrise_gameplay::game::server_side) fn run_interact_with_a_pig_or_stride
         },
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

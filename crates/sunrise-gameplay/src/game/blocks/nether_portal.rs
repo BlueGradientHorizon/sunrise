@@ -1155,7 +1155,7 @@ impl crate::game::ServerGame<'_> {
                         self.tridents,
                         index,
                         t,
-                        &mut self.side.next_entity,
+                        &mut self.server.next_entity,
                         None
                     );
                 }
@@ -1167,7 +1167,7 @@ impl crate::game::ServerGame<'_> {
                         self.rockets,
                         index,
                         r,
-                        &mut self.side.next_entity,
+                        &mut self.server.next_entity,
                         None
                     );
                 }
@@ -1360,8 +1360,8 @@ impl crate::game::ServerGame<'_> {
         if let Some(o) = self.common.orbs.iter().find(|o| o.id == id) {
             return Some((o.position, 0.5, 0.5));
         }
-        let entity = self.common.entity(id)?;
-        let target = self.common.native_entity_target(entity)?;
+        let entity = self.entity(id)?;
+        let target = self.native_entity_target(entity)?;
         if matches!(
             target,
             super::commands::Target::Stand(_)
@@ -1401,8 +1401,8 @@ impl crate::game::ServerGame<'_> {
         id: u32,
     ) -> Option<(Tag, super::entity_initialization::TransferredEntityState)> {
         use super::commands::Target;
-        let entity = self.common.entity(id)?;
-        let target = self.common.native_entity_target(entity)?;
+        let entity = self.entity(id)?;
+        let target = self.native_entity_target(entity)?;
         if matches!(
             target,
             Target::Stand(_)
@@ -1815,7 +1815,7 @@ impl crate::game::ServerGame<'_> {
         // Resolve the surviving arrival by the resident UUID index after them.
         let Some(entity) = uuid.and_then(|uuid| {
             self.level_entity_by_uuid(
-                self.common.native_current_level()?,
+                self.native_current_level()?,
                 mod_api::EntityUuid(sunrise_sim::lan::playerdata::ints_uuid(uuid)),
             )
         }) else {
@@ -1857,7 +1857,7 @@ impl crate::game::ServerGame<'_> {
                     &mut cells,
                     item,
                     false,
-                    &|stack| self.common.stack_max_size(stack).max(1),
+                    &|stack| self.stack_max_size(stack).max(1),
                 );
             }
             let mut removed = removed.into_iter();
@@ -2030,7 +2030,7 @@ pub mod tests {
         entry: BlockPos,
         expected: i32,
     ) {
-        game.side.portals.entities.insert(
+        game.server.portals.entities.insert(
             id,
             PortalState {
                 cooldown: 0,
@@ -2042,7 +2042,7 @@ pub mod tests {
             },
         );
         game.set_portal_cooldown(id);
-        let state = game.side.portals.entities.get_mut(&id).unwrap();
+        let state = game.server.portals.entities.get_mut(&id).unwrap();
         assert_eq!(state.cooldown, expected);
         let process = state.process.unwrap();
         assert_eq!(process.entry, entry);
@@ -2050,9 +2050,9 @@ pub mod tests {
         assert!(process.inside);
         state.cooldown = 1;
         assert!(game.restart_portal_cooldown(id));
-        assert_eq!(game.side.portals.entities[&id].cooldown, expected);
+        assert_eq!(game.server.portals.entities[&id].cooldown, expected);
         let delay = game.dimension_changing_delay(id);
-        let state = game.side.portals.entities.get_mut(&id).unwrap();
+        let state = game.server.portals.entities.get_mut(&id).unwrap();
         assert_eq!(state.handle(true, 0, delay), Some(entry));
         assert_eq!(state.cooldown, expected);
         assert_eq!(state.handle(true, 0, delay), None);
@@ -2365,3 +2365,13 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

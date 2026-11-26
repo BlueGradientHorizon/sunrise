@@ -105,3 +105,5 @@ fn a_piglin_converting_as_its_admiring_ends_drops_its_stash_and_is_replaced_befo
         })
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

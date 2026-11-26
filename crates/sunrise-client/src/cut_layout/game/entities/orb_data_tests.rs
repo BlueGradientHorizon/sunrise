@@ -211,3 +211,5 @@ fn the_merge_keeps_the_live_orb_and_its_portal_process() {
         assert_eq!(game.orbs.len(), 2);
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

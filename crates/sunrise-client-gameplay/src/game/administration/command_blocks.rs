@@ -456,7 +456,7 @@ impl crate::game::ClientGame<'_> {
             auto: s.auto,
         };
         assert!(
-            self.side.remote.is_some(),
+            self.client.remote.is_some(),
             "set_command_block called without a server connection"
         );
         self.send(S::SetCommandBlock(play::SetCommandBlock {
@@ -493,7 +493,7 @@ pub(in crate::game) mod tests {
             assert_eq!(game.side.screen, Screen::CommandBlock);
             game.build_screen();
             let boxes = |game: &crate::game::ClientGame<'_>| {
-                let s = game.side.command_block_screen.0.as_ref().unwrap();
+                let s = game.client.command_block_screen.0.as_ref().unwrap();
                 let (i, p) = (&s.command.input, &s.previous);
                 ([i.x, i.y, i.width, i.height], [p.x, p.y, p.width, p.height])
             };

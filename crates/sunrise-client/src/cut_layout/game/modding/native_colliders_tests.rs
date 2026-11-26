@@ -1006,3 +1006,9 @@ fn the_level_records_its_colliders_as_each_tick_begins() {
         assert!(game.level_collider_history().is_none());
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::piston_push::carrying::CarryingGameExt1 as _;

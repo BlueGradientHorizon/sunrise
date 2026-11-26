@@ -5,9 +5,9 @@ use sunrise_core::position::BlockPos;
 use sunrise_sim::stations::bookshelf_offsets;
 use sunrise_world::registry::BlockStateId;
 
-impl crate::game::CommonGame<'_> {
+pub trait BookshelvesCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The enchanting power around the table at `pos`, truncated as NeoForge's `(int) power`.
-    pub fn count_bookshelves(&self, pos: [i32; 3]) -> i32 {
+     fn count_bookshelves(&self, pos: [i32; 3]) -> i32 {
         let table = BlockPos::new(pos[0], pos[1], pos[2]);
         let level = self.native_current_level();
         let power: f32 = bookshelf_offsets()
@@ -28,7 +28,7 @@ impl crate::game::CommonGame<'_> {
         (power as i32).max(0)
     }
 
-    pub fn enchant_transmits(&self, state: BlockStateId) -> bool {
+     fn enchant_transmits(&self, state: BlockStateId) -> bool {
         self.items()
             .block_tags
             .get("minecraft:enchantment_power_transmitter")
@@ -36,7 +36,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// Raw provider answer. The explicit read returns it as given.
-    pub(in crate::game) fn enchant_power(
+     fn enchant_power(
         &self,
         level: Option<LevelRef>,
         state: BlockStateId,
@@ -54,13 +54,13 @@ impl crate::game::CommonGame<'_> {
         })
     }
 
-    pub(in crate::game) fn default_enchant_power(&self, state: BlockStateId) -> f32 {
+     fn default_enchant_power(&self, state: BlockStateId) -> f32 {
         self.items()
             .default_enchant_power(&self.res.facts().get(state).name)
     }
 
     /// Offers and particles ignore non-finite overrides and keep the tag default.
-    pub fn enchant_power_for_table(
+     fn enchant_power_for_table(
         &self,
         level: Option<LevelRef>,
         state: BlockStateId,
@@ -76,7 +76,11 @@ impl crate::game::CommonGame<'_> {
         })
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> BookshelvesCommonGameExt1<'__sg> for G {}
+
 
 use crate::game::tables::GameItems as _;
 
 use crate::game::tables::WorldTablesExt as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

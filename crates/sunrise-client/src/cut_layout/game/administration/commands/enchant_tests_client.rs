@@ -168,3 +168,5 @@ fn integrated_enchant_updates_the_clients_selected_slot() {
         assert_eq!(riptide(client.inventory[selected].as_ref()), 3);
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

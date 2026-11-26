@@ -190,3 +190,5 @@ fn fake_kicks_leave_once_with_the_first_reason() {
         });
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

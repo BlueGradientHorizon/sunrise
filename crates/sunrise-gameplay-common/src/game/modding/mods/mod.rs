@@ -1748,7 +1748,7 @@ pub struct ModsReload {
     pub refused: Arc<Mutex<Vec<MissingJar>>>,
 }
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
+impl crate::game::CommonGame<'_> {
     #[cfg(test)]
     pub(in crate::game) fn initialize_mod_runtime_for_tests() {
         static INITIALIZED: std::sync::Once = std::sync::Once::new();
@@ -1757,20 +1757,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             mod_platform::__private::initialize()
                 .expect("engine test runtime initializes before mod dispatch");
         });
-    }
-
-    /// Publish the initial generation's captured settings to its loop readers.
-    /// An integrated server has a distinct origin and captures its own inputs.
-    pub fn refresh_loop_context(&mut self) -> sunrise_game_data::Result<()> {
-        let role = self.options.execution_role;
-        let load = self.res.core.item_data.context();
-        let context = if load.origin() == role.data_load_origin() {
-            self.loop_context_readers(load.captured_loop_context(role.loop_side()))
-        } else {
-            self.prepare_loop_context(&self.options.resources)?
-        };
-        self.install_loop_context(context);
-        Ok(())
     }
 
     pub fn prepare_loop_context(
@@ -1806,26 +1792,6 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
     }
 
-    pub fn install_loop_context(&mut self, context: PreparedLoopContext) {
-        self.protect_condition_root();
-        self.loop_context = context.game;
-        self.refresh_recipe_property_context();
-        self.setting_overrides.borrow_mut().clear();
-        self.side_set_audio_loop_context(context.audio);
-        if let Some(worldgen) = context.worldgen {
-            sunrise_world::native_worldgen_hooks::publish_context(Arc::new(worldgen));
-        }
-    }
-
-    /// Apply the player's switches at the canonical native dispatch boundary.
-    pub fn sync_native_switches(&self) {
-        let (effective, _) = self
-            .mods
-            .reconcile_code_switches(&crate::game::Side::mods_list(&self.side).disabled);
-        self.side_retire_disabled_instance_groups(&effective);
-        self.mods.apply_code_switches(&effective);
-    }
-
     /// Stage a fresh root when admission changes or registered conditions need reevaluation.
     /// The caller publishes it after every server reload listener prepared.
     pub(in crate::game) fn stage_enabled_inventory(
@@ -1855,11 +1821,48 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         )?;
         Ok(Some(overlay.root))
     }
+}
+
+pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+
+    /// Publish the initial generation's captured settings to its loop readers.
+    /// An integrated server has a distinct origin and captures its own inputs.
+     fn refresh_loop_context(&mut self) -> sunrise_game_data::Result<()> {
+        let role = self.options.execution_role;
+        let load = self.res.core.item_data.context();
+        let context = if load.origin() == role.data_load_origin() {
+            self.loop_context_readers(load.captured_loop_context(role.loop_side()))
+        } else {
+            self.prepare_loop_context(&self.options.resources)?
+        };
+        self.install_loop_context(context);
+        Ok(())
+    }
+
+     fn install_loop_context(&mut self, context: PreparedLoopContext) {
+        self.protect_condition_root();
+        self.loop_context = context.game;
+        self.refresh_recipe_property_context();
+        self.setting_overrides.borrow_mut().clear();
+        self.side_set_audio_loop_context(context.audio);
+        if let Some(worldgen) = context.worldgen {
+            sunrise_world::native_worldgen_hooks::publish_context(Arc::new(worldgen));
+        }
+    }
+
+    /// Apply the player's switches at the canonical native dispatch boundary.
+     fn sync_native_switches(&self) {
+        let (effective, _) = self
+            .mods
+            .reconcile_code_switches(&crate::game::Side::mods_list(self.side_state()).disabled);
+        self.side_retire_disabled_instance_groups(&effective);
+        self.mods.apply_code_switches(&effective);
+    }
 
     /// Lists the installed mods on the Mods page. Content mods load with the resources
     /// (`content_root`); native ones are built into the game (`native_hooks.rs`). Unsupported
     /// files get the same unreadable-file row as any other invalid package.
-    pub fn start_mods(&mut self) {
+     fn start_mods(&mut self) {
         let dir = crate::game::game_dir().join(mod_list::DIR);
         let mut paths = sunrise_mod_package::find(&dir);
         paths.retain(|p| !self.mods.dev.contains(p));
@@ -1905,21 +1908,21 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 }
             })
             .collect();
-        crate::game::Side::mods_list_mut(&mut self.side).installed = installed;
+        crate::game::Side::mods_list_mut(self.side_state_mut()).installed = installed;
         for (id, info) in &mut info {
             info.warnings = mod_api::__private::registration_warnings(id)
                 .into_iter()
                 .map(|w| (w.key().to_owned(), w.args().to_vec()))
                 .collect();
         }
-        crate::game::Side::mods_list_mut(&mut self.side).info = info;
+        crate::game::Side::mods_list_mut(self.side_state_mut()).info = info;
         (self.mods.content_ids, self.mods.live_ids) = (content_ids, live_ids);
         if self.mods.applied.is_none() {
-            self.mods.applied = Some(crate::game::Side::mods_list(&self.side).enabled.clone());
+            self.mods.applied = Some(crate::game::Side::mods_list(self.side_state()).enabled.clone());
         }
         if self.mods.code_switches.is_none() {
             self.mods
-                .capture_code_switches(&crate::game::Side::mods_list(&self.side).disabled);
+                .capture_code_switches(&crate::game::Side::mods_list(self.side_state()).disabled);
         }
         // A mod with a native version built in says so instead, and isn't news.
         self.side_list_native_mods();
@@ -1934,17 +1937,19 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         let unbuilt = not_built(
             &native_dir,
             built,
-            &crate::game::Side::mods_list(&self.side).installed,
+            &crate::game::Side::mods_list(self.side_state()).installed,
         );
-        crate::game::Side::mods_list_mut(&mut self.side)
+        crate::game::Side::mods_list_mut(self.side_state_mut())
             .installed
             .extend(unbuilt);
         self.mods
-            .report_refusals(&mut crate::game::Side::mods_list_mut(&mut self.side).installed);
-        crate::game::Side::mods_list_mut(&mut self.side)
+            .report_refusals(&mut crate::game::Side::mods_list_mut(self.side_state_mut()).installed);
+        crate::game::Side::mods_list_mut(self.side_state_mut())
             .apply_dependency_notices(&self.mods.load_notices.lock().unwrap());
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> ModGameExt1<'__sg> for G {}
+
 
 /// Mob types loaded from a scratch root whose `entity-types.json` has a
 /// zombie, a villager, a wandering trader, a wolf, a cat and a parrot, and the

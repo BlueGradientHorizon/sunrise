@@ -35,38 +35,38 @@ impl ClientGame<'_> {
         let mut best: Option<(f64, String)> = None;
         let mut offer = |hit: Option<(f64, String)>| {
             if let Some((distance, kind)) = hit
-                && self.common.before_block(distance)
+                && self.before_block(distance)
                 && best.as_ref().is_none_or(|b| distance < b.0)
             {
                 best = Some((distance, kind));
             }
         };
         offer(
-            self.common.mob_hit()
+            self.mob_hit()
                 .map(|(i, d, _)| (d, self.common.mobs[i].kind.id.to_string())),
         );
         offer(
-            self.common.boat_hit()
+            self.boat_hit()
                 .map(|(i, d)| (d, self.common.boats[i].entity_type())),
         );
         offer(
-            self.common.cart_hit()
+            self.cart_hit()
                 .map(|(i, d)| (d, self.common.carts[i].kind.id().to_owned())),
         );
         offer(
-            self.common.armor_stand_hit()
+            self.armor_stand_hit()
                 .map(|(_, d, _)| (d, "minecraft:armor_stand".to_owned())),
         );
         offer(
-            self.common.frame_hit()
+            self.frame_hit()
                 .map(|(i, d)| (d, self.common.item_frames[i].kind().to_owned())),
         );
         offer(
-            self.common.painting_hit()
+            self.painting_hit()
                 .map(|(_, d)| (d, "minecraft:painting".to_owned())),
         );
         offer(
-            self.common.dragon_hit()
+            self.dragon_hit()
                 .map(|(_, d)| (d, "minecraft:ender_dragon".to_owned())),
         );
         best.map(|b| b.1)
@@ -88,7 +88,7 @@ impl ClientGame<'_> {
     }
     /// `Entity.pick(20, 0, false)` from the camera: the block outline hit.
     pub(in crate::game::client_side) fn debug_block_hit(&self) -> Option<[i32; 3]> {
-        let (origin, dir) = self.common.aim()?;
+        let (origin, dir) = self.aim()?;
         Some(self.common.clip_ray(origin, dir, LOOKING_AT_RANGE)?.pos)
     }
     /// `LevelExtractor.sectionStatistics`: the sections drawn of the view
@@ -105,7 +105,7 @@ impl ClientGame<'_> {
         d.line(format!(
             "C: {}/{total} (s) D: {distance}, pC: {:03}, aB: {:02}",
             r.drawn_sections,
-            self.side.streaming.pending(),
+            self.client.streaming.pending(),
             0
         ));
     }
@@ -153,7 +153,7 @@ impl ClientGame<'_> {
             });
         d.line(format!(
             "E: {}/{}, SD: {simulation}",
-            self.side.rendered_mobs.get(),
+            self.client.rendered_mobs.get(),
             self.debug_entity_count()
         ));
     }
@@ -234,7 +234,7 @@ impl ClientGame<'_> {
                         d.group("memory", lines);
                     }
                 }
-                "particle_render_stats" => d.line(format!("P: {}", self.side.particles.0.len())),
+                "particle_render_stats" => d.line(format!("P: {}", self.client.particles.0.len())),
                 "player_position" | "player_section_position" => {
                     if let Some(cam) = self.camera_subject() {
                         let mut lines = overlay::position(
@@ -254,7 +254,7 @@ impl ClientGame<'_> {
                 }
                 "player_speed" => {
                     if self.common.player.is_some() {
-                        let speed = self.common.known_player_movement();
+                        let speed = self.known_player_movement();
                         d.group(
                             "position",
                             [format!(
@@ -364,7 +364,7 @@ impl ClientGame<'_> {
     /// `Entity.pick(20, 0, true)` (`ClipContext.Fluid.ANY`): the first fluid
     /// along the view, under its surface, before the block outline hit.
     pub(in crate::game::client_side) fn debug_fluid_hit(&self) -> Option<[i32; 3]> {
-        let (origin, dir) = self.common.aim()?;
+        let (origin, dir) = self.aim()?;
         let block = self.common.clip_ray(origin, dir, LOOKING_AT_RANGE);
         let reach = block.map_or(LOOKING_AT_RANGE, |h| {
             (0..3)
@@ -523,3 +523,7 @@ impl ClientGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

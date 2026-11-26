@@ -61,7 +61,7 @@ impl ClientGame<'_> {
     }
     /// `LocalPlayer.jumpableVehicle` as a handle: the mount whose jump bar `contextual_bar` shows.
     pub(in crate::game) fn jumpable_vehicle(&self) -> Option<mod_api::EntityRef> {
-        self.common.entity(self.jumpable_mount()?)
+        self.entity(self.jumpable_mount()?)
     }
     /// `ClientWaypointManager.hasWaypoints`: what `contextual_bar` reads for the locator bar.
     pub(in crate::game) fn has_waypoints(&self) -> bool {
@@ -70,7 +70,7 @@ impl ClientGame<'_> {
     /// `Vec3iWaypoint.position`: a live client's entity, with `Entity.getEyePosition` at its own partial tick.
     fn waypoint_entity(&self, uuid: u128) -> Option<([i32; 3], [f64; 3])> {
         let (position, previous, eye_height, frozen) = if let Some(p) = &self.common.player
-            && self.common.own_profile_uuid() == Some(uuid)
+            && self.own_profile_uuid() == Some(uuid)
         {
             let vec = |v: sunrise_core::geometry::Vec3| [v.x, v.y, v.z];
             (
@@ -154,3 +154,7 @@ impl ClientGame<'_> {
         self.client.waypoints.draw(&view)
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

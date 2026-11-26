@@ -245,7 +245,7 @@ fn run_with_slots<G, T: LoopSlots>(
     }
 }
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// Runs the published loop `name` with the slots `T`: `run` with this game's slots for it
     /// (made on the first run), or `vanilla` (the loop with no slots) while the slots are out for
     /// an enclosing run or after a panic. A panic while making the slots or in `run` marks the

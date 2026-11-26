@@ -93,19 +93,19 @@ impl crate::game::ServerGame<'_> {
             return Ok(false);
         }
         let registry = self.common.pack.assets.registry;
-        let target = self.common.pick().and_then(|hit| {
+        let target = self.pick().and_then(|hit| {
             let state = registry.state(self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]))?;
             (state.name == "minecraft:end_portal_frame").then(|| (hit, state.clone()))
         });
         let Some((hit, state)) = target else {
             // EnderEyeItem.useOn passes off a frame: a guest's UseItem throws it.
-            if matches!(self.side.guest_use, Some(super::GuestUse::OnBlock { .. })) {
+            if matches!(self.server.guest_use, Some(super::GuestUse::OnBlock { .. })) {
                 return Ok(false);
             }
             // EnderEyeItem.use: startUsingItem (getUseDuration 0, so the use
             // lasts until the button lets go), then the eye is thrown towards
             // the nearest stronghold if there is one (CONSUME without).
-            self.common.start_using_item();
+            self.start_using_item();
             self.throw_ender_eye();
             return Ok(true);
         };
@@ -135,7 +135,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
         self.award_stat("used", "minecraft:ender_eye", 1);
-        self.common.consume_held();
+        self.consume_held();
         self.swing_arm();
         // EnderEyeItem.useOn emits this event for all nearby players.
         self.server_level_event_at(1503, hit.pos, 0);
@@ -851,7 +851,7 @@ impl crate::game::ServerGame<'_> {
         let mobs: Vec<(u32, Vec3, f32, f32)> = self
             .common.mobs
             .iter()
-            .filter(|m| ticks(m.position) && self.common.mob_portal_eligible(m))
+            .filter(|m| ticks(m.position) && self.mob_portal_eligible(m))
             .map(|m| (m.id, m.position, m.width(), m.height()))
             .chain(
                 self.common.boats
@@ -975,7 +975,7 @@ impl crate::game::ServerGame<'_> {
             .chain(
                 self.common.mobs
                     .iter()
-                    .map(|m| (m.id, self.common.mob_portal_eligible(m), ticks(m.position))),
+                    .map(|m| (m.id, self.mob_portal_eligible(m), ticks(m.position))),
             )
             .chain(
                 self.common.boats
@@ -1122,7 +1122,7 @@ impl crate::game::ServerGame<'_> {
         let key = chunk(at);
         match arrival.traveller {
             Arriving::Live(id) => {
-                if let Some(target) = self.common.level_entity(id as i32) {
+                if let Some(target) = self.level_entity(id as i32) {
                     // Entity.teleportSameDimension keeps the live entity and
                     // its motion, and moves every passenger in the same operation.
                     self.teleport_to_in_level(target, [at.x, at.y, at.z], None, [false; 3], false);
@@ -1353,3 +1353,15 @@ pub(in crate::game) mod tests {
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::block_props::BlockPropsGameExt2 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

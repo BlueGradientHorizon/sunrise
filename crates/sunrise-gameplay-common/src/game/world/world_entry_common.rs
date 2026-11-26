@@ -2,7 +2,7 @@ use crate::game::CommonGame;
 use std::time::{Duration, Instant};
 use sunrise_game_data::Result;
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     pub fn join_world_rest(&mut self) -> Result<()> {
         if self.rest_loader.is_some() {
             let waited = Instant::now();

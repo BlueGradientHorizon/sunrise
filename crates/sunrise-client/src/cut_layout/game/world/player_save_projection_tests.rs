@@ -244,3 +244,5 @@ fn actual_player_save_tracks_mutable_body_and_keeps_guest_context() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

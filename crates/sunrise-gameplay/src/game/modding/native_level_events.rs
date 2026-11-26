@@ -34,7 +34,7 @@ impl ServerGame<'_> {
         pos: [i32; 3],
         data: i32,
     ) -> bool {
-        if !self.common.level_in_place(level) {
+        if !self.level_in_place(level) {
             return false;
         }
         if !level_event_data_ok(id, data, self.common.res.facts().states.len()) {
@@ -70,7 +70,7 @@ impl ServerGame<'_> {
         pos: [i32; 3],
         data: i32,
     ) -> bool {
-        if !self.common.level_in_place(level) {
+        if !self.level_in_place(level) {
             return false;
         }
         if !level_event_data_ok(id, data, self.common.res.facts().states.len()) {
@@ -98,7 +98,7 @@ impl ServerGame<'_> {
         let Some(event) = sunrise_level::sculk::intern(event) else {
             return false;
         };
-        if !self.common.level_in_place(level) || !in_bounds(at) {
+        if !self.level_in_place(level) || !in_bounds(at) {
             return false;
         }
         self.post_contextual_game_event(event, at, context)
@@ -123,7 +123,7 @@ impl ServerGame<'_> {
         ) else {
             return false;
         };
-        if !self.common.level_in_place(level) || !self.common.world.shape.contains_y(pos[1]) {
+        if !self.level_in_place(level) || !self.common.world.shape.contains_y(pos[1]) {
             return false;
         }
         self.common.block_ticks.queue_block_event(BlockEventData {
@@ -154,7 +154,7 @@ impl ServerGame<'_> {
         if self.entity_ids_exhausted() {
             return Err(ExplodeError::Unavailable);
         }
-        if !self.common.level_in_place(level) {
+        if !self.level_in_place(level) {
             return Err(ExplodeError::Unavailable);
         }
         let source = match source {
@@ -178,7 +178,7 @@ impl ServerGame<'_> {
         at: [f64; 3],
         visual_only: bool,
     ) -> bool {
-        if !self.common.level_in_place(level) || !in_bounds(at) {
+        if !self.level_in_place(level) || !in_bounds(at) {
             return false;
         }
         let chunk = ((at[0].floor() as i32) >> 4, (at[2].floor() as i32) >> 4);
@@ -197,3 +197,5 @@ impl ServerGame<'_> {
         true
     }
 }
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

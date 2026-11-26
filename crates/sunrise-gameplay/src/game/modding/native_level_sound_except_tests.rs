@@ -56,7 +56,7 @@ fn a_level_sound_leaves_out_the_player_asked() {
         let play = |game: &mut crate::game::ServerGame<'_>, except| {
             game.level_play_sound(level, sound, at, SoundSource::Blocks, 1.0, 1.0, except)
         };
-        let queued = |game: &crate::game::ServerGame<'_>| game.side.pending_native_sounds.len();
+        let queued = |game: &crate::game::ServerGame<'_>| game.server.pending_native_sounds.len();
         let before = queued(game);
         assert!(play(game, Some(player)));
         assert_eq!(
@@ -299,13 +299,13 @@ fn entity_sounds_bound_sounds_particles_and_level_events_defer_inside_transactio
                 let flame = ParticleOptions::simple(ParticleType::Flame);
 
                 let clear_queues = |game: &mut crate::game::ServerGame<'_>| {
-                    game.side.pending_native_sounds.clear();
-                    game.side.pending_particles.clear();
+                    game.server.pending_native_sounds.clear();
+                    game.server.pending_particles.clear();
                     game.level_events.clear();
-                    game.side.lan_events.clear();
-                    game.side.lan_global_events.clear();
-                    game.side.lan_entity_events.clear();
-                    game.side.pending_sounds.clear();
+                    game.server.lan_events.clear();
+                    game.server.lan_global_events.clear();
+                    game.server.lan_entity_events.clear();
+                    game.server.pending_sounds.clear();
                 };
                 clear_queues(game);
                 decode_packets(&rx12);
@@ -2522,7 +2522,7 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                          label: &str| {
                             let mark = {
                                 let map = game
-                                    .side
+                                    .server
                                     .lan
                                     .as_mut()
                                     .unwrap()
@@ -2538,7 +2538,7 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
                                 Some(expected_health),
                                 "{label}: health"
                             );
-                            let guest = game.side.lan.as_ref().unwrap().hub.guest(conn).unwrap();
+                            let guest = game.server.lan.as_ref().unwrap().hub.guest(conn).unwrap();
                             let slot = guest.inventory[0].as_ref().expect("slot 0 occupied");
                             assert_eq!(slot.item.as_ref(), expected_item, "{label}: slot 0 item");
                             assert_eq!(slot.count, expected_count, "{label}: slot 0 count");
@@ -2806,3 +2806,11 @@ fn same_uuid_fake_players_across_levels_rollback_attachment_health_and_inventory
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_item_entity_refs::NativeItemEntityRefsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt6 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

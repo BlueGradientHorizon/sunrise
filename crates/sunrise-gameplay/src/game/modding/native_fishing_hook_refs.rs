@@ -24,7 +24,7 @@ impl crate::game::ServerGame<'_> {
             Target::Player => self.server.lan_acting_entity?,
             guest => u32::try_from(self.network_entity_id(guest)?).ok()?,
         };
-        self.common.entity(id)
+        self.entity(id)
     }
 
     /// `FishingHook.getHookedIn`: what it holds. None when it holds nothing,
@@ -35,7 +35,7 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<EntityRef> {
         self.fishing_hook(hook.entity())?;
         let (found, _) = self.fishing_hook_by_id(hook.entity().id())?;
-        self.common.entity(found.hooked_in()?)
+        self.entity(found.hooked_in()?)
     }
 
     /// `FishingHook.isOpenWaterFishing`, which the `fishing` loot's
@@ -46,3 +46,7 @@ impl crate::game::ServerGame<'_> {
         Some(found.open_water())
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

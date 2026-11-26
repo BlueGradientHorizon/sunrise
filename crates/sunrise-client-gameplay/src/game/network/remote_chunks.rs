@@ -75,7 +75,7 @@ impl ClientGame<'_> {
         {
             self.native_client_chunk_unload(&dimension, [x, z]);
         }
-        if level_stays && let Some(level) = self.common.native_client_level() {
+        if level_stays && let Some(level) = self.native_client_level() {
             self.common.notify_chunk_block_entities_unloaded(level, (x, z));
         }
     }
@@ -216,7 +216,7 @@ impl ClientGame<'_> {
         }
         // Asked once the packet's block entities and attachments are in, so a part reading them
         // sees this column's data.
-        self.common.ask_chunk_light_emission((x, z));
+        self.ask_chunk_light_emission((x, z));
         // The client chunk seam: one load per packet adoption, a re-sent position included,
         // once the column and its block entities are in. A biome packet takes neither path.
         self.client_chunk_load(x, z);
@@ -548,3 +548,7 @@ mod tests {
         assert_eq!(other.biome(8, 70, 8), 0);
     }
 }
+
+use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

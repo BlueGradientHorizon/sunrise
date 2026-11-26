@@ -183,7 +183,7 @@ impl crate::game::ServerGame<'_> {
     }
     pub(crate) fn item_update_round(&mut self) -> native_ticks::TickRound {
         // EntityTickEvent.Pre for the items about to tick, and the Post after them.
-        let mut round = self.common.native_tick_round();
+        let mut round = self.native_tick_round();
         let merging = self.common.is_logical_server();
         // One read says whether any item part listens; with none, no stack is looked at.
         let update_hook =
@@ -208,7 +208,7 @@ impl crate::game::ServerGame<'_> {
                 }
                 i += 1;
             }
-            self.common.native_tick_pre_batch(&mut round);
+            self.native_tick_pre_batch(&mut round);
             // Each item the Pre let through, in order, hears its part.
             let (mut n, mut from) = (0, 0);
             while update_hook && let Some(id) = round.let_through(n) {
@@ -234,7 +234,7 @@ pub mod on_entity_item_update_tests {
     /// One stack of `item` at rest on the floor, a pickup delay of 20 ticks.
     pub fn rest(game: &mut crate::game::ServerGame<'_>, item: &str, x: f64, z: f64) -> u32 {
         game.spawn_item(ItemStack::new(item, 1), [x, 64.0, z], [0.0; 3], 20);
-        game.side.ticked_entities_through = game.side.next_entity;
+        game.server.ticked_entities_through = game.server.next_entity;
         game.dropped.last().unwrap().id
     }
 }
@@ -242,3 +242,5 @@ pub mod on_entity_item_update_tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;

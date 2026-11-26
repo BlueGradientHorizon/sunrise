@@ -149,3 +149,7 @@ fn a_projectiles_owner_primes_tnt_and_a_gone_owner_does_not() {
     assert_eq!(game.tnts[0].owner, None, "a gone owner primes no one");
     game.side.combat.0.explosion_owner = None;
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;

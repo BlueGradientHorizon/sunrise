@@ -18,7 +18,7 @@ impl ServerGame<'_> {
         Vec::new()
     }
     pub(in crate::game) fn server_sync_pack_tag_ids(&mut self) {
-        self.common.sync_pack_tag_ids();
+        self.sync_pack_tag_ids();
     }
     pub(in crate::game) fn server_sync_hub_clocks(&mut self) {
         if self.server.lan.is_none() {
@@ -98,7 +98,7 @@ impl ServerGame<'_> {
         // (level.dat's day time, already in World.day_time) goes to the table.
         let clock = self.common.level_clock_name(self.common.dim);
         self.common.world.day_time = self.common.switch_clock(&clock);
-        self.common.build_registries();
+        self.build_registries();
         // The world opens with its test instances (`Registries.TEST_INSTANCE`).
         self.snapshot_test_defs();
         self.common.sync_rules();
@@ -224,3 +224,7 @@ impl ServerGame<'_> {
         self.common.world.shape.min_y
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::command_registries::CommandRegistriesGameExt1 as _;

@@ -139,3 +139,5 @@ fn flint_and_steel_use_on_ends_the_click() {
     let done = game.remote_use_block(Hand::Main, mod_api::InteractionAttempt::Press, None);
     assert!(done, "flint and steel useOn must end the click");
 }
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

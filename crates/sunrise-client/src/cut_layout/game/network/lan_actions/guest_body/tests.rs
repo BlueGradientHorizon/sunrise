@@ -402,3 +402,5 @@ fn a_guest_whose_air_the_listener_changed_keeps_it_and_loses_the_transactional_w
         0,
     );
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

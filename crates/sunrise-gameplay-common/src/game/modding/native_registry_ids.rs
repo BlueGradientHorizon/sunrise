@@ -2,11 +2,11 @@
 use crate::game::CommonGame;
 use sunrise_core::identifier::Identifier;
 
-impl CommonGame<'_> {
+pub trait NativeRegistryIdsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The network id of `name` in `registry`: a client's own connection's registries (never the
     /// integrated server's), a server's synchronized ones, as its connections are sent them.
     /// None with no connection.
-    pub(in crate::game) fn registry_protocol_id(
+     fn registry_protocol_id(
         &self,
         registry: &Identifier,
         name: &Identifier,
@@ -17,5 +17,7 @@ impl CommonGame<'_> {
         self.side_server_registry_protocol_id(registry, name)
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeRegistryIdsGameExt1<'__sg> for G {}
+
 
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;

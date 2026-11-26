@@ -48,10 +48,10 @@ pub(in crate::game) fn start(
 ) -> Option<PendingMemory> {
     cost.measure(|| {
         let inputs = game.client_memory_inputs();
-        let renderer = game.side.renderer.0.as_ref().map(|r| r.memory_snapshot());
+        let renderer = game.client.renderer.0.as_ref().map(|r| r.memory_snapshot());
         let (job, request) = match PendingMemory::spawn(
             cost.clone(),
-            game.side.integrated.is_some(),
+            game.client.integrated.is_some(),
             move |server, cancelled| {
                 let report = inputs.report(
                     server,
@@ -69,7 +69,7 @@ pub(in crate::game) fn start(
                 return None;
             }
         };
-        if let Some((server, request)) = game.side.integrated.as_ref().zip(request) {
+        if let Some((server, request)) = game.client.integrated.as_ref().zip(request) {
             server.tell(OwnerRequest::Control(ControlRequest::MemorySample(request)));
         }
         Some(job)

@@ -1112,3 +1112,5 @@ fn blocks_answer_a_held_item_s_click_on_the_client_as_vanilla() {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;

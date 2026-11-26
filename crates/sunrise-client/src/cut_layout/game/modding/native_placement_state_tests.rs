@@ -509,3 +509,5 @@ fn directional_queries_read_the_clicked_block_and_refuse_what_vanilla_throws_on(
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -35,7 +35,7 @@ impl ServerGame<'_> {
             self.common.native_lifecycle.ids_exhausted_told = true;
             log::error!(
                 "entity ids exhausted: {} of {} handed out; no entity spawns until the world reopens",
-                self.side.next_entity,
+                self.server.next_entity,
                 u32::MAX
             );
         }

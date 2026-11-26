@@ -629,7 +629,7 @@ impl mobs::part_goals::GoalHost for crate::game::ServerGame<'_> {
 
     fn merchant_trading_player_lent(&self, mob: &Mob) -> Option<mod_api::PlayerRef> {
         let conn = self.lan_trade_conn(mob.id)?;
-        self.common.player(self.lan_trade_player(conn)?)
+        self.player(self.lan_trade_player(conn)?)
     }
 
     fn merchant_trade_state_lent(&self, mob: &Mob) -> (i32, i32) {
@@ -657,10 +657,7 @@ impl mobs::part_goals::GoalHost for crate::game::ServerGame<'_> {
         let Some(epoch) = self.common.native_lifecycle.epoch() else {
             return false;
         };
-        let Some(target) = self
-            .common
-            .native_entity_target(EntityRef::new(epoch, player))
-        else {
+        let Some(target) = self.native_entity_target(EntityRef::new(epoch, player)) else {
             return false;
         };
         matches!(
@@ -702,7 +699,7 @@ impl mobs::part_goals::GoalHost for crate::game::ServerGame<'_> {
     }
 
     fn mob_can_use_portal(&self, mob: &Mob) -> bool {
-        self.common.mob_portal_eligible(mob)
+        self.mob_portal_eligible(mob)
     }
 
     fn mob_is_climbing(&self, mob: &Mob) -> bool {
@@ -759,9 +756,9 @@ impl mobs::part_goals::GoalHost for crate::game::ServerGame<'_> {
                         u32::try_from(host.hub.guest(*conn)?.entity_id).ok()?
                     }
                 };
-                let entity = self.common.entity(id)?;
-                self.native_mob_valid_target(mob, self.common.native_entity_target(entity)?)
-                    .then(|| self.common.living(entity))?
+                let entity = self.entity(id)?;
+                self.native_mob_valid_target(mob, self.native_entity_target(entity)?)
+                    .then(|| self.living(entity))?
             }
             Who::Mob(id) => {
                 // Mob tick temporarily lends the list, so the regular game
@@ -808,11 +805,11 @@ impl mobs::part_goals::GoalHost for crate::game::ServerGame<'_> {
     ) -> Option<bool> {
         let own = match entity_mob {
             Some(mob) => self.mob_team_scoped(mob, actor, world),
-            None => self.native_target_team(self.common.native_entity_target(entity)?)?,
+            None => self.native_target_team(self.native_entity_target(entity)?)?,
         };
         let other = match source_mob {
             Some(mob) => self.mob_team_scoped(mob, actor, world),
-            None => self.native_target_team(self.common.native_entity_target(source)?)?,
+            None => self.native_target_team(self.native_entity_target(source)?)?,
         };
         Some(sunrise_game_data::scoreboard::teams_allow_damage(
             own, other,
@@ -1008,7 +1005,7 @@ impl crate::game::ServerGame<'_> {
         if target.entity().epoch() == epoch
             && let Some(selection) = world.player_selection
             && selection.get(target.entity().id()).is_some()
-            && let Some(player) = self.common.native_entity_target(target.entity())
+            && let Some(player) = self.native_entity_target(target.entity())
             && self.native_player_facts(player).is_some()
             && self.native_mob_valid_target(context.m, player)
             && selection.select(target.entity().id())
@@ -1031,3 +1028,17 @@ pub(in crate::game) mod generated {
     // backend read answers its typed refusal.
     include!(concat!(env!("OUT_DIR"), "/mod_api_goal_view_generated.rs"));
 }
+
+use sunrise_gameplay_common::game::block_props::BlockPropsGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
+
+use sunrise_gameplay_common::game::native_item_entity_refs::NativeItemEntityRefsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

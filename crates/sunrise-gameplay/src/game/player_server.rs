@@ -154,7 +154,7 @@ impl crate::game::ServerGame<'_> {
         &self,
         player: PlayerRef,
     ) -> Option<PlayerAbilities> {
-        self.common.player_read_both(player)?.abilities()
+        self.player_read_both(player)?.abilities()
     }
 
     /// Server handler for `Serverbound::ChangeGameMode` (called by `lan_actions/packets_server.rs`).
@@ -181,7 +181,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game) fn server_own_profile_name(&self) -> String {
-        self.common.acting_player_name().to_owned()
+        self.acting_player_name().to_owned()
     }
 
     pub(in crate::game) fn server_local_player(&self) -> Option<PlayerRef> {
@@ -265,16 +265,16 @@ impl crate::game::ServerGame<'_> {
             emit(f.id, f.bounds(), 0.0);
         }
         for p in self.common.creatures.projectiles.iter() {
-            if self.common.projectile_is_pickable(p) {
-                emit(p.id, p.bounds(), self.common.projectile_pick_radius(p));
+            if self.projectile_is_pickable(p) {
+                emit(p.id, p.bounds(), self.projectile_pick_radius(p));
             }
         }
         for t in self.common.tridents.iter() {
-            if self.common.trident_is_pickable(t) {
+            if self.trident_is_pickable(t) {
                 emit(t.id, t.bounds(), 1.0);
             }
         }
-        if self.common.rocket_is_pickable() {
+        if self.rocket_is_pickable() {
             for r in self.common.rockets.iter() {
                 emit(r.id, r.bounds(), 1.0);
             }
@@ -323,7 +323,7 @@ impl crate::game::ServerGame<'_> {
         };
         let eye = v3(eye_arr);
         let look = v3(look_arr);
-        let (min, max, margin) = attack_reach(range, self.common.own_player_is_creative());
+        let (min, max, margin) = attack_reach(range, self.own_player_is_creative());
         let movement = self.server_known_player_movement();
         let from = eye.add_vector(look.scale(f64::from(min)));
         let max_len = f64::from(max) + movement.dot(look).max(0.0);
@@ -657,7 +657,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game) fn server_entity_position(&self, entity: EntityRef) -> Option<[f64; 3]> {
-        self.target_position(self.common.native_entity_target(entity)?)
+        self.target_position(self.native_entity_target(entity)?)
     }
 
     pub(in crate::game) fn server_client_copy_box(
@@ -673,7 +673,7 @@ impl crate::game::ServerGame<'_> {
         &self,
         entity: EntityRef,
     ) -> Option<Target> {
-        self.common.native_entity_target(entity)
+        self.native_entity_target(entity)
     }
 
     pub(in crate::game) fn server_level(&self, dimension: &str) -> Option<LevelRef> {
@@ -714,3 +714,15 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

@@ -78,7 +78,7 @@ impl crate::game::ClientGame<'_> {
                 }
                 let boat = &self.common.boats[0];
                 steps.push(json!({
-                    "controlled": self.side.remote.as_ref().unwrap().first_passenger,
+                    "controlled": self.client.remote.as_ref().unwrap().first_passenger,
                     "accepts_server_moves": accepts_server_moves,
                     "hands_busy": self.hands_busy(),
                     "moves": packets.iter().filter(|p| matches!(p, Serverbound::MoveVehicle(_))).count(),

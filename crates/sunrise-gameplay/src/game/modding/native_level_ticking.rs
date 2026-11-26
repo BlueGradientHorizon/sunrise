@@ -4,12 +4,12 @@ use mod_api::LevelRef;
 
 impl ServerGame<'_> {
     fn native_tick_position(&self, level: LevelRef, pos: [i32; 3]) -> Option<bool> {
-        if !self.common.level_in_place(level) {
+        if !self.level_in_place(level) {
             return None;
         }
         Some(
-            self.common.level_in_world_bounds(level, pos)?
-                && self.common.chunk(level, [pos[0] >> 4, pos[2] >> 4]).is_some(),
+            self.level_in_world_bounds(level, pos)?
+                && self.chunk(level, [pos[0] >> 4, pos[2] >> 4]).is_some(),
         )
     }
 
@@ -29,3 +29,5 @@ impl ServerGame<'_> {
         Some(self.native_tick_position(level, pos)? && self.block_ticking_at(pos[0], pos[2]))
     }
 }
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

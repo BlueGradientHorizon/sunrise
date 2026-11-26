@@ -361,3 +361,5 @@ pub(super) fn connect_peer(port: u16, name: &str) -> Connection {
     }
     c
 }
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

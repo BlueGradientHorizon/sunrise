@@ -53,7 +53,7 @@ impl crate::game::ServerGame<'_> {
             let id = self.common.mobs[index].id;
             self.mob_event_particles(id, 18);
             self.play_allay_sound("minecraft:block.amethyst_block.chime", at, id);
-            self.common.consume_held();
+            self.consume_held();
             return true;
         }
         let acting = self.acting_uuid();
@@ -68,7 +68,7 @@ impl crate::game::ServerGame<'_> {
             let id = m.id;
             self.play_allay_sound("minecraft:entity.allay.item_given", at, id);
 
-            self.common.consume_held();
+            self.consume_held();
             return true;
         }
         // Allay.mobInteract takes the item back only through an empty main hand.
@@ -91,7 +91,7 @@ impl crate::game::ServerGame<'_> {
             if let Some(stack) = carried {
                 self.spawn_item(stack, at, [0.0, 0.2, 0.0], 40);
             }
-            if let Some(rest) = self.common.add_stack_to_inventory(ItemStack { count: 1, ..held })
+            if let Some(rest) = self.add_stack_to_inventory(ItemStack { count: 1, ..held })
                 && let Some(eye) = self.common.eye_position()
             {
                 self.spawn_item(rest, eye, [0.0; 3], 0);
@@ -168,3 +168,7 @@ impl AllayLevel for crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

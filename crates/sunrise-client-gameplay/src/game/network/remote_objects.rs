@@ -455,7 +455,7 @@ impl ClientGame<'_> {
             // even when this tick has no new movement.
             if improved {
                 let [x, y, z] = self.common.rail_block(to, true);
-                let on_rails = self.common.is_rail(self.common.world.block(x, y, z));
+                let on_rails = self.is_rail(self.common.world.block(x, y, z));
                 if self.common.carts[cart].on_rails != on_rails {
                     self.common.carts.update(cart, |c| c.on_rails = on_rails);
                 }
@@ -486,7 +486,7 @@ impl ClientGame<'_> {
                 );
             }
             if from != to {
-                self.common.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+                self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
             }
             cart += 1;
         }
@@ -508,7 +508,7 @@ impl ClientGame<'_> {
                 (b.id, from, b.position)
             });
             if from != to {
-                self.common.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+                self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
             }
             boat += 1;
         }
@@ -521,7 +521,7 @@ impl ClientGame<'_> {
                 (a.id, from, a.position)
             };
             if from != to {
-                self.common.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+                self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
             }
             stand += 1;
         }
@@ -679,3 +679,9 @@ mod tests {
         assert_eq!(lerp_yaw_step(5.0, 90.0, 0), 5.0);
     }
 }
+
+use sunrise_gameplay_common::game::cart_rails::CartRailsGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

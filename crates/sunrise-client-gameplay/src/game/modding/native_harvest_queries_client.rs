@@ -13,11 +13,11 @@ impl ClientGame<'_> {
     ) -> Option<f32> {
         if self.client_level_view_world(level).is_none()
             || level.dimension() != self.common.dim.key()
-            || self.common.local_player() != Some(player)
+            || self.local_player() != Some(player)
         {
             return None;
         }
-        Some(self.common.destroy_progress_for(pos, state))
+        Some(self.destroy_progress_for(pos, state))
     }
 
     pub(in crate::game) fn client_player_has_correct_tool_for_drops(
@@ -29,10 +29,14 @@ impl ClientGame<'_> {
     ) -> Option<bool> {
         if self.client_level_view_world(level).is_none()
             || level.dimension() != self.common.dim.key()
-            || self.common.local_player() != Some(player)
+            || self.local_player() != Some(player)
         {
             return None;
         }
-        Some(self.common.acting_can_harvest(pos, state))
+        Some(self.acting_can_harvest(pos, state))
     }
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

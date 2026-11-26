@@ -222,7 +222,7 @@ impl ServerGame<'_> {
         Some(
             b.players
                 .iter()
-                .filter_map(|ints| self.common.player(ints_uuid(*ints)))
+                .filter_map(|ints| self.player(ints_uuid(*ints)))
                 .collect(),
         )
     }
@@ -234,7 +234,7 @@ impl ServerGame<'_> {
         bar: BossBarRef,
         player: PlayerRef,
     ) -> bool {
-        if self.common.player(player.uuid()) != Some(player) {
+        if self.player(player.uuid()) != Some(player) {
             return false;
         }
         let ints = uuid_ints(player.uuid());
@@ -252,7 +252,7 @@ impl ServerGame<'_> {
         bar: BossBarRef,
         player: PlayerRef,
     ) -> bool {
-        if self.common.player(player.uuid()) != Some(player) {
+        if self.player(player.uuid()) != Some(player) {
             return false;
         }
         let ints = uuid_ints(player.uuid());
@@ -270,3 +270,5 @@ impl ServerGame<'_> {
         true
     }
 }
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

@@ -167,3 +167,5 @@ fn mounted_local_spectator_forces_flight_and_sends_abilities() {
         });
     });
 }
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;

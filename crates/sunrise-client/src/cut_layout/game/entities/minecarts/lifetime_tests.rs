@@ -407,3 +407,5 @@ pub(in crate::game) fn assert_vehicle_residency_retired(
     );
     assert_eq!(game.resident_entities.table.get_mut().end_tick(), Ok(()));
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

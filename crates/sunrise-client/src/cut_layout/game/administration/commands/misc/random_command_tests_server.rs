@@ -35,3 +35,5 @@ fn a_blocks_roll_names_the_block_and_the_console_says_server() {
     assert!(named.starts_with("Server rolled "), "{named}");
     assert!(named.ends_with(" (from 1 to 2)"), "{named}");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

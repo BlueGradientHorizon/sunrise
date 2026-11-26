@@ -143,3 +143,4 @@ pub(in crate::game) mod escape_tests {
 #[cfg(test)]
 #[path = "tests/thrown_items_tests.rs"]
 pub(in crate::game) mod thrown_items_tests;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

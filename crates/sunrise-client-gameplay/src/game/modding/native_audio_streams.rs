@@ -23,7 +23,7 @@ impl ClientGame<'_> {
             return Err(AudioRefusal::OnServer);
         }
         let entity_pos = match spec.placement {
-            StreamPlacement::Entity(entity) => self.common.entity_position(entity),
+            StreamPlacement::Entity(entity) => self.entity_position(entity),
             StreamPlacement::Flat | StreamPlacement::At(_) => None,
         };
         self.client
@@ -38,7 +38,7 @@ impl ClientGame<'_> {
         self.client
             .audio
             .0
-            .follow_stream_entities(|entity| self.common.entity_position(entity));
+            .follow_stream_entities(|entity| self.entity_position(entity));
     }
 
     /// Lists the client's audio input devices for
@@ -80,3 +80,5 @@ mod tests {
         assert_eq!(calling_mod(), Ok("mod_b"));
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

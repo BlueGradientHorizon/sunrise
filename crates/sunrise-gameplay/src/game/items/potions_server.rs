@@ -133,7 +133,7 @@ impl crate::game::ServerGame<'_> {
         // their countdown); a canceled expiry keeps the effect at no ticks,
         // asking again next tick. Only on the server, where the effects tick.
         let keep_expired: Vec<&'static str> = {
-            let player = self.common.effect_living_ref(None);
+            let player = self.effect_living_ref(None);
             effects
                 .list
                 .iter()
@@ -233,7 +233,7 @@ impl crate::game::ServerGame<'_> {
             self.apply_effect_action(action);
         }
         self.turtle_helmet_tick();
-        self.common.apply_effect_status();
+        self.apply_effect_status();
     }
     /// `Player.tick` -> `turtleHelmetTick`: with a turtle helmet on the head
     /// and the eyes out of the water, Water Breathing for 200 ticks (no
@@ -302,7 +302,7 @@ impl crate::game::ServerGame<'_> {
         key: Option<mod_api::EffectKey>,
     ) -> bool {
         let mut answered = None;
-        if let Some(living) = self.common.effect_living_ref(entity)
+        if let Some(living) = self.effect_living_ref(entity)
             && let Some(key) = key
         {
             self.native_mob_effect_applicable(living, key, &mut answered);
@@ -363,7 +363,7 @@ impl crate::game::ServerGame<'_> {
         if changed {
             let amplifier = self.common.potions.effects.get(id).unwrap().amplifier;
             self.update_player_effect_attributes(id, amplifier, !new);
-            self.common.apply_effect_status();
+            self.apply_effect_status();
         }
         changed
     }
@@ -383,7 +383,7 @@ impl crate::game::ServerGame<'_> {
             // `MobEffectEvent.Remove`: refusing the removal keeps it, and the
             // next one is asked with this one still in place, as in vanilla.
             let mut cancel = false;
-            if let Some(living) = self.common.effect_living_ref(None) {
+            if let Some(living) = self.effect_living_ref(None) {
                 self.native_mob_effect_remove(
                     living,
                     mod_api::__private::effect_key_by_index(
@@ -404,7 +404,7 @@ impl crate::game::ServerGame<'_> {
         }
         if !removed.is_empty() {
             self.remove_player_effect_attributes(&removed);
-            self.common.apply_effect_status();
+            self.apply_effect_status();
         }
         !removed.is_empty()
     }
@@ -778,7 +778,7 @@ impl crate::game::ServerGame<'_> {
                     && let Ok(o) = p.hurt_blocking(
                         crate::game::server_side::entity_server::damage_level_of!(
                             self,
-                            self.side.combat.0.attack(),
+                            self.server.combat.0.attack(),
                             no_push,
                             None,
                             acting_equipment!(self)
@@ -803,7 +803,7 @@ impl crate::game::ServerGame<'_> {
                     let _ = p.hurt(
                         crate::game::server_side::entity_server::damage_level_of!(
                             self,
-                            self.side.combat.0.attack(),
+                            self.server.combat.0.attack(),
                             no_push,
                             None,
                             acting_equipment!(self)
@@ -939,7 +939,7 @@ impl crate::game::ServerGame<'_> {
                                 m.damage(
                                     crate::game::server_side::entity_server::damage_level_of!(
                                         self,
-                                        self.side.combat.0.attack(),
+                                        self.server.combat.0.attack(),
                                         no_push,
                                         None
                                     ),
@@ -1208,7 +1208,7 @@ impl crate::game::ServerGame<'_> {
             let radius = 3.0 + r.next_float() * 2.0;
             // WindChargedMobEffect: the bearer bursts, a living source.
             let bearer = if player {
-                Some(self.common.own_entity_id() as u32)
+                Some(self.own_entity_id() as u32)
             } else {
                 bearer
             };
@@ -1227,13 +1227,13 @@ impl crate::game::ServerGame<'_> {
     /// `ItemUtils.createFilledResult`: replace one of the held stack.
     pub(in crate::game) fn fill_held(&mut self, filled: ItemStack) {
         if self.common.creative {
-            let _ = self.common.add_stack_to_inventory(filled);
+            let _ = self.add_stack_to_inventory(filled);
             return;
         }
-        self.common.consume_held();
+        self.consume_held();
         if self.common.held().is_none() {
             *self.common.held_mut() = Some(filled);
-        } else if let Some(rest) = self.common.add_stack_to_inventory(filled)
+        } else if let Some(rest) = self.add_stack_to_inventory(filled)
             && let Some(eye) = self.common.eye_position()
         {
             // `player.drop(stack, false)`.
@@ -1277,12 +1277,12 @@ impl crate::game::ServerGame<'_> {
         self.apply_drink_effects(stack);
         self.post_entity_event("minecraft:drink", sunrise_sim::mobs::Who::Player);
         if !self.common.creative && self.common.stack_in(slot) == Some(stack) {
-            self.common.consume_player_slot(slot, 1);
+            self.consume_player_slot(slot, 1);
             if !ominous {
                 let bottle = ItemStack::new("minecraft:glass_bottle", 1);
                 if self.common.stack_in(slot).is_none() {
                     *self.common.stack_in_mut(slot) = Some(bottle);
-                } else if let Some(rest) = self.common.add_stack_to_inventory(bottle) {
+                } else if let Some(rest) = self.add_stack_to_inventory(bottle) {
                     self.spawn_item(rest, eye, [0.0, 0.1, 0.0], 40);
                 }
             }
@@ -1664,7 +1664,7 @@ impl crate::game::ServerGame<'_> {
             self.server_play_sound("minecraft:entity.generic.drink", eye, 0.5, pitch);
         }
         // ItemStack.onUseTick: the item's own tick after the consumable's.
-        if !self.common.item_on_use_tick(stack, ticks - 1) {
+        if !self.item_on_use_tick(stack, ticks - 1) {
             return true;
         }
         if i64::from(ticks) < i64::from(duration) {
@@ -1816,7 +1816,7 @@ impl crate::game::ServerGame<'_> {
     ) -> sunrise_game_data::Result<bool> {
         match &*stack.item {
             "minecraft:potion" | "minecraft:ominous_bottle" => {
-                self.common.start_using_item();
+                self.start_using_item();
                 Ok(true)
             }
             "minecraft:splash_potion"
@@ -1836,12 +1836,8 @@ impl crate::game::ServerGame<'_> {
                 self.server_play_sound(sound, eye, 0.5, pitch);
                 // Projectile.shootFromRotation(xRot, yRot, -20, power, 1.0), with
                 // what the thrower last moved (getKnownMovement).
-                let velocity = self.common.known_player_movement();
-                let on_ground = self
-                    .common
-                    .player
-                    .as_ref()
-                    .is_some_and(|p| p.ground.on_ground);
+                let velocity = self.known_player_movement();
+                let on_ground = self.common.player.as_ref().is_some_and(|p| p.ground.on_ground);
                 let one = ItemStack {
                     count: 1,
                     ..stack.clone()
@@ -1862,7 +1858,7 @@ impl crate::game::ServerGame<'_> {
                 // ThrowablePotionItem.use / ExperienceBottleItem.use: awardStat(ITEM_USED).
                 self.award_stat("used", &stack.item, 1);
                 self.swing_arm();
-                self.common.consume_held();
+                self.consume_held();
                 Ok(true)
             }
             "minecraft:glass_bottle" => {
@@ -2036,7 +2032,7 @@ impl sunrise_sim::mobs::ModEffectTicks for crate::game::ServerGame<'_> {
         ModEffectTick { keep, actions }
     }
     fn effect_expired(&self, mob: u32, effect: usize, amplifier: i32, cancel: &mut bool) {
-        if let Some(living) = self.common.effect_living_ref(Some(mob as i32))
+        if let Some(living) = self.effect_living_ref(Some(mob as i32))
             && let Some(effect) = mod_api::__private::effect_key_by_index(effect)
         {
             self.native_mob_effect_expired(living, effect, amplifier, cancel);
@@ -2404,3 +2400,11 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

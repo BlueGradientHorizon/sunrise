@@ -1619,3 +1619,12 @@ pub(in sunrise_client_gameplay::game::client_side) fn run_singleplayer_and_unsto
         },
     );
 }
+
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_entity_common::PickEntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

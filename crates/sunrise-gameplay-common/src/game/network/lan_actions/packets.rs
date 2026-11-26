@@ -1,4 +1,3 @@
-use crate::game::CommonGame;
 
 /// The creative-slot wire codec bounds a stack's count to 1..=99; an item whose
 /// own max stack size a native mod raised past 99 becomes the ceiling instead.
@@ -11,7 +10,7 @@ pub fn creative_count_exceeds(count: u32, own_max: u32) -> bool {
     count > creative_count_bound(own_max)
 }
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     pub fn spawn_protects(
         &self,
         radius: i32,

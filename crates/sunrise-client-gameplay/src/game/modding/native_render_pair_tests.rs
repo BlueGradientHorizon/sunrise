@@ -290,7 +290,7 @@ pub fn submitted_bodies<T>(
                 let (start, id) = marks[0];
                 (id != 0 && start < marks[1].0).then(|| {
                     let id = if id == sunrise_gameplay_common::game::MOTION_OWN_PLAYER {
-                        game.common.own_entity_id() as u32
+                        game.own_entity_id() as u32
                     } else {
                         id as u32
                     };
@@ -554,11 +554,11 @@ fn a_canceled_entity_draws_no_name_tag() {
         let tag = |game: &mut crate::game::ClientGame<'_>| {
             mob_frame(game);
             let (mut out, mut see_through) = (Vec::new(), Vec::new());
-            let mut collector = std::mem::take(&mut game.side.see_through_collector);
+            let mut collector = std::mem::take(&mut game.client.see_through_collector);
             collector.clear();
             game.name_tag_geometry(CAMERA, 1.0, &mut out, &mut collector);
             collector.flush(&mut see_through);
-            game.side.see_through_collector = collector;
+            game.client.see_through_collector = collector;
             out.len() + see_through.len()
         };
         assert!(tag(game) > 0, "a named zombie's tag");
@@ -758,3 +758,5 @@ fn a_spectator_draws_no_layers_but_gets_its_post_hooks() {
         assert_eq!(events(&heard), ["living_pre 94", "living_post 94"]);
     });
 }
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

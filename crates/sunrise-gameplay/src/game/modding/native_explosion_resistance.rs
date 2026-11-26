@@ -98,7 +98,7 @@ impl crate::game::ServerGame<'_> {
         mut answers: Option<&mut PartAnswers>,
     ) -> Vec<ExplosionResistance> {
         let unavailable = || vec![ExplosionResistance::Unavailable; count];
-        if !self.common.level_in_place(level) {
+        if !self.level_in_place(level) {
             return unavailable();
         }
         let source = match blast.source {
@@ -228,3 +228,5 @@ mod tests {
         assert_eq!(cell_count(&columns), Ok(1152));
     }
 }
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

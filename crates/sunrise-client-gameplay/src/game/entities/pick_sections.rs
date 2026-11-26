@@ -73,7 +73,7 @@ impl PickFingerprint {
         Self {
             epoch: game.native_lifecycle.epoch(),
             dim: Some(game.dim),
-            is_remote: game.side.remote.is_some(),
+            is_remote: game.client.remote.is_some(),
             mobs: (game.mobs.len(), game.mobs.last().map(|e| e.join_seq())),
             boats: (game.boats.len(), game.boats.last().map(|e| e.join_seq())),
             carts: (game.carts.len(), game.carts.last().map(|e| e.join_seq())),
@@ -112,29 +112,29 @@ impl PickFingerprint {
                 game.item_frames.last().map(|e| e.join),
             ),
             cushions: (game.cushions.len(), game.cushions.last().map(|e| e.join)),
-            interactions: game.side.interactions.len(),
-            remote_general: game.side.remote.as_ref().map_or((0, None), |r| {
+            interactions: game.client.interactions.len(),
+            remote_general: game.client.remote.as_ref().map_or((0, None), |r| {
                 (
                     r.general.rows.len(),
                     r.general.rows.values().next_back().map(|e| e.join),
                 )
             }),
-            remote_knots: game.side.remote_knots.len(),
+            remote_knots: game.client.remote_knots.len(),
             local_knots: (
                 game.resident_entities.knots.len(),
                 game.resident_entities.knots.last().map(|e| e.join),
             ),
             crystals: (game.crystals.len(), game.crystals.last().map(|e| e.join)),
             displays: (
-                game.side.text_displays.0.len(),
-                game.side.text_displays.0.last().map(|(_, d)| d.join),
+                game.client.text_displays.0.len(),
+                game.client.text_displays.0.last().map(|(_, d)| d.join),
             ),
             items: (
                 game.dropped.len(),
                 game.dropped.last().map(|e| e.join_seq()),
             ),
             pending_items: game
-                .side
+                .client
                 .remote
                 .as_ref()
                 .map_or(0, |r| r.pending_items.len()),
@@ -481,7 +481,7 @@ pub(in crate::game) fn visit_section_members(
             [c.position.x, c.position.y, c.position.z],
         );
     }
-    for (&id, i) in &game.side.interactions {
+    for (&id, i) in &game.client.interactions {
         consider(
             i.join.get(),
             PickKind::Interaction,
@@ -489,7 +489,7 @@ pub(in crate::game) fn visit_section_members(
             [i.position.x, i.position.y, i.position.z],
         );
     }
-    if let Some(remote) = &game.side.remote {
+    if let Some(remote) = &game.client.remote {
         for (&id, row) in &remote.general.rows {
             consider(
                 row.join.get(),
@@ -499,7 +499,7 @@ pub(in crate::game) fn visit_section_members(
             );
         }
     }
-    for (&id, &block) in &game.side.remote_knots {
+    for (&id, &block) in &game.client.remote_knots {
         consider(u64::MAX, PickKind::RemoteKnot, id, knot_position(block));
     }
     for k in game.resident_entities.knots.iter() {
@@ -519,8 +519,8 @@ pub(in crate::game) fn visit_section_members(
         );
     }
 
-    if let Some(remote) = &game.side.remote {
-        for (&id, d) in &game.side.text_displays.0 {
+    if let Some(remote) = &game.client.remote {
+        for (&id, d) in &game.client.text_displays.0 {
             consider(
                 d.join.get(),
                 PickKind::RemoteDisplay,
@@ -993,14 +993,14 @@ impl crate::game::ClientGame<'_> {
             PickKind::Boat => self.common.boats.iter().find(|e| e.id == id).map(|e| {
                 (
                     e.id,
-                    self.common.client_copy_box(e.id, e.position, e.bounds()),
+                    self.client_copy_box(e.id, e.position, e.bounds()),
                     0.0,
                 )
             }),
             PickKind::Cart => self.common.carts.iter().find(|e| e.id == id).map(|e| {
                 (
                     e.id,
-                    self.common.client_copy_box(e.id, e.position, e.bounds()),
+                    self.client_copy_box(e.id, e.position, e.bounds()),
                     0.0,
                 )
             }),
@@ -1012,21 +1012,21 @@ impl crate::game::ClientGame<'_> {
                 .map(|e| {
                     (
                         e.id,
-                        self.common.client_copy_box(e.id, e.position, e.bounds()),
+                        self.client_copy_box(e.id, e.position, e.bounds()),
                         0.0,
                     )
                 }),
             PickKind::Tnt => self.common.tnts.iter().find(|e| e.id == id).map(|e| {
                 (
                     e.id,
-                    self.common.client_copy_box(e.id, e.position, e.bounds()),
+                    self.client_copy_box(e.id, e.position, e.bounds()),
                     0.0,
                 )
             }),
             PickKind::Falling => self.common.falling.iter().find(|e| e.id == id).map(|e| {
                 (
                     e.id,
-                    self.common.client_copy_box(e.id, e.position, e.bounds()),
+                    self.client_copy_box(e.id, e.position, e.bounds()),
                     0.0,
                 )
             }),
@@ -1035,20 +1035,20 @@ impl crate::game::ClientGame<'_> {
                 .projectiles
                 .iter()
                 .find(|p| p.id == id)
-                .filter(|p| self.common.projectile_is_pickable(p))
+                .filter(|p| self.projectile_is_pickable(p))
                 .map(|p| {
-                    let bounds = self.common.client_copy_box(p.id, p.position, p.bounds());
-                    (p.id, bounds, self.common.projectile_pick_radius(p))
+                    let bounds = self.client_copy_box(p.id, p.position, p.bounds());
+                    (p.id, bounds, self.projectile_pick_radius(p))
                 }),
             PickKind::Trident => self
                 .common.tridents
                 .iter()
                 .find(|t| t.id == id)
-                .filter(|t| self.common.trident_is_pickable(t))
+                .filter(|t| self.trident_is_pickable(t))
                 .map(|t| {
                     (
                         t.id,
-                        self.common.client_copy_box(t.id, t.position, t.bounds()),
+                        self.client_copy_box(t.id, t.position, t.bounds()),
                         1.0,
                     )
                 }),
@@ -1056,11 +1056,11 @@ impl crate::game::ClientGame<'_> {
                 .common.rockets
                 .iter()
                 .find(|r| r.id == id)
-                .filter(|_| self.common.rocket_is_pickable())
+                .filter(|_| self.rocket_is_pickable())
                 .map(|r| {
                     (
                         r.id,
-                        self.common.client_copy_box(r.id, r.position, r.bounds()),
+                        self.client_copy_box(r.id, r.position, r.bounds()),
                         1.0,
                     )
                 }),
@@ -1089,7 +1089,7 @@ impl crate::game::ClientGame<'_> {
                 .client
                 .interactions
                 .get(&(id as i32))
-                .map(|i| (id, self.common.client_copy_box(id, i.position, i.bounds()), 0.0)),
+                .map(|i| (id, self.client_copy_box(id, i.position, i.bounds()), 0.0)),
             PickKind::RemoteGeneral => self
                 .client
                 .remote
@@ -1114,7 +1114,7 @@ impl crate::game::ClientGame<'_> {
             PickKind::Crystal => self.common.crystals.iter().find(|c| c.id == id).map(|c| {
                 (
                     c.id,
-                    self.common.client_copy_box(c.id, c.position, c.bounds()),
+                    self.client_copy_box(c.id, c.position, c.bounds()),
                     0.0,
                 )
             }),
@@ -1310,3 +1310,7 @@ mod tests {
 }
 
 use sunrise_gameplay_common::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

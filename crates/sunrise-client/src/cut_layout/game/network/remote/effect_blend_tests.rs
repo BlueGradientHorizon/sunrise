@@ -222,3 +222,5 @@ fn ordinary_effect_packets_preserve_or_skip_the_blend() {
         assert_blend(game, living, [0.0; 6]);
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

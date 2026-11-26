@@ -9,7 +9,7 @@ impl crate::game::ServerGame<'_> {
             return self.player_named(name).into_iter().collect();
         }
         if let Some(uuid) = s.uuid {
-            return self.common.target_by_uuid(uuid).into_iter().collect();
+            return self.target_by_uuid(uuid).into_iter().collect();
         }
         let origin = {
             let p = self.source_position();
@@ -88,3 +88,5 @@ impl crate::game::ServerGame<'_> {
             .collect()
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

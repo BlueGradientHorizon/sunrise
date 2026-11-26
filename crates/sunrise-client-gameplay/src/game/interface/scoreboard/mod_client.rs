@@ -47,7 +47,7 @@ impl crate::game::ClientGame<'_> {
             // `Hud.extractRenderState` draws the list inside `if (!isHidden)`.
             !self.client.chat_ui.hide_gui,
             key,
-            self.common.has_singleplayer_server(),
+            self.has_singleplayer_server(),
             count,
             has_objective,
         );
@@ -261,3 +261,5 @@ impl crate::game::ClientGame<'_> {
             .then(|| uuid_text(root))
     }
 }
+
+use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;

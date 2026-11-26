@@ -172,13 +172,13 @@ impl crate::game::ClientGame<'_> {
     }
     pub(in crate::game::client_side) fn render_closing_save(&mut self) -> Result<()> {
         if matches!(
-            self.side.pending_save.0.as_ref().map(|save| &save.stage),
+            self.client.pending_save.0.as_ref().map(|save| &save.stage),
             Some(Stage::Quit)
         ) {
             return Ok(());
         }
         let waiting = matches!(
-            self.side.pending_save.0.as_ref().map(|save| &save.stage),
+            self.client.pending_save.0.as_ref().map(|save| &save.stage),
             Some(Stage::Server | Stage::Writes(_))
         );
         if waiting {

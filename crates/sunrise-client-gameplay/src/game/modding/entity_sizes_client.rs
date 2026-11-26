@@ -228,8 +228,8 @@ pub mod tests {
         game: &mut crate::game::ClientGame<'_>,
     ) -> ([f64; 3], [f64; 3]) {
         // F3+B, on entries with no file behind them: nothing is saved.
-        game.side.debug_entries.0 = sunrise_client::debug_entries::DebugEntries::default();
-        game.side
+        game.client.debug_entries.0 = sunrise_client::debug_entries::DebugEntries::default();
+        game.client
             .debug_entries
             .0
             .toggle_status("entity_hitboxes", false);
@@ -250,3 +250,5 @@ pub mod tests {
         )
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

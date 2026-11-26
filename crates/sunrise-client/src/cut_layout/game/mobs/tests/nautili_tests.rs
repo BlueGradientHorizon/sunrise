@@ -141,3 +141,5 @@ fn a_tame_zombie_nautilus_at_full_health_falls_in_love() {
         );
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

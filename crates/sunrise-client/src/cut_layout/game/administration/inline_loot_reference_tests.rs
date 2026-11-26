@@ -268,3 +268,5 @@ fn pack_functions_admit_inline_references_on_first_open() {
     assert!(game.run_command("execute store result score d il run clear @s minecraft:diamond"));
     assert_eq!(score(&game, "d"), 1);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

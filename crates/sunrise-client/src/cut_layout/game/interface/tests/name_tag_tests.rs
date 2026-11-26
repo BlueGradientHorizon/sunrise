@@ -357,3 +357,5 @@ fn a_creative_player_keeps_the_tag_it_names_a_stand_with() {
         "a survival player spends the tag"
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -13,7 +13,7 @@ impl crate::game::ClientGame<'_> {
             publish(self, Vec::new());
             return;
         }
-        let Some(level) = self.common.native_client_level() else {
+        let Some(level) = self.native_client_level() else {
             publish(self, Vec::new());
             return;
         };
@@ -72,3 +72,5 @@ impl crate::game::ClientGame<'_> {
 }
 use sunrise_gameplay_common::game::api_values::block_state::block_listens;
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

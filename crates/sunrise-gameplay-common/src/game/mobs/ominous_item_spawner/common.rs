@@ -34,7 +34,7 @@ pub struct OminousItemSpawner {
 sunrise_sim::impl_joined!(OminousItemSpawner);
 sunrise_mod_runtime::impl_attachment_lifetime!(OminousItemSpawner);
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// `handleAddEntity` for a spawner a server sent: its item comes with the
     /// entity data (`ItemStack.EMPTY` until then, which draws nothing).
     pub fn add_remote_ominous_item_spawner(&mut self, id: u32, position: [f64; 3]) {

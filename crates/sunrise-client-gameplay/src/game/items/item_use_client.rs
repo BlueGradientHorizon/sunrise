@@ -21,7 +21,7 @@ impl crate::game::ClientGame<'_> {
         stack: &ItemStack,
         info: &ItemInfo,
     ) -> Option<ItemStack> {
-        if self.common.creative || self.common.consumable(stack).is_none() {
+        if self.common.creative || self.consumable(stack).is_none() {
             return Some(stack.clone());
         }
         let mut left = stack.clone();
@@ -50,12 +50,12 @@ impl crate::game::ClientGame<'_> {
         let hand = hand_of(Some((slot, 0))).unwrap_or(self.common.hand);
         self.native_living_entity_use_item_finish(stack, None, hand, 0, &mut result);
         let before = self.creative_stacks();
-        if !self.common.creative && stack.count == 1 && self.common.consumable(stack).is_some() {
+        if !self.common.creative && stack.count == 1 && self.consumable(stack).is_some() {
             if self.common.stack_in(slot) != Some(stack) {
                 return;
             }
             *self.common.stack_in_mut(slot) = None;
-            self.common.player_item_destroyed(stack, Some(hand));
+            self.player_item_destroyed(stack, Some(hand));
         }
         *self.common.stack_in_mut(slot) = result.filter(|s| s.count > 0);
         self.remote_synced_since(&before);
@@ -185,7 +185,7 @@ pub mod tests {
                 1,
             ));
             game.tick_player_model();
-            game.side.visible_hands[0].1 = game.inventory[game.selected].clone();
+            game.client.visible_hands[0].1 = game.inventory[game.selected].clone();
         }
 
         let cancel = Arc::new(AtomicBool::new(false));
@@ -431,3 +431,7 @@ use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

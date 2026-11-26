@@ -71,7 +71,7 @@ impl crate::game::ClientGame<'_> {
             if let Some(mining) = &game.mining
                 && mining.pos == pos
                 && mining.stage() == Some(stage)
-                && let Some(crack) = &mut game.side.mining_crack
+                && let Some(crack) = &mut game.client.mining_crack
                 && crack.pos == pos
                 && crack.stage == stage
             {

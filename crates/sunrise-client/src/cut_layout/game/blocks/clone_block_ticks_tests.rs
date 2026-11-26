@@ -156,3 +156,7 @@ fn copied_block_ticks_keep_order_priority_and_dedup() {
         .collect();
     assert_eq!(moved, vec![(pending[0].kind, pending[0].trigger_tick)]);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

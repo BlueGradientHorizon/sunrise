@@ -43,7 +43,7 @@ impl crate::game::ServerGame<'_> {
             if self.server.lan_acting.is_some() {
                 self.native_acting_entity()
             } else {
-                self.common.own_entity_id() as u32
+                self.own_entity_id() as u32
             },
         )
     }
@@ -79,7 +79,7 @@ impl crate::game::ServerGame<'_> {
         {
             if self.common.held().is_none() {
                 *self.common.held_mut() = Some(remainder);
-            } else if let Some(rest) = self.common.add_stack_to_inventory(remainder) {
+            } else if let Some(rest) = self.add_stack_to_inventory(remainder) {
                 self.player_drop(rest);
             }
         }
@@ -112,10 +112,10 @@ impl crate::game::ServerGame<'_> {
         if !self.common.mobs.iter().any(|m| decision.still_valid(m)) {
             return false;
         }
-        let Some(consumer) = self.common.entity(decision.mob).and_then(|e| self.common.living(e)) else {
+        let Some(consumer) = self.entity(decision.mob).and_then(|e| self.living(e)) else {
             return false;
         };
-        let Some(consumable) = self.common.consumable(&decision.stack) else {
+        let Some(consumable) = self.consumable(&decision.stack) else {
             return false;
         };
         let failures = mod_api::runtime::isolated_failures();
@@ -251,7 +251,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Specialized player drinks have already applied their built-in component listener.
     pub(in crate::game::server_side) fn apply_drink_effects(&mut self, stack: &ItemStack) {
-        if let Some(consumable) = self.common.consumable(stack) {
+        if let Some(consumable) = self.consumable(stack) {
             self.apply_consumable_effects(stack, &consumable.effects, None);
         }
     }
@@ -267,10 +267,10 @@ impl crate::game::ServerGame<'_> {
         {
             return;
         }
-        let Some(consumer) = self.common.entity(id).and_then(|entity| self.common.living(entity)) else {
+        let Some(consumer) = self.entity(id).and_then(|entity| self.living(entity)) else {
             return;
         };
-        let consumable = self.common.consumable(stack);
+        let consumable = self.consumable(stack);
         let failures = mod_api::runtime::isolated_failures();
         let result: Result<(), ()> = self.storage_transaction(|game, _| {
             if let Some(consumable) = &consumable
@@ -335,7 +335,7 @@ impl crate::game::ServerGame<'_> {
         if avoid.is_some_and(|tag| self.state_in_tag(tag, ground)) {
             return false;
         }
-        let entities = self.common.entity_collisions(Mover::Player);
+        let entities = self.entity_collisions(Mover::Player);
         let Some(player) = self.common.player.as_mut() else {
             return false;
         };
@@ -468,7 +468,7 @@ impl crate::game::ServerGame<'_> {
         stack: &ItemStack,
     ) {
         let slot = self.common.held_slot();
-        self.common.emit_consume(consumable, stack, 16);
+        self.emit_consume(consumable, stack, 16);
         // ServerPlayer: the used statistic and the consume_item trigger.
         self.award_stat("used", &stack.item, 1);
         self.trigger_item("minecraft:consume_item", stack);
@@ -518,7 +518,7 @@ impl crate::game::ServerGame<'_> {
         if self.common.held_slot() != slot || self.common.stack_in(slot) != Some(stack) {
             return;
         }
-        self.common.consume_held();
+        self.consume_held();
         self.apply_use_remainder(stack);
     }
 }
@@ -550,7 +550,7 @@ impl EmissionWorld for Emitter<'_, '_> {
                     speed: [0.0; 3],
                     count,
                     randomization: 0,
-                    except: self.0.side.lan_acting,
+                    except: self.0.server.lan_acting,
                 });
         }
         Ok(())
@@ -568,9 +568,9 @@ impl EmissionWorld for Emitter<'_, '_> {
         let Some(at) = self.0.feet() else {
             return Ok(());
         };
-        if self.0.side.lan_acting.is_some() {
+        if self.0.server.lan_acting.is_some() {
             self.0
-                .side
+                .server
                 .guest_player_sounds
                 .push((sound, at, volume, pitch));
         } else {
@@ -605,10 +605,10 @@ impl TeleportConsumeWorld for Teleporter<'_, '_> {
         &mut self.0.world.random
     }
     fn min_y(&mut self, level: Dim) -> Result<i32, Infallible> {
-        Ok(self.0.side.level_shapes.get(level.id()).min_y)
+        Ok(self.0.server.level_shapes.get(level.id()).min_y)
     }
     fn logical_height(&mut self, level: Dim) -> Result<i32, Infallible> {
-        Ok(self.0.side.level_shapes.get(level.id()).logical_height)
+        Ok(self.0.server.level_shapes.get(level.id()).logical_height)
     }
     fn is_passenger(&mut self) -> Result<bool, Infallible> {
         Ok(self.0.riding.is_some())
@@ -654,7 +654,7 @@ impl TeleportConsumeWorld for Teleporter<'_, '_> {
         // huge y would walk down a long way); one that is not a number keeps
         // the draw.
         if to.iter().all(|v| v.is_finite()) {
-            let shape = self.0.side.level_shapes.get(self.0.dim.id());
+            let shape = self.0.server.level_shapes.get(self.0.dim.id());
             let high = shape.min_y + shape.logical_height - 1;
             let y = to[1].clamp(f64::from(shape.min_y), f64::from(high));
             *target = Vec3::new(to[0], y, to[2]);
@@ -927,3 +927,15 @@ pub(in crate::game) mod teleport_hook_tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

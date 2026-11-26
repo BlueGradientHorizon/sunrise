@@ -238,7 +238,7 @@ impl crate::game::ServerGame<'_> {
         let attack = self.attack_of(attacker_id);
         let land = |g: &mut Self| {
             g.with_attack(attack.clone(), |g| {
-                g.side.combat.0.player_attacker = Some((s.from, s.disable_blocking));
+                g.server.combat.0.player_attacker = Some((s.from, s.disable_blocking));
                 g.note_player_attacker(
                     "minecraft:spear",
                     attacker_id as u32,
@@ -249,7 +249,7 @@ impl crate::game::ServerGame<'_> {
                 let old_health = health(g);
                 let hurt =
                     s.deals_damage && { g.mob_hits_player(s.amount, s.from, "minecraft:spear") };
-                g.side.combat.0.player_attacker = None;
+                g.server.combat.0.player_attacker = None;
                 // causeExtraKnockback: a push of 0.4, then the weapon's Knockback,
                 // whether or not the hurt went through.
                 let (strength, xd, zd) = s.knockback;

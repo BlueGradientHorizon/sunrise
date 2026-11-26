@@ -118,3 +118,5 @@ fn a_dispensed_mob_takes_the_wrapped_draw_too() {
         sunrise_level::camera_math::wrap_degrees(draw)
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

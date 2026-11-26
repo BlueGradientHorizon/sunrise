@@ -52,7 +52,7 @@ impl ServerGame<'_> {
             self.server.attack_ticks = 0;
         }
         if changed {
-            self.common.apply_equipment();
+            self.apply_equipment();
         }
         self.server.attack_item = main.map(|s| s.item.clone());
     }
@@ -61,3 +61,5 @@ impl ServerGame<'_> {
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

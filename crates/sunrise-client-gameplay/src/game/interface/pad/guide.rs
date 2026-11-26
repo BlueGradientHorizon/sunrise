@@ -327,9 +327,7 @@ impl crate::game::ClientGame<'_> {
         let mut item_use = None;
         if !spectator && !swallowed {
             for hand in Hand::BOTH {
-                item_use = self
-                    .common
-                    .with_hand(hand, |g| g.pad_guide_item_use(block.as_ref()));
+                item_use = self.with_hand(hand, |g| g.pad_guide_item_use(block.as_ref()));
                 if item_use.is_some() {
                     break;
                 }
@@ -387,16 +385,11 @@ impl crate::game::ClientGame<'_> {
         let attack = self.pick_entity_hit();
         let object = self
             .remote_object_hit()
-            .filter(|hit| self.common.before_block(hit.distance))
-            .filter(|hit| {
-                self.common
-                    .mob_hit()
-                    .is_none_or(|(_, d, _)| hit.distance < d)
-            });
+            .filter(|hit| self.before_block(hit.distance))
+            .filter(|hit| self.mob_hit().is_none_or(|(_, d, _)| hit.distance < d));
         let mob = self
-            .common
             .mob_hit()
-            .filter(|(_, d, _)| object.is_none() && self.common.before_block(*d));
+            .filter(|(_, d, _)| object.is_none() && self.before_block(*d));
         if attack.is_some() || object.is_some() || mob.is_some() {
             let takes = if spectator {
                 self.spectator_crosshair().then_some(Verb::Open)
@@ -407,7 +400,7 @@ impl crate::game::ClientGame<'_> {
             };
             let picked = attack
                 .flatten()
-                .and_then(|id| self.common.entity_pick_result(id))
+                .and_then(|id| self.entity_pick_result(id))
                 .is_some_and(|stack| self.pad_guide_can_pick(&stack));
             let target = Target::Entity {
                 attackable: attack.is_some(),
@@ -415,7 +408,7 @@ impl crate::game::ClientGame<'_> {
             };
             return (target, None, picked);
         }
-        let Some(hit) = self.common.pick() else {
+        let Some(hit) = self.pick() else {
             return (Target::None, None, false);
         };
         let opens = self.block_opens_menu(&hit);
@@ -445,7 +438,7 @@ impl crate::game::ClientGame<'_> {
                 None
             }
         };
-        let breakable = !self.common.block_action_restricted(hit.pos)
+        let breakable = !self.block_action_restricted(hit.pos)
             && self
                 .common
                 .res
@@ -461,7 +454,6 @@ impl crate::game::ClientGame<'_> {
                     >= 0.0);
         let picked = !spectator
             && self
-                .common
                 .picked_stack(hit.pos, false)
                 .is_some_and(|stack| self.pad_guide_can_pick(&stack));
         (Target::Block { breakable, takes }, Some(hit), picked)
@@ -528,7 +520,7 @@ impl crate::game::ClientGame<'_> {
         if let Some(i) = self.common.boats.iter().position(|b| b.id as i32 == id) {
             // ChestBoat.interact, then AbstractBoat.interact.
             let boat = &self.common.boats[i];
-            let room = self.common.boat_has_room(i);
+            let room = self.boat_has_room(i);
             if boat.chest && (sneaking || self.common.riding.is_some() || !room) {
                 return Some(Verb::Open);
             }
@@ -537,7 +529,6 @@ impl crate::game::ClientGame<'_> {
             return rideable.then_some(Verb::Ride);
         }
         if self
-            .common
             .painting_hit()
             .is_some_and(|(_, d)| (d - distance).abs() < 1e-6)
         {
@@ -601,10 +592,10 @@ impl crate::game::ClientGame<'_> {
         let gliding = self.common.player.as_ref().is_some_and(|p| p.fall_flying);
         if let Some(hit) = block {
             if info.block.is_some() && Self::can_hint_block_placement(&stack) {
-                let placeable = if self.common.may_build() {
+                let placeable = if self.may_build() {
                     self.remote_would_place(hit, &stack)
                 } else {
-                    self.common.can_place_on_in_adventure(hit.pos)
+                    self.can_place_on_in_adventure(hit.pos)
                 };
                 if placeable {
                     return Some(Verb::Place);
@@ -615,12 +606,10 @@ impl crate::game::ClientGame<'_> {
                 || id.ends_with("_boat")
                 || id.ends_with("_raft")
                 || id.ends_with("_spawn_egg");
-            if places_on_block
-                && (self.common.may_build() || self.common.can_place_on_in_adventure(hit.pos))
-            {
+            if places_on_block && (self.may_build() || self.can_place_on_in_adventure(hit.pos)) {
                 return Some(Verb::Place);
             }
-            if self.common.may_build()
+            if self.may_build()
                 && self
                     .common
                     .block_transform(&stack, hit, self.held_mapping(Action::Sneak))
@@ -675,7 +664,7 @@ impl crate::game::ClientGame<'_> {
                     );
                     p.fluids.was_touching_water || self.raining_at(bp) || self.raining_at(up)
                 });
-                if stack.damage >= self.common.trident_max_damage(&stack).saturating_sub(1)
+                if stack.damage >= self.trident_max_damage(&stack).saturating_sub(1)
                     || (riptide && !wet)
                 {
                     return None;
@@ -694,7 +683,7 @@ impl crate::game::ClientGame<'_> {
             _ if sunrise_items::items::bucket_contents(&info.id).is_some() => return None,
             _ if info.blocks_attacks.is_some() => Verb::Raise,
             _ if let Some(consumable) = &info.consumable => {
-                if info.food.is_some() && !self.common.can_eat(Some(&stack), info.can_always_eat) {
+                if info.food.is_some() && !self.can_eat(Some(&stack), info.can_always_eat) {
                     return None;
                 }
                 use sunrise_core::use_animation::UseAnimation;
@@ -740,7 +729,7 @@ impl crate::game::ClientGame<'_> {
     /// `Player.getProjectile`, or a creative player's arrow.
     fn pad_guide_has_ammo(&self, weapon: &str) -> Option<()> {
         let weapon = format!("minecraft:{weapon}");
-        (self.common.creative || self.common.projectile_slot(&weapon).is_some()).then_some(())
+        (self.common.creative || self.projectile_slot(&weapon).is_some()).then_some(())
     }
 }
 
@@ -782,3 +771,15 @@ mod guide_equippable_tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::block_items::BlockItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_entity_common::PickEntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

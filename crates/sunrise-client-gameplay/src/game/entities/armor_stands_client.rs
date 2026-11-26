@@ -779,10 +779,10 @@ impl ClientGame<'_> {
         }
         let swap = swap_with_equipment_slot(stack, current, self.common.creative);
         self.common.armor[index] = Some(swap.worn.clone());
-        self.common.player_equipped(slot, Some(&swap.worn));
+        self.player_equipped(slot, Some(&swap.worn));
         *self.common.held_mut() = swap.hand;
         if let Some(old) = swap.to_inventory {
-            let _ = self.common.add_stack_to_inventory(old);
+            let _ = self.add_stack_to_inventory(old);
         }
         self.swing_arm();
         true
@@ -1013,3 +1013,7 @@ pub(in crate::game) mod setup_anim_tests {
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_equip::PlayerEquipGameExt2 as _;

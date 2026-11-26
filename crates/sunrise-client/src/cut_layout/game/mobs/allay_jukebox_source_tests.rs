@@ -167,3 +167,5 @@ fn control_an_allay_out_of_reach_stops_on_a_twentieth_tick() {
     step(&mut game, 20);
     assert!(!dancing(&game));
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

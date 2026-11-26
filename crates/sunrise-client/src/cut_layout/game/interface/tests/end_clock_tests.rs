@@ -42,3 +42,5 @@ pub(in crate::game) fn game<'a>(
     game.dim = Dim::End;
     game
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

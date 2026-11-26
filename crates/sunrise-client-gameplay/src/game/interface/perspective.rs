@@ -466,7 +466,7 @@ impl crate::game::ClientGame<'_> {
             let mut m = Mob::new(0, kind, p.position, self.common.yaw);
             m.head_pitch = self.common.pitch;
             // The render state starts with the profile's paired default skin and model.
-            let skin = sunrise_level::profile_lookup::default_skin(self.common.own_uuid());
+            let skin = sunrise_level::profile_lookup::default_skin(self.own_uuid());
             m.skin = Some(skin.into());
             m.slim = skin.contains("/slim/");
             self.client.player_model = Some(m);
@@ -489,9 +489,7 @@ impl crate::game::ClientGame<'_> {
             .common
             .using
             .and_then(|(slot, _)| self.common.stack_in(slot))
-            .map_or_else(Default::default, |stack| {
-                self.common.item_use_animation(stack)
-            });
+            .map_or_else(Default::default, |stack| self.item_use_animation(stack));
         let charged = self.common.inventory[self.common.selected]
             .as_ref()
             .is_some_and(|s| s.data().is_some_and(|d| !d.charged.is_empty()));
@@ -521,11 +519,8 @@ impl crate::game::ClientGame<'_> {
         let previous_position = self.common.previous_position;
         // LivingEntity.getBedOrientation: the model lies in the bed as
         // another player's does (`villager::sleep_pose`).
-        let bed = self
-            .common
-            .sleeping
-            .map_or(0, |head| self.common.bed_facing(head));
-        let spectator = self.common.own_player_is_spectator();
+        let bed = self.common.sleeping.map_or(0, |head| self.common.bed_facing(head));
+        let spectator = self.own_player_is_spectator();
         let ridden = self.ridden_body();
         // LivingEntity.DATA_ARROW_COUNT_ID and DATA_STINGER_COUNT_ID come from the server.
         let stuck = self
@@ -660,7 +655,7 @@ impl crate::game::ClientGame<'_> {
             .is_some_and(|c| c.animation.kind == 2);
         m.hurt_time = hurt;
         let poses = self.held_arm_poses_with_stacks(
-            self.common.own_entity_id() as u32,
+            self.own_entity_id() as u32,
             self.client.player_model.as_ref().unwrap(),
             [self.common.selected, super::held_items::OFFHAND_SLOT]
                 .map(|slot| self.common.stack_in(slot)),
@@ -756,7 +751,7 @@ impl crate::game::ClientGame<'_> {
                 && shadow_pass_takes_own_model(
                     self.client.occlusion.0.shadow_casters.1,
                     self.client.pack_ids.is_some(),
-                    self.common.own_player_is_spectator(),
+                    self.own_player_is_spectator(),
                 )))
             && self
                 .common
@@ -832,7 +827,7 @@ impl crate::game::ClientGame<'_> {
         // The mods' pre hooks (`render_player_pre`, then `render_living_pre`), as for the other
         // players: a cancel skips the rest of this player's drawing and its post hooks, and the
         // frame's later name tag pass leaves it out too; its flames stay.
-        let name = self.common.own_profile_name();
+        let name = self.own_profile_name();
         let who = PlayerRender {
             name: &name,
             local: true,
@@ -864,7 +859,7 @@ impl crate::game::ClientGame<'_> {
         // visibility (set by player_model_visibility) hides body parts, and
         // translucent_body marks the body OIT for the ghostly look. Only first
         // person and dead players skip it.
-        if body || self.common.own_player_is_spectator() {
+        if body || self.own_player_is_spectator() {
             sunrise_client::mobs::render::render_with_frame(
                 m,
                 alpha as f32,
@@ -898,7 +893,7 @@ impl crate::game::ClientGame<'_> {
             }
             self.player_ears_geometry(
                 m,
-                &self.common.own_profile_name(),
+                &self.own_profile_name(),
                 camera,
                 alpha as f32,
                 packed,
@@ -907,14 +902,7 @@ impl crate::game::ClientGame<'_> {
             self.player_elytra_geometry(m, chest, camera, alpha as f32, packed, out);
             self.spin_attack_geometry(m, camera, alpha as f32, packed, out);
             self.shoulder_parrots_geometry(m, camera, alpha as f32, packed, out);
-            self.stuck_in_body_geometry(
-                m,
-                self.common.own_entity_id(),
-                camera,
-                alpha as f32,
-                packed,
-                out,
-            );
+            self.stuck_in_body_geometry(m, self.own_entity_id(), camera, alpha as f32, packed, out);
             self.held_item_geometry(m, camera, alpha, packed, true, None, out);
             // CustomHeadLayer: a pumpkin, skull or other head item.
             self.head_item_geometry(m, camera, alpha, packed, true, out);
@@ -939,7 +927,7 @@ impl crate::game::ClientGame<'_> {
             .effects
             .get("glowing")
             .map(|_| super::glowing::team_color(self.own_team()));
-        let id = u32::try_from(self.common.own_entity_id()).unwrap_or(0);
+        let id = u32::try_from(self.own_entity_id()).unwrap_or(0);
         if let Some(color) = self.entity_outline(id, "minecraft:player", vanilla) {
             // LivingEntityRenderer.getRenderType: an invisible glowing body
             // still draws its outline.
@@ -1007,7 +995,7 @@ impl crate::game::ClientGame<'_> {
         let mut verts = Vec::new();
         // A spectator preview still draws its own model: the poses'
         // visibility hides body parts, leaving the head and its layers.
-        let body = self.own_body_visible() || self.common.own_player_is_spectator();
+        let body = self.own_body_visible() || self.own_player_is_spectator();
         let (data, armour) = (
             self as &dyn sunrise_client::mobs::render::RenderDataSource,
             self.player_armor_layers(),
@@ -1039,7 +1027,7 @@ impl crate::game::ClientGame<'_> {
         }
         self.player_ears_geometry(
             &m,
-            &self.common.own_profile_name(),
+            &self.own_profile_name(),
             camera,
             1.0,
             240 | 240 << 8,
@@ -2222,3 +2210,9 @@ pub(in crate::game) mod preview_tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

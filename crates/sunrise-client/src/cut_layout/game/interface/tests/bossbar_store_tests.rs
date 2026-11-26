@@ -77,3 +77,5 @@ fn bossbar_name_compares_components_not_their_spelling() {
     let (ok, _) = run(&mut game, r#"bossbar set demo:bar name {"text":"Other"}"#);
     assert!(ok);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

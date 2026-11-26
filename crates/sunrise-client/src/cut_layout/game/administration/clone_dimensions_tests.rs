@@ -215,3 +215,5 @@ fn a_clone_to_another_dimension_lands_in_that_world_and_comes_back() {
         ));
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

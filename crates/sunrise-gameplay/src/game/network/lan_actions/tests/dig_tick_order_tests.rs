@@ -159,3 +159,5 @@ impl mod_api::Hooks for Observe {
             .push(Event::PlayerPost(event.player.uuid()));
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

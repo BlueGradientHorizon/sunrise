@@ -181,3 +181,5 @@ fn an_iron_golem_stands_only_on_a_full_published_top() {
         assert_eq!(summon(game), Some(65.0), "a full published top");
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

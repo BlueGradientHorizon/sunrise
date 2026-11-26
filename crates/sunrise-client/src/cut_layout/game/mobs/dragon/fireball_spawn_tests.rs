@@ -157,3 +157,5 @@ fn the_dragons_fireball_direction_is_normalized_twice() {
         Vec3::new(0.07071067811865477, 0.0, -0.07071067811865477)
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

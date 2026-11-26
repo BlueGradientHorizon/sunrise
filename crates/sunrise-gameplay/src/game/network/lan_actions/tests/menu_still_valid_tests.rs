@@ -93,7 +93,7 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
                     Slots::Block(k) | Slots::Double(k, _) => k,
                     _ => far,
                 };
-                let host = game.side.lan.as_mut().unwrap();
+                let host = game.server.lan.as_mut().unwrap();
                 host.hub.open_container(
                     12,
                     "minecraft:generic_9x3",
@@ -113,10 +113,10 @@ fn a_mod_menu_part_decides_whether_its_menu_stays_open() {
                 });
             };
             let is_open = |game: &crate::game::ServerGame<'_>| {
-                game.side.lan.as_ref().unwrap().hub.guests[0].menu.is_some()
+                game.server.lan.as_ref().unwrap().hub.guests[0].menu.is_some()
             };
             let click = |game: &mut crate::game::ServerGame<'_>| {
-                let window = game.side.lan.as_ref().unwrap().hub.guests[0]
+                let window = game.server.lan.as_ref().unwrap().hub.guests[0]
                     .menu
                     .as_ref()
                     .unwrap()
@@ -310,7 +310,7 @@ fn a_blockless_mod_menu_closes_when_its_part_answers_false() {
                     // A screen position is not a vehicle key, even at this reserved Y.
                     let pos = Some((0, sunrise_gameplay_common::game::minecarts::CART_KEY_Y, 100));
                     let open = |game: &mut crate::game::ServerGame<'_>| {
-                        game.side
+                        game.server
                             .lan
                             .as_mut()
                             .unwrap()
@@ -327,7 +327,7 @@ fn a_blockless_mod_menu_closes_when_its_part_answers_false() {
                             .unwrap()
                     };
                     let window_of_guest = |game: &crate::game::ServerGame<'_>| {
-                        game.side.lan.as_ref().unwrap().hub.guests[0]
+                        game.server.lan.as_ref().unwrap().hub.guests[0]
                             .menu
                             .as_ref()
                             .map(|menu| menu.window)
@@ -363,7 +363,7 @@ fn a_blockless_mod_menu_closes_when_its_part_answers_false() {
                     }
 
                     let state_of_guest = |game: &crate::game::ServerGame<'_>| {
-                        game.side.lan.as_ref().unwrap().hub.guests[0]
+                        game.server.lan.as_ref().unwrap().hub.guests[0]
                             .menu
                             .as_ref()
                             .unwrap()

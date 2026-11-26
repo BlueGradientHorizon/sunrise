@@ -118,3 +118,7 @@ fn a_pig_landing_fully_on_honey_takes_a_fifth_of_the_fall() {
     assert_eq!(supporting, Some([8, 99, 8]));
     assert_eq!(health, 10.0);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

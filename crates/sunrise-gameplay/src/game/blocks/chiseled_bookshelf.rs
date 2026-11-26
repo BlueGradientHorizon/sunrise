@@ -82,7 +82,7 @@ impl crate::game::ServerGame<'_> {
                 count: 1,
                 ..book.clone()
             });
-            self.common.consume_held();
+            self.consume_held();
             self.chiseled_bookshelf_update_state(pos, slot);
             self.server_play_sound(sound, centre, 1.0, 1.0);
             return Some(Answer::Success);
@@ -206,3 +206,5 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

@@ -203,7 +203,7 @@ impl crate::game::ServerGame<'_> {
         }
         self.native_mobs_equipment();
         self.tick_equipment_attributes();
-        self.common.position_rider();
+        self.position_rider();
         self.tick_player_stat_counters();
         self.tick_scoreboard();
         self.load_bossbars();
@@ -213,3 +213,5 @@ impl crate::game::ServerGame<'_> {
         Ok(())
     }
 }
+
+use sunrise_gameplay_common::game::mounts_common::MountsCommonGameExt1 as _;

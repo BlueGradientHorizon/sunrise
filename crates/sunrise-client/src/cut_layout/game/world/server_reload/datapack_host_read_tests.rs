@@ -243,3 +243,5 @@ fn native_datapack_host_reads_enforce_level_session_and_generation() {
         },
     );
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

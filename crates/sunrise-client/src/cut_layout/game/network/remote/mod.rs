@@ -754,6 +754,7 @@ pub(in crate::game) mod placement_prediction_tests;
 pub(in crate::game) mod player_tick_tests;
 #[cfg(test)]
 pub(in crate::game) mod smoke_source_tests;
+
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 pub(in crate::game) mod tables;

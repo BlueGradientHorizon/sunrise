@@ -592,3 +592,5 @@ fn assert_dirty_packet(
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -208,3 +208,5 @@ fn a_mannequin_reads_and_saves_from_its_own_state() {
         assert_eq!(tag.get(key), Some(&Tag::Byte(1)), "{key}");
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

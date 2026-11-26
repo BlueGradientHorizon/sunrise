@@ -117,3 +117,5 @@ fn silent_bolt_suppresses_sound_and_posts_strike_event_on_first_tick() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

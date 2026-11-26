@@ -120,7 +120,7 @@ impl crate::game::ClientGame<'_> {
 
     pub(in crate::game) fn native_local_status(&self, player: PlayerRef) -> Option<()> {
         self.native_session()?;
-        (self.common.local_player()? == player).then_some(())
+        (self.local_player()? == player).then_some(())
     }
 
     /// The local player's predicted breaking state, including Idle. None for
@@ -273,7 +273,7 @@ pub mod tests {
     ) -> sunrise_protocol::connection::Pipe {
         let (client, server) = sunrise_protocol::connection::Pipe::pair();
         game.connect_local(client, "SessionReadTest").unwrap();
-        let remote = game.side.remote.as_mut().unwrap();
+        let remote = game.client.remote.as_mut().unwrap();
         remote.logged_in = true;
         remote.entity_id = 7;
         remote.profile = 42;
@@ -530,3 +530,7 @@ pub mod tests {
         });
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

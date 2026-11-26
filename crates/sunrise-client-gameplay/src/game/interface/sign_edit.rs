@@ -54,7 +54,7 @@ impl ClientGame<'_> {
                 Some(BlockEntity::Sign(sign)) => sign.back.lines.clone(),
                 _ => Default::default(),
             };
-            game.side.sign_edit = Some(SignEditor {
+            game.client.sign_edit = Some(SignEditor {
                 pos,
                 front,
                 line: 0,

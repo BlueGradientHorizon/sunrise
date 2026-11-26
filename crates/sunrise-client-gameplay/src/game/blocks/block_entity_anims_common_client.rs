@@ -22,7 +22,7 @@ impl ClientGame<'_> {
     pub(in crate::game) fn block_anim(&self, pos: [i32; 3], partial: f32) -> BlockAnim {
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
         // A replacement may draw before its first ConduitBlockEntity.clientTick.
-        if matches!(self.side.be_anims.ticker(state.0), Some(Ticker::Conduit))
+        if matches!(self.client.be_anims.ticker(state.0), Some(Ticker::Conduit))
             && let Some(&owner) = self.client.be_anims.owners.get(&pos)
             && self
                 .common.world

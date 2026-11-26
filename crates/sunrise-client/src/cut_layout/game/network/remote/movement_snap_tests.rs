@@ -232,3 +232,5 @@ fn a_living_entitys_move_snaps_or_steps() {
     );
     assert!(steps.iter().all(|s| s.position == far));
 }
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;

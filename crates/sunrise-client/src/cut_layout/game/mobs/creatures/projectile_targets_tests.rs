@@ -610,3 +610,5 @@ fn witness_falling_block_targets() {
 pub(in crate::game) fn run_witness_falling_block_targets() {
     run_family(|t| t == "falling_block");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

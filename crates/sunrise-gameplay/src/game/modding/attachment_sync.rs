@@ -199,7 +199,7 @@ impl ServerGame<'_> {
         let body = body
             .as_ref()
             .map_err(|reason| PayloadSendError::EncodeFailed(reason.clone()))?;
-        self.common.queue_current_payload(
+        self.queue_current_payload(
             Endpoint::server(sender.clone()),
             &PayloadId(attachment_sync::CHANNEL.into()),
             PayloadBytes(body.clone()),
@@ -220,3 +220,5 @@ fn refused(error: &PayloadSendError) -> bool {
             | PayloadSendError::Disconnected
     )
 }
+
+use sunrise_gameplay_common::game::payload_transport::PayloadTransportGameExt1 as _;

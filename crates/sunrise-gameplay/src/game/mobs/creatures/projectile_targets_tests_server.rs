@@ -22,7 +22,7 @@ pub fn clear_entities(game: &mut crate::game::ServerGame<'_>) {
     game.server.broken_knots.clear();
     game.common.resident_entities.knots.clear();
     game.reset_entity_residency();
-    game.common.bind_local_player_residency();
+    game.bind_local_player_residency();
 }
 
 pub fn summon_target(
@@ -186,3 +186,5 @@ pub fn target_bounds(
             .expect("natural knot bounds"),
     }
 }
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

@@ -86,7 +86,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
         if old.extra.mount.is_some() {
-            self.common.position_riders();
+            self.position_riders();
         }
         if !self.common.mobs[k].silent {
             let at = self.common.mobs[k].position;
@@ -113,7 +113,7 @@ impl crate::game::ServerGame<'_> {
         if !m.has_effect("minecraft:weakness") {
             return true;
         }
-        self.common.consume_held();
+        self.consume_held();
         // `player.getUUID()`: the acting player, a server's guest included.
         let starter = Some(self.acting_player_uuid());
         let time = zombie_villager::WAIT_MIN
@@ -123,7 +123,7 @@ impl crate::game::ServerGame<'_> {
                 .unwrap_or(0);
         let mut events = Vec::new();
         zombie_villager::start_converting(&mut self.common.mobs[index], starter, time, &mut events);
-        let _ = self.common.handle_mob_events(events);
+        let _ = self.handle_mob_events(events);
         self.swing_arm();
         true
     }
@@ -165,7 +165,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
         if old.extra.mount.is_some() {
-            self.common.position_riders();
+            self.position_riders();
         }
         for stack in drops {
             self.spawn_item(
@@ -215,7 +215,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `ServerLevel.getPlayerByUUID`: the player with `uuid` in this level.
     fn player_here(&self, uuid: [i32; 4]) -> Option<Target> {
-        match self.common.target_by_uuid(playerdata::ints_uuid(uuid))? {
+        match self.target_by_uuid(playerdata::ints_uuid(uuid))? {
             Target::Player => Some(Target::Player),
             Target::Guest(conn) => {
                 let g = self.server.lan.as_ref()?.hub.guest(conn)?;
@@ -595,3 +595,11 @@ mod tests {
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;

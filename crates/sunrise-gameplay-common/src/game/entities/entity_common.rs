@@ -69,18 +69,6 @@ impl crate::game::CommonGame<'_> {
     ) {
     }
 
-    /// Play an entity-bound sound following the acting player on the active side.
-    pub fn play_player_bound_sound(
-        &mut self,
-        event: &str,
-        source: usize,
-        volume: f32,
-        pitch: f32,
-        except_actor: bool,
-    ) {
-        self.side_play_player_bound_sound(event, source, volume, pitch, except_actor);
-    }
-
     /// `BlockBehaviour.Properties.isSuffocating` of a state.
     pub fn state_suffocating(
         &self,
@@ -249,57 +237,6 @@ impl crate::game::CommonGame<'_> {
         true
     }
 
-    /// `CushionItem.useOn` up to its `FAIL`s.
-    pub fn cushion_spawn(&self, hit: &Hit) -> Option<(Vec3, Aabb)> {
-        let mut adjusted = *hit;
-        let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
-        if self.items().block_in_tag(
-            "minecraft:cushion_uses_collision_shape",
-            &self.res.facts().get(state).name,
-        ) && let Some(eye) = self.eye_position()
-        {
-            let start = Vec3::new(eye[0], eye[1], eye[2]);
-            let point = Vec3::new(hit.point[0], hit.point[1], hit.point[2]);
-            let end = point.add_vector(point.subtract(start).normalize().scale(0.001));
-            let binding = self.res.collision();
-            let mut world = SceneCollisions {
-                world: &self.world,
-                binding,
-                subject: None,
-            };
-            if let Ok(shape) = binding.collision_shape(&mut world, state, hit.pos)
-                && let Some(result) = shape.clip(
-                    start,
-                    end,
-                    sunrise_core::position::BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]),
-                )
-            {
-                adjusted.face = result.direction.normal();
-                adjusted.point = [result.location.x, result.location.y, result.location.z];
-            }
-        }
-        let hit = &adjusted;
-        if hit.face != [0, 1, 0] {
-            return None;
-        }
-        let clicked = self
-            .res
-            .facts()
-            .get(self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]));
-        let pos = if clicked.replaceable {
-            hit.pos
-        } else {
-            std::array::from_fn(|i| hit.pos[i] + hit.face[i])
-        };
-        let y = hit.point[1];
-        let position = Vec3::new(f64::from(pos[0]) + 0.5, y, f64::from(pos[2]) + 0.5);
-        let bounds = cushion_aabb((
-            [position.x - 0.5, position.y, position.z - 0.5],
-            [position.x + 0.5, position.y + 0.25, position.z + 0.5],
-        ));
-        sunrise_sim::cushion::can_place(&PlacementWorld(self), bounds).then_some((position, bounds))
-    }
-
     /// `LivingEntity.dismountVehicle` from a removed vehicle whose position was at `vehicle_y`.
     pub fn dismount_removed_vehicle(&mut self, vehicle_y: f64) {
         self.riding = None;
@@ -383,9 +320,75 @@ impl crate::game::CommonGame<'_> {
             side: Some(side),
         }
     }
+}
+
+pub trait EntityCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+
+    /// Play an entity-bound sound following the acting player on the active side.
+     fn play_player_bound_sound(
+        &mut self,
+        event: &str,
+        source: usize,
+        volume: f32,
+        pitch: f32,
+        except_actor: bool,
+    ) {
+        self.side_play_player_bound_sound(event, source, volume, pitch, except_actor);
+    }
+
+    /// `CushionItem.useOn` up to its `FAIL`s.
+     fn cushion_spawn(&self, hit: &Hit) -> Option<(Vec3, Aabb)> {
+        let mut adjusted = *hit;
+        let state = self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
+        if self.items().block_in_tag(
+            "minecraft:cushion_uses_collision_shape",
+            &self.res.facts().get(state).name,
+        ) && let Some(eye) = self.eye_position()
+        {
+            let start = Vec3::new(eye[0], eye[1], eye[2]);
+            let point = Vec3::new(hit.point[0], hit.point[1], hit.point[2]);
+            let end = point.add_vector(point.subtract(start).normalize().scale(0.001));
+            let binding = self.res.collision();
+            let mut world = SceneCollisions {
+                world: &self.world,
+                binding,
+                subject: None,
+            };
+            if let Ok(shape) = binding.collision_shape(&mut world, state, hit.pos)
+                && let Some(result) = shape.clip(
+                    start,
+                    end,
+                    sunrise_core::position::BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]),
+                )
+            {
+                adjusted.face = result.direction.normal();
+                adjusted.point = [result.location.x, result.location.y, result.location.z];
+            }
+        }
+        let hit = &adjusted;
+        if hit.face != [0, 1, 0] {
+            return None;
+        }
+        let clicked = self
+            .res
+            .facts()
+            .get(self.world.block(hit.pos[0], hit.pos[1], hit.pos[2]));
+        let pos = if clicked.replaceable {
+            hit.pos
+        } else {
+            std::array::from_fn(|i| hit.pos[i] + hit.face[i])
+        };
+        let y = hit.point[1];
+        let position = Vec3::new(f64::from(pos[0]) + 0.5, y, f64::from(pos[2]) + 0.5);
+        let bounds = cushion_aabb((
+            [position.x - 0.5, position.y, position.z - 0.5],
+            [position.x + 0.5, position.y + 0.25, position.z + 0.5],
+        ));
+        sunrise_sim::cushion::can_place(&PlacementWorld(self), bounds).then_some((position, bounds))
+    }
 
     /// Step on the retained block before the simulating body's inside scan.
-    pub fn body_step_on(
+     fn body_step_on(
         &mut self,
         entity: (u32, &str),
         footprint: (Vec3, Aabb),
@@ -395,7 +398,7 @@ impl crate::game::CommonGame<'_> {
         self.side_body_step_on(entity, footprint, ground, velocity)
     }
 
-    pub fn tick_item_with_block_contacts(
+     fn tick_item_with_block_contacts(
         &mut self,
         item: &mut ItemEntity,
         escape_speed: Option<f32>,
@@ -499,7 +502,11 @@ impl crate::game::CommonGame<'_> {
         (alive, false)
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> EntityCommonGameExt1<'__sg> for G {}
+
 
 use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
 
 use crate::game::tables::GameItems as _;
+
+use crate::game::native_world_read_common::NativeWorldReadGameExt1 as _;

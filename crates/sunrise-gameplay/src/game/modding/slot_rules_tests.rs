@@ -487,3 +487,5 @@ fn nested_menu_reads_use_base_slot_rules() {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

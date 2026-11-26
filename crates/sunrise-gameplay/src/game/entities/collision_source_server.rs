@@ -33,7 +33,7 @@ impl crate::game::ServerGame<'_> {
         out.extend(
             self.common.boats
                 .iter()
-                .map(|b| boat(|id, p, bounds| self.common.client_copy_box(id, p, bounds), b)),
+                .map(|b| boat(|id, p, bounds| self.client_copy_box(id, p, bounds), b)),
         );
     }
 
@@ -43,7 +43,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn stand_entity_collisions(&self) -> sunrise_sim::entities::ObstacleGrid {
         let mut boxes = Vec::new();
         let mut roots = Vec::new();
-        self.common.each_solid(Mover::Passive, |c, mob| {
+        self.each_solid(Mover::Passive, |c, mob| {
             boxes.push(c.bounds);
             roots.push(mob.and_then(|j| c.mount.and_then(|_| self.mob_root_vehicle(j))));
         });
@@ -70,11 +70,11 @@ impl crate::game::ServerGame<'_> {
                     .common.carts
                     .iter()
                     .filter(|o| o.id != c.id)
-                    .map(|c| cart(|id, p, bounds| self.common.client_copy_box(id, p, bounds), c))
+                    .map(|c| cart(|id, p, bounds| self.client_copy_box(id, p, bounds), c))
                     .chain(
                         self.common.boats
                             .iter()
-                            .map(|b| boat(|id, p, bounds| self.common.client_copy_box(id, p, bounds), b)),
+                            .map(|b| boat(|id, p, bounds| self.client_copy_box(id, p, bounds), b)),
                     )
                 {
                     if solids.accepts(&o, || None) {
@@ -126,13 +126,13 @@ impl crate::game::ServerGame<'_> {
                     .iter()
                     .map(|b| {
                         (
-                            boat(|id, p, bounds| self.common.client_copy_box(id, p, bounds), b),
+                            boat(|id, p, bounds| self.client_copy_box(id, p, bounds), b),
                             Target::Boat(b.id),
                         )
                     })
                     .chain(self.common.carts.iter().map(|c| {
                         (
-                            cart(|id, p, bounds| self.common.client_copy_box(id, p, bounds), c),
+                            cart(|id, p, bounds| self.client_copy_box(id, p, bounds), c),
                             Target::Cart(c.id),
                         )
                     }))
@@ -155,3 +155,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

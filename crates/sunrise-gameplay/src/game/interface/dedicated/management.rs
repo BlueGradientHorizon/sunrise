@@ -146,7 +146,7 @@ impl ServerGame<'_> {
             }
             "serversettings/motd" => {
                 return json!({
-                    "value": self.side.lan.as_ref().map(|lan| lan.hub.lan.shared.motd()).unwrap_or_default()
+                    "value": self.server.lan.as_ref().map(|lan| lan.hub.lan.shared.motd()).unwrap_or_default()
                 });
             }
             "serversettings/motd/set" => {
@@ -187,7 +187,7 @@ impl ServerGame<'_> {
             "serversettings/entity_broadcast_range" => {
                 return json!({
                     "value": self
-                        .side.lan
+                        .server.lan
                         .as_ref()
                         .map_or(100, |host| host.hub.entity_range_percent)
                 });
@@ -216,7 +216,7 @@ impl ServerGame<'_> {
                 self.store_property("entity-broadcast-range-percentage", percentage.to_string());
                 return json!({
                     "value": self
-                        .side.lan
+                        .server.lan
                         .as_ref()
                         .map_or(100, |host| host.hub.entity_range_percent)
                 });
@@ -224,7 +224,7 @@ impl ServerGame<'_> {
             "serversettings/simulation_distance" => {
                 return json!({
                     "value": self
-                        .side.lan
+                        .server.lan
                         .as_ref()
                         .map_or(0, |host| host.hub.config.simulation_distance)
                 });
@@ -249,14 +249,14 @@ impl ServerGame<'_> {
                 self.store_property("simulation-distance", distance.to_string());
                 return json!({
                     "value": self
-                        .side.lan
+                        .server.lan
                         .as_ref()
                         .map_or(0, |host| host.hub.config.simulation_distance)
                 });
             }
             "serversettings/view_distance" => {
                 return json!({
-                    "value": self.side.lan.as_ref().map_or(0, |host| host.hub.config.view_distance)
+                    "value": self.server.lan.as_ref().map_or(0, |host| host.hub.config.view_distance)
                 });
             }
             "serversettings/view_distance/set" => {
@@ -276,7 +276,7 @@ impl ServerGame<'_> {
                 state.view.0 = distance.max(0) as u32;
                 self.store_property("view-distance", distance.to_string());
                 return json!({
-                    "value": self.side.lan.as_ref().map_or(0, |host| host.hub.config.view_distance)
+                    "value": self.server.lan.as_ref().map_or(0, |host| host.hub.config.view_distance)
                 });
             }
             "serversettings/operator_user_permission_level" => {
@@ -319,7 +319,7 @@ impl ServerGame<'_> {
             }
             "serversettings/spawn_protection_radius" => {
                 return json!({
-                    "value": self.side.lan.as_ref().map_or(0, |host| host.hub.spawn_protection)
+                    "value": self.server.lan.as_ref().map_or(0, |host| host.hub.spawn_protection)
                 });
             }
             "serversettings/spawn_protection_radius/set" => {
@@ -340,12 +340,12 @@ impl ServerGame<'_> {
                 self.set_spawn_protection(radius);
                 self.store_property("spawn-protection", radius.to_string());
                 return json!({
-                    "value": self.side.lan.as_ref().map_or(0, |host| host.hub.spawn_protection)
+                    "value": self.server.lan.as_ref().map_or(0, |host| host.hub.spawn_protection)
                 });
             }
             "serversettings/allow_flight" => {
                 return json!({
-                    "value": self.side.lan.as_ref().is_some_and(|host| host.hub.config.allow_flight)
+                    "value": self.server.lan.as_ref().is_some_and(|host| host.hub.config.allow_flight)
                 });
             }
             "serversettings/allow_flight/set" => {
@@ -361,13 +361,13 @@ impl ServerGame<'_> {
                 self.set_allow_flight(allow);
                 self.store_property("allow-flight", allow.to_string());
                 return json!({
-                    "value": self.side.lan.as_ref().is_some_and(|host| host.hub.config.allow_flight)
+                    "value": self.server.lan.as_ref().is_some_and(|host| host.hub.config.allow_flight)
                 });
             }
             "serversettings/hide_online_players" => {
                 return json!({
                     "value": self
-                        .side.lan
+                        .server.lan
                         .as_ref()
                         .is_some_and(|host| host.hub.lan.shared.hide_online_players())
                 });
@@ -388,7 +388,7 @@ impl ServerGame<'_> {
                 self.store_property("hide-online-players", hide.to_string());
                 return json!({
                     "value": self
-                        .side.lan
+                        .server.lan
                         .as_ref()
                         .is_some_and(|host| host.hub.lan.shared.hide_online_players())
                 });
@@ -396,7 +396,7 @@ impl ServerGame<'_> {
             "serversettings/status_replies" => {
                 return json!({
                     "value": self
-                        .side.lan
+                        .server.lan
                         .as_ref()
                         .is_some_and(|host| host.hub.lan.shared.enable_status())
                 });
@@ -415,7 +415,7 @@ impl ServerGame<'_> {
                 self.store_property("enable-status", enable.to_string());
                 return json!({
                     "value": self
-                        .side.lan
+                        .server.lan
                         .as_ref()
                         .is_some_and(|host| host.hub.lan.shared.enable_status())
                 });
@@ -423,7 +423,7 @@ impl ServerGame<'_> {
             "serversettings/accept_transfers" => {
                 return json!({
                     "value": self
-                        .side.lan
+                        .server.lan
                         .as_ref()
                         .is_some_and(|host| host.hub.lan.shared.accepts_transfers())
                 });
@@ -443,7 +443,7 @@ impl ServerGame<'_> {
                 self.set_accepts_transfers(accept);
                 return json!({
                     "value": self
-                        .side.lan
+                        .server.lan
                         .as_ref()
                         .is_some_and(|host| host.hub.lan.shared.accepts_transfers())
                 });
@@ -895,3 +895,5 @@ mod tests {
         );
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

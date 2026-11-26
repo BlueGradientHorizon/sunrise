@@ -11,7 +11,7 @@ impl ServerGame<'_> {
         player: PlayerRef,
         location: Option<GlobalPos>,
     ) -> bool {
-        if self.common.player(player.uuid()) != Some(player) {
+        if self.player(player.uuid()) != Some(player) {
             return false;
         }
         let stored = location.map(|l| {
@@ -25,3 +25,5 @@ impl ServerGame<'_> {
         }) && done
     }
 }
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

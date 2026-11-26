@@ -162,7 +162,7 @@ impl crate::game::ServerGame<'_> {
             ..text::Style::default()
         };
         let team_name = team.formatted_display_name().with_style(&hover);
-        let sender = self.common.target_name(entity);
+        let sender = self.target_name(entity);
         let key = if entity == Target::Player {
             "chat.type.team.sent"
         } else {
@@ -172,3 +172,5 @@ impl crate::game::ServerGame<'_> {
         Ok(1)
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

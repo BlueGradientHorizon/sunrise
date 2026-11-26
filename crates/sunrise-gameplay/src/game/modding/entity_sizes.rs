@@ -1088,3 +1088,5 @@ pub(in crate::game) mod tests {
         });
     }
 }
+
+use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;

@@ -390,7 +390,7 @@ impl ServerGame<'_> {
             .find(|(id, u)| {
                 **u == uuid
                     && self.common.boats.iter().any(|b| b.id == **id)
-                    && self.common.resident_source_target_visible(
+                    && self.resident_source_target_visible(
                         self.common.dim.key(),
                         super::commands::Target::Boat(**id),
                     )
@@ -581,7 +581,7 @@ impl ServerGame<'_> {
                 });
                 self.lead_sound("tied", at);
                 // The lead is always used up.
-                self.common.consume_player_slot(self.common.held_slot(), 1);
+                self.consume_player_slot(self.common.held_slot(), 1);
                 return true;
             }
         }
@@ -626,3 +626,9 @@ pub(in crate::game) mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::GameGameExt2 as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

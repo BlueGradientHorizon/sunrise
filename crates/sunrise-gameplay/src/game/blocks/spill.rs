@@ -174,7 +174,7 @@ impl crate::game::ServerGame<'_> {
         self.finish_piston_position_changes(std::mem::take(&mut spill.piston_positions));
         let used = std::mem::take(&mut spill.used);
         let tool = self.common.held().cloned();
-        let player = Some(self.common.native_acting_id());
+        let player = Some(self.native_acting_id());
         retell_runs(&mut spill.spawns, &used, |used, origin, drops| {
             let block = Some((used.pos, used.state));
             self.native_use_drops(
@@ -450,3 +450,5 @@ mod tests {
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

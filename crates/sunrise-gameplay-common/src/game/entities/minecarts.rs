@@ -958,3 +958,7 @@ impl sunrise_sim::entity_rules::EntityRules for Minecart {
 }
 
 use crate::game::tables::WorldTablesExt as _;
+
+use crate::game::cart_rails::CartRailsGameExt1 as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

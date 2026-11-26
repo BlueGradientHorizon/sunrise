@@ -52,3 +52,5 @@ pub(in crate::game) fn game<'a>(
     game.set_mode_id(0);
     game
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

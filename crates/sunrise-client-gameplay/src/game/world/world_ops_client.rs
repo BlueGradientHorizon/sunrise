@@ -142,7 +142,7 @@ impl crate::game::ClientGame<'_> {
         };
         let dimension = self.common.dim.level();
         let rules = self.common.level_rules();
-        let api_level = self.common.native_client_level();
+        let api_level = self.native_client_level();
         let liquid_transaction_open = self.has_level_transaction();
         let environment = self
             .common
@@ -400,7 +400,7 @@ impl crate::game::ClientGame<'_> {
         &self,
         _epoch: mod_api::WorldEpoch,
     ) -> Option<mod_api::LevelRef> {
-        self.common.native_client_level()
+        self.native_client_level()
     }
 
     /// Reset and rebind client-visible entity residency without touching server parked levels
@@ -798,3 +798,5 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

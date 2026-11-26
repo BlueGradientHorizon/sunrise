@@ -56,7 +56,7 @@ impl ClientGame<'_> {
         } else {
             self.common.player
                 .as_ref()
-                .map(|_| self.common.own_entity_id() as u32)
+                .map(|_| self.own_entity_id() as u32)
                 .filter(|&id| id != 0)
         }
     }
@@ -66,7 +66,7 @@ impl ClientGame<'_> {
         let Some(camera) = self.pick_camera_id() else {
             return false;
         };
-        id == camera || self.common.wire_entity_id(id) == Some(camera as i32)
+        id == camera || self.wire_entity_id(id) == Some(camera as i32)
     }
 
     #[inline(always)]
@@ -96,7 +96,7 @@ impl ClientGame<'_> {
 
     /// Walks the full vehicle chain (including retained off-level entities) with cycle detection.
     fn pick_vehicle_root(&self, id: u32) -> Option<u32> {
-        let start = self.common.wire_entity_id(id).map_or(id, |wire| wire as u32);
+        let start = self.wire_entity_id(id).map_or(id, |wire| wire as u32);
         let mut slow = start;
         let mut fast = start;
         loop {
@@ -126,3 +126,7 @@ impl ClientGame<'_> {
         camera_root.is_some() && self.pick_vehicle_root(id) == camera_root
     }
 }
+
+use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

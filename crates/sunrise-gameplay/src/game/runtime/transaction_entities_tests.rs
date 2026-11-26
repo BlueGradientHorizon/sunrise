@@ -208,7 +208,7 @@ fn heard() -> Heard {
 fn boat_with_rider(game: &mut crate::game::ServerGame<'_>) -> (EntityRef, EntityRef) {
     let boat = summon(game, "minecraft:oak_boat", "{}").unwrap();
     let cow = summon(game, "minecraft:cow", "{}").unwrap();
-    let (boat, cow) = (game.common.entity(boat).unwrap(), game.common.entity(cow).unwrap());
+    let (boat, cow) = (game.entity(boat).unwrap(), game.entity(cow).unwrap());
     assert!(game.entity_start_riding(cow, boat, true).is_ok());
     heard();
     (boat, cow)
@@ -1273,3 +1273,13 @@ fn each_spawn_in_a_transaction_is_constructed_at_its_own_call_and_joins_at_the_c
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt2 as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

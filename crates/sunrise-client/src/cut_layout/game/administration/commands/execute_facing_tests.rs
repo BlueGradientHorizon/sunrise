@@ -82,3 +82,5 @@ fn over_world_surface_skips_cave_air_and_void_air() {
     let heights: Vec<f64> = game.mobs.iter().map(|m| m.position.y).collect();
     assert_eq!(heights, [61.0, 61.0, 61.0]);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

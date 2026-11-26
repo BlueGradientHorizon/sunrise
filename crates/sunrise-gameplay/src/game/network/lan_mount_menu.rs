@@ -168,7 +168,7 @@ impl crate::game::ServerGame<'_> {
                         None
                     };
                     let live = game
-                        .side
+                        .server
                         .lan
                         .as_ref()
                         .and_then(|host| live_guest(window, host));
@@ -196,7 +196,7 @@ impl crate::game::ServerGame<'_> {
                         return refuse();
                     }
                     let open = game
-                        .side
+                        .server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -255,7 +255,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn send_settled_mount_reply(&mut self, window: MountClickWindow) {
         let _ = self.with_effect_level(window.dim, |game| {
             if game
-                .side
+                .server
                 .lan
                 .as_ref()
                 .and_then(|host| live_guest(window, host))

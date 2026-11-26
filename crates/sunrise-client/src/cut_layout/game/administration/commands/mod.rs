@@ -937,6 +937,13 @@ pub(in crate::game) mod mob_display_name_tests;
 #[cfg(test)]
 #[path = "item_count_predicate_tests.rs"]
 pub(in crate::game) mod item_count_predicate_tests;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
+
 pub(in crate::game) mod world_cmds;
 
 pub(in crate::game) mod terrain_cmds;

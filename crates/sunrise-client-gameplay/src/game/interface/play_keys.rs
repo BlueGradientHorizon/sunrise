@@ -13,8 +13,8 @@ pub(in crate::game) const GUI_KEYS: [&str; 5] = [
 impl crate::game::ClientGame<'_> {
     /// `new InventoryScreen(player)`: the player's inventory, or in creative
     /// mode the creative inventory `InventoryScreen.init` swaps in.
-    pub fn open_player_inventory(&mut self) {
-        if self.common.instabuild() {
+    pub(in crate::game::client_side) fn open_player_inventory(&mut self) {
+        if self.instabuild() {
             self.set_screen(Screen::Creative);
             self.refresh_creative_tabs();
             self.client.creative_screen.0.reopen();
@@ -200,7 +200,7 @@ impl crate::game::ClientGame<'_> {
                 match name {
                     "key.toggleGui" => self.toggle_hide_gui(),
                     "key.advancements" => self.open_advancements(false),
-                    "key.socialInteractions" if self.common.is_multiplayer_server() => {
+                    "key.socialInteractions" if self.is_multiplayer_server() => {
                         self.hide_social_tutorial();
                         self.open_social(false);
                     }
@@ -229,12 +229,12 @@ impl crate::game::ClientGame<'_> {
             self.open_quick_actions();
         }
         while self.consume_mapping_click("key.swapOffhand") {
-            if !self.common.own_player_is_spectator() && self.client.remote.is_some() {
+            if !self.own_player_is_spectator() && self.client.remote.is_some() {
                 self.remote_swap_hands();
             }
         }
         while self.consume_mapping_click("key.drop") {
-            if !self.common.own_player_is_spectator() && self.client.remote.is_some() {
+            if !self.own_player_is_spectator() && self.client.remote.is_some() {
                 let all = self.has_control_down() || self.input_takes_stack_drop();
                 self.remote_drop(all);
             }
@@ -293,3 +293,7 @@ pub(in crate::game) mod swap_hands_tests {
         }
     }
 }
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;

@@ -74,14 +74,14 @@ impl crate::game::ClientGame<'_> {
         let upload = self.publish_client_atlases(&client_pack.render, gui, renderer);
         self.apply_client_reload(client_applies, |game| {
             game.pack = pack;
-            game.side.client_pack = client_pack;
-            game.side.standalone_geometry = geometry;
+            game.client.client_pack = client_pack;
+            game.client.standalone_geometry = geometry;
             let context = game.worker_context();
-            game.side
+            game.client
                 .streaming
                 .reload_resources(&mut game.world, context);
             game.install_model_upload(upload);
-            game.side.armor_stand_assets.0.extensions = item_extensions;
+            game.client.armor_stand_assets.0.extensions = item_extensions;
             game.resolve_entity_renderers();
             game.native_model_baking_completed();
         });

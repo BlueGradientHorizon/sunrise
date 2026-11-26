@@ -147,10 +147,10 @@ impl crate::game::ClientGame<'_> {
         {
             return Err(CreativeGiveError::FeatureDisabled);
         }
-        let max = self.common.stack_max_size(&stack);
+        let max = self.stack_max_size(&stack);
         let inventory = self.common.inventory[..36].to_vec();
         let offhand = self.common.offhand.clone();
-        self.common.insert_stack_up_to(&mut stack, max);
+        self.insert_stack_up_to(&mut stack, max);
         for i in 0..36 {
             if self.common.inventory[i] != inventory[i] {
                 self.remote_creative_slot_add(i);
@@ -612,3 +612,7 @@ mod tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

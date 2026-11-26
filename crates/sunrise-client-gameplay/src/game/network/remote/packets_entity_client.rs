@@ -396,7 +396,7 @@ impl crate::game::ClientGame<'_> {
         if other {
             if let (14, Value::OptPos(bed)) = (index, value) {
                 let code = bed.map_or(0, |b| self.common.bed_facing(b));
-                let at = bed.and_then(|head| self.common.sleeping_position(head));
+                let at = bed.and_then(|head| self.sleeping_position(head));
                 if let Some(m) = self.common.mob_index.get_mut(&mut self.common.mobs, id as u32) {
                     m.extra.ints[1] = code;
                     if bed.is_some() {
@@ -437,7 +437,7 @@ impl crate::game::ClientGame<'_> {
                     self.common.sleeping = *bed;
                     if let Some(head) = *bed {
                         // LivingEntity.onSyncedDataUpdated(SLEEPING_POS_ID): setPosToBed.
-                        let at = self.common.sleeping_position(head);
+                        let at = self.sleeping_position(head);
                         if let Some(pl) = self.common.player.as_mut() {
                             if let Some(at) = at {
                                 pl.position = at;
@@ -543,7 +543,7 @@ impl crate::game::ClientGame<'_> {
                         && let Some((slot, _)) = self.common.using
                         && let Some(stack) = self.common.stack_in(slot).cloned()
                     {
-                        self.common.use_duration = self.common.use_duration(&stack);
+                        self.common.use_duration = self.use_duration(&stack);
                         self.common.use_start = sunrise_gameplay_common::game::item_use_common::UseStart::of(stack);
                         self.side_reset_client_item_use();
                     }
@@ -718,3 +718,7 @@ impl crate::game::ClientGame<'_> {
 }
 
 use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt as _;
+
+use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

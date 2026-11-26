@@ -275,3 +275,7 @@ fn a_mob_on_a_ghastling_sits_at_the_scaled_seat() {
     assert_eq!(pig.position.x, ghast.x - 1.7 * f64::from(0.2375_f32));
     assert_eq!(pig.position.z, ghast.z);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;

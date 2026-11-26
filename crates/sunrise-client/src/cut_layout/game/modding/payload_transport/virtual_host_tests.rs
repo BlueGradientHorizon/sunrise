@@ -183,3 +183,5 @@ fn join(port: u16, host: &str, name: &str) -> sunrise_protocol::connection::Conn
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

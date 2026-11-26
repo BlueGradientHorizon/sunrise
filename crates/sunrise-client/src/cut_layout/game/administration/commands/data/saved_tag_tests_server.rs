@@ -86,3 +86,5 @@ pub(in crate::game) fn with_command_game(
     drop(game);
     std::fs::remove_dir_all(scratch).unwrap();
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

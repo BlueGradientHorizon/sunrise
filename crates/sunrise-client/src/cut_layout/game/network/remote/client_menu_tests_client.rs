@@ -477,3 +477,7 @@ fn client_menu_reads_follow_packets_and_lifetimes() {
         assert_ne!(reconnected, before_logout);
     });
 }
+
+use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

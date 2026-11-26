@@ -21,7 +21,7 @@ impl ClientGame<'_> {
             || self.common.rockets.iter().any(|r| r.id == uid)
             || self.common.tnts.iter().any(|t| t.id == uid)
             || self.common.falling.iter().any(|f| f.id == uid)
-            || self.common.resident_dragon_part(uid).is_some()
+            || self.resident_dragon_part(uid).is_some()
             || self
                 .client
                 .remote
@@ -66,7 +66,7 @@ impl ClientGame<'_> {
         let pickable = !self.client.interactions.contains_key(&id)
             && !is_synthetic_dragon_part
             && self.client_has_pick_result(id);
-        let suggest_uuid = !is_synthetic_dragon_part && self.common.resident_dragon_part(hit.id).is_none();
+        let suggest_uuid = !is_synthetic_dragon_part && self.resident_dragon_part(hit.id).is_none();
         Some(CrosshairEntityHit {
             id,
             distance: hit.distance_sq.sqrt(),
@@ -128,7 +128,7 @@ impl ClientGame<'_> {
         self.collect_pick_candidates_within(max_distance, &mut pick);
         if subscribed {
             self.storage_scope(|game, _| {
-                game.side.client_pick.rider_candidates = pick.dispatch(game);
+                game.client.client_pick.rider_candidates = pick.dispatch(game);
                 ((), true)
             });
         }
@@ -158,7 +158,7 @@ impl ClientGame<'_> {
                 AttackRangePickResult::Miss => {}
             }
         }
-        let Some((eye, dir)) = self.common.aim() else {
+        let Some((eye, dir)) = self.aim() else {
             return CrosshairDecision::Miss;
         };
         let from = Vec3::new(eye[0], eye[1], eye[2]);
@@ -166,7 +166,7 @@ impl ClientGame<'_> {
         let block_hit = if self.client.client_pick.ray.is_some() {
             None
         } else {
-            self.common.pick_unfiltered()
+            self.pick_unfiltered()
         };
         let (entity_max_distance, search_max_distance_sq, block_distance_sq) = match block_hit {
             Some(block) => {
@@ -214,7 +214,7 @@ impl ClientGame<'_> {
         max_distance: f64,
         pick: &mut PickAccumulator,
     ) {
-        let Some((eye, dir)) = self.common.aim() else {
+        let Some((eye, dir)) = self.aim() else {
             return;
         };
         let (from, to) = pick_ray_segment(eye, dir, max_distance);
@@ -278,3 +278,7 @@ pub(in crate::game) mod tests {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

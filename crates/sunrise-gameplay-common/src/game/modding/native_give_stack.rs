@@ -5,12 +5,12 @@ use sunrise_items::items::ItemStack;
 /// The most SNBT text `item_from_snbt` reads: `NbtAccounter`'s default quota, 2 MiB.
 const MAX_SNBT_BYTES: usize = 2 * 1024 * 1024;
 
-impl CommonGame<'_> {
+pub trait NativeGiveStackGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `ItemStack.CODEC` reading the compound `snbt` stands for (`TagParser`): only that
     /// compound and whitespace. At most 2 MiB and 512 levels: vanilla's SNBT parser has
     /// neither limit (deep text ends in a stack overflow); they are this API's bound so
     /// mod-supplied text cannot overflow the parser.
-    pub(in crate::game) fn item_from_snbt(&self, snbt: &str) -> Option<ItemStack> {
+     fn item_from_snbt(&self, snbt: &str) -> Option<ItemStack> {
         if snbt.len() > MAX_SNBT_BYTES {
             return None;
         }
@@ -22,5 +22,7 @@ impl CommonGame<'_> {
         self.items().get(&stack.item).is_some().then_some(stack)
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeGiveStackGameExt1<'__sg> for G {}
+
 
 use crate::game::tables::GameItems as _;

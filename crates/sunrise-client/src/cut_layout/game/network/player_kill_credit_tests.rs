@@ -758,3 +758,5 @@ fn a_wither_killing_a_player_without_mob_griefing_drops_the_rose() {
         "the rose's item entity comes after the orbs"
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

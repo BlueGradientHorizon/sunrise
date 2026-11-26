@@ -185,7 +185,7 @@ impl crate::game::ServerGame<'_> {
         &self,
         level: mod_api::LevelRef,
     ) -> Option<(&World, bool)> {
-        self.common.level_in_place(level).then_some((&self.common.world, false))
+        self.level_in_place(level).then_some((&self.common.world, false))
     }
 }
 
@@ -409,3 +409,7 @@ mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

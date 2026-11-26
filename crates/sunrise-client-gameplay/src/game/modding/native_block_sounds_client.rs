@@ -11,7 +11,7 @@ impl ClientGame<'_> {
         state: BlockStateId,
         cause: BlockSoundCause,
     ) -> BlockSoundType {
-        let player = (self.common.own_entity_id() as u32, "minecraft:player");
+        let player = (self.own_entity_id() as u32, "minecraft:player");
         self.common.block_sound_type(pos, state, Some(player), cause)
     }
     /// `LevelEventHandler`'s break sound (level event 2001, which a client's predicted break
@@ -30,3 +30,5 @@ impl ClientGame<'_> {
         );
     }
 }
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

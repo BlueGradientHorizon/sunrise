@@ -78,10 +78,10 @@ impl crate::game::ClientGame<'_> {
         }
         match result {
             Interaction::Duplicate | Interaction::Give => {
-                self.common.with_hand(hand, Self::consume_held);
+                self.with_hand(hand, Self::consume_held);
             }
             Interaction::Take(stack) => {
-                let _ = self.common.add_stack_to_inventory(stack);
+                let _ = self.add_stack_to_inventory(stack);
             }
         }
         true
@@ -89,3 +89,5 @@ impl crate::game::ClientGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

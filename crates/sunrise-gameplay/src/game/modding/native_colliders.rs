@@ -40,7 +40,7 @@ impl crate::game::ServerGame<'_> {
         if !self.common.is_logical_server() {
             return Err(ColliderError::StaleEntity);
         }
-        match self.common.native_entity_target(entity) {
+        match self.native_entity_target(entity) {
             None | Some(Target::Player | Target::Guest(_)) => Err(ColliderError::StaleEntity),
             Some(_) => Ok(entity.id()),
         }
@@ -145,7 +145,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Where the collider entity `id` is, in the server level in place.
     pub(in crate::game) fn collider_origin(&self, id: u32) -> Option<Vec3> {
-        let at = self.target_position(self.common.level_entity(id as i32)?)?;
+        let at = self.target_position(self.level_entity(id as i32)?)?;
         Some(Vec3::new(at[0], at[1], at[2]))
     }
 
@@ -381,7 +381,7 @@ impl crate::game::ServerGame<'_> {
         use sunrise_sim::raw_payloads::Endpoint;
         let body = collider_sync::encode(message);
         for sender in senders {
-            let sent = self.common.queue_current_payload(
+            let sent = self.queue_current_payload(
                 Endpoint::server(sender.clone()),
                 &PayloadId(collider_sync::CHANNEL.into()),
                 PayloadBytes(body.clone()),
@@ -497,3 +497,9 @@ pub(in crate::game) mod tests {
         assert!(meets(30), "a stranger meets it");
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::payload_transport::PayloadTransportGameExt1 as _;

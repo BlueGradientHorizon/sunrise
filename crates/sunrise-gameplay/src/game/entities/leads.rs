@@ -424,7 +424,7 @@ impl crate::game::ServerGame<'_> {
         // The mods' say when a player is behind it: the user, else the
         // killer of a mob that died leashed.
         let player = if used {
-            Some(self.common.native_acting_id())
+            Some(self.native_acting_id())
         } else {
             killer
         };
@@ -612,7 +612,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `LeadItem.useOn` on the fence the crosshair hits.
     pub(in crate::game::server_side) fn interact_knot(&mut self) -> bool {
-        let Some(hit) = self.common.pick() else {
+        let Some(hit) = self.pick() else {
             return false;
         };
         let name = self
@@ -726,7 +726,7 @@ impl crate::game::ServerGame<'_> {
                 self.lead_sound("tied", at);
                 // `Player.interactOn` restores the count of a player with
                 // infinite materials (creative); others spend the lead.
-                self.common.consume_held();
+                self.consume_held();
                 return Some(LeashInteraction::WithItem);
             }
         }
@@ -826,3 +826,9 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

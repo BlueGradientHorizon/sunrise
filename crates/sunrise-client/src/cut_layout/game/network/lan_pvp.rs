@@ -407,3 +407,4 @@ mod tests {
         });
     }
 }
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

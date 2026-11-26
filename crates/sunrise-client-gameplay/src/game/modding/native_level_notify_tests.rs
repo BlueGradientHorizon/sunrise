@@ -327,3 +327,5 @@ fn biome_negative_min_y_and_unwind_restore_without_publication() {
         assert!(rx.try_recv().is_err());
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

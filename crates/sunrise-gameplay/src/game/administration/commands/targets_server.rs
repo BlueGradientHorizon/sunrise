@@ -11,7 +11,7 @@ impl crate::game::ServerGame<'_> {
             Target::Guest(conn) => Some(conn),
             _ => None,
         };
-        conn.and_then(|c| self.common.command_guest(c))
+        conn.and_then(|c| self.command_guest(c))
             .map_or(self.common.dim, |g| Dim::from_id(&g.dimension))
     }
     pub(in crate::game) fn target_position(&self, t: Target) -> Option<[f64; 3]> {
@@ -20,7 +20,7 @@ impl crate::game::ServerGame<'_> {
                 .common.player
                 .as_ref()
                 .map(|p| [p.position.x, p.position.y, p.position.z]),
-            Target::Guest(conn) => self.common.command_guest(conn).map(|g| g.position),
+            Target::Guest(conn) => self.command_guest(conn).map(|g| g.position),
             Target::Mob(id) => self
                 .common.mobs
                 .iter()
@@ -95,7 +95,7 @@ impl crate::game::ServerGame<'_> {
                 .iter()
                 .find(|c| c.id == id)
                 .map(|c| [c.position.x, c.position.y, c.position.z]),
-            Target::DragonPart(id) => self.common.resident_dragon_part(id).map(|(d, i)| {
+            Target::DragonPart(id) => self.resident_dragon_part(id).map(|(d, i)| {
                 let p = d.parts[i].0;
                 [p.x, p.y, p.z]
             }),
@@ -143,3 +143,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;

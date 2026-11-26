@@ -7,7 +7,7 @@ impl crate::game::ClientGame<'_> {
         if !self.common.world.block_entities.has_pending_on_load() {
             return;
         }
-        let Some(level) = self.common.native_client_level() else {
+        let Some(level) = self.native_client_level() else {
             return;
         };
         let mut remaining = self.common.world.block_entities.pending_on_load_len();
@@ -43,3 +43,5 @@ impl crate::game::ClientGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

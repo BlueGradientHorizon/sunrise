@@ -444,7 +444,7 @@ impl crate::game::ClientGame<'_> {
         let alt = self.client.keys.raw(&KeyCode::AltLeft);
         let atlas_click = |game: &crate::game::ClientGame<'_>,
                            edit: &mut EditBox| {
-            edit.click(&game.side.gui.atlas, cursor.0, false, false);
+            edit.click(&game.client.gui.atlas, cursor.0, false, false);
         };
         let Some(items) = self.with_block_editor(|s, e| s.editor.items(e, b.width, b.height))
         else {

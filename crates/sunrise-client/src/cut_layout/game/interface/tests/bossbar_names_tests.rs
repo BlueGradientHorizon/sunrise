@@ -165,3 +165,5 @@ fn a_boss_bars_player_list_is_decorated_like_other_player_lists() {
         );
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

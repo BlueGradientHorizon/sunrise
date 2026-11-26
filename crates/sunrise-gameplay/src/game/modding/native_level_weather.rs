@@ -65,7 +65,7 @@ impl ServerGame<'_> {
         raining: bool,
         thundering: bool,
     ) -> bool {
-        if !self.common.level_in_place(level)
+        if !self.level_in_place(level)
             || clear_ticks < 0
             || weather_ticks < 0
             || LevelControl::Weather.is_heard()
@@ -84,7 +84,7 @@ impl ServerGame<'_> {
         rain: f32,
         thunder: f32,
     ) -> bool {
-        if !self.common.level_in_place(level) || !rain.is_finite() || !thunder.is_finite() {
+        if !self.level_in_place(level) || !rain.is_finite() || !thunder.is_finite() {
             return false;
         }
         let w = &mut self.common.world.weather;
@@ -94,3 +94,5 @@ impl ServerGame<'_> {
         true
     }
 }
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

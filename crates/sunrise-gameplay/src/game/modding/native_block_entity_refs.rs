@@ -66,11 +66,9 @@ impl ServerGame<'_> {
         player: PlayerRef,
         entity: BlockEntityRef,
     ) -> Result<bool, BlockEntityError> {
-        self.common
-            .native_block_entity_target(entity)
+        self.native_block_entity_target(entity)
             .ok_or(BlockEntityError::Stale)?;
-        if self.player_handle_read(player).is_none()
-            || !self.common.level_in_place(entity.fields().level)
+        if self.player_handle_read(player).is_none() || !self.level_in_place(entity.fields().level)
         {
             return Ok(false);
         }
@@ -150,11 +148,11 @@ impl ServerGame<'_> {
         &self,
         entity: BlockEntityRef,
     ) -> Option<(i32, i32, i32)> {
-        if !self.common.level_in_place(entity.fields().level) {
+        if !self.level_in_place(entity.fields().level) {
             return None;
         }
         let pos = entity.fields().position;
-        self.common.native_block_entity_target(entity)?;
+        self.native_block_entity_target(entity)?;
         Some((pos[0], pos[1], pos[2]))
     }
 
@@ -279,7 +277,7 @@ impl ServerGame<'_> {
             {
                 return Err(BlockEntityItemError::InvalidStack);
             }
-            let limit = self.common.stack_max_size(stack);
+            let limit = self.stack_max_size(stack);
             if stack.count > limit {
                 return Err(BlockEntityItemError::StackTooLarge {
                     count: stack.count,
@@ -413,11 +411,8 @@ impl ServerGame<'_> {
         enabled: bool,
     ) -> Result<(), mod_api::ContentsWatchError> {
         let fields = entity.fields();
-        if !self.common.level_in_place(fields.level)
-            || self
-                .common
-                .block_entity_identity(fields.level, fields.position)
-                != Some(entity)
+        if !self.level_in_place(fields.level)
+            || self.block_entity_identity(fields.level, fields.position) != Some(entity)
         {
             return Err(mod_api::ContentsWatchError::Stale);
         }
@@ -510,7 +505,7 @@ impl ServerGame<'_> {
     /// banners, beacons, enchanting tables, command blocks...), or for a stale handle or a
     /// client.
     pub(in crate::game) fn block_entity_name(&self, entity: BlockEntityRef) -> Option<String> {
-        let (world, block_entity) = self.common.native_block_entity_target(entity)?;
+        let (world, block_entity) = self.native_block_entity_target(entity)?;
         let [x, y, z] = entity.fields().position;
         match block_entity {
             BlockEntity::Banner(banner) => banner.name.clone(),
@@ -534,7 +529,7 @@ impl ServerGame<'_> {
         if !self.common.is_logical_server() {
             return None;
         }
-        self.common.native_block_entity_target(entity)?;
+        self.native_block_entity_target(entity)?;
         let epoch = self.common.native_lifecycle.epoch()?;
         let fields = entity.fields();
         let level = fields.level;
@@ -566,7 +561,7 @@ impl ServerGame<'_> {
                 Some(player_ref(mod_api::EntityRef::new(epoch, id), g.uuid))
             })
             .collect();
-        if self.common.level_in_place(level)
+        if self.level_in_place(level)
             && !self.server.lan_acting_fake
             && !self.common.spectator()
             && self
@@ -1099,3 +1094,13 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

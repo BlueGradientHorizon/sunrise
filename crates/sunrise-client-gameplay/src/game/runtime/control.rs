@@ -382,7 +382,7 @@ impl crate::game::ClientGame<'_> {
             return Err("no focused editor accepted character input".into());
         }
         if self.client.book.is_some() {
-            if matches!(self.side.book, Some(super::books::BookScreen::Edit { .. })) {
+            if matches!(self.client.book, Some(super::books::BookScreen::Edit { .. })) {
                 self.book_type(text);
                 return Ok(());
             }
@@ -732,8 +732,8 @@ impl crate::game::ClientGame<'_> {
                 Ok(Some(json!({
                     "ok": true,
                     "gpu_culling": r.gpu_culling(),
-                    "mode": self.side.settings.sunrise.gpu_culling.name(),
-                    "auto": self.side.gpu_culling_auto.state(),
+                    "mode": self.client.settings.sunrise.gpu_culling.name(),
+                    "auto": self.client.gpu_culling_auto.state(),
                 })))
             }
             "sculk" => {
@@ -750,7 +750,7 @@ impl crate::game::ClientGame<'_> {
             }
             "hello" => Ok(Some(hello())),
             "status" => Ok(Some(self.control_status())),
-            "memory" => Ok(Some(self.common.memory_value())),
+            "memory" => Ok(Some(self.memory_value())),
             "stall" => {
                 let millis: u64 = arg(1)?.parse()?;
                 if millis > 5000 {
@@ -1054,7 +1054,6 @@ impl crate::game::ClientGame<'_> {
                 while given < count {
                     let n = (count - given).min(max);
                     let rest = self
-                        .common
                         .add_stack_to_inventory(ItemStack {
                             item: item.as_str().into(),
                             count: n,
@@ -1200,7 +1199,7 @@ impl crate::game::ClientGame<'_> {
                 // the recent list apply to a connected server too.
                 self.handle_chat_input(text);
                 Ok(Some(
-                    json!({ "ok": true, "chat": self.side.chat_ui.chat.recent_lines(5) }),
+                    json!({ "ok": true, "chat": self.client.chat_ui.chat.recent_lines(5) }),
                 ))
             }
             "type" => {
@@ -1586,7 +1585,7 @@ impl crate::game::ClientGame<'_> {
                 "food": p.health.food.food,
             })
         });
-        let target = self.common.pick().map(|hit| {
+        let target = self.pick().map(|hit| {
             let state = self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
             json!({ "pos": hit.pos, "block": &*self.res.facts().get(state).name })
         });
@@ -1613,14 +1612,14 @@ impl crate::game::ClientGame<'_> {
                 "section_draw_calls": r.section_draw_calls,
                 "culled_sections": r.culled_sections(),
                 "gpu_culling": r.gpu_culling(),
-                "gpu_culling_mode": self.side.settings.sunrise.gpu_culling.name(),
-                "gpu_culling_auto": self.side.gpu_culling_auto.state(),
+                "gpu_culling_mode": self.client.settings.sunrise.gpu_culling.name(),
+                "gpu_culling_auto": self.client.gpu_culling_auto.state(),
                 // The world's resolution scale in percent, Dynamic Resolution's where it is on.
                 "resolution_scale": super::frame_autotune::world_scale(
-                    &self.side.settings.sunrise,
-                    &self.side.dynamic_resolution
+                    &self.client.settings.sunrise,
+                    &self.client.dynamic_resolution
                 ),
-                "dynamic_resolution": self.side.settings.sunrise.dynamic_resolution,
+                "dynamic_resolution": self.client.settings.sunrise.dynamic_resolution,
                 "gpu_frame": r.gpu_frame(),
                 "gpu_fading": r.gpu_fading(),
                 "gpu_culling_offer": format!("{:?}", r.gpu_culling_offer()),
@@ -1645,18 +1644,18 @@ impl crate::game::ClientGame<'_> {
             .collect();
         physical_keys.sort();
         let lod = json!({
-            "distance": self.side.settings.sunrise.lod_distance,
+            "distance": self.client.settings.sunrise.lod_distance,
             "effective_distance": self.lod_distance(),
             "terrain_distance": self.terrain_distance(),
-            "source": if self.side.lod.0.is_none() { "none" } else if self.side.integrated.is_some() { "integrated" } else if self.server_far_terrain().is_some() { "server" } else if self.side.remote.is_some() { "server-terrain" } else { "local" },
-            "source_attempted": self.side.lod_source_attempted,
-            "active_tiles": self.side.lod.0.as_ref().map_or(0, |lod| lod.stats().0),
-            "cached_tiles": self.side.lod.0.as_ref().map_or(0, |lod| lod.stats().1),
-            "far_detail": self.side.settings.sunrise.far_detail.name(),
-            "resident_quads": self.side.renderer.0.as_ref().map_or(0, |r| r.lod_quads()),
-            "levels": self.side.renderer.0.as_ref().map_or_else(Vec::new, |r| r.lod_levels()),
-            "pending_observations": self.side.lod_observe.len(),
-            "refined_samples": self.side.lod.0.as_ref().map_or(0, |lod| lod.refined_samples()),
+            "source": if self.client.lod.0.is_none() { "none" } else if self.client.integrated.is_some() { "integrated" } else if self.server_far_terrain().is_some() { "server" } else if self.client.remote.is_some() { "server-terrain" } else { "local" },
+            "source_attempted": self.client.lod_source_attempted,
+            "active_tiles": self.client.lod.0.as_ref().map_or(0, |lod| lod.stats().0),
+            "cached_tiles": self.client.lod.0.as_ref().map_or(0, |lod| lod.stats().1),
+            "far_detail": self.client.settings.sunrise.far_detail.name(),
+            "resident_quads": self.client.renderer.0.as_ref().map_or(0, |r| r.lod_quads()),
+            "levels": self.client.renderer.0.as_ref().map_or_else(Vec::new, |r| r.lod_levels()),
+            "pending_observations": self.client.lod_observe.len(),
+            "refined_samples": self.client.lod.0.as_ref().map_or(0, |lod| lod.refined_samples()),
         });
         // The other players' cracks this client draws (LevelRenderer.destroyingBlocks).
         let destroying: Vec<_> = self
@@ -1668,13 +1667,13 @@ impl crate::game::ClientGame<'_> {
         let mut status = json!({
             "screen": self.screen_name(),
             "debug": {
-                "overlay": self.side.debug,
+                "overlay": self.client.debug,
                 "hitboxes": self.debug_entry("entity_hitboxes"),
                 "chunk_borders": self.debug_entry("chunk_borders"),
-                "pause_menu": self.side.pause_menu,
-                "advanced_tooltips": self.side.settings.file.bool("advancedItemTooltips"),
-                "pause_on_lost_focus": self.side.settings.file.bool("pauseOnLostFocus"),
-                "clipboard": self.side.clipboard.0.copied(),
+                "pause_menu": self.client.pause_menu,
+                "advanced_tooltips": self.client.settings.file.bool("advancedItemTooltips"),
+                "pause_on_lost_focus": self.client.settings.file.bool("pauseOnLostFocus"),
+                "clipboard": self.client.clipboard.0.copied(),
             },
             "dimension": self.dim.id(),
             "creative": self.creative,
@@ -1685,14 +1684,14 @@ impl crate::game::ClientGame<'_> {
             "selected": self.selected + 1,
             "held": self.held().map(|s| json!({ "item": &*s.item, "count": s.count })),
             "offhand": self.offhand.as_ref().map(|s| json!({ "item": &*s.item, "count": s.count, "damage": s.damage })),
-            "keys": self.side.keys.iter().map(|k| format!("{k:?}")).collect::<Vec<_>>(),
+            "keys": self.client.keys.iter().map(|k| format!("{k:?}")).collect::<Vec<_>>(),
             // The keyboard as the OS reports it (Shift and Ctrl in screens).
-            "fps": self.side.fps,
-            "frames": self.side.frames,
+            "fps": self.client.fps,
+            "frames": self.client.frames,
             "ticks": self.ticks,
             "day_time": self.world.day_time,
-            "music": self.side.music.current(&self.side.audio.0.engine),
-            "sounds": self.side.audio.0.census(),
+            "music": self.client.music.current(&self.client.audio.0.engine),
+            "sounds": self.client.audio.0.census(),
             "tridents": self.tridents.len(),
             "rockets": self.rockets.len(),
             // A client of a server (single player's server thread) knows the
@@ -1700,23 +1699,23 @@ impl crate::game::ClientGame<'_> {
             "carts": self.remote_carts().unwrap_or_else(|| self.carts.iter().map(|c| serde_json::json!({"kind": c.kind.id(), "position": [c.position.x, c.position.y, c.position.z], "velocity": [c.velocity.x, c.velocity.y, c.velocity.z]})).collect::<Vec<_>>()),
             "riding": self.riding,
             "using": self.using,
-            "render_distance": self.side.streaming.radius,
+            "render_distance": self.client.streaming.radius,
             "chunks": self.world.chunks.len(),
             "mobs": self.mobs.len(),
             "block_entities": self.world.block_entities.len(),
-            "pending_chunks": self.side.streaming.pending() + self.side.pending_uploads.0.len() + self.remote_backlog(),
-            "generated_chunks": self.side.streaming.generated_total,
-            "meshed_sections": self.side.streaming.meshed_total,
-            "streaming": self.side.streaming.stages().into_iter().map(|(k, v)| (k.to_string(), v.into())).collect::<serde_json::Map<_, _>>(),
+            "pending_chunks": self.client.streaming.pending() + self.client.pending_uploads.0.len() + self.remote_backlog(),
+            "generated_chunks": self.client.streaming.generated_total,
+            "meshed_sections": self.client.streaming.meshed_total,
+            "streaming": self.client.streaming.stages().into_iter().map(|(k, v)| (k.to_string(), v.into())).collect::<serde_json::Map<_, _>>(),
             "dirty_light": self.world.dirty_light.len(),
             "renderer": renderer,
-            "display": self.side.window.0.as_deref().and_then(sunrise_client::monitor::of).map(|m| json!({
+            "display": self.client.window.0.as_deref().and_then(sunrise_client::monitor::of).map(|m| json!({
                 "width": m.size().width,
                 "height": m.size().height,
                 "scale": m.scale_factor(),
                 "refresh_hz": m.refresh_rate_millihertz().map(|r| r.div_ceil(1000)),
             })),
-            "uptime_seconds": self.side.started.elapsed().as_secs_f64(),
+            "uptime_seconds": self.client.started.elapsed().as_secs_f64(),
             "server": self.remote_status(),
             // The names the name tags show now, seen from the eyes.
             "name_tags": self
@@ -1784,12 +1783,12 @@ impl crate::game::ClientGame<'_> {
         status["pending_uploads"] = self.client.pending_uploads.0.len().into();
         status["destroying"] = json!(destroying);
         status["physical_keys"] = json!(physical_keys);
-        status["heard"] = json!(self.side.audio.0.heard);
-        status["stopped_sounds"] = json!(self.side.audio.0.stopped);
+        status["heard"] = json!(self.client.audio.0.heard);
+        status["stopped_sounds"] = json!(self.client.audio.0.stopped);
         // Boats, minecarts, armor stands, item frames and paintings.
         status["objects"] = json!(self.objects_status());
-        status["lightning"] = json!({"bolts": self.bolts.len(), "struck": self.side.lightning_seen[0],
-            "flashes": self.side.lightning_seen[1], "flash": self.flash});
+        status["lightning"] = json!({"bolts": self.bolts.len(), "struck": self.client.lightning_seen[0],
+            "flashes": self.client.lightning_seen[1], "flash": self.flash});
         // Primed TNT, falling blocks, projectiles, tridents and end crystals.
         status["projectiles"] = json!(self.client_projectiles_status());
         let mut fangs_vertices = Vec::new();
@@ -1797,9 +1796,9 @@ impl crate::game::ClientGame<'_> {
         status["fangs_vertices"] = json!(fangs_vertices.len());
         status["maps"] = json!(self.maps_status());
         // The particles made so far, by type.
-        status["particles"] = json!(self.side.particles.0.made());
+        status["particles"] = json!(self.client.particles.0.made());
         // The pickup particles made so far, by what was taken.
-        status["pickups"] = json!(self.side.pickups.0.made());
+        status["pickups"] = json!(self.client.pickups.0.made());
         // The world border this side knows of.
         status["border"] = json!({ "center": self.border.center(), "size": self.border.size() });
         // The scoreboard sidebar the HUD shows.
@@ -2097,3 +2096,9 @@ pub(in crate::game) mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::memory_common::MemoryCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

@@ -14,7 +14,7 @@ impl ServerGame<'_> {
                 (true, self.common.creative, p.fall_distance, p.fall_flying)
             }
             Target::Guest(conn) => {
-                let guest = self.common.command_guest(conn)?;
+                let guest = self.command_guest(conn)?;
                 let p = guest.motion.as_ref()?;
                 (true, guest.creative(), p.fall_distance, p.fall_flying)
             }
@@ -35,7 +35,7 @@ impl ServerGame<'_> {
         power: i32,
         pool: &mod_api::Identifier,
     ) -> Result<Option<ItemStack>, mod_api::StackWriteError> {
-        if level.dimension() != self.common.dim.key() || self.common.native_level_world(level).is_none() {
+        if level.dimension() != self.common.dim.key() || self.native_level_world(level).is_none() {
             return Ok(None);
         }
         let items = world_items!(self);
@@ -58,3 +58,7 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

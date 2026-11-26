@@ -392,4 +392,3 @@ pub(in crate::game) fn darkness_blend_added(e: &EffectInstance, blend: bool) -> 
 }
 
 // Milking and shearing farm animals; lives here for `TEST_POSTED_EVENTS`.
-

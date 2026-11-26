@@ -1002,3 +1002,4 @@ pub(in crate::game) mod vehicle_container_tests {
 #[cfg(test)]
 #[path = "finalize_marker_tests.rs"]
 pub(in crate::game) mod finalize_marker_tests;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

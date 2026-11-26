@@ -102,3 +102,5 @@ fn failed_modifier_value_get_leaves_the_attribute_store_and_its_save_alone() {
         assert!(said.contains("is 0.25"), "its amount: {said}");
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -2,8 +2,8 @@
 use crate::game::CommonGame;
 use super::api_values::{TryIntoApi, TryIntoEngine};
 
-impl CommonGame<'_> {
-    pub fn api_anvil_update(
+pub trait ApiValuesCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+     fn api_anvil_update(
         &mut self,
         player: u128,
         entity: i32,
@@ -61,6 +61,8 @@ impl CommonGame<'_> {
         result.repair_item_count_cost = edits.material_cost.max(0) as u32;
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> ApiValuesCommonGameExt1<'__sg> for G {}
+
 
 /// The saved block entity's payload, with its world identity and position removed.
 pub(in crate::game) fn block_entity_payload(

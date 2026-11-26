@@ -175,3 +175,5 @@ pub(in crate::game) fn run_mob_pearls_use_the_hook_and_recheck_listener_writes_w
         })
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

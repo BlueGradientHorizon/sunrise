@@ -171,7 +171,7 @@ fn extract_one(
 }
 
 // Native mods use these; nothing in Sunrise does.
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// `ItemStack.canFitInsideContainerItems`: vanilla's answer, then the parts of `item`'s
     /// item, in the loop this game runs.
     fn fits_inside_container_items(&self, item: &ItemStack) -> bool {

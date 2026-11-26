@@ -11,7 +11,7 @@ impl crate::game::ServerGame<'_> {
             .bool_at(sunrise_game_data::gamerules::vanilla::ADVANCE_TIME)
         {
             // The rule may have just been turned off: tell the guests the clock stopped.
-            self.common.sync_hub_clocks();
+            self.sync_hub_clocks();
             return;
         }
         let mut names: Vec<String> = self.common.ui.command_clocks.keys().cloned().collect();
@@ -41,7 +41,7 @@ impl crate::game::ServerGame<'_> {
             let total = self.common.command_clock_time(&name) + whole as i64;
             self.common.set_command_clock_time(&name, total);
         }
-        self.common.sync_hub_clocks();
+        self.sync_hub_clocks();
     }
     /// The LAN hub's time packets, read from the clocks without touching the hub.
     pub(in crate::game::server_side) fn hub_clock_snapshot(&mut self) -> HubClockSnapshot {
@@ -99,3 +99,5 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::clocks::ClocksGameExt1 as _;

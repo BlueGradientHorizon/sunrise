@@ -114,3 +114,5 @@ fn kill_spills_explicit_vehicle_contents_after_menu_writeback() {
         "kill must spill authoritative explicit contents: {differences:#?}"
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

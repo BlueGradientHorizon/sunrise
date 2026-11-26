@@ -238,3 +238,7 @@ pub(in sunrise_gameplay::game::server_side) fn run_a_crossing_without_a_listener
         assert_eq!(save(game), vec![vec![0, 0, 2, 1]]);
     });
 }
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

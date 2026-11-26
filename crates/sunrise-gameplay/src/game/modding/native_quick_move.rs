@@ -363,7 +363,7 @@ impl crate::game::ServerGame<'_> {
                 if let Some(layout) = changed_menu
                     && let Some(before) = before
                     && let Some(uuid) = game
-                        .side
+                        .server
                         .lan
                         .as_ref()
                         .and_then(|host| host.hub.guest(conn))
@@ -401,7 +401,7 @@ impl crate::game::ServerGame<'_> {
             && admitted.holds(self)
             && self.native_block_entity_write_key(subject) == Some(pos)
         {
-            let player = self.common.native_acting_id();
+            let player = self.native_acting_id();
             let _ = self.mod_menu_slot_take(Some(pos), player, menu, &take);
         }
         QuickMoveOutcome::Handled
@@ -455,7 +455,7 @@ impl Admitted {
         size: usize,
         window: i32,
     ) -> Option<Self> {
-        let guest = game.side.lan.as_ref()?.hub.guest(conn)?;
+        let guest = game.server.lan.as_ref()?.hub.guest(conn)?;
         guest.menu.as_ref()?;
         Some(Self {
             conn,
@@ -471,7 +471,7 @@ impl Admitted {
     /// Callers separately check the level-bound holder before settling the clicked slot.
     pub(in crate::game) fn holds(&self, game: &crate::game::ServerGame<'_>) -> bool {
         let Some(guest) = game
-            .side
+            .server
             .lan
             .as_ref()
             .and_then(|host| host.hub.guest(self.conn))
@@ -531,3 +531,7 @@ mod tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

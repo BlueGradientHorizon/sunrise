@@ -16,7 +16,7 @@ impl crate::game::ServerGame<'_> {
         &mut self,
         level: LevelRef,
     ) -> Option<&mut LegacyRandom> {
-        if !self.common.is_logical_server() || !self.common.level_handle_current(level) {
+        if !self.common.is_logical_server() || !self.level_handle_current(level) {
             return None;
         }
         let world = if level.dimension() == self.common.dim.key() {
@@ -30,3 +30,5 @@ impl crate::game::ServerGame<'_> {
         Some(&mut world.random)
     }
 }
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

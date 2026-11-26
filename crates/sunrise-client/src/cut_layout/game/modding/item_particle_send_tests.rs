@@ -81,3 +81,6 @@ fn stack_particle_crosses_server_packet_and_resolves_apple() {
         );
     });
 }
+
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

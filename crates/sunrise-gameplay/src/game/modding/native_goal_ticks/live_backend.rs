@@ -18,3 +18,7 @@ impl GoalCx<'_, '_> {
                 .is_some_and(|host| host.mob_in_other_level(entity))
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

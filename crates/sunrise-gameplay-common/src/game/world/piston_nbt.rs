@@ -2,7 +2,7 @@ use crate::game::CommonGame;
 use sunrise_core::{nbt::Tag, position::BlockPos};
 use sunrise_world::{level::MovingPiston, registry::BlockStateId};
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     pub fn state_to_nbt(&self, state: BlockStateId) -> Tag {
         sunrise_sim::entity_nbt::state_to_nbt(self.pack.assets.registry, state)
     }

@@ -31,7 +31,7 @@ impl ServerGame<'_> {
         if !(center.iter().all(|v| v.is_finite()) && radius.is_finite() && radius >= 0.0) {
             return Err(ExplosionDestroyError::InvalidBlast);
         }
-        if !self.common.level_in_place(level)
+        if !self.level_in_place(level)
             || (self.server.serving.is_none() && self.common.options.dedicated.is_none())
         {
             return Err(ExplosionDestroyError::Unavailable);
@@ -113,3 +113,5 @@ impl ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

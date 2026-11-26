@@ -916,13 +916,13 @@ impl crate::game::ClientGame<'_> {
                     .map(Button::name)
                     .collect();
                 let mut status = json!({
-                    "enabled": self.side.settings.controller.enabled,
-                    "glyphs": self.side.pad.0.style.name(),
-                    "last_rumble": self.side.pad.0.last_rumble.map(|(why, p)| json!({
+                    "enabled": self.client.settings.controller.enabled,
+                    "glyphs": self.client.pad.0.style.name(),
+                    "last_rumble": self.client.pad.0.last_rumble.map(|(why, p)| json!({
                         "reason": why, "strong": p.strong, "weak": p.weak, "ms": p.millis,
                     })),
-                    "in_use": self.side.pad.0.in_use,
-                    "notice": self.side.controller_notice.showing().map(|(title, body)| {
+                    "in_use": self.client.pad.0.in_use,
+                    "notice": self.client.controller_notice.showing().map(|(title, body)| {
                         json!({ "title": title, "body": body })
                     }),
                     "menu": self.pad_menu_status(),

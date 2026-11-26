@@ -5,7 +5,7 @@ use sunrise_level::containers::{ModMenuType, mod_menu_type};
 
 impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn menu_slot_kinds(&self, menu: MenuRef) -> Option<Vec<MenuSlotKind>> {
-        if !matches!(self.side.screen, Screen::Inventory | Screen::Creative) {
+        if !matches!(self.client.screen, Screen::Inventory | Screen::Creative) {
             return None;
         }
         self.client
@@ -16,7 +16,7 @@ impl crate::game::ClientGame<'_> {
         let content = mod_menu_type(name);
         let count = match content {
             Some(content) => content.slot_count(),
-            None => self.common.menu_slot_count(menu)?,
+            None => self.menu_slot_count(menu)?,
         };
         Some(layout_kinds(name, count, content, |slot| {
             sunrise_gameplay_common::game::inventory_screen_slot(name, slot as i32)
@@ -354,3 +354,7 @@ mod tests {
         });
     }
 }
+
+use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

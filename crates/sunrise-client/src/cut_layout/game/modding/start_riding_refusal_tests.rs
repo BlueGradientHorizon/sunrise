@@ -223,3 +223,5 @@ fn a_canceled_entity_mount_is_refused_as_canceled_after_the_checks() {
         assert_eq!(game.mobs[0].extra.mount, None);
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -27,8 +27,11 @@ impl crate::game::CommonGame<'_> {
             .filter(|s| s.properties.get("lit").map(String::as_str) == Some("true"))
             .cloned()
     }
+}
 
-    pub fn modified_campfire(
+pub trait CampfireDouseGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+
+     fn modified_campfire(
         &self,
         hit: &Hit,
         stack: &ItemStack,
@@ -58,5 +61,9 @@ impl crate::game::CommonGame<'_> {
         if cancel { None } else { state }
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> CampfireDouseGameExt1<'__sg> for G {}
+
 
 use crate::game::tables::GameItems as _;
+
+use crate::game::player_identity::PlayerIdentityGameExt1 as _;

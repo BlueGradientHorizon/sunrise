@@ -370,3 +370,5 @@ fn menu_links_skip_a_furnace_the_mod_names() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -81,7 +81,7 @@ impl ServerGame<'_> {
             at[2] - f64::from(nearest.z * 16),
         );
         self.trigger_used_ender_eye(dx * dx + dz * dz);
-        self.common.consume_held();
+        self.consume_held();
         self.award_stat("used", "minecraft:ender_eye", 1);
         self.swing_arm();
     }
@@ -96,7 +96,7 @@ impl ServerGame<'_> {
             eye.velocity = EyeOfEnder::update_delta(eye.velocity, next, eye.target);
             eye.position = next;
             // Its move is filed at once (told with the dragon's step), also for one about to go.
-            self.common.entity_section_step(eye.id, eye.previous.to_array(), next.to_array());
+            self.entity_section_step(eye.id, eye.previous.to_array(), next.to_array());
             eye.life += 1;
             if eye.life <= 80 {
                 return true;
@@ -127,3 +127,7 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

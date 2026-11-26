@@ -51,7 +51,7 @@ impl ServerGame<'_> {
             };
             let hurt = std::mem::take(&mut self.common.mobs[i].outbox);
             if !hurt.is_empty() {
-                self.common.handle_mob_events(hurt)?;
+                self.handle_mob_events(hurt)?;
             }
             let Some(i) = self.common.mobs.iter().position(|m| m.id == id) else {
                 continue;
@@ -100,12 +100,8 @@ impl ServerGame<'_> {
             let last = self.common.mobs.len() - 1;
             self.common.mobs.swap(i, last);
             // The hurt's teleport (`teleportTo`) is one position update, told at once.
-            self.common.entity_section_moved(
-                id,
-                Some([from.x, from.y, from.z]),
-                [to.x, to.y, to.z],
-            );
-            self.common.handle_mob_events(events)?;
+            self.entity_section_moved(id, Some([from.x, from.y, from.z]), [to.x, to.y, to.z]);
+            self.handle_mob_events(events)?;
         }
         Ok(())
     }
@@ -274,3 +270,7 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;

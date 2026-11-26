@@ -30,7 +30,7 @@ pub(in crate::game) struct NativeSoundRequest<'a> {
 impl crate::game::ServerGame<'_> {
     /// The level's dimension id, for a handle of this open on the server.
     fn native_level_dimension(&self, level: LevelRef) -> Option<&'static str> {
-        self.common.native_level_world(level)?;
+        self.native_level_world(level)?;
         Some(level.dimension_id())
     }
     /// Plays sound event `sound` at `at` for the players in this level
@@ -251,3 +251,5 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

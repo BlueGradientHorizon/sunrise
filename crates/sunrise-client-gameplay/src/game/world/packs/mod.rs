@@ -681,56 +681,56 @@ impl crate::game::ClientGame<'_> {
         // in the listener order. All renderer and model validation is finished.
         self.apply_client_reload(client_applies, |game: &mut super::ClientGame<'_>| {
             // Refresh modifiers from the newly staged packs, including removals.
-            game.side
+            game.client
                 .creative_screen
                 .0
                 .set_pack_modifiers(tab_modifiers);
             game.refresh_creative_search_names();
             [
-                game.side.frame_model,
-                game.side.glow_frame_model,
-                game.side.map_frame_model,
-                game.side.glow_map_frame_model,
+                game.client.frame_model,
+                game.client.glow_frame_model,
+                game.client.map_frame_model,
+                game.client.glow_map_frame_model,
             ] = frame_models;
-            game.side.waypoint_styles = waypoint_styles;
-            game.side
+            game.client.waypoint_styles = waypoint_styles;
+            game.client
                 .armor_stand_assets
                 .0
                 .apply_resources(armor_stand_assets);
-            game.side.armor_stand_assets.0.extensions = item_extensions;
+            game.client.armor_stand_assets.0.extensions = item_extensions;
             game.side_clear_random_tick_sections();
             game.portal_sections.clear();
             game.options.resources = root.clone();
-            game.side.falling_vertices.get_mut().clear();
+            game.client.falling_vertices.get_mut().clear();
             game.pack = pack;
-            game.side.client_pack = client_pack;
+            game.client.client_pack = client_pack;
             // The joined level's environment for the frame has the packs' layers over its type.
             game.build_level_environments();
-            game.side.standalone_geometry = standalone_geometry;
-            game.side.instance_groups.borrow_mut().clear();
+            game.client.standalone_geometry = standalone_geometry;
+            game.client.instance_groups.borrow_mut().clear();
             // The new atlas's skin and map slots are blank: players and maps
             // upload into it again instead of naming sprites it does not have.
-            game.side.skin_slots.forget();
-            game.side
+            game.client.skin_slots.forget();
+            game.client
                 .skin_downloads
                 .0
                 .borrow_mut()
                 .set_resource_root(game.pack.source.clone());
-            game.side.map_slots.forget();
-            game.side.map_patches.clear();
-            game.side.text_patches.get_mut().clear();
+            game.client.map_slots.forget();
+            game.client.map_patches.clear();
+            game.client.text_patches.get_mut().clear();
             // Kept mod block entities name the old atlas's sprites, and their view distances the old
             // registry's states.
-            game.side.kept_block_entities.get_mut().clear();
-            game.side.live_scenes.0.get_mut().clear();
-            game.side.mod_view_distances.take();
+            game.client.kept_block_entities.get_mut().clear();
+            game.client.live_scenes.0.get_mut().clear();
+            game.client.mod_view_distances.take();
             // The atlas's sprites moved: the particle engine re-reads every rect
             // and the packs' sprite sets, or every particle draws a stale region.
             if !game.is_logical_server() {
-                game.side.particles.0.reload(
+                game.client.particles.0.reload(
                     &game.pack.source,
-                    &game.side.gui.atlas.sprites,
-                    &game.side.gui.atlas.translucent,
+                    &game.client.gui.atlas.sprites,
+                    &game.client.gui.atlas.translucent,
                 );
             }
             // Villager hats come from the pack's texture metadata (shared data, swapped in place).
@@ -759,21 +759,21 @@ impl crate::game::ClientGame<'_> {
                 .random_textures
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) =
-                std::mem::take(&mut game.side.gui.atlas.random_textures);
+                std::mem::take(&mut game.client.gui.atlas.random_textures);
             *game
                 .client_res()
                 .client_mob_data()
                 .emissive
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) =
-                game.side.gui.atlas.emissive.clone();
+                game.client.gui.atlas.emissive.clone();
             *game
                 .client_res()
                 .client_mob_data()
                 .blinks
                 .write()
                 .unwrap_or_else(std::sync::PoisonError::into_inner) =
-                std::mem::take(&mut game.side.gui.atlas.blinks);
+                std::mem::take(&mut game.client.gui.atlas.blinks);
             // Read with the language in use when the reload started: one picked since then wins.
             let code = lang::code_snapshot();
             lang::set(if language.code == code {
@@ -782,28 +782,28 @@ impl crate::game::ClientGame<'_> {
                 lang::Language::load(&[&game.pack.source], &code)
             });
             // Book search terms and resolved result icons belong to these resources.
-            game.side.recipe_ui.0.reset_screen();
+            game.client.recipe_ui.0.reset_screen();
             game.refresh_remote_language();
-            game.side.audio.0.reload_with(&game.pack.source, sounds);
+            game.client.audio.0.reload_with(&game.pack.source, sounds);
             game.clear_lod();
             // A pack that may replace leaf models falls back to `Off` before the
             // reload marks every section dirty.
-            game.side.streaming.leaf_culling = game.effective_leaf_culling();
+            game.client.streaming.leaf_culling = game.effective_leaf_culling();
             let context = game.worker_context();
-            game.side
+            game.client
                 .streaming
                 .reload_resources(&mut game.world, context);
-            game.side.pending_uploads.0.clear();
+            game.client.pending_uploads.0.clear();
             game.install_model_upload(upload);
             if has_renderer {
                 game.apply_ui_settings();
             }
             // Sunrise's own shader pack is built again: its sprite tags name the old atlas's
             // layers, and a new renderer runs no pack.
-            game.side.native_shaders = super::native_shaders::NativeShaders::picking(
-                &std::mem::take(&mut game.side.native_shaders.picked),
+            game.client.native_shaders = super::native_shaders::NativeShaders::picking(
+                &std::mem::take(&mut game.client.native_shaders.picked),
             );
-            game.side.chat_ui.chat.rescale(&game.side.gui.atlas);
+            game.client.chat_ui.chat.rescale(&game.client.gui.atlas);
             game.install_loop_context(loop_context);
             game.resolve_entity_renderers();
             game.native_model_baking_completed();
@@ -1071,3 +1071,5 @@ impl PackReload {
 }
 
 use sunrise_gameplay_common::game::side_ops::tables::TablesSideGameExt as _;
+
+use sunrise_gameplay_common::game::mods::ModGameExt1 as _;

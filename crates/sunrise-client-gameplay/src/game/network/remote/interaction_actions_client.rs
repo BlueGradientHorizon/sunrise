@@ -112,7 +112,7 @@ impl crate::game::ClientGame<'_> {
     /// `getUseDuration` 0 never counts down to the end) or the server ends
     /// it (a mod's item): its use only counts ticks here.
     pub(in crate::game::client_side) fn held_until_released(&self, stack: &ItemStack) -> bool {
-        if self.common.mod_use(stack) {
+        if self.mod_use(stack) {
             return true;
         }
         matches!(
@@ -123,7 +123,7 @@ impl crate::game::ClientGame<'_> {
                 | "minecraft:spyglass"
                 | "minecraft:ender_eye"
         ) || sunrise_sim::spear_sim::Kinetic::of(&stack.item).is_some()
-            || self.common.blocks_attacks(stack).is_some()
+            || self.blocks_attacks(stack).is_some()
             || self.patched_held_use(stack)
     }
     /// `Hud.onDisconnected`, from `Minecraft.disconnect` and `clearClientLevel`
@@ -267,7 +267,7 @@ impl crate::game::ClientGame<'_> {
         let entity = self.entity_targeted();
         if down
             && !entity
-            && let Some(hit) = self.common.pick()
+            && let Some(hit) = self.pick()
         {
             let state = self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
             let air = self.common.res.facts().is_air(state);
@@ -394,7 +394,7 @@ impl crate::game::ClientGame<'_> {
         let spear = self
             .common.held()
             .and_then(|s| sunrise_sim::spear_sim::Kinetic::of(&s.item));
-        if spear.is_some() && self.common.cannot_attack_with_item(self.client.hand_strength.ticker, 0) {
+        if spear.is_some() && self.cannot_attack_with_item(self.client.hand_strength.ticker, 0) {
             return false;
         }
         // InputEvent.InteractionKeyMappingTriggered, after the checks that stop
@@ -418,9 +418,9 @@ impl crate::game::ClientGame<'_> {
         // along the look it last heard (the jab sends none of its own) while
         // this client swings, plays the sound and starts its charge again.
         if let Some(kinetic) = spear {
-            if let Some((i, distance, _)) = self.common.mob_hit()
-                && self.common.before_block(distance)
-                && self.common.held_range_allows(distance)
+            if let Some((i, distance, _)) = self.mob_hit()
+                && self.before_block(distance)
+                && self.held_range_allows(distance)
             {
                 self.pvp_attacked(self.common.mobs[i].id as i32, distance);
             }
@@ -446,7 +446,7 @@ impl crate::game::ClientGame<'_> {
             if let Some(distance) = self.common.attack_hit_distance(hit.point) {
                 self.remote_attack_entity(hit.id, distance);
             }
-        } else if let Some(hit) = self.common.pick() {
+        } else if let Some(hit) = self.pick() {
             // A block hit on air falls through to MISS. `instant` below reads the
             // block again after the dig, which may have broken it.
             if mod_api::__private::listened(mod_api::HookId::LeftClickEmpty)
@@ -471,7 +471,7 @@ impl crate::game::ClientGame<'_> {
             if self.common.has_miss_time() {
                 self.common.clicks.miss_time = 10;
             }
-            self.common.reset_attack_strength();
+            self.reset_attack_strength();
         }
         self.remote_swing_packet();
         instant
@@ -541,10 +541,10 @@ impl crate::game::ClientGame<'_> {
             let fluid_hit = self.common.pick_fluid();
             // pick_fluid steps through waterlogged blocks, but their water is
             // a source the SOURCE_ONLY ray stops at (and a BucketPickup).
-            if let Some(hit) = self.common.pick()
+            if let Some(hit) = self.pick()
                 && facts(hit.pos).waterlogged
             {
-                let eye = self.common.aim().map_or(hit.point, |(eye, _)| eye);
+                let eye = self.aim().map_or(hit.point, |(eye, _)| eye);
                 let d = |p: [f64; 3]| (0..3).map(|a| (p[a] - eye[a]).powi(2)).sum::<f64>();
                 if fluid_hit
                     .as_ref()
@@ -567,10 +567,10 @@ impl crate::game::ClientGame<'_> {
             return true;
         }
         if id == "minecraft:bucket" {
-            return !self.common.may_build() || !source(None);
+            return !self.may_build() || !source(None);
         }
         if sunrise_items::items::bucket_contents(id).is_some() {
-            return !self.common.may_build() || self.common.pick().is_none();
+            return !self.may_build() || self.pick().is_none();
         }
         if id == "minecraft:glass_bottle" {
             // A dragon's breath cloud never counts here: its owner is not
@@ -579,7 +579,7 @@ impl crate::game::ClientGame<'_> {
             return !source(Some(Fluid::Water));
         }
         if sunrise_gameplay_common::game::boats_common::any_boat_wood(id).is_some() {
-            return self.common.boat_to_place(held).is_none();
+            return self.boat_to_place(held).is_none();
         }
         false
     }
@@ -626,7 +626,7 @@ impl crate::game::ClientGame<'_> {
             && let Some(hand) = hand
             && let Some(stack) = self.common.stack_in(slot).cloned()
         {
-            self.common.with_hand(hand, |g| {
+            self.with_hand(hand, |g| {
                 if !g.use_item_stopped(&stack, ticks) {
                     return;
                 }
@@ -647,3 +647,13 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
+use sunrise_gameplay_common::game::spear::SpearGameExt1 as _;

@@ -102,3 +102,7 @@ fn empty_tag_selectors_follow_actual_tag_edits() {
     drop(game);
     std::fs::remove_dir_all(scratch).unwrap();
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

@@ -34,7 +34,7 @@ impl crate::game::ServerGame<'_> {
         sound: &str,
         sneaking: bool,
     ) -> Option<BlockPos> {
-        let user = self.common.bucket_liquid_user();
+        let user = self.bucket_liquid_user();
         let Some(kind) = content
             .fluid()
             .filter(|_| mod_api::__private::has_scoped_hook(mod_api::HookId::PlaceLiquid))
@@ -47,7 +47,7 @@ impl crate::game::ServerGame<'_> {
             b.plan_bucket_pour(level, ticks, pos, beside, kind, sneaking, user)
         })?;
         if matches!(write.change, FluidChange::Fill(_))
-            && let Some(level) = self.common.level(self.common.dim.id())
+            && let Some(level) = self.level(self.common.dim.id())
             && self.journalled_place_liquid(level, &write).is_some()
         {
             // BucketItem still empties on a container's false answer.
@@ -123,7 +123,7 @@ impl crate::game::ServerGame<'_> {
             .and_then(|player| {
                 Some(LiquidUser {
                     entity_id: Some(player.entity().id()),
-                    creative: self.common.player_is_creative(player)?,
+                    creative: self.player_is_creative(player)?,
                 })
             })
             .unwrap_or_default();
@@ -147,11 +147,11 @@ impl crate::game::ServerGame<'_> {
     }
     fn fluid_write_allowed(&self, level: LevelRef, pos: [i32; 3]) -> bool {
         self.current_transaction_is_here()
-            && self.common.level_in_place(level)
+            && self.level_in_place(level)
             && self.native_level_write_allowed(level, pos)
     }
     fn creative(&self, player: Option<PlayerRef>) -> bool {
-        player.is_some_and(|player| self.common.player_is_creative(player) == Some(true))
+        player.is_some_and(|player| self.player_is_creative(player) == Some(true))
     }
     /// What `write` does at the call. The block entity a new block of another kind removes is
     /// kept whole by the journal before any mod code runs; then the broken block's drops are
@@ -212,7 +212,7 @@ impl crate::game::ServerGame<'_> {
         if !self.transaction_context_is_current(tx) {
             return Err(mod_api::TransactionError::InvalidContext);
         }
-        if !self.current_transaction_is_here() || !self.common.level_in_place(level) {
+        if !self.current_transaction_is_here() || !self.level_in_place(level) {
             return Ok(false);
         }
         let Some(id) = mod_api::__private::fluid_id(fluid) else {
@@ -241,7 +241,7 @@ impl crate::game::ServerGame<'_> {
         } = written;
         self.common.with_level(|b, level, ticks| b.fluid_write_ticks(level, ticks, &write));
         debug_assert!(
-            self.side.spill.0.is_empty(),
+            self.server.spill.0.is_empty(),
             "a spill left between level calls"
         );
         self.server.spill.0 = drops;
@@ -286,3 +286,11 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

@@ -268,7 +268,7 @@ impl ClientGame<'_> {
     /// `ClientPacketListener.handleOpenBook`: the written book in that hand.
     pub(in crate::game::client_side) fn remote_open_book(&mut self, hand: i32) {
         let hand = if hand == 1 { Hand::Off } else { Hand::Main };
-        let screen = self.common.with_hand(hand, |g| {
+        let screen = self.with_hand(hand, |g| {
             let stack = g.held().filter(|s| &*s.item == "minecraft:written_book")?;
             g.book_screen(&stack.clone())
         });
@@ -279,7 +279,7 @@ impl ClientGame<'_> {
     /// Opens `screen` (through `open_screen_overlay`: a mod may keep it shut).
     pub(in crate::game) fn open_book(&mut self, screen: BookScreen) {
         self.open_screen_overlay(screen.id(), |game| {
-            game.side.book = Some(screen);
+            game.client.book = Some(screen);
             game.clear_device_keys();
             game.set_mapping_held("key.use", false);
             game.capture(false);
@@ -290,7 +290,7 @@ impl ClientGame<'_> {
     pub(in crate::game::client_side) fn set_book_signing(&mut self, on: bool) {
         let id = if on { "book_sign" } else { "book_edit" };
         self.open_screen_overlay(id, |game| {
-            if let Some(book @ BookScreen::Edit { .. }) = game.side.book.as_mut() {
+            if let Some(book @ BookScreen::Edit { .. }) = game.client.book.as_mut() {
                 if on {
                     book.begin_signing();
                 } else if let BookScreen::Edit { signing, .. } = book {
@@ -302,7 +302,7 @@ impl ClientGame<'_> {
     pub(in crate::game) fn close_book(&mut self) {
         // A server's lectern: LecternScreen's menu closes (closeContainer).
         if matches!(
-            self.side.book,
+            self.client.book,
             Some(BookScreen::View {
                 lectern: Some(_),
                 ..
@@ -356,7 +356,7 @@ impl ClientGame<'_> {
         shortcut: Option<sunrise_client::clipboard::EditShortcut>,
     ) -> bool {
         if let Some(shortcut) = shortcut
-            && matches!(self.side.book, Some(BookScreen::Edit { .. }))
+            && matches!(self.client.book, Some(BookScreen::Edit { .. }))
         {
             self.book_shortcut(shortcut);
             return true;
@@ -528,7 +528,7 @@ impl ClientGame<'_> {
         &mut self,
         shortcut: sunrise_client::clipboard::EditShortcut,
     ) {
-        let signing = matches!(self.side.book, Some(BookScreen::Edit { signing: true, .. }));
+        let signing = matches!(self.client.book, Some(BookScreen::Edit { signing: true, .. }));
         if signing {
             if let Some(BookScreen::Edit {
                 title, title_edit, ..
@@ -839,7 +839,7 @@ impl ClientGame<'_> {
             return;
         }
         self.lectern_button(key, 3);
-        if self.common.may_build() && self.lectern_book_open() {
+        if self.may_build() && self.lectern_book_open() {
             self.close_book();
         }
     }
@@ -855,7 +855,7 @@ impl ClientGame<'_> {
     #[inline(always)]
     pub(in crate::game::client_side) fn lectern_book_open(&self) -> bool {
         matches!(
-            self.side.book,
+            self.client.book,
             Some(BookScreen::View {
                 lectern: Some(_),
                 ..
@@ -961,7 +961,7 @@ impl ClientGame<'_> {
         let inside =
             |x: f32, y: f32, bw: f32, bh: f32| mx >= x && my >= y && mx < x + bw && my < y + bh;
         let click = |game: &mut Self| {
-            game.side
+            game.client
                 .audio
                 .0
                 .play("minecraft:ui.button.click", None, 0.25, 1.0)
@@ -1023,7 +1023,7 @@ impl ClientGame<'_> {
                 } else if page > 0 && inside(left + 43.0, 159.0, 23.0, 13.0) {
                     self.turn_page(false);
                     return true;
-                } else if let Some(key) = lectern.filter(|_| self.common.may_build()) {
+                } else if let Some(key) = lectern.filter(|_| self.may_build()) {
                     if inside(w / 2.0 - 100.0, 196.0, 98.0, 20.0) {
                         click(self);
                         self.close_book();
@@ -1371,7 +1371,7 @@ impl ClientGame<'_> {
                 page_buttons(batch, *page > 0, *page + 1 < pages.len());
                 // LecternScreen.createMenuControls: Done and Take Book only with
                 // build permission, else BookViewScreen's wide Done.
-                if lectern.is_some() && self.common.may_build() {
+                if lectern.is_some() && self.may_build() {
                     action_button(
                         batch,
                         widgets::Action::Done,
@@ -1560,3 +1560,7 @@ pub(in crate::game) mod link_cursor_tests {
         assert_eq!(link_cursor(&hover_only), None);
     }
 }
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

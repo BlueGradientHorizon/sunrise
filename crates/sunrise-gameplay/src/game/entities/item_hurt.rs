@@ -20,8 +20,8 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         let entity_id = |target| match target {
-            Some(Target::Player) => self.common.own_entity_id(),
-            Some(Target::Guest(conn)) => self.common.command_guest(conn).map_or(0, |g| g.entity_id),
+            Some(Target::Player) => self.own_entity_id(),
+            Some(Target::Guest(conn)) => self.command_guest(conn).map_or(0, |g| g.entity_id),
             Some(target) => {
                 sunrise_gameplay_common::game::commands_common::target_id(target).map_or(0, |id| id as i32)
             }
@@ -98,7 +98,7 @@ impl crate::game::ServerGame<'_> {
         );
         if crate::game::server_side::entity_server::damage_level_of!(
             self,
-            self.side.combat.0.attack(),
+            self.server.combat.0.attack(),
             no_push,
             None
         )
@@ -120,7 +120,7 @@ impl crate::game::ServerGame<'_> {
     /// including the item's default `minecraft:damage_resistant` component.
     /// Fire-tagged sources do not also ask `minecraft:in_fire`.
     fn item_stack_takes_damage(&self, stack: &ItemStack, damage_type: &str) -> bool {
-        self.common.stack_can_be_hurt_by(stack, damage_type) != Some(false)
+        self.stack_can_be_hurt_by(stack, damage_type) != Some(false)
     }
 
     fn post_item_damage(&mut self, at: Vec3, causing: Option<Target>) {
@@ -141,3 +141,9 @@ fn mark_item_hurt(item: &mut ItemEntity, amount: f32) {
     item.health = (item.health as f32 - amount) as i32;
     item.needs_sync = true;
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

@@ -61,7 +61,7 @@ impl ServerGame<'_> {
             catalog,
             subscribed: &subscribed,
             epoch: self.common.native_lifecycle.epoch(),
-            round: self.common.native_tick_round(),
+            round: self.native_tick_round(),
         };
         // The walk stays on the live list, as the ordered run's does: a
         // lifted pass would take every row's residency slot, and a part's
@@ -117,14 +117,14 @@ impl ServerGame<'_> {
                 continue;
             }
             let root = self.native_root_vehicle_id(row.id, Target::General(row.id));
-            if self.common.entity(vehicle).is_none() {
+            if self.entity(vehicle).is_none() {
                 if !self.common.persist.off_level.contains_key(&vehicle) {
                     self.dismount_general(row.id, vehicle);
                 }
                 continue;
             }
             if let Some([x, _, z]) =
-                root.and_then(|root| self.common.entity(root).and_then(|e| self.common.entity_position(e)))
+                root.and_then(|root| self.entity(root).and_then(|e| self.entity_position(e)))
                 && entity_ticking(x.floor() as i32, z.floor() as i32)
             {
                 self.tick_general_branch(index, Some(vehicle), &mut pass);
@@ -180,7 +180,7 @@ impl ServerGame<'_> {
         // if its new root/seat is reached later in this pass.
         self.common.resident_entities.general.riders.ticked[index] = true;
         let kind = pass.catalog.key(slot);
-        let ticks = !pass.round.listening() || self.common.native_tick_pre_one(&mut pass.round, id, kind);
+        let ticks = !pass.round.listening() || self.native_tick_pre_one(&mut pass.round, id, kind);
         if !general_row_live(self, index, mount) {
             if ticks {
                 pass.round.not_ticked(id);
@@ -197,7 +197,7 @@ impl ServerGame<'_> {
                 self.dispatch_general_tick(kind, epoch, id);
             }
             if pass.round.listening() {
-                self.common.native_tick_post_one(&pass.round, id, kind);
+                self.native_tick_post_one(&pass.round, id, kind);
             }
         }
         if !general_row_live(self, index, mount) {
@@ -239,13 +239,13 @@ impl ServerGame<'_> {
     fn position_general_row(&mut self, index: usize) {
         let row = &self.common.resident_entities.general.rows[index];
         let Some(vehicle) = row.mount else { return };
-        let at = self.common.general_passenger_position(vehicle, row.id);
+        let at = self.general_passenger_position(vehicle, row.id);
         if let Some(at) = at {
             let row = &mut self.common.resident_entities.general.rows[index];
             let (id, before) = (row.id, row.position);
             row.position = at;
             row.fall_distance = 0.0;
-            self.common.entity_section_step(id, [before.x, before.y, before.z], [at.x, at.y, at.z]);
+            self.entity_section_step(id, [before.x, before.y, before.z], [at.x, at.y, at.z]);
         }
     }
 
@@ -302,3 +302,11 @@ fn general_row_live(
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;

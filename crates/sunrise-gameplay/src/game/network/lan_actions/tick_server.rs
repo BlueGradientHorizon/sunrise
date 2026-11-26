@@ -269,13 +269,13 @@ impl crate::game::ServerGame<'_> {
                 Vec::new()
             };
             let _ = self.as_guest_at(gi, conn, |g| {
-                let outer = std::mem::replace(&mut g.side.stab_players, players);
+                let outer = std::mem::replace(&mut g.server.stab_players, players);
                 // Player.tick's attackStrengthTicker, part of the body.
                 if body {
-                    g.side.attack_ticks = g.side.attack_ticks.saturating_add(1);
+                    g.server.attack_ticks = g.server.attack_ticks.saturating_add(1);
                 }
                 g.tick_using_server();
-                g.side.stab_players = outer;
+                g.server.stab_players = outer;
                 if g.use_delay > 0 {
                     g.use_delay -= 1;
                 }
@@ -563,7 +563,7 @@ impl crate::game::ServerGame<'_> {
             if digging.is_some() || play.mining.is_some() || play.destroy_delay > 0 {
                 let _ = self.as_guest_at(gi, conn, |g| {
                     if let Some((pos, face)) = digging {
-                        g.side.forced_hit = Some(Hit {
+                        g.server.forced_hit = Some(Hit {
                             pos,
                             face,
                             point: [
@@ -575,7 +575,7 @@ impl crate::game::ServerGame<'_> {
                         });
                     }
                     let _ = g.tick_mining();
-                    g.side.forced_hit = None;
+                    g.server.forced_hit = None;
                 });
                 // Instant STARTs complete without a STOP; do not break a later
                 // block planted in the same position again.
@@ -613,7 +613,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
         self.native_player_tick_post_alone(&round, &mut told);
-        self.common.native_tick_post_batch(round);
+        self.native_tick_post_batch(round);
         // Entity.rideTick positions the rider after its tick (and after Post
         // even for batched listeners). Canceling the tick does not stop this.
         for (conn, passenger) in turns {
@@ -629,3 +629,5 @@ impl crate::game::ServerGame<'_> {
 pub mod building_cache_tests;
 
 use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;

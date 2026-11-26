@@ -546,7 +546,7 @@ impl crate::game::ServerGame<'_> {
             entity_nbt::sanitize_custom_name(&mut tag);
             self.common.persist.raw.insert(id, tag);
             if let (Some(from), Some(to)) = (before, self.target_position(t)) {
-                self.common.entity_section_moved(id, Some(from), to);
+                self.entity_section_moved(id, Some(from), to);
             }
         }
         Ok(())
@@ -1145,3 +1145,5 @@ impl crate::game::ServerGame<'_> {
 pub mod fire_tests;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;

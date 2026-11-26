@@ -64,7 +64,7 @@ impl ServerGame<'_> {
         {
             return Err(PortalError::InvalidSize);
         }
-        self.common.native_level_world_result(level)
+        self.native_level_world_result(level)
             .map_err(Self::portal_error)?;
         let source = self
             .portal_side(Dim::from_id(level.dimension_id()))
@@ -270,3 +270,5 @@ impl ServerGame<'_> {
         answer.unwrap_or(Err(PortalError::NoExit))
     }
 }
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

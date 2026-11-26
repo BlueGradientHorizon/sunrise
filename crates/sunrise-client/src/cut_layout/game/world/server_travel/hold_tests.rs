@@ -534,3 +534,5 @@ fn a_world_spawn_search_keeps_movement_held_between_candidate_chunks() {
         assert!(!host.hub.guests[0].dead);
     });
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

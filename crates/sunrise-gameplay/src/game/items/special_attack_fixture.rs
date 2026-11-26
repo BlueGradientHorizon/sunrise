@@ -182,7 +182,7 @@ impl crate::game::ServerGame<'_> {
             player.velocity.x.to_bits(),
             player.velocity.z.to_bits(),
             player.sprinting,
-            self.side.attack_ticks
+            self.server.attack_ticks
         )])
     }
 }

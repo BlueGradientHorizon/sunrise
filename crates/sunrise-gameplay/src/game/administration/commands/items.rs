@@ -508,7 +508,7 @@ impl crate::game::ServerGame<'_> {
         match o {
             Owner::Entity(t) => Holder {
                 name: String::new(),
-                text: self.common.target_name(*t),
+                text: self.target_name(*t),
                 display: None,
             },
             Owner::Block(p) => Holder {
@@ -519,7 +519,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     pub(in crate::game::server_side) fn stack_name(&self, s: &ItemStack) -> Text {
-        self.common.stack_display_name(s)
+        self.stack_display_name(s)
     }
     pub(in crate::game::server_side) fn item_from_input(
         &self,
@@ -553,7 +553,7 @@ impl crate::game::ServerGame<'_> {
         };
         // ItemInput.createItemStack: a count above the stack's max (its
         // max_stack_size component, else the item's) is refused.
-        let max_stack = self.common.stack_max_size(&stack);
+        let max_stack = self.stack_max_size(&stack);
         if count > max_stack {
             return Err(err("arguments.item.overstacked", &[id, &max_stack]));
         }
@@ -935,3 +935,7 @@ pub(in crate::game) mod transient_modifier_tests {
 pub(in crate::game) mod item_entity_contents_tests;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

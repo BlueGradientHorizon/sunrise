@@ -289,7 +289,7 @@ impl ServerGame<'_> {
                         let hit = victim.damage(
                             crate::game::entity_server::damage_level_of!(
                                 self,
-                                self.side.combat.0.attack(),
+                                self.server.combat.0.attack(),
                                 &mut credit,
                                 lend
                             ),

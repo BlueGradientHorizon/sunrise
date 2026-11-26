@@ -259,7 +259,7 @@ impl ServerGame<'_> {
             }
             let mut events = Vec::new();
             villager::set_unhappy(&mut self.common.mobs[index], &mut events);
-            self.common.handle_mob_events(events)?;
+            self.handle_mob_events(events)?;
             return Ok(true);
         }
         let unresolved = species == Species::Villager
@@ -272,7 +272,7 @@ impl ServerGame<'_> {
         if unresolved {
             let mut events = Vec::new();
             villager::set_unhappy(&mut self.common.mobs[index], &mut events);
-            self.common.handle_mob_events(events)?;
+            self.handle_mob_events(events)?;
             return Ok(true);
         }
         self.ensure_offers(index);
@@ -282,7 +282,7 @@ impl ServerGame<'_> {
             if species == Species::Villager {
                 let mut events = Vec::new();
                 villager::set_unhappy(&mut self.common.mobs[index], &mut events);
-                self.common.handle_mob_events(events)?;
+                self.handle_mob_events(events)?;
             }
             return Ok(true);
         }
@@ -665,3 +665,5 @@ pub(in crate::game) mod tests {
 pub(in crate::game) mod select_on_a_server_tests {}
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;

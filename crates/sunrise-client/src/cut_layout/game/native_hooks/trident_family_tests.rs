@@ -404,3 +404,5 @@ fn explicit_damage_by_trident_retains_its_weapon_with_independent_causing_entity
         },
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

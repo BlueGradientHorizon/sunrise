@@ -306,3 +306,5 @@ impl ServerGame<'_> {
         bottom_center([x, y + 1, z])
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

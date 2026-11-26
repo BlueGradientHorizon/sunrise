@@ -66,7 +66,7 @@ impl ServerGame<'_> {
         if placed {
             self.native_campfire_start(pos, &held.item);
             // ItemStack.consumeAndReturn: creative keeps the item.
-            self.common.consume_held();
+            self.consume_held();
             self.award_custom_stat("interact_with_campfire", 1);
             self.post_block_game_event(
                 "minecraft:block_change",
@@ -166,3 +166,5 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

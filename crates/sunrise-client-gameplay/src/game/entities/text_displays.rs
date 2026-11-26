@@ -836,10 +836,10 @@ impl ClientGame<'_> {
     /// Re-seats the local player and snaps `previous_position` after a non-interpolated vehicle
     /// snap (`handleEntityPositionSync` / `handleTeleportEntity`).
     pub(in crate::game::client_side) fn seat_local_player_after_display_snap(&mut self) {
-        self.common.position_riders();
+        self.position_riders();
         if let Some(id) = self.common.riding {
             let index = std::collections::HashMap::new();
-            if let Some(at) = self.common.passenger_riding_position(id, None, None, &index)
+            if let Some(at) = self.passenger_riding_position(id, None, None, &index)
                 && let Some(p) = self.common.player.as_mut()
             {
                 let scale =
@@ -1035,7 +1035,7 @@ impl ClientGame<'_> {
         if eligible.is_empty() {
             return;
         }
-        let mut round = self.common.native_tick_round();
+        let mut round = self.native_tick_round();
         if !round.listening() {
             for id in eligible {
                 self.count_client_tick(id as u32);
@@ -1059,7 +1059,7 @@ impl ClientGame<'_> {
                 batch.push(id);
             }
         }
-        self.common.native_tick_pre_batch(&mut round);
+        self.native_tick_pre_batch(&mut round);
         for id in batch {
             let ticks = !round.canceled(id as u32);
             self.count_told_client_tick(id as u32, ticks);
@@ -1073,15 +1073,15 @@ impl ClientGame<'_> {
             if passenger {
                 self.count_client_tick(id as u32);
             }
-            if self.common.native_tick_pre_one(&mut round, id as u32, kind) {
+            if self.native_tick_pre_one(&mut round, id as u32, kind) {
                 if !passenger {
                     self.count_client_tick(id as u32);
                 }
                 self.tick_and_file_display(id);
-                self.common.native_tick_post_one(&round, id as u32, kind);
+                self.native_tick_post_one(&round, id as u32, kind);
             }
         }
-        self.common.native_tick_post_batch(round);
+        self.native_tick_post_batch(round);
     }
     /// Active render `Camera` yaw and pitch (`DisplayRenderer.extractRenderState`), sharing the
     /// same camera source of truth as `particle_rotation` (`ThirdPersonFront` already baked in).
@@ -1795,3 +1795,7 @@ pub(in crate::game) mod tests {
         assert_eq!(order, vec![2, 3, 1]);
     }
 }
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;

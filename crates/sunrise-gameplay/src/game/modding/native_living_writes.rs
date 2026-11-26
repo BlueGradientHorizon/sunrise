@@ -21,8 +21,8 @@ impl crate::game::ServerGame<'_> {
         living: LivingRef,
     ) -> Option<u128> {
         match self.native_living_target(living)? {
-            Target::Player => Some(self.common.native_acting_id()),
-            Target::Guest(conn) => self.common.command_guest(conn).map(|g| g.uuid),
+            Target::Player => Some(self.native_acting_id()),
+            Target::Guest(conn) => self.command_guest(conn).map(|g| g.uuid),
             _ => None,
         }
     }
@@ -88,10 +88,11 @@ impl crate::game::ServerGame<'_> {
                     started = game.swings_started != before;
                     let current = game.swing.current;
                     if let (true, true, Some(c), Some(id)) =
-                        (started, send_to_self, current, game.side.lan_acting_entity)
+                        (started, send_to_self, current, game.server.lan_acting_entity)
                     {
-                        game.side.guest_packets.push(
-                            sunrise_gameplay_common::game::lan_actions::swing_packet(
+                        game.server
+                            .guest_packets
+                            .push(super::lan_actions::swing_packet(
                                 id as i32,
                                 c.hand,
                                 c.animation,
@@ -735,3 +736,13 @@ pub(in crate::game) mod tests {
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt3 as _;

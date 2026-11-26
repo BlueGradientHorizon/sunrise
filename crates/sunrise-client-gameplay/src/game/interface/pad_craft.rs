@@ -416,7 +416,7 @@ impl ClientGame<'_> {
         let now = Instant::now();
         let step = {
             // Room counted too high would drop part of a result.
-            let max_stack = |s: &ItemStack| self.common.stack_max_size(s);
+            let max_stack = |s: &ItemStack| self.stack_max_size(s);
             craft.step(
                 &Seen {
                     grid: &self.common.craft_grid[..cells],
@@ -900,3 +900,5 @@ mod tests {
         assert_eq!(seen.room_for(&damaged), 64);
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;

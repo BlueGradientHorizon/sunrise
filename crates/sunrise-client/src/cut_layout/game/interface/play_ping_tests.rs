@@ -448,3 +448,9 @@ fn handover_guest_play_ping_survives_the_acknowledgement_filter() {
     assert_eq!(guest.last_action_tick, 7);
     assert_eq!(guest.handover.as_ref(), Some(&handover));
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

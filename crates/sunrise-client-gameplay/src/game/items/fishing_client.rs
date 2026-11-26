@@ -196,7 +196,7 @@ impl crate::game::ClientGame<'_> {
     /// person, beside the body otherwise.
     pub(in crate::game) fn rod_hand_position(&self, alpha: f64) -> Option<glam::DVec3> {
         let p = self.common.player.as_ref()?;
-        let right_arm = self.common.main_hand_rod() != self.client.settings.main_hand_left;
+        let right_arm = self.main_hand_rod() != self.client.settings.main_hand_left;
         let invert: f32 = if right_arm { 1.0 } else { -1.0 };
         let swing = trig::sin(f64::from(
             self.common.swing.animation(alpha as f32).sqrt() * std::f32::consts::PI,
@@ -270,7 +270,7 @@ impl crate::game::ClientGame<'_> {
             h.position = h.lerp.step(h.position);
             let before = h.position;
             let owner = self.common.player.as_ref().map(|p| p.position);
-            (h.position, h.velocity, h.state, h.ground) = self.common.client_hook_step(
+            (h.position, h.velocity, h.state, h.ground) = self.client_hook_step(
                 h.id,
                 owner,
                 true,
@@ -290,7 +290,7 @@ impl crate::game::ClientGame<'_> {
                 .iter()
                 .find(|m| m.id == h.owner)
                 .map(|m| m.position);
-            (h.position, h.velocity, h.state, h.ground) = self.common.client_hook_step(
+            (h.position, h.velocity, h.state, h.ground) = self.client_hook_step(
                 h.id,
                 owner,
                 false,
@@ -334,7 +334,7 @@ impl crate::game::ClientGame<'_> {
         velocity: &mut Vec3,
     ) {
         use sunrise_items::equipment::{BODY, SADDLE};
-        let level = self.common.native_client_level();
+        let level = self.native_client_level();
         let side = sunrise_gameplay_common::game::native_surface::GameSide {
             dim: self.common.dim,
             level,
@@ -505,3 +505,7 @@ pub(in crate::game) fn near_plane_hand(
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

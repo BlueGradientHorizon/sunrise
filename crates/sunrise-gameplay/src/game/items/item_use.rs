@@ -38,7 +38,7 @@ impl crate::game::ServerGame<'_> {
         ticks: u32,
         stack: &ItemStack,
     ) {
-        if !self.common.item_on_use_tick(stack, ticks) {
+        if !self.item_on_use_tick(stack, ticks) {
             return;
         }
         if let Some(ticks) = count_down(ticks, self.common.use_duration) {
@@ -70,7 +70,7 @@ impl crate::game::ServerGame<'_> {
         self.common.using = None;
         self.send_use_item_complete();
         self.apply_use_cooldown(stack);
-        if let Some(consumable) = self.common.consumable(stack) {
+        if let Some(consumable) = self.consumable(stack) {
             self.finish_consuming(info, &consumable, stack);
         } else if &*stack.item == "minecraft:spyglass" {
             self.stop_spyglass();
@@ -102,7 +102,7 @@ impl crate::game::ServerGame<'_> {
         let Some(hand) = self.common.used_hand() else {
             return false;
         };
-        self.common.with_hand(hand, |game| {
+        self.with_hand(hand, |game| {
             let Some((slot, ticks)) = game.using.take() else {
                 return false;
             };
@@ -182,7 +182,7 @@ impl crate::game::ServerGame<'_> {
         let Some(stack) = self.mob_hand_stack(id, off_hand) else {
             return false;
         };
-        let own = self.common.use_duration(&stack);
+        let own = self.use_duration(&stack);
         let (mut duration, mut canceled) = (own, false);
         let entity = Some(id as i32);
         self.native_living_entity_use_item_start(
@@ -217,7 +217,7 @@ impl crate::game::ServerGame<'_> {
         let stack = self.mob_hand_stack(id, mob.extra.using_off_hand);
         Some(stack.map_or(0, |stack| {
             ticks_left(
-                self.common.use_duration(&stack),
+                self.use_duration(&stack),
                 mob.extra.using_item.unsigned_abs() - 1,
             )
         }))
@@ -239,7 +239,7 @@ impl crate::game::ServerGame<'_> {
         let Some(stack) = self.mob_hand_stack(id, mob.extra.using_off_hand) else {
             return false;
         };
-        let counter = use_counter_leaving(self.common.use_duration(&stack), remaining);
+        let counter = use_counter_leaving(self.use_duration(&stack), remaining);
         if let Some(mob) = self.common.mobs.iter_mut().find(|m| m.id == id) {
             mob.extra.using_item = counter;
         }
@@ -262,7 +262,7 @@ impl crate::game::ServerGame<'_> {
         let Some(stack) = self.mob_hand_stack(id, off_hand) else {
             return true;
         };
-        let remaining = ticks_left(self.common.use_duration(&stack), ticks);
+        let remaining = ticks_left(self.use_duration(&stack), ticks);
         let hand = if off_hand { Hand::Off } else { Hand::Main };
         let entity = Some(id as i32);
         let mut canceled = false;
@@ -501,3 +501,9 @@ use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

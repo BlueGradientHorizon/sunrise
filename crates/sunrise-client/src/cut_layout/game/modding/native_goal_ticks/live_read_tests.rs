@@ -333,3 +333,9 @@ fn a_players_last_hurt_mob_resolves_the_mob_lent_to_its_tick() {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

@@ -36,12 +36,12 @@ impl crate::game::ServerGame<'_> {
             && spawn
                 .rotation
                 .is_none_or(|r| r.iter().all(|v| v.is_finite()));
-        if !self.common.level_in_place(level) || !finite {
+        if !self.level_in_place(level) || !finite {
             return None;
         }
         // BlockPos.containing. `as` saturates, and a value past `i32` is out of bounds.
         let block = pos.map(|v| v.floor() as i32);
-        if self.common.level_in_spawnable_bounds(level, block) != Some(true)
+        if self.level_in_spawnable_bounds(level, block) != Some(true)
             || !self.common.world.loaded(block[0], block[2])
         {
             return None;
@@ -49,8 +49,8 @@ impl crate::game::ServerGame<'_> {
         // The owner is resolved before anything is made: one that is stale or
         // in another level refuses the spawn.
         let owner = match spawn.owner {
-            Some(owner) if self.common.entity_level(owner) != Some(level) => return None,
-            Some(owner) => Some((owner, self.common.native_entity_target(owner)?)),
+            Some(owner) if self.entity_level(owner) != Some(level) => return None,
+            Some(owner) => Some((owner, self.native_entity_target(owner)?)),
             None => None,
         };
         let velocity = Vec3::new(spawn.velocity[0], spawn.velocity[1], spawn.velocity[2]);
@@ -195,12 +195,12 @@ impl crate::game::ServerGame<'_> {
     }
     /// The level's natural spawning limits. None for a stale handle or on a client.
     pub(in crate::game) fn level_spawn_limits(&self, level: LevelRef) -> Option<SpawnLimits> {
-        self.common.native_level_world(level)?;
+        self.native_level_world(level)?;
         Some(self.spawn_policy(level.dimension()).limits)
     }
     /// The level's natural spawning flags. None for a stale handle or on a client.
     pub(in crate::game) fn level_spawn_flags(&self, level: LevelRef) -> Option<SpawnFlags> {
-        self.common.native_level_world(level)?;
+        self.native_level_world(level)?;
         Some(self.spawn_policy(level.dimension()).flags)
     }
     /// Sets the level's natural spawning limits for the rest of the open. False for a
@@ -226,7 +226,7 @@ impl crate::game::ServerGame<'_> {
         level: LevelRef,
         set: impl FnOnce(&mut natural_spawning::SpawnPolicy),
     ) -> bool {
-        if self.common.native_level_world(level).is_none() {
+        if self.native_level_world(level).is_none() {
             return false;
         }
         set(self
@@ -243,9 +243,15 @@ impl crate::game::ServerGame<'_> {
         level: LevelRef,
         pos: [i32; 2],
     ) -> Option<bool> {
-        let world = self.common.native_level_world(level)?;
+        let world = self.native_level_world(level)?;
         Some(natural_spawning::can_spawn_entities_in_chunk(
             world, pos[0], pos[1],
         ))
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

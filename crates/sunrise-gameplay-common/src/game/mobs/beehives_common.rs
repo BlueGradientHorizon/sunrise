@@ -2,7 +2,7 @@
 use crate::game::CommonGame;
 use sunrise_sim::beehive;
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// The hive's honey level and front, from its block state.
     pub fn hive_state(&self, at: [i32; 3]) -> Option<(Option<i32>, [i32; 2])> {
         let state = self.world.block(at[0], at[1], at[2]);

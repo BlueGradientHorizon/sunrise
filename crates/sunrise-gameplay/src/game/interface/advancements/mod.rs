@@ -68,7 +68,7 @@ pub struct View<'a, 'g>(
 );
 impl adv::World for View<'_, '_> {
     fn predicate(&self, id: &str) -> Option<&Value> {
-        self.0.side.fns.0.store.predicates.get(id)
+        self.0.server.fns.0.store.predicates.get(id)
     }
     fn dimension(&self) -> &str {
         self.0.dim.id()
@@ -156,7 +156,7 @@ impl adv::World for View<'_, '_> {
     }
     fn in_tag(&self, registry: &str, tag: &str, id: &str) -> bool {
         let tags = TagSources {
-            pack_tags: self.0.side.world_tables.0.as_ref().map(|t| &t.pack_tags),
+            pack_tags: self.0.server.world_tables.0.as_ref().map(|t| &t.pack_tags),
             items: self.0.items(),
             mob_data: self.0.res.mob_data(),
             damage: &self.0.health_resources.damage,
@@ -324,10 +324,10 @@ impl crate::game::ServerGame<'_> {
                 .unwrap_or_default(),
             // A server's player: what its last `ServerboundPlayerInputPacket`
             // held (shift 32) and its game mode.
-            Target::Guest(conn) if self.common.command_guest(conn).is_some() => {
-                let g = self.common.command_guest(conn).expect("checked");
+            Target::Guest(conn) if self.command_guest(conn).is_some() => {
+                let g = self.command_guest(conn).expect("checked");
                 EntityView {
-                    kind: self.common.target_type(t),
+                    kind: self.target_type(t),
                     position: g.position,
                     sneaking: g.sneaking,
                     input_sneak: g.input & 32 != 0,
@@ -349,7 +349,7 @@ impl crate::game::ServerGame<'_> {
                 }
             }
             other => EntityView {
-                kind: self.common.target_type(other),
+                kind: self.target_type(other),
                 position: self.target_position(other).unwrap_or_default(),
                 ..EntityView::default()
             },
@@ -587,7 +587,7 @@ impl crate::game::ServerGame<'_> {
         };
         self.player_entity_from(PlayerEntityState {
             body,
-            name: self.common.acting_player_name(),
+            name: self.acting_player_name(),
             mode: self.common.mode,
             input_sneak: self.server_acting_sneak(),
             main_hand: self.common.held(),
@@ -801,7 +801,7 @@ impl crate::game::ServerGame<'_> {
             custom_name: m.custom_name_text.as_ref().map(Text::component),
             passengers,
             nbt,
-            team: self.common.mob_team_of(m).map(|t| t.name.clone()),
+            team: self.mob_team_of(m).map(|t| t.name.clone()),
             ..Default::default()
         }
     }
@@ -1084,7 +1084,7 @@ impl crate::game::ServerGame<'_> {
             .flatten();
         *self.common.stack_in_mut(slot) = hand;
         if let Some(original) = depleted {
-            self.common.player_item_destroyed(&original, self.common.item_slot_hand(slot));
+            self.player_item_destroyed(&original, self.common.item_slot_hand(slot));
         }
         match result {
             Ok(recipes) => {
@@ -1147,7 +1147,7 @@ impl crate::game::ServerGame<'_> {
             match self.server.lan_acting_name.clone() {
                 // Player.getDisplayName.
                 Some(_) => {
-                    let player = self.common.target_name(super::commands::Target::Player);
+                    let player = self.target_name(super::commands::Target::Player);
                     self.common.adv
                         .announced
                         .push(Text::translate(key, &[player, name]));
@@ -1207,7 +1207,7 @@ impl crate::game::ServerGame<'_> {
                 // AdvancementRewards then drops that remainder with no
                 // pickup sound. A stack the inventory takes whole plays
                 // entity.item.pickup at the player's feet.
-                if let Some(rest) = self.common.add_stack_to_inventory(s) {
+                if let Some(rest) = self.add_stack_to_inventory(s) {
                     if let Some(eye) = self.common.eye_position() {
                         self.spawn_item(rest, eye, [0.0; 3], 0);
                     }
@@ -1265,7 +1265,7 @@ impl crate::game::ServerGame<'_> {
             && mod_api::__private::listened(mod_api::HookId::PlayerInventoryChanged)
         {
             let stacks = inventory_slots(&self.common.inventory, &self.common.armor, &self.common.offhand);
-            let player = self.common.native_acting_id();
+            let player = self.native_acting_id();
             self.native_player_inventory_changed(player, &stacks);
         }
         let stacks: Vec<ItemView> = self
@@ -2825,3 +2825,19 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_item_entity_refs::NativeItemEntityRefsGameExt1 as _;
+
+use sunrise_gameplay_common::game::scoreboard_common::CommonGameExt1 as _;

@@ -250,3 +250,5 @@ fn wolf_owner_rejoining_receives_the_kill_statistic() {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

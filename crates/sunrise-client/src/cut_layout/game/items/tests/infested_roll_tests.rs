@@ -191,3 +191,5 @@ fn a_starving_infested_player_rolls_the_infested_effect() {
     }
     assert!(rolls > 0, "no silverfish came out of 128 starvation hurts");
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

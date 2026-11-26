@@ -2,10 +2,10 @@
 //! packs define, outside the one-time build in `chat.rs`.
 use crate::game::CommonGame;
 
-impl CommonGame<'_> {
+pub trait CommandRegistriesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Active enchantment registry snapshot for command codecs and completions.
     /// Replace both ID views; keep the existing registry tags intact.
-    pub fn sync_enchantment_registries(&mut self) {
+     fn sync_enchantment_registries(&mut self) {
         let mut ids: Vec<String> = self
             .active_enchantment_definitions()
             .list
@@ -24,7 +24,7 @@ impl CommonGame<'_> {
     }
 
     /// `ResourceOrIdArgument`'s loot tables from the active item tables.
-    pub fn sync_loot_table_ids(&mut self) {
+     fn sync_loot_table_ids(&mut self) {
         let mut ids: Vec<String> = self.items().loot_table_ids().map(str::to_owned).collect();
         ids.sort();
         if let Some(entry) = self
@@ -39,7 +39,7 @@ impl CommonGame<'_> {
     }
 
     /// Item and block tags bound into command registries from the active item tables.
-    pub fn sync_pack_tag_ids(&mut self) {
+     fn sync_pack_tag_ids(&mut self) {
         let tags = |ids: &std::collections::HashMap<String, std::collections::HashSet<String>>| {
             let mut out: Vec<String> = ids
                 .keys()
@@ -64,6 +64,8 @@ impl CommonGame<'_> {
         }
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> CommandRegistriesGameExt1<'__sg> for G {}
+
 
 use crate::game::tables::GameItems as _;
 

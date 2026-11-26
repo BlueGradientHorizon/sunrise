@@ -223,7 +223,7 @@ impl ServerGame<'_> {
             // awardStat(ITEM_USED), then stackToInsert.consume(count, player).
             self.award_stat("used", &stack.item, 1);
             for _ in 0..taken {
-                self.common.consume_held();
+                self.consume_held();
             }
         }
         // ServerPlayerGameMode.useItemOn: the action was consumed.
@@ -280,3 +280,5 @@ impl ServerGame<'_> {
         Ok(())
     }
 }
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

@@ -94,3 +94,7 @@ fn team_falls_back_to_the_owners_team() {
     );
     assert!(select(&mut game, "@e[type=wolf,team=red]").is_empty());
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

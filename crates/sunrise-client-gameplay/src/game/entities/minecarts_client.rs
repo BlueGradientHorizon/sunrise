@@ -196,7 +196,7 @@ impl ClientGame<'_> {
         vanilla: Shape,
     ) -> Shape {
         let (Some(level), Some(epoch), Ok(api_state)) = (
-            self.common.level(self.common.dim.id()),
+            self.level(self.common.dim.id()),
             self.common.native_lifecycle.epoch(),
             state.try_into_api(),
         ) else {
@@ -606,7 +606,7 @@ impl ClientGame<'_> {
         offs: f64,
     ) -> Option<[f64; 3]> {
         let [xt, yt, zt] = self.common.rail_block(Vec3::new(x, y, z), self.common.minecart_improvements());
-        let rail = self.common.rail(cart, xt, yt, zt)?;
+        let rail = self.rail(cart, xt, yt, zt)?;
         let mut y = f64::from(yt) + if rail.shape.is_slope() { 1.0 } else { 0.0 };
         let (e0, e1) = rail.shape.exits();
         let (mut xd, mut zd) = (f64::from(e1[0] - e0[0]), f64::from(e1[2] - e0[2]));
@@ -786,3 +786,7 @@ impl PreparedModelFace {
         self.cull.is_some_and(|side| hidden >> side as u8 & 1 != 0)
     }
 }
+
+use sunrise_gameplay_common::game::cart_rails::CartRailsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

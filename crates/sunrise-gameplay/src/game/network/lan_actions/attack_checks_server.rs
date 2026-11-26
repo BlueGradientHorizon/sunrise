@@ -22,11 +22,11 @@ impl crate::game::ServerGame<'_> {
         let target = if guest.entity_id == id {
             Some(guest.bounds())
         } else {
-            self.common.level_entity(id).and_then(|target| {
+            self.level_entity(id).and_then(|target| {
                 let refused = match target {
                     Target::Item(_) | Target::Orb(_) => true,
                     Target::Projectile(_) | Target::Trident(_) => {
-                        let kind = self.common.target_type(target);
+                        let kind = self.target_type(target);
                         if !matches!(
                             kind.as_str(),
                             "minecraft:arrow" | "minecraft:spectral_arrow" | "minecraft:trident"
@@ -73,3 +73,5 @@ impl crate::game::ServerGame<'_> {
         })
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

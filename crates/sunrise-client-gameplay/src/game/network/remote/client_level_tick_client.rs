@@ -79,7 +79,7 @@ impl crate::game::ClientGame<'_> {
     ) -> Result<()> {
         let level = (mod_api::__private::listened(mod_api::HookId::LevelTickPre)
             || mod_api::__private::listened(mod_api::HookId::LevelTickPost))
-        .then(|| self.common.native_client_level())
+        .then(|| self.native_client_level())
         .flatten();
         if let Some(level) = level {
             self.native_level_tick_pre(level);
@@ -98,3 +98,5 @@ impl crate::game::ClientGame<'_> {
 }
 
 use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

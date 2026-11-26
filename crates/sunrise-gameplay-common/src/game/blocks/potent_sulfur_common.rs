@@ -13,7 +13,7 @@ pub const GEYSER_ERUPTION_ACTIVE: &str =
 pub const GEYSER_CONTINUOUS_ACTIVE: &str =
     "minecraft:block.potent_sulfur.geyser_continuous_eruption_active";
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// The `potent_sulfur_state` of the block at `pos`, with its block state.
     pub fn potent_sulfur_state(&self, pos: Pos) -> Option<(BlockStateId, Geyser)> {
         let state = self.world.block(pos.0, pos.1, pos.2);

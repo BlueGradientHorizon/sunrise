@@ -151,7 +151,7 @@ impl crate::game::ClientGame<'_> {
             base,
             ghosts,
             |slot| self.native_screen_slot(usize::from(slot)).is_some(),
-            |display| self.common.resolve_mod_book_declaration_slot(display),
+            |display| self.resolve_mod_book_declaration_slot(display),
         );
         self.client.recipe_ui.0.ghost = shown;
     }
@@ -214,3 +214,5 @@ mod tests {
         assert_eq!(shown.len(), 256);
     }
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

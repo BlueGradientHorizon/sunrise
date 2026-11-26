@@ -76,7 +76,7 @@ impl crate::game::ClientGame<'_> {
             // infinite materials gets the survival inventory instead.
             if !self.common.creative {
                 if let Some(c) = self.common.carried.take() {
-                    let _ = self.common.add_stack_to_inventory(c);
+                    let _ = self.add_stack_to_inventory(c);
                 }
                 self.set_screen(Screen::Inventory);
             }
@@ -160,3 +160,5 @@ mod tests {
         });
     }
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

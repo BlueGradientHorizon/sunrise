@@ -648,7 +648,7 @@ impl ClientGame<'_> {
         }
         let p = self.common.player.as_ref()?;
         Some((
-            self.common.own_profile_uuid(),
+            self.own_profile_uuid(),
             [p.position.x, p.position.y, p.position.z],
         ))
     }
@@ -674,7 +674,7 @@ impl ClientGame<'_> {
     #[cfg(test)]
     pub(in crate::game) fn camera_entity_is_spectator(&self) -> bool {
         self.camera_subject()
-            .map_or_else(|| self.common.own_player_is_spectator(), |c| c.is_spectator)
+            .map_or_else(|| self.own_player_is_spectator(), |c| c.is_spectator)
     }
 
     /// `Camera.getCameraEntityPartialTicks`: `1.0` when frozen unless player or player-ridden.
@@ -689,13 +689,13 @@ impl ClientGame<'_> {
     /// `GameRenderer.shouldRenderBlockOutline`: player camera entity, HUD shown, and build or target gate.
     #[cfg(test)]
     pub(in crate::game) fn should_render_block_outline(&self) -> bool {
-        let hit = (!self.entity_targeted()).then(|| self.common.pick()).flatten();
+        let hit = (!self.entity_targeted()).then(|| self.pick()).flatten();
         self.should_render_block_outline_for_hit(hit.as_ref())
     }
 
     /// Block hit eligible for outline rendering before mod highlight cancellation.
     pub(in crate::game::client_side) fn block_outline_hit(&self) -> Option<super::Hit> {
-        let hit = (!self.entity_targeted()).then(|| self.common.pick()).flatten()?;
+        let hit = (!self.entity_targeted()).then(|| self.pick()).flatten()?;
         self.should_render_block_outline_for_hit(Some(&hit))
             .then_some(hit)
     }
@@ -739,8 +739,8 @@ impl ClientGame<'_> {
                 })
         };
         main_hand.is_some_and(|stack| {
-            self.common.stack_adventure_predicate(stack, "minecraft:can_break", hit.pos)
-                || self.common.stack_adventure_predicate(stack, "minecraft:can_place_on", hit.pos)
+            self.stack_adventure_predicate(stack, "minecraft:can_break", hit.pos)
+                || self.stack_adventure_predicate(stack, "minecraft:can_place_on", hit.pos)
         })
     }
 
@@ -875,13 +875,13 @@ impl ClientGame<'_> {
             mount,
         };
         Some(ResolvedCameraEntity {
-            entity_id: self.common.own_entity_id() as u32,
-            uuid: self.common.own_profile_uuid(),
+            entity_id: self.own_entity_id() as u32,
+            uuid: self.own_profile_uuid(),
             camera,
             is_local_player: true,
             is_player: true,
-            may_build: self.common.may_build(),
-            is_spectator: self.common.own_player_is_spectator(),
+            may_build: self.may_build(),
+            is_spectator: self.own_player_is_spectator(),
             is_sleeping: self.common.sleeping.is_some(),
             blocks_sky: fog_effects.blindness.is_some() || fog_effects.darkness_blend.is_some(),
             fog_effects,
@@ -1639,3 +1639,9 @@ mod tests {
         assert_eq!(camera_after_packet(None, 5, 12, false), None);
     }
 }
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

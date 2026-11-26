@@ -98,3 +98,5 @@ fn a_hopper_inserted_item_updates_the_comparator_beside_the_pot() {
     tick(&mut game);
     assert_eq!(output(&game), 15, "the comparator re-read the saved pot");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

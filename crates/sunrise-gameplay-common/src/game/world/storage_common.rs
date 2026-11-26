@@ -5,7 +5,7 @@ use sunrise_gameplay_common::chests::chest_half;
 pub use sunrise_gameplay_common::chests::{chest_connected_pos, is_shulker_box};
 use sunrise_level::containers::{BlockEntity, is_chest_block};
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// The other half of the open double chest and whether the open one is
     /// the right half (`ChestBlock.getConnectedDirection`).
     pub fn chest_partner(

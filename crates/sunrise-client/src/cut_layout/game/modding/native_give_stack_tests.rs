@@ -197,3 +197,6 @@ fn a_dead_player_is_given_nothing() {
         assert_eq!(game.dropped.len(), before);
     });
 }
+
+
+use sunrise_gameplay_common::game::native_give_stack::NativeGiveStackGameExt1 as _;

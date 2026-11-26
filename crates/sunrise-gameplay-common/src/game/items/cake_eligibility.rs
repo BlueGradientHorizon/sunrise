@@ -1,10 +1,10 @@
 use super::*;
 
-impl crate::game::CommonGame<'_> {
+pub trait CakeEligibilityGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Decide in the level, ask with the full read-only game host, then apply.
     /// A cake probe stops at `canEat`, before any effect. Other interactions
     /// finish on the first pass and are never repeated.
-    pub fn with_block_use_level<R>(
+     fn with_block_use_level<R>(
         &mut self,
         mut use_block: impl FnMut(&Behaviours, &mut GameLevel<'_>, &mut Ticks) -> R,
     ) -> R {
@@ -28,3 +28,7 @@ impl crate::game::CommonGame<'_> {
         })
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> CakeEligibilityGameExt1<'__sg> for G {}
+
+
+use crate::game::held_items::HeldItemsGameExt1 as _;

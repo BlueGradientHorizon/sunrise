@@ -159,3 +159,5 @@ fn the_start_is_heard_once_the_camera_has_moved() {
         assert_eq!(camera(game, 12), Some(14));
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

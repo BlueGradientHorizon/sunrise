@@ -589,3 +589,5 @@ fn a_cancelled_vehicle_move_from_an_obstructed_start_sends_the_put_back() {
         },
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

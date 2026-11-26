@@ -47,7 +47,7 @@ impl crate::game::ServerGame<'_> {
         &self,
         entity: EntityRef,
     ) -> Option<(u32, Target)> {
-        let target = self.common.native_entity_target(entity)?;
+        let target = self.native_entity_target(entity)?;
         if let Target::Guest(conn) = target {
             let hub = &self.server.lan.as_ref()?.hub;
             hub.guest(conn).filter(|g| hub.here(g))?;
@@ -465,3 +465,5 @@ mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

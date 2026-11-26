@@ -97,7 +97,7 @@ struct SlotChangedGuard<'a, 'g> {
 
 impl Drop for SlotChangedGuard<'_, '_> {
     fn drop(&mut self) {
-        self.game.side.slot_changed_active.pop();
+        self.game.server.slot_changed_active.pop();
     }
 }
 
@@ -522,7 +522,7 @@ impl crate::game::ServerGame<'_> {
         let slots = menu.layout.slots;
         let stored = match menu.backing {
             SlotChangedBacking::Owned { generation } => {
-                if let Some(player) = self.common.player(menu.uuid) {
+                if let Some(player) = self.player(menu.uuid) {
                     self.journal_menus(player);
                 }
                 let Some(host) = self.server.lan.as_mut() else {
@@ -1404,3 +1404,5 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

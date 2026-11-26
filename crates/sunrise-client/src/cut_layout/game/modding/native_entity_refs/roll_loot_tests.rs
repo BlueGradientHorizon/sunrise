@@ -331,3 +331,9 @@ fn component_stack_capacity_is_preserved_on_every_split() {
         .unwrap();
     assert_eq!(count_of(&stacks, "minecraft:ender_pearl"), [8, 8, 8, 8, 8]);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::command_registries::CommandRegistriesGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

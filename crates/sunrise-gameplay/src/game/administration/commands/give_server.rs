@@ -13,9 +13,9 @@ impl crate::game::ServerGame<'_> {
         mut stack: ItemStack,
         owner: Option<[i32; 4]>,
     ) -> Option<ItemStack> {
-        let uuid = self.common.native_acting_id();
+        let uuid = self.native_acting_id();
         self.journal_player(uuid);
-        let left = self.common.insert_stack_into_inventory(&mut stack);
+        let left = self.insert_stack_into_inventory(&mut stack);
         // A borrowed player's body is in place but their world may be parked. The shared
         // give effects put that world in place only while replaying the sound or drop.
         let dim = self.target_level(Target::Player);
@@ -67,3 +67,7 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

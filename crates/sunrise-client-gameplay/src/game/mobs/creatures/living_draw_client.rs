@@ -72,7 +72,7 @@ impl crate::game::ClientGame<'_> {
             && !sunrise_game_data::scoreboard::invisible_to(
                 self.client_mob_team_of(mob),
                 viewer,
-                self.common.own_player_is_spectator(),
+                self.own_player_is_spectator(),
                 true,
             );
         let layers_only = invisible && outline.is_none() && is_player && !seen_invisible;
@@ -314,3 +314,5 @@ impl crate::game::ClientGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;

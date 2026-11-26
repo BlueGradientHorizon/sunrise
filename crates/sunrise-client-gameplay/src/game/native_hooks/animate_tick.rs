@@ -19,7 +19,7 @@ impl crate::game::ClientGame<'_> {
     /// fluid's and the next pick. `event.random` is the level's random itself: the part's
     /// draws and the game's own during the call (`add_particle`'s limiter) move it in order.
     pub(in crate::game) fn mod_animate_tick(&mut self, state: BlockStateId, pos: [i32; 3]) {
-        let Some(level) = self.common.native_client_level() else {
+        let Some(level) = self.native_client_level() else {
             return;
         };
         self.lend_client_level_random(|game, random| {
@@ -39,3 +39,4 @@ impl crate::game::ClientGame<'_> {
         self.fire_animate_tick(call);
     }
 }
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

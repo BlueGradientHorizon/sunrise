@@ -723,7 +723,7 @@ impl crate::game::ServerGame<'_> {
                         Some(Who::Mob(owner)),
                     );
                     p.velocity = Vec3::new(0.0, 0.0, 1.5);
-                    self.common.handle_mob_events(vec![sunrise_sim::mobs::MobEvent::Projectile(p)])?;
+                    self.handle_mob_events(vec![sunrise_sim::mobs::MobEvent::Projectile(p)])?;
                 }
                 "event" => {
                     let event = sunrise_level::sculk::intern(&words[1])
@@ -796,7 +796,7 @@ impl crate::game::ServerGame<'_> {
                             sunrise_sim::mobs::ai::ate(m, &mut events);
                         }
                     }
-                    self.common.handle_mob_events(events)?;
+                    self.handle_mob_events(events)?;
                 }
                 "set" => {
                     let n = |i: usize| words[i].parse::<i32>().unwrap_or(0);
@@ -839,3 +839,9 @@ impl crate::game::ServerGame<'_> {
         Ok(())
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

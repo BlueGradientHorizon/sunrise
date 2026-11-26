@@ -153,3 +153,5 @@ fn a_killed_mob_posts_its_death_before_the_command_returns() {
         assert_eq!(porkchops(game), 1, "and only once");
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

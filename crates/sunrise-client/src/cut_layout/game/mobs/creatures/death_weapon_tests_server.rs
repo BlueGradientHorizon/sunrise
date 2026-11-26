@@ -225,3 +225,5 @@ pub(in crate::game) fn weapon_case(
         assert_eq!(*seen.lock().unwrap(), 1);
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

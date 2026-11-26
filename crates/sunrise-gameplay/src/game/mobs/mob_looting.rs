@@ -120,3 +120,5 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::equip_answers::EquipAnswersGameExt1 as _;

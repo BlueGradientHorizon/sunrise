@@ -177,10 +177,10 @@ impl ClientGame<'_> {
             return;
         }
         let riptide = stack.enchantment_level("minecraft:riptide");
-        if riptide == 0 || !self.common.in_water_or_rain() || self.common.riding.is_some() {
+        if riptide == 0 || !self.in_water_or_rain() || self.common.riding.is_some() {
             return;
         }
-        if stack.damage >= self.common.trident_max_damage(&stack).saturating_sub(1) {
+        if stack.damage >= self.trident_max_damage(&stack).saturating_sub(1) {
             return;
         }
         let spin_stack = self.common.held().cloned();
@@ -205,7 +205,7 @@ impl ClientGame<'_> {
             p.auto_spin_attack_item = spin_stack;
         }
         if self.common.player.as_ref().is_some_and(|p| p.ground.on_ground) {
-            let _ = self.common.move_local_player(
+            let _ = self.move_local_player(
                 sunrise_world::entity_move::MoverType::SelfMovement,
                 Vec3::new(0.0, f64::from(1.1999999f32), 0.0),
                 true,
@@ -273,3 +273,7 @@ pub(in crate::game) fn remote_tick(
 }
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::piston_push::PistonPushGameExt1 as _;

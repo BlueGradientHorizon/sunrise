@@ -21,6 +21,8 @@ impl ClientGame<'_> {
     pub(in crate::game) fn client_lifecycle_world_closed(&mut self) {
         self.client.instance_groups.borrow_mut().clear();
         let _ = self.common.native_lifecycle.world_close_final();
-        self.common.finish_world_closed_common();
+        self.finish_world_closed_common();
     }
 }
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

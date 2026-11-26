@@ -1,6 +1,6 @@
 //! Hidden crafting recipe knowledge for /recipe, without recipe-book displays.
 use crate::game::CommonGame;
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     pub fn change_mod_crafting_recipes(
         &mut self,
         give: bool,

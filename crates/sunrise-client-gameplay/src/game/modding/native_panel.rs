@@ -1269,7 +1269,7 @@ impl crate::game::ClientGame<'_> {
 
     /// Whether keys go to the panel's search box.
     pub(in crate::game::client_side) fn mod_browser_typing(&self) -> bool {
-        matches!(self.side.screen, Screen::Inventory | Screen::Creative)
+        matches!(self.client.screen, Screen::Inventory | Screen::Creative)
             && self.client.panel.of.is_some()
             && self.client.panel.search.as_ref().is_some_and(|s| s.focused)
     }
@@ -1318,7 +1318,7 @@ impl crate::game::ClientGame<'_> {
         if search.value != self.client.panel.sent {
             let (owner, value) = (owner.clone(), search.value.clone());
             // The player's edit is newer than a text the owner queued.
-            if matches!(&self.side.panel.pending, Some((o, _)) if *o == owner) {
+            if matches!(&self.client.panel.pending, Some((o, _)) if *o == owner) {
                 self.client.panel.pending = None;
             }
             self.client.panel.sent.clone_from(&value);
@@ -2035,7 +2035,7 @@ pub mod tests {
     /// One frame of the panel on a window `size` pixels big: what the mods heard.
     pub fn frame(game: &mut crate::game::ClientGame<'_>, size: [u32; 2]) -> Vec<(String, String)> {
         let mut batch =
-            sunrise_client::hud::HudBatch::new(size, game.side.settings.gui_scale_inputs());
+            sunrise_client::hud::HudBatch::new(size, game.client.settings.gui_scale_inputs());
         game.draw_mod_browser(&mut batch);
         std::mem::take(&mut *HEARD.lock().unwrap())
     }

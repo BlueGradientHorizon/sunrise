@@ -277,3 +277,4 @@ pub(in crate::game) mod loot_mine_location_tests {
 #[cfg(test)]
 #[path = "loot_slot_tests_server.rs"]
 pub(in crate::game) mod loot_slot_tests;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

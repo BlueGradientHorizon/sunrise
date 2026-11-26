@@ -12,12 +12,12 @@ use sunrise_world::registry::BlockStateId;
 impl Drop for Enclosing<'_, '_> {
     fn drop(&mut self) {
         // A pass that ended early left its own; a pass in progress is known by them.
-        self.game.side.item_columns = None;
-        self.game.side.pass_mobs = None;
+        self.game.server.item_columns = None;
+        self.game.server.pass_mobs = None;
         if let Some(scratch) = self.scratch.take() {
             (
-                self.game.side.item_columns,
-                self.game.side.pass_mobs,
+                self.game.server.item_columns,
+                self.game.server.pass_mobs,
                 self.game.spawner_tick_positions,
                 self.game.trial_spawner_tick_positions,
             ) = scratch;
@@ -86,7 +86,7 @@ impl ServerGame<'_> {
             self.common.world.random = random;
             let step = if needs_part {
                 let mut furnace = furnace.clone();
-                let step = plan.apply(&mut furnace, &mut drops, |s| self.common.crafting_remainder(s));
+                let step = plan.apply(&mut furnace, &mut drops, |s| self.crafting_remainder(s));
                 self.common.world
                     .block_entities
                     .insert(pos, BlockEntity::Furnace(furnace));
@@ -201,3 +201,5 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::native_block_states::NativeBlockStatesGameExt1 as _;

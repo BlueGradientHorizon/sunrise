@@ -86,7 +86,7 @@ impl ClientGame<'_> {
         assert!(!add(self, &invalid_options, at, [0.0; 3]));
 
         assert!(
-            self.side.particles.0.requested.take().unwrap().is_empty(),
+            self.client.particles.0.requested.take().unwrap().is_empty(),
             "invalid requests must not touch the queue"
         );
 
@@ -119,13 +119,13 @@ impl ClientGame<'_> {
         self.client.particles.0.camera = at;
         assert!(add(self, &smoke, at, [0.0; 3]));
         assert_eq!(
-            self.side.particles.0.len(),
+            self.client.particles.0.len(),
             0,
             "engine defers pending spawns until its tick"
         );
         self.particle_fixture_tick();
         assert_eq!(
-            self.side.particles.0.len(),
+            self.client.particles.0.len(),
             1,
             "vanilla provider reached the live queue"
         );
@@ -146,14 +146,14 @@ impl ClientGame<'_> {
         assert!(add(self, &smoke, [64.0, 100.0, 0.0], [0.0; 3]));
         self.particle_fixture_tick();
         assert!(
-            self.side.particles.0.is_empty(),
+            self.client.particles.0.is_empty(),
             "ordinary camera-distance limiter is retained"
         );
         self.client.particles.0.particle_level = 2;
         assert!(add(self, &smoke, at, [0.0; 3]));
         self.particle_fixture_tick();
         assert!(
-            self.side.particles.0.is_empty(),
+            self.client.particles.0.is_empty(),
             "ordinary minimal setting is retained"
         );
         self.client.particles.0.particle_level = 0;
@@ -165,7 +165,7 @@ impl ClientGame<'_> {
         ));
         self.particle_fixture_tick();
         assert_eq!(
-            self.side.particles.0.len(),
+            self.client.particles.0.len(),
             1,
             "existing named provider reached the live queue"
         );
@@ -189,7 +189,7 @@ impl ClientGame<'_> {
             self.particle_fixture_tick();
         }
         assert!(
-            self.side.particles.0.is_empty(),
+            self.client.particles.0.is_empty(),
             "named provider lifetime still expires normally"
         );
         std::fs::write(

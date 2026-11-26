@@ -1,7 +1,7 @@
 //! The notices a side's freshly bound data gives mods, in NeoForge's order.
 use crate::game::CommonGame;
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// Items' default components are bound (`DefaultDataComponentsBoundEvent`), then the
     /// tags (`TagsUpdatedEvent`), both for `cause`.
     pub fn announce_data_bound(&mut self, cause: mod_api::TagsUpdateCause) {

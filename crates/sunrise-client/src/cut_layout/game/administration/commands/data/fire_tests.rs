@@ -556,3 +556,5 @@ pub(in crate::game) fn run_fire_changes_on_eyes_fangs_spawners_clouds_and_bullet
         }
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

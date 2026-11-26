@@ -739,47 +739,6 @@ pub struct BonemealAsk {
 
 /// Where the game calls the hook points.
 impl crate::game::CommonGame<'_> {
-    /// The chosen phase's broadcast event, before its scoped behaviour.
-    pub fn use_item_on_block(
-        &mut self,
-        hit: &super::Hit,
-        hand: Hand,
-        stack: Option<&ItemStack>,
-        phase: UsePhase,
-    ) -> Option<mod_api::InteractionResult> {
-        if !mod_api::__private::listened(mod_api::HookId::UseItemOnBlock) {
-            return None;
-        }
-        let snapshot = stack.try_into_api().ok()?;
-        let click = self.block_click(hit, hand, snapshot.as_ref());
-        let (mut result, mut canceled) = (mod_api::InteractionResult::TryWithEmptyHand, false);
-        self.native_use_item_on_block(&click, phase, &mut result, &mut canceled);
-        if !canceled {
-            return None;
-        }
-        if phase == UsePhase::ItemAfterBlock
-            && result.consumes_action()
-            && let Some(stack) = stack
-        {
-            self.with_hand(hand, |game| {
-                game.side_award_stat("used", &stack.item, 1);
-                game.side_apply_after_use_components(stack);
-            });
-        }
-        Some(result)
-    }
-
-    /// Tells the mods of the chunks that came into this level.
-    pub fn native_chunks_loaded(&mut self) {
-        self.side_chunks_loaded();
-    }
-    /// Tells the mods of the chunks leaving this level, after their last save.
-    pub fn native_chunks_unloaded(
-        &mut self,
-        unloaded: &[std::sync::Arc<sunrise_level::chunk::Chunk>],
-    ) {
-        self.side_chunks_unloaded(unloaded);
-    }
     /// `EntityBlock.newBlockEntity` of block `name`: Sunrise's own, else a
     /// native mod's, made as a write of the level creates it
     /// (`GameLevel::new_block_entity`). Only a declared mod type builds the
@@ -850,6 +809,53 @@ impl crate::game::CommonGame<'_> {
         mod_menu(c.menu.as_deref()?).map(|(menu, _)| menu)
     }
 }
+
+/// Where the game calls the hook points.
+pub trait SharedGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+    /// The chosen phase's broadcast event, before its scoped behaviour.
+     fn use_item_on_block(
+        &mut self,
+        hit: &super::Hit,
+        hand: Hand,
+        stack: Option<&ItemStack>,
+        phase: UsePhase,
+    ) -> Option<mod_api::InteractionResult> {
+        if !mod_api::__private::listened(mod_api::HookId::UseItemOnBlock) {
+            return None;
+        }
+        let snapshot = stack.try_into_api().ok()?;
+        let click = self.block_click(hit, hand, snapshot.as_ref());
+        let (mut result, mut canceled) = (mod_api::InteractionResult::TryWithEmptyHand, false);
+        self.native_use_item_on_block(&click, phase, &mut result, &mut canceled);
+        if !canceled {
+            return None;
+        }
+        if phase == UsePhase::ItemAfterBlock
+            && result.consumes_action()
+            && let Some(stack) = stack
+        {
+            self.with_hand(hand, |game| {
+                game.side_award_stat("used", &stack.item, 1);
+                game.side_apply_after_use_components(stack);
+            });
+        }
+        Some(result)
+    }
+
+    /// Tells the mods of the chunks that came into this level.
+     fn native_chunks_loaded(&mut self) {
+        self.side_chunks_loaded();
+    }
+    /// Tells the mods of the chunks leaving this level, after their last save.
+     fn native_chunks_unloaded(
+        &mut self,
+        unloaded: &[std::sync::Arc<sunrise_level::chunk::Chunk>],
+    ) {
+        self.side_chunks_unloaded(unloaded);
+    }
+}
+impl<'__sg, G: crate::game::SideGame<'__sg>> SharedGameExt1<'__sg> for G {}
+
 
 /// A supported type for a block's container menu. A transient container is never block-backed.
 pub fn mod_menu(name: &str) -> Option<(&'static str, usize)> {
@@ -962,3 +968,7 @@ pub fn packet_view(
 use crate::game::side_ops::events::EventsSideGameExt as _;
 
 use crate::game::side_ops::modapi_hooks::ModapiHooksSideGameExt as _;
+
+use crate::game::held_items::HeldItemsGameExt1 as _;
+
+use crate::game::native_hooks::ModGameExt1 as _;

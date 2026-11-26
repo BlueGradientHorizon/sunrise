@@ -14,7 +14,7 @@ impl ClientGame<'_> {
             .ok_or(PayloadSendError::Disconnected)?
             .session
             .payload_endpoint();
-        self.common.queue_current_payload(endpoint, id, bytes)
+        self.queue_current_payload(endpoint, id, bytes)
     }
 
     /// NeoForge's `hasChannel`: the decision `send_payload_to_server` makes on the session's
@@ -28,3 +28,5 @@ impl ClientGame<'_> {
             .is_some_and(|epoch| epoch.sends(&id.0))
     }
 }
+
+use sunrise_gameplay_common::game::payload_transport::PayloadTransportGameExt1 as _;

@@ -346,7 +346,7 @@ impl ClientGame<'_> {
             position: feet,
             eye_y,
             underwater,
-            spectator: self.common.own_player_is_spectator(),
+            spectator: self.own_player_is_spectator(),
             light: &light,
             bubble_column,
         };
@@ -430,3 +430,5 @@ mod bound_lookup_tests {
         assert!(!replacement.state().removed);
     }
 }
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;

@@ -15,14 +15,14 @@ impl crate::game::ServerGame<'_> {
         if !partial.is_finite() {
             return None;
         }
-        let delay = sunrise_sim::attack_strength::delay(self.common.main_hand_attack_speed());
+        let delay = sunrise_sim::attack_strength::delay(self.main_hand_attack_speed());
         Some(((self.server.attack_ticks as f32 + partial) / delay).clamp(0.0, 1.0))
     }
 
     /// Sets the player in place's `attackStrengthTicker` to the fewest ticks for which
     /// `getAttackStrengthScale(0.5)` is 1.0 with the main hand's attack speed.
     pub(in crate::game::server_side) fn charge_attack_fully(&mut self) {
-        let delay = sunrise_sim::attack_strength::delay(self.common.main_hand_attack_speed());
+        let delay = sunrise_sim::attack_strength::delay(self.main_hand_attack_speed());
         // The cast saturates: with no attack speed the delay is infinite and no ticker reaches it.
         self.server.attack_ticks = (delay - 0.5).ceil() as u32;
     }
@@ -91,9 +91,9 @@ impl crate::game::ServerGame<'_> {
             }
         }
         // A painting nearer than the targeted block and mob breaks instead.
-        if let Some((i, d)) = self.common.painting_hit()
-            && self.common.mob_hit().is_none_or(|m| d < m.1)
-            && self.common.before_block(d)
+        if let Some((i, d)) = self.painting_hit()
+            && self.mob_hit().is_none_or(|m| d < m.1)
+            && self.before_block(d)
         {
             // `BlockAttachedEntity.hurtServer` refuses first through `isInvulnerableToBase`.
             if self
@@ -119,10 +119,10 @@ impl crate::game::ServerGame<'_> {
         {
             return true;
         }
-        let Some((index, distance, _)) = self.common.mob_hit() else {
+        let Some((index, distance, _)) = self.mob_hit() else {
             return false;
         };
-        if !self.common.before_block(distance) || !self.common.held_range_allows(distance) {
+        if !self.before_block(distance) || !self.held_range_allows(distance) {
             return false;
         }
         self.attack_mob(index);
@@ -135,7 +135,7 @@ impl crate::game::ServerGame<'_> {
 impl crate::game::ServerGame<'_> {
     /// Whether the ray picked a general row and consumed the click.
     pub(in crate::game::server_side) fn attack_general_row(&mut self) -> bool {
-        let Some((eye, direction)) = self.common.aim() else {
+        let Some((eye, direction)) = self.aim() else {
             return false;
         };
         let catalog = sunrise_gameplay_common::game::general::general_type_catalog();
@@ -159,9 +159,9 @@ impl crate::game::ServerGame<'_> {
         else {
             return false;
         };
-        if !self.common.before_block(distance)
-            || !self.common.held_range_allows(distance)
-            || self.common.mob_hit().is_some_and(|(_, d, _)| d <= distance)
+        if !self.before_block(distance)
+            || !self.held_range_allows(distance)
+            || self.mob_hit().is_some_and(|(_, d, _)| d <= distance)
         {
             return false;
         }
@@ -543,3 +543,7 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

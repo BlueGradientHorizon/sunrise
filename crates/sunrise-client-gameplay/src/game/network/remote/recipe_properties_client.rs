@@ -25,7 +25,7 @@ impl crate::game::ClientGame<'_> {
             self.remote_close_local();
         }
         self.common.native_lifecycle.begin_close();
-        self.common.native_lifecycle_world_closed();
+        self.native_lifecycle_world_closed();
         self.common.recipe_tables.server_properties = Default::default();
         self.common.recipe_tables.server_stations = None;
         self.refresh_recipe_property_context();
@@ -83,3 +83,5 @@ impl crate::game::ClientGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

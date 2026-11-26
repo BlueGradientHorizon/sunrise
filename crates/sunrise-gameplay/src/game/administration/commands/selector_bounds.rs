@@ -26,10 +26,10 @@ impl crate::game::ServerGame<'_> {
         match target {
             Target::General(id) => self.common.resident_entities.general.row(id).map(Entity::bounds),
             Target::Player => self.common.player.as_ref().map(|p| p.bounds()),
-            Target::Guest(conn) => self.common.command_guest(conn).map(|p| p.bounds()),
+            Target::Guest(conn) => self.command_guest(conn).map(|p| p.bounds()),
             Target::Hook(id) => self.fishing_hook_by_id(id).map(|(h, _)| h.bounds()),
             Target::DragonPart(id) => self
-                .common.resident_dragon_part(id)
+                .resident_dragon_part(id)
                 .map(|(d, i)| d.part_geometry(i).1),
             Target::Mob(id) => self.common.mobs.iter().find(|e| e.id == id).map(Entity::bounds),
             Target::Item(id) => self.common.dropped.iter().find(|e| e.id == id).map(Entity::bounds),
@@ -96,3 +96,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;

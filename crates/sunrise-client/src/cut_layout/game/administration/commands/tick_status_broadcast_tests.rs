@@ -153,3 +153,5 @@ fn tick_status_lines_reach_the_other_operators() {
         Vec::<serde_json::Value>::new()
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

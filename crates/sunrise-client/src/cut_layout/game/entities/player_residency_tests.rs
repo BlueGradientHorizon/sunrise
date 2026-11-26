@@ -642,3 +642,7 @@ fn parked_mob_attachment_values_survive_other_level_cleanup() {
 }
 
 use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

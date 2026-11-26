@@ -283,3 +283,7 @@ fn an_unloaded_chunk_saves_its_ticks_and_a_reloaded_one_gets_them_back() {
         ticks
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

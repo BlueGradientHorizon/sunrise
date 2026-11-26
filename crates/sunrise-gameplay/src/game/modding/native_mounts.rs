@@ -109,9 +109,9 @@ impl crate::game::ServerGame<'_> {
         } else if self.common.tnts.iter().any(|t| t.id == id) {
             "minecraft:tnt".into()
         } else if self.common.armor_stands.iter().any(|a| a.id == id) {
-            self.common.target_type(Target::Stand(id))
+            self.target_type(Target::Stand(id))
         } else if self.server.others.0.iter().any(|o| o.id == id) {
-            self.common.target_type(Target::Other(id))
+            self.target_type(Target::Other(id))
         } else if let Some(row) = self.common.general_object(id) {
             super::general::general_type_catalog()
                 .key(row.type_slot)
@@ -191,3 +191,5 @@ impl crate::game::ServerGame<'_> {
         self.native_mount_allowed(Some(rider), vehicle, mounting)
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

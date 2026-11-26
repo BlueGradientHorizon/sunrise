@@ -29,7 +29,7 @@ fn check_signs(game: &mut crate::game::ClientGame<'_>) {
     const SUBJECT: i32 = 31;
     let (client, _server) = Pipe::pair();
     game.connect_local(client, "SignOutline").unwrap();
-    let player_id = game.side.remote.as_ref().unwrap().entity_id;
+    let player_id = game.client.remote.as_ref().unwrap().entity_id;
     let motion = game.motion;
     let player = || PlayerMotion::new(motion, Vec3::new(FAR.x, FAR.y, FAR.z)).unwrap();
     let mut chunk = Chunk::empty(0, 0);
@@ -134,7 +134,7 @@ fn check_signs(game: &mut crate::game::ClientGame<'_>) {
         for cached in [true, false] {
             for (name, camera_type, scoping, subject, visual, expected) in cases {
                 game.player = Some(player());
-                game.side.camera_type = camera_type;
+                game.client.camera_type = camera_type;
                 game.using = None;
                 game.inventory[0] = Some(ItemStack::new("minecraft:spyglass", 1));
                 if scoping {
@@ -154,8 +154,8 @@ fn check_signs(game: &mut crate::game::ClientGame<'_>) {
                 }
                 let visual = match name {
                     "eye_height" => {
-                        game.side.view.eye_height = 1.7775;
-                        game.side.view.eye_height_old = game.side.view.eye_height;
+                        game.client.view.eye_height = 1.7775;
+                        game.client.view.eye_height_old = game.client.view.eye_height;
                         let (camera, _, _) = game.camera_view(PARTIAL).unwrap();
                         assert!((camera - NEAR).length_squared() > 16.0 * 16.0);
                         camera
@@ -227,10 +227,10 @@ fn check_signs(game: &mut crate::game::ClientGame<'_>) {
                 ..Default::default()
             }),
         );
-        game.side.camera_type = CameraType::FirstPerson;
+        game.client.camera_type = CameraType::FirstPerson;
         game.player = Some(player());
         let cart_kind = game
-            .side
+            .client
             .remote
             .as_ref()
             .unwrap()
@@ -400,3 +400,5 @@ fn render_glyphs(
         })
         .collect()
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

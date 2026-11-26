@@ -11,7 +11,7 @@ impl sunrise_sim::mobs::MobHooks for crate::game::ServerGame<'_> {
         ) {
             return None;
         }
-        let level_ref = self.common.level(self.common.dim.id())?;
+        let level_ref = self.level(self.common.dim.id())?;
         let level = sunrise_gameplay_common::game::native_level_signals::ReadLevel::new(self, level_ref);
         let mut answer = None;
         if let Err(error) = sunrise_level::crash::contain(|| {
@@ -71,7 +71,7 @@ impl sunrise_sim::mobs::MobHooks for crate::game::ServerGame<'_> {
             return false;
         };
         let uuid = sunrise_sim::lan::playerdata::ints_uuid(player.uuid);
-        let Some(player) = self.common.player(uuid) else {
+        let Some(player) = self.player(uuid) else {
             return false;
         };
         let mut cancel = false;
@@ -93,7 +93,7 @@ impl sunrise_sim::mobs::MobHooks for crate::game::ServerGame<'_> {
     }
     fn living_visibility(&self, player: &PlayerView, looking: u32, visibility: f64) -> f64 {
         let uuid = sunrise_sim::lan::playerdata::ints_uuid(player.uuid);
-        match self.common.player(uuid) {
+        match self.player(uuid) {
             Some(player) => self.scaled_visibility(|_| player.entity(), looking, visibility),
             None => visibility,
         }
@@ -106,3 +106,7 @@ impl sunrise_sim::mobs::MobHooks for crate::game::ServerGame<'_> {
         )
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

@@ -1106,3 +1106,5 @@ pub(in crate::game) mod wind_charge_burst_tests {
         });
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

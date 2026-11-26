@@ -9,7 +9,7 @@ pub const PLAYER_AGE: i32 = 39;
 pub const MOB_AGE: u32 = 117;
 
 pub fn living(game: &crate::game::ServerGame<'_>, id: u32) -> LivingRef {
-    game.common.living(game.common.entity(id).expect("admitted entity"))
+    game.living(game.entity(id).expect("admitted entity"))
         .expect("living entity")
 }
 
@@ -53,3 +53,5 @@ pub fn arrow() -> ProjectileKind {
         effect: None,
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

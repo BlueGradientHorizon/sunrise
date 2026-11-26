@@ -90,3 +90,10 @@ mod tests {
 
     
 }
+use crate::game::held_items::HeldItemsGameExt1 as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use crate::game::native_harvest_queries_common::NativeHarvestQueriesCommonGameExt1 as _;
+
+use crate::game::native_server::NativeServerGameExt1 as _;

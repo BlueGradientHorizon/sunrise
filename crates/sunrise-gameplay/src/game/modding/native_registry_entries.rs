@@ -95,14 +95,14 @@ impl<__Side: sunrise_gameplay_common::game::Side> crate::game::Game<'_, __Side> 
             "minecraft:advancement" => LocalRegistry::Advancements(&self.adv.tree),
             "minecraft:game_rule" => LocalRegistry::Rules(&self.level.rule_registry),
             "minecraft:predicate" => LocalRegistry::Json(ModdingSideOps::side_function_registry(
-                &self.side,
+                &self.server,
                 FunctionRegistry::Predicate,
             )?),
             "minecraft:item_modifier" => LocalRegistry::Json(
-                ModdingSideOps::side_function_registry(&self.side, FunctionRegistry::ItemModifier)?,
+                ModdingSideOps::side_function_registry(&self.server, FunctionRegistry::ItemModifier)?,
             ),
             "minecraft:slot_source" => LocalRegistry::Json(ModdingSideOps::side_function_registry(
-                &self.side,
+                &self.server,
                 FunctionRegistry::SlotSource,
             )?),
             "minecraft:loot_table" => LocalRegistry::Loot(self.items()),
@@ -218,7 +218,7 @@ impl<__Side: sunrise_gameplay_common::game::Side> crate::game::Game<'_, __Side> 
         if registry == "minecraft:dimension" {
             let mut entries = Vec::new();
             entries.extend(Identifier::parse(self.dim.id()).ok());
-            ModdingSideOps::side_visit_parked_dimensions(&self.side, |dim| {
+            ModdingSideOps::side_visit_parked_dimensions(&self.server, |dim| {
                 entries.extend(Identifier::parse(dim.id()).ok());
             });
             return Some(entries);
@@ -285,7 +285,7 @@ impl<__Side: sunrise_gameplay_common::game::Side> crate::game::Game<'_, __Side> 
         }
         if registry == "minecraft:slot_source" {
             return Some(ModdingSideOps::side_slot_source_tag_contains(
-                &self.side, &tag, &id,
+                &self.server, &tag, &id,
             ));
         }
         if registry == "minecraft:villager_trade" {
@@ -441,3 +441,5 @@ use sunrise_gameplay_common::game::side_ops::modapi_modding::ModapiModdingSideGa
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

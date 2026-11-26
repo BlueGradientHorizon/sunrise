@@ -73,7 +73,7 @@ impl crate::game::ServerGame<'_> {
             hardness != 0.0
         };
         let broken = if wears && per_block > 0 && max > 0 {
-            self.common.with_hand(Hand::Main, |game| {
+            self.with_hand(Hand::Main, |game| {
                 game.apply_held_damage(
                     per_block,
                     sunrise_core::equipment_slot::EquipmentSlot::MainHand,
@@ -97,3 +97,7 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_world_read_common::NativeWorldReadGameExt1 as _;

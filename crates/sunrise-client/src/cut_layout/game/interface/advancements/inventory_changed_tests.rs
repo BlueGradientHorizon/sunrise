@@ -131,3 +131,5 @@ fn the_slots_follow_inventory_numbering() {
     // A short inventory is padded, never shifted into the armour.
     assert_eq!(super::inventory_slots(&[], &armor, &None).len(), 41);
 }
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

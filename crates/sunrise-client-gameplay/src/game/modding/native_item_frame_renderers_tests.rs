@@ -506,3 +506,5 @@ fn a_failed_item_frame_renderer_draws_the_model_until_a_resource_reload() {
         },
     );
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

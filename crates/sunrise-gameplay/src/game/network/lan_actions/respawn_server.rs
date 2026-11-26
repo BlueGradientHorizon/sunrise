@@ -521,7 +521,7 @@ impl crate::game::ServerGame<'_> {
         copy_spawn: bool,
         missing: bool,
     ) {
-        let Some(old) = self.common.command_guest(conn) else {
+        let Some(old) = self.command_guest(conn) else {
             return;
         };
         let old_spawn = old.spawn;
@@ -606,13 +606,13 @@ impl crate::game::ServerGame<'_> {
                     // Keep the save's legacy point as a literal position, not a block lookup.
                     if let Some([x, y, z]) = legacy {
                         g.spawn = Some(Vec3::new(x, y, z));
-                        g.side.respawn_config = None;
+                        g.server.respawn_config = None;
                     }
                     true
                 });
                 if accepted == Some(true)
                     && config.is_none()
-                    && let Some(host) = game.side.lan.as_mut()
+                    && let Some(host) = game.server.lan.as_mut()
                 {
                     // A config in a missing dimension is preserved in the save.
                     host.hub
@@ -664,7 +664,7 @@ impl crate::game::ServerGame<'_> {
         }
         self.bind_player_attachments(conn, false);
         if mod_api::__private::listened(mod_api::HookId::PlayerRespawned)
-            && let Some(guest) = self.common.command_guest(conn)
+            && let Some(guest) = self.command_guest(conn)
         {
             let (uuid, name) = (guest.uuid, guest.name.clone());
             self.as_guest(conn, |g| g.native_player_respawned(uuid, &name, !was_death));
@@ -675,7 +675,7 @@ impl crate::game::ServerGame<'_> {
             });
         } else {
             if let Some(config) = self
-                .common.command_guest(conn)
+                .command_guest(conn)
                 .and_then(|g| g.respawn_elsewhere.as_ref())
                 .and_then(RespawnConfig::from_saved)
             {
@@ -723,7 +723,7 @@ impl crate::game::ServerGame<'_> {
                     );
                 }
             }
-            let Some(guest) = self.common.command_guest(conn) else {
+            let Some(guest) = self.command_guest(conn) else {
                 return;
             };
             let from = crate::game::game_mode::mode_from_id(guest.game_mode);
@@ -772,7 +772,7 @@ impl crate::game::ServerGame<'_> {
                 map.unbind_index();
             }
         }
-        self.common.entity_section_forget(entity);
+        self.entity_section_forget(entity);
     }
     /// Run part of `ServerPlayer.die` on the victim's body. A hit that already
     /// has the body installed must not try to enter the same guest again.
@@ -786,3 +786,7 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;

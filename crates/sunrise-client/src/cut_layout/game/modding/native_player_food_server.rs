@@ -116,3 +116,6 @@ mod tests {
         });
     }
 }
+use sunrise_gameplay_common::game::native_player_food::NativePlayerFoodGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

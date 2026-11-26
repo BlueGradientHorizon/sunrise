@@ -449,7 +449,7 @@ impl crate::game::ClientGame<'_> {
                 Some(s) if &*s.item == "minecraft:crossbow" => {
                     TriggerFeel::Draw(ticks as f32 / Self::charge_ticks(s).max(1) as f32)
                 }
-                Some(s) if self.common.blocks_attacks(s).is_some() => TriggerFeel::Brace,
+                Some(s) if self.blocks_attacks(s).is_some() => TriggerFeel::Brace,
                 _ => TriggerFeel::Free,
             },
             None => self.idle_use_feel(),
@@ -487,7 +487,7 @@ impl crate::game::ClientGame<'_> {
             Some((_, "minecraft:warped_fungus_on_a_stick")) if mount == "minecraft:strider" => {
                 TriggerFeel::Boost
             }
-            Some((s, _)) if self.common.blocks_attacks(s).is_some() => {
+            Some((s, _)) if self.blocks_attacks(s).is_some() => {
                 let default = self
                     .items()
                     .get(&s.item)
@@ -626,3 +626,5 @@ pub(in crate::game) mod takeover_tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

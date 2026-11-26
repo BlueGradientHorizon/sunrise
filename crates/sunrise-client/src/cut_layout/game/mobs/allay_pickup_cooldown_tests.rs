@@ -221,3 +221,7 @@ fn the_saved_pickup_cooldown_follows_the_model() {
         "NoAI keeps it"
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

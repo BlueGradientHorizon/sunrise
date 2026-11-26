@@ -352,9 +352,9 @@ impl ClientGame<'_> {
                     "reachable": view.reachable,
                     "verdict": state.as_ref().and_then(|s| s.verdict.as_ref().map(|v| format!("{v:?}"))),
                     "direct_port": state.as_ref().map(|s| s.port),
-                    "sessions": self.side.friends.as_ref().map_or(0, |s| s.host.sessions()),
-                    "direct": self.side.friends.as_ref().map_or(0, |s| s.paths.0),
-                    "relayed": self.side.friends.as_ref().map_or(0, |s| s.paths.1),
+                    "sessions": self.client.friends.as_ref().map_or(0, |s| s.host.sessions()),
+                    "direct": self.client.friends.as_ref().map_or(0, |s| s.paths.0),
+                    "relayed": self.client.friends.as_ref().map_or(0, |s| s.paths.1),
                     "guests": view.guests,
                     "lan_port": self.lan_port(),
                 })))

@@ -46,9 +46,9 @@ impl crate::game::ClientGame<'_> {
         &self,
         player: PlayerRef,
     ) -> Option<PlayerRead<'_>> {
-        (self.common.local_player()? == player).then(|| PlayerRead::Acting {
+        (self.local_player()? == player).then(|| PlayerRead::Acting {
             mode: self
-                .common.player_info_game_mode()
+                .player_info_game_mode()
                 .map(sunrise_command::args::GameMode::id),
             body: self.common.player.as_ref(),
             abilities: self.client_abilities(),
@@ -64,7 +64,7 @@ impl crate::game::ClientGame<'_> {
         if epoch != player.fields().entity.epoch() {
             return None;
         }
-        (self.common.local_player()? == player).then(|| self.common.native_level_key())
+        (self.local_player()? == player).then(|| self.native_level_key())
     }
 
     pub(in crate::game) fn client_player_collision_flags(
@@ -205,3 +205,9 @@ impl crate::game::ClientGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

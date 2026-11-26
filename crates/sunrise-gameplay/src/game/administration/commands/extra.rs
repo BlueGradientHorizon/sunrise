@@ -252,7 +252,7 @@ impl crate::game::ServerGame<'_> {
                         n.push(sunrise_game_data::scoreboard::comp_text(&team.suffix));
                         n
                     }
-                    _ => self.common.target_name(*t),
+                    _ => self.target_name(*t),
                 };
                 names.push(name.with_style(&style));
             }
@@ -332,7 +332,7 @@ impl crate::game::ServerGame<'_> {
             )
         };
         let message = if n == 1 {
-            Text::translate(single, &[self.common.target_name(targets[0])])
+            Text::translate(single, &[self.target_name(targets[0])])
         } else {
             Text::translate(multiple, &[num(n)])
         };
@@ -349,7 +349,7 @@ impl crate::game::ServerGame<'_> {
     ) -> R<i32> {
         if id == "posteffect.list" {
             let t = self.one_entity(ctx, "target", true)?;
-            let name = self.common.target_name(t);
+            let name = self.target_name(t);
             let effects = self.post_effects_of(t);
             if effects.is_empty() {
                 self.feedback(Text::translate("commands.posteffect.list.empty", &[name]));
@@ -402,14 +402,14 @@ impl crate::game::ServerGame<'_> {
         let message = match (key, n) {
             ("clear", 1) => Text::translate(
                 "commands.posteffect.clear.success.single",
-                &[self.common.target_name(changed[0])],
+                &[self.target_name(changed[0])],
             ),
             ("clear", _) => {
                 Text::translate("commands.posteffect.clear.success.multiple", &[num(n)])
             }
             (_, 1) => Text::translate(
                 &format!("commands.posteffect.{key}.success.single"),
-                &[effect_text, self.common.target_name(changed[0])],
+                &[effect_text, self.target_name(changed[0])],
             ),
             _ => Text::translate(
                 &format!("commands.posteffect.{key}.success.multiple"),
@@ -900,3 +900,5 @@ pub(in crate::game) mod waypoint_icon_save_tests {
         );
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

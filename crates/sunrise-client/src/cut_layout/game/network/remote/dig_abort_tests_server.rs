@@ -70,3 +70,5 @@ fn stopping_a_retained_client_dig_aborts_only_once() {
     });
     assert_eq!(count.load(Ordering::Relaxed), 1);
 }
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

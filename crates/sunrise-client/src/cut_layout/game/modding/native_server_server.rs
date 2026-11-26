@@ -737,7 +737,7 @@ use sunrise_items::items::ItemStack;
             let shulker = [1, 64, 0];
             place(game, shulker, "minecraft:shulker_box");
             let count = |game: &sunrise_gameplay::game::ServerGame<'_>| {
-                game.side
+                game.server
                     .be_anims
                     .shulkers
                     .get(&shulker)
@@ -1046,3 +1046,9 @@ use sunrise_items::items::ItemStack;
         });
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

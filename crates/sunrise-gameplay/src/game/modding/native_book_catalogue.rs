@@ -11,7 +11,6 @@ impl crate::game::ServerGame<'_> {
             return Ok(());
         }
         let stacks = self
-            .common
             .resolve_mod_book_declaration_slot(slot)
             .into_iter()
             .map(|stack| {
@@ -197,3 +196,5 @@ impl crate::game::ServerGame<'_> {
         Ok((start, bytes))
     }
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

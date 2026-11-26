@@ -302,3 +302,4 @@ pub(in crate::game) mod falling_live_adoption_tests {
         });
     }
 }
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

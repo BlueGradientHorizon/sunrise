@@ -25,7 +25,7 @@ impl crate::game::ServerGame<'_> {
                 let connection = if current { current_player } else { player };
                 let id = u32::try_from(self.player_entity_id_by_connection(connection)?).ok()?;
                 let epoch = self.common.native_lifecycle.epoch()?;
-                let p = self.common.entity_position(mod_api::EntityRef::new(epoch, id))?;
+                let p = self.entity_position(mod_api::EntityRef::new(epoch, id))?;
                 Some(Vec3::new(p[0], p[1], p[2]))
             }
         };
@@ -38,3 +38,5 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

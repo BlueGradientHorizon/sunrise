@@ -199,3 +199,5 @@ fn typed_particle_command_encoder_refusal_does_not_deliver_to_a_guest() {
     assert!(receiver.try_recv().is_err());
     assert!(game.side.pending_particles.is_empty());
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

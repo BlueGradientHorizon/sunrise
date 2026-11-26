@@ -144,7 +144,7 @@ impl ClientGame<'_> {
             if let Some(infos) = sent.remove(&key) {
                 self.load_block_entities(key, &infos);
             }
-            self.common.ask_chunk_light_emission(key);
+            self.ask_chunk_light_emission(key);
             self.client_chunk_load(key.0, key.1);
         }
         if let Some(r) = self.client.remote.as_mut() {
@@ -154,3 +154,5 @@ impl ClientGame<'_> {
         self.send(S::PlayerLoaded(Empty));
     }
 }
+
+use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;

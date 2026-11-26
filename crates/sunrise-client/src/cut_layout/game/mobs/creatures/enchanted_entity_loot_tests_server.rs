@@ -316,3 +316,7 @@ pub(in crate::game) fn zombie(game: &mut sunrise_gameplay::game::ServerGame<'_>,
     game.mobs.push(mob.clone());
     mob
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

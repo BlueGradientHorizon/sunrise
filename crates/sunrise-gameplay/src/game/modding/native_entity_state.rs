@@ -50,7 +50,7 @@ fn player_pose(pose: Pose) -> &'static str {
 impl crate::game::ServerGame<'_> {
     /// The player's body or the mob a handle names, or its target.
     fn native_entity_body(&self, entity: EntityRef) -> Option<Body<'_>> {
-        self.common.native_target_body(self.common.native_entity_target(entity)?)
+        self.native_target_body(self.native_entity_target(entity)?)
     }
 
     pub(in crate::game) fn server_entity_is_shift_key_down(
@@ -67,7 +67,7 @@ impl crate::game::ServerGame<'_> {
         &self,
         entity: EntityRef,
     ) -> Option<mod_api::MainHand> {
-        let (target, location) = self.common.native_entity_target_with_location(entity)?;
+        let (target, location) = self.native_entity_target_with_location(entity)?;
         let left = match target {
             Target::Player => return self.guest_main_arm(self.server.lan_acting?),
             Target::Guest(conn) => return self.guest_main_arm(conn),
@@ -84,7 +84,7 @@ impl crate::game::ServerGame<'_> {
     /// A server's player's main arm, from the Main Hand its client last reported.
     fn guest_main_arm(&self, conn: u32) -> Option<mod_api::MainHand> {
         Some(super::lan::main_hand(
-            self.common.command_guest(conn)?.info.main_hand,
+            self.command_guest(conn)?.info.main_hand,
         ))
     }
     /// Whether the entity crouches (`Entity.isCrouching`: the crouching
@@ -112,7 +112,7 @@ impl crate::game::ServerGame<'_> {
         if !self.common.is_logical_server() {
             return false;
         }
-        match self.common.native_entity_target(entity) {
+        match self.native_entity_target(entity) {
             // The acting body: a guest's turn writes its flag back from the guest row, so the
             // row (`Guest::sprinting`, what metadata publishes) is set with it.
             Some(Target::Player) => {
@@ -167,7 +167,7 @@ impl crate::game::ServerGame<'_> {
         entity: EntityRef,
         immune: bool,
     ) -> bool {
-        self.common.native_entity_target(entity)
+        self.native_entity_target(entity)
             .is_some_and(|target| self.set_fire_immunity_for(target, immune))
     }
 
@@ -223,7 +223,7 @@ impl crate::game::ServerGame<'_> {
     /// block's, a pearl's End gateway state, or the level's for the other
     /// kinds its portal walk carries (zero when it keeps no state for one).
     pub(in crate::game) fn entity_portal_cooldown(&self, entity: EntityRef) -> Option<i32> {
-        let id = match self.common.native_entity_target(entity)? {
+        let id = match self.native_entity_target(entity)? {
             // The acting guest's state is in place for its turn (the entry of `guest_turn`).
             Target::Player => return Some(self.common.portal_player.cooldown),
             Target::Guest(conn) => {
@@ -284,7 +284,7 @@ impl crate::game::ServerGame<'_> {
         if ticks < 0 || !self.common.is_logical_server() {
             return false;
         }
-        match self.common.native_entity_target(entity) {
+        match self.native_entity_target(entity) {
             Some(Target::Projectile(id)) => {
                 let Some(projectile) = self.common.creatures.projectiles.iter().find(|p| p.id == id)
                 else {
@@ -321,7 +321,7 @@ impl crate::game::ServerGame<'_> {
         entity: EntityRef,
         ticks: i32,
     ) -> bool {
-        match self.common.native_entity_target(entity) {
+        match self.native_entity_target(entity) {
             Some(Target::Player) => self.common.player.as_mut().is_some_and(|p| {
                 p.fire_ticks = ticks;
                 true
@@ -369,7 +369,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Sets the entity's air (`Entity.setAirSupply`).
     pub(in crate::game) fn entity_set_air_supply(&mut self, entity: EntityRef, air: i32) -> bool {
-        match self.common.native_entity_target(entity) {
+        match self.native_entity_target(entity) {
             Some(Target::Player) => match self.common.player.as_mut() {
                 Some(player) => {
                     player.air = air;
@@ -412,7 +412,7 @@ impl crate::game::ServerGame<'_> {
     /// Silences the mob or lets it make sounds again (`Entity.setSilent`).
     /// False for the other kinds.
     pub(in crate::game) fn entity_set_silent(&mut self, entity: EntityRef, silent: bool) -> bool {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(entity) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(entity) else {
             return false;
         };
         match self.common.mobs.iter_mut().find(|m| m.id == id) {
@@ -427,10 +427,10 @@ impl crate::game::ServerGame<'_> {
     /// invisibility effect on a player or a mob, a mob's or an armor stand's
     /// flag.
     pub(in crate::game) fn entity_is_invisible(&self, entity: EntityRef) -> Option<bool> {
-        match self.common.native_entity_target(entity)? {
+        match self.native_entity_target(entity)? {
             Target::Player => Some(self.common.potions.effects.get("invisibility").is_some()),
             Target::Guest(conn) => Some(
-                self.common.command_guest(conn)?
+                self.command_guest(conn)?
                     .effects
                     .get("invisibility")
                     .is_some(),
@@ -449,7 +449,7 @@ impl crate::game::ServerGame<'_> {
         entity: EntityRef,
         ticks: i32,
     ) -> bool {
-        match self.common.native_entity_target(entity) {
+        match self.native_entity_target(entity) {
             Some(Target::Player) => self.common.player.as_mut().is_some_and(|p| {
                 p.ticks_frozen = ticks;
                 true
@@ -500,7 +500,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Sets the mob's persistent glowing tag (`Entity.setGlowingTag`). Returns false for players and guests.
     pub(in crate::game) fn entity_set_glowing(&mut self, entity: EntityRef, glowing: bool) -> bool {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(entity) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(entity) else {
             return false;
         };
         self.common.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
@@ -516,7 +516,7 @@ impl crate::game::ServerGame<'_> {
         entity: EntityRef,
         no_gravity: bool,
     ) -> bool {
-        match self.common.native_entity_target(entity) {
+        match self.native_entity_target(entity) {
             Some(Target::Mob(id)) => self.common.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
                 m.no_gravity = no_gravity;
                 m.needs_sync = true;
@@ -541,7 +541,7 @@ impl crate::game::ServerGame<'_> {
         entity: EntityRef,
         invisible: bool,
     ) -> bool {
-        match self.common.native_entity_target(entity) {
+        match self.native_entity_target(entity) {
             Some(Target::Mob(id)) => self.common.mobs.iter_mut().find(|m| m.id == id).is_some_and(|m| {
                 m.invisible = invisible;
                 m.needs_sync = true;
@@ -1133,3 +1133,15 @@ pub mod tests {
 
     
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::native_entity_state_common::NativeEntityStateCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

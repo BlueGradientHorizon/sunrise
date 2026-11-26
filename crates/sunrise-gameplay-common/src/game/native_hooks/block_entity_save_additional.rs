@@ -214,3 +214,5 @@ impl GameLevel<'_> {
         self.fire_block_entity_save_additional(id, entity, pos, level, tag);
     }
 }
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -214,7 +214,7 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         self.native_as_player(uuid, |game| game.journal_player(uuid));
-        if let Some(player) = self.common.player(uuid) {
+        if let Some(player) = self.player(uuid) {
             self.journal_menus(player);
         }
     }
@@ -307,7 +307,7 @@ impl crate::game::ServerGame<'_> {
                 actor,
                 Epoch::Click(&handled),
                 |game| {
-                    let Some(guest) = game.side.lan.as_ref().and_then(|host| host.hub.guest(conn))
+                    let Some(guest) = game.server.lan.as_ref().and_then(|host| host.hub.guest(conn))
                     else {
                         return false;
                     };
@@ -379,3 +379,5 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

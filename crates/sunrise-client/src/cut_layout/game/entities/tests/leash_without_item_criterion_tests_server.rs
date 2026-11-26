@@ -84,3 +84,7 @@ fn actual_holder_detach_does_not_reaward_the_held_lead_criterion() {
     );
     let _ = std::fs::remove_dir_all(&game.side.world_root);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

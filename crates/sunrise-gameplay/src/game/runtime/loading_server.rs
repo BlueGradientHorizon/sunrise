@@ -35,7 +35,7 @@ pub fn start_dedicated_game(
     };
     let mut game =
         crate::game::ServerGame::new(res, pack, options, settings, prepared, profile_resolver)?;
-    game.side.dedicated_services = Some(services);
+    game.server.dedicated_services = Some(services);
     if game.options.benchmark.is_some() {
         game.options.no_pause = true;
     }
@@ -59,7 +59,7 @@ pub fn start_dedicated_game(
                     commit: option_env!("SUNRISE_COMMIT").map(str::to_owned),
                     mods: Vec::new(),
                 },
-                simulation_distance: game.side.settings.simulation_distance as u32,
+                simulation_distance: game.server.settings.simulation_distance as u32,
                 vsync: false,
                 fps_cap: None,
                 offscreen: game.options.offscreen,
@@ -111,3 +111,5 @@ impl crate::game::ServerGame<'_> {
 pub fn configure_launch_spans(on: bool) {
     tick_profile::want_spans(tick_profile::SPANS_SPIKES, on);
 }
+
+use sunrise_gameplay_common::game::mods::ModGameExt1 as _;

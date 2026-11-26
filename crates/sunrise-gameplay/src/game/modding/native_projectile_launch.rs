@@ -24,7 +24,7 @@ impl crate::game::ServerGame<'_> {
         }
         let target = self.native_living_target(owner)?;
         if self
-            .common.native_target_guest(target)
+            .native_target_guest(target)
             .is_some_and(|guest| guest.dimension != self.common.dim.id())
         {
             return None;
@@ -39,10 +39,10 @@ impl crate::game::ServerGame<'_> {
         carried.count = 1;
         let kind = thrown_projectile_kind(&entity_type.to_string(), &carried)?;
         let entity = owner.entity();
-        let [x, y, z] = self.common.entity_eye_position(entity)?;
-        let [yaw, pitch] = self.common.entity_rotation(entity)?;
+        let [x, y, z] = self.entity_eye_position(entity)?;
+        let [yaw, pitch] = self.entity_rotation(entity)?;
         let motion = self.native_entity_known_speed(entity)?;
-        let on_ground = self.common.entity_on_ground(entity)?;
+        let on_ground = self.entity_on_ground(entity)?;
         let ((who, uuid, guest), vehicle) = self.native_projectile_owner_fields(Some(entity))?;
         // WindChargeItem's factory uses eye height directly; the other
         // supported factories use ThrowableItemProjectile's widened 0.1F offset.
@@ -56,7 +56,7 @@ impl crate::game::ServerGame<'_> {
         shot.shoot_from_rotation(pitch, yaw, offset, power, inaccuracy, motion, on_ground);
         shot.item = Some(carried);
         let id = self.spawn_owned_projectile(Some(target), shot, stack)?;
-        self.projectile(self.common.entity(id)?)
+        self.projectile(self.entity(id)?)
     }
 
     /// `Projectile.spawnProjectile` for a shot whose owner is `owner`: it takes
@@ -102,3 +102,9 @@ pub(in crate::game::server_side) fn thrown_projectile_kind(
         id => ProjectileKind::Thrown(sunrise_sim::projectiles::thrown_type(id)?),
     })
 }
+
+use sunrise_gameplay_common::game::native_entity_motion_values::NativeEntityMotionValuesGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

@@ -230,7 +230,7 @@ impl ServerGame<'_> {
             } else if let Err(error) = &result {
                 self.native_lifecycle_close_failed(&error.to_string());
             } else {
-                self.common.native_lifecycle_world_closed();
+                self.native_lifecycle_world_closed();
             }
         })) && result.is_ok()
         {
@@ -272,3 +272,5 @@ fn remember_shutdown(
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

@@ -19,11 +19,11 @@ impl crate::game::ServerGame<'_> {
         if id == 0 {
             return CreditEntity::default();
         }
-        if self.common.entity(id as u32).is_some() {
+        if self.entity(id as u32).is_some() {
             let [main, _] = self.attack_of(id).held;
             return CreditEntity { id, main };
         }
-        match self.common.mob_in_other_level(id as u32) {
+        match self.mob_in_other_level(id as u32) {
             Some((_, mob)) => CreditEntity {
                 id,
                 main: mob.extra.main_hand_stack().cloned(),
@@ -116,8 +116,8 @@ impl crate::game::ServerGame<'_> {
                         .is_some_and(|uuid| self.villager_trade_will_notify(victim as u32, uuid)),
             });
         let fixed = if observed && mob.is_none() {
-            self.common.entity(victim as u32)
-                .and_then(|entity| self.common.living(entity))
+            self.entity(victim as u32)
+                .and_then(|entity| self.living(entity))
                 .and_then(|living| self.living_kill_credit(living))
                 .map(|credit| entity(credit.id() as i32))
                 .unwrap_or_default()
@@ -140,3 +140,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

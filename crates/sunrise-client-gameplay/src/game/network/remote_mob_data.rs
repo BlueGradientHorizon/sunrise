@@ -512,7 +512,7 @@ impl ClientGame<'_> {
         let bed = sleeping_pos.map(|bed| bed.map_or(0, |b| self.common.bed_facing(b)));
         let sleep_at = sleeping_pos
             .flatten()
-            .and_then(|head| self.common.sleeping_position(head));
+            .and_then(|head| self.sleeping_position(head));
         let professions = r.professions.clone();
         if let Some(m) = self
             .common
@@ -1808,3 +1808,5 @@ mod pet_pose_meta_tests;
 #[cfg(test)]
 #[path = "remote_mob_data/witch_drink_meta_tests.rs"]
 mod witch_drink_meta_tests;
+
+use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1 as _;

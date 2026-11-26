@@ -306,3 +306,8 @@ fn a_stacks_attribute_modifiers_replace_its_items_attack_damage() {
         }
     });
 }
+
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

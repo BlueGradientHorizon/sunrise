@@ -8,7 +8,7 @@ use sunrise_sim::save::number;
 /// The handle of the local player among a bell's gathered entities.
 pub const PLAYER: u64 = u64::MAX;
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// End gateway at `pos`: live `Age`, saved update tag, or a fresh gateway.
     pub fn gateway_loaded(&self, pos: [i32; 3]) -> EndGateway {
         let live = match self.world.block_entities.get(&(pos[0], pos[1], pos[2])) {

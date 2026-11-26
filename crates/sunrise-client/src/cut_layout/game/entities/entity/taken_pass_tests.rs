@@ -615,3 +615,5 @@ fn mob_tick_restores_spawn_buffer_before_multiple_survivors_without_renumbering(
         );
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

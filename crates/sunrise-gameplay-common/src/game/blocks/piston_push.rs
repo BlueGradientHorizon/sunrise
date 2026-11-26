@@ -89,20 +89,6 @@ pub struct Body {
 }
 
 impl crate::game::CommonGame<'_> {
-    /// `Entity.move(mover, …)` for the local player in place, dispatched by role.
-    pub fn move_local_player(
-        &mut self,
-        mover: MoverType,
-        movement: Vec3,
-        auto_jump: bool,
-    ) -> sunrise_game_data::Result<Option<Vec3>> {
-        self.side_move_local_player(mover, movement, auto_jump)
-    }
-
-    /// Push whatever this tick's moving pistons ran into, dispatched by role.
-    pub fn push_piston_entities(&mut self, pushes: Vec<Push>) {
-        self.side_push_piston_entities(pushes);
-    }
 
     /// Index the first position of each moving piston in `block_ticks` and `world`.
     pub fn build_piston_index(&self) -> PistonIndex {
@@ -177,39 +163,6 @@ impl crate::game::CommonGame<'_> {
         }
     }
 
-    /// `Entity.collide`'s `getEntityCollisions` for a body a piston or a
-    /// shulker lid pushes.
-    pub fn pushed_entity_colliders(&self, target: MoveWho) -> Vec<Aabb> {
-        match target {
-            MoveWho::Entity(EntityHandle::Boat(_) | EntityHandle::Cart(_)) => Vec::new(),
-            MoveWho::Entity(handle) => {
-                let own = with_entity!(self, handle, entity => Entity::bounds(entity));
-                let mut boxes = self.entity_collisions(Mover::Passive);
-                boxes.retain(|b| *b != own);
-                boxes
-            }
-            _ => Vec::new(),
-        }
-    }
-
-    pub fn pushed_living_collision(
-        &self,
-        target: MoveWho,
-    ) -> Option<(
-        CollisionContext<'_>,
-        sunrise_level::collisions::PowderSnowSubject<'_>,
-    )> {
-        match target {
-            MoveWho::Entity(EntityHandle::Mob(i)) => {
-                Some(self.mobs[i].support_collision(Some(&self.items().entity_type_tags)))
-            }
-            MoveWho::Entity(EntityHandle::ArmorStand(i)) => {
-                Some(self.armor_stands[i].support_collision())
-            }
-            _ => None,
-        }
-    }
-
     /// What a move needs from a listed entity.
     pub fn listed_body(&self, handle: EntityHandle, pos: Option<BlockPos>) -> Body {
         with_entity!(self, handle, entity => Body {
@@ -247,6 +200,58 @@ impl crate::game::CommonGame<'_> {
         });
     }
 }
+
+pub trait PistonPushGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+    /// `Entity.move(mover, …)` for the local player in place, dispatched by role.
+     fn move_local_player(
+        &mut self,
+        mover: MoverType,
+        movement: Vec3,
+        auto_jump: bool,
+    ) -> sunrise_game_data::Result<Option<Vec3>> {
+        self.side_move_local_player(mover, movement, auto_jump)
+    }
+
+    /// Push whatever this tick's moving pistons ran into, dispatched by role.
+     fn push_piston_entities(&mut self, pushes: Vec<Push>) {
+        self.side_push_piston_entities(pushes);
+    }
+
+    /// `Entity.collide`'s `getEntityCollisions` for a body a piston or a
+    /// shulker lid pushes.
+     fn pushed_entity_colliders(&self, target: MoveWho) -> Vec<Aabb> {
+        match target {
+            MoveWho::Entity(EntityHandle::Boat(_) | EntityHandle::Cart(_)) => Vec::new(),
+            MoveWho::Entity(handle) => {
+                let own = with_entity!(self, handle, entity => Entity::bounds(entity));
+                let mut boxes = self.entity_collisions(Mover::Passive);
+                boxes.retain(|b| *b != own);
+                boxes
+            }
+            _ => Vec::new(),
+        }
+    }
+
+     fn pushed_living_collision(
+        &self,
+        target: MoveWho,
+    ) -> Option<(
+        CollisionContext<'_>,
+        sunrise_level::collisions::PowderSnowSubject<'_>,
+    )> {
+        match target {
+            MoveWho::Entity(EntityHandle::Mob(i)) => {
+                Some(self.mobs[i].support_collision(Some(&self.items().entity_type_tags)))
+            }
+            MoveWho::Entity(EntityHandle::ArmorStand(i)) => {
+                Some(self.armor_stands[i].support_collision())
+            }
+            _ => None,
+        }
+    }
+}
+impl<'__sg, G: crate::game::SideGame<'__sg>> PistonPushGameExt1<'__sg> for G {}
+
 
 /// The lid's push: the swept box in world space (`Shulker.
 /// getProgressDeltaAabb`) and the movement out along the facing, the box's own
@@ -392,3 +397,5 @@ pub mod tests {
 use crate::game::side_ops::blocks::BlocksSideGameExt as _;
 
 use crate::game::tables::GameItems as _;
+
+use crate::game::collision_source::CollisionSourceGameExt1 as _;

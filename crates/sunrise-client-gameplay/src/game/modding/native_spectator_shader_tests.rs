@@ -96,3 +96,5 @@ fn a_mods_entity_type_puts_its_chain_on_while_spectated() {
         });
     });
 }
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

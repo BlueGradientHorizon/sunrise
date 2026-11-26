@@ -56,7 +56,7 @@ impl crate::game::ClientGame<'_> {
             count: left,
             ..old.clone()
         });
-        self.common.apply_equipment();
+        self.apply_equipment();
         self.creative_screen_drop(ItemStack { count, ..old });
         self.send_creative_slots();
     }
@@ -165,7 +165,7 @@ impl crate::game::ClientGame<'_> {
             ));
         }
         self.anvil_session_end(&menu);
-        self.common.apply_equipment();
+        self.apply_equipment();
         true
     }
     pub(in crate::game::client_side) fn click_inventory(&mut self, right: bool) -> bool {
@@ -283,8 +283,8 @@ impl crate::game::ClientGame<'_> {
         let Some((inputs, mut result)) = menu.anvil_update() else {
             return false;
         };
-        let (player, entity_id) = (self.common.native_acting_id(), self.common.own_entity_id());
-        self.common.api_anvil_update(player, entity_id, pos, inputs, &mut result);
+        let (player, entity_id) = (self.native_acting_id(), self.own_entity_id());
+        self.api_anvil_update(player, entity_id, pos, inputs, &mut result);
         menu.anvil_updated(result);
         true
     }
@@ -671,7 +671,7 @@ impl crate::game::ClientGame<'_> {
             .as_ref()
             .and_then(|s| s.merchant.as_ref())
             .map(|m| m.session.clone());
-        let menu_can_equip = self.common.menu_can_equip();
+        let menu_can_equip = self.menu_can_equip();
         let env = Env {
             enchantments: self.item_enchantments(),
             trade: None,
@@ -861,12 +861,12 @@ impl crate::game::ClientGame<'_> {
         if kind == Kind::Enchanting && (menu.enchant_changed || before[0] != menu.slot(0).cloned())
         {
             // EnchantmentMenu.slotsChanged: new offers for the item.
-            self.common.station_changed();
+            self.station_changed();
         }
         if kind == Kind::CrafterBlock {
-            self.common.apply_crafter_slot_states(&menu);
+            self.apply_crafter_slot_states(&menu);
         }
-        self.common.apply_equipment();
+        self.apply_equipment();
         true
     }
     /// A screen closed or lost its pointer: discard the unfinished click gesture.
@@ -926,3 +926,17 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::api_values_common::ApiValuesCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::equip_answers::EquipAnswersGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::menu_clicks::MenuClicksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
+use sunrise_gameplay_common::game::stations_common::StationsCommonGameExt1 as _;

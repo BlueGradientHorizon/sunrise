@@ -73,3 +73,5 @@ fn an_active_vault_ends_a_held_item_s_click_on_the_client() {
         assert!(!unlocking.consumes_action());
     });
 }
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

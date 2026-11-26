@@ -119,3 +119,5 @@ fn redirect_to_another_guest_switches_view_and_tags_subsequent_events() {
         });
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

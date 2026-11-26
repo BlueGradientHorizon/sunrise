@@ -206,7 +206,7 @@ impl crate::game::ServerGame<'_> {
             .insert((pos[0] >> 4, pos[2] >> 4));
         self.common.armor_stands.push(stand);
         if !self.common.creative {
-            self.common.consume_held();
+            self.consume_held();
         }
         // ItemStack.useOn counts the use.
         self.award_stat("used", &stack.item, 1);
@@ -236,29 +236,25 @@ impl crate::game::ServerGame<'_> {
         let Some((mut i, d, point)) = (match target {
             // interactAt gets the packet's location, measured from the stand's
             // position, so getClickedSlot reads the height the client clicked.
-            Some(t) => sunrise_gameplay_common::game::item_actions::named_entity(
-                &self.common.armor_stands,
-                t.id,
-                |a| a.id,
-            )
-            .map(|i| {
-                let p = self.common.armor_stands[i].position;
-                (
-                    i,
-                    0.0,
-                    [
-                        p.x + t.location[0],
-                        p.y + t.location[1],
-                        p.z + t.location[2],
-                    ],
-                )
-            }),
-            None => self.common.armor_stand_hit(),
+            Some(t) => sunrise_gameplay_common::game::item_actions::named_entity(&self.common.armor_stands, t.id, |a| a.id)
+                .map(|i| {
+                    let p = self.common.armor_stands[i].position;
+                    (
+                        i,
+                        0.0,
+                        [
+                            p.x + t.location[0],
+                            p.y + t.location[1],
+                            p.z + t.location[2],
+                        ],
+                    )
+                }),
+            None => self.armor_stand_hit(),
         }) else {
             return false;
         };
         // Only a client's own pick is stopped by a block: the range check passed.
-        if target.is_none() && !self.common.before_block(d) {
+        if target.is_none() && !self.before_block(d) {
             return false;
         }
         let held = self.common.held().cloned();
@@ -273,7 +269,7 @@ impl crate::game::ServerGame<'_> {
             let name = stand.custom_name.as_ref().map(|name| name.plain());
             if alive {
                 // `Player.interactOn` gives a creative player the count back.
-                self.common.consume_held();
+                self.consume_held();
                 if let (Some(player), Some(player_name), Some(name)) = (
                     self.server.lan_acting_uuid,
                     self.server.lan_acting_name.clone(),
@@ -412,10 +408,10 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ArmorStand.hurtServer` from a player attack.
     pub(in crate::game::server_side) fn attack_armor_stand(&mut self) -> bool {
-        let Some((i, d, _)) = self.common.armor_stand_hit() else {
+        let Some((i, d, _)) = self.armor_stand_hit() else {
             return false;
         };
-        if !self.common.before_block(d) || self.common.mob_hit().is_some_and(|m| m.1 < d) {
+        if !self.before_block(d) || self.mob_hit().is_some_and(|m| m.1 < d) {
             return false;
         }
         let ((_, scale, crit, magic), admitted) = self.melee_damage_with_admission(
@@ -489,16 +485,15 @@ impl crate::game::ServerGame<'_> {
         // #bypasses_invulnerability damage and a creative player's hit
         // (`DamageSource.isCreativePlayer`).
         let id = self.common.armor_stands[i].id;
-        let attacker = self.common.own_entity_id();
-        let vanilla =
-            self.saved_refuses_damage(id, "minecraft:player_attack", self.common.creative);
+        let attacker = self.own_entity_id();
+        let vanilla = self.saved_refuses_damage(id, "minecraft:player_attack", self.common.creative);
         let source = sunrise_sim::health::HurtSource {
             damage_type: "minecraft:player_attack",
             causing: attacker,
             direct: attacker,
             position: None,
         };
-        if super::entity_server::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
+        if super::entity_server::damage_level_of!(self, self.server.combat.0.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_sim::health::Hurting::ArmorStand(id as i32, source),
                 vanilla,
@@ -807,9 +802,7 @@ impl crate::game::ServerGame<'_> {
                     stand.ground,
                     stand.velocity,
                 );
-                let writes =
-                    self.common
-                        .body_step_on((id, TYPE_ID), footprint, &ground, &mut velocity);
+                let writes = self.body_step_on((id, TYPE_ID), footprint, &ground, &mut velocity);
                 let stand = &mut self.common.armor_stands[i];
                 // `ArmorStand.hurtServer` does not take generic damage; the stand
                 // has no stuck multiplier or active-effect list in its travel row.
@@ -898,8 +891,7 @@ impl crate::game::ServerGame<'_> {
                 map.remove(&"TicksFrozen".into());
             }
             let (id, from, to) = section_step;
-            self.common
-                .entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+            self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
             // The end of LivingEntity.tick.
             let a = &mut self.common.armor_stands[i];
             if a.impulse_grace > 0 {
@@ -1236,10 +1228,7 @@ impl crate::game::ServerGame<'_> {
         // Entity.isInvulnerableToBase: the flag, unless a creative player hits.
         let creative = match causing {
             Some(Target::Player) => self.common.creative,
-            Some(Target::Guest(conn)) => self
-                .common
-                .command_guest(conn)
-                .is_some_and(|g| g.creative()),
+            Some(Target::Guest(conn)) => self.command_guest(conn).is_some_and(|g| g.creative()),
             _ => false,
         };
         let causing_id = causing
@@ -1252,7 +1241,7 @@ impl crate::game::ServerGame<'_> {
             direct: direct as i32,
             position,
         };
-        if super::entity_server::damage_level_of!(self, self.side.combat.0.attack(), no_push, None)
+        if super::entity_server::damage_level_of!(self, self.server.combat.0.attack(), no_push, None)
             .invulnerability_check(
                 sunrise_sim::health::Hurting::ArmorStand(id as i32, source),
                 invulnerable,
@@ -1317,9 +1306,8 @@ impl crate::game::ServerGame<'_> {
         }
         // A causing player who may not build (adventure, spectator) cannot.
         let may_build = match causing {
-            Some(Target::Player) => self.common.may_build(),
+            Some(Target::Player) => self.may_build(),
             Some(Target::Guest(conn)) => self
-                .common
                 .command_guest(conn)
                 .is_none_or(|g| g.abilities.may_build),
             _ => true,
@@ -1415,7 +1403,7 @@ impl crate::game::ServerGame<'_> {
             self.stand_game_event(
                 "minecraft:entity_damage",
                 [at.x, at.y, at.z],
-                self.common.level_entity(causing as i32),
+                self.level_entity(causing as i32),
             );
         }
     }
@@ -1440,7 +1428,6 @@ impl crate::game::ServerGame<'_> {
         });
         if removed {
             let source = self
-                .common
                 .level_entity(causing as i32)
                 .or(Some(super::commands::Target::Stand(id)));
             self.entity_killed_event_by(at, source);
@@ -1607,16 +1594,16 @@ impl crate::game::ServerGame<'_> {
         self.award_stat("used", &stack.item, 1);
         let swap = swap_with_equipment_slot(stack, current, self.common.creative);
         self.common.armor[index] = Some(swap.worn.clone());
-        self.common.player_equipped(slot, Some(&swap.worn));
+        self.player_equipped(slot, Some(&swap.worn));
         *self.common.held_mut() = swap.hand;
         if let Some(old) = swap.to_inventory
-            && let Some(rest) = self.common.add_stack_to_inventory(old)
+            && let Some(rest) = self.add_stack_to_inventory(old)
             && !self.common.creative
             && let Some(eye) = self.common.eye_position()
         {
             self.throw_from_eyes(rest, eye, false, false);
         }
-        self.common.apply_equipment();
+        self.apply_equipment();
         self.swing_arm();
         true
     }
@@ -1856,3 +1843,21 @@ pub(in crate::game) mod push_tests {
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_equip::PlayerEquipGameExt2 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

@@ -89,7 +89,7 @@ impl crate::game::ServerGame<'_> {
             }
             hit = self.rocket_struck(r, r.velocity, owner);
         } else if r.attached {
-            self.common.follow_own_player(r);
+            self.follow_own_player(r);
             hit = self.rocket_struck(r, r.velocity, owner);
         } else {
             // getHitResultOnMoveVector before the move.
@@ -164,8 +164,7 @@ impl crate::game::ServerGame<'_> {
         // The entity overload follows the player and excludes nobody, including
         // the guest whose action is running while its hub is swapped out.
         if self.drop_all_leash_connections() {
-            self.common
-                .play_player_bound_sound("minecraft:item.lead.break", 6, 1.0, 1.0, false);
+            self.play_player_bound_sound("minecraft:item.lead.break", 6, 1.0, 1.0, false);
         }
         let at = self
             .common
@@ -177,7 +176,7 @@ impl crate::game::ServerGame<'_> {
         rocket.guest = self.server.lan_acting;
         self.common.rockets.push(rocket);
         if !self.common.creative {
-            self.common.consume_held();
+            self.consume_held();
         }
         self.award_stat("used", "minecraft:firework_rocket", 1);
         self.swing_arm();
@@ -429,7 +428,7 @@ impl crate::game::ServerGame<'_> {
         rocket.guest = self.server.lan_acting;
         self.common.rockets.push(rocket);
         if !self.common.creative {
-            self.common.consume_held();
+            self.consume_held();
         }
         // `ItemStack.useOn` awards ITEM_USED for `FireworkRocketItem.useOn`'s SUCCESS.
         self.award_stat("used", "minecraft:firework_rocket", 1);
@@ -605,8 +604,7 @@ impl crate::game::ServerGame<'_> {
         let motion = self.common.body_motion(&side);
         motion.apply_block_speed(r.position, &mut r.velocity);
         let writes =
-            self.common
-                .body_step_on(entity, (r.position, r.bounds()), &r.ground, &mut r.velocity);
+            self.body_step_on(entity, (r.position, r.bounds()), &r.ground, &mut r.velocity);
         super::entity::apply_contact_writes(
             writes,
             &mut r.velocity,
@@ -856,8 +854,7 @@ impl crate::game::ServerGame<'_> {
         if !self.store_rocket_back(index, r) {
             return false;
         }
-        self.common
-            .entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+        self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
         true
     }
     pub(in crate::game) fn tick_rockets(&mut self) {
@@ -901,3 +898,13 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::fireworks::FireworksGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

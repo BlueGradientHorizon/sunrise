@@ -2651,3 +2651,13 @@ fn snapshot_crosses_the_real_damage_hook_with_reductions() {
     });
     assert_eq!(log.pre, [(225003, 10.0, 2.0, 3.5)]);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
+
+use sunrise_gameplay_common::game::piston_push::PistonPushGameExt1 as _;

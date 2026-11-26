@@ -18,7 +18,7 @@ impl crate::game::ClientGame<'_> {
         pos: [i32; 3],
         progress: i32,
     ) -> bool {
-        if self.common.native_client_level() != Some(level) {
+        if self.native_client_level() != Some(level) {
             return false;
         }
         self.destroy_block_progress(breaker, pos, progress);
@@ -30,8 +30,8 @@ impl crate::game::ClientGame<'_> {
         &self,
         entity: EntityRef,
     ) -> Option<mod_api::EntityTypeKey> {
-        match self.common.native_entity_read_target(entity) {
-            Some(target) => self.common.native_entity_kind_key(target),
+        match self.native_entity_read_target(entity) {
+            Some(target) => self.native_entity_kind_key(target),
             None => {
                 mod_api::__private::resolved_entity_type_key(self.native_client_tracked(entity)?.0)
             }
@@ -42,7 +42,7 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn client_entity_level(&self, entity: EntityRef) -> Option<LevelRef> {
         (self.native_client_entity_target(entity).is_some()
             || self.native_client_tracked(entity).is_some())
-        .then(|| LevelRef::new(entity.epoch(), self.common.native_level_key()))
+        .then(|| LevelRef::new(entity.epoch(), self.native_level_key()))
     }
 
     pub(in crate::game) fn client_item_entity(
@@ -64,7 +64,7 @@ impl crate::game::ClientGame<'_> {
             return Err(LevelReadError::Stale);
         }
         if !min.iter().chain(&max).all(|v| v.is_finite())
-            || self.common.native_client_level() != Some(level)
+            || self.native_client_level() != Some(level)
         {
             return Err(LevelReadError::Unavailable);
         }
@@ -161,3 +161,7 @@ impl crate::game::ClientGame<'_> {
 }
 
 use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt4 as _;

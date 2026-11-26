@@ -87,7 +87,6 @@ impl ServerGame<'_> {
                 Some(*player)
             }
             ItemPlace::PlayerCursor { menu } => self
-                .common
                 .menu_carried(*menu)
                 .map(|_| menu.fields().player.uuid()),
             _ => None,
@@ -627,8 +626,8 @@ impl ServerGame<'_> {
         } else {
             // Read engine storage directly: its API snapshot omits the transient directive.
             match slot {
-                Some(slot) => self.common.menu_slot(menu, slot),
-                None => self.common.menu_carried(menu),
+                Some(slot) => self.menu_slot(menu, slot),
+                None => self.menu_carried(menu),
             }
             .flatten()
             .filter(|stack| stack.count > 0 && stack.item.as_ref() != "minecraft:air")
@@ -727,7 +726,7 @@ impl ServerGame<'_> {
         // A write to a backed mod menu's storage (#3385) is noticed; none is backed in vanilla.
         self.notice_menu_place_write(place);
         if let ItemPlace::Scratch(slot) = place {
-            return self.common.scratch_insert(*slot, &stack);
+            return self.scratch_insert(*slot, &stack);
         }
         let item_max = self.containers().max_stack(&stack);
         let max = match place {
@@ -1149,8 +1148,10 @@ pub mod tests {
     }
 
     /// The guests' inventories, by connection.
-    pub fn inventories(game: &crate::game::ServerGame<'_>) -> Vec<Vec<Option<ItemStack>>> {
-        let guests = &game.side.lan.as_ref().unwrap().hub.guests;
+    pub fn inventories(
+        game: &crate::game::ServerGame<'_>,
+    ) -> Vec<Vec<Option<ItemStack>>> {
+        let guests = &game.server.lan.as_ref().unwrap().hub.guests;
         guests.iter().map(|g| g.inventory.clone()).collect()
     }
 
@@ -1202,7 +1203,7 @@ pub mod tests {
             *slot = buyer_rest.clone();
         }
         buyer.offhand = buyer_rest;
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -1282,3 +1283,13 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+
+use sunrise_gameplay_common::game::transactions::scratch::ScratchGameExt1 as _;

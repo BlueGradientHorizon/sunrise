@@ -46,9 +46,9 @@ pub fn cart_reach(c: &Minecart) -> Aabb {
     c.bounds().inflate(Vec3::new(2.0, 2.0, 2.0))
 }
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
+pub trait CollisionSourceGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The boxes of the solid entities for `mover`, in the order its inputs are read.
-    pub fn entity_collisions(&self, mover: Mover<'_>) -> Vec<Aabb> {
+     fn entity_collisions(&self, mover: Mover<'_>) -> Vec<Aabb> {
         let mut boxes = Vec::new();
         self.each_solid(mover, |c, _| boxes.push(c.bounds));
         boxes
@@ -56,7 +56,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     /// Asks the rule about every entity `mover` may meet, and hands the solid ones to `each`
     /// with the index of its mob.
-    pub fn each_solid(
+     fn each_solid(
         &self,
         mover: Mover<'_>,
         mut each: impl FnMut(&Candidate, Option<usize>),
@@ -124,7 +124,11 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> CollisionSourceGameExt1<'__sg> for G {}
+
 
 use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
 
 use crate::game::side_ops::modapi_hooks::ModapiHooksSideGameExt as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

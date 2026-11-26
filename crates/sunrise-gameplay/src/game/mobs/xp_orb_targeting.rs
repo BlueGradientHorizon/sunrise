@@ -43,7 +43,7 @@ impl ServerGame<'_> {
             return nearest.map(|c| c.1);
         };
         let orb = mod_api::EntityRef::new(epoch, id);
-        let found = nearest.and_then(|c| c.2).and_then(|uuid| self.common.player(uuid));
+        let found = nearest.and_then(|c| c.2).and_then(|uuid| self.player(uuid));
         let mut following = found;
         self.native_xp_orb_targeting(orb, SCAN_DISTANCE, &mut following);
         let i = self.common.orbs.locate(join)?;
@@ -57,3 +57,5 @@ impl ServerGame<'_> {
         chosen.map(|c| c.1)
     }
 }
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

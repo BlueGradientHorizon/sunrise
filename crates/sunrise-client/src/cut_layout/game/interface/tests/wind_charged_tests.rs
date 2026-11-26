@@ -146,3 +146,5 @@ fn a_mobs_burst_leaves_vehicles_alone_with_mob_griefing_off() {
         return;
     };
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

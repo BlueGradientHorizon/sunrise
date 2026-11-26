@@ -135,3 +135,5 @@ fn play_hit_sound_helper_and_eight_mining_ticks() {
         });
     }
 }
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

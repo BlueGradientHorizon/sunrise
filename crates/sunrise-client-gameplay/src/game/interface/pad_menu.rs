@@ -366,7 +366,7 @@ impl crate::game::ClientGame<'_> {
     /// The open screen is one the crosshair drives, whatever is over it.
     fn pad_pointer_screen(&self) -> bool {
         matches!(
-            self.side.screen,
+            self.client.screen,
             Screen::HudEditor
                 | Screen::Inventory
                 | Screen::Creative
@@ -399,7 +399,7 @@ impl crate::game::ClientGame<'_> {
         // stay out too until a parity check settles where its tab bar sits in the order.
         let inventory = self.client.title.0.is_none()
             && matches!(
-                self.side.screen,
+                self.client.screen,
                 Screen::Inventory | Screen::Creative | Screen::Advancements | Screen::Stats
             );
         key_focus::keyboard_targets(self.pad_visible_targets(), inventory)
@@ -983,7 +983,7 @@ impl crate::game::ClientGame<'_> {
                 }
             }
             // Y in an inventory: a shift-click (quick move).
-            Button::North if matches!(self.side.screen, Screen::Inventory | Screen::Creative) => {
+            Button::North if matches!(self.client.screen, Screen::Inventory | Screen::Creative) => {
                 self.pad_take_pointer(event_loop);
                 let in_keys = self.held_mapping(Action::Sneak);
                 self.insert_device_key(KeyCode::ShiftLeft);
@@ -998,7 +998,7 @@ impl crate::game::ClientGame<'_> {
             // View / left stick in an inventory: throw one / the stack from
             // the slot under focus (Q / Ctrl+Q).
             Button::Select | Button::LeftStick
-                if matches!(self.side.screen, Screen::Inventory | Screen::Creative)
+                if matches!(self.client.screen, Screen::Inventory | Screen::Creative)
                     && self.client.title.0.is_none() =>
             {
                 self.pad_take_pointer(event_loop);
@@ -2090,11 +2090,11 @@ impl crate::game::ClientGame<'_> {
         let target = |t: &Target| serde_json::json!({ "rect": t.rect, "kind": kind(t.kind) });
         serde_json::json!({
             "mode": if self.pad_focus_mode() { "focus" } else { "pointer" },
-            "focus": self.side.pad.0.menu.focus.as_ref().map(target),
+            "focus": self.client.pad.0.menu.focus.as_ref().map(target),
             "holding_slider": self.pad_holding_slider(),
-            "pointer": self.side.pad.0.menu.pos.map(|_| self.side.cursor),
-            "keyboard": self.side.pad.0.menu.osk.is_some(),
-            "crafting": self.side.pad.0.menu.craft.is_some(),
+            "pointer": self.client.pad.0.menu.pos.map(|_| self.client.cursor),
+            "keyboard": self.client.pad.0.menu.osk.is_some(),
+            "crafting": self.client.pad.0.menu.craft.is_some(),
             "craft_hint": self.direct_craft_usable(),
             "targets": self.pad_targets().iter().map(target).collect::<Vec<_>>(),
             "actions": self.pad_actions_status(),
@@ -2102,7 +2102,7 @@ impl crate::game::ClientGame<'_> {
             "undeclared": self.pad_undeclared_buttons(),
             "screen_key": format!("{:016x}", self.key_screen()),
             "remembered": self
-                .side.pad.0
+                .client.pad.0
                 .menu
                 .remembered
                 .iter()
@@ -2156,7 +2156,7 @@ impl crate::game::ClientGame<'_> {
         let playing_screen = |screen| self.client.title.0.is_none() && self.client.screen == screen;
         playing_screen(Screen::Chat)
             || self.client.sign_edit.is_some()
-            || matches!(self.side.book, Some(super::books::BookScreen::Edit { .. }))
+            || matches!(self.client.book, Some(super::books::BookScreen::Edit { .. }))
             || (playing_screen(Screen::Creative) && self.client.creative_screen.0.tab().search)
             || self.recipe_search_focused()
             || self.mod_browser_typing()
@@ -2485,7 +2485,7 @@ impl crate::game::ClientGame<'_> {
             return None;
         }
         let inventory = self.observed_overlay_now().is_none()
-            && matches!(self.side.screen, Screen::Inventory | Screen::Creative);
+            && matches!(self.client.screen, Screen::Inventory | Screen::Creative);
         let pause_removed: Vec<[f32; 4]> =
             if self.observed_overlay_now().is_none() && self.client.screen == Screen::Paused {
                 self.pause_init_children()
@@ -2597,7 +2597,7 @@ impl crate::game::ClientGame<'_> {
     fn pad_has_typing_screen(&self) -> bool {
         self.text_input_focused()
             || self.title_input_active()
-            || matches!(self.side.screen, Screen::Options | Screen::WorldOptions)
+            || matches!(self.client.screen, Screen::Options | Screen::WorldOptions)
     }
 
     /// Chat's suggestion controls belong to its editor, not an overlay or a mounted field.
@@ -2615,7 +2615,7 @@ impl crate::game::ClientGame<'_> {
             && (self.dialog_typing_lines()
                 || self.client.sign_edit.is_some()
                 || matches!(
-                    self.side.book,
+                    self.client.book,
                     Some(super::books::BookScreen::Edit { signing: false, .. })
                 ))
     }

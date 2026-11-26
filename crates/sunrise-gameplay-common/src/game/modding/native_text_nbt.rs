@@ -19,7 +19,7 @@ const DEFAULT_ATLAS: &str = "minecraft:blocks";
 const NBT_PLAIN: &str = "plain";
 const PRIMITIVE_ARGUMENT: &str = "__sunrise_nbt_argument";
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     pub(super) fn text_from_nbt(&self, tag: &Tag) -> Result<Option<Text>, Error> {
         Codec {
             registries: &self.ui.registries,

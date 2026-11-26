@@ -154,3 +154,7 @@ fn a_players_non_compass_keeps_its_lodestone_tracker() {
     assert_eq!(target(offhand), None);
     assert!(tracked(offhand));
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

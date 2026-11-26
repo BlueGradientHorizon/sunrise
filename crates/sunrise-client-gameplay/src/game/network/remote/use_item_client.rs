@@ -32,7 +32,7 @@ impl crate::game::ClientGame<'_> {
         self.common.use_start.item = Some(stack.clone());
         self.common.using = Some((hand_slot, ticks));
         // A client cancel skips this tick's effects; the countdown and release continue.
-        if !self.common.use_item_ticked(&stack, ticks) {
+        if !self.use_item_ticked(&stack, ticks) {
             self.common.using = Some((hand_slot, ticks.saturating_add(1)));
             return;
         }
@@ -40,7 +40,7 @@ impl crate::game::ClientGame<'_> {
         // ends it too); a stroke shows its dust. Its sounds are the server's.
         if &*stack.item == "minecraft:brush" {
             let elapsed = 201i32.wrapping_sub(ticks_left(self.common.use_duration, ticks));
-            let hit = self.common.pick();
+            let hit = self.pick();
             if let Some(hit) = &hit
                 && elapsed % 10 == 5
             {
@@ -60,8 +60,8 @@ impl crate::game::ClientGame<'_> {
         // A drawn bow, a charging crossbow, a raised shield...: held until
         // the button lets go.
         if self.held_until_released(&stack) {
-            if self.common.mod_use(&stack) || self.common.blocks_attacks(&stack).is_some() {
-                self.common.item_on_use_tick(&stack, ticks);
+            if self.mod_use(&stack) || self.blocks_attacks(&stack).is_some() {
+                self.item_on_use_tick(&stack, ticks);
             }
             self.common.using = Some((hand_slot, ticks + 1));
             return;
@@ -71,7 +71,7 @@ impl crate::game::ClientGame<'_> {
             self.common.using = Some((hand_slot, ticks + 1));
             return;
         }
-        let Some(consumable) = self.common.consumable(&stack) else {
+        let Some(consumable) = self.consumable(&stack) else {
             self.common.using = None;
             return;
         };
@@ -90,9 +90,9 @@ impl crate::game::ClientGame<'_> {
             // `emit_consume` plays the eat sound and spawns the bites (when the
             // item has consume particles), as `tick_used_item` does on the
             // player's own server.
-            self.common.emit_consume(&consumable, &stack, 5);
+            self.emit_consume(&consumable, &stack, 5);
         }
-        self.common.item_on_use_tick(&stack, ticks);
+        self.item_on_use_tick(&stack, ticks);
         self.common.using = Some((hand_slot, ticks + 1));
     }
     /// MultiPlayerGameMode.useItem for `hand`, if it holds something: whether
@@ -102,7 +102,7 @@ impl crate::game::ClientGame<'_> {
         if self.common.spectator() {
             return false;
         }
-        let Some(held) = self.common.with_hand(hand, |g| g.held().cloned()) else {
+        let Some(held) = self.with_hand(hand, |g| g.held().cloned()) else {
             return false;
         };
         let seq = self.next_sequence();
@@ -125,14 +125,14 @@ impl crate::game::ClientGame<'_> {
             return handled;
         }
         // a mod's item used over time starts here too, as the server starts it.
-        if self.common.with_hand(hand, |g| g.start_mod_use(&held)) {
+        if self.with_hand(hand, |g| g.start_mod_use(&held)) {
             return true;
         }
         // Item.use: Equippable.swapWithEquipmentSlot runs on this client too, so
         // the armor slot and the hand change at once (the server confirms).
-        if info.equip_slot.is_some() && self.common.with_hand(hand, |g| g.client_equip_from_hand(&held)) {
+        if info.equip_slot.is_some() && self.with_hand(hand, |g| g.client_equip_from_hand(&held)) {
             // Equippable.swapWithEquipmentSlot's SUCCESS (SwingSource.CLIENT).
-            self.common.with_hand(hand, Game::swing_arm);
+            self.with_hand(hand, Game::swing_arm);
             return true;
         }
         // `ItemStack.use` runs on this client too: a bucket's own ray and its
@@ -142,7 +142,7 @@ impl crate::game::ClientGame<'_> {
         if &*held.item == "minecraft:bucket"
             || sunrise_items::items::bucket_contents(&held.item).is_some()
         {
-            let (succeeded, changes, sounds) = self.common.with_hand(hand, |g| g.remote_use_bucket(&held));
+            let (succeeded, changes, sounds) = self.with_hand(hand, |g| g.remote_use_bucket(&held));
             if let Some(changes) = changes {
                 self.predict_blocks(&changes, seq);
             }
@@ -151,18 +151,18 @@ impl crate::game::ClientGame<'_> {
             self.play_predicted_sounds(&sounds);
             // BucketItem.use's SUCCESS (SwingSource.CLIENT) on this client.
             if succeeded {
-                self.common.with_hand(hand, Game::swing_arm);
+                self.with_hand(hand, Game::swing_arm);
             }
             return succeeded;
         }
         // SpawnEggItem.use on the client succeeds after a SOURCE_ONLY block
         // hit; the server alone tests LiquidBlock and the placement permission.
         if held.item.ends_with("_spawn_egg") {
-            let succeeded = self.common.bucket_hit().is_some()
+            let succeeded = self.bucket_hit().is_some()
                 && sunrise_sim::block_entity_item::item_entity_data(&held, self.common.res.items())
                     .is_some_and(|data| self.common.spawn_egg_allowed(&data.kind));
             if succeeded {
-                self.common.with_hand(hand, Game::swing_arm);
+                self.with_hand(hand, Game::swing_arm);
             }
             return succeeded;
         }
@@ -181,10 +181,10 @@ impl crate::game::ClientGame<'_> {
                     .data()
                     .and_then(|d| d.other("minecraft:recipes"))
                     .is_some_and(|t| matches!(t, Tag::List(l) if !l.is_empty()));
-            self.common.with_hand(hand, Game::consume_held);
+            self.with_hand(hand, Game::consume_held);
             if has_recipes {
                 self.client_apply_use_cooldown(&held);
-                self.common.with_hand(hand, Game::swing_arm);
+                self.with_hand(hand, Game::swing_arm);
             }
             return has_recipes;
         }
@@ -192,28 +192,28 @@ impl crate::game::ClientGame<'_> {
         // can't be eaten (full and not always-edible) fails the use
         // (InteractionResult.FAIL): startUseItem tries the other hand, and
         // no cooldown or use animation starts.
-        let eating = self.common.with_hand(hand, |g| g.client_start_eating(&info));
+        let eating = self.with_hand(hand, |g| g.client_start_eating(&info));
         if info.food.is_some() && !eating {
             return false;
         }
         // A bucket, a glass bottle or a boat with nothing to fill, empty or
         // place PASSes or FAILs: startUseItem goes on to the off hand (a
         // Riptide trident there charges).
-        if self.common.with_hand(hand, |g| g.use_finds_no_target(&held)) {
+        if self.with_hand(hand, |g| g.use_finds_no_target(&held)) {
             return false;
         }
         let instant_cooldown = !info.consumable.as_ref().is_some_and(|c| c.ticks() > 0);
-        if self.common.with_hand(hand, |g| g.remote_use_book(&held)) {
+        if self.with_hand(hand, |g| g.remote_use_book(&held)) {
             if instant_cooldown {
                 self.client_apply_use_cooldown(&held);
             }
             // WritableBookItem.use's SUCCESS (SwingSource.CLIENT).
-            self.common.with_hand(hand, Game::swing_arm);
+            self.with_hand(hand, Game::swing_arm);
             return true;
         }
         // BowItem.use and CrossbowItem.use FAIL with nothing to shoot: no
         // itemUsed (the hand doesn't dip) and the other hand's turn comes.
-        if !self.common.with_hand(hand, |g| g.remote_start_held_use(&held)) {
+        if !self.with_hand(hand, |g| g.remote_start_held_use(&held)) {
             return false;
         }
         // Predict non-consumable use cooldown after held-use eligibility checks so a
@@ -226,18 +226,18 @@ impl crate::game::ClientGame<'_> {
         // so startUseItem swings this hand itself; a vanilla server swings it
         // for the other players only.
         if gliding && &*held.item == "minecraft:firework_rocket" {
-            self.common.with_hand(hand, Game::swing_arm);
+            self.with_hand(hand, Game::swing_arm);
         }
         // A stack's own `blocks_attacks` raises it as a shield's does; a
         // use the server's patch gives it is CONSUME too (no swing).
-        let blocks = self.common.blocks_attacks(&held).is_some() || self.patched_held_use(&held);
+        let blocks = self.blocks_attacks(&held).is_some() || self.patched_held_use(&held);
         let ends = use_ends_click(&info, gliding) || blocks;
         // MultiPlayerGameMode.useItem: `ItemStack.use`'s SUCCESS swings
         // (SwingSource.CLIENT); CONSUME does not — a bow, crossbow, trident
         // or spear starting its charge, and `ItemUtils.startUsingInstantly`'s
         // food, drink, spyglass, shield and goat horn.
         if ends && !blocks && remote_use_swings(&held, info.consumable.is_some()) {
-            self.common.with_hand(hand, Game::swing_arm);
+            self.with_hand(hand, Game::swing_arm);
         }
         ends
     }
@@ -246,3 +246,7 @@ impl crate::game::ClientGame<'_> {
 use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

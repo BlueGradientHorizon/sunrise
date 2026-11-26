@@ -101,7 +101,7 @@ impl crate::game::ServerGame<'_> {
         armor_stands.clear();
         let mut falling_ticked = std::mem::take(&mut self.server.ordered.falling_ticked);
         falling_ticked.clear();
-        let told = self.common.native_tick_told();
+        let told = self.native_tick_told();
         let firsts = [
             first_join(&self.common.armor_stands),
             first_join(&self.common.boats),
@@ -217,7 +217,7 @@ impl crate::game::ServerGame<'_> {
                     if entity_ticking(at.x.floor() as i32, at.z.floor() as i32) {
                         self.tick_dragon();
                         if let Some(dragon) = self.common.dragon.as_ref().filter(|d| d.join == join) {
-                            self.common.entity_section_step(
+                            self.entity_section_step(
                                 dragon.id,
                                 at.components(),
                                 dragon.position.components(),
@@ -237,7 +237,7 @@ impl crate::game::ServerGame<'_> {
                         obstacles
                             .get_or_insert_with(|| {
                                 sunrise_sim::entities::ObstacleGrid::new(
-                                    self.common.entity_collisions(Mover::Passive),
+                                    self.entity_collisions(Mover::Passive),
                                 )
                             })
                             .near(area.inflate(Vec3::new(1.0, 1.0, 1.0)), &mut nearby);
@@ -262,7 +262,7 @@ impl crate::game::ServerGame<'_> {
                         obstacles
                             .get_or_insert_with(|| {
                                 sunrise_sim::entities::ObstacleGrid::new(
-                                    self.common.entity_collisions(Mover::Passive),
+                                    self.entity_collisions(Mover::Passive),
                                 )
                             })
                             .near(area.inflate(Vec3::new(1.0, 1.0, 1.0)), &mut nearby);
@@ -309,7 +309,7 @@ impl crate::game::ServerGame<'_> {
                     obstacles
                         .get_or_insert_with(|| {
                             sunrise_sim::entities::ObstacleGrid::new(
-                                self.common.entity_collisions(Mover::Passive),
+                                self.entity_collisions(Mover::Passive),
                             )
                         })
                         .near(area.inflate(Vec3::new(1.0, 1.0, 1.0)), &mut nearby);
@@ -360,7 +360,7 @@ impl crate::game::ServerGame<'_> {
                     self.common.body_motion(&game_side!(self))
                         .apply_block_speed(orb.position, &mut velocity);
                     if !tick.burnt_out {
-                        let writes = self.common.body_step_on(entity, footprint, &ground, &mut velocity);
+                        let writes = self.body_step_on(entity, footprint, &ground, &mut velocity);
                         for write in writes {
                             match write {
                                 mod_api::EntityWrite::Hurt {
@@ -480,7 +480,7 @@ impl crate::game::ServerGame<'_> {
                     self.entity_powder_snow_particles(snow.0, snow.1, snow.2, snow.3, false);
                     // Its move is filed at once, also for an orb about to go.
                     let (from, to) = (snow.0, snow.1);
-                    self.common.entity_section_step(orb_id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+                    self.entity_section_step(orb_id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
                     if !stays {
                         self.common.orbs.remove(i);
                     }
@@ -603,3 +603,13 @@ mod tests {
         assert_eq!(first_join(&list), Some(first));
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;

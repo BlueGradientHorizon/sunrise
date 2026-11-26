@@ -29,17 +29,12 @@ impl crate::game::ServerGame<'_> {
         id: u32,
         uuid: Option<[i32; 4]>,
     ) -> bool {
-        let Some(mob) = self
-            .common
-            .entity(id)
-            .and_then(|entity| self.common.mob(entity))
-        else {
+        let Some(mob) = self.entity(id).and_then(|entity| self.mob(entity)) else {
             return false;
         };
         let target = uuid.and_then(|words| {
             let uuid = sunrise_sim::lan::playerdata::ints_uuid(words);
             let entity = self
-                .common
                 .player(uuid)
                 .map(|player| player.entity())
                 .or_else(|| {
@@ -49,12 +44,12 @@ impl crate::game::ServerGame<'_> {
                         .uuids
                         .iter()
                         .find_map(|(&id, found)| (*found == words).then_some(id))?;
-                    self.common.entity(target)
+                    self.entity(target)
                 })?;
-            self.common.living(entity)
+            self.living(entity)
         });
         let target = target.filter(|target| {
-            let Some(kind) = self.common.native_entity_target(target.entity()) else {
+            let Some(kind) = self.native_entity_target(target.entity()) else {
                 return false;
             };
             self.common
@@ -76,7 +71,7 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<PlayerFacts> {
         match target {
             Target::Guest(conn) => {
-                let g = self.common.command_guest(conn)?;
+                let g = self.command_guest(conn)?;
                 if g.is_fake() {
                     return None;
                 }
@@ -131,7 +126,7 @@ impl crate::game::ServerGame<'_> {
         target: Target,
     ) -> bool {
         if mob.species() == Species::Warden {
-            return self.warden_valid_target(self.common.mob_team_of(mob), target);
+            return self.warden_valid_target(self.mob_team_of(mob), target);
         }
         match target {
             Target::Mob(id) => {
@@ -190,7 +185,7 @@ impl crate::game::ServerGame<'_> {
         use sunrise_sim::join_seq::residency::table::EntityLookup;
         let id = mobs::warden::brain_target_id(mob)?;
         let own_team = scope.map_or_else(
-            || self.common.mob_team_of(mob),
+            || self.mob_team_of(mob),
             |(actor, world)| self.mob_team_scoped(mob, actor, world),
         );
         if let Some((actor, world)) = scope {
@@ -234,7 +229,7 @@ impl crate::game::ServerGame<'_> {
                 let Some(bounds) = warden_mob_target_bounds(other) else {
                     return false;
                 };
-                (bounds, self.common.mob_team_of(other))
+                (bounds, self.mob_team_of(other))
             }
             Target::Dragon(id) => {
                 let Some((_, target)) = self
@@ -250,7 +245,7 @@ impl crate::game::ServerGame<'_> {
                 (target.bounds, self.mob_team(id))
             }
             Target::Guest(conn) => {
-                let Some(g) = self.common.command_guest(conn) else {
+                let Some(g) = self.command_guest(conn) else {
                     return false;
                 };
                 if g.dimension != self.common.dim.id()
@@ -305,7 +300,7 @@ impl crate::game::ServerGame<'_> {
     /// read as None. The dragon reads what a mod set, while it stays a valid
     /// target (`EnderDragon.canAttack`); its flight never sets one.
     pub(in crate::game) fn mob_target(&self, mob: MobRef) -> Option<LivingRef> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return self.native_dragon_target(mob.entity());
         };
         let mob = self.common.mobs.iter().find(|m| m.id == id)?;
@@ -325,9 +320,9 @@ impl crate::game::ServerGame<'_> {
                 u32::try_from(host.hub.guest(*conn)?.entity_id).ok()?
             }
         };
-        let entity = self.common.entity(target_id)?;
-        self.native_mob_valid_target(mob, self.common.native_entity_target(entity)?)
-            .then(|| self.common.living(entity))?
+        let entity = self.entity(target_id)?;
+        self.native_mob_valid_target(mob, self.native_entity_target(entity)?)
+            .then(|| self.living(entity))?
     }
 
     /// `Mob.setTarget`; None clears it. Only mobs and players whose binding
@@ -345,7 +340,7 @@ impl crate::game::ServerGame<'_> {
         mob: MobRef,
         target: Option<LivingRef>,
     ) -> bool {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return self.native_dragon_set_target(mob.entity(), target);
         };
         let Some(mob_state) = self.common.mobs.iter().find(|m| m.id == id) else {
@@ -355,7 +350,7 @@ impl crate::game::ServerGame<'_> {
             return false;
         }
         if let Some(target) = target {
-            let Some(target_kind) = self.common.native_entity_target(target.entity()) else {
+            let Some(target_kind) = self.native_entity_target(target.entity()) else {
                 return false;
             };
             if !self.native_mob_valid_target(mob_state, target_kind) {
@@ -366,7 +361,7 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         if let Some(target) = target {
-            let Some(kind) = self.common.native_entity_target(target.entity()) else {
+            let Some(kind) = self.native_entity_target(target.entity()) else {
                 return false;
             };
             let Some(state) = self.common.mobs.iter().find(|m| m.id == id) else {
@@ -422,7 +417,7 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<Option<Who>> {
         let (who, player) = match target {
             None => (None, None),
-            Some(target) => match self.common.native_entity_target(target.entity())? {
+            Some(target) => match self.native_entity_target(target.entity())? {
                 Target::Mob(id) => (Some(Who::Mob(id)), None),
                 t @ Target::Guest(conn) if self.server.lan_acting_uuid.is_none() => {
                     self.native_player_facts(t)?;
@@ -467,7 +462,7 @@ impl crate::game::ServerGame<'_> {
         mob: MobRef,
         target: Option<LivingRef>,
     ) -> bool {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         let Some(m) = self.common.mobs.iter().find(|m| m.id == id && !m.removed) else {
@@ -497,7 +492,7 @@ impl crate::game::ServerGame<'_> {
         mob: MobRef,
         flag: MobFlag,
     ) -> Option<bool> {
-        match self.common.native_entity_target(mob.entity())? {
+        match self.native_entity_target(mob.entity())? {
             Target::Mob(id) => {
                 let mob = self.common.mobs.iter().find(|m| m.id == id)?;
                 Some(match flag {
@@ -521,7 +516,7 @@ impl crate::game::ServerGame<'_> {
         flag: MobFlag,
         value: bool,
     ) -> bool {
-        let slot = match self.common.native_entity_target(mob.entity()) {
+        let slot = match self.native_entity_target(mob.entity()) {
             Some(Target::Mob(id)) => {
                 self.common
                     .mobs
@@ -556,7 +551,7 @@ impl crate::game::ServerGame<'_> {
     /// or this write changes. None for a horse, another mob kind, the dragon,
     /// a stale or removed handle, or a client.
     pub(in crate::game) fn mob_is_in_sitting_pose(&self, mob: MobRef) -> Option<bool> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         let mob = self.common.mobs.iter().find(|m| m.id == id && !m.removed)?;
@@ -567,7 +562,7 @@ impl crate::game::ServerGame<'_> {
     /// mob for sync, leaving the saved order alone. False for a horse,
     /// another mob kind, the dragon, a stale or removed handle, or a client.
     pub(in crate::game) fn mob_set_in_sitting_pose(&mut self, mob: MobRef, sitting: bool) -> bool {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         let Some(mob) = self
@@ -604,7 +599,7 @@ impl crate::game::ServerGame<'_> {
     /// carrying a block. Independent of `PersistenceRequired` and `NoAI`.
     /// None for an unavailable mob or the separately modeled dragon.
     pub(in crate::game) fn mob_requires_custom_persistence(&self, mob: MobRef) -> Option<bool> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         self.common
@@ -619,17 +614,17 @@ impl crate::game::ServerGame<'_> {
     /// undead, a horse's tail) still does. Saved with it as `NoAI`. None
     /// for anything but a mob.
     pub(in crate::game) fn mob_no_ai(&self, mob: MobRef) -> Option<bool> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
-        super::native_living_body::body_no_ai(self.common.native_living_body(Target::Mob(id))?)
+        super::native_living_body::body_no_ai(self.native_living_body(Target::Mob(id))?)
     }
 
     /// `Mob.setNoAi`: whether the mob's own AI runs. With no AI the mob
     /// stands (what NoAI keeps in vanilla still runs), and the flag is
     /// saved with it as `NoAI`. False for anything but a mob.
     pub(in crate::game) fn mob_set_no_ai(&mut self, mob: MobRef, no_ai: bool) -> bool {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         self.common
@@ -645,7 +640,7 @@ impl crate::game::ServerGame<'_> {
     /// recruiting read it. None for a stale or unavailable mob, the dragon,
     /// or on a client.
     pub(in crate::game) fn mob_no_action_time(&self, mob: MobRef) -> Option<i32> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         Some(
@@ -663,7 +658,7 @@ impl crate::game::ServerGame<'_> {
     /// as in vanilla. False for a stale or unavailable mob, the dragon, or
     /// on a client.
     pub(in crate::game) fn mob_set_no_action_time(&mut self, mob: MobRef, ticks: i32) -> bool {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         self.common
@@ -681,7 +676,7 @@ impl crate::game::ServerGame<'_> {
     /// Leaves `NoAI` and `PersistenceRequired` unchanged. False, with no
     /// changes, for an unavailable mob or a species with no baby form.
     pub(in crate::game) fn mob_set_baby(&mut self, mob: MobRef, baby: bool) -> bool {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         let Some(mob) = self.common.mobs.iter_mut().find(|m| m.id == id) else {
@@ -707,7 +702,7 @@ impl crate::game::ServerGame<'_> {
         if at.iter().any(|v| !v.is_finite()) {
             return false;
         }
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         self.common
@@ -726,7 +721,7 @@ impl crate::game::ServerGame<'_> {
     /// as in vanilla: the wish waits until it runs again. False for a stale
     /// or unavailable mob, a client, and the dragon.
     pub(in crate::game) fn mob_jump(&mut self, mob: MobRef) -> bool {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         self.common
@@ -749,7 +744,7 @@ impl crate::game::ServerGame<'_> {
         at: [i32; 3],
         radius: i32,
     ) -> bool {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         self.common
@@ -765,7 +760,7 @@ impl crate::game::ServerGame<'_> {
     /// that never had one, vanilla's `ZERO`). None for a stale or
     /// unavailable mob, a client, and the dragon.
     pub(in crate::game) fn mob_restrict_center(&self, mob: MobRef) -> Option<[i32; 3]> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         Some(
@@ -781,7 +776,7 @@ impl crate::game::ServerGame<'_> {
     /// `Mob.getRestrictRadius`: `-1` while the mob has no restriction.
     /// None for a stale or unavailable mob, a client, and the dragon.
     pub(in crate::game) fn mob_restrict_radius(&self, mob: MobRef) -> Option<i32> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         Some(
@@ -798,7 +793,7 @@ impl crate::game::ServerGame<'_> {
     /// `Mob.hasRestriction`. None for a stale or unavailable mob, a client,
     /// and the dragon.
     pub(in crate::game) fn mob_has_restriction(&self, mob: MobRef) -> Option<bool> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         Some(
@@ -816,7 +811,7 @@ impl crate::game::ServerGame<'_> {
     /// own goals read no restriction, as vanilla's `-1` radius). False for
     /// a stale or unavailable mob, a client, and the dragon.
     pub(in crate::game) fn mob_clear_restriction(&mut self, mob: MobRef) -> bool {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         self.common
@@ -836,7 +831,7 @@ impl crate::game::ServerGame<'_> {
         mob: MobRef,
         at: [i32; 3],
     ) -> Option<bool> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         Some(
@@ -852,7 +847,7 @@ impl crate::game::ServerGame<'_> {
     /// `Mob.isLeftHanded`: whether the mob holds things in its left hand
     /// (the mob flags in its entity data). None for anything but a mob.
     pub(in crate::game) fn mob_left_handed(&self, mob: MobRef) -> Option<bool> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         Some(
@@ -869,7 +864,7 @@ impl crate::game::ServerGame<'_> {
     /// the mob's next entity data and see in its swing and held items.
     /// Saved with the mob as `LeftHanded`. False for anything but a mob.
     pub(in crate::game) fn mob_set_left_handed(&mut self, mob: MobRef, left_handed: bool) -> bool {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         self.common
@@ -884,7 +879,7 @@ impl crate::game::ServerGame<'_> {
     /// something) and a sulfur cube (with no block). None for anything but
     /// a mob.
     pub(in crate::game) fn mob_can_pick_up_loot(&self, mob: MobRef) -> Option<bool> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         Some(
@@ -905,7 +900,7 @@ impl crate::game::ServerGame<'_> {
         mob: MobRef,
         can_pick_up: bool,
     ) -> bool {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         self.common
@@ -920,3 +915,17 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::creatures::world_view::WorldViewExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
+
+use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+
+use sunrise_gameplay_common::game::scoreboard_common::CommonGameExt1 as _;

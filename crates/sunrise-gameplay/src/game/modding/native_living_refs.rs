@@ -95,7 +95,7 @@ pub(in crate::game::server_side) fn equipment_stack(stack: Option<ItemStack>) ->
 impl ServerGame<'_> {
     /// What a living handle names now: a player, a mob, an armor stand or the dragon.
     pub(in crate::game) fn native_living_target(&self, living: LivingRef) -> Option<Target> {
-        match self.common.native_entity_target(living.entity())? {
+        match self.native_entity_target(living.entity())? {
             t @ (Target::Player
             | Target::Guest(_)
             | Target::Mob(_)
@@ -244,7 +244,7 @@ impl ServerGame<'_> {
     /// level: its main-hand stack is read there.
     pub(in crate::game::server_side) fn last_attacker_attack(&self, attacker: u32) -> Attack {
         let mut attack = self.attack_of(attacker as i32);
-        if let Some((_, mob)) = self.common.mob_in_other_level(attacker)
+        if let Some((_, mob)) = self.mob_in_other_level(attacker)
             && !mod_api::__private::mods().is_empty()
         {
             attack.held[0] = mob.extra.main_hand_stack().cloned();
@@ -337,7 +337,7 @@ impl ServerGame<'_> {
 
     /// Server arm for `LivingEntity.getUsedItemHand` (`native_living_blocking`).
     pub(in crate::game) fn server_living_used_item_hand(&self, living: LivingRef) -> Option<Hand> {
-        self.common.living_used_item_hand(living)
+        self.living_used_item_hand(living)
     }
 
     /// Server arm for `AttributeMap.getValue`.
@@ -346,7 +346,7 @@ impl ServerGame<'_> {
         living: LivingRef,
         id: &str,
     ) -> Option<f64> {
-        self.common.native_living_attribute(
+        self.native_living_attribute(
             living,
             id,
             sunrise_world::attribute_map::ValueKind::Computed,
@@ -480,12 +480,12 @@ impl ServerGame<'_> {
     /// handle, an armor stand or the dragon: the portal walk carries
     /// neither as its own traveller.
     pub(in crate::game) fn living_can_use_portal(&self, living: LivingRef) -> Option<bool> {
-        match self.common.native_living_read_target(living)? {
+        match self.native_living_read_target(living)? {
             // The engine's own gate, the one the client's portal entry runs
             // (`player_can_use_portal`, #943).
             Target::Player => Some(self.common.player_can_use_portal()),
             Target::Guest(conn) => {
-                let g = self.common.command_guest(conn)?;
+                let g = self.command_guest(conn)?;
                 let p = g.motion.as_deref()?;
                 Some(
                     self.common
@@ -494,7 +494,7 @@ impl ServerGame<'_> {
             }
             Target::Mob(id) => {
                 let m = self.common.mobs.iter().find(|m| m.id == id && !m.removed)?;
-                Some(self.common.mob_portal_eligible(m))
+                Some(self.mob_portal_eligible(m))
             }
             _ => None,
         }
@@ -511,11 +511,11 @@ impl ServerGame<'_> {
         living: LivingRef,
         target: EntityRef,
     ) -> Option<bool> {
-        let Target::Mob(id) = self.common.native_living_read_target(living)? else {
+        let Target::Mob(id) = self.native_living_read_target(living)? else {
             return None;
         };
         let m = self.common.mobs.iter().find(|m| m.id == id && !m.removed)?;
-        let [min, max] = self.common.entity_bounding_box(target)?;
+        let [min, max] = self.entity_bounding_box(target)?;
         let bounds = sunrise_core::geometry::Aabb::new(
             sunrise_core::geometry::Vec3::new(min[0], min[1], min[2]),
             sunrise_core::geometry::Vec3::new(max[0], max[1], max[2]),
@@ -530,7 +530,7 @@ impl ServerGame<'_> {
     /// not a spectator, no immune armor). None for a stale handle, an armor
     /// stand or the dragon.
     pub(in crate::game) fn living_can_freeze(&self, living: LivingRef) -> Option<bool> {
-        match self.common.native_living_read_target(living)? {
+        match self.native_living_read_target(living)? {
             Target::Mob(id) => {
                 let m = self.common.mobs.iter().find(|m| m.id == id && !m.removed)?;
                 let w = self.mob_world_base(&[]);
@@ -544,7 +544,7 @@ impl ServerGame<'_> {
     /// The tag read only, not the whole drown decision. None for a stale handle,
     /// an armor stand or the dragon.
     pub(in crate::game) fn living_can_breathe_underwater(&self, living: LivingRef) -> Option<bool> {
-        match self.common.native_living_read_target(living)? {
+        match self.native_living_read_target(living)? {
             Target::Mob(id) => {
                 let mob = self.common.mobs.iter().find(|m| m.id == id && !m.removed)?;
                 Some(self.items().entity_type_tags.has_bit(
@@ -563,7 +563,7 @@ impl ServerGame<'_> {
     /// one of `#minecraft:beds`. None where the sleeper keeps no position,
     /// the block is not a bed, or the handle is stale.
     pub(in crate::game) fn living_bed_orientation(&self, living: LivingRef) -> Option<Direction> {
-        let pos = self.common.living_sleeping_pos(living)?;
+        let pos = self.living_sleeping_pos(living)?;
         let w = self.mob_world_base(&[]);
         let name = w.block_name(pos[0], pos[1], pos[2]);
         if !w.has_tag("minecraft:beds", name) {
@@ -582,7 +582,7 @@ impl ServerGame<'_> {
     /// `Entity#isDead` is its inverse). A dying mob, mid death
     /// animation, is not.
     pub(in crate::game) fn living_alive(&self, living: LivingRef) -> Option<bool> {
-        self.common.living_health(living).map(alive_at)
+        self.living_health(living).map(alive_at)
     }
 
     /// Sets the entity's health (`LivingEntity.setHealth`; Paper's
@@ -602,8 +602,8 @@ impl ServerGame<'_> {
                     g.journal_player_health();
                     g.player.as_mut()?.set_health(health, false).ok()?;
                     if revived
-                        && let Some(conn) = g.side.lan_acting
-                        && let Some(host) = g.side.lan.as_mut()
+                        && let Some(conn) = g.server.lan_acting
+                        && let Some(host) = g.server.lan.as_mut()
                         && let Some(gi) =
                             host.hub.guests.iter().position(|guest| guest.conn == conn)
                         && host.hub.guests[gi].death_canceled
@@ -649,7 +649,6 @@ impl ServerGame<'_> {
     pub(in crate::game) fn living_heal(&mut self, living: LivingRef, amount: f32) -> bool {
         if !amount.is_finite()
             || !self
-                .common
                 .living_health(living)
                 .is_some_and(|health| health > 0.0)
         {
@@ -700,7 +699,7 @@ impl ServerGame<'_> {
         if let Some(credit) = credit {
             let conn = self.resolve_player_credit(credit)?;
             let id = self.player_entity_id_by_connection(conn)?;
-            return self.common.entity(u32::try_from(id).ok()?);
+            return self.entity(u32::try_from(id).ok()?);
         }
         self.living_last_attacker(living)
     }
@@ -761,7 +760,7 @@ impl ServerGame<'_> {
                         }
                     }
                 }?;
-                self.common.entity(attacker)
+                self.entity(attacker)
             }
             _ => None,
         }
@@ -772,7 +771,7 @@ impl ServerGame<'_> {
         living: LivingRef,
     ) -> Option<(EntityRef, i32)> {
         let (id, timestamp) = self.living_last_hurt_record(living)?;
-        let target = self.common.entity(id)?;
+        let target = self.entity(id)?;
         self.last_hurt_target_alive(id)
             .then_some((target, timestamp))
     }
@@ -785,7 +784,7 @@ impl ServerGame<'_> {
         match self.native_living_target(living)? {
             Target::Player => self.common.player.as_ref()?.health.last_hurt_mob,
             Target::Guest(conn) => {
-                let guest = self.common.command_guest(conn)?;
+                let guest = self.command_guest(conn)?;
                 match &guest.motion {
                     Some(body) => body.health.last_hurt_mob,
                     None => guest.carried_last_hurt_mob,
@@ -814,9 +813,7 @@ impl ServerGame<'_> {
     /// every level (`getEntityInAnyDimension`): the entity `id` in the level
     /// in place, else [`Self::credited_elsewhere`].
     pub(in crate::game::server_side) fn credited_entity(&self, id: u32) -> Option<EntityRef> {
-        self.common
-            .entity(id)
-            .or_else(|| self.credited_elsewhere(id))
+        self.entity(id).or_else(|| self.credited_elsewhere(id))
     }
 
     /// A credited mob that is not in the level in place under `id`: the same
@@ -827,11 +824,11 @@ impl ServerGame<'_> {
         let epoch = self.common.native_lifecycle.epoch()?;
         let mut id = id;
         loop {
-            if self.common.mob_in_other_level(id).is_some() {
+            if self.mob_in_other_level(id).is_some() {
                 return Some(EntityRef::new(epoch, id));
             }
             id = self.server.levels.0.travelled(id)?;
-            if let Some(found) = self.common.entity(id) {
+            if let Some(found) = self.entity(id) {
                 return Some(found);
             }
         }
@@ -857,7 +854,7 @@ impl ServerGame<'_> {
             Target::Mob(id) => {
                 sunrise_sim::health::LivingBody::Mob(self.common.mobs.iter().find(|m| m.id == id)?)
             }
-            target => self.common.native_living_body(target)?,
+            target => self.native_living_body(target)?,
         };
         super::native_living_body::body_equipment(body, slot)
     }
@@ -885,7 +882,6 @@ impl ServerGame<'_> {
             return None;
         }
         if self
-            .common
             .living_equipment_stack(living, slot)?
             .project()
             .as_ref()
@@ -958,7 +954,7 @@ impl ServerGame<'_> {
                 if let Some(ref broken) = broken {
                     self.award_stat("broken", &broken.item, 1);
                     self.player_equipment_broke(world_equipment_slot(slot), broken);
-                    self.common.player_item_destroyed(&stack, None);
+                    self.player_item_destroyed(&stack, None);
                 }
                 return broken;
             }
@@ -976,9 +972,9 @@ impl ServerGame<'_> {
                 EquipmentSlot::OffHand => Some(Hand::Off),
                 _ => None,
             };
-            self.common.player_item_destroyed(&stack, hand);
+            self.player_item_destroyed(&stack, hand);
             if armor_index(slot).is_some() {
-                self.common.apply_equipment();
+                self.apply_equipment();
             }
         }
         broken
@@ -1256,11 +1252,11 @@ impl ServerGame<'_> {
         f: impl FnOnce(&mut Self),
     ) -> bool {
         let uuid = match target {
-            Target::Guest(conn) => match self.common.command_guest(conn) {
+            Target::Guest(conn) => match self.command_guest(conn) {
                 Some(g) if g.dimension == self.common.dim.id() => g.uuid,
                 _ => return false,
             },
-            _ => self.common.native_acting_id(),
+            _ => self.native_acting_id(),
         };
         self.native_as_player(uuid, f)
     }
@@ -1322,8 +1318,7 @@ pub mod tests {
     /// Nether's spawn chunk forced loaded so it stays parked beside it.
     pub fn hurt_pig(game: &mut crate::game::ServerGame<'_>) -> (u32, u32) {
         use std::sync::Arc;
-        use sunrise_gameplay_common::game::Dim;
-        game.side.world_root = game.side.save.0.root.clone();
+        game.server.world_root = game.server.save.0.root.clone();
         game.enter_level(Dim::Nether).unwrap();
         game.world
             .chunks
@@ -1420,3 +1415,31 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::block_props::BlockPropsGameExt2 as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt3 as _;
+
+use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt4 as _;
+
+use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt6 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

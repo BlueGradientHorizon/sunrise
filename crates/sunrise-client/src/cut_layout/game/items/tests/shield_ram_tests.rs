@@ -83,3 +83,7 @@ fn a_shield_halves_the_push_of_a_ram() {
         "a ram a shield blocks pushes half as far"
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;

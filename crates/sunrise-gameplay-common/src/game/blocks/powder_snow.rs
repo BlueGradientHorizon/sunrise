@@ -124,3 +124,5 @@ pub(in crate::game) mod tests {
 }
 
 use crate::game::transactions::TransactionsGameExt as _;
+
+use crate::game::held_items::HeldItemsGameExt1 as _;

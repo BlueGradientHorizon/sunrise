@@ -72,7 +72,7 @@ pub(in crate::game) fn outline_offset(
     }
 }
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     pub fn selected_outline<'a>(
         &'a self,
         world: &'a World,

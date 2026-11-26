@@ -74,7 +74,7 @@ impl ClientGame<'_> {
                 stack,
                 previous,
             ),
-            rarity_color: self.common.stack_rarity_color(stack),
+            rarity_color: self.stack_rarity_color(stack),
             custom_name: custom,
         })
     }
@@ -129,3 +129,5 @@ impl ClientGame<'_> {
         hud_layout::paint(batch, &self.client.gui.atlas, &draws);
     }
 }
+
+use sunrise_gameplay_common::game::stack_names::StackNamesGameExt1 as _;

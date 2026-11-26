@@ -255,3 +255,5 @@ fn singleton_live_owner_is_not_reported_as_departed() {
         },
     );
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

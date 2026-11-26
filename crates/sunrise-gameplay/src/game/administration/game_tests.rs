@@ -1039,7 +1039,7 @@ impl crate::game::ServerGame<'_> {
         }
         if let Some(callback) = info.def.callback.clone() {
             let context = mod_api::GameTestContext::new(
-                self.common.level(self.common.dim.id()).expect("test server level"),
+                self.level(self.common.dim.id()).expect("test server level"),
                 self.test_origin(info),
                 match info.rotation() {
                     Rotation::None => 0,
@@ -1530,7 +1530,7 @@ impl crate::game::ServerGame<'_> {
                 }
                 Out::Coordinates(context, dimensions) => {
                     if let Some(Target::Guest(conn)) = context.recipient
-                        && self.common.command_guest(conn).is_none()
+                        && self.command_guest(conn).is_none()
                     {
                         continue;
                     }
@@ -1582,9 +1582,9 @@ impl crate::game::ServerGame<'_> {
             }
         } else if !context.source.silent {
             self.with_source(context.source, |g| {
-                let previous = g.side.console_broadcast;
+                let previous = g.server.console_broadcast;
                 g.test_console_output(text, broadcast);
-                g.side.console_broadcast = previous;
+                g.server.console_broadcast = previous;
             });
         }
     }
@@ -1594,7 +1594,7 @@ impl crate::game::ServerGame<'_> {
     /// including its missing-chunk policy; this is not a new loading policy.
     fn output_test_summary_coordinates(&mut self, context: SummarySource, dimensions: &[Dim]) {
         if let Some(Target::Guest(conn)) = context.recipient
-            && self.common.command_guest(conn).is_none()
+            && self.command_guest(conn).is_none()
         {
             return;
         }
@@ -1604,7 +1604,7 @@ impl crate::game::ServerGame<'_> {
             .filter(|target| target.is_player())
             .and_then(|target| {
                 self.target_position(target)
-                    .map(|pos| (pos, self.target_level(target), self.common.target_rotation(target)))
+                    .map(|pos| (pos, self.target_level(target), self.target_rotation(target)))
             });
         if player.is_some_and(|(_, dim, _)| {
             dimensions.len() <= 1
@@ -1672,3 +1672,7 @@ fn retry_line(info: &Info, retry: Retry, attempts: i32, successes: i32, passed: 
     );
     format!("{report:<53}{name}")
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

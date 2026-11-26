@@ -1656,3 +1656,13 @@ fn a_general_rider_fills_a_chest_boat_and_keeps_it_from_being_pushed() {
         }
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::piston_push::PistonPushGameExt1 as _;

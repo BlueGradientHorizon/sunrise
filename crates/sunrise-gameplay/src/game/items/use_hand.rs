@@ -41,15 +41,14 @@ impl crate::game::ServerGame<'_> {
         // mods' hook, the block's own use, then the item's.
         use mod_api::InteractionResult as Answer;
         use mod_api::TriState;
-        let on_block = matches!(self.side.guest_use, Some(GuestUse::OnBlock { .. }));
+        let on_block = matches!(self.server.guest_use, Some(GuestUse::OnBlock { .. }));
         let mut block_hit = block_hit;
         let (mut use_block, mut use_item) = (TriState::Default, TriState::Default);
         let block_phase = sunrise_level::spans::guard("use_block");
         if let Some(hit) = block_hit {
             let held = self.common.held().cloned();
             let answer = sunrise_level::spans::time("use_mods", || {
-                self.common
-                    .right_click_block(hit, self.common.hand, held.as_ref())
+                self.right_click_block(hit, self.common.hand, held.as_ref())
             });
             match answer {
                 native_hooks::BlockClickAnswer::Go {
@@ -93,20 +92,14 @@ impl crate::game::ServerGame<'_> {
             && let Some(hit) = block_hit
         {
             let state = self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
-            let mut block_answer = self.common.use_item_on_block(
-                hit,
-                self.common.hand,
-                held.as_ref(),
-                mod_api::UsePhase::Block,
-            );
+            let mut block_answer =
+                self.use_item_on_block(hit, self.common.hand, held.as_ref(), mod_api::UsePhase::Block);
             if block_answer.is_none()
                 && mod_api::__private::has_part_hook(mod_api::HookId::UseItemOn)
                 && api_values::block_state::block_listens(mod_api::HookId::UseItemOn, state)
                 && let Ok(snapshot) = held.try_into_api()
             {
-                let click = self
-                    .common
-                    .block_click(hit, self.common.hand, snapshot.as_ref());
+                let click = self.block_click(hit, self.common.hand, snapshot.as_ref());
                 self.native_use_item_on(state, &click, &mut block_answer);
             }
             let mut chains_sign = false;
@@ -240,9 +233,7 @@ impl crate::game::ServerGame<'_> {
                         )
                         && let Ok(snapshot) = self.common.held().try_into_api()
                     {
-                        let click =
-                            self.common
-                                .block_click(hit, self.common.hand, snapshot.as_ref());
+                        let click = self.block_click(hit, self.common.hand, snapshot.as_ref());
                         self.native_use_without_item(state, &click, &mut empty_answer);
                     }
                     if empty_answer.is_none()
@@ -277,7 +268,7 @@ impl crate::game::ServerGame<'_> {
                         empty_template_ran = true;
                         let player = self.use_context();
                         let actor = self.interacting_loot_entity();
-                        self.common.with_block_use_level(|b, level, ticks| {
+                        self.with_block_use_level(|b, level, ticks| {
                             level.interacting = Some(actor.clone());
                             b.use_without_item(level, ticks, state, block_hit, player)
                         })
@@ -294,7 +285,7 @@ impl crate::game::ServerGame<'_> {
                     && let Some(used) = held.as_ref()
                 {
                     self.award_stat("used", &used.item, 1);
-                    self.common.consume_held();
+                    self.consume_held();
                 }
                 // FlowerPotBlock.useItemOn: the plant is potted, used up, and counted.
                 if block_answer.is_none()
@@ -304,11 +295,10 @@ impl crate::game::ServerGame<'_> {
                 {
                     self.award_stat("used", &used.item, 1);
                     self.award_custom_stat("pot_flower", 1);
-                    self.common.consume_held();
-                    if let (Some(player), Some(name)) = (
-                        self.server.lan_acting_uuid,
-                        self.server.lan_acting_name.clone(),
-                    ) {
+                    self.consume_held();
+                    if let (Some(player), Some(name)) =
+                        (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
+                    {
                         self.native_player_flower_pot_manipulate(
                             player, &name, hit.pos, &used.item,
                         );
@@ -401,8 +391,8 @@ impl crate::game::ServerGame<'_> {
         }
         // ItemStack.useOn: adventure's predicate selects Item.useOn before its event and Part, not just before the eventual block placement.
         if let Some(hit) = block_hit
-            && !self.common.may_build()
-            && !self.common.can_place_on_in_adventure(hit.pos)
+            && !self.may_build()
+            && !self.can_place_on_in_adventure(hit.pos)
         {
             if on_block {
                 return Ok(false);
@@ -412,7 +402,7 @@ impl crate::game::ServerGame<'_> {
         // Native mods, where ItemStack.useOn and Item.use start: the block aimed at had its turn, and the item is off cooldown. A guest's
         // UseItemOn reaches only useOn, its UseItem only use.
         if let Some(hit) = block_hit
-            && let Some(answer) = self.common.use_item_on_block(
+            && let Some(answer) = self.use_item_on_block(
                 hit,
                 self.common.hand,
                 stack.as_ref(),
@@ -440,11 +430,9 @@ impl crate::game::ServerGame<'_> {
             return Ok(false);
         };
         if let Some(hit) = block_hit
-            && let Some(answer) = self
-                .common
-                .item_on_interaction(hit, self.common.hand, &stack)
+            && let Some(answer) = self.item_on_interaction(hit, self.common.hand, &stack)
         {
-            if self.common.interaction_consumed(answer) {
+            if self.interaction_consumed(answer) {
                 self.trigger_block("minecraft:item_used_on_block", hit.pos, before);
                 return Ok(true);
             }
@@ -521,9 +509,7 @@ impl crate::game::ServerGame<'_> {
         }
         // a mod's item used over time: its Item.use, once a block item's
         // useOn had its turn.
-        if !on_block
-            && (info.block.is_none() || block_hit.is_none())
-            && self.common.start_mod_use(&stack)
+        if !on_block && (info.block.is_none() || block_hit.is_none()) && self.start_mod_use(&stack)
         {
             return Ok(true);
         }
@@ -534,14 +520,14 @@ impl crate::game::ServerGame<'_> {
         }
         // BrushItem.useOn: brushing starts on the block aimed at (CONSUME).
         if block_hit.is_some() && &*stack.item == "minecraft:brush" {
-            self.common.start_using_item();
+            self.start_using_item();
             return Ok(true);
         }
         if !on_block
             && (self.raise_shield(self.common.held_slot())
                 || self.use_fishing_rod(&stack)
             || self.use_crossbow(&stack)
-            || self.common.use_trident(&stack)
+            || self.use_trident(&stack)
             || self.use_spear(&stack)
             || self.boost_firework(&stack)
             || self.use_empty_map(&stack)
@@ -571,7 +557,7 @@ impl crate::game::ServerGame<'_> {
         }
         // BundleItem.use: startUsingItem, then onUseTick empties it.
         if !on_block && info.bundle {
-            self.common.start_using_item();
+            self.start_using_item();
             self.swing_arm();
             return Ok(true);
         }
@@ -581,14 +567,14 @@ impl crate::game::ServerGame<'_> {
         }
         if !on_block && &*stack.item == "minecraft:bow" {
             // BowItem.use: ArrowNockEvent, then FAIL without ammunition.
-            let found_projectile = self.common.get_projectile(&stack).is_some();
+            let found_projectile = self.get_projectile(&stack).is_some();
             let has_ammo = found_projectile || self.common.creative;
             let player = sunrise_sim::lan::playerdata::ints_uuid(self.acting_player_uuid());
-            let name = self.common.acting_player_name().to_owned();
+            let name = self.acting_player_name().to_owned();
             let (hand, mut cancel) = (self.common.hand, false);
             self.native_arrow_nock(player, &name, &stack, hand, has_ammo, &mut cancel);
             if has_ammo && !cancel {
-                self.common.start_using_item();
+                self.start_using_item();
             }
             return Ok(true);
         }
@@ -702,7 +688,7 @@ impl crate::game::ServerGame<'_> {
         self.server_process_level_events()?;
         self.award_stat("used", &stack.item, 1);
         self.check_golem_spawn(target)?;
-        self.common.consume_placed(&stack);
+        self.consume_placed(&stack);
         // ItemStack.useOn applies the pre-use stack's component side effects
         // after the successful placement and its hand replacement.
         self.apply_use_cooldown(&stack);
@@ -812,7 +798,7 @@ impl crate::game::ServerGame<'_> {
                 };
                 let b = sunrise_core::position::BlockPos::containing(at);
                 let at = [b.x, b.y, b.z].map(|v| f64::from(v) + 0.5);
-                let level = self.common.level(self.common.dim.id())?;
+                let level = self.level(self.common.dim.id())?;
                 let source = match mob {
                     Some(living) => self.entity_sound_source(living.entity())?,
                     None => mod_api::SoundSource::Players,
@@ -843,7 +829,7 @@ impl crate::game::ServerGame<'_> {
     /// many as the weapon's `projectile_count` says, fanned by its
     /// `projectile_spread`.
     pub(in crate::game) fn release_bow(&mut self, stack: &ItemStack, ticks: u32) {
-        let ammo = self.common.get_projectile(stack);
+        let ammo = self.get_projectile(stack);
         let mut charge = i32::try_from(ticks).unwrap_or(i32::MAX);
         let mut canceled = false;
         self.native_arrow_loose(stack, ammo.is_some(), &mut charge, &mut canceled);
@@ -872,13 +858,9 @@ impl crate::game::ServerGame<'_> {
         // how many arrows leave and how far apart they fan (Multishot: two more
         // arrows, ten degrees of spread).
         let (count, spread) = self.bow_volley(stack);
-        let (velocity, on_ground) = self
-            .common
-            .player
-            .as_ref()
-            .map_or((Vec3::ZERO, true), |pl| {
-                (self.common.known_player_movement(), pl.ground.on_ground)
-            });
+        let (velocity, on_ground) = self.common.player.as_ref().map_or((Vec3::ZERO, true), |pl| {
+            (self.known_player_movement(), pl.ground.on_ground)
+        });
         // ProjectileWeaponItem.shoot: an odd count is centred on the view, the
         // arrows alternate either side of it, `direction` flipping per arrow.
         // A count of 0 draws nothing and vanilla skips `shoot` altogether.
@@ -927,7 +909,7 @@ impl crate::game::ServerGame<'_> {
             self.spawn_projectile(arrow, &ammo);
             let (player, name, projectile) = (
                 sunrise_sim::lan::playerdata::ints_uuid(self.acting_player_uuid()),
-                self.common.acting_player_name().to_owned(),
+                self.acting_player_name().to_owned(),
                 self.server.next_entity,
             );
             self.native_entity_shoot_bow(player, &name, projectile, power * 3.0);
@@ -957,7 +939,7 @@ impl crate::game::ServerGame<'_> {
             && !infinity
             && let Some(i) = arrow_slot
         {
-            self.common.consume_player_slot(i, 1);
+            self.consume_player_slot(i, 1);
         }
     }
     /// `EnchantmentHelper.processProjectileCount` and `processProjectileSpread`
@@ -1015,7 +997,7 @@ impl crate::game::ServerGame<'_> {
             self.server_play_sound("minecraft:item.spyglass.use", at, 1.0, 1.0);
         }
         self.award_stat("used", "minecraft:spyglass", 1);
-        self.common.start_using_item();
+        self.start_using_item();
     }
 }
 
@@ -1026,4 +1008,21 @@ pub mod scaffolding_inside_tests;
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
-use sunrise_gameplay_common::game::{api_values, native_hooks};
+
+use sunrise_gameplay_common::game::cake_eligibility::CakeEligibilityGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::use_item_hand::UseItemHandGameExt1 as _;

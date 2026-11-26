@@ -94,7 +94,7 @@ pub(in crate::game) fn run_a_datapack_explosion_type_removes_a_crystal_quietly_a
         with_game(|game| {
             with_pack(game);
             let crystal = |game: &mut sunrise_gameplay::game::ServerGame<'_>, id: u32| {
-                game.side.next_entity = game.side.next_entity.max(id);
+                game.server.next_entity = game.server.next_entity.max(id);
                 game.crystals.push(sunrise_gameplay_common::game::dragon_common::Crystal::new(
                     id,
                     Vec3::new(0.5, 64.0, 0.5),
@@ -394,3 +394,8 @@ pub(in crate::game) mod vehicle_damage_command_tests {
 #[cfg(test)]
 #[path = "effect_attribute_tests_server.rs"]
 pub(in crate::game) mod effect_attribute_tests;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

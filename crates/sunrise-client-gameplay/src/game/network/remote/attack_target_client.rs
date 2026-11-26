@@ -10,7 +10,7 @@ impl crate::game::ClientGame<'_> {
         // speed is the player's synced attribute, which a server may change.
         let speed = self
             .own_attribute("minecraft:attack_speed")
-            .unwrap_or_else(|| self.common.main_hand_attack_speed());
+            .unwrap_or_else(|| self.main_hand_attack_speed());
         let strength = self.client.hand_strength.scale(0.5, speed);
         // Player.attack's damage: a riptide spin's, or this client's own
         // ATTACK_DAMAGE, which the held item and effects don't change here.
@@ -26,7 +26,7 @@ impl crate::game::ClientGame<'_> {
 
     /// `Minecraft.startAttack`'s range check and `MultiPlayerGameMode.attack`'s send and prediction.
     pub(in crate::game) fn remote_attack_entity(&mut self, id: i32, distance: f64) -> bool {
-        if !self.common.held_range_allows(distance) {
+        if !self.held_range_allows(distance) {
             return false;
         }
         self.send(S::Attack(play::Attack { id }));
@@ -71,7 +71,7 @@ impl crate::game::ClientGame<'_> {
             // A row reaches Player.attack but hurtClient is false.
             self.remote_sweep_event(kind, false);
         }
-        self.common.reset_attack_strength();
+        self.reset_attack_strength();
         if let Some(remote) = self.client.remote.as_mut()
             && remote.abilities.instabuild
         {
@@ -105,3 +105,5 @@ impl crate::game::ClientGame<'_> {
         self.remote_attacker_knockback(damage, strength);
     }
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

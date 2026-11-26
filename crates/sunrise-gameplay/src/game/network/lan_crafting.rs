@@ -203,7 +203,7 @@ impl crate::game::ServerGame<'_> {
         .map(|held| self.level_maps(&held));
         let host = self.server.lan.as_ref()?;
         // `ArmorSlot.mayPlace` asks the parts with the game as `Host`: the menu is the guest's own.
-        let parts = self.common.menu_can_equip();
+        let parts = self.menu_can_equip();
         let env = Env {
             maps: maps.as_ref().map(|m| m as &dyn sunrise_sim::menu::Maps),
             can_equip: Some(&parts),
@@ -505,7 +505,7 @@ impl crate::game::ServerGame<'_> {
         let snapshot = menu.snapshot();
         // A take listener edits the transient slots through the Host: the menu reads them back.
         let refresh = |game: &crate::game::ServerGame<'_>, menu: &mut Menu| {
-            let Some(guest) = game.side.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
+            let Some(guest) = game.server.lan.as_ref().and_then(|host| host.hub.guest(conn)) else {
                 return false;
             };
             if !live(guest) {
@@ -768,7 +768,7 @@ impl crate::game::ServerGame<'_> {
         let refresh = |game: &crate::game::ServerGame<'_>, menu: &mut Menu| {
             if generation != game.world.block_entities.generation(&pos)
                 || !game
-                    .side
+                    .server
                     .lan
                     .as_ref()
                     .and_then(|host| host.hub.guest(conn))
@@ -789,7 +789,7 @@ impl crate::game::ServerGame<'_> {
                 .mod_crafting()
                 .filter(|c| c.grid_slots().all(|k| old[k] == actual[k]))
                 .map(|c| menu.slot(c.result).cloned());
-            let Some(host) = game.side.lan.as_ref() else {
+            let Some(host) = game.server.lan.as_ref() else {
                 return false;
             };
             let Some(gi) = host.hub.guests.connection_index(conn) else {
@@ -921,7 +921,7 @@ impl crate::game::ServerGame<'_> {
                 None
             };
             if (!smelted.is_empty() || extracted.is_some())
-                && let Some(guest) = game.side.lan.as_ref().and_then(|host| host.hub.guest(conn))
+                && let Some(guest) = game.server.lan.as_ref().and_then(|host| host.hub.guest(conn))
             {
                 let effects = FurnaceMenuEffects {
                     uuid: guest.uuid,
@@ -1038,7 +1038,7 @@ impl crate::game::ServerGame<'_> {
                                     // or the menu.
                                     generation == game.world.block_entities.generation(&pos)
                                         && game
-                                            .side
+                                            .server
                                             .lan
                                             .as_ref()
                                             .and_then(|host| host.hub.guest(conn))
@@ -1059,7 +1059,7 @@ impl crate::game::ServerGame<'_> {
                                     };
                                     // Losing the block queues a close, so the admitted cursor is
                                     // still live here. Never settle this write on a different window.
-                                    game.side
+                                    game.server
                                         .lan
                                         .as_ref()?
                                         .hub
@@ -2280,3 +2280,9 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::equip_answers::EquipAnswersGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_equip::PlayerEquipGameExt2 as _;

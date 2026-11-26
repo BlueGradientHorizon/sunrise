@@ -112,7 +112,7 @@ impl ServerGame<'_> {
         ) {
             self.server.combat.0.melee_mob = Some(mob);
         }
-        let _ = self.common.handle_mob_events(vec![e]);
+        let _ = self.handle_mob_events(vec![e]);
         // Used up by the hit; a blow that hurt nobody leaves it to no other.
         self.server.combat.0.melee_mob = None;
     }
@@ -519,3 +519,5 @@ mod tests {
         assert_eq!(player_for(&golem, None, &guests, Some(7)), Some(8));
     }
 }
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;

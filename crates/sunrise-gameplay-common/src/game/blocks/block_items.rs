@@ -122,7 +122,7 @@ pub(in crate::game) fn picked_item<'a>(
     Some(potted.unwrap_or(item)).filter(|item| *item != "minecraft:air")
 }
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// Plain projection for the existing container-title consumers. The live
     /// `BaseContainerBlockEntity` name remains a Component, not rendered text.
     pub fn block_name_plain(&self, key: (i32, i32, i32)) -> Option<String> {
@@ -130,31 +130,6 @@ impl CommonGame<'_> {
             Tag::String(text) => text.to_string_lossy(),
             component => sunrise_game_data::component::name_text(component).plain(),
         })
-    }
-
-    /// The block entity at `key` as vanilla saves it, with its custom name.
-    pub fn saved_block_entity(&self, key: (i32, i32, i32), for_save: bool) -> Option<Tag> {
-        let entity = self.world.block_entities.get(&key)?;
-        let block = &self
-            .res
-            .facts()
-            .get(self.world.block(key.0, key.1, key.2))
-            .name;
-        let mut tag = if for_save {
-            self.side_encode_live_block_entity(key, entity, block)
-        } else {
-            save::block_entity_encode::encode(key, entity, block, self.res.items())
-        };
-        if let (Some(name), Tag::Compound(map)) = (self.world.block_names.get(&key), &mut tag) {
-            map.insert("CustomName".into(), name.clone());
-        }
-        if matches!(entity, BlockEntity::Mod(_)) {
-            // The mod owns its serializer; the vanilla canonicalizer only knows
-            // vanilla entity types and must not discard this instance's data.
-            Some(tag)
-        } else {
-            block_entity_nbt::canonical(&tag)
-        }
     }
 
     /// The `CustomName` a block entity loads from `tag`
@@ -184,10 +159,46 @@ impl CommonGame<'_> {
         };
         true
     }
+}
+
+pub trait BlockItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+
+    /// The block entity at `key` as vanilla saves it, with its custom name.
+     fn saved_block_entity(
+        &self,
+        key: (i32, i32, i32),
+        for_save: bool,
+    ) -> Option<Tag> {
+        let entity = self.world.block_entities.get(&key)?;
+        let block = &self
+            .res
+            .facts()
+            .get(self.world.block(key.0, key.1, key.2))
+            .name;
+        let mut tag = if for_save {
+            self.side_encode_live_block_entity(key, entity, block)
+        } else {
+            save::block_entity_encode::encode(key, entity, block, self.res.items())
+        };
+        if let (Some(name), Tag::Compound(map)) = (self.world.block_names.get(&key), &mut tag) {
+            map.insert("CustomName".into(), name.clone());
+        }
+        if matches!(entity, BlockEntity::Mod(_)) {
+            // The mod owns its serializer; the vanilla canonicalizer only knows
+            // vanilla entity types and must not discard this instance's data.
+            Some(tag)
+        } else {
+            block_entity_nbt::canonical(&tag)
+        }
+    }
 
     /// `BlockState.getCloneItemStack` of the block at `pos`, then, with
     /// `include_data`, `ServerGamePacketListenerImpl.addBlockDataToItem`.
-    pub fn picked_stack(&self, pos: [i32; 3], include_data: bool) -> Option<ItemStack> {
+     fn picked_stack(
+        &self,
+        pos: [i32; 3],
+        include_data: bool,
+    ) -> Option<ItemStack> {
         let mut stack = self.clone_stack(pos, include_data)?;
         if include_data {
             self.add_block_data(pos, &mut stack);
@@ -198,7 +209,7 @@ impl CommonGame<'_> {
     /// `ServerGamePacketListenerImpl.addBlockDataToItem`: the block entity at
     /// `pos`, if any, onto `stack` (`BlockItem.setBlockEntityData`, then
     /// `ItemStack.applyComponents(collectComponents())`).
-    pub fn add_block_data(&self, pos: [i32; 3], stack: &mut ItemStack) {
+     fn add_block_data(&self, pos: [i32; 3], stack: &mut ItemStack) {
         if let Some(saved) = self.saved_block_entity((pos[0], pos[1], pos[2]), true) {
             apply_patch(stack, block_entity_item::pick(&saved));
         }
@@ -206,7 +217,11 @@ impl CommonGame<'_> {
 
     /// `BlockState.getCloneItemStack` of the block at `pos`: the item alone,
     /// with what the block itself puts on it; `include_data` as vanilla passes it.
-    pub fn clone_stack(&self, pos: [i32; 3], include_data: bool) -> Option<ItemStack> {
+     fn clone_stack(
+        &self,
+        pos: [i32; 3],
+        include_data: bool,
+    ) -> Option<ItemStack> {
         let key = (pos[0], pos[1], pos[2]);
         let state = self.world.block(pos[0], pos[1], pos[2]);
         let facts = self.res.facts().get(state);
@@ -309,7 +324,7 @@ impl CommonGame<'_> {
     /// Shared `BlockItem.updateCustomBlockEntityTag` / `updateBlockEntityComponents`
     /// decode and install path; returns `Some(custom_data_loaded)` when the block
     /// entity was replaced.
-    pub fn apply_placed_item_common(
+     fn apply_placed_item_common(
         &mut self,
         pos: [i32; 3],
         stack: &ItemStack,
@@ -339,6 +354,8 @@ impl CommonGame<'_> {
         Some(custom_data_loaded)
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> BlockItemsGameExt1<'__sg> for G {}
+
 
 #[cfg(test)]
 pub(in crate::game) mod tests {
@@ -436,3 +453,5 @@ pub(in crate::game) mod tests {
 use crate::game::side_ops::blocks::BlocksSideGameExt as _;
 
 use crate::game::tables::GameItems as _;
+
+use crate::game::pick_ray::PickRayGameExt1 as _;

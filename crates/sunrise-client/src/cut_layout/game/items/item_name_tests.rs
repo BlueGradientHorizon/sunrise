@@ -314,3 +314,5 @@ fn a_client_anvil_click_fills_the_rename_box_with_the_parts_name() {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

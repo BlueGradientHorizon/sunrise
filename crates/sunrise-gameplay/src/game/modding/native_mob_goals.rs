@@ -66,7 +66,7 @@ impl crate::game::ServerGame<'_> {
         priority: i32,
         goal: &GoalSpec,
     ) -> bool {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         let Some((species, navigation)) = self
@@ -96,7 +96,7 @@ impl crate::game::ServerGame<'_> {
         priority: i32,
         goal: &GoalSpec,
     ) -> bool {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         let Some((species, navigation)) = self
@@ -125,7 +125,7 @@ impl crate::game::ServerGame<'_> {
     /// resolves, as its copy is held out there: add what a mod needs in
     /// `entity_join`, which fires for a loaded chunk's mobs too.
     pub(in crate::game) fn mob_remove_goal(&mut self, mob: MobRef, id: &str) -> Option<usize> {
-        let Some(Target::Mob(entity)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(entity)) = self.native_entity_target(mob.entity()) else {
             return None;
         };
         let index = self.common.mobs.iter().position(|m| m.id == entity)?;
@@ -139,7 +139,7 @@ impl crate::game::ServerGame<'_> {
         mob: MobRef,
         id: &str,
     ) -> Option<usize> {
-        let Some(Target::Mob(entity)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(entity)) = self.native_entity_target(mob.entity()) else {
             return None;
         };
         let index = self.common.mobs.iter().position(|m| m.id == entity)?;
@@ -151,7 +151,7 @@ impl crate::game::ServerGame<'_> {
     /// whether it runs), in registration order. None for a stale or
     /// unavailable mob, a client, and the dragon.
     pub(in crate::game) fn mob_goals(&self, mob: MobRef) -> Option<Vec<MobGoalEntry>> {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return None;
         };
         let m = self.common.mobs.iter().find(|m| m.id == id)?;
@@ -170,7 +170,7 @@ impl crate::game::ServerGame<'_> {
     /// Every goal of the target selector, as `goals` reads the goal
     /// selector's.
     pub(in crate::game) fn mob_target_goals(&self, mob: MobRef) -> Option<Vec<MobGoalEntry>> {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return None;
         };
         let m = self.common.mobs.iter().find(|m| m.id == id)?;
@@ -247,7 +247,7 @@ impl crate::game::ServerGame<'_> {
         self.common
             .mobs
             .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
-        self.common.handle_mob_events(events).ok();
+        self.handle_mob_events(events).ok();
         removed
     }
 
@@ -479,3 +479,9 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

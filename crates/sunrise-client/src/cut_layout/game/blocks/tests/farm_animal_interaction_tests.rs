@@ -202,3 +202,5 @@ fn shearing_by_hand_posts_the_shear_game_event() {
     }
     sunrise_client_gameplay::game::client_side::sculk::TEST_POSTED_EVENTS.with(|events| *events.borrow_mut() = None);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -63,7 +63,7 @@ impl ServerGame<'_> {
             return;
         };
         let mut stack = inventory[slot].clone();
-        let ask = self.common.bonemeal(pos, false, &mut stack);
+        let ask = self.bonemeal(pos, false, &mut stack);
         let grown = ask.crop.unwrap_or_else(|| {
             self.common
                 .with_level(|b, level, ticks| b.grow_crop(level, ticks, pos, ask.check))
@@ -718,11 +718,7 @@ impl ServerGame<'_> {
         );
         if woke.is_some() {
             let new = self.common.mobs[i].position;
-            self.common.entity_section_moved(
-                id,
-                Some([old.x, old.y, old.z]),
-                [new.x, new.y, new.z],
-            );
+            self.entity_section_moved(id, Some([old.x, old.y, old.z]), [new.x, new.y, new.z]);
         }
     }
 }
@@ -743,3 +739,7 @@ pub(in crate::game) mod entity_event_particle_tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

@@ -190,7 +190,7 @@ impl crate::game::ServerGame<'_> {
             &self.creatures.projectiles,
             &self.resident_entities.general.rows,
             &self.resident_entities.knots,
-            &self.side.others.0
+            &self.server.others.0
         )
     }
 
@@ -267,7 +267,7 @@ impl crate::game::ServerGame<'_> {
 
     fn take_server_memory_snapshot(&self, state: &mut super::ServerState, label: &str) {
         if let Some(cost) = state.perf.memory_cost() {
-            let rows = cost.measure(|| flatten_report(&self.common.memory_value()));
+            let rows = cost.measure(|| flatten_report(&self.memory_value()));
             let t = state.perf_epoch.elapsed().as_secs_f64();
             state.perf.memory_snapshot(t, label, &rows);
         }
@@ -346,3 +346,5 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::memory_common::MemoryCommonGameExt1 as _;

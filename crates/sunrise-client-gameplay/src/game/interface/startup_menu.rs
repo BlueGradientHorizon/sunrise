@@ -156,7 +156,7 @@ impl StartupMenu {
                 let title = title.with_user(|| game.options.player_name());
                 game.show_title_with_registry(title);
             }
-            None if game.side.remote.is_some() => game.side.title.0 = None,
+            None if game.client.remote.is_some() => game.client.title.0 = None,
             None => {
                 // Never leave a client game with neither a title screen nor a remote session.
                 log::warn!(
@@ -165,42 +165,42 @@ impl StartupMenu {
                 let mut title = game
                     .new_title(std::env::current_dir().unwrap_or_default().join("saves"))
                     .with_user(|| game.options.player_name());
-                title.last_server = game.side.settings.file.string("lastServer");
+                title.last_server = game.client.settings.file.string("lastServer");
                 title.skip_multiplayer_warning =
-                    game.side.settings.file.bool("skipMultiplayerWarning");
+                    game.client.settings.file.bool("skipMultiplayerWarning");
                 game.show_title(title);
             }
         }
-        game.side.pending_entry.0 = self.pending.take();
-        game.side.perf = std::mem::take(&mut self.perf);
-        game.side.mod_jobs.0 = std::mem::take(&mut self.mod_jobs);
-        game.side.cursor = self.cursor;
+        game.client.pending_entry.0 = self.pending.take();
+        game.client.perf = std::mem::take(&mut self.perf);
+        game.client.mod_jobs.0 = std::mem::take(&mut self.mod_jobs);
+        game.client.cursor = self.cursor;
         if self.key_focus.is_none() {
-            game.side.window_cursor = Some(self.pointer);
+            game.client.window_cursor = Some(self.pointer);
         }
-        game.side.modifiers = self.modifiers;
-        game.side.physical_keys = std::mem::take(&mut self.physical_keys);
-        game.side.clipboard.0 = std::mem::take(&mut self.clipboard);
-        game.side.text_selection = std::mem::take(&mut self.selection);
+        game.client.modifiers = self.modifiers;
+        game.client.physical_keys = std::mem::take(&mut self.physical_keys);
+        game.client.clipboard.0 = std::mem::take(&mut self.clipboard);
+        game.client.text_selection = std::mem::take(&mut self.selection);
         if let Some(toast) = self.pending_narrator_toast.take() {
             game.add_system_toast(Some(super::toast_manager::SystemToastId::Narrator), toast);
         }
-        game.side.narration = std::mem::take(&mut self.narration);
+        game.client.narration = std::mem::take(&mut self.narration);
         // Preserve an existing resource-error screen opened by start_game.
         if self.options_open {
-            let resource_error = game.side.chat_ui.options.resource_error.take();
-            game.side.chat_ui.options = std::mem::take(&mut self.options);
-            game.side.chat_ui.options.resource_error = game
-                .side
+            let resource_error = game.client.chat_ui.options.resource_error.take();
+            game.client.chat_ui.options = std::mem::take(&mut self.options);
+            game.client.chat_ui.options.resource_error = game
+                .client
                 .chat_ui
                 .options
                 .resource_error
                 .take()
                 .or(resource_error);
             game.set_screen(Screen::Options);
-            game.side.options_from_title = true;
+            game.client.options_from_title = true;
             if self.dragging {
-                game.side.physical_buttons.insert(MouseButton::Left);
+                game.client.physical_buttons.insert(MouseButton::Left);
                 game.track_drag_button(MouseButton::Left, true);
             }
         }

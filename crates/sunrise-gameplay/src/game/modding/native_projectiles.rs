@@ -100,11 +100,8 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn native_impact_target(&self, hit: Hit) -> Option<ImpactTarget> {
         let (entity, block, _, _) = self.pearl_hit(hit);
         if let Some(id) = entity {
-            let entity = self.common.entity(id)?;
-            Some(ImpactTarget::Entity(
-                entity,
-                self.common.entity_position(entity)?,
-            ))
+            let entity = self.entity(id)?;
+            Some(ImpactTarget::Entity(entity, self.entity_position(entity)?))
         } else if matches!(hit, Hit::Block { .. }) {
             Some(ImpactTarget::Block(
                 self.common.world.block(block[0], block[1], block[2]),
@@ -129,13 +126,13 @@ impl crate::game::ServerGame<'_> {
         }
         let owner = match owner {
             Some(Who::Mob(id)) => self.native_impact_entity_id(id),
-            Some(Who::Player) => self.common.own_entity_id() as u32,
+            Some(Who::Player) => self.own_entity_id() as u32,
             None => 0,
         };
         let (entity, block, face, at) = self.pearl_hit(hit);
         let entity_kind = entity
-            .and_then(|id| self.common.entity(id))
-            .and_then(|entity| self.common.entity_kind(entity)?.id(self));
+            .and_then(|id| self.entity(id))
+            .and_then(|entity| self.entity_kind(entity)?.id(self));
         let mut canceled = false;
         self.native_projectile_impact(mod_api::__private::ProjectileImpactCall {
             dimension: self.common.dim.id(),
@@ -214,10 +211,7 @@ impl crate::game::ServerGame<'_> {
             Hit::Entity { who, at } => {
                 let (entity, kind) = match who {
                     Who::Mob(id) => self.native_impact_entity(id),
-                    Who::Player => (
-                        self.common.own_entity_id() as u32,
-                        "minecraft:player".into(),
-                    ),
+                    Who::Player => (self.own_entity_id() as u32, "minecraft:player".into()),
                 };
                 (Some(entity), kind, [0; 3], [0; 3], at)
             }
@@ -308,7 +302,7 @@ impl crate::game::ServerGame<'_> {
             Hit::Entity { who, at } => {
                 let entity = match who {
                     Who::Mob(id) => self.native_impact_entity_id(id),
-                    Who::Player => self.common.own_entity_id() as u32,
+                    Who::Player => self.own_entity_id() as u32,
                 };
                 let cell = [
                     at.x.floor() as i32,
@@ -338,10 +332,7 @@ impl crate::game::ServerGame<'_> {
             Hit::Entity { who, at } => {
                 let (entity, kind) = match who {
                     Who::Mob(id) => self.native_impact_entity(id),
-                    Who::Player => (
-                        self.common.own_entity_id() as u32,
-                        "minecraft:player".into(),
-                    ),
+                    Who::Player => (self.own_entity_id() as u32, "minecraft:player".into()),
                 };
                 (Some(entity), kind, [0; 3], [0; 3], at)
             }
@@ -384,7 +375,7 @@ impl crate::game::ServerGame<'_> {
             canceled.push(
                 !impact.wind_vehicle
                     && impact.index.is_some()
-                    && self.common.entity(impact.before.id).is_some()
+                    && self.entity(impact.before.id).is_some()
                     && self.native_projectile_impact_canceled(&impact.before, impact.hit),
             );
         }
@@ -497,12 +488,8 @@ impl crate::game::ServerGame<'_> {
             let from = p.position;
             (p, pending.keep, hit) = self.broken_vehicle_retick(before.clone());
             pending.target = self.native_impact_target(hit);
-            self.common
-                .creatures
-                .projectiles
-                .store_back(index, p.clone());
-            self.common
-                .entity_section_step(p.id, from.components(), p.position.components());
+            self.common.creatures.projectiles.store_back(index, p.clone());
+            self.entity_section_step(p.id, from.components(), p.position.components());
             if self.projectile_removal_pending(p.id) {
                 return None;
             }
@@ -543,8 +530,7 @@ impl crate::game::ServerGame<'_> {
                     let end = self.common.creatures.projectiles.len();
                     self.common.creatures.projectiles.put_back(end, owner);
                 }
-                self.common
-                    .entity_section_step(p.id, p.position.components(), to.components());
+                self.entity_section_step(p.id, p.position.components(), to.components());
             } else {
                 self.common.creatures.projectiles.remove(index);
             }
@@ -572,7 +558,7 @@ impl crate::game::ServerGame<'_> {
         if let (Some(_), Hit::Block { pos, .. }) = (&p.arrow, hit) {
             let from = p.position;
             {
-                let rain = self.common.arrow_rain();
+                let rain = self.arrow_rain();
                 sunrise_sim::arrows::apply_block_contact(
                     &mut p,
                     &self.arrow_scene(&rain),
@@ -586,8 +572,7 @@ impl crate::game::ServerGame<'_> {
                 .unwrap_or_default();
             if pending.keep {
                 self.common.creatures.projectiles.store_back(i, p.clone());
-                self.common
-                    .entity_section_step(p.id, from.components(), p.position.components());
+                self.entity_section_step(p.id, from.components(), p.position.components());
             } else {
                 self.common.creatures.projectiles.remove(i);
             }
@@ -611,7 +596,7 @@ impl crate::game::ServerGame<'_> {
         };
         let mut p = self.common.creatures.projectiles[i].clone();
         let keep = {
-            let rain = self.common.arrow_rain();
+            let rain = self.arrow_rain();
             sunrise_sim::arrows::finish_block_contact(&mut p, &self.arrow_scene(&rain))
         };
         let events = p
@@ -655,7 +640,7 @@ impl crate::game::ServerGame<'_> {
         let include_guests = mob_shot || pvp;
         let query = TargetQuery::for_projectile(&p, include_guests);
         let live = self.live_proj_world(query, &[]);
-        let rain = self.common.arrow_rain();
+        let rain = self.arrow_rain();
         let scene = self.arrow_scene(&rain);
         let (keep, _) = if p.arrow.is_some() {
             let mut scratch = sunrise_sim::arrows::ArrowHitScratch::new();
@@ -675,3 +660,11 @@ impl crate::game::ServerGame<'_> {
         (p, keep, events)
     }
 }
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

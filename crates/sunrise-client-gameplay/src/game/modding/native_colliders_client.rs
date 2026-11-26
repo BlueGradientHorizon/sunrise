@@ -156,7 +156,7 @@ impl ClientGame<'_> {
 
     /// The client level in place for moving-collider scoping.
     pub(in crate::game) fn client_collider_level(&self) -> Option<mod_api::LevelRef> {
-        self.common.native_client_level()
+        self.native_client_level()
     }
 
     /// Runs `f` with the client's moving colliders and collision parts scoped (no history).
@@ -177,3 +177,5 @@ impl ClientGame<'_> {
         f(self)
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

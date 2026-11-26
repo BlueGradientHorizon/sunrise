@@ -85,7 +85,7 @@ pub(in crate::game) fn pot_data_in(
     Some(tag)
 }
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// `DecoratedPotBlockEntity.saveAdditional` for commands: a pure view of
     /// the existing saved state. Unlike pot_tag, this never unpacks loot.
     pub fn pot_data(&self, pos: [i32; 3]) -> Option<Tag> {

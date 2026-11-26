@@ -442,7 +442,7 @@ fn a_lan_inventory_click_is_decided_the_same_way() {
         with_guests(|game| {
             PLAYER.set(12);
             let click = |game: &mut crate::game::ServerGame<'_>| {
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -464,7 +464,7 @@ fn a_lan_inventory_click_is_decided_the_same_way() {
                         carried: None,
                     }),
                 );
-                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 (
                     count(&guest.inventory[9]),
                     count(&guest.carried),
@@ -513,7 +513,7 @@ pub(in crate::game) mod families {
     }
 
     fn cursor(game: &crate::game::ServerGame<'_>) -> Option<(String, u32)> {
-        let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+        let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
         guest
             .carried
             .as_ref()
@@ -549,7 +549,7 @@ pub(in crate::game) mod families {
                 PLAYER.set(12);
                 open(game);
                 let give = |game: &mut crate::game::ServerGame<'_>| {
-                    game.side
+                    game.server
                         .lan
                         .as_mut()
                         .unwrap()
@@ -692,7 +692,7 @@ pub(in crate::game) mod families {
             }),
         );
         game.open_block_menu(12, (1, 64, 1));
-        game.side.lan.as_ref().unwrap().hub.guests[0]
+        game.server.lan.as_ref().unwrap().hub.guests[0]
             .menu
             .as_ref()
             .unwrap()
@@ -912,14 +912,14 @@ pub(in crate::game) mod families {
                 let open = |game: &mut crate::game::ServerGame<'_>, id| {
                     game.lan_open_mount(12, id);
                     let _ = menu_packets();
-                    game.side.lan.as_ref().unwrap().play[&12]
+                    game.server.lan.as_ref().unwrap().play[&12]
                         .mount_window
                         .as_ref()
                         .unwrap()
                         .window
                 };
                 let guest_items = |game: &crate::game::ServerGame<'_>| {
-                    let g = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                    let g = &game.server.lan.as_ref().unwrap().hub.guests[0];
                     (g.inventory[9].clone(), g.carried.clone())
                 };
                 let dirt = Some(ItemStack::new("minecraft:dirt", 2));
@@ -1198,7 +1198,7 @@ fn an_outer_abort_after_an_applied_lan_click_restores_the_guest_and_the_containe
                 })
             };
             let give = |game: &mut crate::game::ServerGame<'_>| {
-                game.side
+                game.server
                     .lan
                     .as_mut()
                     .unwrap()
@@ -1210,7 +1210,7 @@ fn an_outer_abort_after_an_applied_lan_click_restores_the_guest_and_the_containe
                     });
             };
             let state = |game: &crate::game::ServerGame<'_>| {
-                let guest = &game.side.lan.as_ref().unwrap().hub.guests[0];
+                let guest = &game.server.lan.as_ref().unwrap().hub.guests[0];
                 (
                     game.world.block_entities.get(&pos).unwrap().slots()[0]
                         .as_ref()

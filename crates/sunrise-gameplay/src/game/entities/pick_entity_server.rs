@@ -109,8 +109,8 @@ impl ServerGame<'_> {
             .contains(&hit.id);
         let id = hit.id as i32;
         let pickable = !is_synthetic_dragon_part
-            && sunrise_gameplay_common::game::pick_entity_common::has_pick_result(self.common.level_entity(id));
-        let suggest_uuid = !is_synthetic_dragon_part && self.common.resident_dragon_part(hit.id).is_none();
+            && sunrise_gameplay_common::game::pick_entity_common::has_pick_result(self.level_entity(id));
+        let suggest_uuid = !is_synthetic_dragon_part && self.resident_dragon_part(hit.id).is_none();
         Some(CrosshairEntityHit {
             id,
             distance: hit.distance_sq.sqrt(),
@@ -136,7 +136,7 @@ impl ServerGame<'_> {
                 .0
                 .iter()
                 .find(|o| o.id == id && o.knot_check.is_some())?;
-            if self.common.level_entity(id as i32) != Some(super::commands::Target::Other(id)) {
+            if self.level_entity(id as i32) != Some(super::commands::Target::Other(id)) {
                 return None;
             }
             let block = sunrise_core::position::BlockPos::containing(knot.position);
@@ -144,3 +144,7 @@ impl ServerGame<'_> {
         })
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;

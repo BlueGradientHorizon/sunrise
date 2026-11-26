@@ -535,3 +535,7 @@ fn a_drowning_dolphins_goal_move_fires_too() {
         });
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;

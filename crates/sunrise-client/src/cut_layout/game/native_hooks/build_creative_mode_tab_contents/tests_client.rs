@@ -237,3 +237,5 @@ fn creative_catalog_builds_lazily_and_edits_before_filtering_on_both_sides() {
         });
     });
 }
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

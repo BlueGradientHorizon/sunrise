@@ -1041,3 +1041,7 @@ fn minecart_root_refused_by_its_passenger_uuid_stays_off_level_through_travel() 
         vehicle_root_travel(&MINECART_TRAVEL, dismount);
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

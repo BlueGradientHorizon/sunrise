@@ -111,8 +111,8 @@ impl crate::game::ClientGame<'_> {
             .animated(self.animation_time());
             let mut canceled = false;
             self.native_render_arm(
-                self.common.own_uuid(),
-                self.common.own_entity_id(),
+                self.own_uuid(),
+                self.own_entity_id(),
                 left,
                 &mut draw,
                 &mut canceled,
@@ -263,8 +263,8 @@ impl crate::game::ClientGame<'_> {
                 None
             };
             let mut render = mod_api::HandRender {
-                player: self.common.own_uuid(),
-                player_entity_id: self.common.own_entity_id(),
+                player: self.own_uuid(),
+                player_entity_id: self.own_entity_id(),
                 hand,
                 stack: snapshot.as_ref().and_then(Option::as_ref),
                 partial: a,
@@ -355,13 +355,13 @@ impl crate::game::ClientGame<'_> {
             }
             // The hand renderer's copy of the main hand stack.
             owner.fishing_cast_with_this_item =
-                self.common.main_hand_rod() && self.common.cast_rod() == Some(&stack);
+                self.main_hand_rod() && self.cast_rod() == Some(&stack);
             let using = owner.using_this_item && owner.use_item_remaining_ticks > 0;
             let ticks_used =
                 owner.use_duration as f32 - (owner.use_item_remaining_ticks as f32 - a + 1.0);
             use sunrise_gameplay_common::game::item_use_common::ItemUseState;
             use sunrise_client::first_person::ItemPose;
-            let state = using.then(|| self.common.item_use_state(&stack));
+            let state = using.then(|| self.item_use_state(&stack));
             use sunrise_core::use_animation::UseAnimation;
             let pose = match state {
                 Some(ItemUseState::Spear(timing)) => ItemPose::Spear {
@@ -764,3 +764,7 @@ mod celestial_body_tests {
 }
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

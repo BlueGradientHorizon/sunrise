@@ -527,8 +527,8 @@ impl crate::game::ServerGame<'_> {
         // A primed TNT minecart's rails and the blocks they
         // stand on: no resistance, and never blown up.
         let spared = rules.rail_proof
-            && (self.common.rail(None, pos[0], pos[1], pos[2]).is_some()
-                || self.common.rail(None, pos[0], pos[1] + 1, pos[2]).is_some());
+            && (self.rail(None, pos[0], pos[1], pos[2]).is_some()
+                || self.rail(None, pos[0], pos[1] + 1, pos[2]).is_some());
         let resistance = match rules.resists {
             Some((at, resistance)) if at == pos => Some(resistance),
             _ if !self.common.res.facts().is_air(state) || f.fluid != Fluid::None => {
@@ -808,7 +808,7 @@ impl crate::game::ServerGame<'_> {
                 && let Ok(o) = p.hurt_caused_by(
                     crate::game::entity_server::damage_level_of!(
                         self,
-                        self.side.combat.0.attack(),
+                        self.server.combat.0.attack(),
                         no_push,
                         crate::game::entity_server::player_victim_causer!(self, decision),
                         acting_equipment!(self)
@@ -1142,7 +1142,7 @@ impl crate::game::ServerGame<'_> {
             }
             // An entity the blast's list does not name is neither hurt nor
             // pushed; without a listener the storages are the walk.
-            let hit = if with_entity!(self, handle, e => self.side.combat.0.visits(e.id())) {
+            let hit = if with_entity!(self, handle, e => self.server.combat.0.visits(e.id())) {
                 let seen = hurts || knockback != 0.0;
                 with_entity!(self, handle, e => self.blast_hit(e, center, diameter, &blast, seen))
             } else {
@@ -1270,7 +1270,7 @@ impl crate::game::ServerGame<'_> {
                             continue;
                         };
                         let can_hurt = self
-                            .common.stack_can_be_hurt_by(&self.common.dropped[i].stack, damage_type)
+                            .stack_can_be_hurt_by(&self.common.dropped[i].stack, damage_type)
                             .unwrap_or(true);
                         let item = &mut self.common.dropped[i];
                         if !blocked && can_hurt {
@@ -1515,7 +1515,7 @@ impl crate::game::ServerGame<'_> {
                 let vanilla = self.saved_refuses_damage(id, damage_type, creative);
                 if crate::game::entity_server::damage_level_of!(
                     self,
-                    self.side.combat.0.attack(),
+                    self.server.combat.0.attack(),
                     no_push,
                     None
                 )
@@ -1883,7 +1883,7 @@ impl crate::game::ServerGame<'_> {
             // tryAwardExperience checks the TNT owner's own abilities.
             let award = match self.server.combat.0.blast_guest {
                 Some(conn) => self
-                    .common.command_guest(conn)
+                    .command_guest(conn)
                     .is_some_and(|g| !g.creative() && !g.spectator()),
                 None => {
                     self.server.combat.0.blast_owner_player && !self.common.creative && !self.common.spectator()
@@ -2827,3 +2827,13 @@ use sunrise_gameplay_common::game::server_side::explosion::tests::zombie_type;
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::cart_rails::CartRailsGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

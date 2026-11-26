@@ -13,7 +13,7 @@ pub fn synced_pose(m: &Mob) -> Pose {
     }
 }
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// Ask `entity_size` for an entity whose vanilla size in `pose` is `vanilla`, unless
     /// `previous` was already asked for both. `None`: nothing to ask, keep `previous`.
     pub fn ask_entity_size(

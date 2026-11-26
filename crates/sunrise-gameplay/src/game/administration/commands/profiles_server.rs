@@ -54,7 +54,7 @@ impl crate::game::ServerGame<'_> {
                     Target::Guest(conn) => conn,
                     _ => return None,
                 };
-                Some((conn, self.common.command_guest(conn)?.name.clone()))
+                Some((conn, self.command_guest(conn)?.name.clone()))
             })
             .collect();
         if players.is_empty() {
@@ -93,7 +93,7 @@ impl crate::game::ServerGame<'_> {
         if self.server.console_broadcast.is_some() {
             "Server".to_owned()
         } else {
-            self.common.acting_player_name().to_owned()
+            self.acting_player_name().to_owned()
         }
     }
     /// `NameAndId` of a player target.
@@ -101,9 +101,9 @@ impl crate::game::ServerGame<'_> {
         match t {
             Target::Player => Some(NameAndId {
                 id: self.server.lan_acting_uuid?,
-                name: self.common.acting_player_name().to_owned(),
+                name: self.acting_player_name().to_owned(),
             }),
-            Target::Guest(conn) => self.common.command_guest(conn).map(|g| NameAndId {
+            Target::Guest(conn) => self.command_guest(conn).map(|g| NameAndId {
                 id: g.uuid,
                 name: g.name.clone(),
             }),
@@ -111,3 +111,5 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

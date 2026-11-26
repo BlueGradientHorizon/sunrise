@@ -48,7 +48,6 @@ impl ServerHost for ServerGame<'_> {
             .and_then(|items| stack.try_into_engine_preserving_count(items))
             .map_err(ScratchScopeError::Stack)?;
         let taken = self
-            .common
             .scratch_scope(
                 Some(engine_stack.item.clone()),
                 engine_stack,
@@ -73,7 +72,6 @@ impl ServerHost for ServerGame<'_> {
             .and_then(|items| stack.try_into_engine_preserving_count(items))
             .map_err(ScratchScopeError::Stack)?;
         let taken = self
-            .common
             .scratch_scope(None, engine_stack, |game, tx, place| {
                 callback(game, tx, place)
             })
@@ -98,6 +96,8 @@ impl ServerHost for ServerGame<'_> {
 impl Backend for ServerGame<'_> {}
 impl BackendMut for ServerGame<'_> {}
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::transactions::scratch::ScratchGameExt1 as _;
 
 include!(concat!(env!("OUT_DIR"), "/game_host_generated.rs"));
 

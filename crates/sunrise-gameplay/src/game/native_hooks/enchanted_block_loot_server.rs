@@ -123,14 +123,14 @@ pub(in crate::game) mod tests {
         tool: Option<&ItemStack>,
     ) -> (usize, i32, i32) {
         *game.world.random = LegacyRandom::new(7);
-        game.side.rand_sequences = Default::default();
+        game.server.rand_sequences = Default::default();
         let flint = (0..ROLLS)
             .flat_map(|_| game.block_loot_at(POS, gravel, tool))
             .filter(|stack| &*stack.item == "minecraft:flint")
             .count();
         let seed = game.level.seed;
         let sequence = game
-            .side
+            .server
             .rand_sequences
             .get("minecraft:blocks/gravel", seed);
         (flint, game.world.random.next_int(), sequence.next_int())

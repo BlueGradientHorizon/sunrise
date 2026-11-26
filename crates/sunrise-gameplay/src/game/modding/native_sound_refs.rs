@@ -20,10 +20,10 @@ impl crate::game::ServerGame<'_> {
         &self,
         player: PlayerRef,
     ) -> Option<Target> {
-        if self.common.player(player.uuid()) != Some(player) {
+        if self.player(player.uuid()) != Some(player) {
             return None;
         }
-        match self.common.native_entity_target(player.entity())? {
+        match self.native_entity_target(player.entity())? {
             t @ (Target::Player | Target::Guest(_)) => Some(t),
             _ => None,
         }
@@ -149,11 +149,11 @@ impl crate::game::ServerGame<'_> {
         except: Option<u32>,
         seed: Option<i64>,
     ) -> bool {
-        let Some(target) = self.common.native_entity_target(entity) else {
+        let Some(target) = self.native_entity_target(entity) else {
             return false;
         };
         let (Some(level), Some(at), Ok(id)) = (
-            self.common.entity_level(entity),
+            self.entity_level(entity),
             self.target_position(target),
             i32::try_from(entity.id()),
         ) else {
@@ -174,3 +174,9 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

@@ -80,3 +80,5 @@ impl ClientGame<'_> {
         .map_err(|_| LevelWriteError::Unavailable)
     }
 }
+
+use sunrise_gameplay_common::game::piston_push::PistonPushGameExt1 as _;

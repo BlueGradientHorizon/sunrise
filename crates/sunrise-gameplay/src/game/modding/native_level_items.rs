@@ -52,7 +52,7 @@ impl ServerGame<'_> {
         pos: [i32; 3],
         stack: ItemStack,
     ) -> Option<EntityRef> {
-        if !self.common.level_in_place(level) || self.entity_ids_exhausted() {
+        if !self.level_in_place(level) || self.entity_ids_exhausted() {
             return None;
         }
         let at = spill::pop_position(&mut self.common.world.random, pos);
@@ -121,7 +121,7 @@ impl ServerGame<'_> {
             .into_iter()
             .chain(motion.into_iter().flatten())
             .all(f64::is_finite);
-        if !finite || !self.common.level_in_place(level) || !self.stack_spawns(&stack) {
+        if !finite || !self.level_in_place(level) || !self.stack_spawns(&stack) {
             return None;
         }
         self.spawn_level_item(level, stack, [x, y, z], motion, pickup_delay)
@@ -144,7 +144,7 @@ impl ServerGame<'_> {
         z: f64,
         amount: u32,
     ) -> bool {
-        if amount == 0 || ![x, y, z].iter().all(|v| v.is_finite()) || !self.common.level_in_place(level) {
+        if amount == 0 || ![x, y, z].iter().all(|v| v.is_finite()) || !self.level_in_place(level) {
             return false;
         }
         self.spawn_orbs([x, y, z], amount);
@@ -153,3 +153,5 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

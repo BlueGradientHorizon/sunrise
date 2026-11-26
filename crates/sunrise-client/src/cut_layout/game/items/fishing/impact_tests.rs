@@ -179,3 +179,5 @@ fn removing_a_bobber_in_its_impact_clears_the_line_without_rewards() {
         });
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

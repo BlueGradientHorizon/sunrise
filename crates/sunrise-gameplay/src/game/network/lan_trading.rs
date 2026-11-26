@@ -555,11 +555,11 @@ impl crate::game::ServerGame<'_> {
             frozen.primary,
         );
         let mut handled = true;
-        let pickup = self.common.stacked_pickup(
+        let pickup = self.stacked_pickup(
             route,
             frozen,
             move |game| {
-                let now = game.side.lan.as_ref()?.hub.guests.get(gi?)?.carried.clone();
+                let now = game.server.lan.as_ref()?.hub.guests.get(gi?)?.carried.clone();
                 (now == carried).then(|| same.clone())
             },
             |game, carried, clicked| {
@@ -1065,8 +1065,8 @@ use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::off
             seed: 0,
             max_players: 2,
             integrated: true,
-            levels: game.side.level_shapes,
-            level_seeds: game.side.levels.0.runtime.seeds(),
+            levels: game.server.level_shapes,
+            level_seeds: game.server.levels.0.runtime.seeds(),
         };
         game.lan_host(settings, net, config).unwrap();
         let (tx, rx) = std::sync::mpsc::channel();
@@ -1089,7 +1089,7 @@ use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::off
         );
         guest.placed = true;
         let window = guest.next_menu_window();
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
 
         let villager = spawn(game, 40, "minecraft:villager");
         game.mobs[0].extra.profession = sunrise_sim::mobs::villager::ProfessionState::from_index(5);
@@ -1108,7 +1108,7 @@ use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::off
         for id in
             merchant::Session::sequences_needed(&game.stations().trades, &session.profession, level)
         {
-            let random = game.side.rand_sequences.lend(&id, game.level.seed);
+            let random = game.server.rand_sequences.lend(&id, game.level.seed);
             session.sequences.insert(id, random);
         }
         let gm = GuestMerchant {
@@ -1129,7 +1129,7 @@ use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::off
             sent_xp: 0,
             sent_result: None,
         };
-        game.side
+        game.server
             .lan
             .as_mut()
             .unwrap()
@@ -1197,3 +1197,7 @@ use sunrise_gameplay_common::game::server_side::native_merchant_refs::tests::off
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::stacked_on_other::StackedOnOtherGameExt1 as _;

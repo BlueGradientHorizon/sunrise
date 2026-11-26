@@ -44,76 +44,9 @@ impl crate::game::CommonGame<'_> {
         }
     }
 
-    /// Runs `f` inside a new (or nested) storage transaction with a lent scratch [`ItemPlace`].
-    /// Commits and returns the final slots when `f` returns `true`; aborts and returns `None` on
-    /// `false` or unwind. Reports a refused commit separately from callback abort.
-    pub fn scratch_scope(
-        &mut self,
-        item: Option<Arc<str>>,
-        stack: ItemStack,
-        f: impl for<'loan> FnOnce(&'loan mut Self, &'loan TransactionContext, &'loan ItemPlace) -> bool,
-    ) -> Result<Option<Scratch>, TransactionScopeError> {
-        let (_, settled) = self.run_storage_scope(|game, frame| {
-            let slot = game.transactions.insert_scratch(Scratch {
-                item,
-                stack: Some(stack),
-                overflow: None,
-            });
-            if let Some(level) = game.transactions.levels.last_mut() {
-                level.owned_scratch = Some(slot.id());
-            }
-            let place = ItemPlace::Scratch(slot);
-            let commit = frame.lend(|tx| f(game, tx, &place));
-            ((), commit)
-        });
-        match settled {
-            StorageSettlement::Committed(slots) => Ok(slots),
-            StorageSettlement::Aborted => Ok(None),
-            StorageSettlement::Refused => Err(TransactionScopeError::CommitRefused),
-        }
-    }
-
     /// The first slot of lent scratch place `slot`.
     pub fn scratch_held(&self, slot: ScratchSlot) -> Option<&ItemStack> {
         self.transactions.scratch.get(&slot.id())?.stack.as_ref()
-    }
-
-    /// Puts what of `offer` fits into lent scratch place `slot`: its own item only, empty or with
-    /// the same components, up to the item's stack size; a two-slot copy takes any item into its
-    /// first slot where that is empty or holds the same, and what doesn't fit into its second.
-    /// How many went.
-    pub fn scratch_insert(&mut self, slot: ScratchSlot, offer: &ItemStack) -> u32 {
-        if offer.count == 0 {
-            return 0;
-        }
-        let id = slot.id();
-        let Some(held) = self.transactions.scratch.get(&id).cloned() else {
-            return 0;
-        };
-        if held.item.as_ref().is_some_and(|item| *item != offer.item) {
-            return 0;
-        }
-        let info = self.items().get(&offer.item);
-        let max = match offer.effective_max_stack_size(info) {
-            Some(max) => max.clamp(1, 99) as u32,
-            None => info.map_or(64, |i| i.max_stack).max(1),
-        };
-        let mut stack = held.stack;
-        let mut overflow = held.overflow;
-        let items = self.res.items();
-        let mut put = fill(&mut stack, offer, offer.count, max, items);
-        if held.item.is_none() {
-            put += fill(&mut overflow, offer, offer.count - put, max, items);
-        }
-        if put == 0 {
-            return 0;
-        }
-        self.keep_scratch(id);
-        if let Some(scratch) = self.transactions.scratch.get_mut(&id) {
-            scratch.stack = stack;
-            scratch.overflow = overflow;
-        }
-        put
     }
 
     /// Takes up to `amount` of `resource`'s item and components out of lent scratch place `slot`.
@@ -160,6 +93,78 @@ impl crate::game::CommonGame<'_> {
             .map_or(0, |level| level.scratch_kept.len())
     }
 }
+
+pub trait ScratchGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+
+    /// Runs `f` inside a new (or nested) storage transaction with a lent scratch [`ItemPlace`].
+    /// Commits and returns the final slots when `f` returns `true`; aborts and returns `None` on
+    /// `false` or unwind. Reports a refused commit separately from callback abort.
+     fn scratch_scope(
+        &mut self,
+        item: Option<Arc<str>>,
+        stack: ItemStack,
+        f: impl for<'loan> FnOnce(&'loan mut Self, &'loan TransactionContext, &'loan ItemPlace) -> bool,
+    ) -> Result<Option<Scratch>, TransactionScopeError> {
+        let (_, settled) = self.run_storage_scope(|game, frame| {
+            let slot = game.transactions.insert_scratch(Scratch {
+                item,
+                stack: Some(stack),
+                overflow: None,
+            });
+            if let Some(level) = game.transactions.levels.last_mut() {
+                level.owned_scratch = Some(slot.id());
+            }
+            let place = ItemPlace::Scratch(slot);
+            let commit = frame.lend(|tx| f(game, tx, &place));
+            ((), commit)
+        });
+        match settled {
+            StorageSettlement::Committed(slots) => Ok(slots),
+            StorageSettlement::Aborted => Ok(None),
+            StorageSettlement::Refused => Err(TransactionScopeError::CommitRefused),
+        }
+    }
+
+    /// Puts what of `offer` fits into lent scratch place `slot`: its own item only, empty or with
+    /// the same components, up to the item's stack size; a two-slot copy takes any item into its
+    /// first slot where that is empty or holds the same, and what doesn't fit into its second.
+    /// How many went.
+     fn scratch_insert(&mut self, slot: ScratchSlot, offer: &ItemStack) -> u32 {
+        if offer.count == 0 {
+            return 0;
+        }
+        let id = slot.id();
+        let Some(held) = self.transactions.scratch.get(&id).cloned() else {
+            return 0;
+        };
+        if held.item.as_ref().is_some_and(|item| *item != offer.item) {
+            return 0;
+        }
+        let info = self.items().get(&offer.item);
+        let max = match offer.effective_max_stack_size(info) {
+            Some(max) => max.clamp(1, 99) as u32,
+            None => info.map_or(64, |i| i.max_stack).max(1),
+        };
+        let mut stack = held.stack;
+        let mut overflow = held.overflow;
+        let items = self.res.items();
+        let mut put = fill(&mut stack, offer, offer.count, max, items);
+        if held.item.is_none() {
+            put += fill(&mut overflow, offer, offer.count - put, max, items);
+        }
+        if put == 0 {
+            return 0;
+        }
+        self.keep_scratch(id);
+        if let Some(scratch) = self.transactions.scratch.get_mut(&id) {
+            scratch.stack = stack;
+            scratch.overflow = overflow;
+        }
+        put
+    }
+}
+impl<'__sg, G: crate::game::SideGame<'__sg>> ScratchGameExt1<'__sg> for G {}
+
 
 /// Puts up to `count` of `offer` into `slot`, empty or holding the same item and components,
 /// up to `max`: how many went.

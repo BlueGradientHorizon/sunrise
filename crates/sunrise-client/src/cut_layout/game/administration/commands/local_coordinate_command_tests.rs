@@ -200,3 +200,7 @@ fn h149_actual_registered_local_commands_preserve_exact_saved_positions() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

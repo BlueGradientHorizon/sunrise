@@ -41,7 +41,7 @@ impl crate::game::ServerGame<'_> {
         if !scratch.riders.is_empty() {
             self.server_carry_in_order(start, &steps, &mut scratch);
             // A passenger that owns a collider moves with its vehicle too.
-            self.common.position_riders();
+            self.position_riders();
         }
         self.server_shove_pass(start, &steps, &scratch.riders);
         SCRATCH.with(|cell| *cell.borrow_mut() = scratch);
@@ -208,3 +208,5 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;

@@ -234,3 +234,5 @@ fn control_a_multi_display_recipe_still_has_no_ghost() {
     hub.send_ghost_recipe(2, 0, "minecraft:crafting_table");
     assert_eq!(ghosts(&rx), 1, "the ordinary recipe's ghost");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

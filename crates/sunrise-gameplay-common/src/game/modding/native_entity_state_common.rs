@@ -19,13 +19,13 @@ pub enum Body<'a> {
     Other(Target),
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    pub fn native_target_body(&self, target: Target) -> Option<Body<'_>> {
+pub trait NativeEntityStateCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+     fn native_target_body(&self, target: Target) -> Option<Body<'_>> {
         Some(match target {
             Target::Player => Body::Player(self.player.as_ref()?),
             Target::Guest(conn) => Body::Player(
                 crate::game::side_ops::player::SideOps::side_command_guest_motion(
-                    &self.side, conn,
+                    self.side_state(), conn,
                 )?,
             ),
             Target::Mob(id) => Body::Mob(self.mobs.iter().find(|m| m.id == id)?),
@@ -35,7 +35,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 
     /// Whether the entity touched water at its last fluid update
     /// (`Entity.isInWater`): players and mobs.
-    pub(in crate::game) fn entity_is_in_water(&self, entity: EntityRef) -> Option<bool> {
+     fn entity_is_in_water(&self, entity: EntityRef) -> Option<bool> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(p) => Some(p.fluids.was_touching_water),
             Body::Mob(m) => Some(m.fluids.in_water),
@@ -44,7 +44,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     }
 
     /// The player's swimming flag, distinct from its pose (which also covers crawling).
-    pub(in crate::game) fn entity_is_swimming(&self, entity: EntityRef) -> Option<bool> {
+     fn entity_is_swimming(&self, entity: EntityRef) -> Option<bool> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(p) => Some(p.swimming),
             _ => None,
@@ -55,7 +55,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// it (`IEntityExtension.getFluidTypeHeight`), highest first; empty in no fluid. Players and
     /// mobs: water and lava, the fluids Sunrise's entity update tracks. On a client these
     /// are the predicted local player's state or the displayed entity's last fluid update.
-    pub(in crate::game) fn entity_fluid_heights(
+     fn entity_fluid_heights(
         &self,
         entity: EntityRef,
     ) -> Option<Vec<(String, f64)>> {
@@ -78,7 +78,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// The fluid at the entity's eyes from its last fluid update
     /// (`IEntityExtension.getFirstEyeInFluidType`): water or lava, none in air. Players and mobs.
     /// On a client this reads its own cached fluid update, without sampling the world again.
-    pub(in crate::game) fn entity_eye_fluid(&self, entity: EntityRef) -> Option<Option<String>> {
+     fn entity_eye_fluid(&self, entity: EntityRef) -> Option<Option<String>> {
         use sunrise_sim::motion::{LAVA, WATER};
         Some(
             match self.native_target_body(self.native_entity_read_target(entity)?)? {
@@ -90,7 +90,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     }
 
     /// Entity.isUnderWater uses eye sample AND contact; LocalPlayer's override uses the sample alone.
-    pub(in crate::game) fn entity_is_under_water(&self, entity: EntityRef) -> Option<bool> {
+     fn entity_is_under_water(&self, entity: EntityRef) -> Option<bool> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(p) if !self.is_logical_server() => Some(p.is_under_water()),
             Body::Player(p) => Some(p.fluids.was_eye_in_water && p.fluids.was_touching_water),
@@ -100,7 +100,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     }
 
     /// Entity.isOnFire: remaining ticks or the client's synced flag, unless fire immune.
-    pub(in crate::game) fn entity_is_on_fire(&self, entity: EntityRef) -> Option<bool> {
+     fn entity_is_on_fire(&self, entity: EntityRef) -> Option<bool> {
         let (ticks, immune) = match self
             .native_entity_read_target(entity)
             .and_then(|target| self.native_target_body(target))
@@ -125,7 +125,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     }
 
     /// `Entity.fireImmune`: effective immunity on the side of the host.
-    pub(in crate::game) fn entity_fire_immune(&self, entity: EntityRef) -> Option<bool> {
+     fn entity_fire_immune(&self, entity: EntityRef) -> Option<bool> {
         match self
             .native_entity_read_target(entity)
             .and_then(|target| self.native_target_body(target))
@@ -143,7 +143,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     }
 
     /// The entity's air (`Entity.getAirSupply`): players and mobs.
-    pub(in crate::game) fn entity_air_supply(&self, entity: EntityRef) -> Option<i32> {
+     fn entity_air_supply(&self, entity: EntityRef) -> Option<i32> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Player(p) => Some(p.air),
             Body::Mob(m) => Some(m.air),
@@ -153,7 +153,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 
     /// The most air the entity holds (`Entity.getMaxAirSupply`): 300, a
     /// dolphin's 4800, an axolotl's 6000.
-    pub(in crate::game) fn entity_max_air_supply(&self, entity: EntityRef) -> Option<i32> {
+     fn entity_max_air_supply(&self, entity: EntityRef) -> Option<i32> {
         match self.native_target_body(self.native_entity_read_target(entity)?)? {
             Body::Mob(m) => Some(max_air(Some(m.species()))),
             _ => Some(max_air(None)),
@@ -163,7 +163,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// Ticks the entity has lived (`Entity.tickCount`): on a server, living entities, item
     /// entities, experience orbs and minecarts; on a client, every entity of the level it
     /// shows (`side_client_entity_tick_count`). Wraps as vanilla's `int` does.
-    pub(in crate::game) fn entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
+     fn entity_tick_count(&self, entity: EntityRef) -> Option<i32> {
         if !self.is_logical_server() {
             return self.side_client_entity_tick_count(entity);
         }
@@ -171,7 +171,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             Target::Player => self.player.as_ref()?.health.tick_count,
             Target::Guest(conn) => {
                 crate::game::side_ops::player::SideOps::side_command_guest_tick_count(
-                    &self.side, conn,
+                    self.side_state(), conn,
                 )?
             }
             Target::Mob(id) => self.mobs.iter().find(|m| m.id == id)?.age as i32,
@@ -184,6 +184,8 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         })
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeEntityStateCommonGameExt1<'__sg> for G {}
+
 
 /// `(fluid, height)` for each fluid `(height, touched)` the entity touched, highest first;
 /// water before lava at the same height (`getMaxHeightFluidType`'s order).
@@ -211,3 +213,7 @@ pub fn eye_fluid(water: bool, lava: bool) -> Option<String> {
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 
 use crate::game::side_ops::player::PlayerSideGameExt as _;
+
+use crate::game::native_components::NativeComponentsGameExt1 as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

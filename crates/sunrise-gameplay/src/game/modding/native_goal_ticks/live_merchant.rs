@@ -52,3 +52,5 @@ impl GoalCx<'_, '_> {
         Some(self.w.goal_host?.merchant_trade_state_lent(mob).0)
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

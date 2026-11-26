@@ -59,7 +59,7 @@ pub fn jukebox_signals(
     }
 }
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     pub fn jukebox(&self, pos: [i32; 3]) -> Option<&Jukebox> {
         match self.world.block_entities.get(&(pos[0], pos[1], pos[2])) {
             Some(BlockEntity::Jukebox(j)) => Some(j),

@@ -118,3 +118,7 @@ fn cushion_get_entity_matches_vanilla_membership_oracle() {
         assert!(game.level_entity(id as i32).is_none());
     });
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

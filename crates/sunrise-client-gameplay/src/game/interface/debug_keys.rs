@@ -52,16 +52,16 @@ impl DebugHost for Host<'_, '_> {
         self.game.open_screen()
     }
     fn toggle_overlay(&mut self) {
-        self.game.set_debug_overlay(!self.game.side.debug);
+        self.game.set_debug_overlay(!self.game.client.debug);
     }
     fn pause_game(&mut self, without_menu: bool) {
         // Gui.setPauseScreen: PauseScreen(false) only when the game really
         // pauses (single player, not open to the network). Escape alone opens
         // the menu as it always has (key_pressed).
         let g = &mut *self.game;
-        if without_menu && g.side.screen == Screen::Playing {
-            g.side.pause_menu = !g.has_singleplayer_server() || g.is_published();
-            g.side.pause_focus = None;
+        if without_menu && g.client.screen == Screen::Playing {
+            g.client.pause_menu = !g.has_singleplayer_server() || g.is_published();
+            g.client.pause_focus = None;
             g.set_screen(Screen::Paused);
             g.capture(false);
             g.set_client_mining(None);
@@ -130,7 +130,7 @@ impl crate::game::ClientGame<'_> {
         // so a screen with a focused text box takes every press first;
         // releases still reach KeyboardHandler.
         let typing = matches!(
-            self.side.screen,
+            self.client.screen,
             Screen::Chat
                 | Screen::Options
                 | Screen::WorldOptions
@@ -314,7 +314,7 @@ impl crate::game::ClientGame<'_> {
             )
         };
         // `DebugScreenOverlay`: the single-player variants for a local server.
-        let remote = !self.common.has_singleplayer_server();
+        let remote = !self.has_singleplayer_server();
         let c = &self.client.debug_charts;
         [
             format!(
@@ -423,7 +423,7 @@ impl crate::game::ClientGame<'_> {
                 height,
                 self.client.settings.max_fps,
                 &self.common.clock,
-                !self.common.has_singleplayer_server(),
+                !self.has_singleplayer_server(),
             );
             draws.push(hud_layout::GuiDraw::Push(vec![hud_layout::PoseOp::Scale(
                 scale, scale,
@@ -500,12 +500,12 @@ impl crate::game::ClientGame<'_> {
             .map_or(String::new(), |share| {
                 format!(
                     " ({} fps FSR 3.1)",
-                    (self.side.fps * (1.0 + share)).round() as i32
+                    (self.client.fps * (1.0 + share)).round() as i32
                 )
             });
         d.priority(format!(
             "{} fps{generated} T: {}{present} @{refresh}Hz",
-            self.side.fps.round() as i32,
+            self.client.fps.round() as i32,
             if limit == 260 {
                 "inf".into()
             } else {
@@ -536,7 +536,7 @@ impl crate::game::ClientGame<'_> {
         d.line("Filtering: None");
         d.line(format!(
             "Terrain Rendering: {}",
-            if self.side.renderer.0.as_ref().is_some_and(|r| r.multi_draw) {
+            if self.client.renderer.0.as_ref().is_some_and(|r| r.multi_draw) {
                 "multidrawindirect"
             } else {
                 "naive"
@@ -790,7 +790,7 @@ impl crate::game::ClientGame<'_> {
             DebugAction::Spectate => {
                 if self.common.player.is_none() || !self.gamemaster() {
                     self.debug_translated("debug.creative_spectator.error");
-                } else if !self.common.own_player_is_spectator() {
+                } else if !self.own_player_is_spectator() {
                     self.change_game_mode(GameMode::Spectator);
                 } else {
                     let back = self.common.previous_mode.unwrap_or(GameMode::Creative);
@@ -968,7 +968,7 @@ impl crate::game::ClientGame<'_> {
             "client"
         };
         if self.entity_targeted()
-            && let Some((index, _, _)) = self.common.mob_hit()
+            && let Some((index, _, _)) = self.mob_hit()
         {
             let (kind, position, id) = {
                 let m = &self.common.mobs[index];
@@ -996,7 +996,7 @@ impl crate::game::ClientGame<'_> {
             self.debug_translated(&format!("debug.inspect.{side}.entity"));
             return;
         }
-        let Some(hit) = self.common.pick() else {
+        let Some(hit) = self.pick() else {
             return;
         };
         let pos = hit.pos;
@@ -1600,3 +1600,9 @@ mod tests {
         );
     }
 }
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

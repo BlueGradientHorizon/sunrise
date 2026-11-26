@@ -21,14 +21,14 @@ impl crate::game::ServerGame<'_> {
             self.post_game_event(event, at, context);
             return true;
         };
-        let Some(target) = self.common.native_entity_target(entity) else {
+        let Some(target) = self.native_entity_target(entity) else {
             return false;
         };
         if !self.native_entity_here(entity) {
             return false;
         }
         if let Target::Guest(conn) = target {
-            let Some(uuid) = self.common.command_guest(conn).map(|guest| guest.uuid) else {
+            let Some(uuid) = self.command_guest(conn).map(|guest| guest.uuid) else {
                 return false;
             };
             // Capture and post inside the same guest scope: Who::Player and the
@@ -47,3 +47,7 @@ impl crate::game::ServerGame<'_> {
         true
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

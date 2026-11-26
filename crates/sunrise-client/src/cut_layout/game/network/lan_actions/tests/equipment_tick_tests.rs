@@ -81,3 +81,7 @@ fn gear_swapped_and_swapped_back_before_the_tick_keeps_its_modifiers() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_equip::PlayerEquipGameExt2 as _;

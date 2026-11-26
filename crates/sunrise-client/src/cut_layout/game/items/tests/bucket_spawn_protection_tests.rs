@@ -207,3 +207,5 @@ fn a_guest_without_build_rights_neither_empties_nor_fills_a_bucket_under_spawn_p
         "and gets the full bucket"
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

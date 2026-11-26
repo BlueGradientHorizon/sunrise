@@ -56,3 +56,5 @@ fn a_servers_custom_enchantment_book_gives_an_anvil_result() {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::stations_common::StationsCommonGameExt1 as _;

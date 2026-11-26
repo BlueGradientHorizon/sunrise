@@ -139,7 +139,7 @@ impl crate::game::ClientGame<'_> {
         }
         self.open_screen_overlay("code_of_conduct", |game| {
             game.capture(false);
-            game.side.code_of_conduct = Some(Prompt {
+            game.client.code_of_conduct = Some(Prompt {
                 text,
                 hash,
                 stop_showing: false,

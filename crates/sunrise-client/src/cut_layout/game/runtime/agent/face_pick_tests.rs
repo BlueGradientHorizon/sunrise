@@ -624,3 +624,7 @@ fn look_at_entity_waits_for_a_running_turn() {
         assert_eq!(game.yaw, 90.0, "the running turn keeps the view");
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

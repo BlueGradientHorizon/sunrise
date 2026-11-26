@@ -12,7 +12,7 @@ pub const MAX_COLUMNS: usize = 1 << 16;
 /// A change `World::edit_runs` reported: position, previous and new state.
 pub type Tracked = ((i32, i32, i32), u32, u32);
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// Each column's height on `h` as `edit_height` reads it, none where its chunk is not loaded.
     pub fn loaded_column_heights(
         &self,

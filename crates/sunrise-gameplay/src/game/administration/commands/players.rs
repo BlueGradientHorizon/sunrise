@@ -38,12 +38,14 @@ impl crate::game::ServerGame<'_> {
             .iter()
             .find(|(_, nick)| bare(nick) == wanted)?
             .0;
-        self.common.target_by_uuid(*uuid)
+        self.target_by_uuid(*uuid)
     }
 
     /// A guest's experience level and game mode, for `level=` and `gamemode=`.
     pub(in crate::game) fn guest_level_and_mode(&self, conn: u32) -> Option<(i32, &'static str)> {
-        self.common.command_guest(conn)
+        self.command_guest(conn)
             .map(|g| (g.xp_level, mode_name(g.game_mode)))
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

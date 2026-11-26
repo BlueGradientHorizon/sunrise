@@ -68,3 +68,5 @@ fn loaded_air_is_discarded_on_first_actual_game_tick() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

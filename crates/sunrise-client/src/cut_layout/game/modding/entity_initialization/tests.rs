@@ -849,3 +849,5 @@ fn dragon_part_constructor_first_read_indexes_payload_and_same_id_replacement_re
         });
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

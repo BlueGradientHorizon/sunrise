@@ -90,3 +90,7 @@ fn holder_detach_still_dispatches_the_actual_interaction_criterion() {
     assert_eq!(game.world.game_time, clock);
     let _ = std::fs::remove_dir_all(&game.side.world_root);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

@@ -121,3 +121,5 @@ pub(in crate::game) fn stone_under_the_crosshair(game: &mut sunrise_client_gamep
     game.world.set(0, 64, 0, stone).unwrap();
     game.set_test_forced_hit(Some(hit()));
 }
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

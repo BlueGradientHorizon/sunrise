@@ -246,3 +246,7 @@ fn a_fence_leash_pulls_a_pig_as_vanilla_does() {
         );
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

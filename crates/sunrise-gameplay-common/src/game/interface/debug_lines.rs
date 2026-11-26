@@ -29,7 +29,7 @@ pub struct ServerDebug {
     pub chunks: Option<(usize, usize, usize)>,
 }
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// `Level.getEntityCount` over the entities Sunrise keeps.
     pub fn debug_entity_count(&self) -> usize {
         self.mobs.iter().filter(|m| !m.removed).count()

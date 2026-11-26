@@ -21,7 +21,7 @@ impl crate::game::ServerGame<'_> {
         if !self.common.is_logical_server() {
             return None;
         }
-        let t = self.common.native_entity_target(entity)?;
+        let t = self.native_entity_target(entity)?;
         match self.command_target_nbt(t)? {
             Tag::Compound(mut c) => {
                 c.remove(&"id".into());
@@ -42,7 +42,7 @@ impl crate::game::ServerGame<'_> {
         if !self.common.is_logical_server() {
             return false;
         }
-        let Some(t) = self.common.native_entity_target(entity) else {
+        let Some(t) = self.native_entity_target(entity) else {
             return false;
         };
         let Some(old) = self.entity_nbt(entity).map(Tag::Compound) else {
@@ -61,7 +61,7 @@ impl crate::game::ServerGame<'_> {
         if !self.common.is_logical_server() {
             return None;
         }
-        Some(self.saved_entity_tags(self.common.native_entity_target(entity)?))
+        Some(self.saved_entity_tags(self.native_entity_target(entity)?))
     }
     /// Adds tag `tag` (`Entity.addTag`): false when it has it already, holds
     /// 1024, its kind can't store tags yet, or the handle is stale. API 386.
@@ -69,7 +69,7 @@ impl crate::game::ServerGame<'_> {
         if !self.common.is_logical_server() {
             return false;
         }
-        let Some(t) = self.common.native_entity_target(entity) else {
+        let Some(t) = self.native_entity_target(entity) else {
             return false;
         };
         let mut tags = self.tags_of(t);
@@ -87,7 +87,7 @@ impl crate::game::ServerGame<'_> {
         if !self.common.is_logical_server() {
             return false;
         }
-        let Some(t) = self.common.native_entity_target(entity) else {
+        let Some(t) = self.native_entity_target(entity) else {
             return false;
         };
         let mut tags = self.tags_of(t);
@@ -124,7 +124,7 @@ impl crate::game::ServerGame<'_> {
     /// Whether the entity's name shows over it at any distance
     /// (`Entity.isCustomNameVisible`); false for the kinds that keep no name.
     pub(in crate::game) fn entity_custom_name_visible(&self, entity: EntityRef) -> Option<bool> {
-        let t = self.common.native_entity_target(entity)?;
+        let t = self.native_entity_target(entity)?;
         let Some(id) = named_id(t) else {
             return Some(false);
         };
@@ -163,7 +163,7 @@ impl crate::game::ServerGame<'_> {
     /// The category of the entity's type (`EntityType.getCategory`): a mob's
     /// from its type, `Monster` for the dragon, `Misc` for every other kind.
     pub(in crate::game) fn entity_classification(&self, entity: EntityRef) -> Option<MobCategory> {
-        Some(match self.common.native_entity_target(entity)? {
+        Some(match self.native_entity_target(entity)? {
             Target::Mob(id) => match self.common.mobs.iter().find(|m| m.id == id)?.category() {
                 "monster" => MobCategory::Monster,
                 "creature" => MobCategory::Creature,
@@ -185,7 +185,7 @@ impl crate::game::ServerGame<'_> {
     /// clouds, ominous item spawners), are in it while the handle names them.
     /// False for a stale handle or on a client.
     pub(in crate::game) fn entity_added_to_level(&self, entity: EntityRef) -> bool {
-        match self.common.native_entity_target(entity) {
+        match self.native_entity_target(entity) {
             None => false,
             Some(
                 Target::Player
@@ -209,7 +209,7 @@ impl crate::game::ServerGame<'_> {
         if !self.common.is_logical_server() {
             return None;
         }
-        named_id(self.common.native_entity_target(entity)?)
+        named_id(self.native_entity_target(entity)?)
     }
     /// Sets (or with `None` removes) `key` in entity `id`'s saved compound.
     fn put_saved(&mut self, id: u32, key: &str, value: Option<Tag>) {
@@ -250,3 +250,5 @@ fn named_id(t: Target) -> Option<u32> {
         _ => None,
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

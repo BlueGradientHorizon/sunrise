@@ -400,3 +400,9 @@ fn client_handle_reads_answer_from_the_clients_copy() {
         assert_eq!(server.native_entity_target(untracked_out.unwrap()), None);
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

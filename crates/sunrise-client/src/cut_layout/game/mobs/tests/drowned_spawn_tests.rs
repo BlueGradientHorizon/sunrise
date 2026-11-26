@@ -192,3 +192,5 @@ fn only_an_empty_offhand_drowned_draws_for_the_shell() {
     eprintln!("shells from seeds 0..400: {shells}");
     assert!((1..=30).contains(&shells), "{shells}");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

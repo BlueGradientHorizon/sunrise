@@ -39,3 +39,5 @@ pub(in crate::game) fn fixture_with_source(
         assert_eq!(*seen.lock().unwrap(), 1);
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

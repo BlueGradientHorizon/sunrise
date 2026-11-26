@@ -80,3 +80,5 @@ fn bundle_completes_on_tick_200() {
         .expect("prepared resources required");
     });
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

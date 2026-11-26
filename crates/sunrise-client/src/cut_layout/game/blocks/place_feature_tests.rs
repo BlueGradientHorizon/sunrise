@@ -213,3 +213,5 @@ fn an_inline_feature_draws_the_level_random_as_its_named_twin() {
         "a flower each time: {seen:?}"
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

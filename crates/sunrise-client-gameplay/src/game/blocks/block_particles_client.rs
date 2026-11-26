@@ -16,7 +16,7 @@ impl crate::game::ClientGame<'_> {
         let boxes = self.particle_shape(pos, state);
         let Some(p) = self.with_lent_level_random(|game| {
             sunrise_client::particles::breaking_position(
-                game.side.particles.0.level_random(),
+                game.client.particles.0.level_random(),
                 pos,
                 face.normal(),
                 &boxes,

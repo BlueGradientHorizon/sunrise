@@ -229,3 +229,5 @@ fn remote_player_attachments_only_apply_while_the_foreign_player_is_tracked() {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

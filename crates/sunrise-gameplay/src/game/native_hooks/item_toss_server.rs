@@ -21,7 +21,7 @@ impl crate::game::ServerGame<'_> {
         if mod_api::__private::listened(mod_api::HookId::ItemToss)
             && let Some(item) = self.native_item_handle(id)
         {
-            let player = self.common.native_acting_id();
+            let player = self.native_acting_id();
             let mut canceled = false;
             self.common.native_lifecycle.held_joins.push(id);
             self.native_item_toss(player, item, &mut canceled);
@@ -46,3 +46,5 @@ impl crate::game::ServerGame<'_> {
             .then_some(id)
     }
 }
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

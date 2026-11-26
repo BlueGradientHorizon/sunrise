@@ -9,7 +9,7 @@ use sunrise_world::registry::BlockStateId;
 
 impl crate::game::ServerGame<'_> {
     fn native_minecart_index(&self, cart: MinecartRef) -> Option<usize> {
-        let Target::Cart(id) = self.common.native_entity_target(cart.entity())? else {
+        let Target::Cart(id) = self.native_entity_target(cart.entity())? else {
             return None;
         };
         self.common.carts.iter().position(|c| c.id == id)
@@ -259,3 +259,7 @@ impl crate::game::ServerGame<'_> {
         true
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

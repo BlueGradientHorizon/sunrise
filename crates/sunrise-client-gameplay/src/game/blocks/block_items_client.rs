@@ -30,7 +30,7 @@ impl ClientGame<'_> {
                 .data_mut()
                 .set_other(block_entity_item::BLOCK_ENTITY_DATA, None);
         }
-        if self.common.apply_placed_item_common(pos, &stack, false).is_some() {
+        if self.apply_placed_item_common(pos, &stack, false).is_some() {
             self.side_update_spawner_display((pos[0], pos[1], pos[2]));
         }
     }
@@ -39,3 +39,5 @@ impl ClientGame<'_> {
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::block_items::BlockItemsGameExt1 as _;

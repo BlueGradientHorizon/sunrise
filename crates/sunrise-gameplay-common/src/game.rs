@@ -26,7 +26,7 @@ pub use resource_load::{load_resources, load_resources_skip_lang, load_resources
 #[macro_export]
 macro_rules! world_items {
     ($s:ident) => {
-        match (&$s.server_items, $crate::game::Side::world_tables(&$s.side)) {
+        match (&$s.server_items, $crate::game::Side::world_tables({ use $crate::game::SideGame as _; ($s).side_state() })) {
             (Some(items), _) => &**items,
             (None, Some(t)) => &t.items,
             (None, None) => $s.res.items(),
@@ -37,7 +37,7 @@ macro_rules! world_items {
 #[macro_export]
 macro_rules! world_recipes {
     ($s:ident) => {
-        match $crate::game::Side::world_tables(&$s.side) {
+        match $crate::game::Side::world_tables({ use $crate::game::SideGame as _; ($s).side_state() }) {
             Some(t) => &t.recipes,
             None => $s.res.recipes(),
         }
@@ -47,7 +47,7 @@ macro_rules! world_recipes {
 #[macro_export]
 macro_rules! world_stations {
     ($s:ident) => {
-        match $crate::game::Side::world_tables(&$s.side) {
+        match $crate::game::Side::world_tables({ use $crate::game::SideGame as _; ($s).side_state() }) {
             Some(t) => &t.stations,
             None => $s.res.stations(),
         }
@@ -97,14 +97,14 @@ macro_rules! game_side {
                 Some(mod_api::LevelRef::with_generation(
                     epoch,
                     key,
-                    $crate::game::Side::levels_generation(&$s.side, id),
+                    $crate::game::Side::levels_generation({ use $crate::game::SideGame as _; ($s).side_state() }, id),
                 ))
             }),
             facts: $s.res.facts(),
             biomes: $crate::world_biomes!($s),
             behaviours: $s.res.behaviours(),
             features: $crate::game::side_ops::tables::SideOps::side_level_features(
-                &$s.side,
+                { use $crate::game::SideGame as _; ($s).side_state() },
                 $s.level.enabled_features.as_arc(),
             ),
             items: $s.res.items(),
@@ -114,12 +114,12 @@ macro_rules! game_side {
                 living_types: $s.res.living_type_keys(),
                 attributes: &$s.motion.attributes,
                 player_effects: &$s.potions.effects,
-                player_uuid: $crate::game::Side::lan_acting_uuid(&$s.side),
+                player_uuid: $crate::game::Side::lan_acting_uuid({ use $crate::game::SideGame as _; ($s).side_state() }),
                 player_attachments: &$s.player_state.attachments,
                 entity_attachments: &*$s.entity_attachments,
             },
             tag_items: $crate::game::side_ops::tables::SideOps::side_game_tag_items(
-                &$s.side, &$s.res,
+                { use $crate::game::SideGame as _; ($s).side_state() }, &$s.res,
             ),
         }
     };
@@ -130,11 +130,11 @@ macro_rules! game_side {
             $s,
             (player_uuid, level, session_lock),
             $crate::game::side_ops::tables::SideOps::side_level_features(
-                &$s.side,
+                { use $crate::game::SideGame as _; ($s).side_state() },
                 $s.level.enabled_features.as_arc()
             ),
             if $s.options.execution_role.is_client() {
-                $crate::game::side_ops::tables::SideOps::side_game_tag_items(&$s.side, &$s.res)
+                $crate::game::side_ops::tables::SideOps::side_game_tag_items({ use $crate::game::SideGame as _; ($s).side_state() }, &$s.res)
             } else {
                 session_lock.then(|| $s.res.items())
             }
@@ -3923,7 +3923,7 @@ pub mod name_component;
 #[path = "game/interface/option_paths.rs"]
 pub mod option_paths;
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
+impl crate::game::CommonGame<'_> {
     /// Whether `target` counts as removed in the level in place: a mod removed it, or an open
     /// transaction did and its root commit has not run the removal yet.
     pub fn target_removed(&self, target: &commands_common::Target) -> bool {
@@ -3931,15 +3931,18 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             || self.persist.destroying_vehicles.contains(target)
             || self.removal_pending(target)
     }
+}
 
-    pub fn resident_source_target_visible(
+pub trait GameGameExt2<'__sg>: crate::game::SideGame<'__sg> {
+
+     fn resident_source_target_visible(
         &self,
         dimension: mod_api::DimensionKey,
         target: commands_common::Target,
     ) -> bool {
         let player = match target {
             commands_common::Target::Guest(conn) => Some(conn),
-            commands_common::Target::Player => crate::game::Side::lan_acting(&self.side),
+            commands_common::Target::Player => crate::game::Side::lan_acting(self.side_state()),
             _ => None,
         };
         if player
@@ -3957,13 +3960,12 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             mod_api::DimensionKey::END => Dim::End,
             key => Dim::Extra(key),
         };
-        side_ops::world::SideOps::side_parked_target_visible(&self.side, dim, &target)
+        side_ops::world::SideOps::side_parked_target_visible(self.side_state(), dim, &target)
             .is_none_or(|visible| visible && !self.removal_pending_in(dim, &target))
     }
 }
-pub use end_common::EndGameExt as _;
-pub use creatures::world_view::WorldViewExt as _;
-pub use native_hooks::base::GameHooks as _;
+impl<'__sg, G: crate::game::SideGame<'__sg>> GameGameExt2<'__sg> for G {}
+
 pub use side_ops::blocks::BlocksSideGameExt as _;
 pub use side_ops::events::EventsSideGameExt as _;
 pub use side_ops::items::ItemsSideGameExt as _;
@@ -4024,6 +4026,18 @@ use crate::game::side_ops::presentation::PresentationSideGameExt as _;
 use crate::game::side_ops::world::WorldSideGameExt as _;
 
 use crate::game::tables::GameItems as _;
+
+use crate::game::commands_common::CommandsCommonGameExt2 as _;
+
+use crate::game::creatures::ModGameExt1 as _;
+
+use crate::game::held_items::HeldItemsGameExt1 as _;
+
+use crate::game::native_hooks::use_item_hand::UseItemHandGameExt1 as _;
+
+use crate::game::pick_ray::PickRayGameExt1 as _;
+
+use crate::game::player_identity::PlayerIdentityGameExt1 as _;
 
 #[path = "game/server_side.rs"]
 pub mod server_side;

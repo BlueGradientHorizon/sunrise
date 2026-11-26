@@ -111,3 +111,5 @@ fn a_new_player_after_a_portal_keeps_the_old_ones_modifiers() {
         assert_eq!(read(game, "minecraft:armor_toughness"), 0.0);
     });
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

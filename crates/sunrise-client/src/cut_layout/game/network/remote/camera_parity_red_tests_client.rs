@@ -2213,3 +2213,7 @@ pub(in crate::game) fn setup_remote_overworld(
     game.side.settings.render_distance = 8;
     server
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

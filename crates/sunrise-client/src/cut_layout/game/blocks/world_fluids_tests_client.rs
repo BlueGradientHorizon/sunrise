@@ -94,3 +94,5 @@ fn liquid_part_predicts_the_same_target_on_connected_client() {
         });
     });
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

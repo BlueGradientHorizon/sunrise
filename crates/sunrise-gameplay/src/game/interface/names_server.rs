@@ -30,7 +30,7 @@ impl ServerGame<'_> {
         let at = [m.position.x, m.position.y, m.position.z];
         // itemStack.shrink(1); `Player.interactOn` puts a creative player's
         // count back, which `consume_held` skips for them.
-        self.common.consume_held();
+        self.consume_held();
         // `Mob.interact`: the tag consumed the use, so
         // `gameEvent(GameEvent.ENTITY_INTERACT, player)` at the mob.
         let ctx = self.who_context(Some(Who::Player), None);
@@ -46,3 +46,5 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

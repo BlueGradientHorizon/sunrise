@@ -13,9 +13,9 @@ impl crate::game::ServerGame<'_> {
         // feedback isn't trapped in this guest's capture. What the guest was already told still
         // reaches them before the panic goes on, after `as_guest` has restored the swap.
         let (result, lines) = self.as_guest(conn, |game| {
-            let outer = game.side.chat_capture.replace(Vec::new());
+            let outer = game.server.chat_capture.replace(Vec::new());
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(game)));
-            let lines = std::mem::replace(&mut game.side.chat_capture, outer).unwrap_or_default();
+            let lines = std::mem::replace(&mut game.server.chat_capture, outer).unwrap_or_default();
             (result, lines)
         })?;
         if let Some(host) = self.server.lan.as_ref() {
@@ -418,7 +418,7 @@ impl crate::game::ServerGame<'_> {
         // (the movement that brought it, a landing): vanilla keeps the same
         // entity through a level change, with its attributes and effects.
         if fresh {
-            self.common.apply_effect_status();
+            self.apply_effect_status();
         }
         self.update_totem_ready();
         self.common.entity_reach = self.common.interaction_range("minecraft:entity_interaction_range", 3.0, 5.0);
@@ -972,7 +972,7 @@ impl crate::game::ServerGame<'_> {
         };
         let swap_inventory = |game: &mut Self| {
             let host = game
-                .side
+                .server
                 .lan
                 .as_mut()
                 .expect("the guest turn owns the LAN host");
@@ -982,7 +982,7 @@ impl crate::game::ServerGame<'_> {
                     // The fields `guest_turn` swaps.
                     std::mem::swap(&mut game.inventory, &mut g.inventory);
                     std::mem::swap(&mut game.armor, &mut g.armor);
-                    std::mem::swap(&mut game.side.location_armor, &mut g.location_armor);
+                    std::mem::swap(&mut game.server.location_armor, &mut g.location_armor);
                     std::mem::swap(&mut game.offhand, &mut g.offhand);
                     std::mem::swap(&mut game.equipment, &mut g.equipment);
                     std::mem::swap(&mut game.carried, &mut g.carried);
@@ -1018,7 +1018,7 @@ impl crate::game::ServerGame<'_> {
     ) -> Result<R, TurnRefused> {
         let result = self.with_guest_swap_at(gi, conn, self.common.dim, |game| {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let dimension = (game.side.serving.is_some() || game.options.dedicated.is_some())
+                let dimension = (game.server.serving.is_some() || game.options.dedicated.is_some())
                     .then_some(game.dim.id());
                 let result = sunrise_sim::block_contact::in_level(game.tick, dimension, || f(game));
                 game.drain_entity_inside();
@@ -1114,3 +1114,5 @@ impl crate::game::ServerGame<'_> {
         self.send_level_sound(LevelSound::new(sound, at, 1.0, 1.0), Some(conn));
     }
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

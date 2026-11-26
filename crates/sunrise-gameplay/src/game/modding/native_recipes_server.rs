@@ -13,9 +13,7 @@ impl ServerGame<'_> {
         inputs: &RecipeInput,
     ) -> Result<Option<RecipeMatch>, RecipeLookupError> {
         use RecipeLookupError::*;
-        self.common
-            .native_level_world(level)
-            .ok_or(UnavailableLevel)?;
+        self.native_level_world(level).ok_or(UnavailableLevel)?;
         if recipe_type.namespace() != "minecraft" {
             return Err(NotMatchable);
         }
@@ -63,7 +61,7 @@ impl ServerGame<'_> {
                 };
                 let remainders = recipes
                     .remainders_rect(&self.common.loop_context, id, &grid, w, w, h, &|s| {
-                        self.common.crafting_remainder(s)
+                        self.crafting_remainder(s)
                     })
                     .into_iter()
                     .map(|stack| stack.try_into_api().map_err(|_| InvalidItem))
@@ -144,3 +142,7 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::native_block_states::NativeBlockStatesGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

@@ -485,7 +485,7 @@ impl crate::game::ClientGame<'_> {
                     || self.observed_overlay_now().is_some()
                     || self.title_input_active()
                     || matches!(
-                        self.side.screen,
+                        self.client.screen,
                         Screen::Chat
                             | Screen::Options
                             | Screen::Social
@@ -595,7 +595,6 @@ impl crate::game::ClientGame<'_> {
             }
             if item.fire_ticks > 0
                 && self
-                    .common
                     .stack_can_be_hurt_by(&item.stack, "minecraft:in_fire")
                     .unwrap_or(true)
             {
@@ -1723,7 +1722,7 @@ impl crate::game::ClientGame<'_> {
                         && self.client.screen_state.0.screen_instance == initial_instance
                     {
                         let inventory_release = !pressed
-                            && matches!(self.side.screen, Screen::Inventory | Screen::Creative)
+                            && matches!(self.client.screen, Screen::Inventory | Screen::Creative)
                             && self.observed_overlay_now().is_none()
                             && !self.remote_loading();
                         let native_child = pressed.then(|| self.native_pointer_child()).flatten();
@@ -1888,7 +1887,7 @@ impl crate::game::ClientGame<'_> {
                     let updated = Instant::now();
                     self.track_toggle_screens();
                     self.heal_hold_latches();
-                    sunrise_hooks::engine::published(self.common.is_published());
+                    sunrise_hooks::engine::published(self.is_published());
                     self.update_window_title();
                     self.report_activity();
                     let target = self.tick_target_millis();
@@ -2067,7 +2066,7 @@ impl crate::game::ClientGame<'_> {
                             // The launcher times Play to this line (https://github.com/sunrise-org/sunrise-launcher/blob/main/src/perf.rs).
                             log::info!(
                                 "Sunrise: first frame after {} ms",
-                                self.side.started.elapsed().as_millis()
+                                self.client.started.elapsed().as_millis()
                             );
                         }
                         if self.client.title.0.is_some() {
@@ -2289,7 +2288,7 @@ impl crate::game::ClientGame<'_> {
                 0
             };
             let crosshair_attack = (indicator == 1).then(|| {
-                let speed = self.common.main_hand_attack_speed();
+                let speed = self.main_hand_attack_speed();
                 (
                     self.client.hand_strength.scale(0.0, speed),
                     sunrise_sim::attack_strength::delay(speed),
@@ -2763,7 +2762,7 @@ impl crate::game::ClientGame<'_> {
         self.draw_pad_over_hud(&mut batch);
         if let Some(pointer) = pointer {
             debug_assert_eq!(
-                self.side.cursor,
+                self.client.cursor,
                 pointer.pixel(),
                 "drawing changed the input cursor"
             );
@@ -4972,7 +4971,7 @@ impl crate::game::ClientGame<'_> {
         if self.studio_mouse_input(pressed, button) {
             return Ok(true);
         }
-        if matches!(self.side.screen, Screen::Inventory | Screen::Creative)
+        if matches!(self.client.screen, Screen::Inventory | Screen::Creative)
             && let Some(key) = self
                 .client
                 .settings
@@ -5173,7 +5172,7 @@ impl crate::game::ClientGame<'_> {
         }
         let overlay = self.observed_overlay_now();
         let container =
-            matches!(self.side.screen, Screen::Inventory | Screen::Creative) && overlay.is_none();
+            matches!(self.client.screen, Screen::Inventory | Screen::Creative) && overlay.is_none();
         if overlay == Some("dialog")
             && (!self.client.screen_state.0.widgets.has_focus() || key == KeyCode::Escape)
             && self.dialog_key(key, shortcut)?
@@ -5281,7 +5280,7 @@ impl crate::game::ClientGame<'_> {
     /// simulation still see it.
     pub(in crate::game::client_side) fn title_input_active(&self) -> bool {
         self.client.title.0.is_some()
-            && !matches!(self.side.screen, Screen::DebugOptions | Screen::Mod)
+            && !matches!(self.client.screen, Screen::DebugOptions | Screen::Mod)
     }
     pub(in crate::game::client_side) fn title_screen_key(
         &mut self,
@@ -5429,3 +5428,11 @@ impl crate::game::ClientGame<'_> {
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1 as _;

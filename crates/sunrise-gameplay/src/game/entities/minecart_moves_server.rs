@@ -36,7 +36,7 @@ impl ServerGame<'_> {
         let entities = if delta.length_squared() == 0.0 {
             Vec::new()
         } else {
-            self.common.entity_collisions(Mover::Cart(c))
+            self.entity_collisions(Mover::Cart(c))
         };
         let mut scene = sunrise_level::collisions::EntityCollisions {
             blocks: scene,
@@ -123,3 +123,5 @@ impl ServerGame<'_> {
         true
     }
 }
+
+use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;

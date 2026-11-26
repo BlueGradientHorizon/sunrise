@@ -376,3 +376,9 @@ fn predicts(game: &mut sunrise_client_gameplay::game::ClientGame<'_>, stack: &It
             && g.predict_item_on_block(stack, hit)
     })
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

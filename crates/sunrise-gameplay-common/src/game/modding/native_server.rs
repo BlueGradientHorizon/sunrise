@@ -595,13 +595,32 @@ impl PlayerRead<'_> {
 // Native mods use these; nothing in Sunrise does.
 #[allow(dead_code)]
 impl crate::game::CommonGame<'_> {
+
+    /// The server's tick rate and average tick duration in milliseconds.
+    pub(in crate::game) fn tick_stats(&self) -> (f32, f64) {
+        (
+            self.clock.rate(),
+            self.clock.average_nanos() as f64 / 1_000_000.0,
+        )
+    }
+
+    /// `TickRateManager.isFrozen`; None on a client, which follows its server's.
+    pub(in crate::game) fn tick_rate_is_frozen(&self) -> Option<bool> {
+        self.is_logical_server().then(|| self.clock.frozen())
+    }
+}
+
+/// Helpers for mods, kept as stable as the hook points.
+// Native mods use these; nothing in Sunrise does.
+#[allow(dead_code)]
+pub trait NativeServerGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Resolve a real online player by UUID, never a fake.
-    pub fn player(&self, uuid: u128) -> Option<PlayerRef> {
+     fn player(&self, uuid: u128) -> Option<PlayerRef> {
         self.side_player(uuid)
     }
 
     /// The dimension id and block of the player's last death, through the shared player resolver.
-    pub(in crate::game) fn native_player_last_death_record(
+     fn native_player_last_death_record(
         &self,
         player: PlayerRef,
     ) -> Option<(String, [i32; 3])> {
@@ -609,26 +628,26 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// `player_handle_read` for the reads that work on both sides.
-    pub fn player_read_both(&self, player: PlayerRef) -> Option<PlayerRead<'_>> {
+     fn player_read_both(&self, player: PlayerRef) -> Option<PlayerRead<'_>> {
         self.side_player_read_both(player)
     }
 
     /// The dimension key of an online player (`ServerPlayer.level().dimension()`).
-    pub(in crate::game) fn player_dimension_key(
+     fn player_dimension_key(
         &self,
         player: PlayerRef,
     ) -> Option<mod_api::DimensionKey> {
         self.side_player_dimension_key(player)
     }
 
-    pub(in crate::game) fn player_collision_flags(
+     fn player_collision_flags(
         &self,
         player: PlayerRef,
     ) -> Result<Option<mod_api::CollisionFlags>, mod_api::LevelReadError> {
         self.side_player_collision_flags(player)
     }
 
-    pub(in crate::game) fn player_supporting_block(
+     fn player_supporting_block(
         &self,
         player: PlayerRef,
     ) -> Result<Option<mod_api::BlockPos>, mod_api::LevelReadError> {
@@ -637,7 +656,7 @@ impl crate::game::CommonGame<'_> {
             .and_then(|read| read.body()?.ground.supporting_block))
     }
 
-    pub(in crate::game) fn player_on_block(
+     fn player_on_block(
         &self,
         player: PlayerRef,
     ) -> Result<Option<mod_api::BlockPos>, mod_api::LevelReadError> {
@@ -659,19 +678,19 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// `ServerPlayerGameMode.getGameModeForPlayer` on a server; `AbstractClientPlayer.gameMode` on a client.
-    pub(in crate::game) fn player_game_mode(&self, player: PlayerRef) -> Option<GameMode> {
+     fn player_game_mode(&self, player: PlayerRef) -> Option<GameMode> {
         self.player_read_both(player)?
             .mode()
             .and_then(GameMode::from_id)
     }
 
     /// `Player.isCreative`; Paper `HumanEntity#getGameMode`.
-    pub fn player_is_creative(&self, player: PlayerRef) -> Option<bool> {
+     fn player_is_creative(&self, player: PlayerRef) -> Option<bool> {
         Some(self.player_read_both(player)?.creative())
     }
 
     /// `Inventory.getSelectedSlot`: the hotbar slot the player holds, 0..9.
-    pub fn player_selected_slot(&self, player: PlayerRef) -> Option<usize> {
+     fn player_selected_slot(&self, player: PlayerRef) -> Option<usize> {
         Some(match self.player_read_both(player)? {
             PlayerRead::Acting { .. } => self.selected,
             PlayerRead::Guest(guest) => guest.selected,
@@ -679,50 +698,39 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// `Player.isSpectator`.
-    pub(in crate::game) fn player_is_spectator(&self, player: PlayerRef) -> Option<bool> {
+     fn player_is_spectator(&self, player: PlayerRef) -> Option<bool> {
         Some(self.player_read_both(player)?.mode() == Some(3))
     }
 
     /// `Player.mayBuild`; Paper `HumanEntity#getGameMode`.
-    pub fn player_may_build(&self, player: PlayerRef) -> Option<bool> {
+     fn player_may_build(&self, player: PlayerRef) -> Option<bool> {
         Some(self.player_read_both(player)?.may_build())
     }
 
     /// `FoodData.getFoodLevel/getSaturationLevel/getExhaustionLevel`.
-    pub(in crate::game) fn player_food(&self, player: PlayerRef) -> Option<PlayerFood> {
+     fn player_food(&self, player: PlayerRef) -> Option<PlayerFood> {
         self.player_read_both(player)?.food()
     }
 
     /// The level the online player is in (`ServerPlayer.level`).
-    pub(in crate::game) fn player_level(&self, player: PlayerRef) -> Option<LevelRef> {
+     fn player_level(&self, player: PlayerRef) -> Option<LevelRef> {
         let dim = self.player_dimension_key(player)?;
         Some(self.side_level_ref(player.fields().entity.epoch(), dim))
     }
 
     /// The dimension the online player is in (`ServerPlayer.level().dimension()`).
-    pub(in crate::game) fn player_dimension(&self, player: PlayerRef) -> Option<Identifier> {
+     fn player_dimension(&self, player: PlayerRef) -> Option<Identifier> {
         let level = self.player_level(player)?;
         Identifier::parse(level.dimension_id()).ok()
     }
 
     /// The brand the player's client announced when it connected (`ServerPlayer.clientBrand`).
-    pub(in crate::game) fn player_client_brand(&self, player: PlayerRef) -> Option<&str> {
+     fn player_client_brand(&self, player: PlayerRef) -> Option<&str> {
         self.side_player_client_brand(player)
     }
-
-    /// The server's tick rate and average tick duration in milliseconds.
-    pub(in crate::game) fn tick_stats(&self) -> (f32, f64) {
-        (
-            self.clock.rate(),
-            self.clock.average_nanos() as f64 / 1_000_000.0,
-        )
-    }
-
-    /// `TickRateManager.isFrozen`; None on a client, which follows its server's.
-    pub(in crate::game) fn tick_rate_is_frozen(&self) -> Option<bool> {
-        self.is_logical_server().then(|| self.clock.frozen())
-    }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeServerGameExt1<'__sg> for G {}
+
 
 /// Whether an orb at `position` (its box: 0.5 wide and high, standing on
 /// it) meets the box `min`..`max`, touching faces excluded (`AABB.intersects`).
@@ -2631,11 +2639,11 @@ pub fn lend_inventory_view(
     ));
 }
 
-impl crate::game::CommonGame<'_> {
+pub trait NativeServerGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// `ItemCooldowns.getCooldownGroup(stack)`: the group `stack`'s
     /// cooldown is filed under, the group its `use_cooldown` component names
     /// (its own, else its item's default), else its item id.
-    pub(in crate::game) fn item_cooldown_group(&self, stack: &ItemStack) -> String {
+     fn item_cooldown_group(&self, stack: &ItemStack) -> String {
         let default = self
             .items()
             .get(&stack.item)
@@ -2643,34 +2651,40 @@ impl crate::game::CommonGame<'_> {
         sunrise_items::cooldowns::group(stack, default).to_string()
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeServerGameExt2<'__sg> for G {}
 
-impl crate::game::CommonGame<'_> {
+
+pub trait NativeServerGameExt3<'__sg>: crate::game::SideGame<'__sg> {
     /// `Player.isSecondaryUseActive`: whether the player uses items and
     /// blocks as with sneak held, as vanilla reads it from the shift-key
     /// flag (the same read as `EntityRef::is_shift_key_down`). None for a
     /// stale or unavailable player.
-    pub(in crate::game) fn player_is_secondary_use_active(
+     fn player_is_secondary_use_active(
         &self,
         player: PlayerRef,
     ) -> Option<bool> {
         self.entity_is_shift_key_down(player.entity())
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeServerGameExt3<'__sg> for G {}
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+
+pub trait NativeServerGameExt4<'__sg>: crate::game::SideGame<'__sg> {
     /// `MinecraftServer.haveTime`: the current server tick has not reached the
     /// moment the next one is due. A client, and a server outside a scheduled
     /// tick, always has time, as NeoForge's client `LevelTickEvent.hasTime` does.
-    pub(in crate::game) fn server_has_time(&self) -> bool {
+     fn server_has_time(&self) -> bool {
         !self.is_logical_server()
-            || crate::game::Side::server_tick_deadline(&self.side)
+            || crate::game::Side::server_tick_deadline(self.side_state())
                 .is_none_or(|end| Instant::now() < end)
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeServerGameExt4<'__sg> for G {}
 
-impl crate::game::CommonGame<'_> {
+
+pub trait NativeServerGameExt5<'__sg>: crate::game::SideGame<'__sg> {
     /// Lend `Inventory.getItem` over the resident slots.
-    pub(in crate::game) fn player_inventory_slots(
+     fn player_inventory_slots(
         &self,
         player: PlayerRef,
         read: &mut dyn for<'a> FnMut(InventoryView<'a>),
@@ -2685,9 +2699,21 @@ impl crate::game::CommonGame<'_> {
         Some(())
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeServerGameExt5<'__sg> for G {}
+
 
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 
 use crate::game::tables::GameItems as _;
 
 use crate::game::transactions::TransactionsGameExt as _;
+
+use crate::game::chat_common::ChatCommonGameExt1 as _;
+
+use crate::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
+
+use crate::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

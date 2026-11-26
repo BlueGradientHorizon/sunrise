@@ -18,16 +18,16 @@ impl crate::game::ServerGame<'_> {
         target: EntityRef,
     ) -> Option<bool> {
         let viewer = self.native_living_target(living)?;
-        let seen = self.common.native_entity_target(target)?;
+        let seen = self.native_entity_target(target)?;
         if self.target_level(viewer) != self.common.dim {
             return None;
         }
         if self.target_level(seen) != self.common.dim {
             return Some(false);
         }
-        let feet = self.common.entity_position(living.entity())?;
-        let from = self.common.entity_eye_position(living.entity())?;
-        let to = self.common.entity_eye_position(target)?;
+        let feet = self.entity_position(living.entity())?;
+        let from = self.entity_eye_position(living.entity())?;
+        let to = self.entity_eye_position(target)?;
         let w = self.mob_world_base(&[]);
         Some(w.line_of_sight_for(
             Some(feet[1]),
@@ -88,11 +88,11 @@ impl crate::game::ServerGame<'_> {
                 });
                 self.common.mobs
                     .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
-                let _ = self.common.handle_mob_events(events);
+                let _ = self.handle_mob_events(events);
                 // `teleportTo` is one position update, told at once.
                 if let Some((from, to)) = teleported {
                     let (from, to) = ([from.x, from.y, from.z], [to.x, to.y, to.z]);
-                    self.common.entity_section_moved(id, Some(from), to);
+                    self.entity_section_moved(id, Some(from), to);
                 }
                 moved
             }
@@ -100,3 +100,11 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

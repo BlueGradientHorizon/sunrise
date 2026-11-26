@@ -424,44 +424,15 @@ impl ServerGame<'_> {
         let inventory = native_menu_inventory_slot(size, slot);
         // The held backpack's own slot takes no click, so it can't go into itself.
         let applied = if inventory.is_none() || inventory != locked {
-            let accepts =
-                |game: &crate::game::ServerGame<'_>, slot, resource: &ItemResource, amount| {
-                    if locked.is_some() && native_menu_inventory_slot(size, slot as i32) == locked {
-                        return (false, false, 0);
-                    }
-                    let Some(guest) = game.side.lan.as_ref().and_then(|lan| lan.hub.guest(conn))
-                    else {
-                        return (false, false, 0);
-                    };
-                    let Some(open) = guest.menu.as_ref() else {
-                        return (false, false, 0);
-                    };
-                    if !game.listens(&open.registry_id) {
-                        return (true, true, u32::MAX);
-                    }
-                    let Some(stack) = resource
-                        .to_stack(amount)
-                        .and_then(|stack| stack.try_into_engine(game.items()).ok())
-                    else {
-                        return (true, true, u32::MAX);
-                    };
-                    apply_menu_slot_rules(
-                        Some(game),
-                        &open.registry_id,
-                        native_menu_inventory_slot(size, slot as i32).unwrap_or(slot),
-                        &stack,
-                        SlotContext::blockless(
-                            guest,
-                            open.pos.map(|(x, y, z)| [x, y, z]),
-                            if slot < size {
-                                MenuContainer::Main
-                            } else {
-                                MenuContainer::Player
-                            },
-                        ),
-                        (true, true, u32::MAX),
-                        item_max_stack(game.items(), &stack),
-                    )
+            let accepts = |game: &crate::game::ServerGame<'_>,
+                           slot,
+                           resource: &ItemResource,
+                           amount| {
+                if locked.is_some() && native_menu_inventory_slot(size, slot as i32) == locked {
+                    return (false, false, 0);
+                }
+                let Some(guest) = game.server.lan.as_ref().and_then(|lan| lan.hub.guest(conn)) else {
+                    return (false, false, 0);
                 };
             if pickup {
                 click_pickup(self, menu, at, button == 1, accepts)

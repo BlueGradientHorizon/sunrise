@@ -34,7 +34,7 @@ impl crate::game::ServerGame<'_> {
         reason: RemovalReason,
     ) -> bool {
         let killed = reason == RemovalReason::Killed;
-        match self.common.native_entity_target(entity) {
+        match self.native_entity_target(entity) {
             // A part leaves the level with its dragon, never alone.
             None | Some(Target::Player | Target::Guest(_) | Target::DragonPart(_)) => false,
             Some(t) if self.common.persist.preparing_vehicle_removals.contains(&t) => false,
@@ -69,7 +69,7 @@ impl crate::game::ServerGame<'_> {
         let position = self.target_position(t);
         // `Entity.setRemoved`: the reason first, so the hooks below see
         // it removed; then the riding links are ended and the level is told.
-        let mount = self.common.native_vehicle_id(t);
+        let mount = self.native_vehicle_id(t);
         self.common.persist.removals.push(t);
         if let Some(vehicle) = mount {
             // The object is already leaving even if its dismount is vetoed.
@@ -111,9 +111,9 @@ impl crate::game::ServerGame<'_> {
         if !self.stack_spawns(&stack) {
             return None;
         }
-        let target = self.common.native_entity_target(entity)?;
+        let target = self.native_entity_target(entity)?;
         if let Target::Guest(conn) = target
-            && self.common.command_guest(conn)?.dimension != self.common.dim.id()
+            && self.command_guest(conn)?.dimension != self.common.dim.id()
         {
             return None;
         }
@@ -666,3 +666,11 @@ mod tests {
         });
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

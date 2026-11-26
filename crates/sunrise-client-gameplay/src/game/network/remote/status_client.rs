@@ -62,12 +62,12 @@ impl crate::game::ClientGame<'_> {
                 .map(|m| m.id)
                 .collect::<Vec<_>>(),
             // The player's own model exists (third person and the inventory draw it).
-            "player_model": self.side.player_model.is_some(),
+            "player_model": self.client.player_model.is_some(),
             // The world view draws its body now (third person, or lying in a bed;
             // not while invisible).
             "own_body": self.player_model_shown() && self.own_body_visible(),
-            "text_display_vertices": self.side.text_display_vertices,
-            "text_displays": self.side.text_displays.0.len(),
+            "text_display_vertices": self.client.text_display_vertices,
+            "text_displays": self.client.text_displays.0.len(),
             "health": r.health.0,
             "food": r.health.1,
             "decode_errors": r.decode_errors,

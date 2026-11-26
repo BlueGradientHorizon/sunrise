@@ -42,7 +42,7 @@ impl crate::game::ServerGame<'_> {
         if !mod_api::__private::listened(mod_api::HookId::PlayerRespawnPosition) {
             return None;
         }
-        let uuid = self.common.command_guest(conn)?.uuid;
+        let uuid = self.command_guest(conn)?.uuid;
         let original = [found.at.x, found.at.y, found.at.z];
         let (mut level, mut position) = (found.dim.level(), original);
         let (mut yaw, mut pitch) = (found.yaw, found.pitch);
@@ -81,3 +81,9 @@ impl crate::game::ServerGame<'_> {
         Some(RespawnDecision { to, copy })
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

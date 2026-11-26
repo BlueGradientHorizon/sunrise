@@ -122,3 +122,9 @@ fn a_point_in_another_level_is_refused_while_a_player_is_swapped_in() {
         assert_eq!(answer, Err(RespawnTargetUnavailable::InPlayerHook));
     });
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

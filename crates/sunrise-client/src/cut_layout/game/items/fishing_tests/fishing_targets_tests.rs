@@ -440,3 +440,7 @@ pub(in sunrise_gameplay::game::server_side) fn run_witness_fishing_bobber_target
         failures.join("\n")
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

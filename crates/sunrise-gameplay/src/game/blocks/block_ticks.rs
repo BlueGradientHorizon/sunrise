@@ -348,7 +348,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn tick_moving_pistons(&mut self) -> Result<()> {
         self.common.with_level(|b, level, ticks| b.tick_block_entities(level, ticks));
         let pushes = std::mem::take(&mut self.common.block_ticks.piston_pushes);
-        self.common.push_piston_entities(pushes);
+        self.push_piston_entities(pushes);
         self.server_process_level_events()?;
         self.common.sync_moving_pistons();
         Ok(())
@@ -390,3 +390,5 @@ impl crate::game::ServerGame<'_> {
         Ok(())
     }
 }
+
+use sunrise_gameplay_common::game::piston_push::PistonPushGameExt1 as _;

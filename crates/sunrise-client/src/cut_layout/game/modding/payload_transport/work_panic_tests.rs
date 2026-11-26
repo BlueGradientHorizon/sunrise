@@ -161,3 +161,7 @@ fn a_handled_child_abort_rolls_back_work_but_still_reports_the_panicking_owner()
         });
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::payload_transport::PayloadTransportGameExt1 as _;

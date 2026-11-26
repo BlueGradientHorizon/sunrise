@@ -252,3 +252,6 @@ pub(in crate::game) mod damage_type_registry_tests {
 #[path = "tests/end_clock_tests_server.rs"]
 pub(in crate::game) mod end_clock_tests;
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

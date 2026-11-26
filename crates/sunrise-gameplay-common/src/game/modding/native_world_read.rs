@@ -205,14 +205,6 @@ impl crate::game::CommonGame<'_> {
         mod_api::__private::unresolved_fluid_name(fluid)
     }
 
-    /// Whether the resolved block is in the world's merged block tag, on a client the tag its
-    /// server sent. Unknown tags return false; unavailable tags or owning-thread block mappings
-    /// return None.
-    pub(in crate::game) fn block_in_tag(&self, block: BlockKey, tag: &str) -> Option<bool> {
-        self.native_tag_items()?;
-        block_in_tag(block, tag)
-    }
-
     /// The outline of `state` as `BlockState.getShape` answers it with an empty getter at the
     /// origin (`EmptyBlockGetter.INSTANCE`, `BlockPos.ZERO`): its boxes, each `[min x, y, z,
     /// max x, y, z]` in the block's own space, with no random offset and none of a world's
@@ -227,77 +219,6 @@ impl crate::game::CommonGame<'_> {
     /// the empty fluid for most. None for an id no state has.
     pub fn state_fluid_state(&self, state: BlockStateId) -> Option<FluidState> {
         state_fluid(self.res.behaviours(), self.pack.assets.registry, state)
-    }
-
-    /// Whether `fluid` is in the fluid tag `tag` (`FluidState.is(TagKey)`, `minecraft:water` or
-    /// `water`), over the merged fluid tags, on a client those its server sent. An unknown tag
-    /// is false. None as for `block_in_tag`.
-    pub(in crate::game) fn fluid_in_tag(&self, fluid: &str, tag: &str) -> Option<bool> {
-        Some(fluid_in_tag(self.native_tag_items()?, fluid, tag))
-    }
-
-    /// The fluid's shape at `pos` (`FluidState.getShape`), block-local: none for no fluid, else
-    /// the floor to `FluidState.getHeight`, a full block under the same fluid and the fluid's
-    /// own height otherwise. None as for `level_block_state`; an unloaded block above is no
-    /// fluid.
-    pub(in crate::game) fn level_fluid_shape(
-        &self,
-        level: LevelRef,
-        pos: [i32; 3],
-    ) -> Option<Vec<[f64; 6]>> {
-        let behaviours = self.res.behaviours();
-        let fluid = behaviours.fluid(self.level_block_state(level, pos)?);
-        let above = self
-            .level_block_state(level, [pos[0], pos[1] + 1, pos[2]])
-            .map(|state| behaviours.fluid(state));
-        Some(fluid_shape(fluid, above).into_iter().collect())
-    }
-
-    /// `FluidState.getHeight(level, pos)` of the fluid at `pos`. None for a stale handle or a
-    /// position that isn't loaded, as `level_block_state`.
-    pub(in crate::game) fn level_fluid_height(
-        &self,
-        level: LevelRef,
-        pos: [i32; 3],
-    ) -> Option<f32> {
-        let mut column = FluidColumn { game: self, level };
-        self.level_block_state(level, pos)?;
-        let Ok(height) = column.fluid_at(pos).height_at(&mut column, pos);
-        Some(height)
-    }
-
-    /// The surface height the camera's immersion test reads at `pos`
-    /// (`FluidState::camera_height_at`). None as for `level_fluid_height`.
-    pub(in crate::game) fn level_fluid_height_for_camera(
-        &self,
-        level: LevelRef,
-        pos: [i32; 3],
-    ) -> Option<f32> {
-        let mut column = FluidColumn { game: self, level };
-        self.level_block_state(level, pos)?;
-        let Ok(height) = column.fluid_at(pos).camera_height_at(&mut column, pos);
-        Some(height)
-    }
-
-    /// `FluidState.canBeReplacedWith(level, pos, fluid, direction)` for the fluid at `pos`. False
-    /// for a `fluid` with no world form; None as for `level_fluid_height`.
-    pub(in crate::game) fn level_fluid_can_be_replaced_with(
-        &self,
-        level: LevelRef,
-        pos: [i32; 3],
-        fluid: FluidKey,
-        direction: Direction,
-    ) -> Option<bool> {
-        let mut column = FluidColumn { game: self, level };
-        self.level_block_state(level, pos)?;
-        let here = column.fluid_at(pos);
-        let Some(other) = engine_fluid_kind(fluid) else {
-            return Some(false);
-        };
-        Some(fluid_can_be_replaced_with(here, other, direction, || {
-            let Ok(height) = here.height_at(&mut column, pos);
-            height
-        }))
     }
 
     /// Whether `fluid` and `other` are the same fluid (`Fluid.isSame`): a source and its
@@ -333,6 +254,90 @@ impl crate::game::CommonGame<'_> {
     }
 }
 
+pub trait NativeWorldReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+
+    /// Whether the resolved block is in the world's merged block tag, on a client the tag its
+    /// server sent. Unknown tags return false; unavailable tags or owning-thread block mappings
+    /// return None.
+     fn block_in_tag(&self, block: BlockKey, tag: &str) -> Option<bool> {
+        self.native_tag_items()?;
+        block_in_tag(block, tag)
+    }
+
+    /// Whether `fluid` is in the fluid tag `tag` (`FluidState.is(TagKey)`, `minecraft:water` or
+    /// `water`), over the merged fluid tags, on a client those its server sent. An unknown tag
+    /// is false. None as for `block_in_tag`.
+     fn fluid_in_tag(&self, fluid: &str, tag: &str) -> Option<bool> {
+        Some(fluid_in_tag(self.native_tag_items()?, fluid, tag))
+    }
+
+    /// The fluid's shape at `pos` (`FluidState.getShape`), block-local: none for no fluid, else
+    /// the floor to `FluidState.getHeight`, a full block under the same fluid and the fluid's
+    /// own height otherwise. None as for `level_block_state`; an unloaded block above is no
+    /// fluid.
+     fn level_fluid_shape(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Option<Vec<[f64; 6]>> {
+        let behaviours = self.res.behaviours();
+        let fluid = behaviours.fluid(self.level_block_state(level, pos)?);
+        let above = self
+            .level_block_state(level, [pos[0], pos[1] + 1, pos[2]])
+            .map(|state| behaviours.fluid(state));
+        Some(fluid_shape(fluid, above).into_iter().collect())
+    }
+
+    /// `FluidState.getHeight(level, pos)` of the fluid at `pos`. None for a stale handle or a
+    /// position that isn't loaded, as `level_block_state`.
+     fn level_fluid_height(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Option<f32> {
+        let mut column = FluidColumn { game: self, level };
+        self.level_block_state(level, pos)?;
+        let Ok(height) = column.fluid_at(pos).height_at(&mut column, pos);
+        Some(height)
+    }
+
+    /// The surface height the camera's immersion test reads at `pos`
+    /// (`FluidState::camera_height_at`). None as for `level_fluid_height`.
+     fn level_fluid_height_for_camera(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+    ) -> Option<f32> {
+        let mut column = FluidColumn { game: self, level };
+        self.level_block_state(level, pos)?;
+        let Ok(height) = column.fluid_at(pos).camera_height_at(&mut column, pos);
+        Some(height)
+    }
+
+    /// `FluidState.canBeReplacedWith(level, pos, fluid, direction)` for the fluid at `pos`. False
+    /// for a `fluid` with no world form; None as for `level_fluid_height`.
+     fn level_fluid_can_be_replaced_with(
+        &self,
+        level: LevelRef,
+        pos: [i32; 3],
+        fluid: FluidKey,
+        direction: Direction,
+    ) -> Option<bool> {
+        let mut column = FluidColumn { game: self, level };
+        self.level_block_state(level, pos)?;
+        let here = column.fluid_at(pos);
+        let Some(other) = engine_fluid_kind(fluid) else {
+            return Some(false);
+        };
+        Some(fluid_can_be_replaced_with(here, other, direction, || {
+            let Ok(height) = here.height_at(&mut column, pos);
+            height
+        }))
+    }
+}
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeWorldReadGameExt1<'__sg> for G {}
+
+
 /// The stored light of `layer` at `pos` in `world`, as the game's own light query reads it.
 pub(in crate::game) fn world_brightness(world: &World, layer: LightLayer, pos: [i32; 3]) -> i32 {
     let light = world.light(pos[0], pos[1], pos[2]);
@@ -360,3 +365,5 @@ pub fn block_face_direction(
 }
 
 use crate::game::tables::WorldTablesExt as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -1,7 +1,7 @@
 //! Registered effect metadata reads.
 use crate::game::CommonGame;
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     pub(super) fn effect_category(
         &self,
         key: mod_api::EffectKey,

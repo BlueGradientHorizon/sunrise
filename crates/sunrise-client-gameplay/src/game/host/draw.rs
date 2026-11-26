@@ -70,7 +70,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
             }
         };
         Ok(self.surface.text_styled_with_font(
-            &self.game.side.gui.atlas,
+            &self.game.client.gui.atlas,
             &text,
             at,
             crate::hud::rgba(r, g, b, a),
@@ -83,7 +83,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
             f(active);
         } else {
             f(&EngineTooltipFont::new(
-                &self.game.side.gui.atlas.font,
+                &self.game.client.gui.atlas.font,
                 font,
             ));
         }
@@ -135,7 +135,7 @@ impl DrawContext for GameDrawContext<'_, '_> {
     ) -> Result<TextLines, TextLinesRefusal> {
         let local = sunrise_sim::api_text::to_local_engine(text);
         label_layout_with(
-            &self.game.side.gui.atlas.font,
+            &self.game.client.gui.atlas.font,
             local.engine(),
             max_width,
             align,

@@ -400,3 +400,5 @@ fn finish_hit_dispatches_once_and_the_next_tick_does_not_repeat_it() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

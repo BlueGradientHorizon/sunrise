@@ -117,3 +117,5 @@ fn modifier_value_get_finds_a_mods_transient_modifier() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

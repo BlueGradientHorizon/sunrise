@@ -37,7 +37,7 @@ impl ClientGame<'_> {
         }
         let sprite = |batch: &mut HudBatch, game: &Self, name: &str, x: f32, y: f32| {
             batch.sprite(
-                &game.side.gui.atlas,
+                &game.client.gui.atlas,
                 &format!("container/cartography_table/{name}"),
                 ox + x,
                 oy + y,

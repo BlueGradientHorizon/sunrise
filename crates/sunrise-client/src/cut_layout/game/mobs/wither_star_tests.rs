@@ -231,3 +231,5 @@ fn loot_stack_edits_leave_custom_drop_age_attached() {
         });
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

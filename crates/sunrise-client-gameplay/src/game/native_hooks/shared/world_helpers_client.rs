@@ -78,7 +78,7 @@ impl crate::game::ClientGame<'_> {
         let charts = self
             .client
             .debug_charts
-            .corners(!self.common.has_singleplayer_server());
+            .corners(!self.has_singleplayer_server());
         !debug_takes(corner, self.client.debug, charts)
     }
 }
@@ -243,3 +243,5 @@ impl GuiLayerWrapContext for GuiLayerWrapFrame<'_, '_, '_> {
             .preserve_delegated(start..self.batch.vertices.len());
     }
 }
+
+use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;

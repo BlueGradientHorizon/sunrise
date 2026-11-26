@@ -14,10 +14,12 @@ impl ClientGame<'_> {
             |state| {
                 let origin = BlockPos::new(0, 0, 0);
                 // An already-active provider supplies no particle source.
-                self.common.enchant_power_for_table(None, state, origin, origin)
+                self.enchant_power_for_table(None, state, origin, origin)
                     .unwrap_or_default()
             },
-            |state| self.common.enchant_transmits(state),
+            |state| self.enchant_transmits(state),
         );
     }
 }
+
+use sunrise_gameplay_common::game::bookshelves_common::BookshelvesCommonGameExt1 as _;

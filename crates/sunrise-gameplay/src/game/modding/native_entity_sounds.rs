@@ -28,15 +28,15 @@ impl crate::game::ServerGame<'_> {
     /// The level in place holds the entity: events and game events are
     /// queued in it.
     pub(in crate::game::server_side) fn native_entity_here(&self, entity: EntityRef) -> bool {
-        self.common.entity_level(entity)
-            .is_some_and(|level| level.dimension() == self.common.native_level_key())
+        self.entity_level(entity)
+            .is_some_and(|level| level.dimension() == self.native_level_key())
     }
     /// `Entity.getSoundSource`: the group an entity's sounds play under.
     /// Players are `Players`; `Monster`s, the dragon, hoglins, ghasts,
     /// phantoms, shulkers, slimes and a killer bunny are `Hostile`; dropped
     /// items and experience orbs `Ambient`; every other entity `Neutral`.
     pub(in crate::game) fn entity_sound_source(&self, entity: EntityRef) -> Option<SoundSource> {
-        Some(match self.common.native_entity_target(entity)? {
+        Some(match self.native_entity_target(entity)? {
             Target::Player | Target::Guest(_) => SoundSource::Players,
             Target::Mob(id) => {
                 let m = self.common.mobs.iter().find(|m| m.id == id)?;
@@ -50,7 +50,7 @@ impl crate::game::ServerGame<'_> {
             }
             Target::Item(_) | Target::Orb(_) => SoundSource::Ambient,
             Target::Dragon(_) => SoundSource::Hostile,
-            t => match self.common.target_type(t).as_str() {
+            t => match self.target_type(t).as_str() {
                 "minecraft:shulker_bullet" => SoundSource::Hostile,
                 "minecraft:lightning_bolt" => SoundSource::Weather,
                 _ => SoundSource::Neutral,
@@ -70,11 +70,11 @@ impl crate::game::ServerGame<'_> {
         volume: f32,
         pitch: f32,
     ) -> bool {
-        let Some(target) = self.common.native_entity_target(entity) else {
+        let Some(target) = self.native_entity_target(entity) else {
             return false;
         };
         let (Some(level), Some(at), Some(source)) = (
-            self.common.entity_level(entity),
+            self.entity_level(entity),
             self.target_position(target),
             self.entity_sound_source(entity),
         ) else {
@@ -109,13 +109,13 @@ impl crate::game::ServerGame<'_> {
     /// False for an event vanilla doesn't have, a dead guest and a guest while
     /// another one acts.
     pub(in crate::game) fn entity_game_event(&mut self, entity: EntityRef, event: &str) -> bool {
-        let Some(target) = self.common.native_entity_target(entity) else {
+        let Some(target) = self.native_entity_target(entity) else {
             return false;
         };
         let Some(at) = self.target_position(target) else {
             return false;
         };
-        let Some(level) = self.common.level(self.common.dim.id()) else {
+        let Some(level) = self.level(self.common.dim.id()) else {
             return false;
         };
         self.level_game_event(
@@ -129,7 +129,7 @@ impl crate::game::ServerGame<'_> {
         )
     }
     fn resolve_entity_broadcast_event(&self, entity: EntityRef) -> Option<(i32, [f64; 3])> {
-        let target = self.common.native_entity_target(entity)?;
+        let target = self.native_entity_target(entity)?;
         let at = self.target_position(target)?;
         if !self.native_entity_here(entity) {
             return None;
@@ -174,10 +174,16 @@ impl crate::game::ServerGame<'_> {
     /// `Entity.isSpectator`: true for a player in spectator mode, false for
     /// every other entity.
     pub(in crate::game) fn entity_spectator(&self, entity: EntityRef) -> Option<bool> {
-        Some(match self.common.native_entity_target(entity)? {
+        Some(match self.native_entity_target(entity)? {
             Target::Player => self.common.spectator(),
-            Target::Guest(conn) => self.common.command_guest(conn)?.game_mode == 3,
+            Target::Guest(conn) => self.command_guest(conn)?.game_mode == 3,
             _ => false,
         })
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

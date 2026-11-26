@@ -116,7 +116,7 @@ impl ServerGame<'_> {
             ScoreHolder::Name(name) => Some(name.clone()),
             ScoreHolder::Player(player) => self.player_name(*player).map(str::to_owned),
             ScoreHolder::Entity(entity) => {
-                self.existing_holder_name(self.common.native_entity_target(*entity)?)
+                self.existing_holder_name(self.native_entity_target(*entity)?)
             }
         }
     }
@@ -131,9 +131,9 @@ impl ServerGame<'_> {
             ScoreHolder::Name(name) => return Some((name.clone(), Some(literal(name)))),
             ScoreHolder::Player(player) => {
                 self.player_name(*player)?;
-                self.common.native_entity_target(player.entity())?
+                self.native_entity_target(player.entity())?
             }
-            ScoreHolder::Entity(entity) => self.common.native_entity_target(*entity)?,
+            ScoreHolder::Entity(entity) => self.native_entity_target(*entity)?,
         };
         let holder = self.holder_for(target)?;
         Some((holder.name, holder.display))
@@ -593,8 +593,8 @@ pub mod tests {
             seed: 0,
             max_players: 10,
             integrated: true,
-            levels: game.side.level_shapes,
-            level_seeds: game.side.levels.0.runtime.seeds(),
+            levels: game.server.level_shapes,
+            level_seeds: game.server.levels.0.runtime.seeds(),
         };
         let mut net = NetConfig::lan(0, "test".into(), 10);
         net.listen = false;
@@ -605,10 +605,18 @@ pub mod tests {
         };
         game.lan_host(settings, net, config).unwrap();
         // The test world keeps its folder between runs: start from no saved board.
-        let saved_board = game.side.world_root.join("data/minecraft/scoreboard.dat");
+        let saved_board = game.server.world_root.join("data/minecraft/scoreboard.dat");
         let _ = std::fs::remove_file(&saved_board);
         saved_board
     }
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

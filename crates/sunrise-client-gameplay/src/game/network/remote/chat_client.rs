@@ -183,7 +183,7 @@ impl crate::game::ClientGame<'_> {
         if message.starts_with('/') || !mod_api::__private::listened(mod_api::HookId::ClientChat) {
             self.send_signed_chat_input(message);
         } else if let Some(uuid) = self.client.remote.as_ref().map(|r| r.profile) {
-            let id = self.common.own_entity_id();
+            let id = self.own_entity_id();
             let sent = chat_after_event(message, |outgoing, cancel| {
                 self.native_client_chat(id, uuid, message, outgoing, cancel);
             });
@@ -331,3 +331,5 @@ impl crate::game::ClientGame<'_> {
         true
     }
 }
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

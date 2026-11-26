@@ -67,7 +67,7 @@ impl crate::game::ClientGame<'_> {
     /// player.
     pub(in crate::game) fn tick_client_effects(&mut self) {
         client_tick_effects(&mut self.common.potions.effects, &mut self.client.darkness_blend);
-        self.common.apply_effect_status();
+        self.apply_effect_status();
     }
     /// `ThrowableProjectile.tick` on a server's client: it falls and moves
     /// by itself between the server's updates and stops at a block; only
@@ -770,3 +770,7 @@ pub(in crate::game) mod tests {
         });
     }
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

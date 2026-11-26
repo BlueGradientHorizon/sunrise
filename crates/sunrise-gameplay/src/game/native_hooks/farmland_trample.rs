@@ -38,7 +38,7 @@ impl crate::game::ServerGame<'_> {
         }
         // The player's write asks `entity_change_block_pre` first; a mob's never did.
         if player {
-            let acting = self.common.native_acting_id();
+            let acting = self.native_acting_id();
             if self.common.landing_change_cancelled(Some(acting), pos, state, base) {
                 return false;
             }
@@ -60,3 +60,5 @@ impl crate::game::ServerGame<'_> {
     }
 }
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

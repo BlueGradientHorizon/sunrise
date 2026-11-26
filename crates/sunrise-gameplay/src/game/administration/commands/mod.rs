@@ -117,7 +117,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn selector_types_match(&self, s: &Selector, ty: &str) -> bool {
         s.types.iter().all(|(want, neg)| {
             let matches = if let Some(tag) = want.strip_prefix('#') {
-                self.common.entity_tag_matches(tag, ty)
+                self.entity_tag_matches(tag, ty)
             } else {
                 want == ty
             };
@@ -141,7 +141,7 @@ impl crate::game::ServerGame<'_> {
         let candidates = if !s.types.is_empty() && s.scores.is_empty() && s.teams.is_empty() {
             candidates
                 .into_iter()
-                .filter(|&t| self.selector_types_match(s, &self.common.target_type(t)))
+                .filter(|&t| self.selector_types_match(s, &self.target_type(t)))
                 .collect()
         } else {
             candidates
@@ -151,7 +151,7 @@ impl crate::game::ServerGame<'_> {
             .into_iter()
             .filter_map(|t| {
                 let p = self.target_position(t)?;
-                let ty = self.common.target_type(t);
+                let ty = self.target_type(t);
                 if !self.selector_types_match(s, &ty) {
                     return None;
                 }
@@ -199,7 +199,7 @@ impl crate::game::ServerGame<'_> {
                     return None;
                 }
                 // x_rotation is the pitch, y_rotation the yaw (getXRot, getYRot).
-                let [yaw, pitch] = self.common.target_rotation(t);
+                let [yaw, pitch] = self.target_rotation(t);
                 if let Some(range) = s.x_rotation
                     && !rotation_in(range, pitch)
                 {
@@ -406,7 +406,7 @@ impl crate::game::ServerGame<'_> {
             } else {
                 self.feedback(Text::translate(
                     "commands.gamemode.success.other",
-                    &[self.common.target_name(t), mode_name],
+                    &[self.target_name(t), mode_name],
                 ));
             }
         }
@@ -494,7 +494,7 @@ impl crate::game::ServerGame<'_> {
         };
         match t {
             Target::General(id) => {
-                if let Some(entity) = self.common.entity(id) {
+                if let Some(entity) = self.entity(id) {
                     self.entity_stop_riding(entity);
                 }
                 if let Some(row) = self.common.resident_entities.general.row_mut(id) {
@@ -1503,7 +1503,7 @@ impl crate::game::ServerGame<'_> {
             changed
         };
         match picked.as_slice() {
-            [t] => (self.common.target_name(*t), false),
+            [t] => (self.target_name(*t), false),
             _ => (Text::literal(picked.len().to_string()), true),
         }
     }
@@ -1526,7 +1526,7 @@ impl crate::game::ServerGame<'_> {
                 .unwrap_or(0);
             self.feedback_unbroadcast(Text::translate(
                 &format!("commands.experience.query.{unit}"),
-                &[self.common.target_name(target), Text::literal(value.to_string())],
+                &[self.target_name(target), Text::literal(value.to_string())],
             ));
             return Ok(value);
         }
@@ -1546,7 +1546,7 @@ impl crate::game::ServerGame<'_> {
             return Err(err("commands.experience.set.points.invalid", &[]));
         }
         let (key, who) = match changed[..] {
-            [only] => ("single", self.common.target_name(only)),
+            [only] => ("single", self.target_name(only)),
             _ => ("multiple", Text::literal(changed.len().to_string())),
         };
         self.feedback(Text::translate(
@@ -1657,7 +1657,7 @@ impl crate::game::ServerGame<'_> {
             dim,
         ];
         let key = if targets.len() == 1 {
-            args.push(self.common.target_name(targets[0]));
+            args.push(self.target_name(targets[0]));
             "commands.spawnpoint.success.single"
         } else {
             args.push(Text::literal(targets.len().to_string()));
@@ -1884,7 +1884,7 @@ impl crate::game::ServerGame<'_> {
             return Err(if targets.len() == 1 {
                 CommandError::new(Text::translate(
                     "clear.failed.single",
-                    &[self.common.target_name(targets[0])],
+                    &[self.target_name(targets[0])],
                 ))
             } else {
                 err("clear.failed.multiple", &[&targets.len()])
@@ -1892,7 +1892,7 @@ impl crate::game::ServerGame<'_> {
         }
         let kind = if counting { "test" } else { "success" };
         let (key, who) = match found[..] {
-            [only] => ("single", self.common.target_name(only)),
+            [only] => ("single", self.target_name(only)),
             _ => ("multiple", Text::literal(found.len().to_string())),
         };
         self.feedback(Text::translate(
@@ -2191,7 +2191,7 @@ impl crate::game::ServerGame<'_> {
                         if i > 0 {
                             out.push(", ");
                         }
-                        out.push(self.common.target_name(*t));
+                        out.push(self.target_name(*t));
                     }
                     rest = &rest[at + reader.cursor..];
                 }
@@ -2439,3 +2439,9 @@ pub(in crate::game) mod forced_respawn_tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

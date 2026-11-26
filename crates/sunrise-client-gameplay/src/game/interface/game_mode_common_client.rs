@@ -13,6 +13,8 @@ impl ClientGame<'_> {
         stack: &ItemStack,
         clicked: [i32; 3],
     ) -> bool {
-        self.common.stack_adventure_predicate(stack, "minecraft:can_place_on", clicked)
+        self.stack_adventure_predicate(stack, "minecraft:can_place_on", clicked)
     }
 }
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;

@@ -124,25 +124,6 @@ impl crate::game::CommonGame<'_> {
         sunrise_sim::crafting::CraftingRemainder::crafting_remainder(self.res.items(), stack)
     }
 
-    pub fn crafting_remainder(&self, stack: &ItemStack) -> Option<ItemStack> {
-        let mut remainder = self.item_crafting_remainder(stack);
-        if mod_api::__private::item_listens(mod_api::HookId::CraftingRemainder, &stack.item) {
-            self.side_crafting_remainder_hook(stack, &mut remainder);
-        }
-        remainder.filter(|value| value.count > 0)
-    }
-
-    #[allow(dead_code)]
-    pub(in crate::game) fn craft_grid_remainders(&self, recipe: &str) -> Vec<Option<ItemStack>> {
-        self.recipes().remainders(
-            &self.loop_context,
-            recipe,
-            &self.craft_grid[..self.craft_size * self.craft_size],
-            self.craft_size,
-            &|s| self.crafting_remainder(s),
-        )
-    }
-
     /// `Block.asItem`: the block's item name, including air for a block with
     /// no item; None if the block name is unknown.
     pub(super) fn block_item(&self, block: BlockKey) -> Option<mod_api::ItemKey> {
@@ -161,6 +142,30 @@ impl crate::game::CommonGame<'_> {
         mod_api::__private::block_key(&behaviours.table.info(block).name)
     }
 }
+
+pub trait NativeBlockStatesGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+
+     fn crafting_remainder(&self, stack: &ItemStack) -> Option<ItemStack> {
+        let mut remainder = self.item_crafting_remainder(stack);
+        if mod_api::__private::item_listens(mod_api::HookId::CraftingRemainder, &stack.item) {
+            self.side_crafting_remainder_hook(stack, &mut remainder);
+        }
+        remainder.filter(|value| value.count > 0)
+    }
+
+    #[allow(dead_code)]
+     fn craft_grid_remainders(&self, recipe: &str) -> Vec<Option<ItemStack>> {
+        self.recipes().remainders(
+            &self.loop_context,
+            recipe,
+            &self.craft_grid[..self.craft_size * self.craft_size],
+            self.craft_size,
+            &|s| self.crafting_remainder(s),
+        )
+    }
+}
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeBlockStatesGameExt1<'__sg> for G {}
+
 
 pub fn match_state_properties(
     definition: &[(String, Vec<String>)],

@@ -276,3 +276,5 @@ fn control_each_accepted_jump_posts_one_entity_action() {
     scene(&mut game, false);
     assert_eq!(posted_actions(&mut game, &[100]), 0, "refused: no saddle");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

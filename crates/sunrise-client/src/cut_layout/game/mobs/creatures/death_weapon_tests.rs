@@ -109,3 +109,5 @@ fn death_weapon_d_sharpness_v_sword_reads_live_axe() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

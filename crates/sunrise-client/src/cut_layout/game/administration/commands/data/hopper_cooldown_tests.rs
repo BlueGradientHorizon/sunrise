@@ -67,3 +67,7 @@ fn data_reads_a_hoppers_live_transfer_cooldown() {
     assert!(game.run_command("data merge block 4 200 4 {TransferCooldown:5}"));
     assert_eq!(cooldown_shown(game), Some(5));
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

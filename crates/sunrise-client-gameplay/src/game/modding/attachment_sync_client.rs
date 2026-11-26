@@ -58,7 +58,7 @@ impl ClientGame<'_> {
         let Some(remote) = &self.client.remote else {
             return;
         };
-        let Some(level) = self.common.level(&remote.level) else {
+        let Some(level) = self.level(&remote.level) else {
             return;
         };
         let scoped = match holder {
@@ -101,3 +101,5 @@ impl ClientGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

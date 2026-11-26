@@ -159,7 +159,7 @@ impl NativeConfigs {
     }
 }
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// Asks the mods for their configs and loads those of `kinds`.
     pub(in crate::game) fn native_configs_load(
         &mut self,

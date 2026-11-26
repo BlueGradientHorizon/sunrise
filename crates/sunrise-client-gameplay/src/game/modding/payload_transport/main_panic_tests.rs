@@ -103,3 +103,5 @@ fn a_panicking_main_payload_refunds_its_journal_and_preserves_unrelated_delivery
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::payload_transport::PayloadTransportGameExt1 as _;

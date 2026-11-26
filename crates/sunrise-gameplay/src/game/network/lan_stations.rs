@@ -146,8 +146,7 @@ impl ServerGame<'_> {
             && mod_api::__private::listened(mod_api::HookId::AnvilUpdate)
             && let Some((inputs, mut result)) = menu.anvil_update()
         {
-            self.common
-                .api_anvil_update(uuid, entity_id, pos, inputs, &mut result);
+            self.api_anvil_update(uuid, entity_id, pos, inputs, &mut result);
             menu.anvil_updated(result);
         }
         if kind == StationKind::Grindstone && menu.grindstone_created() && menu.grind_hook {
@@ -591,7 +590,7 @@ impl ServerGame<'_> {
                 )
             })
             .unwrap_or((0, 0, 0, String::new()));
-        let bookcases = self.common.count_bookshelves(gs.pos);
+        let bookcases = self.count_bookshelves(gs.pos);
         let offers = if mod_api::__private::mods().is_empty() {
             sunrise_sim::stations::enchant_offers(
                 &self.stations().enchantments,
@@ -1276,3 +1275,7 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::api_values_common::ApiValuesCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::bookshelves_common::BookshelvesCommonGameExt1 as _;

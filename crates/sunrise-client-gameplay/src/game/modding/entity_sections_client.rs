@@ -17,14 +17,14 @@ impl ClientGame<'_> {
     /// A client's entities after its tick: each one where its interpolation or its own move
     /// put it (its live position, not the packet's), and this window's player.
     pub(in crate::game) fn client_entity_sections_stepped(&mut self) {
-        let Some(scope) = self.common.entity_section_scope() else {
+        let Some(scope) = self.entity_section_scope() else {
             return;
         };
-        let own = self.common.own_entity_id();
+        let own = self.own_entity_id();
         let mut sections = std::mem::take(&mut self.common.native_lifecycle.entity_sections);
         if let Some(r) = self.client.remote.as_ref() {
             for &id in r.entities.keys().filter(|&&id| id != own && id > 0) {
-                if let Some(at) = self.common.entity_position(EntityRef::new(scope.epoch, id as u32)) {
+                if let Some(at) = self.entity_position(EntityRef::new(scope.epoch, id as u32)) {
                     sections.moved(scope, id as u32, None, at);
                 }
             }
@@ -49,19 +49,25 @@ impl ClientGame<'_> {
         packet: sunrise_protocol::packets::play::Clientbound,
     ) -> super::Result<()> {
         use sunrise_protocol::packets::play::Clientbound as C;
-        if self.common.entity_section_scope().is_none() {
+        if self.entity_section_scope().is_none() {
             return self.apply_packet(packet);
         }
         if let C::RemoveEntities(p) = &packet {
             for &id in &p.ids {
-                self.common.entity_section_forget(id as u32);
+                self.entity_section_forget(id as u32);
             }
         }
         let respawned = matches!(packet, C::Respawn(_));
         let result = self.apply_packet(packet);
         if respawned {
-            self.common.entity_section_forget(self.common.own_entity_id() as u32);
+            self.entity_section_forget(self.own_entity_id() as u32);
         }
         result
     }
 }
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

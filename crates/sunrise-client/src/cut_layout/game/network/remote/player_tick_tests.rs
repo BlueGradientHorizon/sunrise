@@ -331,3 +331,7 @@ fn a_mod_that_does_not_listen_is_never_asked_for_the_name_tag() {
     let mods = vec![mod_api::ModEntry::new("other", Box::new(Other))].into();
     assert_eq!(tags_over_steve(mods), ["Steve"]);
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

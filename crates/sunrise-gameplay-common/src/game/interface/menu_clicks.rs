@@ -3,10 +3,10 @@
 //! display and throw clicks, and a mouse button over the inventory (`click_inventory`).
 use super::*;
 
-impl crate::game::CommonGame<'_> {
+pub trait MenuClicksGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// `CrafterBlockEntity.setSlotState`: the menu's slot states land on the
     /// block entity, whose `setChanged` marks the chunk for saving.
-    pub fn apply_crafter_slot_states(&mut self, menu: &sunrise_sim::menu::Menu) {
+     fn apply_crafter_slot_states(&mut self, menu: &sunrise_sim::menu::Menu) {
         let Some(key) = self.container else {
             return;
         };
@@ -24,5 +24,7 @@ impl crate::game::CommonGame<'_> {
         }
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> MenuClicksGameExt1<'__sg> for G {}
+
 
 use crate::game::side_ops::events::EventsSideGameExt as _;

@@ -312,3 +312,7 @@ fn nether_portal_stops_use_in_target_level() {
         [("minecraft:the_nether".to_owned(), [1.5, 70.0, 1.5])]
     );
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

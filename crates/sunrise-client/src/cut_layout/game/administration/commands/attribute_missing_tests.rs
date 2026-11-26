@@ -98,3 +98,5 @@ fn modifier_remove_on_an_attribute_the_player_lacks_is_the_no_attribute_error() 
     assert!(!ok, "{said:?}");
     assert!(only(&said).contains("has no modifier"), "{said:?}");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

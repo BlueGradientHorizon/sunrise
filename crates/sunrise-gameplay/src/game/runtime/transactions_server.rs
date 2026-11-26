@@ -1533,9 +1533,9 @@ impl crate::game::ServerGame<'_> {
                     mob.death_time = kept.death_time;
                     mob.death_canceled = kept.death_canceled;
                     if kept.processed {
-                        game.side.died.insert(id);
+                        game.server.died.insert(id);
                     } else {
-                        game.side.died.remove(&id);
+                        game.server.died.remove(&id);
                     }
                 }
             });
@@ -1558,7 +1558,7 @@ impl crate::game::ServerGame<'_> {
                         player.health.dead = kept.dead;
                     }
                     if let Some((conn, canceled, time)) = kept.guest
-                        && let Some(host) = g.side.lan.as_mut()
+                        && let Some(host) = g.server.lan.as_mut()
                         && let Some(gi) = host.hub.guests.connection_index(conn)
                     {
                         host.hub.guests.update(gi, |guest| {
@@ -2067,7 +2067,7 @@ impl crate::game::ServerGame<'_> {
                     // transaction of its own, which marks and unmarks its removals: the mark
                     // this one set is put back as it was.
                     let outer = self.set_removing(Some(entity.id()));
-                    if let Some(target) = self.common.native_entity_target(entity) {
+                    if let Some(target) = self.native_entity_target(entity) {
                         self.remove_target_now(entity, target);
                     }
                     self.set_removing(outer);
@@ -2126,7 +2126,7 @@ impl crate::game::ServerGame<'_> {
             self.cushions,
             self.paintings,
             self.item_frames,
-            self.side.others.0,
+            self.server.others.0,
             self.breath_clouds,
             self.bolts,
             self.fangs.list,
@@ -2175,3 +2175,9 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::player_equip::PlayerEquipGameExt2 as _;

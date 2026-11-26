@@ -15,7 +15,7 @@ pub(in crate::game) enum EquipStack {
     Ready(Box<mod_api::ItemStack>),
 }
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
+impl crate::game::CommonGame<'_> {
     pub fn equip_stack(&self, stack: &ItemStack) -> EquipStack {
         if !mod_api::__private::item_listens(mod_api::HookId::CanEquip, &stack.item) {
             return EquipStack::DataOnly;
@@ -27,12 +27,15 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             Err(_) => EquipStack::Refused,
         }
     }
+}
+
+pub trait EquipAnswersGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `LivingEntity.isEquippableInSlot` with `IItemExtension.canEquip`: `data` is the stack's
     /// `equippable` answer for the entity `entity` of type `kind` in `slot`, and the parts of
     /// `stack`'s item may change it. When a part would be asked and `entity` is no live entity of
     /// this side (a missing or stale handle), the slot is refused.
-    pub fn can_equip(
+     fn can_equip(
         &self,
         stack: &EquipStack,
         slot: &str,
@@ -49,7 +52,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             return false;
         };
         let native = crate::game::native_hooks::NativeHookHost {
-            host: crate::game::Side::as_host(self),
+            host: <Self::State as crate::game::Side>::as_host(self),
         };
         let mut can_equip = data;
         native.native_can_equip(
@@ -64,10 +67,12 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     /// `can_equip` lent to a menu click that runs while the game is at hand (the player's own
     /// inventory menu, predicted or authoritative).
-    pub fn menu_can_equip(&self) -> MenuEquip<'_, '_, __Side> {
+     fn menu_can_equip(&self) -> MenuEquip<'_, '_, __Side> {
         MenuEquip { game: self }
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> EquipAnswersGameExt1<'__sg> for G {}
+
 
 /// The game lent to a menu click as its `CanEquip`.
 pub struct MenuEquip<'g, 'a, S: crate::game::Side> {
@@ -140,3 +145,5 @@ thread_local! { static EQUIP_CONVERSIONS:std::cell::Cell<usize>=const{std::cell:
 pub fn take_equip_conversions() -> usize {
     EQUIP_CONVERSIONS.with(|count| count.replace(0))
 }
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

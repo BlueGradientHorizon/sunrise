@@ -335,3 +335,9 @@ pub(in crate::game) fn spawn_test_projectile(
 }
 
 use sunrise_gameplay_common::game::creatures::world_view::WorldViewExt as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

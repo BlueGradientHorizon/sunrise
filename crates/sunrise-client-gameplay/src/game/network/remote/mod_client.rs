@@ -296,7 +296,7 @@ impl sunrise_client::interaction_input::InteractionWorld for RemoteInputWorld<'_
         self.0.release_tick_targets();
     }
     fn using_item(&self) -> bool {
-        self.0.side.client_item_use.0.is_some() || self.0.using.is_some()
+        self.0.client.client_item_use.0.is_some() || self.0.using.is_some()
     }
     fn release_using(&mut self) {
         if !self.0.end_client_item_use(true) && self.0.using.is_some() {
@@ -1414,3 +1414,7 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

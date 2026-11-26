@@ -154,3 +154,7 @@ fn each_respawn_refusal_has_its_own_name_and_changes_nothing() {
         // Client refusal is enforced at compile time (`ClientGame` is not a `ServerHost`).
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

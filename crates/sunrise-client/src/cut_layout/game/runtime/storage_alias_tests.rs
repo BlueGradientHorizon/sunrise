@@ -187,3 +187,5 @@ fn the_failure_keeps_the_save_state_and_stores_nothing_new() {
         "execute if data entity {stand} {{UUID:[I;582,0,0,1]}}"
     )));
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

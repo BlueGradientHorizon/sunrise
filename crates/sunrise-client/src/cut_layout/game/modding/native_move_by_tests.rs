@@ -157,3 +157,5 @@ fn move_by_stops_at_a_wall_and_refuses_what_has_no_physics() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

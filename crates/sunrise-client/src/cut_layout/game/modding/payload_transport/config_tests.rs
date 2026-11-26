@@ -450,3 +450,5 @@ fn controlled_peer(port: u16, expected: &[u8], game: &sunrise_client_gameplay::g
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

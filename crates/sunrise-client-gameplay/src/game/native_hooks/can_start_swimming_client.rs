@@ -6,7 +6,7 @@ impl crate::game::ClientGame<'_> {
         &self,
         check: SwimmingCheck,
     ) -> Option<bool> {
-        let player = self.common.local_player()?;
+        let player = self.local_player()?;
         if Some(player.entity().id()) != self.common.player.as_ref().map(|p| p.entity_id as u32) {
             return None;
         }
@@ -15,3 +15,7 @@ impl crate::game::ClientGame<'_> {
         answer
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

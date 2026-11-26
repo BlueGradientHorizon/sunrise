@@ -315,3 +315,5 @@ fn registry() -> &'static BlockRegistry {
     crate::game::api_values::resolve_block_definitions(registry).unwrap();
     registry
 }
+
+use crate::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;

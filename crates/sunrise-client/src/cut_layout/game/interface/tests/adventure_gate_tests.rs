@@ -232,3 +232,5 @@ fn an_adventure_placement_is_predicted_when_can_place_on_names_the_clicked_block
             .is_none()
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

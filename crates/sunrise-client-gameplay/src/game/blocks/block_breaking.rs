@@ -28,7 +28,7 @@ impl crate::game::ClientGame<'_> {
                 },
             );
             self.with_break_progress_positions(pos, stage, |game, positions| {
-                if let Some(crack) = game.side.destroying.get_mut(&breaker)
+                if let Some(crack) = game.client.destroying.get_mut(&breaker)
                     && crack.pos == pos
                     && crack.stage == stage
                 {

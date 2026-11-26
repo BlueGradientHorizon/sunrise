@@ -298,3 +298,5 @@ pub(in crate::game) fn run_extra_case(
     }
     errors
 }
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

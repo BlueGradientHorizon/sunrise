@@ -85,3 +85,5 @@ fn a_carried_block_is_not_placed_into_an_entity() {
         assert_eq!(game.mobs[0].extra.carried.is_none(), placed, "{what}");
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

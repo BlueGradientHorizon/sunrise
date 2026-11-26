@@ -15,7 +15,7 @@ use sunrise_core::geometry::{Aabb, Vec3};
         use super::super::minecarts::{CartKind, Minecart};
         use sunrise_sim::mobs::Mob;
         fn fake_fall<'a>(game: &'a mut sunrise_gameplay::game::ServerGame<'_>) -> &'a mut f64 {
-            let host = game.side.lan.as_mut().unwrap();
+            let host = game.server.lan.as_mut().unwrap();
             let conn = host.hub.guests.iter().find(|g| g.uuid == 2).unwrap().conn;
             &mut host
                 .hub

@@ -23,7 +23,7 @@ impl ServerGame<'_> {
             });
             self.common.mobs[index].extra.set_body_stack(held);
             self.server_play_sound("minecraft:entity.happy_ghast.equip", at, 1.0, 1.0);
-            self.common.consume_held();
+            self.consume_held();
             let id = self.common.mobs[index].id;
             let pos = self.common.mobs[index].position;
             self.mob_equip_event(id, [pos.x, pos.y, pos.z], true);
@@ -62,7 +62,7 @@ impl ServerGame<'_> {
             self.common.mount.reset_jump();
             if was_empty {
                 let down = happy_ghast::goggles(true, &self.common.mobs[index]);
-                let _ = self.common.handle_mob_events(vec![down]);
+                let _ = self.handle_mob_events(vec![down]);
             }
             self.start_riding(id);
             return true;
@@ -70,3 +70,7 @@ impl ServerGame<'_> {
         false
     }
 }
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

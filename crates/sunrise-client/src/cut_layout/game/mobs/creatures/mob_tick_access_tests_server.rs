@@ -231,3 +231,7 @@ pub(in crate::game) fn with_two_pigs(test: impl FnOnce(&mut sunrise_gameplay::ga
     });
     let _ = std::fs::remove_dir_all(&root);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;

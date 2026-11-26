@@ -154,7 +154,7 @@ impl crate::game::ServerGame<'_> {
             let used = held.cloned();
             self.charge_anchor(pos, state, Some(Who::Player))?;
             // itemStack.consume(1, player); the criterion sees the stack as used.
-            self.common.consume_held();
+            self.consume_held();
             if let Some(stack) = used {
                 self.trigger_block("minecraft:item_used_on_block", pos, &stack);
             }
@@ -181,7 +181,7 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         let mut cancel = false;
-        let id = self.common.own_entity_id();
+        let id = self.own_entity_id();
         self.native_player_set_spawn(mod_api::__private::PlayerSetSpawnCall {
             player,
             player_entity_id: id,
@@ -690,3 +690,7 @@ pub(in crate::game) mod tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

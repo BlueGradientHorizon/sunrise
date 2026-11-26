@@ -478,7 +478,7 @@ impl crate::game::ClientGame<'_> {
                     self.client.settings.keys.sync_action_bindings();
                     self.apply_settings();
                     self.switch_mods();
-                    self.common.sync_native_switches();
+                    self.sync_native_switches();
                     self.sync_pregen_option();
                     self.sync_agent_control();
                     self.client.chat_ui.options.agent_status = self.agent_status_lines();
@@ -1064,3 +1064,5 @@ mod controller_context_tests {
         );
     }
 }
+
+use sunrise_gameplay_common::game::mods::ModGameExt1 as _;

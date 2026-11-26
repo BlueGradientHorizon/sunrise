@@ -23,7 +23,7 @@ impl crate::game::ClientGame<'_> {
         let Ok(unlit) = self.common.pack.assets.registry.resolve(&state) else {
             return false;
         };
-        let Some(unlit) = self.common.modified_campfire(hit, held, unlit) else {
+        let Some(unlit) = self.modified_campfire(hit, held, unlit) else {
             return false;
         };
         let signal = state.properties.get("signal_fire").map(String::as_str) == Some("true");
@@ -35,3 +35,5 @@ impl crate::game::ClientGame<'_> {
         true
     }
 }
+
+use sunrise_gameplay_common::game::campfire_douse::CampfireDouseGameExt1 as _;

@@ -335,7 +335,7 @@ impl crate::game::ClientGame<'_> {
         #[cfg(test)]
         nested_spawn_tests::after_lift(self, nested_spawn_tests::Point::OwnRocket);
         for r in rockets.iter_mut().filter(|r| r.attached_to == Some(me)) {
-            self.common.follow_own_player(r);
+            self.follow_own_player(r);
             self.pick_section_move(r.id, r.position.components());
             self.rocket_spark(r);
         }
@@ -414,7 +414,7 @@ impl crate::game::ClientGame<'_> {
         // the tridents, once for the family before the loop holds them, and
         // the Post after; a canceled one keeps its state for the tick. One of a type a mod named
         // is told alone, right before and right after its own tick.
-        let mut round = self.common.native_tick_round();
+        let mut round = self.native_tick_round();
         let mut alone_any = false;
         if round.listening() {
             for p in self.common.creatures.projectiles.iter() {
@@ -434,7 +434,7 @@ impl crate::game::ClientGame<'_> {
                     round.add(t.id, sunrise_gameplay_common::game::native_ticks::TickKind::Fixed(TRIDENT));
                 }
             }
-            self.common.native_tick_pre_batch(&mut round);
+            self.native_tick_pre_batch(&mut round);
         }
         let mut projectiles = self.common.creatures.projectiles.lift();
         #[cfg(test)]
@@ -458,7 +458,7 @@ impl crate::game::ClientGame<'_> {
             // Their visits, counted once the loop hands the game back: no hook runs between.
             let mut visited = Vec::new();
             {
-                let rain = self.common.arrow_rain();
+                let rain = self.arrow_rain();
                 let arrow_scene = self.client_arrow_scene(&rain);
                 let side = self.client_mob_side();
                 let w = self.client_mob_world_base(&[], &side);
@@ -507,7 +507,7 @@ impl crate::game::ClientGame<'_> {
         for (at, event) in arrow_events {
             self.client_arrow_event(at, event);
         }
-        self.common.native_tick_post_batch(round);
+        self.native_tick_post_batch(round);
         self.arrow_effect_particles();
         let trails: Vec<Vec3> = self
             .common.creatures
@@ -625,7 +625,7 @@ impl crate::game::ClientGame<'_> {
         while slot < slots.len() {
             // The projectiles up to the next one told alone, through one set of views.
             {
-                let rain = self.common.arrow_rain();
+                let rain = self.arrow_rain();
                 let scene = self.client_arrow_scene(&rain);
                 let side = self.client_mob_side();
                 let w = self.client_mob_world_base(&[], &side);
@@ -684,7 +684,7 @@ impl crate::game::ClientGame<'_> {
                 continue;
             };
             {
-                let rain = self.common.arrow_rain();
+                let rain = self.arrow_rain();
                 let scene = self.client_arrow_scene(&rain);
                 let side = self.client_mob_side();
                 let w = self.client_mob_world_base(&[], &side);
@@ -1328,3 +1328,11 @@ pub(in crate::game::client_side) fn told_visit(
         game.count_client_tick(id);
     }
 }
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::fireworks::FireworksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;

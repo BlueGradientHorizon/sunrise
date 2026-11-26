@@ -21,7 +21,7 @@ impl ServerGame<'_> {
         let items = self.items();
         match s.kind {
             Kind::Enchanting => {
-                s.bookcases = self.common.count_bookshelves(s.pos);
+                s.bookcases = self.count_bookshelves(s.pos);
                 s.offers = stations::enchant_offers(
                     &enchantments,
                     items,
@@ -161,7 +161,7 @@ impl ServerGame<'_> {
     }
 
     pub(in crate::game) fn give_or_drop(&mut self, stack: ItemStack) {
-        if let Some(rest) = self.common.add_stack_to_inventory(stack)
+        if let Some(rest) = self.add_stack_to_inventory(stack)
             && let Some(eye) = self.common.eye_position()
         {
             // Inventory.placeItemBackInInventory: `player.drop(stack, false)`.
@@ -244,7 +244,7 @@ impl ServerGame<'_> {
             self.common.level.xp_seed = self.common.world.random.next_int();
         }
         self.common.station = Some(Station::new(kind, pos));
-        self.common.station_changed();
+        self.station_changed();
         self.common.beacon_opened();
         // The block's interaction statistic.
         let stat = match name {
@@ -409,3 +409,9 @@ impl ServerGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::bookshelves_common::BookshelvesCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::stations_common::StationsCommonGameExt1 as _;

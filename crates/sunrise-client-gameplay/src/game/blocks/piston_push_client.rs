@@ -35,8 +35,8 @@ impl crate::game::ClientGame<'_> {
             return Ok(None);
         };
         let before = player.position;
-        let entities = self.common.entity_collisions(Mover::Player);
-        let section_scope = self.common.player_section_scope();
+        let entities = self.entity_collisions(Mover::Player);
+        let section_scope = self.player_section_scope();
         let side_server = self.game_side_client();
         let Some(player) = self.common.player.as_mut() else {
             return Ok(None);
@@ -357,7 +357,7 @@ impl crate::game::ClientGame<'_> {
         let MoveWho::Entity(EntityHandle::Boat(i)) = target else {
             return;
         };
-        let mut gate = self.common.entity_move(target, MoverType::Piston, movement);
+        let mut gate = self.entity_move(target, MoverType::Piston, movement);
         if gate.skipped() {
             return;
         }
@@ -577,7 +577,7 @@ impl crate::game::ClientGame<'_> {
         no_physics: bool,
     ) {
         let target = MoveWho::Entity(EntityHandle::Boat(i));
-        let mut gate = self.common.entity_move(target, mover, movement);
+        let mut gate = self.entity_move(target, mover, movement);
         if gate.skipped() {
             return;
         }
@@ -592,7 +592,7 @@ impl crate::game::ClientGame<'_> {
         let area = entity_collision_bounds(movement, body.bounds, body.step_height).inflate(
             Vec3::new(COLLISION_EPSILON, COLLISION_EPSILON, COLLISION_EPSILON),
         );
-        let entities = self.common.entity_collisions(Mover::Boat {
+        let entities = self.entity_collisions(Mover::Boat {
             id: self.common.boats[i].id,
             area,
         });
@@ -780,7 +780,7 @@ impl crate::game::ClientGame<'_> {
                         }
                     }
                 }
-                self.common.position_riders();
+                self.position_riders();
             }
             if shove {
                 let before_shove = last.as_ref().map_or(start, |(_, placed)| placed);
@@ -858,15 +858,23 @@ impl crate::game::ClientGame<'_> {
                 }
                 shoved = true;
                 if current.placed().any(|p| p.exempt.contains(&player_id)) {
-                    self.common.position_riders();
+                    self.position_riders();
                     current = self.client_placed_moving_colliders();
                 }
             }
         }
         if shoved {
-            self.common.position_riders();
+            self.position_riders();
         }
     }
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::player::PlayerGameExt1 as _;
+
+use sunrise_gameplay_common::game::move_gate::MoveGateGameExt1 as _;
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;

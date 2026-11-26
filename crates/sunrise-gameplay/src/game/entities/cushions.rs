@@ -23,7 +23,7 @@ use sunrise_gameplay_common::game::{
 impl crate::game::ServerGame<'_> {
     /// The cushion under the crosshair, its distance and the hit point.
     pub(in crate::game::server_side) fn cushion_hit(&self) -> Option<(usize, f64, [f64; 3])> {
-        let (eye, dir) = self.common.aim()?;
+        let (eye, dir) = self.aim()?;
         let reach: f64 = self.common.entity_reach;
         let (from, to) = super::pick_ray::pick_ray_segment(eye, dir, reach);
         let mut pick = super::pick_ray::PickAccumulator::new(reach * reach);
@@ -75,7 +75,7 @@ impl crate::game::ServerGame<'_> {
                 _ => None,
             });
         let color = dye_index(color_override.as_deref().unwrap_or(default_color));
-        let Some((position, bounds)) = self.common.cushion_spawn(hit) else {
+        let Some((position, bounds)) = self.cushion_spawn(hit) else {
             return false;
         };
         // `getEntitiesOfClass(Cushion.class, spawnAABB).isEmpty()`.
@@ -128,7 +128,7 @@ impl crate::game::ServerGame<'_> {
             ctx,
         );
         if !self.common.creative {
-            self.common.consume_held();
+            self.consume_held();
         }
         // `CushionItem.useOn` returns SUCCESS: the hand swings.
         self.swing_arm();
@@ -140,12 +140,12 @@ impl crate::game::ServerGame<'_> {
         let Some((i, d, _)) = self.cushion_hit() else {
             return false;
         };
-        if !self.common.before_block(d) || self.common.mob_hit().is_some_and(|m| m.1 < d) {
+        if !self.before_block(d) || self.mob_hit().is_some_and(|m| m.1 < d) {
             return false;
         }
         // `Cushion.hurtServer` refuses a player who may not build, so
         // skipAttackInteraction is false and Player.attack goes on to onAttack.
-        if !self.common.may_build() {
+        if !self.may_build() {
             self.server.attack_ticks = 0;
             return true;
         }
@@ -182,7 +182,7 @@ impl crate::game::ServerGame<'_> {
             // The guest whose turn it is is in place already (the hub is out of
             // `self.lan` while it acts), as `sculk::entity_event_by` reads it.
             Some(Target::Guest(conn)) if self.server.lan_acting == Some(*conn) => self.common.creative,
-            Some(Target::Guest(conn)) => self.common.command_guest(*conn).is_some_and(|g| g.creative()),
+            Some(Target::Guest(conn)) => self.command_guest(*conn).is_some_and(|g| g.creative()),
             _ => false,
         }
     }
@@ -259,7 +259,7 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         // Only a client's own pick is stopped by a block: the range check passed.
-        if target.is_none() && !self.common.before_block(d) {
+        if target.is_none() && !self.before_block(d) {
             return false;
         }
         // isSecondaryUseActive.
@@ -505,3 +505,15 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_world_read_common::NativeWorldReadGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

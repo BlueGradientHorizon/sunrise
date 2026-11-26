@@ -14,7 +14,7 @@ impl crate::game::ClientGame<'_> {
         stack: &ItemStack,
     ) -> (BonemealAsk, ItemStack) {
         let mut held = stack.clone();
-        let ask = self.common.bonemeal(pos, true, &mut held);
+        let ask = self.bonemeal(pos, true, &mut held);
         if held != *stack {
             if self.common.creative {
                 held.count = stack.count;
@@ -169,3 +169,5 @@ use sunrise_gameplay_common::game::client_side::growth::tests::heard;
 
     
 }
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

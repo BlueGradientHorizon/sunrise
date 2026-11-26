@@ -203,7 +203,7 @@ impl crate::game::ServerGame<'_> {
     ) -> Result<()> {
         self.integrated_open(&launch, &flags, tasks, ready, opening)?;
         // The server thread's `server_started` site, before the tick loop.
-        self.common.native_lifecycle_world_ready();
+        self.native_lifecycle_world_ready();
         if let (Some(script), Some(output)) = (
             std::env::var_os("SUNRISE_COMMAND_SCRIPT"),
             std::env::var_os("SUNRISE_COMMAND_OUTPUT"),
@@ -368,7 +368,7 @@ impl crate::game::ServerGame<'_> {
         let prepared = self.prepare_early_game_rules(opening.world?)?;
         self.native_server_about_to_start(false);
         self.native_server_starting(false);
-        self.common.native_lifecycle_open_started();
+        self.native_lifecycle_open_started();
         // `load_world`, with the world `serve` started preparing.
         startup::time("server.wait_rest", || self.common.join_world_rest())?;
         sunrise_level::spans::startup::arm("world.opening");
@@ -380,8 +380,8 @@ impl crate::game::ServerGame<'_> {
         }
         let saved = Box::new(self.common.level.clone());
         // IntegratedServer runs the server mods; the window the client mods.
-        startup::time("server.start_mods", || self.common.start_mods());
-        self.common.refresh_loop_context()?;
+        startup::time("server.start_mods", || self.start_mods());
+        self.refresh_loop_context()?;
         // Math.max(2, options.renderDistance): past vanilla's 32 when the
         // window's render distance is (Sunrise's options go to 64).
         let view_distance = self.server.settings.render_distance.max(2);
@@ -557,7 +557,7 @@ impl crate::game::ServerGame<'_> {
                     let command = command.strip_prefix('/').unwrap_or(command).to_owned();
                     game.recording_command_outcome(|game| {
                         game.as_console(|g| {
-                            g.side.chat_capture = Some(Vec::new());
+                            g.server.chat_capture = Some(Vec::new());
                             // A command a native mod registered goes to the mods
                             // first, as the owner's own chat does (the console is
                             // level 4, so every registered usage is allowed).
@@ -566,7 +566,7 @@ impl crate::game::ServerGame<'_> {
                             {
                                 g.run_command(&command);
                             }
-                            g.side.chat_capture.take().unwrap_or_default()
+                            g.server.chat_capture.take().unwrap_or_default()
                         })
                     })
                 })
@@ -1052,7 +1052,7 @@ pub mod tests {
             .published
             .store(u16::from(published), Ordering::Relaxed);
         let (tasks, receiver) = channel();
-        game.side.serving = Some(Serving {
+        game.server.serving = Some(Serving {
             flags: flags.clone(),
             tasks: receiver,
             owner: 0,
@@ -1209,3 +1209,13 @@ pub mod tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::mods::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

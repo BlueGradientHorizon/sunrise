@@ -2856,3 +2856,5 @@ fn widget_tooltip_uses_the_same_positioner_for_pre_and_paint() {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::stations_common::StationsCommonGameExt1 as _;

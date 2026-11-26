@@ -275,7 +275,7 @@ impl ServerGame<'_> {
     }
     /// The tanks the game's own fluid capability reaches at `at`: in the level in place only.
     fn capability_tanks(&self, at: BlockSide) -> Option<FluidAt> {
-        if !self.common.level_in_place(at.level) {
+        if !self.level_in_place(at.level) {
             return None;
         }
         self.native_fluid_at(at.pos)
@@ -697,3 +697,7 @@ use sunrise_gameplay_common::game::server_side::machines::native_fluids::tests::
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

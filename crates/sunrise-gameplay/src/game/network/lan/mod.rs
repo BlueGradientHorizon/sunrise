@@ -278,7 +278,7 @@ impl crate::game::ServerGame<'_> {
                 // has generated or loaded so far.
                 "world": {
                     "chunks": self.world.chunks.len(),
-                    "generated": self.side.streaming.generated_total,
+                    "generated": self.server.streaming.generated_total,
                 },
                 "guests": h.hub.guests.iter().map(|g| json!({
                     "name": g.name,
@@ -1233,8 +1233,7 @@ impl crate::game::ServerGame<'_> {
             match event {
                 HostEvent::InputCredits(credits) => drop(credits),
                 HostEvent::RawPayload(delivery) => {
-                    self.common
-                        .run_payload(delivery.endpoint, delivery.incoming);
+                    self.run_payload(delivery.endpoint, delivery.incoming);
                 }
                 HostEvent::PlayerPong { conn, id } => {
                     let Some(guest) = self.server.lan.as_ref()?.hub.guest(conn).filter(|g| {
@@ -3308,7 +3307,7 @@ pub(in crate::game) mod tests {
                     let deadline = Instant::now() + WAIT;
                     while seen.lock().unwrap().len() < count {
                         assert!(Instant::now() < deadline, "handshake was not dispatched");
-                        game.side.level_pass = Default::default();
+                        game.server.level_pass = Default::default();
                         game.tick_lan_packets();
                         thread::yield_now();
                     }
@@ -4601,8 +4600,8 @@ pub(in crate::game) mod tests {
                         bound: Box::new(bound),
                         name: "guest12".into(),
                     };
-                    let host = game.side.lan.take().unwrap();
-                    game.side.lan = game.lan_process_events(host, [event], &[], [0.5, 64.0, 0.5]);
+                    let host = game.server.lan.take().unwrap();
+                    game.server.lan = game.lan_process_events(host, [event], &[], [0.5, 64.0, 0.5]);
                 };
 
                 say(game, "secret");
@@ -4876,7 +4875,7 @@ pub(in crate::game) mod tests {
                 let mut states = super::States::default();
                 game.lan_entities(&mut states, false, 0, None);
                 let zombie = states.as_slice().iter().find(|e| e.id == ZOMBIE).unwrap();
-                let hub = &game.side.lan.as_ref().unwrap().hub;
+                let hub = &game.server.lan.as_ref().unwrap().hub;
                 let listened =
                     mod_api::__private::listened(mod_api::HookId::EffectParticleModification);
                 let player = hub.player_effect_meta(&hub.guests[0], listened);
@@ -5090,7 +5089,7 @@ pub mod world_spawn_sync_tests {
         );
         guest.placed = true;
         guest.dimension = "minecraft:the_nether".into();
-        game.side.lan.as_mut().unwrap().hub.guests.push(guest);
+        game.server.lan.as_mut().unwrap().hub.guests.push(guest);
         rx
     }
 }
@@ -5824,3 +5823,11 @@ pub(in crate::game) mod merchant_packet_tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::payload_transport::PayloadTransportGameExt1 as _;

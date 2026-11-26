@@ -112,3 +112,5 @@ fn a_packs_own_item_and_block_tags_admit_and_match_its_functions() {
     assert_eq!(score(&game, "#block"), 2);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -64,12 +64,12 @@ impl crate::game::ServerGame<'_> {
             let shared = &prepared;
             let outcome_ref = &outcome;
             let (stacks, slot, primary) = (frozen.clone(), frozen.slot, frozen.primary);
-            let picked = self.common.stacked_pickup(
+            let picked = self.stacked_pickup(
                 route,
                 frozen,
                 move |game| {
                     let (carried, clicked) =
-                        game.side
+                        game.server
                             .lan
                             .as_ref()?
                             .hub
@@ -135,7 +135,7 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<R> {
         let mut host = self.server.lan.take()?;
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(self, &mut host)));
-        debug_assert!(self.side.lan.is_none(), "a lifted LAN host was replaced");
+        debug_assert!(self.server.lan.is_none(), "a lifted LAN host was replaced");
         self.server.lan = Some(host);
         match result {
             Ok(result) => Some(result),
@@ -147,3 +147,5 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::stacked_on_other::StackedOnOtherGameExt1 as _;

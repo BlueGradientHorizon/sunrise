@@ -66,3 +66,5 @@ fn a_click_from_inside_a_scaffolding_block_places_on_the_opposite_face() {
         "a ray that lost the face places beside the column"
     );
 }
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

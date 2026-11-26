@@ -15,7 +15,7 @@ impl crate::game::ServerGame<'_> {
             .then(|| (self.common.inventory[self.common.selected].clone(), self.common.offhand.clone()));
         if let Some((old_main, old_off)) = &heard {
             let (mut to_main, mut to_off, mut cancel) = (old_off.clone(), old_main.clone(), false);
-            let (uuid, name) = (self.common.own_uuid(), self.common.own_profile_name());
+            let (uuid, name) = (self.own_uuid(), self.own_profile_name());
             self.native_player_swap_hands(uuid, &name, &mut to_main, &mut to_off, &mut cancel);
             if cancel {
                 return;
@@ -29,8 +29,8 @@ impl crate::game::ServerGame<'_> {
             Some((old_main, old_off)) => (old_main.as_ref(), old_off.as_ref()),
             None => (offhand.as_ref(), main.as_ref()),
         };
-        self.common.player_on_equip("offhand", old_off, offhand.as_ref());
-        self.common.player_on_equip("mainhand", old_main, main.as_ref());
+        self.player_on_equip("offhand", old_off, offhand.as_ref());
+        self.player_on_equip("mainhand", old_main, main.as_ref());
         self.common.using = None;
     }
 }
@@ -79,7 +79,7 @@ pub(in crate::game) mod swap_hands_tests {
                     direction: 0,
                     sequence: 0,
                 });
-                let host = game.side.lan.as_mut().unwrap();
+                let host = game.server.lan.as_mut().unwrap();
                 host.hub
                     .guests
                     .update_connection(1, |g| {
@@ -87,10 +87,10 @@ pub(in crate::game) mod swap_hands_tests {
                             .push_back(sunrise_sim::lan::guest::InboxItem::Packet(swap, None))
                     })
                     .unwrap();
-                game.side.level_pass.first = false;
-                game.side.level_pass.packets_drained = false;
+                game.server.level_pass.first = false;
+                game.server.level_pass.packets_drained = false;
                 game.tick_lan_packets();
-                let hub = &game.side.lan.as_ref().unwrap().hub;
+                let hub = &game.server.lan.as_ref().unwrap().hub;
                 sunrise_sim::lan::flush_all(hub.guests.iter().map(|g| &g.sender));
                 output(&receivers[0])
                     .into_iter()
@@ -132,3 +132,7 @@ pub(in crate::game) mod swap_hands_tests {
 
     
 }
+
+use sunrise_gameplay_common::game::player_equip::PlayerEquipGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

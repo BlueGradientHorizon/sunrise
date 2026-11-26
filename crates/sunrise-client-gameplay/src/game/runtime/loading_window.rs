@@ -356,9 +356,9 @@ pub fn start_client_game<'a>(
     if game.options.benchmark.is_some() {
         // The same conditions on every machine: no VSync, no frame cap, no
         // pause or idle limit without focus. In memory only, never saved.
-        game.side.settings.vsync = false;
-        game.side.settings.max_fps = 260;
-        game.side.settings.inactivity_fps_limit = "minimized".into();
+        game.client.settings.vsync = false;
+        game.client.settings.max_fps = 260;
+        game.client.settings.inactivity_fps_limit = "minimized".into();
         game.options.no_pause = true;
     }
     game.apply_settings();
@@ -385,7 +385,7 @@ pub fn start_client_game<'a>(
                     commit: option_env!("SUNRISE_COMMIT").map(str::to_owned),
                     mods: Vec::new(),
                 },
-                simulation_distance: game.side.settings.simulation_distance as u32,
+                simulation_distance: game.client.settings.simulation_distance as u32,
                 vsync: false,
                 fps_cap: None,
                 offscreen: game.options.offscreen,
@@ -402,8 +402,8 @@ pub fn start_client_game<'a>(
         handoff,
     });
     if let Some((window, renderer)) = window {
-        game.side.resize_state = Some(game.resize_state_of(window.inner_size()));
-        game.side.window.0 = Some(window);
+        game.client.resize_state = Some(game.resize_state_of(window.inner_size()));
+        game.client.window.0 = Some(window);
         let ready = game.apply_pending_client_start(
             pending.expect("loading screen has a client"),
             Ok(Some(Box::new(renderer))),
@@ -429,7 +429,7 @@ pub fn start_client_game<'a>(
             let ready = game.apply_pending_client_start(pending, Ok(None))?;
             Ok(ready.then_some(game))
         } else {
-            game.side.pending_initial_models.0 = Some(Box::new(pending));
+            game.client.pending_initial_models.0 = Some(Box::new(pending));
             Ok(Some(game))
         }
     } else {
@@ -463,8 +463,8 @@ impl crate::game::ClientGame<'_> {
                     serde_json::json!({
                         "view_distance": remote.view_distance,
                         "simulation_distance": remote.simulation_distance,
-                        "render_setting": self.side.settings.render_distance,
-                        "simulation_setting": self.side.settings.simulation_distance,
+                        "render_setting": self.client.settings.render_distance,
+                        "simulation_setting": self.client.settings.simulation_distance,
                         "logged_in": remote.logged_in, "joined": remote.joined,
                     })
                     .to_string(),
@@ -520,7 +520,7 @@ impl crate::game::ClientGame<'_> {
         game.native_configs_client_start();
         if let Some(error) = pack_error {
             game.open_options_at(true, sunrise_client::options_ui::Page::Packs);
-            game.side.chat_ui.options.resource_error = Some(error);
+            game.client.chat_ui.options.resource_error = Some(error);
         }
         match game.options.world.clone() {
             _ if game.options.server.is_some() => {
@@ -541,7 +541,7 @@ impl crate::game::ClientGame<'_> {
                     // Client options reject simulationDistance2 (their UI starts at5),
                     // so an options.txt value cannot establish this prerequisite.
                     if std::env::var_os("SUNRISE_HARNESS_LOADED_FIXTURE").is_some() {
-                        game.side.settings.simulation_distance = 2;
+                        game.client.settings.simulation_distance = 2;
                     }
                     // Headless, but with the same server and memory connection as play.
                     game.open_integrated(&folder, None, Some(seed), creative, None)?;
@@ -552,7 +552,7 @@ impl crate::game::ClientGame<'_> {
                         .new_title(std::env::current_dir()?.join("saves"))
                         .with_user(|| game.options.player_name());
                     game.show_title(title);
-                    game.side.pending_entry.0 = Some(PendingWorldEntry::Local {
+                    game.client.pending_entry.0 = Some(PendingWorldEntry::Local {
                         folder,
                         name: None,
                         seed: Some(seed),
@@ -566,11 +566,11 @@ impl crate::game::ClientGame<'_> {
                 let mut title = game
                     .new_title(std::env::current_dir()?.join("saves"))
                     .with_user(|| game.options.player_name());
-                title.last_server = game.side.settings.file.string("lastServer");
+                title.last_server = game.client.settings.file.string("lastServer");
                 title.skip_multiplayer_warning =
-                    game.side.settings.file.bool("skipMultiplayerWarning");
+                    game.client.settings.file.bool("skipMultiplayerWarning");
                 // Gui.addInitialScreens: the accessibility onboarding comes first.
-                if game.side.settings.file.bool("onboardAccessibility") {
+                if game.client.settings.file.bool("onboardAccessibility") {
                     title.start_onboarding();
                 }
                 game.show_title(title);
@@ -585,3 +585,5 @@ impl crate::game::ClientGame<'_> {
         Ok(true)
     }
 }
+
+use sunrise_gameplay_common::game::mods::ModGameExt1 as _;

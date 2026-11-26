@@ -32,7 +32,7 @@ impl crate::game::ServerGame<'_> {
                         )
                         && sunrise_level::brewing::brewing_fuel(world_items!(self), s).is_some()
                 })
-                .map(|s| self.common.crafting_remainder(s)),
+                .map(|s| self.crafting_remainder(s)),
             _ => None,
         };
         BrewingRemainder(answer)
@@ -48,9 +48,11 @@ impl crate::game::ServerGame<'_> {
         }
         match self.common.world.block_entities.get(&pos) {
             Some(BlockEntity::Brewing(b)) => {
-                b.items[3].as_ref().and_then(|s| self.common.crafting_remainder(s))
+                b.items[3].as_ref().and_then(|s| self.crafting_remainder(s))
             }
             _ => None,
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_block_states::NativeBlockStatesGameExt1 as _;

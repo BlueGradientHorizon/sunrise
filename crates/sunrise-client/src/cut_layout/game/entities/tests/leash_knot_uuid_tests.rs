@@ -63,3 +63,5 @@ fn a_boat_leashed_to_a_knots_uuid_is_tied_to_its_post() {
     assert_eq!(boat.leash, Some(Holder::Knot([4, 64, 6])));
     assert!(boat.leash_pending.is_none());
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

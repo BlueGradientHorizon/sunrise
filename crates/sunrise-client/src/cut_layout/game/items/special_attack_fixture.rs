@@ -18,3 +18,4 @@ pub(in crate::game) mod tests {
         game.dispense_fixture(&spec).unwrap();
     }
 }
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

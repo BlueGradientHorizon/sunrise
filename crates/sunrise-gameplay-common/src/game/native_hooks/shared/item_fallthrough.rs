@@ -41,3 +41,9 @@ impl crate::game::CommonGame<'_> {
 }
 
 use crate::game::side_ops::modapi_hooks::ModapiHooksSideGameExt as _;
+
+use crate::game::held_items::HeldItemsGameExt1 as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use crate::game::native_hooks::ModGameExt1 as _;

@@ -349,3 +349,5 @@ fn cart_failure_metadata_keeps_timestamp_and_literal_fragments() {
         },
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

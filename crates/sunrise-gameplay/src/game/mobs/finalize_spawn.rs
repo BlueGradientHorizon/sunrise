@@ -32,7 +32,7 @@ impl FinalizeGame<'_, '_> {
         let game: &crate::game::ServerGame<'_> = &*self.game;
         let biome = game
             .world
-            .biome_at(game.side.streaming.biome_zoom, pos[0], pos[1], pos[2])?;
+            .biome_at(game.server.streaming.biome_zoom, pos[0], pos[1], pos[2])?;
         Some(world_biomes!(game).get(biome).name.clone())
     }
 }
@@ -90,8 +90,8 @@ impl finalize::FinalizeLevel for FinalizeGame<'_, '_> {
             return None;
         }
         let t = t.clone();
-        self.game.side.next_entity += 1;
-        Some(Mob::new(self.game.side.next_entity, t, Vec3::ZERO, 0.0))
+        self.game.server.next_entity += 1;
+        Some(Mob::new(self.game.server.next_entity, t, Vec3::ZERO, 0.0))
     }
     fn spawn_data(&self) -> finalize::SpawnData<'_> {
         self.game.finalize_spawn_data()

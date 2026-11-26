@@ -23,8 +23,8 @@ impl Deferred {
         let _ = self.epoch.with_active(|| self.prepared.publish());
     }
 }
-impl crate::game::CommonGame<'_> {
-    pub(in crate::game) fn player_send_payload(
+pub trait PayloadTransportGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+     fn player_send_payload(
         &mut self,
         player: PlayerRef,
         id: &PayloadId,
@@ -37,7 +37,7 @@ impl crate::game::CommonGame<'_> {
     }
     /// `player_send_payload` to each of `players`; a refused send is skipped. The caller crossed
     /// the body once; each connection's queue owns its own copy.
-    pub(in crate::game) fn players_send_payload(
+     fn players_send_payload(
         &mut self,
         players: &[PlayerRef],
         id: &PayloadId,
@@ -51,7 +51,7 @@ impl crate::game::CommonGame<'_> {
             })
             .count() as u32
     }
-    pub fn queue_current_payload<E: ClientEvent>(
+     fn queue_current_payload<E: ClientEvent>(
         &mut self,
         endpoint: Endpoint<E>,
         id: &PayloadId,
@@ -63,7 +63,7 @@ impl crate::game::CommonGame<'_> {
             .ok_or(PayloadSendError::NotNegotiated)?;
         self.queue_payload(endpoint, epoch, id, bytes)
     }
-    pub fn queue_payload<E: ClientEvent>(
+     fn queue_payload<E: ClientEvent>(
         &mut self,
         endpoint: Endpoint<E>,
         epoch: Arc<Epoch>,
@@ -78,7 +78,11 @@ impl crate::game::CommonGame<'_> {
         Ok(PayloadAccepted::Queued)
     }
     /// Use the receiving endpoint, not a sender resolved from a later guest incarnation.
-    pub fn run_payload<E: ClientEvent>(&mut self, endpoint: Endpoint<E>, incoming: Incoming) {
+     fn run_payload<E: ClientEvent>(
+        &mut self,
+        endpoint: Endpoint<E>,
+        incoming: Incoming,
+    ) {
         if !incoming.epoch.active() {
             return;
         }
@@ -139,6 +143,8 @@ impl crate::game::CommonGame<'_> {
         // The rest of Incoming releases the turn and ingress credit after publication/rollback.
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> PayloadTransportGameExt1<'__sg> for G {}
+
 struct MainContext<'a, 'resources, S: crate::game::Side, E: ClientEvent> {
     game: &'a mut Game<'resources, S>,
     epoch: &'a Arc<Epoch>,
@@ -331,3 +337,5 @@ impl<S: crate::game::Side, E: ClientEvent> IPayloadContext for MainContext<'_, '
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 
 use crate::game::transactions::TransactionsGameExt as _;
+
+use crate::game::native_server::NativeServerGameExt1 as _;

@@ -119,3 +119,5 @@ fn a_players_burst_acts_on_the_next_tick_in_handle_keybinds_order() {
         }
     });
 }
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

@@ -203,3 +203,5 @@ fn a_move_veto_still_holds_a_travel_that_ran() {
         });
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

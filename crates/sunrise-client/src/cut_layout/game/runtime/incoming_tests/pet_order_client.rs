@@ -59,3 +59,5 @@ pub(in crate::game) fn game<'a>(
     game.mobs.push(wolf);
     game
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

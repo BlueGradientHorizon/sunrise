@@ -734,7 +734,7 @@ impl crate::game::ClientGame<'_> {
         self.client.client_pick.dimension = Some(self.common.dim);
         let from = sunrise_core::geometry::Vec3::new(origin[0], origin[1], origin[2]);
         let max_distance = self.common.block_reach.max(self.common.entity_reach);
-        let block_hit = self.common.pick_unfiltered();
+        let block_hit = self.pick_unfiltered();
         // LocalPlayer.pick: on a block hit, blockDistanceSq shortens both the ray and search bound;
         // on a block miss, search uses nominal maxDistance^2 while final comparison uses to.distanceToSqr(from).
         let (entity_max_distance, search_max_distance_sq, block_distance_sq) = match block_hit {
@@ -881,7 +881,7 @@ impl crate::game::ClientGame<'_> {
         // before listeners can change the player or held item.
         self.client.client_pick.entity_reach = self.client_pick_entity_reach(direction);
         self.storage_scope(|game, _| {
-            game.side.client_pick.dispatching = true;
+            game.client.client_pick.dispatching = true;
             let mut result = original;
             game.native_client_pick(mod_api::__private::ClientPickCall {
                 partial_tick,
@@ -891,9 +891,9 @@ impl crate::game::ClientGame<'_> {
                 entity_candidate,
                 result: &mut result,
             });
-            game.side.client_pick.dispatching = false;
-            let valid_context = game.side.client_pick.epoch == game.native_lifecycle.epoch()
-                && game.side.client_pick.dimension == Some(game.dim);
+            game.client.client_pick.dispatching = false;
+            let valid_context = game.client.client_pick.epoch == game.native_lifecycle.epoch()
+                && game.client.client_pick.dimension == Some(game.dim);
             let result = result.filter(|&result| {
                 valid_context && (Some(result) == original || game.accept_client_pick(result))
             });
@@ -920,3 +920,5 @@ impl crate::game::ClientGame<'_> {
 use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

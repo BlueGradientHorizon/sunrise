@@ -18,8 +18,8 @@ impl ServerGame<'_> {
         let tool = self.common.held().cloned();
         let table = "minecraft:brush/armadillo";
         let mut stacks = self.sequence_loot(table, table, tool.as_ref());
-        let kind = sunrise_gameplay_common::game::native_hooks::mob_kind(&self.common.mobs[index]);
-        let player = Some(self.common.native_acting_id());
+        let kind = super::native_hooks::mob_kind(&self.common.mobs[index]);
+        let player = Some(self.native_acting_id());
         self.native_use_drops(
             table,
             feet,
@@ -54,3 +54,5 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

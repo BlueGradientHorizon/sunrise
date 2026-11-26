@@ -184,3 +184,5 @@ pub(in crate::game) fn installed_feature_types() -> ModFeatureTypes {
         })
         .collect()
 }
+
+use crate::game::native_world_read_common::NativeWorldReadGameExt1 as _;

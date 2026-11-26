@@ -30,4 +30,6 @@ pub(in crate::game) fn trader_egg() -> ItemStack {
 
     
 }
+use crate::game::chat_common::ChatCommonGameExt1 as _;
+
 pub mod terrain_cmds;

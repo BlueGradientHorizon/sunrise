@@ -18,7 +18,7 @@ impl crate::game::ServerGame<'_> {
         self.tick_dropped_items(&mut round);
         sunrise_threads::work::clear_work();
         self.drain_entity_inside();
-        self.common.native_tick_post_batch(round);
+        self.native_tick_post_batch(round);
     }
     /// An item that joined during this tick's entity pass: it first ticks on
     /// the next one.
@@ -36,7 +36,7 @@ impl crate::game::ServerGame<'_> {
         // `Entity.checkBelowWorld`: below `Level.getMinY() - 64`.
         let void = f64::from(self.common.world.shape.min_y - 64);
         let mut obstacles =
-            sunrise_sim::entities::ObstacleGrid::new(self.common.entity_collisions(Mover::Passive));
+            sunrise_sim::entities::ObstacleGrid::new(self.entity_collisions(Mover::Passive));
         let mut nearby = Vec::new();
         let mut bubble_tops = Vec::new();
         let mut moves = ahead::Moves::work_out(self, &items, &obstacles, round, |item| {
@@ -124,7 +124,7 @@ impl crate::game::ServerGame<'_> {
                     // `moveTowardsClosestSpace` draws the speed from the item's own random.
                     let escape_speed = no_physics.then(|| item.random.next_float() * 0.2 + 0.1);
                     let mut entered = Vec::new();
-                    let (alive, discarded) = self.common.tick_item_with_block_contacts(
+                    let (alive, discarded) = self.tick_item_with_block_contacts(
                         item,
                         escape_speed,
                         &nearby,
@@ -206,7 +206,7 @@ impl crate::game::ServerGame<'_> {
                     && (alive || item.age == 6000 && item.position.y >= void)
                     && item.ticks.is_multiple_of(rate)
                 {
-                    let max_stack = |stack: &ItemStack| self.common.stack_max_size(stack).max(1);
+                    let max_stack = |stack: &ItemStack| self.stack_max_size(stack).max(1);
                     // A merge may take this item or a neighbour out of the pass.
                     gone |= sunrise_sim::entities::merge_with_neighbours(
                         &mut items,
@@ -245,7 +245,7 @@ impl crate::game::ServerGame<'_> {
                 let from = item.previous;
                 let to = item.position;
                 if round.sections() {
-                    let live = self.common.entity_section_step_visible(
+                    let live = self.entity_section_step_visible(
                         item.id,
                         [from.x, from.y, from.z],
                         [to.x, to.y, to.z],
@@ -893,7 +893,7 @@ impl crate::game::ServerGame<'_> {
             stacks.extend(self.common.offhand.take());
             stacks.extend(self.common.equipment.take_all());
             stacks.retain(|s| s.enchantment_level("minecraft:vanishing_curse") == 0);
-            self.common.apply_equipment();
+            self.apply_equipment();
         }
         let stacks = stacks.into_iter().map(|stack| (stack, at, 0)).collect();
         let mut random = random_source::entity();
@@ -1145,3 +1145,17 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;

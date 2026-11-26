@@ -131,9 +131,9 @@ impl crate::game::ServerGame<'_> {
             key,
             n,
             |game| {
-                game.side
+                game.server
                     .lan_acting_uuid
-                    .zip(game.side.lan_acting_name.clone())
+                    .zip(game.server.lan_acting_name.clone())
             },
             |game| &mut game.stats,
         );
@@ -208,7 +208,7 @@ impl crate::game::ServerGame<'_> {
                 key,
                 n,
                 |game| {
-                    let frame = &game.side.lan_displaced_players.0[depth];
+                    let frame = &game.server.lan_displaced_players.0[depth];
                     frame.uuid.map(|uuid| {
                         (
                             uuid,
@@ -219,7 +219,7 @@ impl crate::game::ServerGame<'_> {
                         )
                     })
                 },
-                |game| &mut game.side.lan_displaced_players.0[depth].stats,
+                |game| &mut game.server.lan_displaced_players.0[depth].stats,
             );
         });
     }

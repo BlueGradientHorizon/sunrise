@@ -59,7 +59,7 @@ impl crate::game::ServerGame<'_> {
                 }
                 return Ok(());
             }
-            if game.side.ordered.defer_landings {
+            if game.server.ordered.defer_landings {
                 if let Some(mut kept) = game.finish_falling_step(step, f) {
                     // Entity.scale(getAirDrag()) ends the tick of a block that stays.
                     kept.velocity = sunrise_sim::entity_rules::scale_air_drag(kept.velocity);
@@ -77,7 +77,7 @@ impl crate::game::ServerGame<'_> {
                 // Only other falling blocks run before compaction, and their
                 // collision search excludes falling blocks. Finish this entity
                 // now so subsequent falls see its placed block.
-                game.side.ordered.landed.insert(join);
+                game.server.ordered.landed.insert(join);
                 return Ok(());
             }
             // Only terminal owners leave storage. Carry the original lifetime
@@ -257,7 +257,7 @@ impl crate::game::ServerGame<'_> {
         let body = self.common.body_motion(&side);
         body.apply_block_speed(f.position, &mut f.velocity);
         let writes =
-            self.common.body_step_on(entity, (f.position, f.bounds()), &f.ground, &mut f.velocity);
+            self.body_step_on(entity, (f.position, f.bounds()), &f.ground, &mut f.velocity);
         super::entity::apply_contact_writes(
             writes,
             &mut f.velocity,
@@ -401,3 +401,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;

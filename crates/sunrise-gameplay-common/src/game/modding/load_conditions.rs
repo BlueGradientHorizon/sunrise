@@ -4,7 +4,7 @@ use mod_api::__private::game::RegistrationContextNew;
 use std::{collections::BTreeMap, sync::Arc};
 pub(in crate::game) type ConditionTable =
     Arc<BTreeMap<mod_api::Identifier, (String, Arc<dyn mod_api::LoadCondition>)>>;
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     pub fn stage_condition_inventory(
         &mut self,
     ) -> sunrise_game_data::Result<Option<sunrise_assets::resource_source::ResourceRoot>> {

@@ -1379,3 +1379,5 @@ mod datapack_publication_tests;
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::native_world_read_common::NativeWorldReadGameExt1 as _;

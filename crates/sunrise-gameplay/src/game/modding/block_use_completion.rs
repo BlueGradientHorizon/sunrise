@@ -20,7 +20,7 @@ impl crate::game::ServerGame<'_> {
         hand: Hand,
         action: impl FnOnce(&mut Self) -> R,
     ) -> R {
-        let original = self.common.with_hand(hand, |g| g.held().cloned());
+        let original = self.with_hand(hand, |g| g.held().cloned());
         let depth = self.server.block_use_original.len();
         self.server.block_use_original.push((hand, original));
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| action(self)));
@@ -59,3 +59,5 @@ impl crate::game::ServerGame<'_> {
         });
     }
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

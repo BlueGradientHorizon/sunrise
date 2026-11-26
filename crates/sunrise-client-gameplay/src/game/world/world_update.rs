@@ -46,7 +46,7 @@ impl crate::game::ClientGame<'_> {
             }
         }
         self.observe_light_edits();
-        self.common.ask_edited_light_emission();
+        self.ask_edited_light_emission();
         let camera_pos = self.visual_camera_position();
         if let (Some(map), Some(pos), Some(lod)) =
             (&self.client.lod_blue_map.0, camera_pos, &mut self.client.lod.0)
@@ -103,11 +103,11 @@ impl crate::game::ClientGame<'_> {
                 .viewed
                 .mesh_frame(|| streaming.viewed_mesh_source(), std::time::Instant::now());
         }
-        self.common.ask_loaded_light_emission();
+        self.ask_loaded_light_emission();
         // Vanilla saves the chunk before its unload hook and drops its block entities afterwards.
         sunrise_level::spans::time("mods_chunks_changed", || {
-            self.common.native_chunks_loaded();
-            self.common.native_chunks_unloaded(&unloaded);
+            self.native_chunks_loaded();
+            self.native_chunks_unloaded(&unloaded);
         });
         for chunk in &unloaded {
             self.common.world.modified.unloaded(&(chunk.x, chunk.z));
@@ -548,3 +548,7 @@ pub(in crate::game) mod tests {
         assert_eq!(waiting.pop(), Some((20, "far")));
     }
 }
+
+use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;

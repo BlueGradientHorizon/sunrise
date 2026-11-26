@@ -129,7 +129,7 @@ impl crate::game::ClientGame<'_> {
         let Some(argb) = self.client.settings.extras.pvp.outline.fill() else {
             return;
         };
-        let Some(hit) = self.common.pick().filter(|_| !outline.is_empty()) else {
+        let Some(hit) = self.pick().filter(|_| !outline.is_empty()) else {
             return;
         };
         let [x, y, z] = hit.pos;
@@ -315,7 +315,7 @@ impl crate::game::ClientGame<'_> {
             Some((s.item.clone(), s.damage, max))
         });
         let held = if hud.held { self.held_count() } else { None };
-        let multiplayer = self.client.remote.is_some() && !self.common.has_singleplayer_server();
+        let multiplayer = self.client.remote.is_some() && !self.has_singleplayer_server();
         // 0 shows nothing rather than `0 ms`: no measurement yet.
         let ping = self.own_latency().filter(|&ms| ms > 0 && multiplayer);
         let coords = self.common.player.as_ref().filter(|_| !self.reduced_debug_info());
@@ -825,3 +825,7 @@ impl crate::game::ClientGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

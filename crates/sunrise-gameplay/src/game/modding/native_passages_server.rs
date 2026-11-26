@@ -16,11 +16,11 @@ impl crate::game::ServerGame<'_> {
         level: LevelRef,
         passage: Passage,
     ) -> Result<PassageId, Refused> {
-        self.common.native_level_world_result(level)?;
+        self.native_level_world_result(level)?;
         check(&passage)?;
         if let Some(to) = passage.destination_level {
             let open =
-                mod_api::__private::dimension_id(to).is_some_and(|id| self.common.level(id).is_some());
+                mod_api::__private::dimension_id(to).is_some_and(|id| self.level(id).is_some());
             if to == level.dimension() || !open {
                 return Err(Refused::UnknownLevel);
             }
@@ -54,7 +54,7 @@ impl crate::game::ServerGame<'_> {
     /// clients holding its chunk hear it is gone in `flush_passages`, unless they were never
     /// told of it.
     pub(in crate::game) fn level_remove_passage(&mut self, level: LevelRef, id: PassageId) -> bool {
-        if self.common.native_level_world_result(level).is_err() {
+        if self.native_level_world_result(level).is_err() {
             return false;
         }
         let passages = &mut self.common.passages;
@@ -246,7 +246,7 @@ impl crate::game::ServerGame<'_> {
         if g.position != from {
             return Err(Refusal::MoveRefused);
         }
-        let level = self.common.level(&g.dimension).ok_or(Refusal::UnknownPassage)?;
+        let level = self.level(&g.dimension).ok_or(Refusal::UnknownPassage)?;
         let p = self
             .common.passages
             .find(level.dimension(), id)
@@ -278,3 +278,7 @@ impl crate::game::ServerGame<'_> {
             && self.common.world.chunks.contains_key(&chunk)
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

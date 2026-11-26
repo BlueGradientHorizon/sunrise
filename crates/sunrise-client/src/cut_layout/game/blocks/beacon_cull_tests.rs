@@ -126,3 +126,5 @@ fn a_beam_draws_inside_the_render_distance_only_and_leaves_with_its_column() {
         "an unloaded beacon draws no beam"
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

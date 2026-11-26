@@ -29,11 +29,11 @@ impl crate::game::ServerGame<'_> {
 fn world_root(
     game: &crate::game::ServerGame<'_>,
 ) -> Result<FileRoot, ConfigFileError> {
-    if game.side.world_root.as_os_str().is_empty() {
+    if game.server.world_root.as_os_str().is_empty() {
         return Err(ConfigFileError::NoWorld);
     }
     Ok(FileRoot {
-        path: game.side.world_root.clone(),
+        path: game.server.world_root.clone(),
         bulk: true,
     })
 }
@@ -525,3 +525,5 @@ use sunrise_gameplay_common::game::server_side::native_config_files::tests::path
         });
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

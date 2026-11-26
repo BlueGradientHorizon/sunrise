@@ -180,7 +180,7 @@ impl crate::game::ServerGame<'_> {
         // the same position field as ordinary movement.
         let section_scope = round
             .sections()
-            .then(|| self.common.entity_section_scope())
+            .then(|| self.entity_section_scope())
             .flatten();
         let (section_table, live_section_observer) = if round.sections() {
             self.common.native_lifecycle.section_observer.begin(
@@ -1078,7 +1078,7 @@ impl crate::game::ServerGame<'_> {
                     self.villager_offers_open(restock);
                 }
                 if section_yield && let Some(sections) = section_table.as_ref() {
-                    self.common.entity_sections_ticked_live(
+                    self.entity_sections_ticked_live(
                         &mut sections.borrow_mut(),
                         &mut section_moves,
                     );
@@ -1094,7 +1094,7 @@ impl crate::game::ServerGame<'_> {
                 }
                 if let Some(mut sting) = sting {
                     let before_hurt = events.drain(brain_from..sting.at).collect();
-                    let _ = self.common.handle_mob_events(before_hurt);
+                    let _ = self.handle_mob_events(before_hurt);
                     if let Some(i) = self.common.mob_index.find(&self.common.mobs, sting.target)
                         && sting.same_target(&self.common.mobs[i])
                     {
@@ -1129,7 +1129,7 @@ impl crate::game::ServerGame<'_> {
                         {
                             aftermath.push(sound);
                         }
-                        let _ = self.common.handle_mob_events(aftermath);
+                        let _ = self.handle_mob_events(aftermath);
                     } else {
                         events.truncate(brain_from);
                         resume_brain = None;
@@ -1152,7 +1152,7 @@ impl crate::game::ServerGame<'_> {
                             if sunrise_sim::mobs::creaking::has_pending_hurt(&self.common.mobs[i]) {
                                 // The earlier emissions (e.g. drowning bubbles) precede this hurt.
                                 let before_hurt = events.split_off(resume_from);
-                                let _ = self.common.handle_mob_events(before_hurt);
+                                let _ = self.handle_mob_events(before_hurt);
                             }
                             if let Some(i) = self.common.mob_index.find(&self.common.mobs, id)
                                 && self.common.mobs[i].join == join
@@ -1198,11 +1198,11 @@ impl crate::game::ServerGame<'_> {
                     *state.stand_result = self.tick_armor_stands_before(cut);
                 }
                 if !stinging && let Some((id, kind)) = &tell_post {
-                    self.common.native_tick_post_one(round, *id, &kind.id);
+                    self.native_tick_post_one(round, *id, &kind.id);
                 }
                 // Let through, it checks its sleep as a mob told with its family does.
                 if let Some((id, kind, at)) = &tell_pre
-                    && self.common.native_tick_pre_one(round, *id, &kind.id)
+                    && self.native_tick_pre_one(round, *id, &kind.id)
                     && mod_api::__private::listened(mod_api::HookId::CanContinueSleeping)
                     && let Some(i) =
                         super::super::native_ticks::place(&self.common.mobs, *at, |m| m.id == *id)
@@ -1359,3 +1359,9 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;

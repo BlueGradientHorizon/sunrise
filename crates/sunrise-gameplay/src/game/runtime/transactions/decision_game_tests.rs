@@ -11,7 +11,7 @@ use sunrise_sim::entities::ArmorStand;
 
 fn identity(game: &mut crate::game::ServerGame<'_>) -> Identity {
     game.common.armor_stands.push(ArmorStand::new(13, Vec3::ZERO, 0.0));
-    let holder = game.common.entity(13).expect("fixture holder");
+    let holder = game.entity(13).expect("fixture holder");
     Identity {
         side: Side::Server,
         world: holder.epoch(),
@@ -309,3 +309,5 @@ fn abandoned_token_releases_real_save_gate_and_publishes_nothing() {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

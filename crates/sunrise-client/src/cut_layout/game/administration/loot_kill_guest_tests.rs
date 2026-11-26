@@ -273,3 +273,5 @@ fn an_empty_handed_guest_is_the_killer_and_a_missing_one_is_not() {
         "{items:?}"
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

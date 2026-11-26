@@ -34,7 +34,7 @@ impl crate::game::ClientGame<'_> {
             && let Some(remote) = &self.client.remote
         {
             self.native_calculate_player_turn(
-                self.common.own_entity_id(),
+                self.own_entity_id(),
                 remote.profile,
                 &mut look.sensitivity,
                 &mut look.smooth_camera,
@@ -58,8 +58,8 @@ impl crate::game::ClientGame<'_> {
     }
     /// `Minecraft.pause`: a single-player game with a pausing screen open.
     pub(in crate::game::client_side) fn pauses_game(&self) -> bool {
-        self.common.has_singleplayer_server()
-            && !self.common.is_published()
+        self.has_singleplayer_server()
+            && !self.is_published()
             && self.client.title.0.is_none()
             && top_screen_pauses(
                 // A dialog (and its warning or waiting screen) is the
@@ -458,3 +458,7 @@ mod tests {
         assert!(!top_screen_pauses(Some(false), Some(true), false, false));
     }
 }
+
+use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

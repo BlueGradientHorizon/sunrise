@@ -46,7 +46,7 @@ impl crate::game::ServerGame<'_> {
         let table = "minecraft:carve/pumpkin";
         let mut drops = self.sequence_loot(table, table, Some(shears));
         let origin = pos.map(|c| f64::from(c) + 0.5);
-        let player = Some(self.common.native_acting_id());
+        let player = Some(self.native_acting_id());
         self.native_use_drops(
             table,
             origin,
@@ -96,3 +96,5 @@ impl crate::game::ServerGame<'_> {
         Ok(true)
     }
 }
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

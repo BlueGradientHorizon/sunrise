@@ -390,11 +390,11 @@ pub(in crate::game) fn write_report(
 ) -> Result<()> {
     if let Some(path) = &game.options.report {
         let report = serde_json::json!({
-            "frames": game.side.frames,
-            "elapsed_seconds": game.side.started.elapsed().as_secs_f64(),
+            "frames": game.client.frames,
+            "elapsed_seconds": game.client.started.elapsed().as_secs_f64(),
             "chunks": game.world.chunks.len(),
-            "generated": game.side.streaming.generated_total,
-            "meshed_sections": game.side.streaming.meshed_total,
+            "generated": game.client.streaming.generated_total,
+            "meshed_sections": game.client.streaming.meshed_total,
             "player": game.player.as_ref().map(|p| [p.position.x, p.position.y, p.position.z]),
             "error": game.error.as_ref().map(|e| e.to_string()),
         });

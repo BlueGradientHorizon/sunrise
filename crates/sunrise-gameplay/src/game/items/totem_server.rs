@@ -62,7 +62,7 @@ impl ServerGame<'_> {
             .cloned()
             .unwrap_or_else(|| ItemStack::new(TOTEM, 1));
         let slot = if main { self.common.selected } else { OFFHAND_SLOT };
-        self.common.consume_player_slot(slot, 1);
+        self.consume_player_slot(slot, 1);
         self.award_stat("used", &protector.item, 1);
         self.trigger_item("minecraft:used_totem", &protector);
         // ItemStack.causeUseVibration: the totem's use effects make one.
@@ -171,3 +171,5 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

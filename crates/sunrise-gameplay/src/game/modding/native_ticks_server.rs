@@ -11,7 +11,7 @@ pub(in crate::game) fn other_ticks(kind: &str) -> bool {
 
 impl ServerGame<'_> {
     pub(in crate::game) fn server_tick_uses_server_sections(&self) -> bool {
-        self.common.entity_section_scope().is_some()
+        self.entity_section_scope().is_some()
     }
 
     /// The entity the server keeps unsimulated at `others[i]` (`other_ticks`), told alone.
@@ -24,10 +24,10 @@ impl ServerGame<'_> {
                 told,
                 ..TickRound::default()
             };
-            if self.common.native_tick_pre_one(&mut round, id, kind)
+            if self.native_tick_pre_one(&mut round, id, kind)
                 && self.server.others.0.locate(join).is_some()
             {
-                self.common.native_tick_post_one(&round, id, kind);
+                self.native_tick_post_one(&round, id, kind);
             }
         }
         buffers.names.clear();
@@ -82,7 +82,7 @@ impl ServerGame<'_> {
     /// `native_entity_tick_pre` for the players about to run `ServerPlayer.tick`.
     pub(in crate::game) fn native_players_tick_pre(&mut self) -> TickRound {
         self.common.creatures.canceled_players.clear();
-        let mut round = self.common.native_tick_round();
+        let mut round = self.native_tick_round();
         if !round.told.listening {
             return round;
         }
@@ -97,7 +97,7 @@ impl ServerGame<'_> {
                 }) else {
                     continue;
                 };
-                if !self.common.native_tick_pre_one(&mut round, id, PLAYER) {
+                if !self.native_tick_pre_one(&mut round, id, PLAYER) {
                     self.common.creatures.canceled_players.push(conn);
                 }
             }
@@ -105,7 +105,7 @@ impl ServerGame<'_> {
             for g in host.hub.guests.iter().filter(|g| host.hub.here(g)) {
                 round.add(g.entity_id as u32, TickKind::Fixed(PLAYER));
             }
-            self.common.native_tick_pre_batch(&mut round);
+            self.native_tick_pre_batch(&mut round);
             if let Some(host) = self.server.lan.as_ref() {
                 let canceled = &mut self.common.creatures.canceled_players;
                 canceled.extend(
@@ -127,7 +127,7 @@ impl ServerGame<'_> {
         told: &mut Option<u32>,
     ) {
         if let Some(id) = told.take() {
-            self.common.native_tick_post_one(round, id, PLAYER);
+            self.native_tick_post_one(round, id, PLAYER);
         }
     }
 
@@ -139,3 +139,7 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;

@@ -245,3 +245,5 @@ pub(in crate::game::client_side) fn with_effects(
         );
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

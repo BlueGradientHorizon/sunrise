@@ -284,3 +284,7 @@ fn an_enderman_does_not_take_a_changed_block() {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1 as _;

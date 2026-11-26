@@ -122,3 +122,5 @@ fn early_server_game_rules_saved_and_creation_values() {
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

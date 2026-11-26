@@ -73,7 +73,7 @@ impl ClientGame<'_> {
     }
 
     pub(in crate::game::client_side) fn client_seat_boat_mobs(&mut self, riding: &Riders) {
-        self.common.seat_boat_mobs_with_order(riding, |game, id| game.client_passenger_order(id));
+        self.seat_boat_mobs_with_order(riding, |game, id| game.client_passenger_order(id));
     }
 
     pub(in crate::game::client_side) fn client_seat_static_mobs(&mut self, riding: &Riders) {
@@ -445,3 +445,5 @@ impl ClientGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;

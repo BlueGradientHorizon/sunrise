@@ -8,7 +8,7 @@ impl crate::game::ServerGame<'_> {
         if !self.common.world.block_entities.has_pending_on_load() {
             return;
         }
-        let Some(level) = self.common.level(self.common.dim.id()) else {
+        let Some(level) = self.level(self.common.dim.id()) else {
             return;
         };
         let mut remaining = self.common.world.block_entities.pending_on_load_len();
@@ -64,3 +64,5 @@ impl crate::game::ServerGame<'_> {
         self.tick_mod_block_entity_loaded(pos)
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

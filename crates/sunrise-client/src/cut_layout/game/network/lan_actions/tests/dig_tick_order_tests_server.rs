@@ -241,3 +241,5 @@ fn player_tick_hooks_observe_advanced_dig_progress_and_skipped_body_still_ticks_
         },
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

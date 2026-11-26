@@ -20,7 +20,7 @@ impl crate::game::ServerGame<'_> {
         if mod_api::__private::listened(mod_api::HookId::ItemPickedUp)
             && let Some(item) = self.native_item_handle(item)
         {
-            let player = self.common.native_acting_id();
+            let player = self.native_acting_id();
             self.native_item_picked_up(player, item, &mut can_pickup);
         }
         can_pickup
@@ -28,7 +28,7 @@ impl crate::game::ServerGame<'_> {
     /// `Inventory.add` of the ground `stack` the acting player picks up: what
     /// did not fit. A player with infinite materials (creative) takes all of it.
     pub(in crate::game) fn native_pickup_insert(&mut self, stack: &ItemStack) -> Option<ItemStack> {
-        let rest = self.common.add_stack_to_inventory(stack.clone());
+        let rest = self.add_stack_to_inventory(stack.clone());
         rest.filter(|_| !self.common.creative)
     }
     /// `notice` with the lifted `items[i]` lent back to the level, holding
@@ -74,7 +74,7 @@ impl crate::game::ServerGame<'_> {
         if mod_api::__private::listened(mod_api::HookId::ItemPickedUpPost)
             && let Some(item) = self.native_item_handle(item)
         {
-            let player = self.common.native_acting_id();
+            let player = self.native_acting_id();
             self.native_item_picked_up_post(player, item, original, &mut remaining);
         }
         remaining
@@ -173,3 +173,7 @@ impl crate::game::ServerGame<'_> {
         answer.or(*pickup_delay == 0 && target.is_none_or(|t| t == player))
     }
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

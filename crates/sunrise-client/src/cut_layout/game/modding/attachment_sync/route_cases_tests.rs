@@ -211,3 +211,5 @@ fn a_dedicated_server_sends_only_trackers_in_packet_order() {
         });
     });
 }
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

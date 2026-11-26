@@ -720,3 +720,7 @@ fn support_resolves_once_against_the_tags_published_by_world_open_and_play_packe
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::stations_common::StationsCommonGameExt1 as _;

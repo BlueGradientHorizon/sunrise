@@ -129,7 +129,7 @@ impl crate::game::ClientGame<'_> {
             }
             let origin = self
                 .pick_object_origin(entity.id())
-                .or_else(|| self.common.entity_position(entity))?;
+                .or_else(|| self.entity_position(entity))?;
             return Some(ObjectHit {
                 id: entity.id() as i32,
                 distance,
@@ -414,7 +414,7 @@ impl crate::game::ClientGame<'_> {
         };
         // Settle an invisible seat riding a moving avatar before reading it.
         // The normal end-of-tick pass alone leaves the local rider a tick behind.
-        self.common.position_riders();
+        self.position_riders();
         if let Some(i) = self.common.mobs.iter().position(|m| m.id == id) {
             // LocalPlayer.aiStep: the jump bar charges while jump is held.
             let jump = self.common.charge_mount_jump(i, keys);
@@ -423,7 +423,7 @@ impl crate::game::ClientGame<'_> {
             }
             // Another animal moves on the server with the rider's input
             // (PlayerInput); the rider sits where `positionRider` puts it.
-            self.common.position_rider();
+            self.position_rider();
             return true;
         }
         // Generic entities are valid vehicles too (plugins use displays as seats).
@@ -433,7 +433,7 @@ impl crate::game::ClientGame<'_> {
             && !self.common.carts.iter().any(|c| c.id == id)
         {
             let index = std::collections::HashMap::new();
-            if let Some(at) = self.common.passenger_riding_position(id, None, None, &index) {
+            if let Some(at) = self.passenger_riding_position(id, None, None, &index) {
                 let before = self
                     .client
                     .text_displays
@@ -489,7 +489,7 @@ impl crate::game::ClientGame<'_> {
                     let rotation = rotation.unwrap_or((b.yaw, b.pitch));
                     b.go_on_easing(Vec3::new(to[0], to[1], to[2]), rotation, steps);
                 }
-                b = self.common.tick_boat(b, true);
+                b = self.tick_boat(b, true);
                 b.input = [keys.left, keys.right, keys.forward, keys.backward];
             }
             // positionRider turns and clamps the rider's yaw without changing yRotO.
@@ -497,7 +497,7 @@ impl crate::game::ClientGame<'_> {
             self.common.yaw = sunrise_level::camera_math::clamp_boat_rotation(self.common.yaw, b.yaw).0;
             self.common.store_boat_back(i, b);
             // In front of a mob that shares the boat.
-            Some(self.common.player_boat_seat(i))
+            Some(self.player_boat_seat(i))
         } else if self.common.carts.iter().any(|c| c.id == id) {
             // Minecart.positionRider runs on the client after the cart tick.
             // The offset belongs to the cart, so switching vehicles cannot
@@ -521,7 +521,7 @@ impl crate::game::ClientGame<'_> {
                     .add_vector(Vec3::new(0.0, super::minecarts::SEAT, 0.0))
             })
         } else if let Some(at) =
-            self.common.passenger_riding_position(id, None, None, &std::collections::HashMap::new())
+            self.passenger_riding_position(id, None, None, &std::collections::HashMap::new())
         {
             let scale = self.common.player.as_ref().map_or(1.0, |p| {
                 p.dimensions.width / sunrise_sim::pose::Pose::Standing.dimensions(1.0).width
@@ -679,7 +679,7 @@ impl crate::game::ClientGame<'_> {
             b.ground.on_ground = on_ground;
         });
         if far {
-            self.common.entity_section_moved_id(id);
+            self.entity_section_moved_id(id);
             if let Some(report) = self.remote_vehicle_packets().into_iter().next() {
                 self.send(report);
             }
@@ -734,7 +734,7 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         if let Some(i) = self.common.boats.iter().position(|b| b.id == id as u32) {
-            self.common.handle_bubble_column_effect(i, drag_down);
+            self.handle_bubble_column_effect(i, drag_down);
         }
     }
 
@@ -756,7 +756,7 @@ impl crate::game::ClientGame<'_> {
             let touches = self.common.boat_bubble_columns(i);
             for pass in 0..2 {
                 if pass == 1 && driven {
-                    self.common.boat_second_step(i);
+                    self.boat_second_step(i);
                 }
                 for &column in &touches {
                     if column.surface {
@@ -764,7 +764,7 @@ impl crate::game::ClientGame<'_> {
                             self.boat_bubble_splash(i);
                         }
                     } else if driven {
-                        self.common.boat_inside_bubble_column(i, column);
+                        self.boat_inside_bubble_column(i, column);
                     }
                 }
             }
@@ -902,7 +902,7 @@ impl crate::game::ClientGame<'_> {
             client: false,
         });
         // #4821: footstep, gallop, breathe, splash and landing sounds from mob.tick
-        let _ = self.common.handle_mob_events(events);
+        let _ = self.handle_mob_events(events);
     }
 
     /// The level a mount this client predicts is hurt in, with the client's hooks (`hooks`)
@@ -979,3 +979,15 @@ pub(in crate::game::client_side) fn generic_player_seat(
         Vec3::new(before.x, before.y - offset, before.z),
     )
 }
+
+use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::mounts_common::MountsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;

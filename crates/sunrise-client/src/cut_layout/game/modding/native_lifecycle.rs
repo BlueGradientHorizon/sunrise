@@ -617,3 +617,5 @@ pub(in crate::game) mod tests {
         assert!(lifecycle.world_close_final().is_none());
     }
 }
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

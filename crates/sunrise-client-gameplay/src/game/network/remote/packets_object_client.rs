@@ -87,7 +87,7 @@ impl crate::game::ClientGame<'_> {
         };
         // The constructor's `EntityEvent.Size` comes before `EntityConstructing`.
         let constructed = self.native_constructing_size(p.id as u32, &kind);
-        self.common.initialize_entity(holder, &kind);
+        self.initialize_entity(holder, &kind);
         let replace = self.tracks_remote_entity(p.id);
         self.spawn_entity(p.id, &kind, p.position, rotation);
         if let Some(r) = self.client.remote.as_mut() {
@@ -108,7 +108,7 @@ impl crate::game::ClientGame<'_> {
         self.move_remote_text_display(p.id, p.position, Some((rotation[0], rotation[1])));
         self.move_remote_interaction(p.id, p.position);
         self.pick_section_sync_id(p.id as u32);
-        self.common.entity_section_joined(p.id as u32, p.position);
+        self.entity_section_joined(p.id as u32, p.position);
         self.native_constructed_size(p.id as u32, constructed);
     }
     /// `C::EntityPositionSync`: its arms of `apply_packet`, guard and order kept.
@@ -430,7 +430,7 @@ impl crate::game::ClientGame<'_> {
         }
         if self.client.text_displays.0.contains_key(&p.id) {
             self.teleport_remote_text_display(p.id, p.position, p.yaw, p.pitch, p.relatives);
-            self.common.entity_section_moved_id(p.id as u32);
+            self.entity_section_moved_id(p.id as u32);
             return Ok(());
         }
         let (base, now_yaw, now_pitch, old_pos, old_yaw, old_pitch, now_vel) =
@@ -573,9 +573,13 @@ impl crate::game::ClientGame<'_> {
             Some(snap_old),
         );
         self.remote_motion(p.id, delta);
-        self.common.entity_section_moved_id(p.id as u32);
+        self.entity_section_moved_id(p.id as u32);
         Ok(())
     }
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::entity_initialization_common::EntityInitializationCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;

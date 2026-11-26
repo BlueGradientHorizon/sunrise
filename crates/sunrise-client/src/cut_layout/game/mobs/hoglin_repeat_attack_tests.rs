@@ -653,3 +653,9 @@ fn a_guest_broadcast_is_placed_as_the_guest() {
     );
     assert_eq!(bound(&game), Some(2), "bound to the guest");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;

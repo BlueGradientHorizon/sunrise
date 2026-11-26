@@ -192,3 +192,5 @@ pub(in sunrise_gameplay::game::server_side) fn run_portal_contact_and_waiting_ha
 fn counter(tag: &Tag) -> i32 {
     sunrise_sim::save::number(tag.get("PortalCooldown")).unwrap() as i32
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

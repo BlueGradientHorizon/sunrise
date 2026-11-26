@@ -23,7 +23,7 @@ impl ClientGame<'_> {
         let Some(name) = self.native_client_menu_name(menu) else {
             return false;
         };
-        let Some(ops) = client_click_ops(name, clicks, self.common.instabuild()) else {
+        let Some(ops) = client_click_ops(name, clicks, self.instabuild()) else {
             return false;
         };
         self.remote_menu_ops(&ops)
@@ -63,7 +63,7 @@ impl ClientGame<'_> {
 
     pub(in crate::game) fn menu_slot_boxes(&self, menu: MenuRef) -> Option<Vec<Option<[f32; 4]>>> {
         if !matches!(
-            self.side.screen,
+            self.client.screen,
             super::Screen::Inventory | super::Screen::Creative
         ) || !self.screen_hooks_open()
         {
@@ -155,7 +155,7 @@ impl ClientGame<'_> {
         &self,
         player: PlayerRef,
     ) -> Option<MenuRef> {
-        self.common.player_read_both(player)?;
+        self.player_read_both(player)?;
         let remote = self.client.remote.as_ref()?;
         let (window, name) = remote
             .menu
@@ -442,14 +442,14 @@ pub mod tests {
         pick: impl Fn(&sunrise_client::creative::Tab) -> bool,
     ) {
         let tab = game
-            .side
+            .client
             .creative_screen
             .0
             .tabs
             .iter()
             .position(pick)
             .unwrap();
-        game.side.creative_screen.0.select(tab);
+        game.client.creative_screen.0.select(tab);
     }
 
     #[cfg(test)]
@@ -461,8 +461,8 @@ pub mod tests {
     ) -> winit::event_loop::EventLoop<()> {
         let (event_loop, window) = crate::game::native_entity_refs::tests::test_window([320, 240]);
         game.options.offscreen = true;
-        game.side.renderer.0 = Some(game.new_renderer(window).unwrap());
-        let remote = game.side.remote.as_mut().unwrap();
+        game.client.renderer.0 = Some(game.new_renderer(window).unwrap());
+        let remote = game.client.remote.as_mut().unwrap();
         remote.level_load.finish();
         let mut body =
             sunrise_sim::motion::PlayerMotion::new(game.motion, sunrise_core::geometry::Vec3::ZERO)
@@ -476,10 +476,10 @@ pub mod tests {
     pub(in crate::game::client_side) fn window_batch(
         game: &crate::game::ClientGame<'_>,
     ) -> super::super::HudBatch {
-        let config = &game.side.renderer.0.as_ref().unwrap().config;
+        let config = &game.client.renderer.0.as_ref().unwrap().config;
         super::super::HudBatch::new(
             [config.width, config.height],
-            game.side.settings.gui_scale_inputs(),
+            game.client.settings.gui_scale_inputs(),
         )
     }
 
@@ -607,7 +607,7 @@ pub mod tests {
                     let hover = |game: &mut crate::game::ClientGame<'_>, slot: usize| {
                         let (ox, oy) = game.inventory_origin(&batch);
                         let (x, y) = game.slot_position(slot);
-                        game.side.cursor = (ox + x + 8.0, oy + y + 8.0);
+                        game.client.cursor = (ox + x + 8.0, oy + y + 8.0);
                         ScreensClientHost::screen_hovered_stack(&*game)
                     };
                     let sword = game
@@ -858,3 +858,13 @@ pub mod tests {
         });
     }
 }
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_give_stack::NativeGiveStackGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

@@ -39,10 +39,12 @@ impl crate::game::ServerGame<'_> {
         }
         // The new mob is constructed (`EntityConstructing`) before the copy, as `convertTo`
         // builds it before `copyAttachmentsFrom`, so the copy wins key by key.
-        self.common.initialize_entity(mod_api::Holder::Entity(to), kind);
+        self.initialize_entity(mod_api::Holder::Entity(to), kind);
         self.common.entity_attachments
             .entry(to)
             .or_default()
             .read_saved_over(saved);
     }
 }
+
+use sunrise_gameplay_common::game::entity_initialization_common::EntityInitializationCommonGameExt1 as _;

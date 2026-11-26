@@ -73,3 +73,5 @@ fn saved_orb_uuid_comes_from_registered_identity_without_or_despite_raw() {
         }
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

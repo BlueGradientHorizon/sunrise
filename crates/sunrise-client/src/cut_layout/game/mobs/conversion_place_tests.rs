@@ -95,3 +95,5 @@ fn a_tadpoles_frog_stands_where_the_tadpoles_travel_took_it() {
     );
     assert!(frog.x > before.x, "{frog:?} moved on from {before:?}");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

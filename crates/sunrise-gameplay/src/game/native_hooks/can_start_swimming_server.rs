@@ -11,7 +11,7 @@ impl crate::game::ServerGame<'_> {
                 .player_uuid
                 .map(sunrise_sim::lan::playerdata::ints_uuid)
         })?;
-        let player = self.common.player(uuid)?;
+        let player = self.player(uuid)?;
         if Some(player.entity().id()) != self.common.player.as_ref().map(|p| p.entity_id as u32) {
             return None;
         }
@@ -20,3 +20,7 @@ impl crate::game::ServerGame<'_> {
         answer
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

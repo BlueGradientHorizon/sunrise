@@ -38,3 +38,4 @@ mod tests {
         });
     }
 }
+use sunrise_gameplay_common::game::transactions::scratch::ScratchGameExt1 as _;

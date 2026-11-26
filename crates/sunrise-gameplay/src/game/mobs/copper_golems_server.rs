@@ -129,7 +129,7 @@ impl ServerGame<'_> {
             self.common.mobs[index].extra.vector[0] = -2.0;
             self.server_level_event_at(3003, block, 0);
             self.server_play_sound("minecraft:item.honeycomb.wax_on", at, 1.0, 1.0);
-            self.common.consume_held();
+            self.consume_held();
             return true;
         }
         if is_axe && waxed {
@@ -428,3 +428,5 @@ impl ServerGame<'_> {
         true
     }
 }
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

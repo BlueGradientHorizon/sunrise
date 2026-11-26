@@ -17,7 +17,7 @@ impl crate::game::ServerGame<'_> {
         let dimension = self.common.dim;
         let still = |game: &Self| {
             game.dim == dimension
-                && !game.side.world_debug
+                && !game.server.world_debug
                 && game.world.is_loaded_at(pos.x, pos.y, pos.z)
                 && !game.world.carrier_fences.locks_cell(&at)
                 && game.world.block(pos.x, pos.y, pos.z) == state
@@ -26,11 +26,7 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let applied = if mod_api::__private::listened(mod_api::HookId::FarmlandTrample) {
-            let Some(living) = self
-                .common
-                .entity(entity)
-                .and_then(|e| self.common.living(e))
-            else {
+            let Some(living) = self.entity(entity).and_then(|e| self.living(e)) else {
                 return;
             };
             self.storage_transaction(|game, _| {
@@ -65,3 +61,5 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

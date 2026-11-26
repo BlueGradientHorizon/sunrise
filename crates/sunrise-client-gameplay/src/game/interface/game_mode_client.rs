@@ -66,7 +66,7 @@ impl crate::game::ClientGame<'_> {
         let next = inventory_after_infinite_materials(
             self.client.screen,
             self.is_player_inventory_screen(),
-            self.common.instabuild(),
+            self.instabuild(),
         );
         if next == self.client.screen {
             return;
@@ -87,3 +87,5 @@ impl crate::game::ClientGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;

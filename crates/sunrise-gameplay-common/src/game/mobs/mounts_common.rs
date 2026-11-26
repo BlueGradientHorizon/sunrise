@@ -47,7 +47,7 @@ pub(in crate::game) fn seat_of(m: &sunrise_sim::mobs::Mob, attachment: [f64; 3])
     )
 }
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     pub fn mount_index(&self) -> Option<usize> {
         let id = self.riding?;
         self.mobs.iter().position(|m| m.id == id)
@@ -88,9 +88,12 @@ impl CommonGame<'_> {
         }
         jump
     }
+}
+
+pub trait MountsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// `positionRider`: the player sits on the mount after it moves.
-    pub fn position_rider(&mut self) {
+     fn position_rider(&mut self) {
         let Some(i) = self.mount_index() else {
             return;
         };
@@ -127,5 +130,7 @@ impl CommonGame<'_> {
         }
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> MountsCommonGameExt1<'__sg> for G {}
+
 
 use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;

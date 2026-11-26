@@ -84,7 +84,7 @@ impl ServerGame<'_> {
             }
         }
         // An unlisted acting guest goes first. This game's own player keeps its seat order.
-        if let Some((me, place)) = self.common.riding_player()
+        if let Some((me, place)) = self.riding_player()
             && !acting_listed
             && self.common.player.is_some()
             && self.common.riding == Some(vehicle)
@@ -178,7 +178,7 @@ impl ServerGame<'_> {
                 }
             }
             (None, _) => {
-                if let Some((me, _)) = self.common.riding_player() {
+                if let Some((me, _)) = self.riding_player() {
                     self.server.riding_order = self.boarding_order(vehicle, me, true);
                 }
             }
@@ -228,3 +228,9 @@ mod tests {
         assert!(!aboard.contains(&6), "a mob riding nothing");
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::mounts_common::MountsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt2 as _;

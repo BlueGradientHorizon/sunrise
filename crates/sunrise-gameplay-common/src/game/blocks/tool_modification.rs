@@ -4,7 +4,7 @@ use crate::game::CommonGame;
 use sunrise_items::items::ItemStack;
 use sunrise_world::registry::BlockStateId;
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// What the tool action `tool` makes of the block `block`: `state` starts with vanilla's
     /// answer. The block's parts answer first (`tool_modified_state`,
     /// `IBlockExtension.getToolModifiedState`), and `block_tool_modification` hears their result

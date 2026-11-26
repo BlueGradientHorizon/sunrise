@@ -291,6 +291,8 @@ mod console_source_tests {
         assert!(game.side.command_source.is_none());
     }
 }
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
 pub(in crate::game) mod report;
 
 mod missing_mods;

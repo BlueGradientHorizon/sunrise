@@ -144,3 +144,7 @@ fn sidebar_routes_by_live_identity_and_publishes_only_valid_committed_changes() 
         assert!(received_sidebar_packets(&beta_rx).is_empty());
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

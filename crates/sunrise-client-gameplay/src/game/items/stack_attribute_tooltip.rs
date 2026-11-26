@@ -47,7 +47,7 @@ impl ClientGame<'_> {
         // with the mods' skipped modifiers and added lines. A nested stack has no player.
         let listener = crate::game::native_hooks::HookedAttributeTooltips::new(
             self,
-            (!nested).then(|| (self.common.own_uuid(), self.common.own_entity_id())),
+            (!nested).then(|| (self.own_uuid(), self.own_entity_id())),
         );
         let listener: &dyn AttributeTooltipListener = if mod_callbacks {
             &listener
@@ -103,3 +103,5 @@ impl ClientGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

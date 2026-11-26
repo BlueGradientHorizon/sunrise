@@ -111,3 +111,5 @@ fn native_movement_input_keys_axes_and_sprint() {
         });
     });
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

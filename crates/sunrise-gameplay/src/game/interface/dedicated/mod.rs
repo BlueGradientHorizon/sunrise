@@ -1012,7 +1012,7 @@ impl crate::game::ServerGame<'_> {
         )?)?;
         *startup_began = true;
         self.native_server_about_to_start(true);
-        self.common.native_lifecycle_open_started();
+        self.native_lifecycle_open_started();
         // The registries the server sends are read while the world prepares.
         let sync =
             super::lan::sync::preload_sync_data(&self.common.res.core.item_data, self.common.res.shared_items());
@@ -1257,7 +1257,7 @@ impl crate::game::ServerGame<'_> {
             host.hub.entity_range_percent = props.entity_broadcast_range_percentage;
         }
         // The dedicated server's open is complete before its first tick.
-        self.common.native_lifecycle_world_ready();
+        self.native_lifecycle_world_ready();
         let mut state = ServerState {
             lists,
             console,
@@ -2965,3 +2965,7 @@ use sunrise_gameplay_common::game::server_side::dedicated::tests::assert_log_lin
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

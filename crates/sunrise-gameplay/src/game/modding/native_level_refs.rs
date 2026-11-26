@@ -70,7 +70,7 @@ impl ServerGame<'_> {
         if !mod_api::__private::mod_index_on(owner_index) {
             return None;
         }
-        self.common.native_level_world(level)?;
+        self.native_level_world(level)?;
         let world = if level.dimension() == self.common.dim.key() {
             &mut self.common.world
         } else {
@@ -98,7 +98,7 @@ impl ServerGame<'_> {
             return false;
         }
         let level = ticket.level();
-        if self.common.native_level_world(level).is_none() {
+        if self.native_level_world(level).is_none() {
             return false;
         }
         let world = if level.dimension() == self.common.dim.key() {
@@ -117,8 +117,7 @@ impl ServerGame<'_> {
     }
 
     pub(in crate::game) fn level_has_water_ticket(&self, level: LevelRef, pos: [i32; 3]) -> bool {
-        self.common
-            .native_level_world(level)
+        self.native_level_world(level)
             .is_some_and(|world| world.water_tickets.contains(pos))
     }
 
@@ -129,7 +128,7 @@ impl ServerGame<'_> {
         biome: &str,
         parameters: mod_api::BiomeSearch,
     ) -> Option<mod_api::BiomeSearchResult> {
-        let world = self.common.native_level_world(level)?;
+        let world = self.native_level_world(level)?;
         if !biome_search_within_budget(parameters, world.shape.max_y() - world.shape.min_y) {
             return None;
         }
@@ -164,7 +163,7 @@ impl ServerGame<'_> {
         structure: &str,
         parameters: mod_api::StructureSearch,
     ) -> Option<mod_api::StructureSearchResult> {
-        self.common.native_level_world(level)?;
+        self.native_level_world(level)?;
         // Inside the world the placement cells' chunks stay far from overflowing.
         if !(0..=mod_api::StructureSearch::MAX_RADIUS).contains(&parameters.radius)
             || !horizontal_in_bounds(parameters.origin)
@@ -187,22 +186,21 @@ impl ServerGame<'_> {
         if !self.common.is_logical_server() {
             return None;
         }
-        self.common.native_read_biome(level, pos)
+        self.native_read_biome(level, pos)
     }
 
     /// The border of a resident server level, through the handle's lifetime check.
     pub(in crate::game) fn level_world_border(&self, level: LevelRef) -> Option<[f64; 4]> {
-        self.common.native_level_world(level)?;
+        self.native_level_world(level)?;
         Some(self.common.border.bounds())
     }
     /// Whether this chunk is loaded; false on a client or for a stale handle.
     pub(in crate::game) fn chunk_loaded(&self, chunk: ChunkRef) -> bool {
-        self.common.chunk(chunk.level(), chunk.pos()).is_some()
+        self.chunk(chunk.level(), chunk.pos()).is_some()
     }
     /// The status of a loaded chunk. Proto chunks are not exposed here.
     pub(in crate::game) fn chunk_status(&self, chunk: ChunkRef) -> Option<ChunkStatus> {
-        self.common
-            .chunk(chunk.level(), chunk.pos())
+        self.chunk(chunk.level(), chunk.pos())
             .map(|_| ChunkStatus::Full)
     }
     /// A handle for chunk `pos` of an open level, loaded or not, so a mod can
@@ -213,7 +211,7 @@ impl ServerGame<'_> {
         level: LevelRef,
         pos: [i32; 2],
     ) -> Option<ChunkRef> {
-        self.common.native_level_world(level)?;
+        self.native_level_world(level)?;
         chunk_in_world(pos).then_some(ChunkRef::new(level, pos))
     }
     /// `Level.getChunk(x, z)`: load or generate chunk `pos` to FULL, blocking the server tick
@@ -225,7 +223,7 @@ impl ServerGame<'_> {
         level: LevelRef,
         pos: [i32; 2],
     ) -> Result<(), mod_api::ChunkLoadError> {
-        if self.common.native_level_streaming(level).is_none() {
+        if self.native_level_streaming(level).is_none() {
             return Err(mod_api::ChunkLoadError::Unloaded);
         }
         let parked = (level.dimension() != self.common.dim.key()).then_some(level);
@@ -236,8 +234,7 @@ impl ServerGame<'_> {
     pub(in crate::game) fn chunk_forced(&self, chunk: ChunkRef) -> Option<bool> {
         let [x, z] = chunk.pos();
         Some(
-            self.common
-                .native_level_streaming(chunk.level())?
+            self.native_level_streaming(chunk.level())?
                 .commanded()
                 .contains(&(x, z)),
         )
@@ -253,9 +250,7 @@ impl ServerGame<'_> {
     /// False for a stale handle, on a client, outside the world, or when
     /// adding after generation has stopped.
     pub(in crate::game) fn chunk_set_forced(&mut self, chunk: ChunkRef, forced: bool) -> bool {
-        if self.common.native_level_streaming(chunk.level()).is_none()
-            || !chunk_in_world(chunk.pos())
-        {
+        if self.native_level_streaming(chunk.level()).is_none() || !chunk_in_world(chunk.pos()) {
             return false;
         }
         let [x, z] = chunk.pos();
@@ -344,9 +339,7 @@ impl ServerGame<'_> {
         if !calling_mod_owns(controller) {
             return false;
         }
-        if self.common.native_level_streaming(chunk.level()).is_none()
-            || !chunk_in_world(chunk.pos())
-        {
+        if self.native_level_streaming(chunk.level()).is_none() || !chunk_in_world(chunk.pos()) {
             return false;
         }
         let [x, z] = chunk.pos();
@@ -377,7 +370,7 @@ impl ServerGame<'_> {
         if !calling_mod_owns(controller) {
             return None;
         }
-        let tickets = self.common.native_level_streaming(level)?.mod_tickets();
+        let tickets = self.native_level_streaming(level)?.mod_tickets();
         Some(
             tickets
                 .of_controller(controller.slot())
@@ -389,7 +382,6 @@ impl ServerGame<'_> {
     /// the command lists them. None for a stale handle or on a client.
     pub(in crate::game) fn level_forced_chunks(&self, level: LevelRef) -> Option<Vec<[i32; 2]>> {
         let mut forced: Vec<(i32, i32)> = self
-            .common
             .native_level_streaming(level)?
             .commanded()
             .iter()
@@ -403,18 +395,18 @@ impl ServerGame<'_> {
     /// None for a chunk that isn't loaded or a `y` outside the world. On a client, the state
     /// the server sent for a column the client holds, of its own level or a viewed one.
     pub(in crate::game) fn server_level_view_world(&self, level: LevelRef) -> Option<&World> {
-        self.common.native_level_world(level)
+        self.native_level_world(level)
     }
 
     pub(in crate::game) fn server_level_handle_current(&self, level: LevelRef) -> bool {
-        self.common.level_handle_current(level)
+        self.level_handle_current(level)
     }
 
     pub(in crate::game) fn server_level_datapack_set(
         &self,
         level: LevelRef,
     ) -> Option<std::sync::Arc<mod_api::DatapackRegistrySet>> {
-        self.common.native_level_world(level)?;
+        self.native_level_world(level)?;
         self.common.mods.datapack_registries.clone()
     }
 
@@ -425,7 +417,7 @@ impl ServerGame<'_> {
         level: LevelRef,
         pos: [i32; 3],
     ) -> Option<bool> {
-        let state = self.common.level_block_state(level, pos)?;
+        let state = self.level_block_state(level, pos)?;
         Some(self.common.res.behaviours().is_redstone_conductor(state))
     }
     /// Preview a held tool's transformation without changing the block or stack. The existing
@@ -442,8 +434,8 @@ impl ServerGame<'_> {
         pos: [i32; 3],
         hit: BlockHit,
     ) -> Option<BlockTransformPreview> {
-        use sunrise_gameplay_common::game::native_server::PlayerRead;
-        let world = self.common.native_level_read_world(level)?;
+        use super::native_server::PlayerRead;
+        let world = self.native_level_read_world(level)?;
         if level.dimension() != self.common.dim.key()
             || !world.is_loaded_at(pos[0], pos[1], pos[2])
             || !matches!(
@@ -462,8 +454,7 @@ impl ServerGame<'_> {
             }
             _ => return None,
         };
-        let blocking =
-            !sneaking && offhand.is_some_and(|s| self.common.blocks_attacks(s).is_some());
+        let blocking = !sneaking && offhand.is_some_and(|s| self.blocks_attacks(s).is_some());
         let hit = super::Hit {
             pos,
             face: hit.face,
@@ -508,7 +499,7 @@ impl ServerGame<'_> {
             >,
         ) -> R,
     ) -> Option<R> {
-        if !self.common.level_in_place(level) {
+        if !self.level_in_place(level) {
             return None;
         }
         let view = super::native_level_signals::ReadLevel::new(self, level);
@@ -607,7 +598,7 @@ impl ServerGame<'_> {
         level: LevelRef,
         [x, y, z]: [i32; 3],
     ) -> Option<u64> {
-        let world = self.common.native_level_world(level)?;
+        let world = self.native_level_world(level)?;
         (world.loaded(x, z) && world.shape.contains_y(y))
             .then(|| world.capability_generations.get((x, y, z)))
     }
@@ -619,7 +610,7 @@ impl ServerGame<'_> {
         level: LevelRef,
         [x, y, z]: [i32; 3],
     ) -> bool {
-        if !self.common.level_in_place(level)
+        if !self.level_in_place(level)
             || !self.common.world.loaded(x, z)
             || !self.common.world.shape.contains_y(y)
         {
@@ -638,15 +629,13 @@ impl ServerGame<'_> {
         from: [f64; 3],
         to: [f64; 3],
     ) -> Option<bool> {
-        let hit = self
-            .common
-            .level_clip(level, from, to, ClipBlock::Collider, ClipFluid::None)?;
+        let hit = self.level_clip(level, from, to, ClipBlock::Collider, ClipFluid::None)?;
         Some(hit.miss)
     }
     /// Whether `level` is a current handle on the server: what the world's own data (its
     /// respawn data and maps, shared by its levels) needs.
     fn native_world_data_allowed(&self, level: LevelRef) -> bool {
-        self.common.is_logical_server() && self.common.level_handle_current(level)
+        self.common.is_logical_server() && self.level_handle_current(level)
     }
     /// `LevelData.getRespawnData`: the world spawn and its facing. None on a client, for a
     /// stale handle, and before the world has chosen its spawn.
@@ -679,7 +668,7 @@ impl ServerGame<'_> {
     ) -> bool {
         if !self.native_world_data_allowed(level)
             || !(yaw.is_finite() && pitch.is_finite())
-            || self.common.level_in_spawnable_bounds(level, pos) != Some(true)
+            || self.level_in_spawnable_bounds(level, pos) != Some(true)
         {
             return false;
         }
@@ -720,7 +709,7 @@ impl ServerGame<'_> {
     /// Queue the level to be saved at the start of the next server tick. False for a stale
     /// handle and on a client.
     pub(in crate::game) fn level_request_save(&mut self, level: LevelRef) -> bool {
-        if self.common.native_level_world(level).is_none() {
+        if self.native_level_world(level).is_none() {
             return false;
         }
         self.server
@@ -795,7 +784,7 @@ impl ServerGame<'_> {
     /// level's sky, spawning and beds go by, and what `/time` sets there. None for a level without
     /// a default clock, a stale handle and a client.
     pub(in crate::game) fn level_clock_time(&self, level: LevelRef) -> Option<i64> {
-        self.common.native_level_read_world(level)?;
+        self.native_level_read_world(level)?;
         if !self.common.is_logical_server() {
             return None;
         }
@@ -809,3 +798,9 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

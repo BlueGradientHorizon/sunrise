@@ -580,7 +580,7 @@ impl crate::game::ClientGame<'_> {
             None => {
                 let mut player = PlayerMotion::new(self.common.motion, position)?;
                 // The id the server gave, for the hooks the motion fires.
-                player.entity_id = self.common.own_entity_id();
+                player.entity_id = self.own_entity_id();
                 // Entity.noPhysics starts false until Player.tick() resolves PlayerInfo;
                 // LocalPlayer.aiStep reads MultiPlayerGameMode.isSpectator().
                 player.local_spectator = self.common.spectator();
@@ -589,7 +589,7 @@ impl crate::game::ClientGame<'_> {
                 self.common.hook.discard();
                 self.common.player_state.attachments.retire();
                 self.common.player = Some(player);
-                self.common.bind_local_player_residency();
+                self.bind_local_player_residency();
                 self.input_player_replaced();
                 self.client.sway = Default::default();
                 self.common.eye = 1.62;
@@ -730,3 +730,5 @@ impl Remote {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

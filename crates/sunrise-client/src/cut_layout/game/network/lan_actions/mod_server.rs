@@ -1279,6 +1279,12 @@ pub(in crate::game) mod boat_holder_movement_tests;
 pub(in crate::game) mod crack_feedback_tests;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+
 #[path = "tick_server.rs"]
 pub(in crate::game) mod tick;
 

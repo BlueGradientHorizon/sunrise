@@ -168,3 +168,5 @@ pub fn baby_entity_spawn(_: &mut dyn ServerHost, event: &mut BabyEntitySpawnEven
 fn pig_again(dim: &str) -> PendingMobSpec {
     spec("minecraft:pig", dim, [0.5, 64.0, 0.0], 0.0, None, true)
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

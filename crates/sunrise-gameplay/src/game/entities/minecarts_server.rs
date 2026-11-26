@@ -202,7 +202,7 @@ impl crate::game::ServerGame<'_> {
         vanilla: Shape,
     ) -> Shape {
         let (Some(level), Some(epoch), Ok(api_state)) = (
-            self.common.level(self.common.dim.id()),
+            self.level(self.common.dim.id()),
             self.common.native_lifecycle.epoch(),
             state.try_into_api(),
         ) else {
@@ -348,7 +348,7 @@ impl crate::game::ServerGame<'_> {
     /// `applyEffectsFromBlocks` for a cart: a bubble column lifts or drags it
     /// and resets the fall distance.
     pub(in crate::game::server_side) fn cart_block_effects(&mut self, c: &mut Minecart) {
-        let writes = self.common.body_step_on(
+        let writes = self.body_step_on(
             (c.id, c.kind.id()),
             (c.position, c.bounds()),
             &c.ground,
@@ -542,12 +542,12 @@ impl crate::game::ServerGame<'_> {
         let Some((i, d)) = (match target {
             Some(t) => sunrise_gameplay_common::game::item_actions::named_entity(&self.common.carts, t.id, |c| c.id)
                 .map(|i| (i, 0.0)),
-            None => self.common.cart_hit(),
+            None => self.cart_hit(),
         }) else {
             return false;
         };
         // Only a client's own pick is stopped by a block: the range check passed.
-        if target.is_none() && !self.common.before_block(d) {
+        if target.is_none() && !self.before_block(d) {
             return false;
         }
         let sneaking = self.server_acting_sneak();
@@ -586,7 +586,7 @@ impl crate::game::ServerGame<'_> {
                     true
                 });
                 if fueled && !self.common.creative {
-                    self.common.consume_held();
+                    self.consume_held();
                 }
             }
             // MinecartTNT has no interact of its own (`Entity.interact` passes).
@@ -783,7 +783,7 @@ impl crate::game::ServerGame<'_> {
         while first || movement_left > f64::from(1.0e-5_f32) {
             let initial = c.velocity;
             let pos = self.common.rail_block(c.position, true);
-            let Some(rail) = self.common.rail(Some(c.id), pos[0], pos[1], pos[2]) else {
+            let Some(rail) = self.rail(Some(c.id), pos[0], pos[1], pos[2]) else {
                 c.on_rails = false;
                 if !self.come_off_track(c) {
                     return false;
@@ -1001,7 +1001,7 @@ impl crate::game::ServerGame<'_> {
                 new_pos.y.floor() as i32,
                 new_pos.z.floor() as i32,
             ];
-            if let Some(new_rail) = self.common.rail(Some(c.id), new_block[0], new_block[1], new_block[2])
+            if let Some(new_rail) = self.rail(Some(c.id), new_block[0], new_block[1], new_block[2])
             {
                 // restAtVShape: opposing slopes rest a slow cart.
                 if c.velocity.length_squared() < 0.005
@@ -1097,7 +1097,7 @@ impl crate::game::ServerGame<'_> {
         let candidates: Vec<u32> = if near.is_empty() {
             Vec::new()
         } else {
-            let (teams, own) = (self.mob_teams(), self.common.team_with_owner(id, || None));
+            let (teams, own) = (self.mob_teams(), self.team_with_owner(id, || None));
             near.iter()
                 .map(|&j| &self.common.mobs[j as usize])
                 .filter(|m| {
@@ -1164,7 +1164,7 @@ impl crate::game::ServerGame<'_> {
         let Some(kind) = CartKind::from_id(&stack.item) else {
             return false;
         };
-        let Some(rail) = self.common.rail(None, hit.pos[0], hit.pos[1], hit.pos[2]) else {
+        let Some(rail) = self.rail(None, hit.pos[0], hit.pos[1], hit.pos[2]) else {
             return false;
         };
         let offset = if rail.shape.is_slope() { 0.5 } else { 0.0 };
@@ -1197,7 +1197,7 @@ impl crate::game::ServerGame<'_> {
             Some(below),
         );
         if !self.common.creative {
-            self.common.consume_held();
+            self.consume_held();
         }
         // ItemStack.useOn counts the use.
         self.award_stat("used", &stack.item, 1);
@@ -1479,7 +1479,7 @@ impl crate::game::ServerGame<'_> {
         let improved = self.common.minecart_improvements();
         if improved && c.first_tick {
             let pos = self.common.rail_block(c.position, true);
-            if let Some(rail) = self.common.rail(Some(c.id), pos[0], pos[1], pos[2]) {
+            if let Some(rail) = self.rail(Some(c.id), pos[0], pos[1], pos[2]) {
                 c.on_rails = true;
                 Self::adjust_cart_to_rails(c, pos, rail.shape);
             } else {
@@ -1493,7 +1493,7 @@ impl crate::game::ServerGame<'_> {
             }
         } else {
             let pos = self.common.rail_block(c.position, false);
-            let rail = self.common.rail(Some(c.id), pos[0], pos[1], pos[2]);
+            let rail = self.rail(Some(c.id), pos[0], pos[1], pos[2]);
             c.on_rails = rail.is_some();
             if let Some(rail) = rail {
                 if !self.move_along_track(c, pos, &rail, intent, slot) {
@@ -1628,7 +1628,7 @@ impl crate::game::ServerGame<'_> {
         self.push_carts();
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
-        let mut round = self.common.native_tick_round();
+        let mut round = self.native_tick_round();
         // A server player's minecart moves with its rider (lan_vehicles.rs).
         let ridden = self.guest_vehicles();
         // By id: an exploding cart can destroy or prime others mid-loop.
@@ -1649,7 +1649,7 @@ impl crate::game::ServerGame<'_> {
             }
             let kind = self.common.carts[i].kind.id();
             sunrise_threads::work::set_entity(sunrise_threads::work::entity_id(kind));
-            if !self.common.native_tick_pre_one(&mut round, id, kind) {
+            if !self.native_tick_pre_one(&mut round, id, kind) {
                 continue;
             }
             let Some(i) = self.cart_in_world(id, i, &round, kind) else {
@@ -1667,7 +1667,7 @@ impl crate::game::ServerGame<'_> {
                 index.forget_carts();
             }
             // After the ticked cart is stored: a mod reads and changes the cart as it is now.
-            self.common.native_tick_post_one(&round, id, kind);
+            self.native_tick_post_one(&round, id, kind);
         }
         sunrise_threads::work::clear_work();
         // On the server for every cart, the ridden ones too.
@@ -1700,3 +1700,17 @@ pub mod minecart_tnt_tests;
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::cart_rails::CartRailsGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
+use sunrise_gameplay_common::game::scoreboard_common::CommonGameExt1 as _;

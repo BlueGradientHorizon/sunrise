@@ -370,9 +370,8 @@ impl crate::game::ClientGame<'_> {
             right: s.inputs.get(1).and_then(Option::as_ref),
             name: Some(name),
         };
-        let (player, entity_id) = (self.common.own_uuid(), self.common.own_entity_id());
-        self.common
-            .api_anvil_update(player, entity_id, s.pos, inputs, &mut s.anvil);
+        let (player, entity_id) = (self.own_uuid(), self.own_entity_id());
+        self.api_anvil_update(player, entity_id, s.pos, inputs, &mut s.anvil);
     }
     /// Client arm of [`Game::side_station_changed`]: enchanting only clears
     /// offers without an enchantable item; anvil runs the client preview hook.
@@ -819,7 +818,7 @@ impl crate::game::ClientGame<'_> {
                 anvil::input_changed(s, ui, name);
             }
         }
-        self.common.station_changed();
+        self.station_changed();
     }
     /// `StonecutterScreen.mouseClicked` on its recipe grid: `clickMenuButton`
     /// with the cell's index (an empty cell's too), and the select sound when
@@ -887,7 +886,7 @@ impl crate::game::ClientGame<'_> {
         let shown = |g: &Self| {
             g.station_and_ui().map(|(s, ui)| {
                 let merchant = s.merchant.as_ref().map(|m| m.scroll);
-                (ui.start, g.side.station_loom.start_row, merchant)
+                (ui.start, g.client.station_loom.start_row, merchant)
             })
         };
         let before = shown(self);
@@ -1007,7 +1006,7 @@ impl crate::game::ClientGame<'_> {
             .filter(|s| s.kind == Kind::Anvil)
             .map(|s| self.common.anvil_item_name(s));
         if before.is_none() || after != before {
-            self.common.station_changed();
+            self.station_changed();
         }
         self.remote_anvil_rename();
     }
@@ -1037,7 +1036,7 @@ impl crate::game::ClientGame<'_> {
             .filter(|s| s.kind == Kind::Anvil)
             .map(|s| self.common.anvil_item_name(s));
         if before.is_none() || after != before {
-            self.common.station_changed();
+            self.station_changed();
         }
         self.remote_anvil_rename();
         true
@@ -1077,7 +1076,7 @@ impl crate::game::ClientGame<'_> {
                 .filter(|s| s.kind == Kind::Anvil)
                 .map(|s| self.common.anvil_item_name(s));
             if before.is_none() || after != before {
-                self.common.station_changed();
+                self.station_changed();
             }
             self.remote_anvil_rename();
         }
@@ -1234,7 +1233,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// The same rarity colour in the GUI batch's packed RGBA format.
     pub(in crate::game::client_side) fn rarity_color(&self, stack: &ItemStack) -> u32 {
-        let c = self.common.stack_rarity_color(stack);
+        let c = self.stack_rarity_color(stack);
         rgba((c >> 16) as u8, (c >> 8) as u8, c as u8, 255)
     }
     /// `ItemStack.getTooltipLines`. A `nested` stack is a crossbow's
@@ -1342,9 +1341,9 @@ impl crate::game::ClientGame<'_> {
             .map(|text| (text, u32::MAX)),
         );
         let context = mod_api::TooltipAppendContext {
-            player: self.common.own_uuid(),
-            player_entity_id: self.common.own_entity_id(),
-            tick_rate: if self.common.native_client_level().is_some() {
+            player: self.own_uuid(),
+            player_entity_id: self.own_entity_id(),
+            tick_rate: if self.native_client_level().is_some() {
                 self.common.clock.rate()
             } else {
                 20.0
@@ -1442,7 +1441,7 @@ impl crate::game::ClientGame<'_> {
                             "item.minecraft.crossbow.projectile.single",
                             "Projectile: %s",
                         ),
-                        &[self.common.stack_display_name(projectile)],
+                        &[self.stack_display_name(projectile)],
                     )
                 } else {
                     sunrise_game_data::text::format_translation(
@@ -1768,8 +1767,8 @@ impl crate::game::ClientGame<'_> {
             };
             let mut access = EngineTooltipLines(&mut lines);
             self.native_item_tooltip(mod_api::__private::ItemTooltipCall {
-                player: self.common.own_uuid(),
-                player_entity_id: self.common.own_entity_id(),
+                player: self.own_uuid(),
+                player_entity_id: self.own_entity_id(),
                 stack: mod_api::ItemStackView::resident(metadata, &project),
                 display: &display,
                 advanced,
@@ -3079,3 +3078,15 @@ use sunrise_gameplay_common::game::side_ops::blocks::BlocksSideGameExt as _;
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::api_values_common::ApiValuesCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;
+
+use sunrise_gameplay_common::game::stack_names::StackNamesGameExt1 as _;
+
+use sunrise_gameplay_common::game::stations_common::StationsCommonGameExt1 as _;

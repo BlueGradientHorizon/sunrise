@@ -391,7 +391,7 @@ impl crate::game::ServerGame<'_> {
             .configuration_session(connection)
             .ok_or(ConfigurationTaskError::Disconnected)?
             .payload_target()?;
-        self.common.queue_payload(endpoint, epoch, channel, bytes)
+        self.queue_payload(endpoint, epoch, channel, bytes)
             .map(|_| ())
             .map_err(ConfigurationTaskError::Payload)
     }
@@ -440,3 +440,7 @@ mod tests {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::payload_transport::PayloadTransportGameExt1 as _;

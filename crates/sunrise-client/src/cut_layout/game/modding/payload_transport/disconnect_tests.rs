@@ -218,3 +218,5 @@ fn a_payload_handler_disconnects_once_and_the_poll_logs_out_once() {
         });
     });
 }
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

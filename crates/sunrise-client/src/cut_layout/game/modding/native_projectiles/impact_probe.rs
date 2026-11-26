@@ -271,3 +271,7 @@ pub(in crate::game) fn point(actual: [f64; 3], expected: [f64; 3]) {
         );
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

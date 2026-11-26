@@ -172,8 +172,8 @@ impl crate::game::ServerGame<'_> {
     /// name on the board, if it could have a score yet.
     pub(in crate::game::server_side) fn existing_holder_name(&self, t: Target) -> Option<String> {
         match t {
-            Target::Player => Some(self.common.acting_player_name().to_owned()),
-            Target::Guest(conn) => self.common.command_guest(conn).map(|g| g.name.clone()),
+            Target::Player => Some(self.acting_player_name().to_owned()),
+            Target::Guest(conn) => self.command_guest(conn).map(|g| g.name.clone()),
             // It keeps its UUID with itself.
             Target::Spawner(id) => self
                 .common.ominous_spawners
@@ -193,7 +193,7 @@ impl crate::game::ServerGame<'_> {
     }
     pub(in crate::game::server_side) fn holder_for(&mut self, t: Target) -> Option<Holder> {
         let name = self.holder_name(t)?;
-        let shown = feedback_name(self.common.target_name(t), &name);
+        let shown = feedback_name(self.target_name(t), &name);
         Some(Holder {
             display: Some(literal(&shown.plain())),
             text: shown,
@@ -203,17 +203,17 @@ impl crate::game::ServerGame<'_> {
     /// The entity with the given scoreboard name.
     pub(in crate::game::server_side) fn target_of_holder(&self, name: &str) -> Option<Target> {
         // `PlayerList.getPlayerByName` (any case); a mod's nicknames are not scoreboard names.
-        if self.common.player.is_some() && name.eq_ignore_ascii_case(self.common.acting_player_name()) {
+        if self.common.player.is_some() && name.eq_ignore_ascii_case(self.acting_player_name()) {
             return Some(Target::Player);
         }
         if let Some(g) = self
-            .common.command_players()
+            .command_players()
             .find(|g| g.name.eq_ignore_ascii_case(name))
         {
             return Some(Target::Guest(g.conn));
         }
         let uuid = uuid_from_text(name).filter(|_| name.len() == 36)?;
-        self.common.target_with_uuid(uuid)
+        self.target_with_uuid(uuid)
     }
     /// The saved `Tags` list read by commands and native entity handles.
     pub(in crate::game::server_side) fn saved_entity_tags(&self, t: Target) -> EntityTags<'_> {
@@ -242,7 +242,7 @@ impl crate::game::ServerGame<'_> {
             Target::DragonPart(_) => None,
             Target::Player => self.common.level.player_extra.as_ref(),
             // A server's player: the saved compound the guest's file is written from.
-            Target::Guest(conn) => self.common.command_guest(conn).and_then(|g| g.saved.as_ref()),
+            Target::Guest(conn) => self.command_guest(conn).and_then(|g| g.saved.as_ref()),
             Target::Spawner(id) => self
                 .common.ominous_spawners
                 .iter()
@@ -377,7 +377,7 @@ impl crate::game::ServerGame<'_> {
         use sunrise_command::args::AdvCondition;
         let progress = match target {
             Target::Player => &self.common.adv.progress,
-            Target::Guest(conn) => match self.common.command_guest(conn) {
+            Target::Guest(conn) => match self.command_guest(conn) {
                 Some(guest) => &guest.advancements,
                 None => return false,
             },
@@ -468,7 +468,7 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let display = self.player_display_comp();
-        let name = self.common.acting_player_name().to_owned();
+        let name = self.acting_player_name().to_owned();
         let Some(p) = self.common.player.as_mut() else {
             return;
         };
@@ -495,7 +495,7 @@ impl crate::game::ServerGame<'_> {
     /// `ServerPlayer.die`: the acting player's `deathCount` objectives go up by one.
     pub(in crate::game::server_side) fn score_player_died(&mut self) {
         let display = self.player_display_comp();
-        let me = self.common.acting_player_name().to_owned();
+        let me = self.acting_player_name().to_owned();
         self.common.score.board.for_all_objectives_with(
             sb::CRITERIA_DEATH_COUNT,
             &me,
@@ -516,7 +516,7 @@ impl crate::game::ServerGame<'_> {
         victim_name: Option<String>,
         player: bool,
     ) {
-        let killer = self.common.acting_player_name().to_owned();
+        let killer = self.acting_player_name().to_owned();
         self.score_player_kill_for(&killer, victim_name.as_deref(), player);
     }
 
@@ -559,7 +559,7 @@ impl crate::game::ServerGame<'_> {
         }
         // The mob is looked up only when its own name has no team: the
         // owner's team is the fallback.
-        self.common.team_with_owner(id, || {
+        self.team_with_owner(id, || {
             self.common.mobs.iter().find(|m| m.id == id).and_then(tame_owner)
         })
     }
@@ -576,7 +576,7 @@ impl crate::game::ServerGame<'_> {
             return None;
         }
         let own_uuid = *self.common.persist.uuids.get(&m.id)?;
-        let own = self.common.scoreboard_name(m.id, own_uuid);
+        let own = self.scoreboard_name(m.id, own_uuid);
         if let Some(team) = self.common.score.board.players_team(&own) {
             return Some(team);
         }
@@ -601,7 +601,7 @@ impl crate::game::ServerGame<'_> {
             if let Some(mob) = loaned(uuid) {
                 return tame_owner(mob);
             }
-            let Target::Mob(id) = self.common.target_by_uuid(ints_uuid(uuid))? else {
+            let Target::Mob(id) = self.target_by_uuid(ints_uuid(uuid))? else {
                 return None;
             };
             self.common.mobs
@@ -610,19 +610,19 @@ impl crate::game::ServerGame<'_> {
                 .and_then(tame_owner)
         });
         let owner_name = if let Some(mob) = loaned(root) {
-            self.common.scoreboard_name(mob.id, root)
+            self.scoreboard_name(mob.id, root)
         } else {
-            match self.common.target_by_uuid(ints_uuid(root))? {
-                Target::Player => self.common.acting_player_name().to_owned(),
-                Target::Guest(conn) => self.common.command_guest(conn)?.name.clone(),
-                Target::Mob(id) => self.common.scoreboard_name(id, root),
+            match self.target_by_uuid(ints_uuid(root))? {
+                Target::Player => self.acting_player_name().to_owned(),
+                Target::Guest(conn) => self.command_guest(conn)?.name.clone(),
+                Target::Mob(id) => self.scoreboard_name(id, root),
                 _ => uuid_text(root),
             }
         };
         pet_team(&self.common.score.board, &own, Some(&owner_name))
     }
     pub(in crate::game) fn player_team(&self) -> Option<&sb::Team> {
-        self.common.score.board.players_team(self.common.acting_player_name())
+        self.common.score.board.players_team(self.acting_player_name())
     }
     /// The teams of the player and of the mobs on one (empty without teams).
     pub(in crate::game) fn mob_teams(&self) -> sunrise_sim::mobs::Teams<'_> {
@@ -657,7 +657,7 @@ impl crate::game::ServerGame<'_> {
                 .keys()
                 .filter_map(|id| {
                     let owner = || tame_owners.get(id).copied();
-                    Some((*id, self.common.team_with_owner(*id, owner)?))
+                    Some((*id, self.team_with_owner(*id, owner)?))
                 })
                 .collect(),
         }
@@ -679,11 +679,11 @@ impl crate::game::ServerGame<'_> {
         if !moving {
             return vec![true; near.len()];
         }
-        let own = self.common.team_with_owner(carts[i].id, || None);
+        let own = self.team_with_owner(carts[i].id, || None);
         near.iter()
             .map(|&j| {
                 let target = &carts[j as usize];
-                sb::pushable_by(own, self.common.team_with_owner(target.id, || None), true)
+                sb::pushable_by(own, self.team_with_owner(target.id, || None), true)
             })
             .collect()
     }
@@ -695,13 +695,13 @@ impl crate::game::ServerGame<'_> {
         self.common.persist
             .uuids
             .iter()
-            .filter(|(id, uuid)| team.players.contains(&self.common.scoreboard_name(**id, **uuid)))
+            .filter(|(id, uuid)| team.players.contains(&self.scoreboard_name(**id, **uuid)))
             .map(|(id, _)| *id)
             .collect()
     }
     /// `Player.getDisplayName`: the name with the team's prefix, suffix and colour.
     pub(in crate::game::server_side) fn player_display_comp(&self) -> Comp {
-        self.player_score_display(self.common.acting_player_name())
+        self.player_score_display(self.acting_player_name())
     }
     pub(in crate::game::server_side) fn player_score_display(&self, name: &str) -> Comp {
         let display = literal(name);
@@ -711,7 +711,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     pub(in crate::game::server_side) fn player_display_text(&self) -> Text {
-        let name = Text::literal(self.common.acting_player_name());
+        let name = Text::literal(self.acting_player_name());
         match self.player_team() {
             Some(t) => t.formatted_name(name),
             None => name,
@@ -799,7 +799,7 @@ impl crate::game::ServerGame<'_> {
         let names: Vec<String> = self
             .select(&sel)
             .into_iter()
-            .map(|t| self.common.target_name(t).plain())
+            .map(|t| self.target_name(t).plain())
             .collect();
         names.join(", ")
     }
@@ -882,7 +882,7 @@ impl Env for GameEnv<'_, '_> {
         }
     }
     fn source(&mut self) -> Option<(Holder, bool)> {
-        let entity = match self.g.side.command_source {
+        let entity = match self.g.server.command_source {
             Some(s) => s.entity,
             None => Some(Target::Player),
         }?;
@@ -1109,3 +1109,7 @@ pub(in crate::game) mod team_tests {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::scoreboard_common::CommonGameExt1 as _;

@@ -119,3 +119,5 @@ fn synced_client_queries_follow_replacement_retirement_and_level_changes() {
         assert_eq!(values(game), [81]);
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

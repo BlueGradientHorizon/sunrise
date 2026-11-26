@@ -298,3 +298,5 @@ mod added_preservation_tests {
         let _ = std::fs::remove_dir_all(&game.side.world_root);
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

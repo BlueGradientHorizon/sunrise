@@ -33,9 +33,9 @@ impl crate::game::ServerGame<'_> {
             log::error!("could not open {}: {e}", dim.id());
         }
         let Some((out, told)) = self.with_guest_swap(conn, back, |game| {
-            let source = game.side.chat_capture.replace(Vec::new());
+            let source = game.server.chat_capture.replace(Vec::new());
             let out = f(game);
-            let told = std::mem::replace(&mut game.side.chat_capture, source).unwrap_or_default();
+            let told = std::mem::replace(&mut game.server.chat_capture, source).unwrap_or_default();
             (out, told)
         }) else {
             if self.common.dim != back
@@ -80,7 +80,7 @@ impl crate::game::ServerGame<'_> {
             .lan
             .iter()
             .flat_map(|h| h.hub.online_players())
-            .filter(|g| self.common.native_command_player_available(g))
+            .filter(|g| self.native_command_player_available(g))
             .filter(|g| !limited || g.dimension == here || Some(g.conn) == in_place)
             .filter(|g| !alive_only || (!g.dead && g.health > 0.0))
             .map(|g| {
@@ -100,11 +100,11 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn player_named(&self, name: &str) -> Option<Target> {
         if !self.server.lan_acting_fake
             && self.common.player.is_some()
-            && name.eq_ignore_ascii_case(self.common.acting_player_name())
+            && name.eq_ignore_ascii_case(self.acting_player_name())
         {
             return Some(Target::Player);
         }
-        self.common.command_players()
+        self.command_players()
             .find(|g| g.name.eq_ignore_ascii_case(name))
             .map(|g| Target::Guest(g.conn))
             .or_else(|| self.player_nicknamed(name))
@@ -124,7 +124,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn source_display_name(&self) -> Text {
         match self.server.command_source {
             Some(source) => match source.entity {
-                Some(target) => self.common.target_name(target),
+                Some(target) => self.target_name(target),
                 None => source
                     .block
                     .and_then(|pos| match self.common.world.block_entities.get(&pos) {
@@ -156,3 +156,5 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

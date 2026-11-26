@@ -25,7 +25,7 @@ enum Backing {
 
 impl crate::game::ServerGame<'_> {
     fn native_projectile_backing(&self, projectile: ProjectileRef) -> Option<Backing> {
-        match self.common.native_entity_target(projectile.entity())? {
+        match self.native_entity_target(projectile.entity())? {
             Target::Projectile(id) => (self.common.creatures.projectiles.iter())
                 .position(|p| p.id == id)
                 .map(Backing::List),
@@ -69,7 +69,7 @@ impl crate::game::ServerGame<'_> {
             return None;
         }
         let id = u32::try_from(self.network_entity_id(target)?).ok()?;
-        self.common.entity(id)
+        self.entity(id)
     }
 
     /// `Projectile.getOwner`: the owner as a resolved entity. None for no
@@ -84,17 +84,17 @@ impl crate::game::ServerGame<'_> {
     /// with none, one that is gone or in another level, or a stale handle.
     pub(in crate::game) fn entity_owner(&self, entity: EntityRef) -> Option<EntityRef> {
         let Some(backing) = self.native_projectile_backing(ProjectileRef::new(entity)) else {
-            let Target::General(id) = self.common.native_entity_target(entity)? else {
+            let Target::General(id) = self.native_entity_target(entity)? else {
                 return None;
             };
             let rows = &self.common.resident_entities.general.rows;
             let owner = rows.iter().find(|row| row.id == id)?.owner?;
-            return self.native_owner_entity(self.common.target_by_uuid(ints_uuid(owner))?);
+            return self.native_owner_entity(self.target_by_uuid(ints_uuid(owner))?);
         };
         let target = match backing {
             Backing::List(i) => {
                 let uuid = self.common.creatures.projectiles[i].owner_uuid?;
-                self.common.target_by_uuid(ints_uuid(uuid))?
+                self.target_by_uuid(ints_uuid(uuid))?
             }
             // A trident belongs to the guest who threw it, else the host.
             Backing::Trident(i) => self.common.tridents[i].guest.map_or(Target::Player, Target::Guest),
@@ -103,7 +103,7 @@ impl crate::game::ServerGame<'_> {
                 match r.owner {
                     Some(Who::Player) => r.guest.map_or(Target::Player, Target::Guest),
                     Some(Who::Mob(id)) => Target::Mob(id),
-                    None => self.common.target_by_uuid(ints_uuid(r.owner_uuid?))?,
+                    None => self.target_by_uuid(ints_uuid(r.owner_uuid?))?,
                 }
             }
         };
@@ -119,7 +119,7 @@ impl crate::game::ServerGame<'_> {
         let Some(owner) = owner else {
             return Some(((None, None, None), None));
         };
-        let target = self.common.native_entity_target(owner)?;
+        let target = self.native_entity_target(owner)?;
         let vehicle = match target {
             Target::Boat(id) | Target::Cart(id) => Some(id),
             _ => None,
@@ -396,3 +396,9 @@ impl crate::game::ServerGame<'_> {
         })
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

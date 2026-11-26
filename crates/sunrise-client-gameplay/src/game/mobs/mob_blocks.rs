@@ -533,7 +533,7 @@ impl ClientGame<'_> {
                 &mob.kind.id,
             );
             owner.fishing_cast_with_this_item = if local_player {
-                self.common.cast_rod().is_some() && self.common.main_hand_rod() != off_hand
+                self.cast_rod().is_some() && self.main_hand_rod() != off_hand
             } else {
                 let active = self.client.remote_hooks.iter().filter(|h| h.owner_fishing);
                 fishing_cast_item(
@@ -572,7 +572,7 @@ impl ClientGame<'_> {
             let mut state = self.resolve_item_in_hand(&stack, context, Some(&owner), seed, hand);
             if in_world {
                 let entity_id = if local_player {
-                    self.common.own_entity_id() as u32
+                    self.own_entity_id() as u32
                 } else {
                     mob.id
                 };
@@ -968,3 +968,9 @@ mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

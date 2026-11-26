@@ -44,7 +44,7 @@ impl<'g, 'a> JournalLevelWrite<'g, 'a> {
         flags: i32,
     ) -> bool {
         let [x, y, z] = pos;
-        if self.game.side.world_debug
+        if self.game.server.world_debug
             || !(-30_000_000..30_000_000).contains(&x)
             || !(-30_000_000..30_000_000).contains(&z)
             || !self.game.world.is_loaded_at(x, y, z)
@@ -223,10 +223,8 @@ impl LevelWriteHost for JournalLevelWrite<'_, '_> {
         volume: f32,
         pitch: f32,
     ) -> bool {
-        if self.game.side.lan.is_none()
-            || !sunrise_gameplay_common::game::native_hooks::mod_sound_ok(
-                sound, at, source, volume, pitch,
-            )
+        if self.game.server.lan.is_none()
+            || !super::native_hooks::mod_sound_ok(sound, at, source, volume, pitch)
         {
             return false;
         }
@@ -554,3 +552,7 @@ impl ServerGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

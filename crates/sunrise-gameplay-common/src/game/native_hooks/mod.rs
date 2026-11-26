@@ -116,9 +116,9 @@ pub mod animal_tame;
 pub mod animate_tick;
 
 /// The hook points. Each does nothing in Sunrise.
-impl crate::game::CommonGame<'_> {
+pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Shared click metadata borrows the already-converted API snapshot for this call.
-    pub fn block_click<'a>(
+     fn block_click<'a>(
         &mut self,
         hit: &super::Hit,
         hand: mod_api::Hand,
@@ -143,7 +143,7 @@ impl crate::game::CommonGame<'_> {
     /// The living entity an effect decision names: `Some(id)` a mob's
     /// `Entity.getId`, `None` the acting player. `None` when no native
     /// world runs, and the decision falls back to vanilla's.
-    pub fn effect_living_ref(&self, entity: Option<i32>) -> Option<LivingRef> {
+     fn effect_living_ref(&self, entity: Option<i32>) -> Option<LivingRef> {
         let epoch = self.native_lifecycle.epoch()?;
         let id = match entity {
             Some(id) => id as u32,
@@ -156,7 +156,7 @@ impl crate::game::CommonGame<'_> {
     /// `Some(successful)` when a mod canceled it, the answer `growCrop`
     /// gives in vanilla's place. The caller keeps what the mods did to
     /// `stack`.
-    pub fn bonemeal(
+     fn bonemeal(
         &mut self,
         pos: BlockPos,
         by_player: bool,
@@ -203,18 +203,18 @@ impl crate::game::CommonGame<'_> {
     }
     /// The acting player as the hook points name one: the guest whose turn
     /// it is, else the host.
-    pub fn native_acting_id(&mut self) -> u128 {
+     fn native_acting_id(&mut self) -> u128 {
         self.side_acting_id()
     }
     /// The player clicking, as the block-use hooks name them: the acting
     /// player's UUID and entity id on a server, this client's own player on
     /// a client.
-    pub fn native_clicker(&mut self) -> (u128, i32) {
+     fn native_clicker(&mut self) -> (u128, i32) {
         self.side_clicker()
     }
     /// `PlayerInteractEvent.RightClickBlock` for a click on `hit` with
     /// `hand` holding `stack`: what the mods let it use.
-    pub fn right_click_block(
+     fn right_click_block(
         &mut self,
         hit: &super::Hit,
         hand: Hand,
@@ -252,6 +252,8 @@ impl crate::game::CommonGame<'_> {
         }
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> ModGameExt1<'__sg> for G {}
+
 pub mod anvil_update;
 pub mod apply_enchantments;
 pub mod arm_pose_transform;
@@ -744,3 +746,7 @@ include!("shared.rs");
 use crate::game::native_hooks::base::GameHooks as _;
 
 use crate::game::side_ops::modapi_hooks::ModapiHooksSideGameExt as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use crate::game::player_identity::PlayerIdentityGameExt1 as _;

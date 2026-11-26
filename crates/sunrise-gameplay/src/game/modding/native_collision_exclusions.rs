@@ -24,7 +24,7 @@ impl crate::game::ServerGame<'_> {
         boxes: &[[f64; 6]],
     ) -> Result<(), CollisionExclusionsError> {
         let conn = match self
-            .common.native_entity_target(entity)
+            .native_entity_target(entity)
             .ok_or(CollisionExclusionsError::Stale)?
         {
             Target::Guest(conn) => conn,
@@ -59,3 +59,5 @@ impl crate::game::ServerGame<'_> {
         Ok(())
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

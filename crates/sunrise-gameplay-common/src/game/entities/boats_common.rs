@@ -349,11 +349,100 @@ impl crate::game::CommonGame<'_> {
         b.fall_distance
     }
 
+    /// Refuse a removed tick target before carrying its slot into the clone.
+    pub fn store_boat_back(&mut self, index: usize, boat: Boat) -> bool {
+        if self
+            .persist
+            .removals
+            .contains(&crate::game::commands_common::Target::Boat(boat.id))
+        {
+            return false;
+        }
+        self.boats.store_back(index, boat)
+    }
+
+    /// `AbstractBoat.tick`: `status = getStatus()` for a boat this window does not tick.
+    pub fn refresh_boat_status(&mut self, i: usize) {
+        let (mut water_level, mut land_friction) = (0.0, 0.0);
+        let status = self.boat_status(&self.boats[i], &mut water_level, &mut land_friction);
+        self.boats.update(i, |b| b.status = status);
+        self.boats.update(i, |b| b.status_known = true);
+        self.boats.update(i, Boat::tick_submersion);
+    }
+
+    /// `BubbleColumnBlock.entityInside`: the bubble columns boat `i` touches.
+    pub fn boat_bubble_columns(&self, i: usize) -> Vec<BubbleColumn> {
+        let b = self.boats[i].bounds().deflate(Vec3::new(
+            f64::from(1.0e-5f32),
+            f64::from(1.0e-5f32),
+            f64::from(1.0e-5f32),
+        ));
+        let (lo, hi) = (b.min_position(), b.max_position());
+        let mut columns = Vec::new();
+        for x in lo.x.floor() as i32..=hi.x.floor() as i32 {
+            for y in lo.y.floor() as i32..=hi.y.floor() as i32 {
+                for z in lo.z.floor() as i32..=hi.z.floor() as i32 {
+                    if let Some(column) = bubble_column_at(
+                        &self.world,
+                        self.pack.assets.registry,
+                        self.res.facts(),
+                        self.collision,
+                        BlockPos::new(x, y, z),
+                    ) {
+                        columns.push(column);
+                    }
+                }
+            }
+        }
+        columns
+    }
+
+    /// `AbstractBoat.onAboveBubbleColumn`: whether the splash comes up, 1 in 100 above water.
+    pub fn boat_splash_roll(&mut self, i: usize) -> bool {
+        !self.boats[i].under_water() && self.world.random.next_int_bound(100).unwrap_or(1) == 0
+    }
+
+    /// `Entity.makeStuckInBlock` from powder snow and cobweb cells a boat reaches into.
+    pub fn boat_stuck_in_blocks(&self, b: &mut Boat) {
+        let mut cells = Vec::new();
+        if b.previous != b.position {
+            cells.extend(reached_cells(b.bounds_at(b.previous), |_| true));
+        }
+        for cell in reached_cells(b.bounds(), |_| true) {
+            if !cells.contains(&cell) {
+                cells.push(cell);
+            }
+        }
+        for cell in cells {
+            let name = &*self
+                .res
+                .facts()
+                .get(self.world.block(cell[0], cell[1], cell[2]))
+                .name;
+            b.stuck = match name {
+                "minecraft:powder_snow" => powder_snow_stuck(),
+                "minecraft:cobweb" => sunrise_sim::falling_block::web_multiplier(),
+                _ => continue,
+            };
+            b.fall_distance = 0.0;
+        }
+    }
+
+    /// Whether the player rides a chest boat (`HasCustomInventoryScreen`).
+    pub fn riding_chest_boat(&self) -> bool {
+        self.riding
+            .and_then(|id| self.boats.iter().find(|b| b.id == id))
+            .is_some_and(|b| b.chest)
+    }
+}
+
+pub trait BoatsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+
     /// `AbstractInterpolationHandler.interpolate` for the boat this client
     /// drives: its own moves since the last step carry the target along (where
     /// the boat fits there), then `LinearInterpolationHandler.doInterpolate`
     /// takes a `1 / steps` share of the way.
-    pub(in crate::game) fn interpolate_driven_boat(&self, b: &mut Boat) {
+     fn interpolate_driven_boat(&self, b: &mut Boat) {
         let Some(mut l) = b.lerp.take() else {
             return;
         };
@@ -382,7 +471,7 @@ impl crate::game::CommonGame<'_> {
 
     /// `AbstractInterpolationHandler.adjustInterpolationPosition`: check the
     /// shifted target against blocks, entities and the border at the boat's live pose.
-    pub fn boat_lerp_target_fits(&self, boat: &Boat, target: Vec3) -> bool {
+     fn boat_lerp_target_fits(&self, boat: &Boat, target: Vec3) -> bool {
         let bounds = boat.bounds_at(target);
         let scene = SceneCollisions {
             world: &self.world,
@@ -409,7 +498,11 @@ impl crate::game::CommonGame<'_> {
 
     /// `Entity.recordMovement` for a both-side lid push: move an active
     /// interpolation target by the displacement, if the boat fits there.
-    pub fn record_driven_boat_lid_movement(&mut self, i: usize, delta: Vec3) -> bool {
+     fn record_driven_boat_lid_movement(
+        &mut self,
+        i: usize,
+        delta: Vec3,
+    ) -> bool {
         let boat = &self.boats[i];
         let Some(mut lerp) = boat.lerp else {
             return false;
@@ -424,7 +517,7 @@ impl crate::game::CommonGame<'_> {
         true
     }
 
-    pub fn tick_boat(&mut self, mut b: Boat, controlled: bool) -> Boat {
+     fn tick_boat(&mut self, mut b: Boat, controlled: bool) -> Boat {
         b.previous = b.position;
         b.previous_yaw = b.yaw;
         // Entity.commonTick: the client's interpolation, before the boat ticks.
@@ -641,84 +734,31 @@ impl crate::game::CommonGame<'_> {
         b
     }
 
-    /// Refuse a removed tick target before carrying its slot into the clone.
-    pub fn store_boat_back(&mut self, index: usize, boat: Boat) -> bool {
-        if self
-            .persist
-            .removals
-            .contains(&crate::game::commands_common::Target::Boat(boat.id))
-        {
-            return false;
-        }
-        self.boats.store_back(index, boat)
-    }
-
     /// `Entity.canSimulateMovement`: for a boat (`AUTHORITATIVE_SIDE`).
-    pub fn boat_can_simulate_movement(&self, id: u32) -> bool {
+     fn boat_can_simulate_movement(&self, id: u32) -> bool {
         self.side_boat_can_simulate_movement(id)
     }
 
     /// `AbstractBoat.canAddPassenger`: a seat is free and the boat is not under water.
-    pub fn boat_has_room(&self, i: usize) -> bool {
+     fn boat_has_room(&self, i: usize) -> bool {
         self.side_boat_has_room(i)
     }
 
     /// Where the player in boat `i` sits: in the middle alone, in front of a mob.
-    pub fn player_boat_seat(&self, i: usize) -> Vec3 {
+     fn player_boat_seat(&self, i: usize) -> Vec3 {
         self.side_player_boat_seat(i)
     }
 
-    /// `AbstractBoat.tick`: `status = getStatus()` for a boat this window does not tick.
-    pub fn refresh_boat_status(&mut self, i: usize) {
-        let (mut water_level, mut land_friction) = (0.0, 0.0);
-        let status = self.boat_status(&self.boats[i], &mut water_level, &mut land_friction);
-        self.boats.update(i, |b| b.status = status);
-        self.boats.update(i, |b| b.status_known = true);
-        self.boats.update(i, Boat::tick_submersion);
-    }
-
-    /// `BubbleColumnBlock.entityInside`: the bubble columns boat `i` touches.
-    pub fn boat_bubble_columns(&self, i: usize) -> Vec<BubbleColumn> {
-        let b = self.boats[i].bounds().deflate(Vec3::new(
-            f64::from(1.0e-5f32),
-            f64::from(1.0e-5f32),
-            f64::from(1.0e-5f32),
-        ));
-        let (lo, hi) = (b.min_position(), b.max_position());
-        let mut columns = Vec::new();
-        for x in lo.x.floor() as i32..=hi.x.floor() as i32 {
-            for y in lo.y.floor() as i32..=hi.y.floor() as i32 {
-                for z in lo.z.floor() as i32..=hi.z.floor() as i32 {
-                    if let Some(column) = bubble_column_at(
-                        &self.world,
-                        self.pack.assets.registry,
-                        self.res.facts(),
-                        self.collision,
-                        BlockPos::new(x, y, z),
-                    ) {
-                        columns.push(column);
-                    }
-                }
-            }
-        }
-        columns
-    }
-
     /// `Entity.handleOnInsideBubbleColumn`.
-    pub fn boat_inside_bubble_column(&mut self, i: usize, column: BubbleColumn) {
+     fn boat_inside_bubble_column(&mut self, i: usize, column: BubbleColumn) {
         if !self.boat_can_simulate_movement(self.boats[i].id) {
             return;
         }
         self.boats.update(i, |b| column.push(&mut b.velocity));
     }
 
-    /// `AbstractBoat.onAboveBubbleColumn`: whether the splash comes up, 1 in 100 above water.
-    pub fn boat_splash_roll(&mut self, i: usize) -> bool {
-        !self.boats[i].under_water() && self.world.random.next_int_bound(100).unwrap_or(1) == 0
-    }
-
     /// `AbstractBoat.handleBubbleColumnEffect`: up at 0.6, down by -0.7.
-    pub fn handle_bubble_column_effect(&mut self, i: usize, drag_down: bool) {
+     fn handle_bubble_column_effect(&mut self, i: usize, drag_down: bool) {
         if !self.boat_can_simulate_movement(self.boats[i].id) {
             return;
         }
@@ -731,7 +771,7 @@ impl crate::game::CommonGame<'_> {
         });
     }
 
-    pub fn boat_step_on(&mut self, boat: &mut Boat) {
+     fn boat_step_on(&mut self, boat: &mut Boat) {
         let mut velocity = boat.velocity;
         let writes = self.body_step_on(
             (boat.id, boat.entity_type_name()),
@@ -743,7 +783,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// The second `applyEffectsFromBlocks` of `AbstractBoat.tick` uses the movement left by the first.
-    pub fn boat_second_step(&mut self, i: usize) {
+     fn boat_second_step(&mut self, i: usize) {
         let b = &self.boats[i];
         if b.ground.on_ground {
             let mut velocity = b.velocity;
@@ -759,34 +799,8 @@ impl crate::game::CommonGame<'_> {
         }
     }
 
-    /// `Entity.makeStuckInBlock` from powder snow and cobweb cells a boat reaches into.
-    pub fn boat_stuck_in_blocks(&self, b: &mut Boat) {
-        let mut cells = Vec::new();
-        if b.previous != b.position {
-            cells.extend(reached_cells(b.bounds_at(b.previous), |_| true));
-        }
-        for cell in reached_cells(b.bounds(), |_| true) {
-            if !cells.contains(&cell) {
-                cells.push(cell);
-            }
-        }
-        for cell in cells {
-            let name = &*self
-                .res
-                .facts()
-                .get(self.world.block(cell[0], cell[1], cell[2]))
-                .name;
-            b.stuck = match name {
-                "minecraft:powder_snow" => powder_snow_stuck(),
-                "minecraft:cobweb" => sunrise_sim::falling_block::web_multiplier(),
-                _ => continue,
-            };
-            b.fall_distance = 0.0;
-        }
-    }
-
     /// The boat `BoatItem.use` would place for `stack` (id = 0; server caller assigns its entity id).
-    pub fn boat_to_place(&self, stack: &ItemStack) -> Option<Boat> {
+     fn boat_to_place(&self, stack: &ItemStack) -> Option<Boat> {
         let (wood, chest) = registered_boat_item(&stack.item, self.res.items())?;
         let hit = self.boat_item_hit()?;
         let mut boat = Boat::new(
@@ -816,15 +830,8 @@ impl crate::game::CommonGame<'_> {
         Some(boat)
     }
 
-    /// Whether the player rides a chest boat (`HasCustomInventoryScreen`).
-    pub fn riding_chest_boat(&self) -> bool {
-        self.riding
-            .and_then(|id| self.boats.iter().find(|b| b.id == id))
-            .is_some_and(|b| b.chest)
-    }
-
     /// What boat `b` may run into this tick.
-    pub(in crate::game) fn boat_move_obstacles(&self, b: &Boat) -> Vec<Aabb> {
+     fn boat_move_obstacles(&self, b: &Boat) -> Vec<Aabb> {
         let reach = b.velocity.length() + 1.0;
         self.entity_collisions(Mover::Boat {
             id: b.id,
@@ -833,7 +840,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// `noEntityCollision(boat, box)` for a new boat (`BoatItem.use`).
-    pub(in crate::game) fn boat_entity_collision(&self, bb: Aabb) -> bool {
+     fn boat_entity_collision(&self, bb: Aabb) -> bool {
         // EntityGetter.getEntityCollisions: the box grown by 1e-7.
         let area = bb.inflate(Vec3::new(1.0e-7, 1.0e-7, 1.0e-7));
         !self
@@ -841,6 +848,8 @@ impl crate::game::CommonGame<'_> {
             .is_empty()
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> BoatsCommonGameExt1<'__sg> for G {}
+
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Status {
@@ -1412,3 +1421,11 @@ use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
 use crate::game::side_ops::modapi_hooks::ModapiHooksSideGameExt as _;
 
 use crate::game::tables::GameItems as _;
+
+use crate::game::collision_source::CollisionSourceGameExt1 as _;
+
+use crate::game::entity_common::EntityCommonGameExt1 as _;
+
+use crate::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

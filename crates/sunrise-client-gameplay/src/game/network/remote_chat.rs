@@ -356,7 +356,7 @@ impl crate::game::ClientGame<'_> {
             ),
         };
         self.open_screen_overlay("command_prompt", |game| {
-            game.side.command_prompt.0 = Some(CommandPrompt {
+            game.client.command_prompt.0 = Some(CommandPrompt {
                 command: command.to_owned(),
                 message,
                 accept,

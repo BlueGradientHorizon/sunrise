@@ -141,7 +141,7 @@ impl ServerGame<'_> {
             // Animal.setInLove: entity event 18, the love hearts.
             self.mob_event_particles(id, 18);
         }
-        self.common.consume_held();
+        self.consume_held();
         if let Some(stack) = dropped {
             self.spawn_item(stack, at, [0.0, 0.2, 0.0], 10);
         }
@@ -185,3 +185,5 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

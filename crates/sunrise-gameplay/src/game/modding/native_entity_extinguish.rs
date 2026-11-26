@@ -4,7 +4,7 @@ use mod_api::{EntityRef, SoundSource};
 
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn entity_extinguish_fire(&mut self, entity: EntityRef) -> bool {
-        match self.common.native_entity_target(entity) {
+        match self.native_entity_target(entity) {
             Some(target @ (Target::Player | Target::Guest(_))) => self
                 .for_player(target, |game| {
                     let Some(player) = game.player.as_ref() else {
@@ -13,7 +13,7 @@ impl crate::game::ServerGame<'_> {
                     let ticks = player.fire_ticks;
                     let at = [player.position.x, player.position.y, player.position.z];
                     if player.is_on_fire() {
-                        let pitch = extinguish_pitch(&mut game.side.effect_rng);
+                        let pitch = extinguish_pitch(&mut game.server.effect_rng);
                         game.server_play_sound_on(
                             SoundSource::Players.index(),
                             "minecraft:entity.generic.extinguish_fire",
@@ -62,7 +62,7 @@ impl crate::game::ServerGame<'_> {
                     return false;
                 };
                 let immune = self
-                    .common.stack_can_be_hurt_by(&self.common.dropped[index].stack, "minecraft:in_fire")
+                    .stack_can_be_hurt_by(&self.common.dropped[index].stack, "minecraft:in_fire")
                     == Some(false);
                 let sound = {
                     let item = &mut self.common.dropped[index];
@@ -89,3 +89,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

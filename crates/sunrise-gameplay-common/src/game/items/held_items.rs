@@ -107,41 +107,6 @@ impl crate::game::CommonGame<'_> {
         item_use_common::hand_of(self.using)
     }
 
-    /// Run `f` with `hand` acting (`held`, `consume_held`, `swing_arm`).
-    pub fn with_hand<T>(&mut self, hand: Hand, f: impl FnOnce(&mut Self) -> T) -> T {
-        let prior = std::mem::replace(&mut self.hand, hand);
-        let out = f(self);
-        self.hand = prior;
-        out
-    }
-
-    /// Inventory.add: returns the stack that did not fit.
-    pub fn add_stack_to_inventory(&mut self, mut stack: ItemStack) -> Option<ItemStack> {
-        self.insert_stack_into_inventory(&mut stack)
-            .then_some(stack)
-    }
-
-    /// Consumes the fitted count, leaving the offered item and components in `stack`.
-    /// Returns true if some of the count remains.
-    pub fn insert_stack_into_inventory(&mut self, stack: &mut ItemStack) -> bool {
-        let max = self
-            .res
-            .items()
-            .get(&stack.item)
-            .map_or(64, |i| i.max_stack);
-        self.insert_stack_up_to(stack, max)
-    }
-
-    /// `insert_stack_into_inventory` with `max` the stack's own maximum.
-    pub fn insert_stack_up_to(&mut self, stack: &mut ItemStack, max: u32) -> bool {
-        let before = stack.count;
-        let left = self.insert_stack_into_player_slots(stack, max);
-        if stack.count < before {
-            self.side_on_inventory_item_added(stack);
-        }
-        left
-    }
-
     fn insert_stack_into_player_slots(&mut self, stack: &mut ItemStack, max: u32) -> bool {
         inventory_add(
             &mut self.inventory,
@@ -228,130 +193,6 @@ impl crate::game::CommonGame<'_> {
         [head, chest, legs, feet, self.offhand.clone()]
     }
 
-    /// Shared equipment base-attribute modifier pass used by both server and client roles.
-    pub fn apply_equipment_modifiers_with(&mut self, applied: &mut Vec<(String, String)>) -> bool {
-        if self.player.is_none() {
-            return false;
-        }
-        let items = self.items();
-        let slots = ["head", "chest", "legs", "feet"];
-        let mut to_add: Vec<(String, String, f64, String)> = Vec::new();
-        let equipped = self
-            .armor
-            .iter()
-            .zip(slots)
-            .map(|(s, n)| (s.as_ref(), n))
-            .chain([
-                (self.inventory[self.selected].as_ref(), "mainhand"),
-                (self.offhand.as_ref(), "offhand"),
-            ]);
-        for (stack, slot) in equipped {
-            let Some(stack) = stack else { continue };
-            for row in sunrise_sim::item_attributes::attribute_modifiers(stack, items).iter() {
-                if sunrise_sim::living_attributes::modifier_applies(&row.slot, slot) {
-                    to_add.push((
-                        row.attribute.clone(),
-                        row.id.clone(),
-                        row.amount,
-                        row.operation.clone(),
-                    ));
-                }
-            }
-        }
-        let Some(player) = self.player.as_mut() else {
-            return false;
-        };
-        for (attribute, id) in std::mem::take(applied) {
-            let _ = player.set_modifier_unclamped(&attribute, &id, 0.0, "add_value", false);
-        }
-        for (attribute, id, amount, op) in to_add {
-            if player
-                .set_modifier_unclamped(&attribute, &id, amount, &op, true)
-                .is_ok()
-            {
-                applied.push((attribute, id));
-            }
-        }
-        true
-    }
-
-    /// `Player.resetAttackStrengthTicker`.
-    pub fn reset_attack_strength(&mut self) {
-        self.side_reset_attack_strength();
-    }
-
-    /// `Attributes.ATTACK_SPEED` with main-hand and haste/fatigue modifiers.
-    pub fn main_hand_attack_speed(&self) -> f64 {
-        self.side_main_hand_attack_speed()
-    }
-
-    /// `ServerPlayer.getKnownMovement` of the acting or window player.
-    pub fn known_player_movement(&self) -> Vec3 {
-        self.side_known_player_movement()
-    }
-
-    /// Equipment attribute modifiers (`LivingEntity.collectEquipmentChanges`).
-    pub fn apply_equipment(&mut self) {
-        self.side_apply_equipment();
-    }
-
-    // ---- shared potions, totem, combat, mining, consume, item use, crossbow, buckets, trident, fishing, recipe book ----
-
-    /// Effects' armor protection and status flags on the current player.
-    pub fn apply_effect_status(&mut self) {
-        self.refresh_armor_protection();
-        let mut status = self.potions.effects.status();
-        if let Some(p) = self.player.as_mut() {
-            status.protection = std::mem::take(&mut p.status.protection);
-            p.status = status;
-        }
-    }
-
-    /// `EnchantmentHelper.getDamageProtection` after equipment changes.
-    pub fn refresh_armor_protection(&mut self) {
-        let armor: Vec<Option<ItemStack>> = self.armor.to_vec();
-        if !self
-            .potions
-            .protection_for
-            .as_ref()
-            .is_some_and(|(generation, cached)| {
-                *generation == self.damage_tag_generation && cached == &armor
-            })
-        {
-            let mut table = Vec::new();
-            let e = &self.stations().enchantments;
-            let mut random = sunrise_core::random::LegacyRandom::new(0);
-            for (_, def) in self.health_resources.damage.entries() {
-                let ctx = sunrise_items::enchant::EffectContext {
-                    items: Some(self.items()),
-                    damage_type: Some(&def.name),
-                    this: Some("minecraft:player"),
-                    ..Default::default()
-                };
-                let total: f32 = armor
-                    .iter()
-                    .flatten()
-                    .map(|s| {
-                        e.modify_value(
-                            Some(s),
-                            "minecraft:damage_protection",
-                            &ctx,
-                            &mut random,
-                            0.0,
-                        )
-                    })
-                    .sum();
-                if total > 0.0 {
-                    table.push((def.name.clone(), total));
-                }
-            }
-            self.potions.protection_for = Some((self.damage_tag_generation, armor));
-            if let Some(p) = self.player.as_mut() {
-                p.status.protection = table;
-            }
-        }
-    }
-
     /// `ThrowableProjectile.tick`'s `applyGravity` and `applyInertia`.
     pub fn thrown_potion_motion(&self, t: &mut super::potions_common::ThrownPotion) {
         let gravity = if &*t.stack.item == "minecraft:experience_bottle" {
@@ -399,32 +240,11 @@ impl crate::game::CommonGame<'_> {
             .map_or(1.0, |v| v as f32)
     }
 
-    /// `Attributes.SUBMERGED_MINING_SPEED` (0.2, raised by aqua affinity).
-    pub(in crate::game) fn submerged_mining_speed(&self) -> f32 {
-        let mut total = 0.0;
-        for stack in self.armor.iter().flatten() {
-            for (attr, _, amount, op) in self.stations().enchantments.attributes(stack) {
-                if attr == "minecraft:submerged_mining_speed" && op == "add_multiplied_total" {
-                    total += amount;
-                }
-            }
-        }
-        (0.2 * (1.0 + total)) as f32
-    }
-
     /// Stops player sprinting after extra knockback.
     pub fn stop_sprint_after_extra_knockback(&mut self) {
         if let Some(p) = self.player.as_mut() {
             let _ = p.set_sprinting(false);
         }
-    }
-
-    /// `Minecraft.startAttack` on an entity: main-hand `attack_range` gate.
-    pub fn held_range_allows(&self, distance: f64) -> bool {
-        let range = self
-            .held()
-            .and_then(|stack| self.attack_range_component(stack));
-        range.is_none_or(|r| attack_range_contains(&r, distance, self.own_player_is_creative()))
     }
 
     /// Horizontal attacker slowdown and sprint stop after `causeExtraKnockback`.
@@ -434,24 +254,6 @@ impl crate::game::CommonGame<'_> {
             player.velocity.z *= sunrise_sim::attack_strength::ATTACKER_SLOWDOWN;
         }
         self.stop_sprint_after_extra_knockback();
-    }
-
-    /// The stack's `blocks_attacks`, gated by `shield_block` item abilities.
-    pub fn blocks_attacks(
-        &self,
-        stack: &ItemStack,
-    ) -> Option<std::borrow::Cow<'_, sunrise_items::items::BlocksAttacks>> {
-        let component =
-            sunrise_items::items::BlocksAttacks::of_stack(stack, self.items().get(&stack.item));
-        let ability = super::item_abilities::ability::SHIELD_BLOCK;
-        let blocks = self.stack_can_perform(stack, ability, component.is_some());
-        match component {
-            Some(component) if blocks => Some(component),
-            None if blocks => Some(std::borrow::Cow::Borrowed(
-                sunrise_items::items::BlocksAttacks::bare(),
-            )),
-            _ => None,
-        }
     }
 
     /// The weapon's source override, item override, then the actor's ordinary melee source.
@@ -481,54 +283,6 @@ impl crate::game::CommonGame<'_> {
         } else {
             "minecraft:mob_attack".into()
         }
-    }
-
-    /// Whether `kind` belongs to `#minecraft:redirectable_projectile`.
-    pub(in crate::game) fn is_redirectable_projectile_type(&self, kind: &str) -> bool {
-        if let Some(answer) = self.side_redirectable_projectile_tag(kind) {
-            return answer;
-        }
-        let tags = &self.items().entity_type_tags;
-        if let Some(members) = tags.members().get("minecraft:redirectable_projectile") {
-            return members.contains(kind);
-        }
-        matches!(
-            kind,
-            "minecraft:fireball" | "minecraft:wind_charge" | "minecraft:breeze_wind_charge"
-        )
-    }
-
-    /// `Projectile.isPickable` (with `ShulkerBullet` and `AbstractArrow` overrides).
-    pub fn projectile_is_pickable(&self, p: &sunrise_sim::projectiles::Projectile) -> bool {
-        if matches!(
-            p.kind,
-            sunrise_sim::projectiles::ProjectileKind::ShulkerBullet { .. }
-        ) {
-            return true;
-        }
-        if p.is_arrow() && p.stuck {
-            return false;
-        }
-        self.is_redirectable_projectile_type(p.entity_type())
-    }
-
-    /// `Projectile.getPickRadius`: `this.isPickable() ? 1.0F : 0.0F`.
-    pub fn projectile_pick_radius(&self, p: &sunrise_sim::projectiles::Projectile) -> f64 {
-        if self.projectile_is_pickable(p) {
-            super::deflect_common::PICK_RADIUS
-        } else {
-            0.0
-        }
-    }
-
-    /// `AbstractArrow.isPickable` for `ThrownTrident`.
-    pub fn trident_is_pickable(&self, t: &sunrise_sim::thrown_trident::ThrownTrident) -> bool {
-        !t.in_ground && self.is_redirectable_projectile_type("minecraft:trident")
-    }
-
-    /// `Projectile.isPickable` for `FireworkRocketEntity`.
-    pub fn rocket_is_pickable(&self) -> bool {
-        self.is_redirectable_projectile_type("minecraft:firework_rocket")
     }
 
     /// `Player.isWithinAttackRange(mainHandItem, box, 3.0)` for the player in place.
@@ -588,87 +342,6 @@ impl crate::game::CommonGame<'_> {
         target.distance_squared_to_point(Vec3::new(eye[0], eye[1], eye[2])) < range * range
     }
 
-    /// `IBlockExtension.canHarvestBlock` followed by `PlayerEvent.HarvestCheck`.
-    pub(in crate::game) fn mod_harvest_check(
-        &mut self,
-        pos: [i32; 3],
-        state: sunrise_world::registry::BlockStateId,
-        harvest: &mut bool,
-    ) {
-        let player = self.own_entity_id() as u32;
-        let _dispatching = HarvestDispatch::enter();
-        self.native_can_harvest_block(player, pos, state, harvest);
-        if mod_api::__private::listened(mod_api::HookId::PlayerHarvestCheck) {
-            self.native_player_harvest_check(player, pos, state.0, harvest);
-        }
-    }
-
-    /// Whether the acting player's selected hotbar slot harvests `state` at `pos`.
-    pub fn acting_can_harvest(
-        &mut self,
-        pos: [i32; 3],
-        state: sunrise_world::registry::BlockStateId,
-    ) -> bool {
-        let facts = self.res.facts().get(state);
-        let tool = self.stack_in(self.selected);
-        let mut harvest = !facts.requires_tool || self.items().correct_for_drops(tool, &facts.name);
-        self.mod_harvest_check(pos, state, &mut harvest);
-        harvest
-    }
-
-    /// `BlockBehaviour.getDestroyProgress` with `Player.getDestroySpeed`.
-    pub fn destroy_progress(&mut self, pos: [i32; 3]) -> f32 {
-        let state = self.world.block(pos[0], pos[1], pos[2]);
-        self.destroy_progress_for(pos, state)
-    }
-
-    /// `BlockBehaviour.getDestroyProgress` for a supplied state at `pos`.
-    pub fn destroy_progress_for(
-        &mut self,
-        pos: [i32; 3],
-        state: sunrise_world::registry::BlockStateId,
-    ) -> f32 {
-        let facts = self.res.facts().get(state);
-        if facts.hardness == -1.0 {
-            return 0.0;
-        }
-        let hardness = facts.hardness;
-        let harvest = self.acting_can_harvest(pos, state);
-        let block_break_speed = self.block_break_speed();
-        let facts = self.res.facts().get(state);
-        let tool_speed = self.items().mining_speed(self.held(), &facts.name);
-        let player = sunrise_items::mining::DestroySpeedModifiers {
-            mining_efficiency: if tool_speed > 1.0 {
-                self.mining_efficiency()
-            } else {
-                0.0
-            },
-            effects: self.potions.effects.mining_speed_factor(),
-            block_break_speed,
-            submerged_mining_speed: self
-                .mining_eyes_in_water()
-                .then(|| self.submerged_mining_speed()),
-            on_ground: self.player.as_ref().is_none_or(|p| p.ground.on_ground),
-        };
-        let mut speed = sunrise_items::mining::destroy_speed(tool_speed, &player);
-        let mut canceled = false;
-        if mod_api::__private::listened(mod_api::HookId::PlayerBreakSpeed) {
-            let _dispatching = BreakSpeedDispatch::enter();
-            self.native_player_break_speed(
-                self.own_entity_id() as u32,
-                pos,
-                state.0,
-                speed,
-                &mut speed,
-                &mut canceled,
-            );
-        }
-        if canceled {
-            return 0.0;
-        }
-        sunrise_items::mining::destroy_progress(hardness, harvest, speed)
-    }
-
     /// `EntityFluidInteraction`: compare the eyes with the camera fluid surface.
     pub(in crate::game) fn mining_eyes_in_water(&self) -> bool {
         use sunrise_items::blocks::Fluid;
@@ -699,377 +372,10 @@ impl crate::game::CommonGame<'_> {
         self.held().cloned()
     }
 
-    /// `stack.get(DataComponents.CONSUMABLE)`: item prototype, data patch or wire patch.
-    pub fn consumable(&self, stack: &ItemStack) -> Option<super::item_use_common::ItemConsumable> {
-        sunrise_sim::item_sync::consumable(stack, self.items())
-    }
-
-    /// `Consumable.emitParticlesAndSounds(user.getRandom(), user, stack, count)`.
-    pub fn emit_consume(
-        &mut self,
-        consumable: &super::item_use_common::ItemConsumable,
-        stack: &ItemStack,
-        count: i32,
-    ) {
-        self.side_emit_consume(consumable, stack, count);
-    }
-
-    /// Resolve an item's animation once for the caller's rendering decision.
-    pub fn item_use_animation(
-        &self,
-        stack: &ItemStack,
-    ) -> sunrise_core::use_animation::UseAnimation {
-        self.item_use_state(stack).animation()
-    }
-
-    /// `ItemStack::use_animation`: the renderer's own read, none for an unknown item.
-    pub(in crate::game) fn item_stack_use_animation(
-        &self,
-        stack: &ItemStack,
-    ) -> Option<sunrise_core::use_animation::UseAnimation> {
-        self.items().get(&stack.item)?;
-        Some(self.item_use_animation(stack))
-    }
-
-    /// Select the animation and its already decoded spear timing together.
-    pub fn item_use_state(&self, stack: &ItemStack) -> super::item_use_common::ItemUseState {
-        use super::item_use_common::{ASKING_USE_ANIMATION, AskingUseAnimation, ItemUseState};
-        use sunrise_core::use_animation::UseAnimation;
-        let info = self.items().get(&stack.item);
-        let kinetic =
-            sunrise_sim::spear_sim::UseTiming::of_stack(stack, info.and_then(|i| i.kinetic_timing));
-        let fixed = match &*stack.item {
-            "minecraft:bow" => Some(UseAnimation::Bow),
-            "minecraft:crossbow" => Some(UseAnimation::Crossbow),
-            "minecraft:trident" => Some(UseAnimation::Trident),
-            "minecraft:brush" => Some(UseAnimation::Brush),
-            "minecraft:spyglass" => Some(UseAnimation::Spyglass),
-            "minecraft:goat_horn" => Some(UseAnimation::TootHorn),
-            _ if info.is_some_and(|i| i.bundle) => Some(UseAnimation::Bundle),
-            _ => None,
-        };
-        let data = stack.data();
-        let mut animation = fixed.unwrap_or_else(|| {
-            if let Some(consumable) = self.consumable(stack) {
-                consumable.animation
-            } else if self.stack_can_perform(
-                stack,
-                super::item_abilities::ability::SHIELD_BLOCK,
-                data.is_some_and(|d| d.other("minecraft:blocks_attacks").is_some())
-                    || (data.is_none_or(|d| d.other("!minecraft:blocks_attacks").is_none())
-                        && info.is_some_and(|i| i.blocks_attacks.is_some())),
-            ) {
-                UseAnimation::Block
-            } else if kinetic.is_some() {
-                UseAnimation::Spear
-            } else {
-                UseAnimation::None
-            }
-        });
-        if !ASKING_USE_ANIMATION.with_borrow(|asking| asking.contains(&stack.item)) {
-            ASKING_USE_ANIMATION.with_borrow_mut(|asking| asking.push(stack.item.clone()));
-            let _asking = AskingUseAnimation;
-            self.native_use_animation(stack, &mut animation);
-        }
-        if animation == UseAnimation::Spear {
-            return kinetic.map_or(ItemUseState::Other(UseAnimation::None), ItemUseState::Spear);
-        }
-        ItemUseState::Other(animation)
-    }
-
-    /// `LivingEntity.startUsingItem` for the acting player's hand.
-    pub fn start_using_item(&mut self) -> bool {
-        let Some(stack) = self.held().cloned().filter(|_| self.using.is_none()) else {
-            return false;
-        };
-        let own = self.use_duration(&stack);
-        let (mut duration, mut canceled) = (own, false);
-        let hand = self.hand;
-        self.native_living_entity_use_item_start(&stack, None, hand, &mut duration, &mut canceled);
-        let Some(ticks_set) = super::item_use_common::start_of(own, duration, canceled) else {
-            return false;
-        };
-        self.using = Some((self.held_slot(), 0));
-        self.use_duration = duration;
-        self.use_start = super::item_use_common::UseStart {
-            ticks_set,
-            item: Some(stack.clone()),
-        };
-        self.side_on_start_using_item(&stack);
-        true
-    }
-
-    /// `ItemStack.getUseDuration`.
-    pub fn use_duration(&self, stack: &ItemStack) -> i32 {
-        let info = self.items().get(&stack.item);
-        let (patched_ticks, patched_blocks) = sunrise_sim::item_sync::patched_use(stack);
-        let mut duration = match &*stack.item {
-            "minecraft:bow" | "minecraft:crossbow" | "minecraft:trident" => 72_000,
-            "minecraft:spyglass" => 1200,
-            "minecraft:brush" => 200,
-            _ if info.is_some_and(|i| i.bundle) => 200,
-            "minecraft:ender_eye" => 0,
-            "minecraft:goat_horn" => self.native_item_instrument_duration(stack),
-            _ => {
-                if let Some(ticks) = patched_ticks {
-                    ticks
-                } else if let Some(consumable) = self.consumable(stack) {
-                    consumable.ticks()
-                } else if patched_blocks
-                    || self.stack_carries_blocks_attacks(stack, info)
-                    || stack.carries_component(info, "minecraft:kinetic_weapon")
-                {
-                    72_000
-                } else {
-                    0
-                }
-            }
-        };
-        self.native_use_duration(stack, &mut duration);
-        duration
-    }
-
-    /// Whether `stack` is a mod's item that only a mod uses over time.
-    pub fn mod_use(&self, stack: &ItemStack) -> bool {
-        let info = self.items().get(&stack.item);
-        !stack.item.starts_with("minecraft:")
-            && info.is_some()
-            && self.consumable(stack).is_none()
-            && !self.stack_carries_blocks_attacks(stack, info)
-            && !stack.carries_component(info, "minecraft:kinetic_weapon")
-            && self.use_duration(stack) > 0
-    }
-
-    /// A right click with a `mod_use` item: `startUsingItem` (CONSUME).
-    pub fn start_mod_use(&mut self, stack: &ItemStack) -> bool {
-        if !self.mod_use(stack) {
-            return false;
-        }
-        self.start_using_item();
-        true
-    }
-
-    /// `LivingEntityUseItemEvent.Tick` for `stack` in use `ticks` so far.
-    pub fn use_item_ticked(&mut self, stack: &ItemStack, ticks: u32) -> bool {
-        let before = super::item_use_common::ticks_left(self.use_duration, ticks);
-        let (mut remaining, mut canceled) = (before, false);
-        let hand = self.used_hand().unwrap_or(self.hand);
-        self.native_living_entity_use_item_tick(stack, None, hand, &mut remaining, &mut canceled);
-        let (left, set) = super::item_use_common::tick_left(
-            before,
-            remaining,
-            canceled,
-            self.use_start.ticks_set,
-        );
-        self.use_start.ticks_set = set;
-        self.use_duration = super::item_use_common::duration_leaving(ticks, left);
-        left > 0
-    }
-
-    /// A mod's `Item.onUseTick` of `stack` used `ticks`, while ticks are left.
-    pub fn item_on_use_tick(&mut self, stack: &ItemStack, ticks: u32) -> bool {
-        let using = self.using;
-        let remaining = super::item_use_common::ticks_left(self.use_duration, ticks);
-        if remaining > 0 {
-            self.native_on_use_tick(stack, None, remaining);
-        }
-        self.using == using
-    }
-
-    /// How long `stack`, used `ticks`, counts as held.
-    pub fn ticks_held(&self, stack: &ItemStack, ticks: u32) -> u32 {
-        super::item_use_common::held(
-            self.use_duration(stack),
-            super::item_use_common::ticks_left(self.use_duration, ticks),
-        )
-    }
-
-    /// `LivingEntityUseItemEvent.Stop` as `releaseUsingItem` lets go of `stack`.
-    pub fn use_item_stopped(&mut self, stack: &ItemStack, ticks: u32) -> bool {
-        let mut canceled = false;
-        let remaining = super::item_use_common::ticks_left(self.use_duration, ticks);
-        let hand = self.hand;
-        self.native_living_entity_use_item_stop(stack, None, hand, remaining, &mut canceled);
-        !canceled
-    }
-
-    /// A mod's `Item.releaseUsing` of `stack` used `ticks`.
-    pub fn mod_release_using(&mut self, stack: &ItemStack, ticks: u32) {
-        let mut used = false;
-        let remaining = super::item_use_common::ticks_left(self.use_duration, ticks);
-        self.native_release_using(stack, None, remaining, &mut used);
-        if used {
-            self.side_apply_use_cooldown(stack);
-        }
-    }
-
-    /// `Player.canEat(canAlwaysEat)` for `stack`.
-    pub fn can_eat(&self, stack: Option<&ItemStack>, can_always_eat: bool) -> bool {
-        let vanilla = can_always_eat
-            || self.creative
-            || self
-                .player
-                .as_ref()
-                .is_some_and(|p| p.health.food.food < 20);
-        if !mod_api::__private::enabled_listened(mod_api::HookId::CanEat) {
-            return vanilla;
-        }
-        let Some(player) = self.side_acting_player_ref() else {
-            return vanilla;
-        };
-        let mut answer = None;
-        self.native_can_eat(player, stack, vanilla, &mut answer);
-        answer.unwrap_or(vanilla)
-    }
-
     pub(in crate::game) fn charge_ticks(stack: &ItemStack) -> u32 {
         // crossbow_charge_time: 1.25 s, minus 0.25 s per Quick Charge level.
         let seconds = 1.25 - 0.25 * stack.enchantment_level("minecraft:quick_charge") as f32;
         (seconds.max(0.0) * 20.0).floor() as u32
-    }
-
-    /// `Player.getProjectile` for `weapon` (`projectile_slot`).
-    pub fn projectile_slot(&self, weapon: &str) -> Option<usize> {
-        let hands = [OFFHAND_SLOT, self.selected].map(|slot| (slot, self.stack_in(slot)));
-        projectile_slot(weapon, hands, &self.inventory, self.items())
-    }
-
-    /// `Player.getProjectile` for `weapon`, as `LivingGetProjectileEvent` leaves it.
-    pub fn get_projectile(&mut self, weapon: &ItemStack) -> Option<super::crossbow_common::Ammo> {
-        let slot = self.projectile_slot(&weapon.item);
-        let vanilla = match slot {
-            Some(i) => self.stack_in(i).cloned(),
-            None => self
-                .creative
-                .then(|| ItemStack::new(super::crossbow_common::ARROW, 1)),
-        };
-        if !mod_api::__private::listened(mod_api::HookId::LivingGetProjectile) {
-            return vanilla.map(|stack| super::crossbow_common::Ammo { stack, slot });
-        }
-        let mut projectile = vanilla.clone();
-        let player = self.side_projectile_player_uuid();
-        let name = self.own_profile_name();
-        self.native_living_get_projectile(
-            player,
-            &name,
-            None,
-            "minecraft:player",
-            weapon,
-            &mut projectile,
-        );
-        let slot = slot.filter(|_| projectile == vanilla);
-        projectile.map(|stack| super::crossbow_common::Ammo { stack, slot })
-    }
-
-    /// `getPlayerPOVHitResult(level, player, SOURCE_ONLY)` for an empty bucket.
-    pub fn bucket_hit(&self) -> Option<Hit> {
-        let origin = self.aim().map_or([0.0; 3], |(origin, _)| origin);
-        let distance = |p: [f64; 3]| {
-            (p[0] - origin[0]).powi(2) + (p[1] - origin[1]).powi(2) + (p[2] - origin[2]).powi(2)
-        };
-        match (self.side_item_pick(), self.pick_fluid()) {
-            (Some(block), Some(fluid)) => Some(if distance(block.point) <= distance(fluid.point) {
-                block
-            } else {
-                fluid
-            }),
-            (block, fluid) => block.or(fluid),
-        }
-    }
-
-    /// `BucketItem.use` target block position.
-    pub fn bucket_target(
-        &mut self,
-        content: sunrise_world::level::BucketContent,
-        hit: &Hit,
-    ) -> [i32; 3] {
-        let [x, y, z] = hit.pos;
-        let clicked = self.world.block(x, y, z);
-        if content == sunrise_world::level::BucketContent::Powder {
-            if self.res.facts().get(clicked).replaceable {
-                return hit.pos;
-            }
-        } else if let Some(fluid) = content.fluid() {
-            let user = self.bucket_liquid_user();
-            if self.with_level(|b, level, _| {
-                b.bucket_can_fill(
-                    level,
-                    sunrise_core::position::BlockPos::new(x, y, z),
-                    clicked,
-                    fluid,
-                    user,
-                )
-            }) {
-                return hit.pos;
-            }
-        }
-        hit.beside()
-    }
-
-    pub fn bucket_liquid_user(&self) -> sunrise_world::level::LiquidUser {
-        sunrise_world::level::LiquidUser {
-            entity_id: self.side_bucket_liquid_user_entity_id(),
-            creative: self.creative,
-        }
-    }
-
-    /// The trident stack's maximum damage component, else its item's default.
-    pub fn trident_max_damage(&self, stack: &ItemStack) -> u32 {
-        stack
-            .data()
-            .and_then(|data| match data.other("minecraft:max_damage") {
-                Some(sunrise_core::nbt::Tag::Int(value)) => u32::try_from(*value).ok(),
-                _ => None,
-            })
-            .unwrap_or_else(|| self.items().get(&stack.item).map_or(250, |i| i.max_damage))
-    }
-
-    /// `TridentItem.use`: start the throw unless one more use would break it.
-    pub fn use_trident(&mut self, stack: &ItemStack) -> bool {
-        if &*stack.item != "minecraft:trident" {
-            return false;
-        }
-        let max = self.trident_max_damage(stack);
-        let riptide = stack.enchantment_level("minecraft:riptide") > 0;
-        if stack.damage >= max.saturating_sub(1) || (riptide && !self.in_water_or_rain()) {
-            return false;
-        }
-        self.start_using_item();
-        true
-    }
-
-    pub fn in_water_or_rain(&mut self) -> bool {
-        let Some(p) = &self.player else { return false };
-        let (x, y, z) = (
-            p.position.x.floor() as i32,
-            p.position.y.floor() as i32,
-            p.position.z.floor() as i32,
-        );
-        let water = self.res.facts().get(self.world.block(x, y, z)).fluid
-            == sunrise_items::blocks::Fluid::Water;
-        let (at, top) = (p.position, p.bounds().max_position().y);
-        water || self.side_in_rain(at, top)
-    }
-
-    /// `instanceof FishingRodItem`.
-    pub fn is_rod(&self, stack: &ItemStack) -> bool {
-        self.items()
-            .get(&stack.item)
-            .is_some_and(|i| i.is("minecraft:fishing_rod"))
-    }
-
-    /// `FishingRodCast`: the stack in the arm holding the rod while the hook is out.
-    pub fn cast_rod(&self) -> Option<&ItemStack> {
-        self.hook.as_ref()?;
-        if self.main_hand_rod() {
-            self.held()
-        } else {
-            self.offhand.as_ref()
-        }
-    }
-
-    pub fn main_hand_rod(&self) -> bool {
-        self.held().is_some_and(|s| self.is_rod(s))
     }
 
     /// The hook's position this frame.
@@ -1135,9 +441,734 @@ impl crate::game::CommonGame<'_> {
         .ok()
         .flatten()
     }
+}
+
+pub trait HeldItemsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+
+    /// Run `f` with `hand` acting (`held`, `consume_held`, `swing_arm`).
+     fn with_hand<T>(
+        &mut self,
+        hand: Hand,
+        f: impl FnOnce(&mut Self) -> T,
+    ) -> T {
+        let prior = std::mem::replace(&mut self.hand, hand);
+        let out = f(self);
+        self.hand = prior;
+        out
+    }
+
+    /// Inventory.add: returns the stack that did not fit.
+     fn add_stack_to_inventory(
+        &mut self,
+        mut stack: ItemStack,
+    ) -> Option<ItemStack> {
+        self.insert_stack_into_inventory(&mut stack)
+            .then_some(stack)
+    }
+
+    /// Consumes the fitted count, leaving the offered item and components in `stack`.
+    /// Returns true if some of the count remains.
+     fn insert_stack_into_inventory(&mut self, stack: &mut ItemStack) -> bool {
+        let max = self
+            .res
+            .items()
+            .get(&stack.item)
+            .map_or(64, |i| i.max_stack);
+        self.insert_stack_up_to(stack, max)
+    }
+
+    /// `insert_stack_into_inventory` with `max` the stack's own maximum.
+     fn insert_stack_up_to(&mut self, stack: &mut ItemStack, max: u32) -> bool {
+        let before = stack.count;
+        let left = self.insert_stack_into_player_slots(stack, max);
+        if stack.count < before {
+            self.side_on_inventory_item_added(stack);
+        }
+        left
+    }
+
+    /// Shared equipment base-attribute modifier pass used by both server and client roles.
+     fn apply_equipment_modifiers_with(
+        &mut self,
+        applied: &mut Vec<(String, String)>,
+    ) -> bool {
+        if self.player.is_none() {
+            return false;
+        }
+        let items = self.items();
+        let slots = ["head", "chest", "legs", "feet"];
+        let mut to_add: Vec<(String, String, f64, String)> = Vec::new();
+        let equipped = self
+            .armor
+            .iter()
+            .zip(slots)
+            .map(|(s, n)| (s.as_ref(), n))
+            .chain([
+                (self.inventory[self.selected].as_ref(), "mainhand"),
+                (self.offhand.as_ref(), "offhand"),
+            ]);
+        for (stack, slot) in equipped {
+            let Some(stack) = stack else { continue };
+            for row in sunrise_sim::item_attributes::attribute_modifiers(stack, items).iter() {
+                if sunrise_sim::living_attributes::modifier_applies(&row.slot, slot) {
+                    to_add.push((
+                        row.attribute.clone(),
+                        row.id.clone(),
+                        row.amount,
+                        row.operation.clone(),
+                    ));
+                }
+            }
+        }
+        let Some(player) = self.player.as_mut() else {
+            return false;
+        };
+        for (attribute, id) in std::mem::take(applied) {
+            let _ = player.set_modifier_unclamped(&attribute, &id, 0.0, "add_value", false);
+        }
+        for (attribute, id, amount, op) in to_add {
+            if player
+                .set_modifier_unclamped(&attribute, &id, amount, &op, true)
+                .is_ok()
+            {
+                applied.push((attribute, id));
+            }
+        }
+        true
+    }
+
+    /// `Player.resetAttackStrengthTicker`.
+     fn reset_attack_strength(&mut self) {
+        self.side_reset_attack_strength();
+    }
+
+    /// `Attributes.ATTACK_SPEED` with main-hand and haste/fatigue modifiers.
+     fn main_hand_attack_speed(&self) -> f64 {
+        self.side_main_hand_attack_speed()
+    }
+
+    /// `ServerPlayer.getKnownMovement` of the acting or window player.
+     fn known_player_movement(&self) -> Vec3 {
+        self.side_known_player_movement()
+    }
+
+    /// Equipment attribute modifiers (`LivingEntity.collectEquipmentChanges`).
+     fn apply_equipment(&mut self) {
+        self.side_apply_equipment();
+    }
+
+    // ---- shared potions, totem, combat, mining, consume, item use, crossbow, buckets, trident, fishing, recipe book ----
+
+    /// Effects' armor protection and status flags on the current player.
+     fn apply_effect_status(&mut self) {
+        self.refresh_armor_protection();
+        let mut status = self.potions.effects.status();
+        if let Some(p) = self.player.as_mut() {
+            status.protection = std::mem::take(&mut p.status.protection);
+            p.status = status;
+        }
+    }
+
+    /// `EnchantmentHelper.getDamageProtection` after equipment changes.
+     fn refresh_armor_protection(&mut self) {
+        let armor: Vec<Option<ItemStack>> = self.armor.to_vec();
+        if !self
+            .potions
+            .protection_for
+            .as_ref()
+            .is_some_and(|(generation, cached)| {
+                *generation == self.damage_tag_generation && cached == &armor
+            })
+        {
+            let mut table = Vec::new();
+            let e = &self.stations().enchantments;
+            let mut random = sunrise_core::random::LegacyRandom::new(0);
+            for (_, def) in self.health_resources.damage.entries() {
+                let ctx = sunrise_items::enchant::EffectContext {
+                    items: Some(self.items()),
+                    damage_type: Some(&def.name),
+                    this: Some("minecraft:player"),
+                    ..Default::default()
+                };
+                let total: f32 = armor
+                    .iter()
+                    .flatten()
+                    .map(|s| {
+                        e.modify_value(
+                            Some(s),
+                            "minecraft:damage_protection",
+                            &ctx,
+                            &mut random,
+                            0.0,
+                        )
+                    })
+                    .sum();
+                if total > 0.0 {
+                    table.push((def.name.clone(), total));
+                }
+            }
+            self.potions.protection_for = Some((self.damage_tag_generation, armor));
+            if let Some(p) = self.player.as_mut() {
+                p.status.protection = table;
+            }
+        }
+    }
+
+    /// `Attributes.SUBMERGED_MINING_SPEED` (0.2, raised by aqua affinity).
+     fn submerged_mining_speed(&self) -> f32 {
+        let mut total = 0.0;
+        for stack in self.armor.iter().flatten() {
+            for (attr, _, amount, op) in self.stations().enchantments.attributes(stack) {
+                if attr == "minecraft:submerged_mining_speed" && op == "add_multiplied_total" {
+                    total += amount;
+                }
+            }
+        }
+        (0.2 * (1.0 + total)) as f32
+    }
+
+    /// `Minecraft.startAttack` on an entity: main-hand `attack_range` gate.
+     fn held_range_allows(&self, distance: f64) -> bool {
+        let range = self
+            .held()
+            .and_then(|stack| self.attack_range_component(stack));
+        range.is_none_or(|r| attack_range_contains(&r, distance, self.own_player_is_creative()))
+    }
+
+    /// The stack's `blocks_attacks`, gated by `shield_block` item abilities.
+     fn blocks_attacks(
+        &self,
+        stack: &ItemStack,
+    ) -> Option<std::borrow::Cow<'_, sunrise_items::items::BlocksAttacks>> {
+        let component =
+            sunrise_items::items::BlocksAttacks::of_stack(stack, self.items().get(&stack.item));
+        let ability = super::item_abilities::ability::SHIELD_BLOCK;
+        let blocks = self.stack_can_perform(stack, ability, component.is_some());
+        match component {
+            Some(component) if blocks => Some(component),
+            None if blocks => Some(std::borrow::Cow::Borrowed(
+                sunrise_items::items::BlocksAttacks::bare(),
+            )),
+            _ => None,
+        }
+    }
+
+    /// Whether `kind` belongs to `#minecraft:redirectable_projectile`.
+     fn is_redirectable_projectile_type(&self, kind: &str) -> bool {
+        if let Some(answer) = self.side_redirectable_projectile_tag(kind) {
+            return answer;
+        }
+        let tags = &self.items().entity_type_tags;
+        if let Some(members) = tags.members().get("minecraft:redirectable_projectile") {
+            return members.contains(kind);
+        }
+        matches!(
+            kind,
+            "minecraft:fireball" | "minecraft:wind_charge" | "minecraft:breeze_wind_charge"
+        )
+    }
+
+    /// `Projectile.isPickable` (with `ShulkerBullet` and `AbstractArrow` overrides).
+     fn projectile_is_pickable(
+        &self,
+        p: &sunrise_sim::projectiles::Projectile,
+    ) -> bool {
+        if matches!(
+            p.kind,
+            sunrise_sim::projectiles::ProjectileKind::ShulkerBullet { .. }
+        ) {
+            return true;
+        }
+        if p.is_arrow() && p.stuck {
+            return false;
+        }
+        self.is_redirectable_projectile_type(p.entity_type())
+    }
+
+    /// `Projectile.getPickRadius`: `this.isPickable() ? 1.0F : 0.0F`.
+     fn projectile_pick_radius(
+        &self,
+        p: &sunrise_sim::projectiles::Projectile,
+    ) -> f64 {
+        if self.projectile_is_pickable(p) {
+            super::deflect_common::PICK_RADIUS
+        } else {
+            0.0
+        }
+    }
+
+    /// `AbstractArrow.isPickable` for `ThrownTrident`.
+     fn trident_is_pickable(
+        &self,
+        t: &sunrise_sim::thrown_trident::ThrownTrident,
+    ) -> bool {
+        !t.in_ground && self.is_redirectable_projectile_type("minecraft:trident")
+    }
+
+    /// `Projectile.isPickable` for `FireworkRocketEntity`.
+     fn rocket_is_pickable(&self) -> bool {
+        self.is_redirectable_projectile_type("minecraft:firework_rocket")
+    }
+
+    /// `IBlockExtension.canHarvestBlock` followed by `PlayerEvent.HarvestCheck`.
+     fn mod_harvest_check(
+        &mut self,
+        pos: [i32; 3],
+        state: sunrise_world::registry::BlockStateId,
+        harvest: &mut bool,
+    ) {
+        let player = self.own_entity_id() as u32;
+        let _dispatching = HarvestDispatch::enter();
+        self.native_can_harvest_block(player, pos, state, harvest);
+        if mod_api::__private::listened(mod_api::HookId::PlayerHarvestCheck) {
+            self.native_player_harvest_check(player, pos, state.0, harvest);
+        }
+    }
+
+    /// Whether the acting player's selected hotbar slot harvests `state` at `pos`.
+     fn acting_can_harvest(
+        &mut self,
+        pos: [i32; 3],
+        state: sunrise_world::registry::BlockStateId,
+    ) -> bool {
+        let facts = self.res.facts().get(state);
+        let tool = self.stack_in(self.selected);
+        let mut harvest = !facts.requires_tool || self.items().correct_for_drops(tool, &facts.name);
+        self.mod_harvest_check(pos, state, &mut harvest);
+        harvest
+    }
+
+    /// `BlockBehaviour.getDestroyProgress` with `Player.getDestroySpeed`.
+     fn destroy_progress(&mut self, pos: [i32; 3]) -> f32 {
+        let state = self.world.block(pos[0], pos[1], pos[2]);
+        self.destroy_progress_for(pos, state)
+    }
+
+    /// `BlockBehaviour.getDestroyProgress` for a supplied state at `pos`.
+     fn destroy_progress_for(
+        &mut self,
+        pos: [i32; 3],
+        state: sunrise_world::registry::BlockStateId,
+    ) -> f32 {
+        let facts = self.res.facts().get(state);
+        if facts.hardness == -1.0 {
+            return 0.0;
+        }
+        let hardness = facts.hardness;
+        let harvest = self.acting_can_harvest(pos, state);
+        let block_break_speed = self.block_break_speed();
+        let facts = self.res.facts().get(state);
+        let tool_speed = self.items().mining_speed(self.held(), &facts.name);
+        let player = sunrise_items::mining::DestroySpeedModifiers {
+            mining_efficiency: if tool_speed > 1.0 {
+                self.mining_efficiency()
+            } else {
+                0.0
+            },
+            effects: self.potions.effects.mining_speed_factor(),
+            block_break_speed,
+            submerged_mining_speed: self
+                .mining_eyes_in_water()
+                .then(|| self.submerged_mining_speed()),
+            on_ground: self.player.as_ref().is_none_or(|p| p.ground.on_ground),
+        };
+        let mut speed = sunrise_items::mining::destroy_speed(tool_speed, &player);
+        let mut canceled = false;
+        if mod_api::__private::listened(mod_api::HookId::PlayerBreakSpeed) {
+            let _dispatching = BreakSpeedDispatch::enter();
+            self.native_player_break_speed(
+                self.own_entity_id() as u32,
+                pos,
+                state.0,
+                speed,
+                &mut speed,
+                &mut canceled,
+            );
+        }
+        if canceled {
+            return 0.0;
+        }
+        sunrise_items::mining::destroy_progress(hardness, harvest, speed)
+    }
+
+    /// `stack.get(DataComponents.CONSUMABLE)`: item prototype, data patch or wire patch.
+     fn consumable(
+        &self,
+        stack: &ItemStack,
+    ) -> Option<super::item_use_common::ItemConsumable> {
+        sunrise_sim::item_sync::consumable(stack, self.items())
+    }
+
+    /// `Consumable.emitParticlesAndSounds(user.getRandom(), user, stack, count)`.
+     fn emit_consume(
+        &mut self,
+        consumable: &super::item_use_common::ItemConsumable,
+        stack: &ItemStack,
+        count: i32,
+    ) {
+        self.side_emit_consume(consumable, stack, count);
+    }
+
+    /// Resolve an item's animation once for the caller's rendering decision.
+     fn item_use_animation(
+        &self,
+        stack: &ItemStack,
+    ) -> sunrise_core::use_animation::UseAnimation {
+        self.item_use_state(stack).animation()
+    }
+
+    /// `ItemStack::use_animation`: the renderer's own read, none for an unknown item.
+     fn item_stack_use_animation(
+        &self,
+        stack: &ItemStack,
+    ) -> Option<sunrise_core::use_animation::UseAnimation> {
+        self.items().get(&stack.item)?;
+        Some(self.item_use_animation(stack))
+    }
+
+    /// Select the animation and its already decoded spear timing together.
+     fn item_use_state(
+        &self,
+        stack: &ItemStack,
+    ) -> super::item_use_common::ItemUseState {
+        use super::item_use_common::{ASKING_USE_ANIMATION, AskingUseAnimation, ItemUseState};
+        use sunrise_core::use_animation::UseAnimation;
+        let info = self.items().get(&stack.item);
+        let kinetic =
+            sunrise_sim::spear_sim::UseTiming::of_stack(stack, info.and_then(|i| i.kinetic_timing));
+        let fixed = match &*stack.item {
+            "minecraft:bow" => Some(UseAnimation::Bow),
+            "minecraft:crossbow" => Some(UseAnimation::Crossbow),
+            "minecraft:trident" => Some(UseAnimation::Trident),
+            "minecraft:brush" => Some(UseAnimation::Brush),
+            "minecraft:spyglass" => Some(UseAnimation::Spyglass),
+            "minecraft:goat_horn" => Some(UseAnimation::TootHorn),
+            _ if info.is_some_and(|i| i.bundle) => Some(UseAnimation::Bundle),
+            _ => None,
+        };
+        let data = stack.data();
+        let mut animation = fixed.unwrap_or_else(|| {
+            if let Some(consumable) = self.consumable(stack) {
+                consumable.animation
+            } else if self.stack_can_perform(
+                stack,
+                super::item_abilities::ability::SHIELD_BLOCK,
+                data.is_some_and(|d| d.other("minecraft:blocks_attacks").is_some())
+                    || (data.is_none_or(|d| d.other("!minecraft:blocks_attacks").is_none())
+                        && info.is_some_and(|i| i.blocks_attacks.is_some())),
+            ) {
+                UseAnimation::Block
+            } else if kinetic.is_some() {
+                UseAnimation::Spear
+            } else {
+                UseAnimation::None
+            }
+        });
+        if !ASKING_USE_ANIMATION.with_borrow(|asking| asking.contains(&stack.item)) {
+            ASKING_USE_ANIMATION.with_borrow_mut(|asking| asking.push(stack.item.clone()));
+            let _asking = AskingUseAnimation;
+            self.native_use_animation(stack, &mut animation);
+        }
+        if animation == UseAnimation::Spear {
+            return kinetic.map_or(ItemUseState::Other(UseAnimation::None), ItemUseState::Spear);
+        }
+        ItemUseState::Other(animation)
+    }
+
+    /// `LivingEntity.startUsingItem` for the acting player's hand.
+     fn start_using_item(&mut self) -> bool {
+        let Some(stack) = self.held().cloned().filter(|_| self.using.is_none()) else {
+            return false;
+        };
+        let own = self.use_duration(&stack);
+        let (mut duration, mut canceled) = (own, false);
+        let hand = self.hand;
+        self.native_living_entity_use_item_start(&stack, None, hand, &mut duration, &mut canceled);
+        let Some(ticks_set) = super::item_use_common::start_of(own, duration, canceled) else {
+            return false;
+        };
+        self.using = Some((self.held_slot(), 0));
+        self.use_duration = duration;
+        self.use_start = super::item_use_common::UseStart {
+            ticks_set,
+            item: Some(stack.clone()),
+        };
+        self.side_on_start_using_item(&stack);
+        true
+    }
+
+    /// `ItemStack.getUseDuration`.
+     fn use_duration(&self, stack: &ItemStack) -> i32 {
+        let info = self.items().get(&stack.item);
+        let (patched_ticks, patched_blocks) = sunrise_sim::item_sync::patched_use(stack);
+        let mut duration = match &*stack.item {
+            "minecraft:bow" | "minecraft:crossbow" | "minecraft:trident" => 72_000,
+            "minecraft:spyglass" => 1200,
+            "minecraft:brush" => 200,
+            _ if info.is_some_and(|i| i.bundle) => 200,
+            "minecraft:ender_eye" => 0,
+            "minecraft:goat_horn" => self.native_item_instrument_duration(stack),
+            _ => {
+                if let Some(ticks) = patched_ticks {
+                    ticks
+                } else if let Some(consumable) = self.consumable(stack) {
+                    consumable.ticks()
+                } else if patched_blocks
+                    || self.stack_carries_blocks_attacks(stack, info)
+                    || stack.carries_component(info, "minecraft:kinetic_weapon")
+                {
+                    72_000
+                } else {
+                    0
+                }
+            }
+        };
+        self.native_use_duration(stack, &mut duration);
+        duration
+    }
+
+    /// Whether `stack` is a mod's item that only a mod uses over time.
+     fn mod_use(&self, stack: &ItemStack) -> bool {
+        let info = self.items().get(&stack.item);
+        !stack.item.starts_with("minecraft:")
+            && info.is_some()
+            && self.consumable(stack).is_none()
+            && !self.stack_carries_blocks_attacks(stack, info)
+            && !stack.carries_component(info, "minecraft:kinetic_weapon")
+            && self.use_duration(stack) > 0
+    }
+
+    /// A right click with a `mod_use` item: `startUsingItem` (CONSUME).
+     fn start_mod_use(&mut self, stack: &ItemStack) -> bool {
+        if !self.mod_use(stack) {
+            return false;
+        }
+        self.start_using_item();
+        true
+    }
+
+    /// `LivingEntityUseItemEvent.Tick` for `stack` in use `ticks` so far.
+     fn use_item_ticked(&mut self, stack: &ItemStack, ticks: u32) -> bool {
+        let before = super::item_use_common::ticks_left(self.use_duration, ticks);
+        let (mut remaining, mut canceled) = (before, false);
+        let hand = self.used_hand().unwrap_or(self.hand);
+        self.native_living_entity_use_item_tick(stack, None, hand, &mut remaining, &mut canceled);
+        let (left, set) = super::item_use_common::tick_left(
+            before,
+            remaining,
+            canceled,
+            self.use_start.ticks_set,
+        );
+        self.use_start.ticks_set = set;
+        self.use_duration = super::item_use_common::duration_leaving(ticks, left);
+        left > 0
+    }
+
+    /// A mod's `Item.onUseTick` of `stack` used `ticks`, while ticks are left.
+     fn item_on_use_tick(&mut self, stack: &ItemStack, ticks: u32) -> bool {
+        let using = self.using;
+        let remaining = super::item_use_common::ticks_left(self.use_duration, ticks);
+        if remaining > 0 {
+            self.native_on_use_tick(stack, None, remaining);
+        }
+        self.using == using
+    }
+
+    /// How long `stack`, used `ticks`, counts as held.
+     fn ticks_held(&self, stack: &ItemStack, ticks: u32) -> u32 {
+        super::item_use_common::held(
+            self.use_duration(stack),
+            super::item_use_common::ticks_left(self.use_duration, ticks),
+        )
+    }
+
+    /// `LivingEntityUseItemEvent.Stop` as `releaseUsingItem` lets go of `stack`.
+     fn use_item_stopped(&mut self, stack: &ItemStack, ticks: u32) -> bool {
+        let mut canceled = false;
+        let remaining = super::item_use_common::ticks_left(self.use_duration, ticks);
+        let hand = self.hand;
+        self.native_living_entity_use_item_stop(stack, None, hand, remaining, &mut canceled);
+        !canceled
+    }
+
+    /// A mod's `Item.releaseUsing` of `stack` used `ticks`.
+     fn mod_release_using(&mut self, stack: &ItemStack, ticks: u32) {
+        let mut used = false;
+        let remaining = super::item_use_common::ticks_left(self.use_duration, ticks);
+        self.native_release_using(stack, None, remaining, &mut used);
+        if used {
+            self.side_apply_use_cooldown(stack);
+        }
+    }
+
+    /// `Player.canEat(canAlwaysEat)` for `stack`.
+     fn can_eat(&self, stack: Option<&ItemStack>, can_always_eat: bool) -> bool {
+        let vanilla = can_always_eat
+            || self.creative
+            || self
+                .player
+                .as_ref()
+                .is_some_and(|p| p.health.food.food < 20);
+        if !mod_api::__private::enabled_listened(mod_api::HookId::CanEat) {
+            return vanilla;
+        }
+        let Some(player) = self.side_acting_player_ref() else {
+            return vanilla;
+        };
+        let mut answer = None;
+        self.native_can_eat(player, stack, vanilla, &mut answer);
+        answer.unwrap_or(vanilla)
+    }
+
+    /// `Player.getProjectile` for `weapon` (`projectile_slot`).
+     fn projectile_slot(&self, weapon: &str) -> Option<usize> {
+        let hands = [OFFHAND_SLOT, self.selected].map(|slot| (slot, self.stack_in(slot)));
+        projectile_slot(weapon, hands, &self.inventory, self.items())
+    }
+
+    /// `Player.getProjectile` for `weapon`, as `LivingGetProjectileEvent` leaves it.
+     fn get_projectile(
+        &mut self,
+        weapon: &ItemStack,
+    ) -> Option<super::crossbow_common::Ammo> {
+        let slot = self.projectile_slot(&weapon.item);
+        let vanilla = match slot {
+            Some(i) => self.stack_in(i).cloned(),
+            None => self
+                .creative
+                .then(|| ItemStack::new(super::crossbow_common::ARROW, 1)),
+        };
+        if !mod_api::__private::listened(mod_api::HookId::LivingGetProjectile) {
+            return vanilla.map(|stack| super::crossbow_common::Ammo { stack, slot });
+        }
+        let mut projectile = vanilla.clone();
+        let player = self.side_projectile_player_uuid();
+        let name = self.own_profile_name();
+        self.native_living_get_projectile(
+            player,
+            &name,
+            None,
+            "minecraft:player",
+            weapon,
+            &mut projectile,
+        );
+        let slot = slot.filter(|_| projectile == vanilla);
+        projectile.map(|stack| super::crossbow_common::Ammo { stack, slot })
+    }
+
+    /// `getPlayerPOVHitResult(level, player, SOURCE_ONLY)` for an empty bucket.
+     fn bucket_hit(&self) -> Option<Hit> {
+        let origin = self.aim().map_or([0.0; 3], |(origin, _)| origin);
+        let distance = |p: [f64; 3]| {
+            (p[0] - origin[0]).powi(2) + (p[1] - origin[1]).powi(2) + (p[2] - origin[2]).powi(2)
+        };
+        match (self.side_item_pick(), self.pick_fluid()) {
+            (Some(block), Some(fluid)) => Some(if distance(block.point) <= distance(fluid.point) {
+                block
+            } else {
+                fluid
+            }),
+            (block, fluid) => block.or(fluid),
+        }
+    }
+
+    /// `BucketItem.use` target block position.
+     fn bucket_target(
+        &mut self,
+        content: sunrise_world::level::BucketContent,
+        hit: &Hit,
+    ) -> [i32; 3] {
+        let [x, y, z] = hit.pos;
+        let clicked = self.world.block(x, y, z);
+        if content == sunrise_world::level::BucketContent::Powder {
+            if self.res.facts().get(clicked).replaceable {
+                return hit.pos;
+            }
+        } else if let Some(fluid) = content.fluid() {
+            let user = self.bucket_liquid_user();
+            if self.with_level(|b, level, _| {
+                b.bucket_can_fill(
+                    level,
+                    sunrise_core::position::BlockPos::new(x, y, z),
+                    clicked,
+                    fluid,
+                    user,
+                )
+            }) {
+                return hit.pos;
+            }
+        }
+        hit.beside()
+    }
+
+     fn bucket_liquid_user(&self) -> sunrise_world::level::LiquidUser {
+        sunrise_world::level::LiquidUser {
+            entity_id: self.side_bucket_liquid_user_entity_id(),
+            creative: self.creative,
+        }
+    }
+
+    /// The trident stack's maximum damage component, else its item's default.
+     fn trident_max_damage(&self, stack: &ItemStack) -> u32 {
+        stack
+            .data()
+            .and_then(|data| match data.other("minecraft:max_damage") {
+                Some(sunrise_core::nbt::Tag::Int(value)) => u32::try_from(*value).ok(),
+                _ => None,
+            })
+            .unwrap_or_else(|| self.items().get(&stack.item).map_or(250, |i| i.max_damage))
+    }
+
+    /// `TridentItem.use`: start the throw unless one more use would break it.
+     fn use_trident(&mut self, stack: &ItemStack) -> bool {
+        if &*stack.item != "minecraft:trident" {
+            return false;
+        }
+        let max = self.trident_max_damage(stack);
+        let riptide = stack.enchantment_level("minecraft:riptide") > 0;
+        if stack.damage >= max.saturating_sub(1) || (riptide && !self.in_water_or_rain()) {
+            return false;
+        }
+        self.start_using_item();
+        true
+    }
+
+     fn in_water_or_rain(&mut self) -> bool {
+        let Some(p) = &self.player else { return false };
+        let (x, y, z) = (
+            p.position.x.floor() as i32,
+            p.position.y.floor() as i32,
+            p.position.z.floor() as i32,
+        );
+        let water = self.res.facts().get(self.world.block(x, y, z)).fluid
+            == sunrise_items::blocks::Fluid::Water;
+        let (at, top) = (p.position, p.bounds().max_position().y);
+        water || self.side_in_rain(at, top)
+    }
+
+    /// `instanceof FishingRodItem`.
+     fn is_rod(&self, stack: &ItemStack) -> bool {
+        self.items()
+            .get(&stack.item)
+            .is_some_and(|i| i.is("minecraft:fishing_rod"))
+    }
+
+    /// `FishingRodCast`: the stack in the arm holding the rod while the hook is out.
+     fn cast_rod(&self) -> Option<&ItemStack> {
+        self.hook.as_ref()?;
+        if self.main_hand_rod() {
+            self.held()
+        } else {
+            self.offhand.as_ref()
+        }
+    }
+
+     fn main_hand_rod(&self) -> bool {
+        self.held().is_some_and(|s| self.is_rod(s))
+    }
 
     /// The fishing medium a mod says the hook `id` at `position` floats in.
-    pub fn hook_medium(
+     fn hook_medium(
         &mut self,
         id: u32,
         position: Vec3,
@@ -1174,7 +1205,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// `FishingHook.tick`: one tick of movement without the fishing (the server's).
-    pub fn client_hook_step(
+     fn client_hook_step(
         &mut self,
         id: u32,
         owner: Option<Vec3>,
@@ -1307,13 +1338,15 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// Resource-backed resolution of a mod recipe book declaration slot.
-    pub fn resolve_mod_book_declaration_slot(
+     fn resolve_mod_book_declaration_slot(
         &self,
         slot: &mod_api::RecipeSlotDisplay,
     ) -> Vec<ItemStack> {
         resolve_mod_book_slot_with(self.items(), &self.stations().enchantments, slot)
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> HeldItemsGameExt1<'__sg> for G {}
+
 
 /// `ProjectileWeaponItem.ARROW_ONLY`: `stack.is(ItemTags.ARROWS)`.
 pub fn is_arrow(items: &sunrise_items::items::Items, stack: &ItemStack) -> bool {
@@ -1564,3 +1597,11 @@ use crate::game::side_ops::player::PlayerSideGameExt as _;
 use crate::game::tables::GameItems as _;
 
 use crate::game::tables::WorldTablesExt as _;
+
+use crate::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use crate::game::native_components::NativeComponentsGameExt1 as _;
+
+use crate::game::pick_ray::PickRayGameExt1 as _;
+
+use crate::game::player_identity::PlayerIdentityGameExt1 as _;

@@ -330,7 +330,7 @@ impl crate::game::ServerGame<'_> {
         };
         let (attacker, attacker_team) = match attacker {
             Some(conn) => guest(conn),
-            None => (self.common.own_entity_id(), self.player_team()),
+            None => (self.own_entity_id(), self.player_team()),
         };
         let (victim, victim_team) = guest(victim);
         self.player_may_harm(attacker, victim, attacker_team, victim_team)
@@ -362,21 +362,21 @@ impl crate::game::ServerGame<'_> {
         let shooter = self.player_attacker(p.guest);
         let effect_attacker = shooter
             .as_ref()
-            .map_or(self.common.own_entity_id() as u32, |s| s.0);
+            .map_or(self.own_entity_id() as u32, |s| s.0);
         let result = match victim {
             Victim::Guest(conn) => self.guest_hit_by(conn, |g| {
-                g.side.combat.0.refuse_player_hit = refused;
-                g.side.combat.0.projectile_attacker = shooter;
+                g.server.combat.0.refuse_player_hit = refused;
+                g.server.combat.0.projectile_attacker = shooter;
                 let saved_effect_attacker = g
-                    .side
+                    .server
                     .combat
                     .0
                     .enchantment_projectile_attacker
                     .replace(effect_attacker);
                 let r = g.projectile_hit(p, on_player);
-                g.side.combat.0.refuse_player_hit = false;
-                g.side.combat.0.projectile_attacker = None;
-                g.side.combat.0.enchantment_projectile_attacker = saved_effect_attacker;
+                g.server.combat.0.refuse_player_hit = false;
+                g.server.combat.0.projectile_attacker = None;
+                g.server.combat.0.enchantment_projectile_attacker = saved_effect_attacker;
                 r
             }),
         };
@@ -455,7 +455,7 @@ impl crate::game::ServerGame<'_> {
         let attack = self.attack_of(attacker_id);
         let land = |g: &mut Self| {
             g.with_attack(attack.clone(), |g| {
-                g.side.combat.0.player_attacker = Some((s.from, s.disable_blocking));
+                g.server.combat.0.player_attacker = Some((s.from, s.disable_blocking));
                 if let Some((id, name)) = attacker_note.clone() {
                     g.note_player_attacker(
                         "minecraft:player_attack",
@@ -466,7 +466,7 @@ impl crate::game::ServerGame<'_> {
                 }
                 let hurt =
                     g.mob_hits_player_from(s.amount, s.from, "minecraft:player_attack", s.creative);
-                g.side.combat.0.player_attacker = None;
+                g.server.combat.0.player_attacker = None;
                 let (strength, xd, zd) = s.knockback;
                 if hurt && strength > 0.0 {
                     g.knock_back_player_full(
@@ -736,7 +736,7 @@ impl crate::game::ServerGame<'_> {
             None => self
                 .common.player
                 .as_ref()
-                .map(|p| (p.entity_id as u32, self.common.target_name(Target::Player))),
+                .map(|p| (p.entity_id as u32, self.target_name(Target::Player))),
         };
         let attacker_id = self.common.player.as_ref().map_or(0, |p| p.entity_id);
         let attack = self.attack_of(attacker.as_ref().map_or(attacker_id, |(id, _)| *id as i32));
@@ -814,3 +814,7 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

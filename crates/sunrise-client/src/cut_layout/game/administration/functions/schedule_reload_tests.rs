@@ -126,3 +126,5 @@ fn a_pending_event_survives_a_save_and_a_reload() {
     assert_eq!(fired(&game), 2);
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

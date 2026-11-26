@@ -246,3 +246,7 @@ fn commands_that_would_move_or_remove_a_natural_knot_fail() {
         Some([at.x, at.y, at.z])
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

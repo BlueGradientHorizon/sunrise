@@ -28,7 +28,7 @@ impl ServerDecisionTarget {
             return Err(Admission::Busy);
         }
         let menus = game
-            .side
+            .server
             .lan
             .as_ref()
             .and_then(|host| host.menus.get(&conn))
@@ -47,7 +47,7 @@ impl ServerDecisionTarget {
         &self,
         game: &'a ServerGame<'_>,
     ) -> Option<(OwnerStamp, &'a EngineMenu)> {
-        let menus = game.side.lan.as_ref()?.menus.get(&self.0.conn)?;
+        let menus = game.server.lan.as_ref()?.menus.get(&self.0.conn)?;
         let inventory = &menus.crafting.inventory;
         Some((inventory.stamp(), inventory.as_deref()?))
     }
@@ -63,7 +63,7 @@ impl ServerDecisionTarget {
             return None;
         }
         self.keep_in(game);
-        let menus = game.side.lan.as_mut()?.menus.get_mut(&self.0.conn)?;
+        let menus = game.server.lan.as_mut()?.menus.get_mut(&self.0.conn)?;
         let menu = menus.crafting.inventory.as_deref_mut()?;
         Some(edit(menu))
     }
@@ -76,7 +76,7 @@ impl ServerDecisionTarget {
             return;
         }
         let Some(menus) = game
-            .side
+            .server
             .lan
             .as_ref()
             .and_then(|h| h.menus.get(&self.0.conn))

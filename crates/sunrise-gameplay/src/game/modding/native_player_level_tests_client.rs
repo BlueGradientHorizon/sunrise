@@ -95,3 +95,5 @@ fn a_give_that_fits_plays_pickup_in_the_players_level() {
         assert_eq!((fake.thrower, fake.target), (None, None));
     });
 }
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

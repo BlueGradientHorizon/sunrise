@@ -28,7 +28,7 @@ impl crate::game::ServerGame<'_> {
                 .is_some_and(|stack| &*stack.item == "minecraft:writable_book");
             if writable
                 && let (Some(player), Some(name)) =
-                    (g.side.lan_acting_uuid, g.side.lan_acting_name.clone())
+                    (g.server.lan_acting_uuid, g.server.lan_acting_name.clone())
             {
                 g.native_player_edit_book(
                     player,
@@ -182,7 +182,7 @@ impl crate::game::ServerGame<'_> {
         );
         self.set_lectern_has_book(key, true, self.common.is_logical_server().then_some(Who::Player));
         if !self.common.creative {
-            self.common.consume_held();
+            self.consume_held();
         }
         let at = [
             f64::from(pos[0]) + 0.5,
@@ -326,3 +326,5 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

@@ -296,7 +296,7 @@ impl BlockEntityAccess for ResidentBlockEntityAccess<'_, '_> {
             journal: &mut self.game.transactions,
             chunks: &self.game.world.chunks,
             names: &self.game.world.block_names,
-            hoppers: &self.game.side.hoppers,
+            hoppers: &self.game.server.hoppers,
             menu: matches!(self.loan, Loan::Menu(_))
                 .then_some((&mut self.game.world.modified, &mut self.items_changed)),
             dirty: false,
@@ -348,8 +348,8 @@ impl crate::game::ServerGame<'_> {
         &self,
         pos: Pos,
     ) -> Option<(BlockEntityRef, BlockStateId)> {
-        let level = self.common.level(self.common.dim.id())?;
-        let handle = self.common.block_entity(level, [pos.0, pos.1, pos.2])?;
+        let level = self.level(self.common.dim.id())?;
+        let handle = self.block_entity(level, [pos.0, pos.1, pos.2])?;
         matches!(
             self.world.block_entities.get(&pos),
             Some(BlockEntity::Mod(_))
@@ -381,7 +381,7 @@ impl crate::game::ServerGame<'_> {
             }
             return false;
         }
-        let Some(level) = self.common.level(self.common.dim.id()) else {
+        let Some(level) = self.level(self.common.dim.id()) else {
             return false;
         };
         let subject =
@@ -416,3 +416,9 @@ impl<'g, 'w> ResidentBlockEntityAccess<'g, 'w> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

@@ -508,7 +508,7 @@ impl crate::game::ServerGame<'_> {
                 "commands.give.failed.toomanyitems",
                 &[
                     Text::literal(limit.to_string()),
-                    self.common.stack_display_name(&prototype),
+                    self.stack_display_name(&prototype),
                 ],
             )));
         }
@@ -522,7 +522,6 @@ impl crate::game::ServerGame<'_> {
             };
             let uuid = match conn {
                 Some(conn) => self
-                    .common
                     .command_guest(conn)
                     .map(|g| sunrise_sim::lan::playerdata::uuid_ints(g.uuid)),
                 None => Some(self.common.level.ensure_player_uuid()),
@@ -557,14 +556,14 @@ impl crate::game::ServerGame<'_> {
                 }
             });
         }
-        let name = self.common.stack_display_name(&prototype);
+        let name = self.stack_display_name(&prototype);
         let message = if targets.len() == 1 {
             Text::translate(
                 "commands.give.success.single",
                 &[
                     Text::literal(count.to_string()),
                     name,
-                    self.common.target_name(targets[0]),
+                    self.target_name(targets[0]),
                 ],
             )
         } else {
@@ -643,7 +642,7 @@ impl crate::game::ServerGame<'_> {
             _ => {
                 let targets = self.entities(ctx, "targets", true)?;
                 for &target in &targets {
-                    let target_name = self.common.target_name(target);
+                    let target_name = self.target_name(target);
                     let out = Text::translate(
                         "commands.message.display.outgoing",
                         &[target_name, message.clone()],
@@ -800,7 +799,7 @@ impl crate::game::ServerGame<'_> {
             // With an NBT argument the entity is built from it, unfinalized.
             let before = self.spawned_mark();
             let name = match self.summon_with_nbt(&kind, pos, &nbt)? {
-                Some(target) => self.common.target_name(target),
+                Some(target) => self.target_name(target),
                 // Spawned as a kind no command target stands for (primed
                 // TNT, falling blocks, projectiles): its type's name.
                 None if self.spawned_mark() != before => data::summon_type_name(&kind),
@@ -820,7 +819,7 @@ impl crate::game::ServerGame<'_> {
                     ),
                 )
                 .ok_or_else(|| err("commands.summon.failed.uuid", &[]))?;
-            name = self.common.target_name(Target::Mob(id));
+            name = self.target_name(Target::Mob(id));
         } else {
             match short.as_str() {
                 "experience_orb" => {
@@ -839,13 +838,13 @@ impl crate::game::ServerGame<'_> {
                     if !self.native_joins_flush(false, id) {
                         return Err(err("commands.summon.failed.uuid", &[]));
                     }
-                    name = self.common.target_name(Target::Orb(id));
+                    name = self.target_name(Target::Orb(id));
                 }
                 "lightning_bolt" => {
                     let target = self
                         .summon_with_nbt(&kind, pos, "{}")?
                         .ok_or_else(|| err("commands.summon.failed", &[]))?;
-                    name = self.common.target_name(target);
+                    name = self.target_name(target);
                 }
                 "end_crystal" => {
                     // EndCrystal's constructor takes an id from the entity
@@ -869,7 +868,7 @@ impl crate::game::ServerGame<'_> {
                     if !self.native_joins_flush(false, id) {
                         return Err(err("commands.summon.failed.uuid", &[]));
                     }
-                    name = self.common.target_name(Target::Crystal(id));
+                    name = self.target_name(Target::Crystal(id));
                 }
                 _ if super::minecarts::CartKind::from_id(&kind).is_some() => {
                     let cart_kind = super::minecarts::CartKind::from_id(&kind)
@@ -897,13 +896,13 @@ impl crate::game::ServerGame<'_> {
                     if !self.native_joins_flush(false, id) {
                         return Err(err("commands.summon.failed.uuid", &[]));
                     }
-                    name = self.common.target_name(Target::Cart(id));
+                    name = self.target_name(Target::Cart(id));
                 }
                 // SummonCommand.createEntity: any other type from an empty compound.
                 _ => {
                     let before = self.spawned_mark();
                     name = match self.summon_with_nbt(&kind, pos, "{}")? {
-                        Some(target) => self.common.target_name(target),
+                        Some(target) => self.target_name(target),
                         // Spawned as a kind no command target stands for
                         // (primed TNT, falling blocks, projectiles).
                         None if self.spawned_mark() != before => data::summon_type_name(&kind),
@@ -1322,7 +1321,7 @@ impl crate::game::ServerGame<'_> {
         .flatten();
         match t {
             Target::General(id) => {
-                let Some(entity) = self.common.entity(id) else {
+                let Some(entity) = self.entity(id) else {
                     return;
                 };
                 self.remove_target_now(entity, t);
@@ -1391,7 +1390,7 @@ impl crate::game::ServerGame<'_> {
             Target::Other(id) => {
                 if self
                     .with_destroying_vehicle(t, |game| {
-                        game.side.others.0.retain(|o| o.id != id);
+                        game.server.others.0.retain(|o| o.id != id);
                         game.forget_entity(id);
                     })
                     .is_none()
@@ -1497,7 +1496,7 @@ impl crate::game::ServerGame<'_> {
                 if location.owner.dimension == self.common.dim.key() =>
             {
                 value == t
-                    || matches!(t, Target::Guest(conn) if self.side.lan_acting == Some(conn) && value == Target::Player)
+                    || matches!(t, Target::Guest(conn) if self.server.lan_acting == Some(conn) && value == Target::Player)
             }
             _ => false,
         }
@@ -1560,11 +1559,11 @@ impl crate::game::ServerGame<'_> {
     /// Player.getDisplayName: the name (team-formatted), suggesting a
     /// `/tell`, showing the player on hover, inserting the name.
     pub(in crate::game) fn player_display_name(&self) -> Text {
-        let name = self.common.acting_player_name();
+        let name = self.acting_player_name();
         if let Some(uuid) = self.server.lan_acting_uuid {
             return self.common.player_text(name, uuid);
         }
-        let mut displayname = self.common.target_name(Target::Player);
+        let mut displayname = self.target_name(Target::Player);
         sunrise_sim::lan::hub::native_player_name_format(
             &self.common.loop_context,
             &Text::literal(name),
@@ -1705,7 +1704,7 @@ impl crate::game::ServerGame<'_> {
         }
         // A server player's change is heard by the mods first, who may keep or redirect it.
         if let Some(uuid) = self.server.lan_acting_uuid {
-            let name = self.common.acting_player_name().to_owned();
+            let name = self.acting_player_name().to_owned();
             let mut cancel = false;
             self.native_player_game_mode_changed(
                 uuid,
@@ -1954,7 +1953,7 @@ impl crate::game::ServerGame<'_> {
         let player_entity_id = self
             .server
             .lan_acting_entity
-            .map_or_else(|| self.common.own_entity_id(), |id| id as i32);
+            .map_or_else(|| self.own_entity_id(), |id| id as i32);
         self.native_player_xp_change(player, player_entity_id, &name, &mut amount, &mut cancel);
         (!cancel).then_some(amount)
     }
@@ -2006,3 +2005,13 @@ pub(in crate::game) mod forced_respawn_tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

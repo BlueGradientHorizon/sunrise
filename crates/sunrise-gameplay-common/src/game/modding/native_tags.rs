@@ -427,4 +427,5 @@ mod tests {
     }
 }
 
+
 use crate::game::tables::WorldTablesExt as _;

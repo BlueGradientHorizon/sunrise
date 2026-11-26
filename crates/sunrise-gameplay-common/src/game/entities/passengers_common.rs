@@ -8,7 +8,7 @@ use {
     sunrise_sim::mobs::riders,
 };
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
+impl crate::game::CommonGame<'_> {
     /// The vehicle's attachment for this passenger's actual place in `getPassengers`.
     pub(in crate::game) fn mob_passenger_attachment(
         vehicle: &sunrise_sim::mobs::Mob,
@@ -79,12 +79,15 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             }
         }
     }
+}
+
+pub trait PassengersCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
 
     /// Shared per-boat mob seating loop parameterized by the side's passenger order reader.
-    pub fn seat_boat_mobs_with_order(
+     fn seat_boat_mobs_with_order(
         &mut self,
         riding: &Riders,
-        order_of: impl Fn(&Game<'_, __Side>, u32) -> Vec<u32>,
+        order_of: impl Fn(&Self, u32) -> Vec<u32>,
     ) {
         for i in 0..self.boats.len() {
             let id = self.boats[i].id;
@@ -162,7 +165,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
 
     /// `Entity.getPassengerRidingPosition` of a vehicle.
-    pub fn passenger_riding_position(
+     fn passenger_riding_position(
         &self,
         vehicle: u32,
         me: Option<u32>,
@@ -173,12 +176,12 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
 
     /// `Entity.positionRider` for every passenger on the active side.
-    pub fn position_riders(&mut self) {
+     fn position_riders(&mut self) {
         self.side_position_riders();
     }
 
     /// `Entity.positionRider` for a general passenger, whose own vehicle attachment is zero.
-    pub fn general_passenger_position(
+     fn general_passenger_position(
         &self,
         vehicle: u32,
         rider: u32,
@@ -186,6 +189,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         self.side_general_passenger_position(vehicle, rider)
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> PassengersCommonGameExt1<'__sg> for G {}
+
 
 /// The mobs riding each vehicle, by the vehicle's id: their indices, in the mobs' order.
 pub type Riders = HashMap<u32, Vec<usize>>;
@@ -206,27 +211,29 @@ pub fn player_box_top(pose: u8, scale: f64) -> f64 {
     f64::from(height * scale as f32)
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+pub trait PassengersCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// The player riding through `riding` and its place: the acting guest (its kept place, if
     /// any, comes from the hub's list) or, outside a guest turn, this game's own player.
-    pub fn riding_player(&self) -> Option<(u32, i64)> {
+     fn riding_player(&self) -> Option<(u32, i64)> {
         match (
-            crate::game::Side::lan_acting_entity(&self.side),
-            crate::game::Side::lan_acting(&self.side),
+            crate::game::Side::lan_acting_entity(self.side_state()),
+            crate::game::Side::lan_acting(self.side_state()),
         ) {
-            (Some(id), _) if crate::game::Side::lan_acting_uuid(&self.side).is_some() => {
+            (Some(id), _) if crate::game::Side::lan_acting_uuid(self.side_state()).is_some() => {
                 Some((id, i64::MIN))
             }
             (_, None) => self.player.as_ref().map(|p| {
                 (
                     p.entity_id as u32,
-                    crate::game::Side::riding_order(&self.side),
+                    crate::game::Side::riding_order(self.side_state()),
                 )
             }),
             _ => None,
         }
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> PassengersCommonGameExt2<'__sg> for G {}
+
 
 use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
 

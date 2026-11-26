@@ -67,3 +67,5 @@ fn enchant_reports_single_target_errors_and_counts_only_compatible_living_target
 
 #[allow(unused_imports)]
 pub(in crate::game) use sunrise_gameplay::game::server_side::commands_server::enchant_tests::enchant_outcome;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

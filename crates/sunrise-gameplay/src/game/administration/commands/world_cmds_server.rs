@@ -326,7 +326,7 @@ impl crate::game::ServerGame<'_> {
         if t == Target::Player {
             self.common.pitch = rot[1].clamp(-90.0, 90.0);
         }
-        let name = self.common.target_name(t);
+        let name = self.target_name(t);
         self.feedback(Text::translate("commands.rotate.success", &[name]));
         Ok(1)
     }
@@ -509,7 +509,7 @@ impl crate::game::ServerGame<'_> {
                 let mut moved = to;
                 let uuid = match t {
                     Target::Player => self.server.lan_acting_uuid,
-                    Target::Guest(conn) => self.common.command_guest(conn).map(|g| g.uuid),
+                    Target::Guest(conn) => self.command_guest(conn).map(|g| g.uuid),
                     _ => None,
                 };
                 self.native_spread_players_teleport(
@@ -562,7 +562,7 @@ impl crate::game::ServerGame<'_> {
             self.entities(ctx, "targets", false)?
         } else {
             vec![
-                self.side
+                self.server
                     .command_source
                     .and_then(|s| s.entity)
                     .unwrap_or(Target::Player),
@@ -582,7 +582,7 @@ impl crate::game::ServerGame<'_> {
                 Target::Stand(_) => {}
                 _ => continue,
             }
-            let h = holder(self.common.target_name(t));
+            let h = holder(self.target_name(t));
             tracker.mark(&h);
         }
         let (message, total) = tracker.message(
@@ -705,8 +705,8 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         let entity_id = |target| match target {
-            Some(Target::Player) => self.common.own_entity_id(),
-            Some(Target::Guest(conn)) => self.common.command_guest(conn).map_or(0, |g| g.entity_id),
+            Some(Target::Player) => self.own_entity_id(),
+            Some(Target::Guest(conn)) => self.command_guest(conn).map_or(0, |g| g.entity_id),
             Some(target) => {
                 sunrise_gameplay_common::game::commands_common::target_id(target).map_or(0, |id| id as i32)
             }
@@ -720,7 +720,7 @@ impl crate::game::ServerGame<'_> {
         };
         if crate::game::server_side::entity_server::damage_level_of!(
             self,
-            self.side.combat.0.attack(),
+            self.server.combat.0.attack(),
             no_push,
             None
         )
@@ -767,7 +767,7 @@ impl crate::game::ServerGame<'_> {
             return mob.extra.armor_attributes.as_deref_mut();
         }
         if !self.server.cmds.0.attributes.contains_key(&t) {
-            let ty = self.common.target_type(t);
+            let ty = self.target_type(t);
             let map = self.common.motion.attributes.create(&ty)?;
             self.server.cmds.0.attributes.insert(t, map);
         }
@@ -790,7 +790,7 @@ impl crate::game::ServerGame<'_> {
                 // causing entity, else the direct one. A mob is noted by
                 // `hurt_player_from`, a player here.
                 let named = match cause.or(by) {
-                    Some(t @ (Target::Player | Target::Guest(_))) => Some(self.common.target_name(t)),
+                    Some(t @ (Target::Player | Target::Guest(_))) => Some(self.target_name(t)),
                     _ => None,
                 };
                 let attacker = match cause.or(by) {
@@ -806,7 +806,7 @@ impl crate::game::ServerGame<'_> {
                     Some(Target::Guest(conn)) => Some(conn),
                     _ => None,
                 }
-                .and_then(|conn| self.common.command_guest(conn))
+                .and_then(|conn| self.command_guest(conn))
                 .map(|g| sunrise_gameplay_common::game::combat_common::PlayerCredit(g.uuid));
                 let now = self.common.world.game_time;
                 let attack = self.current_attack();
@@ -817,7 +817,7 @@ impl crate::game::ServerGame<'_> {
                         }
                         let hurt = g.hurt_player_from(amount, from, ty, attacker, creative_source);
                         if hurt && let Some(credit) = by_player {
-                            g.side.combat.0.note_hurt_by_player(credit, now);
+                            g.server.combat.0.note_hurt_by_player(credit, now);
                         }
                         hurt
                     })
@@ -892,7 +892,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn ride_vehicle(&self, t: Target) -> Option<Target> {
         let id = match t {
             Target::Player => self.common.riding?,
-            Target::Guest(conn) => self.common.command_guest(conn)?.vehicle?,
+            Target::Guest(conn) => self.command_guest(conn)?.vehicle?,
             Target::Mob(id) => self.common.mobs.iter().find(|m| m.id == id)?.extra.mount?,
             Target::Bolt(id) => self.common.bolts.iter().find(|b| b.id == id)?.mount?,
             _ => return None,
@@ -938,7 +938,7 @@ impl crate::game::ServerGame<'_> {
             }
             None => {
                 assert!(
-                    self.side.lan.is_none(),
+                    self.server.lan.is_none(),
                     "/playsound None branch is fixture-only"
                 );
                 self.server_play_sound_on(source, sound, at, volume, pitch);
@@ -973,7 +973,7 @@ impl crate::game::ServerGame<'_> {
                 }
                 None => {
                     assert!(
-                        self.side.lan.is_none(),
+                        self.server.lan.is_none(),
                         "/stopsound None branch is fixture-only"
                     );
                 }
@@ -994,7 +994,7 @@ pub mod datapack_damage_tests {
     use sunrise_sim::mobs::Mob;
 
     pub fn pig(game: &mut crate::game::ServerGame<'_>, id: u32, at: Vec3) {
-        game.side.next_entity = game.side.next_entity.max(id);
+        game.server.next_entity = game.server.next_entity.max(id);
         let kind = game.res.mob_types().get("minecraft:pig").unwrap().clone();
         let mut pig = Mob::new(id, kind, at, 0.0);
         pig.no_ai = true;
@@ -1011,3 +1011,7 @@ pub mod attribute_tests;
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

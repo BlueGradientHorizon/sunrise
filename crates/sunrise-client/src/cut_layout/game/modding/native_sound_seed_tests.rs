@@ -289,3 +289,7 @@ fn seed_draws_happen_at_the_call_inside_transactions_and_held_sounds_draw_at_com
         },
     );
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

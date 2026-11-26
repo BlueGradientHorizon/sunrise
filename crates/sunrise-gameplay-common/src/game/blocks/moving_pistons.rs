@@ -3,7 +3,7 @@
 //! mesher); this draws each moved block at its interpolated offset.
 use crate::game::CommonGame;
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// The section holding the block at `p` (`SectionPos.blockToSection`).
     pub fn section_of(&self, p: [i32; 3]) -> Option<(i32, i32, i32)> {
         let y = p[1].checked_sub(self.world.layout().min_y())?;

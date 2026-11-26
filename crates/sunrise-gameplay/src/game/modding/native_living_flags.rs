@@ -37,7 +37,7 @@ impl crate::game::ServerGame<'_> {
                 if self.server.lan.as_ref().unwrap().hub.guests[gi].dimension != self.common.dim.id() {
                     return false;
                 }
-                self.as_guest_at(gi, conn, |game| !game.side.lan_acting_fake && write(game))
+                self.as_guest_at(gi, conn, |game| !game.server.lan_acting_fake && write(game))
                     .unwrap_or(false)
             }
             _ => false,
@@ -134,7 +134,7 @@ impl crate::game::ServerGame<'_> {
                 }
                 // The internal brain helper assumes its target is a bed. Validate
                 // the public target and its sleep shape before any mutation.
-                let Some(at) = self.common.sleeping_position(pos) else {
+                let Some(at) = self.sleeping_position(pos) else {
                     return false;
                 };
                 let mut mobs = self.common.mobs.lift();
@@ -151,7 +151,7 @@ impl crate::game::ServerGame<'_> {
                 });
                 self.common.mobs
                     .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
-                let _ = self.common.handle_mob_events(events);
+                let _ = self.handle_mob_events(events);
                 slept
             }
             _ => false,
@@ -190,7 +190,7 @@ impl crate::game::ServerGame<'_> {
                 }
                 self.common.mobs
                     .restore(mobs, sunrise_sim::join_seq::RestoreOrder::SurvivorsFirst);
-                let _ = self.common.handle_mob_events(events);
+                let _ = self.handle_mob_events(events);
                 true
             }
             _ => false,
@@ -274,3 +274,7 @@ impl crate::game::ServerGame<'_> {
         climbing::on_climbable(&mut world, &self.common.motion.climbing).unwrap_or(false)
     }
 }
+
+use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1 as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;

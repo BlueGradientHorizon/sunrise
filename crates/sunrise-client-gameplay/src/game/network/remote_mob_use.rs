@@ -65,7 +65,7 @@ impl ClientGame<'_> {
         }
         // AgeableMob.mobInteract: a golden dandelion on a baby that can be age
         // locked is SUCCESS on a client too (the server sets the lock).
-        if self.common.age_lock_takes(m, item) {
+        if self.age_lock_takes(m, item) {
             return true;
         }
         // Animal.mobInteract: its food is CONSUME on a client. A nautilus
@@ -186,7 +186,7 @@ impl ClientGame<'_> {
                 !baby
                     && stack.is_some_and(|s| self.common.piglin_currency(s))
                     && (m.extra.scratch[0] > 0
-                        || !m.extra.off_hand_id().is_some_and(|o| self.common.piglin_loved(o)))
+                        || !m.extra.off_hand_id().is_some_and(|o| self.piglin_loved(o)))
             }
             _ => false,
         }
@@ -442,3 +442,7 @@ mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::piglins_common::PiglinsCommonGameExt1 as _;

@@ -127,7 +127,7 @@ impl crate::game::ServerGame<'_> {
                 if i > 0 {
                     out.push(Text::literal(", "));
                 }
-                out.push(self.common.target_name(t));
+                out.push(self.target_name(t));
             }
             out
         };
@@ -174,7 +174,7 @@ impl crate::game::ServerGame<'_> {
             }
         }
         if holder == "*" {
-            holder = self.common.acting_player_name().to_owned();
+            holder = self.acting_player_name().to_owned();
         }
         let board = &self.common.score.board;
         let (Some(objective), Some(score)) =
@@ -278,7 +278,7 @@ impl crate::game::ServerGame<'_> {
         let n = players.len();
         let name = players
             .first()
-            .map_or_else(Text::empty, |t| self.common.target_name(*t));
+            .map_or_else(Text::empty, |t| self.target_name(*t));
         let single = n == 1;
         let key = if ctx.has("clear") {
             self.titles_or_packet(&players, C::ClearTitles(play::Bool1 { value: false }));
@@ -372,3 +372,5 @@ pub(in crate::game) mod tests {
         );
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

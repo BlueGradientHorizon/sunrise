@@ -638,7 +638,7 @@ impl crate::game::ServerGame<'_> {
                 // CountingModifier: every slot set counts, changed or not;
                 // ItemStack.limitSize to the (new) max stack size.
                 let new = new.map(|mut s| {
-                    let max = self.common.stack_max_size(&s);
+                    let max = self.stack_max_size(&s);
                     s.count = s.count.min(max);
                     s
                 });
@@ -784,7 +784,7 @@ impl crate::game::ServerGame<'_> {
             s,
             Slot::Inv(_) | Slot::MainHand | Slot::Armor(_) | Slot::Offhand | Slot::Equipment(_)
         ) {
-            let uuid = self.common.native_acting_id();
+            let uuid = self.native_acting_id();
             self.journal_player(uuid);
         }
         match s {
@@ -814,7 +814,7 @@ impl crate::game::ServerGame<'_> {
             Slot::MainHand if self.common.selected < self.common.inventory.len() => {
                 self.stop_use_replaced(self.common.selected, stack.as_ref());
                 let old = std::mem::replace(&mut self.common.inventory[self.common.selected], stack.clone());
-                self.common.player_on_equip("mainhand", old.as_ref(), stack.as_ref());
+                self.player_on_equip("mainhand", old.as_ref(), stack.as_ref());
                 true
             }
             Slot::MainHand => false,
@@ -822,9 +822,9 @@ impl crate::game::ServerGame<'_> {
                 Some(slot) => {
                     let old = std::mem::replace(slot, stack.clone());
                     let name = ["head", "chest", "legs", "feet"][*i];
-                    self.common.player_on_equip(name, old.as_ref(), stack.as_ref());
+                    self.player_on_equip(name, old.as_ref(), stack.as_ref());
                     if self.common.transactions.is_empty() {
-                        self.common.apply_equipment();
+                        self.apply_equipment();
                     }
                     true
                 }
@@ -833,7 +833,7 @@ impl crate::game::ServerGame<'_> {
             Slot::Offhand => {
                 self.stop_use_replaced(crate::game::shield::OFFHAND_SLOT, stack.as_ref());
                 let old = std::mem::replace(&mut self.common.offhand, stack.clone());
-                self.common.player_on_equip("offhand", old.as_ref(), stack.as_ref());
+                self.player_on_equip("offhand", old.as_ref(), stack.as_ref());
                 true
             }
             // setItemSlot, so onEquipItem: the equip sound, but no game event
@@ -841,7 +841,7 @@ impl crate::game::ServerGame<'_> {
             Slot::Equipment(i) => {
                 let old = self.common.equipment[*i].clone();
                 self.common.equipment.set(*i, stack.clone());
-                self.common.player_on_equip(
+                self.player_on_equip(
                     sunrise_items::equipment::SLOT_NAMES[*i],
                     old.as_ref(),
                     stack.as_ref(),
@@ -977,3 +977,11 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_equip::PlayerEquipGameExt1 as _;

@@ -156,3 +156,5 @@ fn a_test_block_reads_the_state_mode_for_its_own_signal() {
         game.with_level(|_, level, _| level.block_entity_signal(pos, state, Direction::North));
     assert_eq!(signal, 15, "the state says start and the entity is powered");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

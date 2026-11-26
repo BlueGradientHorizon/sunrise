@@ -418,9 +418,9 @@ impl crate::game::ClientGame<'_> {
         wheel: i32,
         vertical_steps: i32,
     ) {
-        if self.common.own_player_is_spectator() && self.client.spectator_gui.is_menu_active() {
+        if self.own_player_is_spectator() && self.client.spectator_gui.is_menu_active() {
             self.spectator_scroll(-wheel);
-        } else if self.common.own_player_is_spectator() {
+        } else if self.own_player_is_spectator() {
             let speed = self.common.player.as_mut().map(|player| {
                 player.flying_speed = sunrise_game_data::move_input::spectator_flying_speed(
                     player.flying_speed,
@@ -766,3 +766,5 @@ mod tests {
         assert!(!studio_freecam_movement_key(KeyCode::KeyI));
     }
 }
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;

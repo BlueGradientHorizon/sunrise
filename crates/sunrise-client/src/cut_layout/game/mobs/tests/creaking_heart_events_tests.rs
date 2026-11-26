@@ -193,3 +193,5 @@ fn shearing_a_copper_golem_posts_shear_at_the_golem() {
         "the antenna is empty"
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

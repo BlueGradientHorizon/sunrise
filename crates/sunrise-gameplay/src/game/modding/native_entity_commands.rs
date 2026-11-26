@@ -52,7 +52,7 @@ impl crate::game::ServerGame<'_> {
         if self.server.lan.is_none() {
             return (false, Vec::new());
         }
-        let Some(target) = self.common.native_entity_target(entity) else {
+        let Some(target) = self.native_entity_target(entity) else {
             return (false, Vec::new());
         };
         let line = line.strip_prefix('/').unwrap_or(line);
@@ -88,7 +88,7 @@ impl crate::game::ServerGame<'_> {
                 let source = execute::Source {
                     entity: Some(target),
                     pos,
-                    rot: self.common.target_rotation(target),
+                    rot: self.target_rotation(target),
                     eyes: false,
                     silent: true,
                     store: None,
@@ -120,7 +120,7 @@ impl crate::game::ServerGame<'_> {
         };
         let source = execute::Source {
             pos,
-            rot: self.common.target_rotation(Target::Player),
+            rot: self.target_rotation(Target::Player),
             silent: suppress_output,
             ..self.player_source()
         };
@@ -165,3 +165,9 @@ impl crate::game::ServerGame<'_> {
         (ok, lines)
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

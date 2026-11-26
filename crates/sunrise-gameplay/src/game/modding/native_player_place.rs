@@ -50,7 +50,7 @@ impl crate::game::ServerGame<'_> {
         if self.common.pack.assets.registry.state(state).is_none() {
             return Err(Refusal::UnknownState);
         }
-        if self.common.native_level_world(level).is_none() {
+        if self.native_level_world(level).is_none() {
             return Err(Refusal::StaleLevel);
         }
         if level.dimension() != self.common.dim.key() {
@@ -94,7 +94,7 @@ impl crate::game::ServerGame<'_> {
         block: BlockKey,
         context: &mod_api::PlacementContext,
     ) -> Result<Option<BlockStateId>, PlacementStateError> {
-        let world = self.common.native_level_world_result(level)?;
+        let world = self.native_level_world_result(level)?;
         if level.dimension() != self.common.dim.key() {
             return Err(PlacementStateError::Unavailable);
         }
@@ -273,10 +273,14 @@ impl crate::game::ServerGame<'_> {
         self.check_wither_spawn(pos)?;
         if self.common.is_logical_server()
             && block_listens(HookId::SetPlacedBy, placed)
-            && let Some(level) = self.common.level(self.common.dim.id())
+            && let Some(level) = self.level(self.common.dim.id())
         {
             self.native_set_placed_by(level, pos, placed, placer.map(PlayerRef::entity), stack);
         }
         Ok(())
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

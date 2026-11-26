@@ -225,9 +225,8 @@ impl ServerGame<'_> {
                 .replace_contents(attachments);
         }
         if fresh {
-            let kind = sunrise_gameplay_common::game::native_hooks::mob_kind(&mob);
-            self.common
-                .initialize_entity(mod_api::Holder::Entity(mob.id), &kind);
+            let kind = super::native_hooks::mob_kind(&mob);
+            self.initialize_entity(mod_api::Holder::Entity(mob.id), &kind);
         }
         mob
     }
@@ -331,3 +330,5 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::entity_initialization_common::EntityInitializationCommonGameExt1 as _;

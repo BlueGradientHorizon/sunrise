@@ -200,7 +200,7 @@ impl crate::game::ServerGame<'_> {
             self.server_play_sound(sound, pos.map(|v| f64::from(v) + 0.5), 1.0, 1.0);
         } else if !executed
             && !self.other_player_is_editing_sign(key)
-            && self.common.may_build()
+            && self.may_build()
             && self.sign_side_has_editable_text(key, front)
         {
             self.server_request_sign_editor(key, front);
@@ -212,7 +212,7 @@ impl crate::game::ServerGame<'_> {
         let Some(BlockEntity::Sign(sign)) = self.common.world.block_entities.get(&key) else {
             return false;
         };
-        if sign.waxed || self.common.may_build() {
+        if sign.waxed || self.may_build() {
             return true;
         }
         let side = if self.facing_sign_front(key) {
@@ -239,7 +239,7 @@ impl crate::game::ServerGame<'_> {
             Some(BlockEntity::Sign(sign)) => sign.waxed,
             _ => return false,
         };
-        if waxed || !self.common.may_build() {
+        if waxed || !self.may_build() {
             return false;
         }
         let item = &*stack.item;
@@ -312,7 +312,7 @@ impl crate::game::ServerGame<'_> {
             Some(state),
         );
         self.award_stat("used", &stack.item, 1);
-        self.common.consume_held();
+        self.consume_held();
         self.trigger_block("minecraft:item_used_on_block", pos, stack);
         true
     }
@@ -551,3 +551,7 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

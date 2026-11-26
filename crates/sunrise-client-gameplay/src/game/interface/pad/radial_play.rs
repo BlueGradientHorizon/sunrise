@@ -159,7 +159,7 @@ impl crate::game::ClientGame<'_> {
     fn pad_radial_why(&self, action: RadialAction) -> Option<&'static str> {
         match action {
             RadialAction::QuickActions if !self.has_quick_actions() => Some(WHY_QUICK_ACTIONS),
-            RadialAction::SocialInteractions if !self.common.is_multiplayer_server() => Some(WHY_SOCIAL),
+            RadialAction::SocialInteractions if !self.is_multiplayer_server() => Some(WHY_SOCIAL),
             _ => None,
         }
     }
@@ -486,10 +486,10 @@ impl crate::game::ClientGame<'_> {
             },
             "waiting": menu.waiting(),
             "selecting": self.pad_radial_selector().0,
-            "mode": self.side.settings.controller.radial_mode.name(),
-            "stick": self.side.settings.controller.radial_stick.name(),
-            "runs": self.side.pad.0.radial_runs.last,
-            "run_count": self.side.pad.0.radial_runs.count,
+            "mode": self.client.settings.controller.radial_mode.name(),
+            "stick": self.client.settings.controller.radial_stick.name(),
+            "runs": self.client.pad.0.radial_runs.last,
+            "run_count": self.client.pad.0.radial_runs.count,
         })
     }
 
@@ -608,3 +608,5 @@ mod tests {
         );
     }
 }
+
+use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;

@@ -96,7 +96,7 @@ impl ClientGame<'_> {
                     self.client.particles.0.create(&options, p, [0.0; 3]);
                 }
                 Ok(Some(
-                    json!({ "ok": true, "live": self.side.particles.0.len() }),
+                    json!({ "ok": true, "live": self.client.particles.0.len() }),
                 ))
             }
             "signedit" => {

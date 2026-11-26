@@ -159,7 +159,7 @@ impl crate::game::ServerGame<'_> {
     ) -> RespawnTarget {
         RespawnTarget::from(mod_api::__private::built::RespawnTarget {
             level: self
-                .common.level(dim.id())
+                .level(dim.id())
                 .expect("the level was in place for the read"),
             position: [at.x, at.y, at.z],
             yaw,
@@ -168,3 +168,5 @@ impl crate::game::ServerGame<'_> {
         })
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

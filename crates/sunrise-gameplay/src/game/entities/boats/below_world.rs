@@ -40,7 +40,7 @@ impl ServerGame<'_> {
             return Some(i);
         }
         self.kill_vehicle_object(crate::game::commands::Target::Cart(id));
-        self.common.native_tick_post_one(round, id, kind);
+        self.native_tick_post_one(round, id, kind);
         None
     }
 }
@@ -64,3 +64,7 @@ mod tests {
 
     
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;

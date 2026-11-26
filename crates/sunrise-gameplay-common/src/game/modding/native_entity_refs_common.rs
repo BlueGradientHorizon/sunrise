@@ -15,18 +15,6 @@ use sunrise_sim::join_seq::residency::table::{EntityLookup, Location};
 use sunrise_world::registry::BlockStateId;
 
 impl crate::game::CommonGame<'_> {
-    /// What a handle names for a read that works on both sides.
-    pub fn native_entity_read_target(&self, entity: EntityRef) -> Option<Target> {
-        self.side_native_entity_read_target(entity)
-    }
-
-    /// The entity `id` as a handle for the `entity_*` methods.
-    pub fn entity(&self, id: u32) -> Option<EntityRef> {
-        let entity = EntityRef::new(self.native_lifecycle.epoch()?, id);
-        (self.native_entity_read_target(entity).is_some()
-            || self.side_native_client_tracked(entity).is_some())
-        .then_some(entity)
-    }
 
     /// Whether the entity is made of parts that are entities of their own (`Entity.isMultipartEntity`).
     pub(in crate::game) fn entity_is_multipart(&self, entity: EntityRef) -> Option<bool> {
@@ -36,8 +24,28 @@ impl crate::game::CommonGame<'_> {
         ))
     }
 
+    /// The name of a dimension's key.
+    pub(in crate::game) fn dimension_key_id(&self, key: DimensionKey) -> Option<&str> {
+        mod_api::__private::dimension_id(key)
+    }
+}
+
+pub trait NativeEntityRefsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+    /// What a handle names for a read that works on both sides.
+     fn native_entity_read_target(&self, entity: EntityRef) -> Option<Target> {
+        self.side_native_entity_read_target(entity)
+    }
+
+    /// The entity `id` as a handle for the `entity_*` methods.
+     fn entity(&self, id: u32) -> Option<EntityRef> {
+        let entity = EntityRef::new(self.native_lifecycle.epoch()?, id);
+        (self.native_entity_read_target(entity).is_some()
+            || self.side_native_client_tracked(entity).is_some())
+        .then_some(entity)
+    }
+
     /// The entities a multipart entity is made of (`Entity.getParts`), in `getSubEntities` order.
-    pub(in crate::game) fn entity_parts(&self, entity: EntityRef) -> Option<Vec<EntityRef>> {
+     fn entity_parts(&self, entity: EntityRef) -> Option<Vec<EntityRef>> {
         let Target::Dragon(id) = self.native_entity_read_target(entity)? else {
             return Some(Vec::new());
         };
@@ -47,33 +55,28 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// The level `dimension` (`minecraft:the_nether`) as a handle.
-    pub fn level(&self, dimension: &str) -> Option<LevelRef> {
+     fn level(&self, dimension: &str) -> Option<LevelRef> {
         self.side_level(dimension)
     }
 
     /// The client level in place as a handle.
     #[inline(always)]
-    pub fn native_client_level(&self) -> Option<LevelRef> {
+     fn native_client_level(&self) -> Option<LevelRef> {
         self.side_native_client_level()
     }
 
     /// The key of the level in place: on a client the level it shows.
-    pub fn native_level_key(&self) -> DimensionKey {
+     fn native_level_key(&self) -> DimensionKey {
         self.side_native_level_key()
     }
 
     /// The current world on its owning side, as a handle for a native query.
-    pub fn native_current_level(&self) -> Option<LevelRef> {
+     fn native_current_level(&self) -> Option<LevelRef> {
         self.side_native_current_level()
     }
 
-    /// The name of a dimension's key.
-    pub(in crate::game) fn dimension_key_id(&self, key: DimensionKey) -> Option<&str> {
-        mod_api::__private::dimension_id(key)
-    }
-
     /// The entity's position (`Entity.position`); client displays use their committed tick pose.
-    pub fn entity_position(&self, entity: EntityRef) -> Option<[f64; 3]> {
+     fn entity_position(&self, entity: EntityRef) -> Option<[f64; 3]> {
         if self.native_lifecycle.epoch() == Some(entity.epoch())
             && let Some((id, position)) = self.native_lifecycle.entity_sections.write_position
             && id == entity.id()
@@ -84,18 +87,18 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// The block the entity's position is in (`Entity.blockPosition`).
-    pub(in crate::game) fn entity_block_position(&self, entity: EntityRef) -> Option<[i32; 3]> {
+     fn entity_block_position(&self, entity: EntityRef) -> Option<[i32; 3]> {
         self.entity_position(entity)
             .map(|p| p.map(|v| v.floor() as i32))
     }
 
     /// The box of a client's copy `id` of a non-mob entity at `position` (`Entity.getBoundingBox`).
-    pub fn client_copy_box(&self, id: u32, position: Vec3, vanilla: Aabb) -> Aabb {
+     fn client_copy_box(&self, id: u32, position: Vec3, vanilla: Aabb) -> Aabb {
         self.side_client_copy_box(id, position, vanilla)
     }
 
     /// The world whose chunks, blocks and light `level` reads on this side.
-    pub(in crate::game) fn native_level_view_world(
+     fn native_level_view_world(
         &self,
         level: LevelRef,
     ) -> Option<&sunrise_level::world::World> {
@@ -103,7 +106,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// The block state ID at `pos` (`Level.getBlockState`).
-    pub fn level_block_state(
+     fn level_block_state(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -114,7 +117,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// The stored light of one layer at `pos` (`BlockAndLightGetter.getBrightness`), 0 to 15.
-    pub(in crate::game) fn level_brightness(
+     fn level_brightness(
         &self,
         level: LevelRef,
         layer: mod_api::LightLayer,
@@ -127,7 +130,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// Read the mod-published connection group at `pos`.
-    pub(in crate::game) fn level_connection_group(
+     fn level_connection_group(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -142,7 +145,7 @@ impl crate::game::CommonGame<'_> {
         Ok(world.connection_group(pos[0], pos[1], pos[2]))
     }
 
-    pub(in crate::game) fn level_get_enchant_power_bonus(
+     fn level_get_enchant_power_bonus(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -168,7 +171,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// Clip an empty-context ray against collider or outline shapes, without fluids.
-    pub fn level_clip(
+     fn level_clip(
         &self,
         level: LevelRef,
         from: [f64; 3],
@@ -235,7 +238,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// Visit intersecting, readable entities in `Level.getEntities` query order.
-    pub fn level_visit_entities_in(
+     fn level_visit_entities_in(
         &self,
         level: LevelRef,
         min: [f64; 3],
@@ -246,59 +249,59 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// Where `entity` is resident now (`EntityPartState` / `EntityResidency`).
-    pub(in crate::game) fn entity_residency(&self, entity: EntityRef) -> mod_api::EntityResidency {
+     fn entity_residency(&self, entity: EntityRef) -> mod_api::EntityResidency {
         self.side_entity_residency(entity)
     }
 
     /// The entity's type (`Entity.getType`): `minecraft:zombie`. API 373.
-    pub fn entity_kind(&self, entity: EntityRef) -> Option<mod_api::EntityTypeKey> {
+     fn entity_kind(&self, entity: EntityRef) -> Option<mod_api::EntityTypeKey> {
         self.side_entity_kind(entity)
     }
 
     /// The level the entity is in (`Entity.level`).
-    pub fn entity_level(&self, entity: EntityRef) -> Option<LevelRef> {
+     fn entity_level(&self, entity: EntityRef) -> Option<LevelRef> {
         self.side_entity_level(entity)
     }
 
     /// The entity's bounding box (`Entity.getBoundingBox`).
-    pub fn entity_bounding_box(&self, entity: EntityRef) -> Option<[[f64; 3]; 2]> {
+     fn entity_bounding_box(&self, entity: EntityRef) -> Option<[[f64; 3]; 2]> {
         self.side_entity_bounding_box(entity)
     }
 
     /// The entity's velocity in blocks per tick (`Entity.getDeltaMovement`).
-    pub fn entity_velocity(&self, entity: EntityRef) -> Option<[f64; 3]> {
+     fn entity_velocity(&self, entity: EntityRef) -> Option<[f64; 3]> {
         self.side_entity_velocity(entity)
     }
 
     /// The entity's eye height above its feet (`Entity.getEyeHeight`).
-    pub(in crate::game) fn entity_eye_height(&self, entity: EntityRef) -> Option<f64> {
+     fn entity_eye_height(&self, entity: EntityRef) -> Option<f64> {
         self.side_entity_eye_height(entity)
     }
 
     /// The entity's eye position (`Entity.getEyePosition`).
-    pub fn entity_eye_position(&self, entity: EntityRef) -> Option<[f64; 3]> {
+     fn entity_eye_position(&self, entity: EntityRef) -> Option<[f64; 3]> {
         let [x, y, z] = self.entity_position(entity)?;
         Some([x, y + self.entity_eye_height(entity)?, z])
     }
 
     /// Whether the entity is holding its shift key down (`Entity.isShiftKeyDown`).
-    pub(in crate::game) fn entity_is_shift_key_down(&self, entity: EntityRef) -> Option<bool> {
+     fn entity_is_shift_key_down(&self, entity: EntityRef) -> Option<bool> {
         self.side_entity_is_shift_key_down(entity)
     }
 
     /// The entity's main hand (`LivingEntity.getMainArm` / `HumanoidArm`).
-    pub(in crate::game) fn entity_main_arm(&self, entity: EntityRef) -> Option<mod_api::MainHand> {
+     fn entity_main_arm(&self, entity: EntityRef) -> Option<mod_api::MainHand> {
         self.side_entity_main_arm(entity)
     }
 
     /// The entity as a living entity (`LivingEntity`), or None for another kind or a stale handle.
-    pub fn living(&self, entity: EntityRef) -> Option<mod_api::LivingRef> {
+     fn living(&self, entity: EntityRef) -> Option<mod_api::LivingRef> {
         let living = mod_api::LivingRef::new(entity);
         self.native_living_read_target(living).map(|_| living)
     }
 
     /// Resolve a living entity handle for reads on either side.
-    pub fn native_living_read_target(
+     fn native_living_read_target(
         &self,
         living: mod_api::LivingRef,
     ) -> Option<Target> {
@@ -306,7 +309,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// Computed value of `attribute` on `living`.
-    pub(in crate::game) fn living_attribute_value(
+     fn living_attribute_value(
         &self,
         living: mod_api::LivingRef,
         attribute: &str,
@@ -315,7 +318,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// Equipment stack held in `slot` on `living`.
-    pub fn living_equipment_stack(
+     fn living_equipment_stack(
         &self,
         living: mod_api::LivingRef,
         slot: mod_api::EquipmentSlot,
@@ -323,10 +326,12 @@ impl crate::game::CommonGame<'_> {
         self.side_living_equipment_stack(living, slot)
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeEntityRefsCommonGameExt1<'__sg> for G {}
 
-impl crate::game::CommonGame<'_> {
+
+pub trait NativeEntityRefsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// The id of the entity `t` rides, if it rides one.
-    pub fn native_vehicle_id(&self, t: Target) -> Option<u32> {
+     fn native_vehicle_id(&self, t: Target) -> Option<u32> {
         match t {
             Target::Player => self.riding,
             Target::Guest(conn) => self.command_guest(conn)?.vehicle,
@@ -336,8 +341,10 @@ impl crate::game::CommonGame<'_> {
         }
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeEntityRefsCommonGameExt2<'__sg> for G {}
 
-impl crate::game::CommonGame<'_> {
+
+pub trait NativeEntityRefsCommonGameExt3<'__sg>: crate::game::SideGame<'__sg> {
     fn native_kind_for_physical_read(
         &self,
         entity: EntityRef,
@@ -356,9 +363,11 @@ impl crate::game::CommonGame<'_> {
         }
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeEntityRefsCommonGameExt3<'__sg> for G {}
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
-    pub fn native_entity_kind_key(&self, target: Target) -> Option<EntityTypeKey> {
+
+pub trait NativeEntityRefsCommonGameExt4<'__sg>: crate::game::SideGame<'__sg> {
+     fn native_entity_kind_key(&self, target: Target) -> Option<EntityTypeKey> {
         // A living entity's type key was resolved with the accepted resources; other kinds
         // resolve their name.
         let keys = self.res.living_type_keys();
@@ -404,7 +413,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             Target::Boat(id) => self.boats.iter().find(|b| b.id == id)?.entity_type_name(),
             Target::Cart(id) => self.carts.iter().find(|cart| cart.id == id)?.kind.id(),
             Target::Other(id) => {
-                crate::game::side_ops::player::SideOps::side_other_entity_kind(&self.side, id)?
+                crate::game::side_ops::player::SideOps::side_other_entity_kind(self.side_state(), id)?
             }
             Target::Crystal(_) => "minecraft:end_crystal",
             Target::Dragon(_) | Target::DragonPart(_) => super::native_living_body::ENDER_DRAGON,
@@ -423,7 +432,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     }
 
     /// `Entity.getPistonPushReaction`; only the armor stand's override depends on instance state.
-    pub(in crate::game) fn entity_piston_push_reaction(
+     fn entity_piston_push_reaction(
         &self,
         entity: EntityRef,
     ) -> Result<Option<PushReaction>, LevelReadError> {
@@ -462,7 +471,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             }))
     }
 
-    pub(in crate::game) fn entity_is_hanging(
+     fn entity_is_hanging(
         &self,
         entity: EntityRef,
     ) -> Result<Option<bool>, LevelReadError> {
@@ -476,6 +485,8 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             }))
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeEntityRefsCommonGameExt4<'__sg> for G {}
+
 
 /// `ProjectileUtil.getEntityHitResult`'s test on a candidate: grow its box and clip it
 /// against the segment. A segment starting inside the grown box finds no entry (`AABB.clip`).
@@ -504,15 +515,15 @@ pub fn clip_entity_ray(
     ))
 }
 
-impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
+pub trait NativeEntityRefsCommonGameExt5<'__sg>: crate::game::SideGame<'__sg> {
     /// What a handle names now, or None for a stale or foreign one.
-    pub fn native_entity_target(&self, entity: EntityRef) -> Option<Target> {
+     fn native_entity_target(&self, entity: EntityRef) -> Option<Target> {
         self.native_entity_target_with_location(entity)
             .map(|(target, _)| target)
     }
 
     /// Resolve the handle and return its resident location, if admitted to the level.
-    pub fn native_entity_target_with_location(
+     fn native_entity_target_with_location(
         &self,
         entity: EntityRef,
     ) -> Option<(Target, Option<Location>)> {
@@ -521,19 +532,19 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 
     /// [`Self::native_entity_target_with_location`] for an entity resident in the open server
     /// level `dimension`, the one in place or a parked one.
-    pub fn native_entity_target_in(
+     fn native_entity_target_in(
         &self,
         entity: EntityRef,
         dimension: DimensionKey,
     ) -> Option<(Target, Option<Location>)> {
-        if crate::game::Side::held_out(&self.side).contains(&entity.id())
+        if crate::game::Side::held_out(self.side_state()).contains(&entity.id())
             || !self.is_logical_server()
             || self.native_lifecycle.epoch() != Some(entity.epoch())
         {
             return None;
         }
         let EntityLookup::Found { location, value } =
-            <__Side as crate::game::side_ops::world::SideOps>::side_server_resident_entity(
+            <Self::State as crate::game::side_ops::world::SideOps>::side_server_resident_entity(
                 self,
                 entity.id(),
             )
@@ -545,9 +556,9 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
                 .iter()
                 .rev()
                 .find(|&&(_, _, id)| id == entity.id())?;
-            return if crate::game::Side::lan_acting(&self.side) == Some(conn) {
+            return if crate::game::Side::lan_acting(self.side_state()) == Some(conn) {
                 Some((Target::Player, None))
-            } else if crate::game::Side::lan_guest_swaps(&self.side).contains(&conn) {
+            } else if crate::game::Side::lan_guest_swaps(self.side_state()).contains(&conn) {
                 None
             } else {
                 Some((Target::Guest(conn), None))
@@ -560,7 +571,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             .then_some((value, Some(location)))
     }
 
-    pub(in crate::game) fn level_ray_trace_nearest_entity(
+     fn level_ray_trace_nearest_entity(
         &self,
         level: LevelRef,
         from: [f64; 3],
@@ -586,7 +597,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
         Ok(nearest.map(|(hit, _)| hit))
     }
 
-    pub fn visit_entity_ray_hits(
+     fn visit_entity_ray_hits(
         &self,
         level: LevelRef,
         from: [f64; 3],
@@ -625,7 +636,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     }
 
     /// `ItemStack.getDestroySpeed` of `tool` on the block at `pos`.
-    pub(in crate::game) fn level_block_break_speed(
+     fn level_block_break_speed(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -644,7 +655,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// position with an empty context. The world is never modified. Returns None
     /// for a stale or unavailable level. Unloaded neighbors
     /// read as air; collision errors return no boxes, like `block_collision`.
-    pub(in crate::game) fn level_block_shape(
+     fn level_block_shape(
         &self,
         level: LevelRef,
         state: BlockStateId,
@@ -655,7 +666,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             return (self.native_client_level() == Some(level)).then(|| {
                 self.state_shape_boxes(
                     &self.world,
-                    crate::game::Side::shulkers(&self.side),
+                    crate::game::Side::shulkers(self.side_state()),
                     state,
                     pos,
                     kind,
@@ -666,10 +677,10 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
             return None;
         }
         let (world, shulkers) = if self.dim.key() == level.dimension() {
-            (&self.world, crate::game::Side::shulkers(&self.side))
+            (&self.world, crate::game::Side::shulkers(self.side_state()))
         } else {
-            <__Side as crate::game::side_ops::world::SideOps>::side_parked_block_shapes(
-                &self.side,
+            <Self::State as crate::game::side_ops::world::SideOps>::side_parked_block_shapes(
+                self.side_state(),
                 level.dimension(),
             )?
         };
@@ -679,7 +690,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// The local face support in an open server level or the current client level,
     /// including shapes published by local block entities. None for unavailable
     /// levels, unloaded or out-of-height blocks, or a shape query error.
-    pub fn level_block_face_sturdy(
+     fn level_block_face_sturdy(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -698,7 +709,7 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
 
     /// The entity's yaw and pitch in degrees (`Entity.getYRot`, `getXRot`); 0
     /// for the kinds that don't turn. API 373.
-    pub fn entity_rotation(&self, entity: EntityRef) -> Option<[f32; 2]> {
+     fn entity_rotation(&self, entity: EntityRef) -> Option<[f32; 2]> {
         Some(self.target_rotation(self.native_entity_read_target(entity)?))
     }
 
@@ -706,32 +717,34 @@ impl<__Side: crate::game::Side> crate::game::Game<'_, __Side> {
     /// one in place, as a kill credit can name one (`getEntityInAnyDimension`):
     /// its identity reads (`entity_kind`, `entity_uuid`, `entity_level`)
     /// answer from there. None on a client or for anything else.
-    pub fn mob_in_other_level(&self, id: u32) -> Option<(super::Dim, &super::Mob)> {
+     fn mob_in_other_level(&self, id: u32) -> Option<(super::Dim, &super::Mob)> {
         if !self.is_logical_server() {
             return None;
         }
         let EntityLookup::Found {
             location,
             value: Target::Mob(_),
-        } = <__Side as crate::game::side_ops::world::SideOps>::side_server_resident_entity(
+        } = <Self::State as crate::game::side_ops::world::SideOps>::side_server_resident_entity(
             self, id,
         )
         else {
             return None;
         };
-        <__Side as crate::game::side_ops::world::SideOps>::side_parked_mob(
-            &self.side,
+        <Self::State as crate::game::side_ops::world::SideOps>::side_parked_mob(
+            self.side_state(),
             location.owner.dimension,
             location.join,
         )
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeEntityRefsCommonGameExt5<'__sg> for G {}
 
-impl crate::game::CommonGame<'_> {
+
+pub trait NativeEntityRefsCommonGameExt6<'__sg>: crate::game::SideGame<'__sg> {
     /// The entity as a vanilla Mob: a mob or the ender dragon. Players, armor
     /// stands, stale handles and clients are rejected. Mobs taken out for
     /// ticking are unavailable (a #29 follow-up).
-    pub fn mob(&self, entity: EntityRef) -> Option<MobRef> {
+     fn mob(&self, entity: EntityRef) -> Option<MobRef> {
         match self.native_entity_target(entity)? {
             Target::Mob(_) | Target::Dragon(_) => Some(MobRef::new(entity)),
             _ => None,
@@ -739,7 +752,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// The existing portal decision for an available mob in the current level.
-    pub(in crate::game) fn mob_can_use_portal(&self, mob: MobRef) -> Option<bool> {
+     fn mob_can_use_portal(&self, mob: MobRef) -> Option<bool> {
         let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
@@ -747,14 +760,16 @@ impl crate::game::CommonGame<'_> {
         Some(self.mob_portal_eligible(mob))
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeEntityRefsCommonGameExt6<'__sg> for G {}
 
-impl crate::game::CommonGame<'_> {
+
+pub trait NativeEntityRefsCommonGameExt7<'__sg>: crate::game::SideGame<'__sg> {
     /// The entity's name as plain text (`Entity.getName`): its custom name,
     /// a player's name, else its type's name. On a client (API
     /// @API:client_entity_refs@), from the custom name the server synced
     /// (`Entity.DATA_CUSTOM_NAME`) and a player's profile name. API
     /// 386.
-    pub(in crate::game) fn entity_name(&self, entity: EntityRef) -> Option<String> {
+     fn entity_name(&self, entity: EntityRef) -> Option<String> {
         let t = self.native_entity_read_target(entity)?;
         if let Some(result) = self.side_level_player_name(entity) {
             if let Some(name) = result.ok()? {
@@ -773,6 +788,8 @@ impl crate::game::CommonGame<'_> {
         Some(self.target_name(t).plain())
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeEntityRefsCommonGameExt7<'__sg> for G {}
+
 
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 
@@ -781,3 +798,13 @@ use crate::game::side_ops::player::PlayerSideGameExt as _;
 use crate::game::side_ops::world::WorldSideGameExt as _;
 
 use crate::game::tables::GameItems as _;
+
+use crate::game::block_props::BlockPropsGameExt2 as _;
+
+use crate::game::bookshelves_common::BookshelvesCommonGameExt1 as _;
+
+use crate::game::commands_common::CommandsCommonGameExt2 as _;
+
+use crate::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
+
+use crate::game::remote::general::GeneralGameExt1 as _;

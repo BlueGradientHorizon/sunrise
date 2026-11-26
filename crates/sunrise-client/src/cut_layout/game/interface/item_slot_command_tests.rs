@@ -79,3 +79,7 @@ fn item_replace_asks_the_slot_predicate_of_a_stand_and_the_dragon() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

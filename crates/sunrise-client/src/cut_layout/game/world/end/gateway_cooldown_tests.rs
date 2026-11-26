@@ -185,3 +185,5 @@ fn game_gateway_phases() -> [[i32; 2]; 4] {
     assert_eq!(game.creatures.projectiles.len(), 1);
     rows
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

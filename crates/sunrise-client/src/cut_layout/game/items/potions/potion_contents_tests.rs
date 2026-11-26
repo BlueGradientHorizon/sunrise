@@ -227,3 +227,5 @@ fn a_water_potion_with_custom_effects_does_not_douse_fire() {
     throw(&mut game, &water);
     assert!(!lit(&game), "plain water puts the campfire out");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

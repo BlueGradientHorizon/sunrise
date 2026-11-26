@@ -297,3 +297,5 @@ fn silent_policy_does_not_leak_into_next_ordinary_use() {
         })
     });
 }
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

@@ -210,3 +210,5 @@ fn queued_level_teleport_moves_the_player_row_and_later_writes_stay_in_the_desti
         assert_eq!(before[0].entry.read(&VALUE), Ok(&21));
     });
 }
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

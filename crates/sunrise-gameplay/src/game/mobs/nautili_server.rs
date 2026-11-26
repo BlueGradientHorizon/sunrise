@@ -47,7 +47,7 @@ impl ServerGame<'_> {
                 self.use_nautilus_food(item);
                 let rolled = self.common.mobs[index].random.next_int_bound(3).unwrap_or(1) == 0;
                 let acting = self.acting_player_uuid();
-                let (tamer, tamer_entity_id) = (self.common.native_acting_id(), self.common.own_entity_id());
+                let (tamer, tamer_entity_id) = (self.native_acting_id(), self.own_entity_id());
                 let tamed = rolled && !self.animal_tame_cancelled(index, tamer, tamer_entity_id);
                 let m = &mut self.common.mobs[index];
                 if tamed {
@@ -96,7 +96,7 @@ impl ServerGame<'_> {
                 m.set_saddle(held.map(|s| ItemStack { count: 1, ..s }));
                 let sound = nautilus::saddle_sound(m);
                 self.nautilus_sound(index, sound);
-                self.common.consume_held();
+                self.consume_held();
                 let id = self.common.mobs[index].id;
                 let pos = self.common.mobs[index].position;
                 self.mob_equip_event(id, [pos.x, pos.y, pos.z], true);
@@ -107,7 +107,7 @@ impl ServerGame<'_> {
                 m.extra
                     .set_body_stack(held.map(|s| ItemStack { count: 1, ..s }));
                 self.nautilus_sound(index, "item.armor.equip_nautilus");
-                self.common.consume_held();
+                self.consume_held();
                 let id = self.common.mobs[index].id;
                 let pos = self.common.mobs[index].position;
                 self.mob_equip_event(id, [pos.x, pos.y, pos.z], true);
@@ -173,12 +173,12 @@ impl ServerGame<'_> {
     /// `AbstractNautilus.usePlayerItem`: bucketed fish leave a water bucket.
     pub(in crate::game::server_side) fn use_nautilus_food(&mut self, item: &str) {
         let bucket = self.item_tagged("minecraft:nautilus_bucket_food", item);
-        self.common.consume_held();
+        self.consume_held();
         if bucket && !self.common.creative {
             let water = ItemStack::new("minecraft:water_bucket", 1);
             if self.common.inventory[self.common.selected].is_none() {
                 self.common.inventory[self.common.selected] = Some(water);
-            } else if let Some(rest) = self.common.add_stack_to_inventory(water) {
+            } else if let Some(rest) = self.add_stack_to_inventory(water) {
                 let at = self.common.eye_position().unwrap_or([0.0; 3]);
                 self.spawn_item(rest, at, [0.0; 3], 40);
             }
@@ -187,3 +187,11 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

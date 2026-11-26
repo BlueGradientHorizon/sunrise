@@ -298,7 +298,7 @@ impl crate::game::ClientGame<'_> {
         // nothing answers the pack); an open one only takes the pack.
         if self.client.server_packs.0.prompt.is_none()
             && !self.open_screen_overlay("server_pack_prompt", |game| {
-                game.side.server_packs.0.prompt = Some(PackPrompt {
+                game.client.server_packs.0.prompt = Some(PackPrompt {
                     requests: Vec::new(),
                     required: p.required,
                     prompt: None,

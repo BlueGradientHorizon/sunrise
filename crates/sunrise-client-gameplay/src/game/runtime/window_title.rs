@@ -25,7 +25,7 @@ impl crate::game::ClientGame<'_> {
         if !live || self.common.player.is_none() {
             return None;
         }
-        Some(if self.client.integrated.is_some() && !self.common.is_published() {
+        Some(if self.client.integrated.is_some() && !self.is_published() {
             "title.singleplayer"
         } else if self.client.realm_session {
             "title.multiplayer.realms"
@@ -52,3 +52,5 @@ impl crate::game::ClientGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;

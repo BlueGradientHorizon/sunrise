@@ -44,7 +44,7 @@ pub(in crate::game::server_side) fn saved_fire(tag: &Tag) -> i32 {
 }
 impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn record_boat_lid_movement(&mut self, i: usize, delta: Vec3) {
-        self.common.record_driven_boat_lid_movement(i, delta);
+        self.record_driven_boat_lid_movement(i, delta);
     }
 
     /// `Entity.lavaHurt`'s sound once the hurt went through.
@@ -75,7 +75,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn tick_boats_now(&mut self) {
         // ServerLevel.tick: only entities in entity-ticking chunks tick.
         let ticking = self.entity_ticking_area();
-        let mut round = self.common.native_tick_round();
+        let mut round = self.native_tick_round();
         // A server player's boat is driven by its client (lan_vehicles.rs).
         let driven = self.guest_vehicles();
         // EntityTickEvent.Post comes once AbstractBoat.tick is over, after the
@@ -120,7 +120,7 @@ impl crate::game::ServerGame<'_> {
                 } else {
                     String::new()
                 };
-                if !self.common.native_tick_pre_one(&mut round, id, &kind) {
+                if !self.native_tick_pre_one(&mut round, id, &kind) {
                     self.boat_server_passes(id, &driven, &ticking, &round);
                     break 'boat;
                 }
@@ -142,11 +142,11 @@ impl crate::game::ServerGame<'_> {
                         game.store_boat_back(i, b).then_some((from, to))
                     });
                     if let Some((from, to)) = section_step {
-                        self.common.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+                        self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
                     }
                     self.boat_server_passes(id, &driven, &ticking, &round);
                 }
-                self.common.native_tick_post_one(&round, id, &kind);
+                self.native_tick_post_one(&round, id, &kind);
             }
             i = match self.common.boats.get(i) {
                 Some(b) if b.id == id => i + 1,
@@ -189,7 +189,7 @@ impl crate::game::ServerGame<'_> {
         // resets the fall of the boat the guest drives.
         if driven.contains(&id) {
             let mut b = self.common.boats[i].clone();
-            self.common.boat_step_on(&mut b);
+            self.boat_step_on(&mut b);
             self.common.boat_stuck_in_blocks(&mut b);
             self.common.boats.update(i, |boat| {
                 boat.stuck = b.stuck;
@@ -261,7 +261,7 @@ impl crate::game::ServerGame<'_> {
                 self.eject_boat_riders(i);
             }
             self.lan_entity_event(id as i32, event, [p.x, p.y, p.z]);
-            self.common.handle_bubble_column_effect(i, down);
+            self.handle_bubble_column_effect(i, down);
         }
     }
     /// `AbstractBoat.tick`: the end of it on the server for boat `i`, the two
@@ -278,13 +278,13 @@ impl crate::game::ServerGame<'_> {
         // AbstractBoat.tick calls applyEffectsFromBlocks twice.
         for pass in 0..2 {
             if pass == 1 {
-                self.common.boat_second_step(i);
+                self.boat_second_step(i);
             }
             for &column in &touches {
                 if column.surface {
                     self.boat_above_bubble_column(i, column.drag);
                 } else {
-                    self.common.boat_inside_bubble_column(i, column);
+                    self.boat_inside_bubble_column(i, column);
                 }
             }
         }
@@ -592,7 +592,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// `BoatItem.use`: aim at a block or the water surface.
     pub(in crate::game::server_side) fn place_boat(&mut self, stack: &ItemStack) -> bool {
-        let Some(mut boat) = self.common.boat_to_place(stack) else {
+        let Some(mut boat) = self.boat_to_place(stack) else {
             return false;
         };
         self.server.next_entity += 1;
@@ -627,7 +627,7 @@ impl crate::game::ServerGame<'_> {
             self.post_game_event("minecraft:entity_place", at, ctx);
         }
         if !self.common.creative {
-            self.common.consume_held();
+            self.consume_held();
         }
         self.award_stat("used", &stack.item, 1);
         self.swing_arm();
@@ -642,13 +642,13 @@ impl crate::game::ServerGame<'_> {
         let Some((i, d)) = (match target {
             Some(t) => sunrise_gameplay_common::game::item_actions::named_entity(&self.common.boats, t.id, |b| b.id)
                 .map(|i| (i, 0.0)),
-            None => self.common.boat_hit(),
+            None => self.boat_hit(),
         }) else {
             return false;
         };
         let sneaking = self.server_acting_sneak();
         // Only a client's own pick is stopped by a block: the range check passed.
-        if target.is_none() && !self.common.before_block(d) {
+        if target.is_none() && !self.before_block(d) {
             return false;
         }
         // AbstractBoat.interact starts with Entity.interact: the lead.
@@ -657,7 +657,7 @@ impl crate::game::ServerGame<'_> {
             return true;
         }
         // ChestBoat.interact: sneaking (or a full seat) opens the chest.
-        if self.common.boats[i].chest && (sneaking || self.common.riding.is_some() || !self.common.boat_has_room(i)) {
+        if self.common.boats[i].chest && (sneaking || self.common.riding.is_some() || !self.boat_has_room(i)) {
             self.open_chest_boat_container(i);
             self.swing_arm();
             return true;
@@ -666,7 +666,7 @@ impl crate::game::ServerGame<'_> {
             || self.common.boats[i].out_of_control >= 60.0
             || self.common.riding.is_some()
             || self.ridden_by_guest(self.common.boats[i].id)
-            || !self.common.boat_has_room(i)
+            || !self.boat_has_room(i)
         {
             return false;
         }
@@ -719,10 +719,10 @@ impl crate::game::ServerGame<'_> {
     }
     /// `VehicleEntity.hurtServer` from the player's attack.
     pub(in crate::game::server_side) fn attack_boat(&mut self) -> bool {
-        let Some((i, d)) = self.common.boat_hit() else {
+        let Some((i, d)) = self.boat_hit() else {
             return false;
         };
-        if !self.common.before_block(d) || self.common.mob_hit().is_some_and(|m| m.1 < d) {
+        if !self.before_block(d) || self.mob_hit().is_some_and(|m| m.1 < d) {
             return false;
         }
         self.strike_boat(i);
@@ -737,7 +737,7 @@ impl crate::game::ServerGame<'_> {
         let (damage, scale, _, magic) = self.melee_damage(&kind, false, Some(id as u32));
         let sweep = self.sweep_before_hit(&kind, false);
         let chest = self.common.boats[i].chest;
-        let attacker = self.common.own_entity_id();
+        let attacker = self.own_entity_id();
         let source = sunrise_sim::health::HurtSource {
             damage_type: "minecraft:player_attack",
             causing: attacker,
@@ -748,7 +748,7 @@ impl crate::game::ServerGame<'_> {
             self.saved_refuses_damage(id as u32, "minecraft:player_attack", self.common.creative);
         let invulnerable = crate::game::entity_server::damage_level_of!(
             self,
-            self.side.combat.0.attack(),
+            self.server.combat.0.attack(),
             no_push,
             None
         )
@@ -1139,3 +1139,15 @@ use sunrise_gameplay_common::game::server_side::boats::tests::boat;
 use sunrise_gameplay_common::game::side_ops::lan::LanSideGameExt as _;
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

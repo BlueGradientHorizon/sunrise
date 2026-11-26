@@ -20,7 +20,7 @@ impl ServerGame<'_> {
         CommandInvocation::new(
             literals,
             arguments,
-            self.common.native_level_key(),
+            self.native_level_key(),
             self.source_position(),
         )
     }
@@ -159,3 +159,9 @@ mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

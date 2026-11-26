@@ -116,7 +116,7 @@ impl ServerGame<'_> {
         let t = &self.common.tnts[i];
         let (id, footprint, ground, mut velocity) =
             (t.id, (t.position, t.bounds()), t.ground, t.velocity);
-        let writes = self.common.body_step_on((id, "minecraft:tnt"), footprint, &ground, &mut velocity);
+        let writes = self.body_step_on((id, "minecraft:tnt"), footprint, &ground, &mut velocity);
         let side = game_side!(self);
         let t = &mut self.common.tnts[i];
         let known = t.velocity;
@@ -188,7 +188,7 @@ impl ServerGame<'_> {
         self.common.body_motion(&game_side!(self))
             .apply_block_speed(position, &mut velocity);
         let ground = self.common.tnts[i].ground;
-        let writes = self.common.body_step_on(
+        let writes = self.body_step_on(
             (id, "minecraft:tnt"),
             (position, bounds),
             &ground,
@@ -221,7 +221,7 @@ impl ServerGame<'_> {
         self.entity_powder_snow_particles(snow.0, snow.1, snow.2, snow.3, false);
         // Its move is filed at once, also for one about to explode.
         let (from, to) = (snow.0, snow.1);
-        self.common.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+        self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
         for pos in tops {
             self.bubble_column_particles(pos);
         }
@@ -413,7 +413,7 @@ impl ServerGame<'_> {
         if item != "minecraft:flint_and_steel" && item != "minecraft:fire_charge" {
             return Ok(false);
         }
-        let Some(hit) = self.common.pick() else {
+        let Some(hit) = self.pick() else {
             return Ok(false);
         };
         let state = self.common.world.block(hit.pos[0], hit.pos[1], hit.pos[2]);
@@ -435,7 +435,7 @@ impl ServerGame<'_> {
         // `TntBlock.prime`: an adventure player lights TNT only with a stack
         // whose `can_break` matches it. The refused click is still SUCCESS: the
         // arm swings, and neither the block, the stack nor the fuse changes.
-        if !self.common.may_build() && !self.common.can_break_in_adventure(hit.pos) {
+        if !self.may_build() && !self.can_break_in_adventure(hit.pos) {
             self.swing_arm();
             return Ok(true);
         }
@@ -453,7 +453,7 @@ impl ServerGame<'_> {
         if item == "minecraft:flint_and_steel" {
             self.damage_held(1);
         } else {
-            self.common.consume_held();
+            self.consume_held();
         }
         self.award_stat("used", item, 1);
         Ok(true)
@@ -1203,9 +1203,9 @@ use sunrise_gameplay_common::game::test_server_load;
     pub fn particle_count(
         game: &crate::game::ServerGame<'_>,
     ) -> usize {
-        game.side.pending_explosions.len()
+        game.server.pending_explosions.len()
             + game
-                .side
+                .server
                 .lan_events
                 .iter()
                 .filter(|e| matches!(e.kind, 2002 | 2007))
@@ -1217,13 +1217,13 @@ use sunrise_gameplay_common::game::test_server_load;
         event: &str,
     ) -> u32 {
         let sounds = game
-            .side
+            .server
             .pending_sounds
             .iter()
             .filter(|s| s.event == event)
             .count() as u32;
         let level_events = if event == "minecraft:entity.splash_potion.break" {
-            game.side
+            game.server
                 .lan_events
                 .iter()
                 .filter(|e| matches!(e.kind, 1053 | 1054))
@@ -1291,3 +1291,21 @@ use sunrise_gameplay_common::game::test_server_load;
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

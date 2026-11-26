@@ -173,3 +173,5 @@ fn tp_accepts_the_spawnable_border_coordinates() {
         assert!(!game.run_command(command), "{command}");
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

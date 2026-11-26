@@ -229,7 +229,7 @@ impl crate::game::ClientGame<'_> {
             r.do_limited_crafting = p.limited_crafting;
         }
         self.clear_spectated_entity_post_effect();
-        self.common.bind_local_player_residency();
+        self.bind_local_player_residency();
         self.refresh_debug_renderers();
         // LocalPlayer.setReducedDebugInfo always rebuilds, also on a second login.
         self.client.debug_entries.0.invalidate();
@@ -674,7 +674,7 @@ impl crate::game::ClientGame<'_> {
         if let Some((old_id, uuid)) = old_player {
             self.native_client_player_clone(
                 old_id,
-                self.common.own_entity_id(),
+                self.own_entity_id(),
                 uuid,
                 died,
                 dimension_changed,
@@ -834,3 +834,5 @@ impl crate::game::ClientGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

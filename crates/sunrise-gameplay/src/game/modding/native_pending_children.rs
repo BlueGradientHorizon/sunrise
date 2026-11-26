@@ -51,8 +51,8 @@ pub(in crate::game::server_side) fn pending_key(
     mob: UnspawnedMobRef,
 ) -> Result<Option<Borrow>, UnspawnedMobError> {
     sync_listener(
-        &game.side.lent_mobs.0.borrow().pending,
-        &game.side.lent_mobs.0.borrow().hook,
+        &game.server.lent_mobs.0.borrow().pending,
+        &game.server.lent_mobs.0.borrow().hook,
     );
     if game.native_lifecycle.epoch() != Some(mob.epoch()) {
         return Err(UnspawnedMobError::Expired);
@@ -91,12 +91,12 @@ impl Children {
         game.expire_standalone_lends();
         Self {
             resources: game.res.clone(),
-            arena: game.side.lent_mobs.0.borrow().pending.clone(),
+            arena: game.server.lent_mobs.0.borrow().pending.clone(),
             action,
             epoch: game.lend_epoch(),
             dimension: game.dim,
             breeding,
-            hook: game.side.lent_mobs.0.borrow().hook.clone(),
+            hook: game.server.lent_mobs.0.borrow().hook.clone(),
         }
     }
 
@@ -403,3 +403,5 @@ fn apply_size(mob: &mut Mob, size: u32) {
         _ => unreachable!("species size checked before mutation"),
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

@@ -1913,3 +1913,5 @@ pub(in crate::game) mod scoped_edit_tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::block_props::BlockPropsGameExt2 as _;

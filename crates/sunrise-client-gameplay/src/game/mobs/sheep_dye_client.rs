@@ -11,7 +11,7 @@ impl ClientGame<'_> {
         index: usize,
         hand: Hand,
     ) -> bool {
-        let Some(mut stack) = self.common.with_hand(hand, |g| g.held().cloned()) else {
+        let Some(mut stack) = self.with_hand(hand, |g| g.held().cloned()) else {
             return false;
         };
         sheep_dye::interact(&mut self.common.mobs[index].clone(), &mut stack, true)
@@ -19,7 +19,7 @@ impl ClientGame<'_> {
 
     /// Client-side sheep dyeing prediction: plays local sound and leaves wool/dye to server sync.
     pub(in crate::game) fn client_interact_sheep_dye(&mut self, index: usize, hand: Hand) -> bool {
-        let Some(mut stack) = self.common.with_hand(hand, |g| g.held().cloned()) else {
+        let Some(mut stack) = self.with_hand(hand, |g| g.held().cloned()) else {
             return false;
         };
         if !sheep_dye::interact(&mut self.common.mobs[index], &mut stack, true) {
@@ -36,3 +36,5 @@ impl ClientGame<'_> {
         true
     }
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

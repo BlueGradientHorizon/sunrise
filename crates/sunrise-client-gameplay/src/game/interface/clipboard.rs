@@ -101,14 +101,14 @@ impl crate::game::ClientGame<'_> {
         self.mounted_widget_captures_input()
             || (self.client.screen == Screen::Chat && self.client.title.0.is_none())
             || self.client.sign_edit.is_some()
-            || matches!(self.side.book, Some(super::books::BookScreen::Edit { .. }))
+            || matches!(self.client.book, Some(super::books::BookScreen::Edit { .. }))
             || (self.client.screen == Screen::Creative && self.client.creative_screen.0.tab().search)
             || self.recipe_search_focused()
             || self.station_typing()
             || self.dialog_typing()
             || self.mod_browser_typing()
             || matches!(
-                self.side.screen,
+                self.client.screen,
                 Screen::CommandBlock | Screen::BlockEditor | Screen::Social | Screen::DebugOptions
             )
     }

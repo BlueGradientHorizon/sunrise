@@ -59,7 +59,7 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game::client_side) fn ui_nodes(&self) -> Vec<Node> {
         let size = self.gui_batch().map(|b| [b.width, b.height]);
         let mut nodes = widgets::tree(&widgets::last_labelled(), &widgets::last_targets(), size);
-        if matches!(self.side.screen, Screen::Inventory | Screen::Creative)
+        if matches!(self.client.screen, Screen::Inventory | Screen::Creative)
             && self.client.title.0.is_none()
             && self.client.book.is_none()
             && let Ok((ox, oy)) = self.gui_origin()

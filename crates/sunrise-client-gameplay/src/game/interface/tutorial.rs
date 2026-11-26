@@ -94,7 +94,7 @@ impl crate::game::ClientGame<'_> {
         // Minecraft.tick: also show this in a single-player world once it is
         // published to LAN, but not merely because its client uses memory networking.
         if !self.client.settings.file.bool("joinedFirstServer")
-            && (!self.common.has_singleplayer_server() || self.common.is_published())
+            && (!self.has_singleplayer_server() || self.is_published())
         {
             if let Some(toast) = self.tutorial_toast(Hint::SocialInteractions, Some(0.0)) {
                 self.client
@@ -129,7 +129,7 @@ impl crate::game::ClientGame<'_> {
             |tag: &str, id: &str| items.item_tags.get(tag).is_some_and(|set| set.contains(id));
         let mut previous = Previous::default();
         if self.client.tutorial.waiting == 0
-            && !matches!(self.side.tutorial.step, Step::Movement | Step::None)
+            && !matches!(self.client.tutorial.step, Step::Movement | Step::None)
         {
             for stack in self
                 .common.inventory
@@ -165,7 +165,7 @@ impl crate::game::ClientGame<'_> {
         }
         if self.client.tutorial.step == Step::FindTree
             && self.pick_entity_hit().is_none()
-            && let Some(hit) = self.common.pick()
+            && let Some(hit) = self.pick()
         {
             let name = &self
                 .common.res
@@ -430,3 +430,7 @@ impl HintToast {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::integrated_common::IntegratedCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

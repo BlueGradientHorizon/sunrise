@@ -109,7 +109,7 @@ impl crate::game::ClientGame<'_> {
         if self.client.screen == Screen::Creative {
             self.pad_clear_focus();
             if let Some(c) = self.common.carried.take() {
-                let _ = self.common.add_stack_to_inventory(c);
+                let _ = self.add_stack_to_inventory(c);
             }
             self.set_screen_with(Screen::Playing, |g| g.close_creative_menu());
         } else {
@@ -659,3 +659,5 @@ impl crate::game::ClientGame<'_> {
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

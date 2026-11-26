@@ -2,7 +2,7 @@
 use crate::game::CommonGame;
 use mod_api::LevelRef;
 
-impl CommonGame<'_> {
+pub trait NativeDatapackRefsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The datapack registry set of this level's world session: on the logical server, the
     /// server's own set for both the active dimension and any parked loaded dimension
     /// (matching vanilla `Level.registryAccess()` on `ServerLevel`); on a client, the set its
@@ -15,7 +15,7 @@ impl CommonGame<'_> {
     }
 
     /// The entry ids of a mod's datapack registry as the world last loaded it.
-    pub(super) fn level_datapack_entries(
+     fn level_datapack_entries(
         &self,
         level: LevelRef,
         registry: &str,
@@ -31,7 +31,7 @@ impl CommonGame<'_> {
     }
 
     /// Visit the published entry `entry` of `registry`.
-    pub(super) fn level_datapack_read(
+     fn level_datapack_read(
         &self,
         level: LevelRef,
         registry: &str,
@@ -48,5 +48,7 @@ impl CommonGame<'_> {
         Ok(())
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeDatapackRefsGameExt1<'__sg> for G {}
+
 
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;

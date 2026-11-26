@@ -98,7 +98,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game) fn load_server_loot(&mut self) {
         if let Some(tables) = &self.server.world_tables.0 {
             self.common.server_items = Some(tables.items.clone());
-            self.common.copy_loot_enchantment_answers(&tables.loot);
+            self.copy_loot_enchantment_answers(&tables.loot);
             self.server.server_loot.0.set(Some(tables.loot.clone()));
             global_loot_modifiers::bind_retained(
                 &self.server.reload_resources.0,
@@ -149,7 +149,7 @@ impl crate::game::ServerGame<'_> {
             self.common.server_items = Some(Arc::new(items));
         }
         if let Some(loot) = &loot {
-            self.common.copy_loot_enchantment_answers(loot);
+            self.copy_loot_enchantment_answers(loot);
         }
         self.server.server_loot.0.set(loot);
     }
@@ -714,3 +714,5 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::primary_items::PrimaryItemsGameExt1 as _;

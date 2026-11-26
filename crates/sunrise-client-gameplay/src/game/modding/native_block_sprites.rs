@@ -58,7 +58,7 @@ impl ClientGame<'_> {
         pos: [i32; 3],
         resolver: ColorResolver,
     ) -> Result<u32, LevelReadError> {
-        self.common.native_client_level()
+        self.native_client_level()
             .ok_or(LevelReadError::Unavailable)?;
         Ok(sunrise_client::mesher::biome_tint(
             pos,
@@ -712,3 +712,5 @@ mod block_tint_color_tests {
         });
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

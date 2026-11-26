@@ -45,7 +45,7 @@ impl ServerGame<'_> {
             let secs = (-m.extra.age / 20) as f32 * 0.1;
             // AgeableMob.ageUp: a grown cube is size 2 (SulfurCube.ageBoundaryReached).
             sunrise_sim::mobs::ai::age_up(m, secs as i32, false);
-            self.common.consume_held();
+            self.consume_held();
             self.sulfur_sound(index, "entity.small_sulfur_cube.eat");
             return true;
         }
@@ -67,7 +67,7 @@ impl ServerGame<'_> {
             if item == "minecraft:flint_and_steel" {
                 self.damage_held_tool();
             } else {
-                self.common.consume_held();
+                self.consume_held();
             }
             self.award_stat("used", item, 1);
             return true;
@@ -104,7 +104,7 @@ impl ServerGame<'_> {
                 .clone()
                 .map(|s| ItemStack { count: 1, ..s });
             self.common.mobs[index].extra.set_body_stack(held);
-            self.common.consume_held();
+            self.consume_held();
             self.sulfur_sound(index, "entity.sulfur_cube.absorb");
             // Entity.gameEvent(ENTITY_INTERACT): the cube is the source.
             let (id, at) = (self.common.mobs[index].id, self.common.mobs[index].position);
@@ -300,3 +300,5 @@ impl ServerGame<'_> {
         self.server_play_sound(&format!("minecraft:{sound}"), at, 1.0, 1.0);
     }
 }
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

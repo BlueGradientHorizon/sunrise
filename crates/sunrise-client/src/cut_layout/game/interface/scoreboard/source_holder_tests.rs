@@ -171,3 +171,5 @@ fn a_wildcard_reset_names_tracked_holders_without_their_team_formatting() {
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].plain(), "Reset all scores for Alex");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

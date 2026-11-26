@@ -324,3 +324,7 @@ fn a_loaded_hurt_by_mob_naming_the_mob_itself_resolves_and_ends_after_100_ticks(
     assert_eq!(game.mobs[me].ai.last_hurt_by, None, "101 ticks");
     assert_eq!(fields(&mut game, me), (None, None), "101 ticks");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

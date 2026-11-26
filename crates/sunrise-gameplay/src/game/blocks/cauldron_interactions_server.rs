@@ -35,8 +35,8 @@ impl ServerGame<'_> {
                 .common.native_lifecycle
                 .epoch()
                 .ok_or_else(|| "no active world epoch".to_owned())?;
-            let player_id = self.common.native_acting_id();
-            let player = self.common.player(player_id).unwrap_or_else(|| {
+            let player_id = self.native_acting_id();
+            let player = self.player(player_id).unwrap_or_else(|| {
                 // A fake player can be the acting body without an online-player entry.
                 let actor = mod_api::EntityRef::new(epoch, self.native_acting_entity());
                 mod_api::__private::game::player_ref(actor, player_id)
@@ -81,3 +81,7 @@ impl ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

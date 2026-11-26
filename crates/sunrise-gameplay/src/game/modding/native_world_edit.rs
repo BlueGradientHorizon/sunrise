@@ -42,7 +42,7 @@ impl ServerGame<'_> {
     /// handle, a level that is not the one being ticked.
     fn chunk_write_gate(&self, level: mod_api::LevelRef) -> Result<(), mod_api::ChunkRefusal> {
         use mod_api::{ChunkRefusal, LevelReadError};
-        match self.common.native_level_world_result(level) {
+        match self.native_level_world_result(level) {
             Err(LevelReadError::Unavailable) => Err(ChunkRefusal::Client),
             Err(_) => Err(ChunkRefusal::Stale),
             Ok(_) if level.dimension() != self.common.dim.key() => Err(ChunkRefusal::NotInPlace),
@@ -103,3 +103,7 @@ impl ServerGame<'_> {
             && dimension == self.common.dim.id()
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

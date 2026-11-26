@@ -9,7 +9,7 @@ use sunrise_sim::mobs::{
 /// `ContainerOpenersCounter.CHECK_TICK_DELAY`.
 pub const RECHECK_TICKS: i64 = 5;
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// `readyForShearing`: the antenna holds a flower shears take.
     pub fn golem_shearable(&self, index: usize) -> bool {
         self.mobs[index].saddle_item().is_some_and(|a| {

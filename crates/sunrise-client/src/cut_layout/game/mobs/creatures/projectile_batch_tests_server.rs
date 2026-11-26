@@ -239,3 +239,7 @@ pub(in crate::game) fn run_continuing_wind_charge_keeps_tick_order_and_skips_rel
         });
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

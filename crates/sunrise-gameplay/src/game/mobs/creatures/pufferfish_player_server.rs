@@ -39,7 +39,7 @@ impl crate::game::ServerGame<'_> {
         let touching: Vec<_> = fish
             .filter(|m| {
                 query.intersects(m.bounds())
-                    && teams_allow_damage(self.common.mob_team_of(m), self.player_team())
+                    && teams_allow_damage(self.mob_team_of(m), self.player_team())
             })
             .map(|m| {
                 (
@@ -83,3 +83,5 @@ impl crate::game::ServerGame<'_> {
             }));
     }
 }
+
+use sunrise_gameplay_common::game::scoreboard_common::CommonGameExt1 as _;

@@ -29,7 +29,7 @@ use sunrise_gameplay_common::game::native_hooks::customize_boss_event_progress::
                     fog: false,
                 },
             };
-            game.side.boss_overlay.apply(&packet, 0);
+            game.client.boss_overlay.apply(&packet, 0);
         }
     }
 

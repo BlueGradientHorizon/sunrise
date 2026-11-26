@@ -12,17 +12,17 @@ impl ServerGame<'_> {
         level: LevelRef,
         visit: &mut dyn FnMut(PlayerRef) -> ControlFlow<()>,
     ) -> Result<ControlFlow<()>, LevelReadError> {
-        self.common.native_level_world_result(level)?;
+        self.native_level_world_result(level)?;
         Ok(self
             .level_player_uuids(level.dimension_id())
-            .filter_map(|uuid| self.common.player(uuid))
+            .filter_map(|uuid| self.player(uuid))
             .try_for_each(visit))
     }
 
     /// `ChunkMap.TrackedEntity.seenBy`: the players of the level in place whose tracker holds
     /// the entity, other than the entity itself.
     pub(in crate::game) fn entity_trackers(&self, entity: EntityRef) -> Option<Vec<PlayerRef>> {
-        let target = self.common.native_entity_target(entity)?;
+        let target = self.native_entity_target(entity)?;
         if self.target_level(target).key() != self.common.dim.key() {
             return None;
         }
@@ -33,7 +33,7 @@ impl ServerGame<'_> {
                 .iter()
                 .flat_map(|h| h.hub.guests.iter().map(move |g| (&h.hub, g)))
                 .filter(|(hub, g)| hub.here(g) && g.entity_id != id && g.tracker.is_tracking(id))
-                .filter_map(|(_, g)| self.common.player(g.uuid))
+                .filter_map(|(_, g)| self.player(g.uuid))
                 .collect(),
         )
     }
@@ -41,7 +41,7 @@ impl ServerGame<'_> {
     /// `ChunkMap.getPlayers(pos, false)`: the players the chunk was sent to and is
     /// inside the view of.
     pub(in crate::game) fn chunk_watchers(&self, chunk: ChunkRef) -> Option<Vec<PlayerRef>> {
-        self.common.native_level_world(chunk.level())?;
+        self.native_level_world(chunk.level())?;
         let dimension = chunk.level().dimension_id();
         let [x, z] = chunk.pos();
         Some(
@@ -50,8 +50,16 @@ impl ServerGame<'_> {
                 .iter()
                 .flat_map(|h| h.hub.guests.iter())
                 .filter(|g| g.tracks_chunk(dimension, (x, z)))
-                .filter_map(|g| self.common.player(g.uuid))
+                .filter_map(|g| self.player(g.uuid))
                 .collect(),
         )
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

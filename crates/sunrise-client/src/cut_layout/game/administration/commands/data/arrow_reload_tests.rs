@@ -132,3 +132,5 @@ fn a_merge_reloads_an_arrows_own_save_data() {
     assert_eq!(t.life, 0);
     assert!(t.in_ground);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -2642,3 +2642,7 @@ pub(in crate::game) fn run_witness_review_round1_regressions() {
         failures.join("\n")
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

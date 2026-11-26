@@ -8,7 +8,7 @@ pub(in crate::game) use sunrise_gameplay_common::brushing::{
     Brushing, USE_DURATION, completion_state,
 };
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     pub fn set_dusted(&mut self, pos: [i32; 3], dusted: i32) {
         let registry = self.pack.assets.registry;
         let Some(mut state) = registry

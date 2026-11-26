@@ -301,3 +301,5 @@ fn a_part_breaks_a_mobs_glider_now() {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

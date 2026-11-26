@@ -6,9 +6,9 @@ use sunrise_items::items::ItemStack;
 use sunrise_level::{containers::BlockEntity, world::World};
 use sunrise_sim::save;
 
-impl crate::game::CommonGame<'_> {
+pub trait NativeBlockEntityReadGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Read a configured mod holder's declared internal item slot, without automation policy.
-    pub(in crate::game) fn block_entity_item_slot(
+     fn block_entity_item_slot(
         &self,
         entity: BlockEntityRef,
         slot: u32,
@@ -24,7 +24,7 @@ impl crate::game::CommonGame<'_> {
         Ok(block_entity.items.get(slot as usize).cloned().flatten())
     }
 
-    pub fn native_block_entity_target(
+     fn native_block_entity_target(
         &self,
         entity: BlockEntityRef,
     ) -> Option<(&World, &BlockEntity)> {
@@ -34,7 +34,7 @@ impl crate::game::CommonGame<'_> {
 
     /// Find a block entity in a loaded chunk of an open level, or on a client in
     /// the level it shows.
-    pub fn block_entity(
+     fn block_entity(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -45,7 +45,7 @@ impl crate::game::CommonGame<'_> {
 
     /// `block_entity`, also for a block entity temporarily taken out by an engine operation:
     /// its generation stays in place while it is out.
-    pub fn block_entity_identity(
+     fn block_entity_identity(
         &self,
         level: LevelRef,
         pos: [i32; 3],
@@ -61,7 +61,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// The block entity's type (`BlockEntity.getType`).
-    pub(in crate::game) fn block_entity_kind(
+     fn block_entity_kind(
         &self,
         entity: BlockEntityRef,
     ) -> Option<BlockEntityTypeKey> {
@@ -72,7 +72,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// The block entity's position.
-    pub(in crate::game) fn block_entity_position(
+     fn block_entity_position(
         &self,
         entity: BlockEntityRef,
     ) -> Option<[i32; 3]> {
@@ -81,20 +81,20 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// The block entity's level.
-    pub(in crate::game) fn block_entity_level(&self, entity: BlockEntityRef) -> Option<LevelRef> {
+     fn block_entity_level(&self, entity: BlockEntityRef) -> Option<LevelRef> {
         self.native_block_entity_target(entity)?;
         Some(entity.fields().level)
     }
 
     /// The data saved without identity or position metadata
     /// (`BlockEntity.saveWithoutMetadata`).
-    pub fn block_entity_data(&self, entity: BlockEntityRef) -> Option<Compound> {
+     fn block_entity_data(&self, entity: BlockEntityRef) -> Option<Compound> {
         let world = self.native_level_read_world(entity.fields().level)?;
         world_block_entity_data(world, self.pack.assets.registry, self.res.items(), entity)
     }
 
     /// The resident lock, independent of the block entity's synthesized save payload.
-    pub(in crate::game) fn block_entity_lock(&self, entity: BlockEntityRef) -> Option<&Compound> {
+     fn block_entity_lock(&self, entity: BlockEntityRef) -> Option<&Compound> {
         let (world, _) = self.native_block_entity_target(entity)?;
         let [x, y, z] = entity.fields().position;
         match world.block_lock((x, y, z))? {
@@ -105,7 +105,7 @@ impl crate::game::CommonGame<'_> {
 
     /// A snapshot of a mod block entity's menu data slots, on the server or in the
     /// client's copy. None for a stale/missing/vanilla entity. Item storage is separate.
-    pub(in crate::game) fn block_entity_data_slots(
+     fn block_entity_data_slots(
         &self,
         entity: BlockEntityRef,
     ) -> Option<Vec<i32>> {
@@ -115,6 +115,8 @@ impl crate::game::CommonGame<'_> {
         Some(block_entity.data.clone())
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeBlockEntityReadGameExt1<'__sg> for G {}
+
 
 /// A mod's data payload as the block entity takes it: without the fields the engine owns, which
 /// are its identity and position, and its published shapes (`set_shapes` alone writes those).
@@ -286,3 +288,5 @@ pub fn loaded_block_entity(
 }
 
 use crate::game::tables::GameItems as _;
+
+use crate::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

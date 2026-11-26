@@ -179,13 +179,13 @@ impl crate::game::ClientGame<'_> {
                     .as_mut()
                     .ok_or("no held item")?;
                 held.enchant(&e, level);
-                self.common.apply_equipment();
+                self.apply_equipment();
                 ok()
             }
             "book" => Ok(Some(self.book_control(words.get(1).copied())?)),
             "potion" => {
                 let stack = ItemStack::new(&id(arg(1)?), 1).with_potion(&id(arg(2)?));
-                let rest = self.common.add_stack_to_inventory(stack);
+                let rest = self.add_stack_to_inventory(stack);
                 Ok(Some(json!({ "ok": rest.is_none() })))
             }
             "menu" => {
@@ -202,7 +202,7 @@ impl crate::game::ClientGame<'_> {
                     })
                     .collect();
                 Ok(Some(json!({
-                    "screen": if self.side.screen == Screen::Inventory { "inventory" } else { "other" },
+                    "screen": if self.client.screen == Screen::Inventory { "inventory" } else { "other" },
                     "station": self.station.as_ref().map(|s| format!("{:?}", s.kind)),
                     "name": self.station.as_ref().map(|s| s.name.clone()),
                     "info": self.station_info(),
@@ -289,3 +289,5 @@ impl crate::game::ClientGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

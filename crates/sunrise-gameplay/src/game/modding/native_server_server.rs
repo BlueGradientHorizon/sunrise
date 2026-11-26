@@ -135,7 +135,7 @@ impl crate::game::ServerGame<'_> {
         uuid: u128,
         name: &str,
     ) -> Option<PlayerRef> {
-        if !self.common.level_in_place(level)
+        if !self.level_in_place(level)
             || !self.server.lan_guest_swaps.is_empty()
             || !sunrise_sim::offline_name::valid_name(name)
         {
@@ -231,7 +231,7 @@ impl crate::game::ServerGame<'_> {
             .map(|g| g.conn);
         match conn {
             Some(conn) => self.as_guest(conn, f).is_some(),
-            None if uuid == self.common.native_acting_id() => self.native_as_acting(f),
+            None if uuid == self.native_acting_id() => self.native_as_acting(f),
             None => false,
         }
     }
@@ -517,14 +517,14 @@ impl crate::game::ServerGame<'_> {
         }
         self.as_console_in_spawn_level(|game| {
             let previous = game
-                .side
+                .server
                 .command_source
                 .replace(super::commands::execute::Source {
                     silent: false,
                     ..game.server_source()
                 });
             game.run_command(line);
-            game.side.command_source = previous;
+            game.server.command_source = previous;
         });
         true
     }
@@ -578,7 +578,7 @@ impl crate::game::ServerGame<'_> {
     /// own rule). None for a stale or unavailable player.
     pub(in crate::game) fn player_counts_for_sleep(&self, player: PlayerRef) -> Option<bool> {
         let ignored = |game: &Self| {
-            game.side
+            game.server
                 .lan
                 .as_ref()
                 .is_some_and(|host| host.sleep_ignored.contains(&player.uuid()))
@@ -605,7 +605,7 @@ impl crate::game::ServerGame<'_> {
         if self.native_acting_player() == Some(player) {
             let dim = match self.server.lan_acting {
                 Some(conn) => {
-                    let g = self.common.command_guest(conn)?;
+                    let g = self.command_guest(conn)?;
                     Dim::from_id(&g.dimension).key()
                 }
                 None => self.common.dim.key(),
@@ -808,7 +808,7 @@ impl crate::game::ServerGame<'_> {
         }
         let mut stored_here = false;
         self.native_as_player_handle(player, |game| {
-            let Some(slot) = game.side.acting_abilities.as_mut() else {
+            let Some(slot) = game.server.acting_abilities.as_mut() else {
                 return;
             };
             *slot = stored;
@@ -850,7 +850,7 @@ impl crate::game::ServerGame<'_> {
             }),
             None => None,
         };
-        let changed = self.common.player_selected_slot(player) != Some(slot);
+        let changed = self.player_selected_slot(player) != Some(slot);
         if !self.native_as_player_handle(player, |game| {
             if changed
                 && game
@@ -898,7 +898,7 @@ impl crate::game::ServerGame<'_> {
         if changes.is_empty() {
             return;
         }
-        let Some(level) = self.common.level(self.common.dim.id()) else {
+        let Some(level) = self.level(self.common.dim.id()) else {
             return;
         };
         let told = |level| match level {
@@ -929,7 +929,7 @@ impl crate::game::ServerGame<'_> {
         };
         for run in runs {
             // A level the server no longer holds: nothing to name.
-            let Some(level) = self.common.level(&run.dimension) else {
+            let Some(level) = self.level(&run.dimension) else {
                 continue;
             };
             for watch in run.watches {
@@ -1260,7 +1260,7 @@ impl crate::game::ServerGame<'_> {
         if ticks > super::MAX_SLEEP_TIMER || self.player_handle_read(player).is_none() {
             return false;
         }
-        let Some(target) = self.common.native_entity_target(player.entity()) else {
+        let Some(target) = self.native_entity_target(player.entity()) else {
             return false;
         };
         self.native_player_sleep_write(target, |game| {
@@ -1561,9 +1561,8 @@ impl crate::game::ServerGame<'_> {
         match target {
             Target::Player => self.native_acting_player(),
             Target::Guest(conn) => self
-                .common
                 .command_guest(conn)
-                .and_then(|guest| self.common.player(guest.uuid)),
+                .and_then(|guest| self.player(guest.uuid)),
             _ => None,
         }
     }
@@ -1668,7 +1667,7 @@ impl crate::game::ServerGame<'_> {
                         .expect("command item validation resolves registered items"),
                 ),
                 Arg::Resource(id) if matches!(ty, Some(ArgType::Dimension)) => {
-                    dimension_value(&id, |dimension| self.common.level(dimension))?
+                    dimension_value(&id, |dimension| self.level(dimension))?
                 }
                 Arg::Resource(id) => Value::Id(
                     mod_api::Identifier::parse(&id).map_err(|_| err("command.failed", &[]))?,
@@ -1747,8 +1746,7 @@ impl crate::game::ServerGame<'_> {
         face: mod_api::BlockFace,
         support: mod_api::SupportType,
     ) -> Option<bool> {
-        self.common
-            .level_block_face_sturdy(level, pos, face, support)
+        self.level_block_face_sturdy(level, pos, face, support)
     }
 
     pub(in crate::game) fn server_signal_block_entity(
@@ -1756,14 +1754,14 @@ impl crate::game::ServerGame<'_> {
         level: LevelRef,
         pos: [i32; 3],
     ) -> Option<mod_api::BlockEntityRef> {
-        self.common.block_entity(level, pos)
+        self.block_entity(level, pos)
     }
 
     pub(in crate::game) fn server_signal_block_entity_data(
         &self,
         entity: mod_api::BlockEntityRef,
     ) -> Option<mod_api::Compound> {
-        self.common.block_entity_data(entity)
+        self.block_entity_data(entity)
     }
 
     pub(in crate::game) fn server_level_is_raining_at(
@@ -1784,9 +1782,8 @@ impl crate::game::ServerGame<'_> {
             .iter()
             .rev()
             .find(|&&(player, _, _)| player == uuid)?;
-        self.common.command_guest(conn).filter(|_| {
-            !sunrise_gameplay_common::game::Side::lan_guest_swaps(&self.server).contains(&conn)
-        })
+        self.command_guest(conn)
+            .filter(|_| !sunrise_gameplay_common::game::Side::lan_guest_swaps(&self.server).contains(&conn))
     }
 
     pub(in crate::game) fn player_handle_read(&self, player: PlayerRef) -> Option<PlayerRead<'_>> {
@@ -2151,3 +2148,17 @@ pub(in crate::game) mod fake_action_tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

@@ -86,7 +86,7 @@ impl TrialSpawnerLevel for GameLevel<'_, '_> {
             .is_empty()
     }
     fn loot_items(&self, table: &str, seed: i64) -> Vec<ItemStack> {
-        let Some(loot) = self.game.side.server_loot.0.get() else {
+        let Some(loot) = self.game.server.server_loot.0.get() else {
             return Vec::new();
         };
         loot.roll_split(table, &mut LegacyRandom::new(seed))

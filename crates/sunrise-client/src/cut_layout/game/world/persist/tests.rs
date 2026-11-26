@@ -1269,3 +1269,8 @@ fn an_orb_saves_its_live_portal_cooldown() {
         assert_eq!(read.get("Air"), Some(&Tag::Short(275)));
     });
 }
+
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -332,3 +332,4 @@ mod typed_state_range_read_tests {
         }
     }
 }
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

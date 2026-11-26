@@ -149,3 +149,5 @@ mod blocked_hit_use_tests {
 #[path = "tests/shield_ram_tests.rs"]
 mod ram_tests;
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

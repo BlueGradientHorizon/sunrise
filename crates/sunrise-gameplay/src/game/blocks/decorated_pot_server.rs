@@ -119,7 +119,7 @@ impl ServerGame<'_> {
         spill::put_saved_entity(&mut self.common.world, pos, tag);
         // The sherds and item go to the guests (BlockEntityData).
         self.mark_block_entity_updated((pos[0], pos[1], pos[2]));
-        self.common.consume_held();
+        self.consume_held();
         self.server_play_sound(
             "minecraft:block.decorated_pot.insert",
             center,
@@ -146,3 +146,5 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

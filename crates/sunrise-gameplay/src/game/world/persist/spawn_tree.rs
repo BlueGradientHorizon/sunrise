@@ -120,8 +120,8 @@ impl SpawnTree {
             let mount = parent.and_then(|i| ids[i]);
             let id = match node {
                 Node::Mob(mut mob) => {
-                    game.side.next_entity += 1;
-                    mob.id = game.side.next_entity;
+                    game.server.next_entity += 1;
+                    mob.id = game.server.next_entity;
                     mob.attach_mod_parts();
                     let id = game.install_loaded_mob(
                         (*mob, uuid),

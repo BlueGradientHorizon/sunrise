@@ -38,7 +38,7 @@ impl ServerGame<'_> {
             Who::Mob(id) => self.mob_team(id),
             Who::Player => match player {
                 Some(conn) => self
-                    .common.command_guest(conn)
+                    .command_guest(conn)
                     .and_then(|guest| self.common.score.board.players_team(&guest.name)),
                 None => self.player_team(),
             },
@@ -65,7 +65,7 @@ impl ServerGame<'_> {
     }
     /// `PiglinAi.isLovedItem` or a preferred weapon (`Piglin.canReplaceCurrentItem`).
     fn piglin_wanted(&self, m: &Mob, item: &str) -> bool {
-        self.common.piglin_loved(item)
+        self.piglin_loved(item)
             || !m.is_baby() && self.item_in_tag("minecraft:piglin_preferred_weapons", item)
     }
     /// The `SLOT_NAMES` index `getEquipmentSlotForItem` picks: the
@@ -134,7 +134,7 @@ impl ServerGame<'_> {
         if m.extra.piglin.admire_disabled.present() && m.ai.target.is_some() {
             return false;
         }
-        let holds_loved = m.extra.off_hand_id().is_some_and(|o| self.common.piglin_loved(o));
+        let holds_loved = m.extra.off_hand_id().is_some_and(|o| self.piglin_loved(o));
         if self.common.piglin_currency(stack) {
             return !holds_loved;
         }
@@ -143,7 +143,7 @@ impl ServerGame<'_> {
             space
         } else if self.item_in_tag("minecraft:piglin_food", item) {
             !has_eaten_recently(m) && space
-        } else if self.common.piglin_loved(item) {
+        } else if self.piglin_loved(item) {
             !holds_loved && space
         } else {
             self.piglin_can_replace(m, stack, self.piglin_slot(item))
@@ -314,7 +314,7 @@ impl ServerGame<'_> {
                 })
                 .min_by(|a, b| a.1.total_cmp(&b.1));
             let loved =
-                nearest.is_some_and(|(j, _)| self.common.piglin_loved(&self.common.dropped[j].stack.item));
+                nearest.is_some_and(|(j, _)| self.piglin_loved(&self.common.dropped[j].stack.item));
             self.admire_seen_item(i, nearest.map(|(_, d)| d), loved);
             let best = nearest.filter(|(_, d)| *d <= 81.0);
             let Some((j, _)) = best else {
@@ -349,7 +349,7 @@ impl ServerGame<'_> {
                 }
                 one
             };
-            if self.common.piglin_loved(&item) {
+            if self.piglin_loved(&item) {
                 self.start_admiring(i, stack);
             } else if self.item_in_tag("minecraft:piglin_food", &item)
                 && !has_eaten_recently(&self.common.mobs[i])
@@ -450,7 +450,7 @@ impl ServerGame<'_> {
         if self.common.mobs[i].is_baby() {
             if !self.piglin_equip(i, &stack) {
                 if let Some(old) = item_stack(&self.common.mobs[i], 0) {
-                    if self.common.piglin_loved(&old.item) {
+                    if self.piglin_loved(&old.item) {
                         self.piglin_stash(i, old);
                     } else {
                         self.piglin_throw_items(i, vec![old]);
@@ -618,8 +618,8 @@ impl ServerGame<'_> {
                     .server
                     .lan_acting_entity
                     .or_else(|| self.player_identity().map(|(_, id)| id))
-                    .and_then(|id| self.common.entity(id))
-                    .and_then(|entity| self.common.living(entity));
+                    .and_then(|id| self.entity(id))
+                    .and_then(|entity| self.living(entity));
                 let Some(original) = original else { continue };
                 let Some(epoch) = self.common.native_lifecycle.epoch() else {
                     continue;
@@ -798,3 +798,11 @@ use sunrise_gameplay_common::game::server_side::piglins::tests::armor;
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::piglins_common::PiglinsCommonGameExt1 as _;

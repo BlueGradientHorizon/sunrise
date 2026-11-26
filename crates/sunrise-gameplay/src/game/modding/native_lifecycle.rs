@@ -52,7 +52,7 @@ impl crate::game::ServerGame<'_> {
             self.native_world_lifecycle(&context, WorldPhase::WorldCloseFinal, "");
         }
         self.clear_composter_randoms();
-        self.common.finish_world_closed_common();
+        self.finish_world_closed_common();
     }
 
     /// `error_text` is the engine's own error text, unchanged.
@@ -104,7 +104,7 @@ impl crate::game::ServerGame<'_> {
                     CallbackOwner::call_scheduled_task(mod_id, game, |game| task(game))
                 {
                     report_failure(mod_id, &panic);
-                    if let Some(serving) = &game.side.serving {
+                    if let Some(serving) = &game.server.serving {
                         serving.reports().report_scheduled_task_failure(mod_id);
                     }
                 }
@@ -171,3 +171,5 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

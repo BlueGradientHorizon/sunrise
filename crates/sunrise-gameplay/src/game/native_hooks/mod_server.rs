@@ -300,8 +300,7 @@ impl crate::game::ServerGame<'_> {
         stack: &ItemStack,
     ) -> Option<mod_api::InteractionResult> {
         if let Some(answer) =
-            self.common
-                .use_item_on_block(hit, hand, Some(stack), UsePhase::ItemBeforeBlock)
+            self.use_item_on_block(hit, hand, Some(stack), UsePhase::ItemBeforeBlock)
         {
             return Some(answer);
         }
@@ -309,7 +308,7 @@ impl crate::game::ServerGame<'_> {
             return None;
         }
         let snapshot = stack.try_into_api().ok()?;
-        let click = self.common.block_click(hit, hand, Some(&snapshot));
+        let click = self.block_click(hit, hand, Some(&snapshot));
         let mut answer = None;
         self.native_on_item_use_first(&snapshot, &click, &mut answer);
         answer.filter(|answer| *answer != mod_api::InteractionResult::Pass)
@@ -413,7 +412,7 @@ impl crate::game::ServerGame<'_> {
         let entity = self
             .server
             .lan_acting_entity
-            .map_or_else(|| self.common.own_entity_id(), |id| id as i32);
+            .map_or_else(|| self.own_entity_id(), |id| id as i32);
         (self.server_acting_id(), entity)
     }
     pub(in crate::game) fn server_acting_or_local_player(&self) -> Option<PlayerRef> {
@@ -506,17 +505,17 @@ impl crate::game::ServerGame<'_> {
                 Pending::MinecartPass(pass) => (pass.state, pass.position),
                 Pending::InsideWritten(written) => (written.state, written.position),
             };
-            let Some(level) = self.common.level(self.common.dim.id()) else {
+            let Some(level) = self.level(self.common.dim.id()) else {
                 continue;
             };
-            if self.common.level_block_state(level, [pos.x, pos.y, pos.z]) != Some(state) {
+            if self.level_block_state(level, [pos.x, pos.y, pos.z]) != Some(state) {
                 continue;
             }
             match contact {
                 Pending::MinecartPass(pass) => {
                     if let Some(entity) = u32::try_from(pass.entity)
                         .ok()
-                        .and_then(|id| self.common.entity(id))
+                        .and_then(|id| self.entity(id))
                     {
                         self.native_minecart_pass(state, pos, entity);
                     }
@@ -634,8 +633,8 @@ impl crate::game::ServerGame<'_> {
                 None
             };
             let placer = by_player
-                .then(|| self.common.native_clicker().1.cast_unsigned())
-                .and_then(|entity| self.common.entity(entity));
+                .then(|| self.native_clicker().1.cast_unsigned())
+                .and_then(|entity| self.entity(entity));
             // The block revision and journal epoch cover supporting blocks and
             // block-entity shapes without tracing ordinary reads.
             let level = (
@@ -714,11 +713,8 @@ impl crate::game::ServerGame<'_> {
     }
     /// The acting player's blow killed mob `index`.
     pub(in crate::game) fn native_kill_event(&mut self, index: usize) {
-        let (entity, kind) = (
-            self.common.mobs[index].id,
-            mob_kind(&self.common.mobs[index]),
-        );
-        let player = self.common.native_acting_id();
+        let (entity, kind) = (self.common.mobs[index].id, mob_kind(&self.common.mobs[index]));
+        let player = self.native_acting_id();
         self.native_mob_killed(player, entity, &kind);
     }
     /// The containers of the mod blocks' block entities, by block state
@@ -904,13 +900,7 @@ impl crate::game::ServerGame<'_> {
         if !mod_api::__private::listened(mod_api::HookId::EntityPlace) {
             return false;
         }
-        self.placement_canceled(
-            self.common.entity(placer),
-            pos,
-            state,
-            placed_against,
-            companion,
-        )
+        self.placement_canceled(self.entity(placer), pos, state, placed_against, companion)
     }
 }
 
@@ -928,3 +918,13 @@ pub(in crate::game) mod item_fall_on_tests;
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

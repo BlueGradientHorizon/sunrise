@@ -71,9 +71,9 @@ impl crate::game::ClientGame<'_> {
     }
     /// Sync local and remote player spectator modes from `PlayerInfo` and `MultiPlayerGameMode`.
     pub(in crate::game::client_side) fn sync_remote_player_game_mode(&mut self) {
-        debug_assert!(self.side.remote.is_some());
+        debug_assert!(self.client.remote.is_some());
         if self.common.player.is_some() {
-            let info_spectator = self.common.own_player_is_spectator();
+            let info_spectator = self.own_player_is_spectator();
             let local_spectator = self.common.spectator();
             if let Some(player) = self.common.player.as_mut() {
                 player.spectator = info_spectator;
@@ -120,3 +120,5 @@ impl Remote {
         self.abilities.instabuild
     }
 }
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;

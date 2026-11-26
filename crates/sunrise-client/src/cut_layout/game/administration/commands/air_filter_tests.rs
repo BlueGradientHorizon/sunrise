@@ -130,3 +130,5 @@ fn cave_air_and_void_air_are_air_to_the_command_filters() {
 
     assert!(failures.is_empty(), "{failures:#?}");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

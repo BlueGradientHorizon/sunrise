@@ -18,7 +18,7 @@ impl ServerGame<'_> {
         level: LevelRef,
         center: [f64; 2],
     ) -> bool {
-        if self.common.native_level_world(level).is_none()
+        if self.native_level_world(level).is_none()
             || !center
                 .iter()
                 .all(|v| v.is_finite() && v.abs() <= MAX_CENTER)
@@ -43,7 +43,7 @@ impl ServerGame<'_> {
         size: f64,
         ticks: i64,
     ) -> bool {
-        if self.common.native_level_world(level).is_none()
+        if self.native_level_world(level).is_none()
             || !(1.0..=MAX_SIZE).contains(&size)
             || ticks < 0
             || LevelControl::BorderBounds.is_heard()
@@ -67,7 +67,7 @@ impl ServerGame<'_> {
         safe_zone: f64,
     ) -> bool {
         let ok = |v: f64| v.is_finite() && v >= 0.0;
-        if self.common.native_level_world(level).is_none() || !ok(per_block) || !ok(safe_zone) {
+        if self.native_level_world(level).is_none() || !ok(per_block) || !ok(safe_zone) {
             return false;
         }
         self.common.border.damage_per_block = per_block;
@@ -83,7 +83,7 @@ impl ServerGame<'_> {
         distance: i32,
         ticks: i32,
     ) -> bool {
-        if self.common.native_level_world(level).is_none() || distance < 0 || ticks < 0 {
+        if self.native_level_world(level).is_none() || distance < 0 || ticks < 0 {
             return false;
         }
         self.common.border.warning_distance = distance;
@@ -91,3 +91,5 @@ impl ServerGame<'_> {
         true
     }
 }
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

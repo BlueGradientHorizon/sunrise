@@ -540,3 +540,7 @@ impl mod_api::Hooks for MoveOnArrowPost {
         r.entity_tick_each("minecraft:arrow");
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt6 as _;

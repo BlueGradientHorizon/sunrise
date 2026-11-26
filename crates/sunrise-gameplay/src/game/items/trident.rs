@@ -150,10 +150,10 @@ impl crate::game::ServerGame<'_> {
         };
         let riptide = stack.enchantment_level("minecraft:riptide");
         // `releaseUsing` checks the wet/passenger conditions, then nextDamageWillBreak again.
-        if riptide > 0 && (!self.common.in_water_or_rain() || self.common.riding.is_some()) {
+        if riptide > 0 && (!self.in_water_or_rain() || self.common.riding.is_some()) {
             return;
         }
-        if stack.damage >= self.common.trident_max_damage(&stack).saturating_sub(1) {
+        if stack.damage >= self.trident_max_damage(&stack).saturating_sub(1) {
             return;
         }
         let at = self
@@ -200,7 +200,7 @@ impl crate::game::ServerGame<'_> {
                 .filter(|p| p.ground.on_ground)
                 .map(|p| p.position.components())
             {
-                let lift = self.common.move_local_player(
+                let lift = self.move_local_player(
                     sunrise_world::entity_move::MoverType::SelfMovement,
                     Vec3::new(0.0, f64::from(1.1999999f32), 0.0),
                     true,
@@ -262,7 +262,7 @@ impl crate::game::ServerGame<'_> {
             Some(Who::Player),
         );
         let (v, on_ground) = self.common.player.as_ref().map_or((Vec3::ZERO, true), |p| {
-            (self.common.known_player_movement(), p.ground.on_ground)
+            (self.known_player_movement(), p.ground.on_ground)
         });
         projectile.shoot_from_rotation(
             self.common.pitch,
@@ -388,11 +388,11 @@ impl crate::game::ServerGame<'_> {
         let from = [t.previous.x, t.previous.y, t.previous.z];
         self.guest_hit_by(conn, |g| {
             g.with_attack(attack, |g| {
-                g.side.combat.0.refuse_player_hit = refused;
-                g.side.combat.0.projectile_attacker = shooter;
+                g.server.combat.0.refuse_player_hit = refused;
+                g.server.combat.0.projectile_attacker = shooter;
                 let hurt = g.mob_hits_player(damage, from, "minecraft:trident");
-                g.side.combat.0.refuse_player_hit = false;
-                g.side.combat.0.projectile_attacker = None;
+                g.server.combat.0.refuse_player_hit = false;
+                g.server.combat.0.projectile_attacker = None;
                 hurt
             })
         })
@@ -468,7 +468,7 @@ impl crate::game::ServerGame<'_> {
         let frame = self.open_storage_transaction();
         *transaction = Some(frame);
         let canceled = self.native_trident_impact(id, guest, hit);
-        if self.common.entity(id).is_some()
+        if self.entity(id).is_some()
             && let Some(at) = self.common.tridents.locate(join)
         {
             let refused = canceled
@@ -560,8 +560,7 @@ impl crate::game::ServerGame<'_> {
                 t.loyalty_pull(owner_eye);
                 // The pull is a position update of its own, before the trident's move.
                 let to = t.position;
-                self.common
-                    .entity_section_step(t.id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+                self.entity_section_step(t.id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
                 if t.returning == 0 {
                     self.server_play_sound(
                         "minecraft:item.trident.return",
@@ -574,7 +573,7 @@ impl crate::game::ServerGame<'_> {
             }
             // AbstractArrow clears cached water/rain before its stuck branch.
             let in_rain = {
-                let rain = self.common.arrow_rain();
+                let rain = self.arrow_rain();
                 self.arrow_scene(&rain).in_rain(t.position)
             };
             if t.was_touching_water || in_rain {
@@ -601,7 +600,7 @@ impl crate::game::ServerGame<'_> {
                 // can be picked up).
                 let mut falls = false;
                 if !t.no_physics {
-                    let rain = self.common.arrow_rain();
+                    let rain = self.arrow_rain();
                     let scene = self.arrow_scene(&rain);
                     let state = scene.block(BlockPos::containing(t.position));
                     falls = t.last_state != Some(state) && t.should_fall(&scene);
@@ -724,13 +723,13 @@ impl crate::game::ServerGame<'_> {
                             ..Default::default()
                         };
                         let attacker_id = match owner_who {
-                            Some(Who::Player) => Some(self.common.own_entity_id() as u32),
+                            Some(Who::Player) => Some(self.own_entity_id() as u32),
                             Some(Who::Mob(oid)) => Some(oid),
                             None => None,
                         };
                         let victim_id = match who {
                             Who::Mob(id) => id,
-                            Who::Player => self.common.own_entity_id() as u32,
+                            Who::Player => self.own_entity_id() as u32,
                         };
                         let damage = self.evaluate_weapon_damage(
                             &t.stack,
@@ -1049,7 +1048,7 @@ impl crate::game::ServerGame<'_> {
             // just hit a block still reaches it, as does a noPhysics return.
             if !stuck_tick {
                 t.has_been_shot = true;
-                let rain = self.common.arrow_rain();
+                let rain = self.arrow_rain();
                 t.was_touching_water = self.arrow_scene(&rain).in_water(t.position);
                 // Entity.updateInWaterStateAndDoFluidPushing: resetFallDistance in water.
                 if t.was_touching_water {
@@ -1088,8 +1087,7 @@ impl crate::game::ServerGame<'_> {
             } else {
                 self.common.tridents.insert(i, t);
             }
-            self.common
-                .entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+            self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
             if let Some(frame) = transaction.take() {
                 self.close_storage_frame(frame, true);
             }
@@ -1104,7 +1102,7 @@ impl crate::game::ServerGame<'_> {
         to: Vec3,
     ) {
         let extinguished = {
-            let rain = self.common.arrow_rain();
+            let rain = self.arrow_rain();
             // Block-contact hooks are already delivered by the game's inside pass.
             let (ticks, extinguished) =
                 self.arrow_scene(&rain)
@@ -1138,7 +1136,7 @@ impl crate::game::ServerGame<'_> {
                 return false;
             }
             let rest = match by.guest {
-                None => self.common.add_stack_to_inventory(t.stack.clone()),
+                None => self.add_stack_to_inventory(t.stack.clone()),
                 Some(conn) => {
                     let rest = self.as_guest(conn, |g| g.add_stack_to_inventory(t.stack.clone()));
                     let Some(rest) = rest else {
@@ -1179,3 +1177,15 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::piston_push::PistonPushGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

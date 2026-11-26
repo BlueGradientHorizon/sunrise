@@ -217,3 +217,5 @@ fn a_world_keeps_the_test_instances_it_opened_with() {
     let _ = std::fs::remove_dir_all(&a);
     let _ = std::fs::remove_dir_all(&b);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -1,7 +1,7 @@
 use crate::game::CommonGame;
 use sunrise_items::item_data::WrittenBook;
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// Write pages into the book and quill at `slot`, or sign it into a written book by `author`.
     pub fn write_book_with_author(
         &mut self,

@@ -163,13 +163,13 @@ pub fn seed_native_menu(game: &mut crate::game::ClientGame<'_>, window: i32, nam
 
 impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn client_acting_id(&mut self) -> u128 {
-        self.common.own_uuid()
+        self.own_uuid()
     }
     pub(in crate::game) fn client_clicker(&mut self) -> (u128, i32) {
-        (self.common.own_uuid(), self.common.own_entity_id())
+        (self.own_uuid(), self.own_entity_id())
     }
     pub(in crate::game) fn client_acting_or_local_player(&self) -> Option<PlayerRef> {
-        self.common.local_player()
+        self.local_player()
     }
     pub(in crate::game) fn client_chunks_loaded(&mut self) {
         self.common.world.loaded_chunks.clear();
@@ -2165,3 +2165,5 @@ pub(in crate::game) enum ScreenMousePre {
 }
 
 include!("shared_client.rs");
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

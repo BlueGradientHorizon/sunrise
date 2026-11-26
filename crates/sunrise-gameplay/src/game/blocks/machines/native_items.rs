@@ -142,7 +142,7 @@ impl crate::game::ServerGame<'_> {
     /// state-backed ports. Inactive composter ports use its inert level-7 rules, so an input
     /// can never expose bone meal and an output can never accept compost.
     fn capability_view(&self, at: BlockSide) -> Option<View> {
-        if !self.common.level_in_place(at.level) {
+        if !self.level_in_place(at.level) {
             return None;
         }
         self.containers().capability_view(at)
@@ -175,12 +175,12 @@ impl crate::game::ServerGame<'_> {
     /// How many slots `at`'s side reaches, including a composter's one-slot ports.
     /// None without supported storage, in a level not in place, or on a client's copy.
     pub(in crate::game) fn container_size(&self, at: BlockSide) -> Option<usize> {
-        self.common.level_in_place(at.level).then_some(())?;
+        self.level_in_place(at.level).then_some(())?;
         self.containers().capability_size(at)
     }
     /// The stack in slot `slot` of those `at`'s side reaches (`container_size`).
     pub(in crate::game) fn container_stack(&self, at: BlockSide, slot: usize) -> Option<ItemStack> {
-        self.common.level_in_place(at.level).then_some(())?;
+        self.level_in_place(at.level).then_some(())?;
         self.containers().capability_stack(at, slot)
     }
     /// Keeps what a capability write to slot `slot` of `view` changes: that slot alone where a
@@ -526,3 +526,5 @@ mod tests {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

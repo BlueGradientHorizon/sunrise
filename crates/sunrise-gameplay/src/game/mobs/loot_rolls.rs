@@ -42,7 +42,7 @@ impl<'g, 'a, 'h> ListenedRolls<'g, 'a, 'h> {
 
 impl DeathRolls for ListenedRolls<'_, '_, '_> {
     fn sequences(&mut self) -> &mut RandomSequences {
-        &mut self.game.side.rand_sequences
+        &mut self.game.server.rand_sequences
     }
     fn level_random(&mut self) -> &mut LegacyRandom {
         &mut self.game.world.random
@@ -91,8 +91,7 @@ impl ServerGame<'_> {
         else {
             return None;
         };
-        self.common
-            .effect_living_ref(Some(self.network_entity_id(target)?))
+        self.effect_living_ref(Some(self.network_entity_id(target)?))
     }
     /// The drops of `/loot ... kill`, from the table's random sequence, else
     /// the level random. It reads levels as a death does, and a mod listening
@@ -262,12 +261,10 @@ impl ServerGame<'_> {
                 .iter()
                 .find(|mob| mob.id == id)
                 .map(|mob| sunrise_sim::mobs::drops::loot_entity(mob, None))
-                .unwrap_or_else(|| {
-                    sunrise_world::loot::LootEntity::new(&self.common.target_type(target))
-                }),
+                .unwrap_or_else(|| sunrise_world::loot::LootEntity::new(&self.target_type(target))),
             Target::Player => self.killer_loot_entity(None),
             Target::Guest(conn) => self.killer_loot_entity(Some(conn)),
-            _ => sunrise_world::loot::LootEntity::new(&self.common.target_type(target)),
+            _ => sunrise_world::loot::LootEntity::new(&self.target_type(target)),
         };
         if entity.nbt.is_none()
             && self
@@ -320,3 +317,9 @@ impl ServerGame<'_> {
         })
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

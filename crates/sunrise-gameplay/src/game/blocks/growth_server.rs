@@ -72,7 +72,7 @@ impl ServerGame<'_> {
         if &*stack.item != "minecraft:bone_meal" {
             return Ok(false);
         }
-        let Some(hit) = self.common.pick() else {
+        let Some(hit) = self.pick() else {
             return Ok(false);
         };
         let face = match hit.face {
@@ -85,7 +85,7 @@ impl ServerGame<'_> {
         };
         let pos = BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]);
         let mut held = stack.clone();
-        let ask = self.common.bonemeal(pos, true, &mut held);
+        let ask = self.bonemeal(pos, true, &mut held);
         if held != *stack {
             if self.common.creative {
                 held.count = stack.count;
@@ -112,7 +112,7 @@ impl ServerGame<'_> {
             // ItemStack.useOn: an item interaction counts as a use.
             self.award_stat("used", &stack.item, 1);
             if consumed {
-                self.common.consume_held();
+                self.consume_held();
             }
         }
         Ok(used)
@@ -120,3 +120,9 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

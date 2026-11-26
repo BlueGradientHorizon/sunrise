@@ -30,7 +30,7 @@ impl ServerGame<'_> {
         if !filled {
             return;
         }
-        let Some(saved) = self.common.saved_block_entity(key, false) else {
+        let Some(saved) = self.saved_block_entity(key, false) else {
             return;
         };
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
@@ -72,7 +72,7 @@ impl ServerGame<'_> {
         self.common.pending.clear(pos);
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
         self.sculk_place_entity(state);
-        if let Some(custom_data_loaded) = self.common.apply_placed_item_common(pos, stack, game_master) {
+        if let Some(custom_data_loaded) = self.apply_placed_item_common(pos, stack, game_master) {
             if custom_data_loaded {
                 self.common.notify_block_entity_load_additional(key);
             }
@@ -84,3 +84,5 @@ impl ServerGame<'_> {
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::block_items::BlockItemsGameExt1 as _;

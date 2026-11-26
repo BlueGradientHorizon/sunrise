@@ -206,3 +206,4 @@ pub(in crate::game) mod live_dungeon_spawner_tests {
         });
     }
 }
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

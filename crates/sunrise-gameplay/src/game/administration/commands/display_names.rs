@@ -11,16 +11,16 @@ impl ServerGame<'_> {
     /// the team's prefix and suffix that `getDisplayName` adds.
     pub(in crate::game) fn target_plain_name(&self, t: Target) -> String {
         match t {
-            Target::Player => self.common.acting_player_name().to_owned(),
+            Target::Player => self.acting_player_name().to_owned(),
             Target::Guest(conn) => self
-                .common.command_guest(conn)
+                .command_guest(conn)
                 .map_or_else(String::new, |g| g.name.clone()),
             Target::Mob(id) => self
                 .common.mobs
                 .iter()
                 .find(|m| m.id == id)
                 .map_or_else(String::new, |m| m.command_name().plain()),
-            other => self.common.target_base_name(other).plain(),
+            other => self.target_base_name(other).plain(),
         }
     }
     /// Capture enough of `t` before `/kill` removes its storage to build
@@ -30,13 +30,13 @@ impl ServerGame<'_> {
     pub(in crate::game) fn capture_kill_display(&self, t: Target) -> KillDisplay {
         match t {
             Target::Player | Target::Guest(_) | Target::Mob(_) => {
-                KillDisplay::Ready(self.common.target_name(t))
+                KillDisplay::Ready(self.target_name(t))
             }
             other => KillDisplay::Entity {
-                kind: self.common.target_type(other),
+                kind: self.target_type(other),
                 uuid: sunrise_gameplay_common::game::commands_common::target_id(other)
                     .and_then(|id| self.common.persist.uuid_of(id)),
-                name: self.common.target_base_name(other),
+                name: self.target_base_name(other),
             },
         }
     }
@@ -66,3 +66,5 @@ pub(in crate::game) enum KillDisplay {
         name: Text,
     },
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

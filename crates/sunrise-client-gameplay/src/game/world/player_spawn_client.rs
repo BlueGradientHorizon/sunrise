@@ -28,13 +28,17 @@ impl crate::game::ClientGame<'_> {
         self.common.player_state.attachments.retire();
         self.common.resident_entities.local_player.renew();
         self.common.player = Some(player);
-        self.common.bind_local_player_residency();
+        self.bind_local_player_residency();
         self.input_player_replaced();
         self.client.sway = Default::default();
-        self.common.apply_equipment();
+        self.apply_equipment();
         self.common.eye = 1.62;
         self.client.previous_eye = 1.62;
         self.common.clock.reset();
         self.capture_loaded_world();
     }
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

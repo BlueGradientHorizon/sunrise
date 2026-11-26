@@ -29,7 +29,7 @@ impl crate::game::ServerGame<'_> {
         if list.is_empty() {
             return None;
         }
-        let entity = self.common.entity(self.common.mobs[index].id)?;
+        let entity = self.entity(self.common.mobs[index].id)?;
         let shears = shears.try_into_api().ok()?;
         list.iter().enumerate().find_map(|(at, attached)| {
             let _guard = enter_native_mod(ModCall {
@@ -57,10 +57,8 @@ impl crate::game::ServerGame<'_> {
         let (id, at) = (self.common.mobs[index].id, self.common.mobs[index].position);
         let parts = mod_api::__private::entity_parts();
         let (Some(attached), Some(entity), Ok(shears)) = (
-            parts
-                .entity_parts(&self.common.mobs[index].kind.id)
-                .get(part),
-            self.common.entity(id),
+            parts.entity_parts(&self.common.mobs[index].kind.id).get(part),
+            self.entity(id),
             shears.try_into_api(),
         ) else {
             return;
@@ -264,3 +262,5 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

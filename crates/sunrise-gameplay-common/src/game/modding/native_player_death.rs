@@ -14,10 +14,10 @@ use crate::game::CommonGame;
 use mod_api::{GlobalPos, Identifier, PlayerRef};
 use sunrise_core::position::BlockPos;
 
-impl CommonGame<'_> {
+pub trait NativePlayerDeathGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The dimension and block of the player's last death
     /// (`Player.getLastDeathLocation`).
-    pub(in crate::game) fn player_last_death_location(
+     fn player_last_death_location(
         &self,
         player: PlayerRef,
     ) -> Option<GlobalPos> {
@@ -26,6 +26,8 @@ impl CommonGame<'_> {
         Some(GlobalPos::new(dimension, BlockPos::new(x, y, z)))
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativePlayerDeathGameExt1<'__sg> for G {}
+
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
@@ -81,3 +83,5 @@ pub mod tests {
 
     
 }
+
+use crate::game::native_server::NativeServerGameExt1 as _;

@@ -80,7 +80,7 @@ impl crate::game::ServerGame<'_> {
         };
         let mut tracker = Tracker::default();
         for &t in &targets {
-            let h = holder(self.common.target_name(t));
+            let h = holder(self.target_name(t));
             // ServerPlayer.awardRecipes / resetRecipes on the target's own
             // ServerRecipeBook: a guest's is swapped in for the call, and the
             // packets go to its client.
@@ -206,12 +206,12 @@ impl crate::game::ServerGame<'_> {
         };
         // Destruction can remove the target before its success message is built.
         let discarded_name = matches!(target, Target::Item(_) | Target::Boat(_) | Target::Cart(_))
-            .then(|| self.common.target_name(target));
+            .then(|| self.target_name(target));
         let hurt = self.hurt_target(target, amount, &ty, by, cause, from);
         if !hurt {
             return Err(err("commands.damage.invulnerable", &[]));
         }
-        let name = discarded_name.unwrap_or_else(|| self.common.target_name(target));
+        let name = discarded_name.unwrap_or_else(|| self.target_name(target));
         self.feedback(Text::translate(
             "commands.damage.success",
             &[
@@ -262,7 +262,7 @@ impl crate::game::ServerGame<'_> {
                 .and_then(|target| self.network_entity_id(target))
                 .unwrap_or(0),
         );
-        attack.direct_type = direct.map(|target| self.common.target_type(target));
+        attack.direct_type = direct.map(|target| self.target_type(target));
         match direct {
             Some(Target::Projectile(id)) => {
                 if let Some(shot) = self.common.creatures.projectiles.iter().find(|shot| shot.id == id) {
@@ -352,7 +352,7 @@ impl crate::game::ServerGame<'_> {
             }
             // Only players in the source's level hear it.
             if let Target::Guest(conn) = t
-                && self.common.command_guest(conn).is_none_or(|g| g.dimension != here)
+                && self.command_guest(conn).is_none_or(|g| g.dimension != here)
             {
                 continue;
             }
@@ -363,7 +363,7 @@ impl crate::game::ServerGame<'_> {
                 continue;
             };
             self.play_sound_to(t, &sound, at, v, pitch, source, seed);
-            tracker.mark(&holder(self.common.target_name(t)));
+            tracker.mark(&holder(self.target_name(t)));
         }
         let name = Text::literal(sound.clone());
         let (message, total) = tracker.message(
@@ -518,7 +518,7 @@ impl crate::game::ServerGame<'_> {
         target: Target,
         attribute: &str,
     ) -> R<Option<(i32, Text)>> {
-        let name = self.common.target_name(target);
+        let name = self.target_name(target);
         let description = Self::attribute_description(attribute);
         let short = attribute.trim_start_matches("minecraft:").to_owned();
         let no_attribute = |name: &Text, d: &Text| {
@@ -1023,7 +1023,7 @@ impl crate::game::ServerGame<'_> {
         let Some(target) = targets.first().copied() else {
             return Ok(0);
         };
-        let name = self.common.target_name(target);
+        let name = self.target_name(target);
         // A server player other than the one in place (the console's, a function's or another
         // player's /ride): their riding state is their own, so the command runs as them, as
         // `native_mount` does. In vanilla every ServerPlayer rides alike.
@@ -1034,7 +1034,7 @@ impl crate::game::ServerGame<'_> {
             let Some(v) = self.ride_vehicle(target) else {
                 return Err(err("commands.ride.not_riding", &[&name.plain()]));
             };
-            let vehicle_name = self.common.target_name(v);
+            let vehicle_name = self.target_name(v);
             match target {
                 Target::Player => self.stop_riding(),
                 Target::Mob(rider) => self.dismount_mob(rider),
@@ -1055,7 +1055,7 @@ impl crate::game::ServerGame<'_> {
         let Some(vehicle) = vehicles.first().copied() else {
             return Ok(0);
         };
-        let vehicle_name = self.common.target_name(vehicle);
+        let vehicle_name = self.target_name(vehicle);
         self.ride_mount(target, vehicle)?;
         self.feedback(Text::translate(
             "commands.ride.mount.success",
@@ -1094,7 +1094,7 @@ impl crate::game::ServerGame<'_> {
         let Some(vehicle) = vehicles.first().copied() else {
             return Ok(0);
         };
-        let vehicle_name = self.common.target_name(vehicle);
+        let vehicle_name = self.target_name(vehicle);
         self.for_player(target, |g| g.ride_mount(Target::Player, vehicle))
             .unwrap_or_else(|| {
                 Err(err(
@@ -1113,10 +1113,10 @@ impl crate::game::ServerGame<'_> {
     /// in place or a mob) rides `vehicle`, as `startRiding(vehicle, true,
     /// true)` forces it (also for `native_mount`).
     pub(in crate::game) fn ride_mount(&mut self, target: Target, vehicle: Target) -> R<()> {
-        let name = self.common.target_name(target);
-        let vehicle_name = self.common.target_name(vehicle);
+        let name = self.target_name(target);
+        let vehicle_name = self.target_name(vehicle);
         if let Some(current) = self.ride_vehicle(target) {
-            let current = self.common.target_name(current);
+            let current = self.target_name(current);
             return Err(err(
                 "commands.ride.already_riding",
                 &[&name.plain(), &current.plain()],
@@ -1612,3 +1612,5 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

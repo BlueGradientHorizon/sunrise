@@ -328,7 +328,7 @@ impl<'r> crate::game::ServerGame<'r> {
         let attacker = match owner {
             Who::Player => match owner_guest {
                 Some(conn) if self.server.lan_acting != Some(conn) => guest(conn),
-                _ => Some((self.common.own_entity_id(), self.player_team())),
+                _ => Some((self.own_entity_id(), self.player_team())),
             },
             Who::Mob(oid) => guest_by_id(oid),
         };
@@ -336,7 +336,7 @@ impl<'r> crate::game::ServerGame<'r> {
             return true;
         };
         let victim = match target {
-            Who::Player => Some((self.common.own_entity_id(), self.player_team())),
+            Who::Player => Some((self.own_entity_id(), self.player_team())),
             Who::Mob(tid) => guest_by_id(tid),
         };
         let Some((victim, victim_team)) = victim else {
@@ -423,7 +423,7 @@ impl<'r> crate::game::ServerGame<'r> {
         let vanilla = self.saved_refuses_damage(id, info.damage_type, creative);
         crate::game::server_side::entity_server::damage_level_of!(
             self,
-            self.side.combat.0.attack(),
+            self.server.combat.0.attack(),
             no_push,
             None
         )
@@ -579,12 +579,12 @@ impl<'r> crate::game::ServerGame<'r> {
             .map(|c| BlockPos::new(c.pos[0], c.pos[1], c.pos[2]))
         {
             let (may_build, may_interact) = match causing_target {
-                Some(Target::Player) => (self.common.may_build(), self.may_interact_at(pos)),
+                Some(Target::Player) => (self.may_build(), self.may_interact_at(pos)),
                 Some(Target::Guest(conn)) if self.server.lan_acting == Some(conn) => {
-                    (self.common.may_build(), self.may_interact_at(pos))
+                    (self.may_build(), self.may_interact_at(pos))
                 }
                 Some(Target::Guest(conn)) => (
-                    self.common.command_guest(conn)
+                    self.command_guest(conn)
                         .is_none_or(|g| g.abilities.may_build),
                     self.as_guest(conn, |g| g.may_interact_at(pos))
                         .unwrap_or(true),
@@ -744,15 +744,15 @@ impl<'r> crate::game::ServerGame<'r> {
         let creative = match resolved {
             Some(Who::Player) => match info.guest {
                 Some(conn) if self.server.lan_acting == Some(conn) => self.common.creative,
-                Some(conn) => self.common.command_guest(conn).is_some_and(|g| g.creative()),
+                Some(conn) => self.command_guest(conn).is_some_and(|g| g.creative()),
                 None => self.common.creative,
             },
             _ => false,
         };
         let causing_id = match resolved {
             Some(Who::Player) => match info.guest {
-                Some(conn) => self.common.command_guest(conn).map_or(0, |g| g.entity_id),
-                None => self.common.own_entity_id(),
+                Some(conn) => self.command_guest(conn).map_or(0, |g| g.entity_id),
+                None => self.own_entity_id(),
             },
             Some(Who::Mob(id)) => id as i32,
             None => 0,
@@ -768,7 +768,7 @@ impl<'r> crate::game::ServerGame<'r> {
         match owner? {
             Who::Player => match guest {
                 Some(conn) if self.server.lan_acting != Some(conn) => {
-                    self.common.command_guest(conn).map(|_| Who::Player)
+                    self.command_guest(conn).map(|_| Who::Player)
                 }
                 _ => self.common.player.as_ref().map(|_| Who::Player),
             },
@@ -1044,3 +1044,11 @@ impl<'r> crate::game::ServerGame<'r> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

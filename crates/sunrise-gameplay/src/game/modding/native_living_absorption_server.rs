@@ -8,7 +8,7 @@ impl ServerGame<'_> {
     /// Server arm for `LivingEntity.getAbsorptionAmount`.
     pub(in crate::game) fn server_living_absorption(&self, living: LivingRef) -> Option<f32> {
         let target = self.server_living_read_target(living)?;
-        super::native_living_body::body_absorption(self.common.native_living_body(target)?)
+        super::native_living_body::body_absorption(self.native_living_body(target)?)
     }
 
     /// Sets the entity's absorption amount (`LivingEntity.setAbsorptionAmount`),
@@ -51,3 +51,5 @@ impl ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_living_body::NativeLivingBodyGameExt1 as _;

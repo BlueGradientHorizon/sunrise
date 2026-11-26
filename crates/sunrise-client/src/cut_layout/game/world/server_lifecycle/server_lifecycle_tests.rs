@@ -483,3 +483,5 @@ fn every_started_server_stops_and_saves_even_when_startup_or_ticks_fail() {
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

@@ -7,8 +7,8 @@ impl crate::game::ServerGame<'_> {
     /// part breaks it now (the vanilla break then runs where the wear lands).
     pub(crate) fn damage_item_loss(&mut self, stack: &ItemStack, loss: u32, wearer: Wearer) -> u32 {
         let entity = match wearer {
-            Wearer::Player => self.common.effect_living_ref(None),
-            Wearer::Living(id) => self.common.effect_living_ref(Some(id as i32)),
+            Wearer::Player => self.effect_living_ref(None),
+            Wearer::Living(id) => self.effect_living_ref(Some(id as i32)),
             Wearer::Nobody => None,
         };
         let mut points = loss.min(i32::MAX as u32) as i32;
@@ -24,3 +24,5 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

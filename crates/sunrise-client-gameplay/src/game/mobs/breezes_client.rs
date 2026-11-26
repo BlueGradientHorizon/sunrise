@@ -71,7 +71,7 @@ pub mod tests {
     
 
     pub fn made_block_particles(game: &crate::game::ClientGame<'_>) -> u64 {
-        game.side
+        game.client
             .particles
             .0
             .made()

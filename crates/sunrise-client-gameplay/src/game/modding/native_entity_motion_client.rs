@@ -92,7 +92,7 @@ impl crate::game::ClientGame<'_> {
             }
             Target::Crystal(id) => {
                 let c = self.common.crystals.iter().find(|c| c.id == id)?;
-                return Some(corners(self.common.client_copy_box(id, c.position, c.bounds())));
+                return Some(corners(self.client_copy_box(id, c.position, c.bounds())));
             }
             Target::Cushion(id) => self.common.cushions.iter().find(|c| c.id == id)?.bounds(),
             Target::Frame(id) => self.common.item_frames.iter().find(|f| f.id == id)?.bounds(),
@@ -119,3 +119,5 @@ impl crate::game::ClientGame<'_> {
 }
 
 use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

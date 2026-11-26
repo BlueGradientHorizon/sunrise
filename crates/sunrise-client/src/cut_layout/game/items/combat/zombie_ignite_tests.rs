@@ -139,3 +139,7 @@ fn a_burning_zombies_burn_rides_a_blow_that_landed() {
     ];
     assert_eq!(blows(&cases), expected);
 }
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

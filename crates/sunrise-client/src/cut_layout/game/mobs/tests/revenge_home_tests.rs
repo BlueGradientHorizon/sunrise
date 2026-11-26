@@ -124,3 +124,7 @@ fn a_zombie_takes_revenge_only_on_a_cow_inside_its_home() {
         [("no home", true), ("radius 3", false), ("radius 12", true)]
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

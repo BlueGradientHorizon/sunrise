@@ -241,3 +241,5 @@ fn loot_replace_kill_fills_an_accepting_slot_and_leaves_a_refusing_one() {
         assert!((1..=2).contains(&count), "{count}");
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

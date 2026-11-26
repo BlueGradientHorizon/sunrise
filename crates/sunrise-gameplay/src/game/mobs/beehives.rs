@@ -181,7 +181,7 @@ impl crate::game::ServerGame<'_> {
         // The hive stops the bee riding and ejects its passengers before
         // storing one occupant. Any vetoed edge is asked again at discard.
         self.dismount_mob(mob);
-        if let Some(entity) = self.common.entity(mob) {
+        if let Some(entity) = self.entity(mob) {
             self.entity_eject_passengers(entity);
         }
         self.break_leash(mob, true, false);
@@ -327,11 +327,11 @@ impl crate::game::ServerGame<'_> {
             if let Some(at) = at {
                 self.server_play_sound("minecraft:item.bottle.fill", at, 1.0, 1.0);
             };
-            self.common.consume_player_slot(self.common.held_slot(), 1);
+            self.consume_player_slot(self.common.held_slot(), 1);
             let bottle = ItemStack::new("minecraft:honey_bottle", 1);
             if self.common.held().is_none() {
                 *self.common.held_mut() = Some(bottle);
-            } else if let Some(rest) = self.common.add_stack_to_inventory(bottle)
+            } else if let Some(rest) = self.add_stack_to_inventory(bottle)
                 && let Some(eye) = self.common.eye_position()
             {
                 // `player.drop(stack, false, PREDICTED)`: thrown from below
@@ -434,3 +434,9 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

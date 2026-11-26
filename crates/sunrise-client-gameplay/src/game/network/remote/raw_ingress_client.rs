@@ -285,7 +285,7 @@ impl crate::game::ClientGame<'_> {
                     match Incoming::classify(endpoint.transport(), Phase::Play, payload) {
                         Ok(Classified::Application(incoming)) => {
                             for task in dispatch_bundle(incoming, &endpoint) {
-                                self.common.run_payload(endpoint.clone(), task);
+                                self.run_payload(endpoint.clone(), task);
                             }
                         }
                         Ok(Classified::Other(payload)) => {
@@ -422,7 +422,7 @@ impl crate::game::ClientGame<'_> {
                 // sound immediately after the level-unload event fires.
                 self.stop_sounds_for_new_level();
                 self.common.native_lifecycle.begin_close();
-                self.common.native_lifecycle_world_closed();
+                self.native_lifecycle_world_closed();
                 let ticks = self.common.ticks;
                 if let Some(r) = self.client.remote.as_mut() {
                     self.client.packet_holds.borrow_mut().clear();
@@ -489,7 +489,7 @@ impl crate::game::ClientGame<'_> {
             Event::Bundle(bundle) => self.handle_play_bundle(*bundle, turn)?,
             Event::RawPayload(incoming) => {
                 if let Some(remote) = self.client.remote.as_ref() {
-                    self.common.run_payload(remote.session.payload_endpoint(), *incoming);
+                    self.run_payload(remote.session.payload_endpoint(), *incoming);
                 }
             }
             Event::ObservePacket(packet) => self.observe_client_packet(&packet),
@@ -589,3 +589,7 @@ impl Remote {
         }
     }
 }
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::payload_transport::PayloadTransportGameExt1 as _;

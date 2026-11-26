@@ -177,3 +177,5 @@ fn the_reset_argument_offers_the_sequences_the_world_has() {
     let offered = suggestions(&receivers[0]);
     assert!(offered.iter().any(|s| s == "minecraft:test"), "{offered:?}");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

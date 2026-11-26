@@ -178,7 +178,7 @@ impl crate::game::ServerGame<'_> {
         conn: u32,
         run: impl FnOnce(&mut Self) -> R,
     ) -> Option<R> {
-        let guest = self.common.command_guest(conn)?;
+        let guest = self.command_guest(conn)?;
         let identity = (guest.uuid, conn, guest.entity_id as u32);
         self.common.player_state.cloning_players.push(identity);
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| run(self)));
@@ -276,7 +276,7 @@ impl crate::game::ServerGame<'_> {
             uuid: guest.uuid,
             position: guest.position,
             dimension: guest.dimension.clone(),
-            level: self.common.level(&guest.dimension),
+            level: self.level(&guest.dimension),
             health: guest.health,
             experience: PlayerExperience::from(mod_api::__private::built::PlayerExperience {
                 level: guest.xp_level,
@@ -301,3 +301,7 @@ impl crate::game::ServerGame<'_> {
         })
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

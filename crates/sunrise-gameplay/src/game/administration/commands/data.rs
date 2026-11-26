@@ -488,7 +488,7 @@ impl crate::game::ServerGame<'_> {
     }
     pub(in crate::game::server_side) fn data_name(&self, r: &DataRef) -> Text {
         match r {
-            DataRef::Entity(t) => self.common.target_name(*t),
+            DataRef::Entity(t) => self.target_name(*t),
             DataRef::Block(p) => Text::literal(format!("{}, {}, {}", p[0], p[1], p[2])),
             DataRef::Storage(id) => Text::literal(id.clone()),
         }
@@ -1008,3 +1008,5 @@ pub(in crate::game) fn strip_finalize_tree(tag: &mut Tag) {
 pub(in crate::game) mod modern_literal_tests {}
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

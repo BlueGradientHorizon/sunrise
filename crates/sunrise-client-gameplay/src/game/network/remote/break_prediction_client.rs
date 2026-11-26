@@ -74,7 +74,7 @@ impl crate::game::ClientGame<'_> {
             direction: 0,
             sequence: 0,
         }));
-        self.common.reset_attack_strength();
+        self.reset_attack_strength();
         true
     }
     /// `handleLevelChunkWithLight` writes the column directly, unlike verified block
@@ -364,10 +364,10 @@ impl crate::game::ClientGame<'_> {
             .and_then(|s| s.data())
             .is_some_and(|d| d.other("minecraft:can_break").is_some())
         {
-            return self.common.block_action_restricted(pos);
+            return self.block_action_restricted(pos);
         }
         self.common.spectator()
-            || (!self.common.may_build()
+            || (!self.may_build()
                 && !self
                     .common.held()
                     .and_then(|s| s.wire_patch())
@@ -380,3 +380,7 @@ impl crate::game::ClientGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

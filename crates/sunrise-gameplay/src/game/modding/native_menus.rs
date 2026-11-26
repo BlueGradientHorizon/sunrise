@@ -258,8 +258,7 @@ impl crate::game::ServerGame<'_> {
             .menu
             .as_ref()
             .filter(|m| m.window == window && m.slots == sunrise_sim::lan::menu::Slots::Native)?;
-        self.common
-            .player_container_menu(self.common.player(uuid)?)
+        self.player_container_menu(self.player(uuid)?)
             .filter(|menu| menu.fields().window == window)
     }
     /// Replaces what the player's open native menu `window` shows, without reopening it
@@ -276,7 +275,7 @@ impl crate::game::ServerGame<'_> {
         }
         let conn = self.native_conn(uuid).ok_or(MenuItemsRefusal::NoPlayer)?;
         let transactional = !self.common.transactions.is_empty();
-        if transactional && let Some(player) = self.common.player(uuid) {
+        if transactional && let Some(player) = self.player(uuid) {
             self.journal_menus(player);
         }
         let host = self.server.lan.as_mut().ok_or(MenuItemsRefusal::NoPlayer)?;
@@ -580,7 +579,7 @@ pub mod tests {
         let (tx, rx) = mpsc::channel();
         let mut player = guest(1);
         player.sender = PlayerSender::new(tx, Arc::default());
-        game.side.lan.as_mut().unwrap().hub.guests.push(player);
+        game.server.lan.as_mut().unwrap().hub.guests.push(player);
         rx
     }
 
@@ -608,7 +607,7 @@ pub mod tests {
         game: &mut crate::game::ServerGame<'_>,
     ) -> (mpsc::Receiver<Out>, mod_api::MenuKey) {
         let rx = watched_guest(game);
-        game.side.lan.as_mut().unwrap().hub.guests.update(0, |g| {
+        game.server.lan.as_mut().unwrap().hub.guests.update(0, |g| {
             g.brand = "sunrise".into();
             g.sender.menu_extra_rev = 1;
         });
@@ -635,3 +634,11 @@ pub mod tests {
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

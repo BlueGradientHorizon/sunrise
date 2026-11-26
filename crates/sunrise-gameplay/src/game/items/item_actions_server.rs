@@ -50,7 +50,6 @@ impl crate::game::ServerGame<'_> {
         // keeps the knot's own path below.
         if let Some(id) = named
             && let Some(entity) = self
-                .common
                 .level_entity(id)
                 .filter(|t| !matches!(t, commands::Target::Knot(_)))
         {
@@ -60,13 +59,13 @@ impl crate::game::ServerGame<'_> {
             let location = match target {
                 Some(t) => Some(t.location),
                 None => distance
-                    .zip(self.common.aim())
+                    .zip(self.aim())
                     .zip(self.target_position(entity))
                     .map(|((d, (eye, dir)), at)| {
                         std::array::from_fn(|k| eye[k] + dir[k] * d - at[k])
                     }),
             };
-            let kind = self.common.target_type(entity);
+            let kind = self.target_type(entity);
             let stack = self.common.held().cloned();
             let mut claimed = false;
             if let Some(location) = location {
@@ -90,7 +89,7 @@ impl crate::game::ServerGame<'_> {
                     mod_api::InteractionResult::Pass | mod_api::InteractionResult::TryWithEmptyHand
                 )
             {
-                return Ok(self.common.interaction_consumed(answer));
+                return Ok(self.interaction_consumed(answer));
             }
             if matches!(entity, commands::Target::General(_)) {
                 // A plain Entity has no default interaction. A pass stays on this row.
@@ -126,7 +125,7 @@ impl crate::game::ServerGame<'_> {
         PlayerContext {
             yaw: self.common.yaw,
             pitch: self.common.pitch,
-            may_build: self.common.may_build(),
+            may_build: self.may_build(),
             can_eat: self.common.creative
                 || self
                     .common
@@ -155,9 +154,9 @@ impl crate::game::ServerGame<'_> {
         // menu (ServerPlayerGameMode.useItemOn).
         if self.common.spectator() {
             if let Some(GuestUse::OnBlock { hand, .. }) = self.server.guest_use
-                && let Some(hit) = self.common.pick()
+                && let Some(hit) = self.pick()
             {
-                self.common.with_hand(hand, |game| {
+                self.with_hand(hand, |game| {
                     let held = game.held().cloned();
                     if matches!(
                         game.right_click_block(&hit, hand, held.as_ref()),
@@ -175,7 +174,6 @@ impl crate::game::ServerGame<'_> {
         let guest = self.server.guest_use;
         if let Some(GuestUse::Entity(hand, target)) = guest {
             return Ok(self
-                .common
                 .with_hand(hand, |g| g.interact_entity(Some(target)))?
                 .then_some(hand));
         }
@@ -193,10 +191,10 @@ impl crate::game::ServerGame<'_> {
         // An EntityHitResult may fall through to Item.use, never to useItemOn.
         let entity = guest.is_none() && self.server_crosshair_entity_hit().is_some();
         let block_hit = match guest {
-            Some(GuestUse::OnBlock { .. }) => self.common.pick(),
+            Some(GuestUse::OnBlock { .. }) => self.pick(),
             Some(GuestUse::Item(_)) => None,
             _ if entity => None,
-            _ => self.common.pick(),
+            _ => self.pick(),
         };
         let hands = match guest {
             Some(
@@ -208,16 +206,10 @@ impl crate::game::ServerGame<'_> {
         };
         for hand in hands {
             // The off hand's turn starts on the entity too (Minecraft.startUseItem).
-            if entity
-                && hand == Hand::Off
-                && self.common.with_hand(hand, |g| g.interact_entity(None))?
-            {
+            if entity && hand == Hand::Off && self.with_hand(hand, |g| g.interact_entity(None))? {
                 return Ok(Some(hand));
             }
-            if self
-                .common
-                .with_hand(hand, |game| game.use_hand(block_hit.as_ref()))?
-            {
+            if self.with_hand(hand, |game| game.use_hand(block_hit.as_ref()))? {
                 return Ok(Some(hand));
             }
         }
@@ -243,13 +235,29 @@ impl crate::game::ServerGame<'_> {
                 .player_uuid
                 .map(sunrise_sim::lan::playerdata::ints_uuid)
         })?;
-        self.common.player(uuid)
+        self.player(uuid)
     }
     pub(in crate::game) fn server_current_level_ref(&self) -> Option<mod_api::LevelRef> {
-        self.common.level(self.common.dim.id())
+        self.level(self.common.dim.id())
     }
 }
 
 use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::use_item_hand::UseItemHandGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

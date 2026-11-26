@@ -162,3 +162,5 @@ fn a_waxed_sign_or_a_click_command_keeps_the_adventure_click() {
         "{events:?}"
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

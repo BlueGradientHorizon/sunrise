@@ -96,3 +96,7 @@ fn count_equality_uses_live_stack_bounds_and_command_flow() {
         "actual count predicate mismatches: {failed:?}"
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

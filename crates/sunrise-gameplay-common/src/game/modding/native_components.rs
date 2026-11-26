@@ -49,13 +49,67 @@ pub fn stack_attack_bonus_preview(
     enchanted + smash
 }
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
+impl crate::game::CommonGame<'_> {
+    /// Item `item`'s default value of component `component`, in its prototype
+    /// (`Item.components().get`): `minecraft:max_damage` on an iron sword is `250`, data
+    /// packs' and native mods' changes included. Read from the item report's JSON, so a
+    /// number is an `Int`, `Long` or `Double` and a boolean a `Byte`. None where the item
+    /// hasn't the component, and for an unknown item.
+    pub(in crate::game) fn item_default_component(
+        &self,
+        item: mod_api::ItemKey,
+        component: &str,
+    ) -> Option<Tag> {
+        let item = mod_api::__private::item_key_id(item)?;
+        let prototype = self.pack.item_models.prototypes.get(item)?;
+        Some(sunrise_game_data::scoreboard::json_to_tag(
+            prototype.get(component)?,
+        ))
+    }
+    /// `Item.getName(ItemStack)` of a mod item: what its `item_name` Part
+    /// answers, or `None` for the default. One table lookup for an item no
+    /// Part names.
+    pub fn mod_item_name(
+        &self,
+        stack: &ItemStack,
+    ) -> Option<sunrise_game_data::text::Text> {
+        sunrise_sim::stations::item_name_part(&self.loop_context, stack)
+    }
+    /// Effective components, including defaults and removals, in the gameplay component view.
+    pub(in crate::game) fn item_combat_component(
+        &self,
+        stack: &ItemStack,
+        id: &str,
+    ) -> Option<serde_json::Value> {
+        self.pack
+            .item_models
+            .components_view(&sunrise_sim::item_models::stack_view(stack))
+            .get(id)
+            .cloned()
+    }
+    /// Materialize the effective enchantments for both attacks and detached previews.
+    pub fn item_combat_stack(&self, stack: &ItemStack) -> ItemStack {
+        let mut effective = stack.clone();
+        let enchantments = self
+            .item_combat_component(stack, "minecraft:enchantments")
+            .unwrap_or_else(|| serde_json::json!({}));
+        let tag = sunrise_game_data::scoreboard::json_to_tag(
+            &serde_json::json!({"minecraft:enchantments": enchantments}),
+        );
+        let (_, extra) = sunrise_items::item_data::decode_components(Some(&tag));
+        effective.data_mut().enchantments =
+            extra.map_or_else(Vec::new, |data| data.enchantments.clone());
+        effective
+    }
+}
+
+pub trait NativeComponentsGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Metadata backing ItemResource::damageable through the gameplay property path.
-    pub(in crate::game) fn item_resource_damageable(&self, stack: &ItemStack) -> bool {
+     fn item_resource_damageable(&self, stack: &ItemStack) -> bool {
         sunrise_sim::stations::is_damageable(self.items(), stack)
     }
     /// Metadata backing ItemResource::foil through the gameplay property path.
-    pub(in crate::game) fn item_resource_foil(&self, stack: &ItemStack) -> bool {
+     fn item_resource_foil(&self, stack: &ItemStack) -> bool {
         stack.has_foil(
             self.items()
                 .enchantments
@@ -64,7 +118,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         )
     }
     /// Metadata backing ItemResource::repairable through the gameplay property path.
-    pub(in crate::game) fn item_resource_repairable(
+     fn item_resource_repairable(
         &self,
         stack: &ItemStack,
         material: mod_api::ItemKey,
@@ -88,44 +142,28 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             &material,
         )
     }
-    /// Item `item`'s default value of component `component`, in its prototype
-    /// (`Item.components().get`): `minecraft:max_damage` on an iron sword is `250`, data
-    /// packs' and native mods' changes included. Read from the item report's JSON, so a
-    /// number is an `Int`, `Long` or `Double` and a boolean a `Byte`. None where the item
-    /// hasn't the component, and for an unknown item.
-    pub(in crate::game) fn item_default_component(
-        &self,
-        item: mod_api::ItemKey,
-        component: &str,
-    ) -> Option<Tag> {
-        let item = mod_api::__private::item_key_id(item)?;
-        let prototype = self.pack.item_models.prototypes.get(item)?;
-        Some(sunrise_game_data::scoreboard::json_to_tag(
-            prototype.get(component)?,
-        ))
-    }
     /// Item `item`'s cooking-fuel burn time in ticks (`FuelValues.burnDuration` of its `cooking_fuel`
     /// component, the data pack's context int provider resolved), None where it is no fuel. API
     /// @API:item_components@.
-    pub(in crate::game) fn item_burn_time(&self, item: mod_api::ItemKey) -> Option<i32> {
+     fn item_burn_time(&self, item: mod_api::ItemKey) -> Option<i32> {
         let item = mod_api::__private::item_key_id(item)?;
         let (time, _) = self.items().get(item)?.fuel.as_ref()?;
         Some(self.active_providers().int_value(time))
     }
     /// Item `item`'s chance to raise a composter's level (its `compostable` component's layers provider
     /// resolved), None where it is not compostable. API @API:item_components@.
-    pub(in crate::game) fn item_compost_chance(&self, item: mod_api::ItemKey) -> Option<f32> {
+     fn item_compost_chance(&self, item: mod_api::ItemKey) -> Option<f32> {
         let item = mod_api::__private::item_key_id(item)?;
         let layers = self.items().get(item)?.compostable.as_ref()?;
         Some(self.active_providers().layer_chance(layers))
     }
     /// The slot `stack` is equipped to (`Equippable.slot`) after its component patch, behind
     /// `ItemResource::equippable_slot`, through the opaque backend. API @API:item_components@.
-    pub(in crate::game) fn item_equippable_slot(&self, stack: &ItemStack) -> Option<String> {
+     fn item_equippable_slot(&self, stack: &ItemStack) -> Option<String> {
         sunrise_sim::item_sync::equippable_slot(stack, self.items())
     }
     /// `InstrumentItem.getUseDuration`: effective named or inline instrument; no instrument means zero.
-    pub(in crate::game) fn native_item_instrument_duration(&self, stack: &ItemStack) -> i32 {
+     fn native_item_instrument_duration(&self, stack: &ItemStack) -> i32 {
         if !stack.carries_component(self.items().get(&stack.item), "minecraft:instrument") {
             return 0;
         }
@@ -169,13 +207,13 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
     }
     /// `ItemStack.getUseDuration`, behind ItemResource's read; gameplay owns the Part call.
-    pub(in crate::game) fn item_resource_use_duration(&self, stack: &ItemStack) -> Option<i32> {
+     fn item_resource_use_duration(&self, stack: &ItemStack) -> Option<i32> {
         self.items().get(&stack.item)?;
         Some(self.use_duration(stack))
     }
     /// `IItemExtension.getCreatorModId`, behind ItemResource's read: the item
     /// id's namespace, or what the item's `creator_mod_id` Part answers.
-    pub(in crate::game) fn item_resource_creator_mod_id(
+     fn item_resource_creator_mod_id(
         &self,
         stack: &ItemStack,
     ) -> Option<String> {
@@ -187,20 +225,14 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
         mod_id
     }
-    /// `Item.getName(ItemStack)` of a mod item: what its `item_name` Part
-    /// answers, or `None` for the default. One table lookup for an item no
-    /// Part names.
-    pub fn mod_item_name(&self, stack: &ItemStack) -> Option<sunrise_game_data::text::Text> {
-        sunrise_sim::stations::item_name_part(&self.loop_context, stack)
-    }
     /// `ItemStack.isBarVisible`, `getBarWidth`, `getBarColor`, before client-only hooks.
-    pub(in crate::game) fn item_resource_bar(&self, stack: &ItemStack) -> Option<mod_api::ItemBar> {
+     fn item_resource_bar(&self, stack: &ItemStack) -> Option<mod_api::ItemBar> {
         use super::api_values::TryIntoApi;
         let snapshot = stack.try_into_api().ok()?;
         let resource = mod_api::ItemResource::of(&snapshot);
         let component = |id| {
             resource.value(
-                __Side::as_host(self),
+                <Self::State as crate::game::Side>::as_host(self),
                 &mod_api::ComponentId::new(id).expect("built-in component"),
             )
         };
@@ -218,7 +250,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 sunrise_items::bundle::Contents::of(self.items(), &effective)?.bar()?;
             return Some(mod_api::ItemBar { width, color });
         }
-        if !resource.damageable(__Side::as_host(self)) {
+        if !resource.damageable(<Self::State as crate::game::Side>::as_host(self)) {
             return None;
         }
         let max_damage = component("minecraft:max_damage")
@@ -231,33 +263,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             .try_into_api()
             .unwrap()
     }
-    /// Effective components, including defaults and removals, in the gameplay component view.
-    pub(in crate::game) fn item_combat_component(
-        &self,
-        stack: &ItemStack,
-        id: &str,
-    ) -> Option<serde_json::Value> {
-        self.pack
-            .item_models
-            .components_view(&sunrise_sim::item_models::stack_view(stack))
-            .get(id)
-            .cloned()
-    }
-    /// Materialize the effective enchantments for both attacks and detached previews.
-    pub fn item_combat_stack(&self, stack: &ItemStack) -> ItemStack {
-        let mut effective = stack.clone();
-        let enchantments = self
-            .item_combat_component(stack, "minecraft:enchantments")
-            .unwrap_or_else(|| serde_json::json!({}));
-        let tag = sunrise_game_data::scoreboard::json_to_tag(
-            &serde_json::json!({"minecraft:enchantments": enchantments}),
-        );
-        let (_, extra) = sunrise_items::item_data::decode_components(Some(&tag));
-        effective.data_mut().enchantments =
-            extra.map_or_else(Vec::new, |data| data.enchantments.clone());
-        effective
-    }
-    pub(in crate::game) fn item_resource_attack_damage_bonus(
+     fn item_resource_attack_damage_bonus(
         &self,
         stack: &ItemStack,
         attacker: mod_api::LivingRef,
@@ -271,10 +277,10 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             return None;
         }
         self.native_entity_read_target(target)?;
-        let target = self.entity_kind(target)?.id(__Side::as_host(self))?;
+        let target = self.entity_kind(target)?.id(<Self::State as crate::game::Side>::as_host(self))?;
         let actor = self
             .entity_kind(attacker.entity())?
-            .id(__Side::as_host(self))?;
+            .id(<Self::State as crate::game::Side>::as_host(self))?;
         let source = self.item_resource_damage_source(stack, attacker)?;
         let source = source.damage_type.to_string();
         let effective = self.item_combat_stack(stack);
@@ -297,13 +303,13 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         ))
     }
     /// Actor state shared by detached stack queries, without swapping equipment or players.
-    pub(in crate::game) fn item_combat_actor(
+     fn item_combat_actor(
         &self,
         actor: mod_api::LivingRef,
     ) -> Option<(bool, bool, f64, bool)> {
         self.side_item_combat_actor(actor)
     }
-    pub(in crate::game) fn item_resource_entity_attack_range(
+     fn item_resource_entity_attack_range(
         &self,
         stack: &ItemStack,
         attacker: mod_api::LivingRef,
@@ -314,7 +320,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             self.living_attribute_value(attacker, "minecraft:entity_interaction_range")?;
         Some(self.stack_attack_range(Some(stack), player, creative, default))
     }
-    pub(in crate::game) fn item_resource_damage_source(
+     fn item_resource_damage_source(
         &self,
         stack: &ItemStack,
         attacker: mod_api::LivingRef,
@@ -330,7 +336,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             position: None,
         })
     }
-    pub(in crate::game) fn item_resource_can_be_hurt_by(
+     fn item_resource_can_be_hurt_by(
         &self,
         stack: &ItemStack,
         source: &mod_api::ItemDamageSource,
@@ -338,7 +344,11 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         self.stack_can_be_hurt_by(stack, &source.damage_type.to_string())
     }
     /// `ItemStack.canBeHurtBy`, shared by armour wear and detached stack reads.
-    pub fn stack_can_be_hurt_by(&self, stack: &ItemStack, name: &str) -> Option<bool> {
+     fn stack_can_be_hurt_by(
+        &self,
+        stack: &ItemStack,
+        name: &str,
+    ) -> Option<bool> {
         self.items().get(&stack.item)?;
         stack_can_be_hurt_by(
             &self.pack.item_models,
@@ -348,12 +358,14 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         )
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeComponentsGameExt1<'__sg> for G {}
+
 
 // Native mods use these helpers.
 #[allow(dead_code)]
-impl crate::game::CommonGame<'_> {
+pub trait NativeComponentsGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// Read a native component, including the item's default when not patched.
-    pub(in crate::game) fn native_component<'a>(
+     fn native_component<'a>(
         &'a self,
         stack: &'a ItemStack,
         id: &str,
@@ -376,7 +388,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// Set a registered native component after checking the network NBT limits.
-    pub(in crate::game) fn native_set_component(
+     fn native_set_component(
         &self,
         stack: &mut ItemStack,
         id: &str,
@@ -402,7 +414,7 @@ impl crate::game::CommonGame<'_> {
     }
 
     /// Remove a native component, including its item default.
-    pub(in crate::game) fn native_remove_component(
+     fn native_remove_component(
         &self,
         stack: &mut ItemStack,
         id: &str,
@@ -422,14 +434,18 @@ impl crate::game::CommonGame<'_> {
         Ok(())
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeComponentsGameExt2<'__sg> for G {}
 
-impl crate::game::CommonGame<'_> {
+
+pub trait NativeComponentsGameExt3<'__sg>: crate::game::SideGame<'__sg> {
     /// `EntityType.is(TagKey)`: whether `entity_type` (`minecraft:player`) is in the entity
     /// type tag `tag` (`minecraft:cannot_be_pushed_onto_boats`).
-    pub(in crate::game) fn entity_type_in_tag(&self, entity_type: &str, tag: &str) -> bool {
+     fn entity_type_in_tag(&self, entity_type: &str, tag: &str) -> bool {
         self.entity_tag_matches(tag, entity_type)
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeComponentsGameExt3<'__sg> for G {}
+
 
 /// Supply the gameplay component snapshot to the shared stack rule.
 pub fn stack_can_be_hurt_by(
@@ -462,3 +478,9 @@ pub fn item_damage_resolver<'a>(
 use crate::game::side_ops::modapi_modding::ModapiModdingSideGameExt as _;
 
 use crate::game::tables::GameItems as _;
+
+use crate::game::commands_common::CommandsCommonGameExt2 as _;
+
+use crate::game::held_items::HeldItemsGameExt1 as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -228,3 +228,5 @@ fn breaker_context_is_target_only_and_does_not_escape_its_level_call() {
         dropped(game, "minecraft:chorus_flower");
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

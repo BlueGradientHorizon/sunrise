@@ -5,13 +5,13 @@ use crate::game::CommonGame;
 use mod_api::{EntityReach, EntityRef, EquipmentSlot, LivingRef, PlayerRef};
 use sunrise_core::geometry::{Aabb, Vec3};
 
-impl CommonGame<'_> {
+pub trait NativePlayerReachGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The server's reach rule `reach` between `player` and `entity`: the squared distance from
     /// the player's eyes to the closest point of the entity's box (`AABB.distanceToSqr`, 0 with
     /// the eyes inside), against the player's `entity_interaction_range` with the rule's buffer,
     /// or for an attack the main hand's attack range (`Player.isWithinAttackRange`). None for a
     /// stale player or entity, one without a box, or one in another level.
-    pub(super) fn player_within_entity_reach(
+     fn player_within_entity_reach(
         &self,
         player: PlayerRef,
         entity: EntityRef,
@@ -47,7 +47,15 @@ impl CommonGame<'_> {
     /// `IPlayerExtension.mayFly`: whether the player may start flying, by game mode or ability.
     /// Sunrise has no creative-flight attribute yet, so this is the `mayfly` ability. None for a
     /// stale or unavailable player.
-    pub(super) fn player_may_fly(&self, player: PlayerRef) -> Option<bool> {
+     fn player_may_fly(&self, player: PlayerRef) -> Option<bool> {
         Some(self.player_abilities(player)?.may_fly)
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativePlayerReachGameExt1<'__sg> for G {}
+
+
+use crate::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use crate::game::native_server::NativeServerGameExt1 as _;

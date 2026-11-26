@@ -46,3 +46,5 @@ fn a_dropped_item_entity_holds_its_stack_in_contents() {
     );
     assert_eq!(held(&game), 4);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

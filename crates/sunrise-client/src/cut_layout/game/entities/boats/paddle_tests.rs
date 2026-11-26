@@ -19,3 +19,5 @@ fn a_paddled_boat_accelerates_by_the_sine_table_at_its_turned_yaw() {
         assert_eq!(boat.velocity.z, f64::from_bits(0x3fa1_8e1f_8000_0000));
     });
 }
+
+use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;

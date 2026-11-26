@@ -48,25 +48,25 @@ impl ClientGame<'_> {
                 .common.creatures
                 .projectiles
                 .iter()
-                .any(|p| p.id == id && self.common.projectile_is_pickable(p)),
+                .any(|p| p.id == id && self.projectile_is_pickable(p)),
             Target::Trident(id) => self
                 .common.tridents
                 .iter()
-                .any(|t| t.id == id && self.common.trident_is_pickable(t)),
+                .any(|t| t.id == id && self.trident_is_pickable(t)),
             _ => false,
         };
         if !attackable {
             return None;
         }
-        let bounds = self.common.entity_bounding_box(entity).or_else(|| {
-            self.common.tracked_special_box(entity.id() as i32).map(|b| {
+        let bounds = self.entity_bounding_box(entity).or_else(|| {
+            self.tracked_special_box(entity.id() as i32).map(|b| {
                 let (a, b) = (b.min_position(), b.max_position());
                 [[a.x, a.y, a.z], [b.x, b.y, b.z]]
             })
         })?;
         let eye = self.common.eye_position()?;
         let (point, distance) = target_point(eye, bounds, self.common.entity_reach)?;
-        if !self.common.held_range_allows(distance) {
+        if !self.held_range_allows(distance) {
             return None;
         }
         if distance > 0.0 {
@@ -206,3 +206,9 @@ use sunrise_gameplay_common::game::client_side::client_attack_targets::tests::re
 
     
 }
+
+use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

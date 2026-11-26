@@ -824,3 +824,5 @@ fn continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass() 
 
 #[allow(unused_imports)]
 pub(in crate::game) use crate::game::server_side::creatures_server::projectile_batch_tests::run_continuing_wind_charge_keeps_tick_order_and_skips_relaunch_in_batched_pass;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

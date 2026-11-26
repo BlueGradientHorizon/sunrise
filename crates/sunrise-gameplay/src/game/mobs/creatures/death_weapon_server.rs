@@ -99,7 +99,7 @@ impl crate::game::ServerGame<'_> {
         let hurt = victim.damage_projectile(
             crate::game::server_side::entity_server::damage_level_of!(
                 self,
-                self.side.combat.0.attack(),
+                self.server.combat.0.attack(),
                 &mut credit,
                 lend
             ),
@@ -237,7 +237,7 @@ impl crate::game::ServerGame<'_> {
         let enchanted_loot = hurt
             .as_ref()
             .filter(|_| mod_api::__private::listened(mod_api::HookId::EnchantedEntityLoot))
-            .zip(self.common.effect_living_ref(Some(m.id as i32)));
+            .zip(self.effect_living_ref(Some(m.id as i32)));
         let (items, skulls) = sunrise_world::loot::with_native_loot_place(place, || {
             let rolled = match enchanted_loot {
                 Some((source, entity)) => {
@@ -436,7 +436,7 @@ impl crate::game::ServerGame<'_> {
             }),
             ..Default::default()
         };
-        let player = self.common.own_entity_id() as u32;
+        let player = self.own_entity_id() as u32;
         let attacker = shot.owner.map(|owner| match owner {
             Who::Player => self
                 .server
@@ -464,3 +464,7 @@ impl crate::game::ServerGame<'_> {
         ))
     }
 }
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

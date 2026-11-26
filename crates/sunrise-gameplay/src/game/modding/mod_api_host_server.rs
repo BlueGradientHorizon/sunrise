@@ -148,7 +148,7 @@ impl ServerGame<'_> {
             self.common.persist.uuids.insert(id.get(), uuid);
         }
         let level = self
-            .common.level(self.common.dim.id())
+            .level(self.common.dim.id())
             .ok_or(AttachmentError::MissingHolder)?;
         let holder =
             mod_api::AttachmentHolder::Entity(mod_api::EntityRef::new(level.epoch(), id.get()));
@@ -218,7 +218,7 @@ impl ServerGame<'_> {
             {
                 return Err(AttachmentError::MissingHolder);
             }
-            self.common.initialize_entity_on_access(holder);
+            self.initialize_entity_on_access(holder);
             attachment_compound(
                 self.common.persist
                     .raw
@@ -255,7 +255,7 @@ impl ServerGame<'_> {
             {
                 return Err(AttachmentError::MissingHolder);
             }
-            self.common.initialize_entity_on_access(holder);
+            self.initialize_entity_on_access(holder);
             if self.server.lan_acting_uuid == Some(uuid) {
                 if access == AttachmentAccess::Store
                     && let Some(conn) = self.server.lan_acting
@@ -293,3 +293,7 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::side_ops::modapi::ModapiSideGameExt as _;
+
+use sunrise_gameplay_common::game::entity_initialization_common::EntityInitializationCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

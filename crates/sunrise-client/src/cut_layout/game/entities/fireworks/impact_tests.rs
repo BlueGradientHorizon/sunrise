@@ -176,3 +176,5 @@ fn rocket_section_listener_reads_the_advanced_position() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -273,3 +273,7 @@ fn a_predicted_collider_shove_passes_the_server_move_check() {
 }
 
 use sunrise_gameplay_common::game::side_ops::player::PlayerSideGameExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::piston_push::carrying::CarryingGameExt1 as _;

@@ -35,7 +35,7 @@ impl ServerGame<'_> {
         pos: [i32; 3],
         placed: bool,
     ) -> Result<bool, PlaceFeatureRefusal> {
-        match self.common.native_level_world_result(level) {
+        match self.native_level_world_result(level) {
             Err(LevelReadError::Unavailable) => return Err(PlaceFeatureRefusal::Client),
             Err(_) => return Err(PlaceFeatureRefusal::Stale),
             Ok(_) if level.dimension() != self.common.dim.key() => {
@@ -85,3 +85,5 @@ impl ServerGame<'_> {
         answer
     }
 }
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

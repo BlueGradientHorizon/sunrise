@@ -14,7 +14,7 @@ pub mod ability {
     pub const SHEARS_CARVE: &str = "shears_carve";
 }
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// `ItemStack.canPerformAction(ability)`, once vanilla answered `vanilla`. A stack whose
     /// item has no part for it keeps `vanilla` at the cost of one table lookup, and the stack
     /// is not looked at.

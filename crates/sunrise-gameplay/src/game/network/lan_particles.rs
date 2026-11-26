@@ -404,7 +404,7 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<sunrise_gameplay_common::game::creatures::NativeSound> {
         let sound_known = |game: &Self, name: &str| {
             !name.starts_with("minecraft:")
-                || game.side.lan.as_ref().is_some_and(|host| {
+                || game.server.lan.as_ref().is_some_and(|host| {
                     host.hub
                         .registry_id("minecraft:sound_event", name)
                         .is_some()

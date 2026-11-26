@@ -54,7 +54,7 @@ impl ServerGame<'_> {
             if self.common.mobs.iter().any(|a| a.id == id && a.alive()) {
                 return self.common.persist.uuid_of(id);
             }
-            if let Some((_, mob)) = self.common.mob_in_other_level(id) {
+            if let Some((_, mob)) = self.mob_in_other_level(id) {
                 if !mob.alive() {
                     return None;
                 }
@@ -101,7 +101,7 @@ impl ServerGame<'_> {
                     .borrow_mut()
                     .level_uuid_candidate(dim.key(), uuid, after);
                 let Some(candidate) = next else { break };
-                if self.common.mob_in_other_level(candidate.get()).is_some() {
+                if self.mob_in_other_level(candidate.get()).is_some() {
                     return Some(candidate.get());
                 }
                 after = Some(candidate);
@@ -110,3 +110,5 @@ impl ServerGame<'_> {
         None
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

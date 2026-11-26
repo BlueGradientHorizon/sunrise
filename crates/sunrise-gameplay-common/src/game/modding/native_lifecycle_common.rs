@@ -3,8 +3,8 @@ use super::{Game, scheduled_tasks::ScheduledTasks};
 use mod_api::{Authority, LifecycleContext, ServerTickPhase, TickId, WorldEpoch};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-impl crate::game::CommonGame<'_> {
-    pub fn finish_world_closed_common(&mut self) {
+pub trait NativeLifecycleCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+     fn finish_world_closed_common(&mut self) {
         self.attachment_indexes.clear();
         self.passages.retire_world();
         self.resident_entities.table.get_mut().reset();
@@ -12,18 +12,20 @@ impl crate::game::CommonGame<'_> {
         self.clear_world_parts();
     }
 
-    pub fn native_lifecycle_open_started(&mut self) {
+     fn native_lifecycle_open_started(&mut self) {
         self.side_lifecycle_open_started();
     }
 
-    pub fn native_lifecycle_world_ready(&mut self) {
+     fn native_lifecycle_world_ready(&mut self) {
         self.side_lifecycle_world_ready();
     }
 
-    pub fn native_lifecycle_world_closed(&mut self) {
+     fn native_lifecycle_world_closed(&mut self) {
         self.side_lifecycle_world_closed();
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeLifecycleCommonGameExt1<'__sg> for G {}
+
 
 /// Epoch allocation spans server and client `Game` instances and client level
 /// replacements, so the counter is process-wide.

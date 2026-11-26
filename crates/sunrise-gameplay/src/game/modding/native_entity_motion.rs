@@ -30,8 +30,8 @@ impl crate::game::ServerGame<'_> {
     /// zero. On a client, another entity's is the motion the server last
     /// sent it (`Entity.lerpMotion`). API 379.
     pub(in crate::game) fn server_entity_velocity(&self, entity: EntityRef) -> Option<[f64; 3]> {
-        let t = self.common.native_entity_target(entity)?;
-        if let Some(g) = self.common.native_target_guest(t) {
+        let t = self.native_entity_target(entity)?;
+        if let Some(g) = self.native_target_guest(t) {
             return Some(std::array::from_fn(|i| {
                 g.position[i] - g.previous_position[i]
             }));
@@ -52,13 +52,13 @@ impl crate::game::ServerGame<'_> {
         &self,
         entity: EntityRef,
     ) -> Option<Vec3> {
-        let t = self.common.native_entity_target(entity)?;
-        if let Some(g) = self.common.native_target_guest(t) {
+        let t = self.native_entity_target(entity)?;
+        if let Some(g) = self.native_target_guest(t) {
             let [x, y, z] = g.known_movement;
             return Some(Vec3::new(x, y, z));
         }
         if matches!(t, Target::Player) {
-            return Some(self.common.known_player_movement());
+            return Some(self.known_player_movement());
         }
         if let Some(rider) = self.native_controlling_player(t, entity) {
             return self.native_entity_known_speed(rider);
@@ -109,7 +109,7 @@ impl crate::game::ServerGame<'_> {
         if !velocity.iter().all(|v| v.is_finite()) {
             return false;
         }
-        let Some(target) = self.common.native_entity_target(entity) else {
+        let Some(target) = self.native_entity_target(entity) else {
             return false;
         };
         let [x, y, z] = velocity;
@@ -128,9 +128,9 @@ impl crate::game::ServerGame<'_> {
     }
     /// `Entity.fallDistance` on the server body, including the player's accepted moves.
     pub(in crate::game) fn entity_fall_distance(&self, entity: EntityRef) -> Option<f64> {
-        match self.common.native_entity_target(entity)? {
+        match self.native_entity_target(entity)? {
             Target::Player => Some(self.common.player.as_ref()?.fall_distance),
-            Target::Guest(conn) => Some(self.common.command_guest(conn)?.motion.as_ref()?.fall_distance),
+            Target::Guest(conn) => Some(self.command_guest(conn)?.motion.as_ref()?.fall_distance),
             _ => Some(self.common.native_walk_entity(entity.id()).map_or(
                 0.0,
                 |handle| with_entity!(self, handle, e => e.fall_distance()),
@@ -142,7 +142,7 @@ impl crate::game::ServerGame<'_> {
     /// Players too, the acting one and guests. False for a stale handle or an entity not in
     /// the level in place; true for a kind that keeps no fall distance, which has none to forget.
     pub(in crate::game) fn entity_reset_fall_distance(&mut self, entity: EntityRef) -> bool {
-        let Some(target) = self.common.native_entity_target(entity) else {
+        let Some(target) = self.native_entity_target(entity) else {
             return false;
         };
         if matches!(target, Target::Player | Target::Guest(_)) {
@@ -176,7 +176,7 @@ impl crate::game::ServerGame<'_> {
         if !self.common.is_logical_server() {
             return Err(LevelWriteError::Unavailable);
         }
-        let Some(target) = self.common.native_entity_target(entity) else {
+        let Some(target) = self.native_entity_target(entity) else {
             return Ok(false);
         };
         match target {
@@ -215,14 +215,14 @@ impl crate::game::ServerGame<'_> {
                 // PlayerInput updates the guest row before the sneak callback and the body tick.
                 self.server
                     .lan_acting
-                    .and_then(|conn| self.common.command_guest(conn))
+                    .and_then(|conn| self.command_guest(conn))
                     .map_or(body.shift_key_down, |guest| guest.sneaking),
                 self.common.inventory.get(self.common.selected).and_then(Option::as_ref),
                 &self.common.armor,
                 self.server.lan_acting,
             ),
             Target::Guest(conn) => {
-                let Some(guest) = self.common.command_guest(conn) else {
+                let Some(guest) = self.command_guest(conn) else {
                     return Ok(false);
                 };
                 let world = if guest.dimension == self.common.dim.id() {
@@ -289,8 +289,8 @@ impl crate::game::ServerGame<'_> {
         &self,
         entity: EntityRef,
     ) -> Option<[[f64; 3]; 2]> {
-        let t = self.common.native_entity_target(entity)?;
-        if let Some(g) = self.common.native_target_guest(t) {
+        let t = self.native_entity_target(entity)?;
+        if let Some(g) = self.native_target_guest(t) {
             return Some(corners(g.bounds()));
         }
         if let Some(h) = self.common.native_walk_entity(entity.id()) {
@@ -308,7 +308,7 @@ impl crate::game::ServerGame<'_> {
                     .map(corners);
             }
             Target::DragonPart(id) => {
-                let (dragon, part) = self.common.resident_dragon_part(id)?;
+                let (dragon, part) = self.resident_dragon_part(id)?;
                 return Some(corners(dragon.part_geometry(part).1));
             }
             Target::Crystal(id) => {
@@ -327,13 +327,13 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game) fn server_entity_eye_height(&self, entity: EntityRef) -> Option<f64> {
-        let target = self.common.native_entity_target(entity)?;
+        let target = self.native_entity_target(entity)?;
         Some(self.server_target_eye_height(target))
     }
     /// The unit vector the entity looks along (`Entity.getViewVector`, from
     /// its pitch and yaw). API 379.
     pub(in crate::game) fn entity_view_vector(&self, entity: EntityRef) -> Option<[f64; 3]> {
-        let [yaw, pitch] = self.common.entity_rotation(entity)?;
+        let [yaw, pitch] = self.entity_rotation(entity)?;
         Some(turned_view_vector(yaw, pitch, 0.0))
     }
     /// `Entity.mainSupportingBlockPos`, retained by bodies with a shared ground state.
@@ -347,7 +347,7 @@ impl crate::game::ServerGame<'_> {
             Target::Player => return self.common.player.as_ref()?.ground.supporting_block,
             Target::Guest(_) => {
                 return self
-                    .common.native_target_guest(t)?
+                    .native_target_guest(t)?
                     .motion
                     .as_ref()?
                     .ground
@@ -360,7 +360,7 @@ impl crate::game::ServerGame<'_> {
         if let Some(ground) = with_entity!(self, handle, e => e.ground_state()) {
             return ground.supporting_block;
         }
-        if !self.common.entity_on_ground(entity)? {
+        if !self.entity_on_ground(entity)? {
             return None;
         }
         let (position, bounds) = with_entity!(self, handle, e => (e.position(), e.bounds()));
@@ -368,8 +368,8 @@ impl crate::game::ServerGame<'_> {
     }
     /// The block the entity stands on (`Entity.getOnPos`). API 379.
     pub(in crate::game) fn entity_on_block(&self, entity: EntityRef) -> Option<[i32; 3]> {
-        let t = self.common.native_entity_target(entity)?;
-        let [x, y, z] = self.common.entity_position(entity)?;
+        let t = self.native_entity_target(entity)?;
+        let [x, y, z] = self.entity_position(entity)?;
         Some(on_block_position(
             self.native_supporting_block(entity, t),
             Vec3::new(x, y, z),
@@ -381,10 +381,10 @@ impl crate::game::ServerGame<'_> {
         if !(distance.is_finite() && distance >= 0.0) {
             return None;
         }
-        let from = self.common.entity_eye_position(entity)?;
+        let from = self.entity_eye_position(entity)?;
         let to = ray_end(from, self.entity_view_vector(entity)?, distance);
-        self.common.level_clip(
-            self.common.entity_level(entity)?,
+        self.level_clip(
+            self.entity_level(entity)?,
             from,
             to,
             ClipBlock::Outline,
@@ -398,7 +398,7 @@ impl crate::game::ServerGame<'_> {
         entity: EntityRef,
         pos: [f64; 3],
     ) -> Option<f64> {
-        let p = self.common.entity_position(entity)?;
+        let p = self.entity_position(entity)?;
         let [dx, dy, dz] = std::array::from_fn(|i| p[i] - pos[i]);
         Some(dx * dx + dy * dy + dz * dz)
     }
@@ -825,3 +825,15 @@ use sunrise_gameplay_common::game::server_side::native_entity_motion::tests::ass
 
     
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_motion_values::NativeEntityMotionValuesGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

@@ -917,3 +917,7 @@ fn a_deferred_join_can_remove_a_parent_only_after_the_baby_is_applied() {
         });
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

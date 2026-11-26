@@ -578,11 +578,11 @@ pub mod tests {
                 );
             };
             let take_signals = |game: &mut crate::game::ServerGame<'_>| {
-                let lids = std::mem::take(&mut game.side.lan_block_events)
+                let lids = std::mem::take(&mut game.server.lan_block_events)
                     .into_iter()
                     .filter_map(|(p, id, count, _)| (p == at && id == 1).then_some(count))
                     .collect::<Vec<_>>();
-                let sounds = std::mem::take(&mut game.side.pending_sounds)
+                let sounds = std::mem::take(&mut game.server.pending_sounds)
                     .into_iter()
                     .map(|sound| sound.event)
                     .collect::<Vec<_>>();
@@ -610,13 +610,13 @@ pub mod tests {
                 TEST_POSTED_EVENTS.with(|posted| *posted.borrow_mut() = Some(Vec::new()));
                 let count = |game: &crate::game::ServerGame<'_>| {
                     if block == "shulker_box" {
-                        game.side
+                        game.server
                             .be_anims
                             .shulkers
                             .get(&at)
                             .map_or(0, |s| s.open_count)
                     } else {
-                        game.side.lid_openers.get(&pos).copied().unwrap_or(0)
+                        game.server.lid_openers.get(&pos).copied().unwrap_or(0)
                     }
                 };
                 // A shulker's veto can change the acting player to spectator, but
@@ -984,7 +984,7 @@ pub(in crate::game) mod hotbar_tests {
                         1,
                         play::Serverbound::SetCarriedItem(play::SetCarriedItem { slot }),
                     );
-                    game.side.lan.as_ref().unwrap().hub.guests[0].selected
+                    game.server.lan.as_ref().unwrap().hub.guests[0].selected
                 };
                 assert_eq!(switch(game, 3), 3);
                 assert_eq!(switch(game, 3), 3);
@@ -1213,3 +1213,5 @@ pub(in crate::game) mod menu_still_valid_tests;
 #[path = "tests/player_entity_tick_tests.rs"]
 pub(in crate::game) mod player_entity_tick_tests;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

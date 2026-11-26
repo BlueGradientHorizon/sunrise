@@ -15,7 +15,7 @@ impl crate::game::ServerGame<'_> {
     }
     pub(in crate::game) fn server_clear_lod(&mut self) {}
     pub(in crate::game) fn server_update_world(&mut self) {
-        self.common.ask_edited_light_emission();
+        self.ask_edited_light_emission();
         sunrise_level::spans::time("tick_pregen", || self.tick_pregen());
         if self.defer_chunk_disk_save() {
             return;
@@ -60,10 +60,10 @@ impl crate::game::ServerGame<'_> {
             log::warn!("Sunrise: failed to save unloaded chunks: {e}");
         }
         sunrise_level::spans::time("spawn_fresh_chunks", || self.spawn_fresh_chunks());
-        self.common.ask_loaded_light_emission();
+        self.ask_loaded_light_emission();
         sunrise_level::spans::time("mods_chunks_changed", || {
-            self.common.native_chunks_loaded();
-            self.common.native_chunks_unloaded(&unloaded);
+            self.native_chunks_loaded();
+            self.native_chunks_unloaded(&unloaded);
         });
         for chunk in &unloaded {
             self.common.world.modified.unloaded(&(chunk.x, chunk.z));
@@ -117,3 +117,7 @@ impl crate::game::ServerGame<'_> {
             .extend(waiting.into_iter().map(|chunk| (chunk, 0)));
     }
 }
+
+use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;

@@ -81,3 +81,5 @@ fn local_mob_events_play_without_entering_the_shared_capture() {
         assert!(game.side.audio.0.capture.as_ref().unwrap().is_empty());
     });
 }
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;

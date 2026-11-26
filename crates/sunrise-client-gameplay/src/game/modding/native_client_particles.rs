@@ -56,7 +56,7 @@ impl ClientGame<'_> {
         // The limiter's roll draws the level random: inside a part's `animate_tick`, the one
         // the part holds as `event.random`.
         self.with_lent_level_random(|game| {
-            game.side.particles.0.add_with_world(
+            game.client.particles.0.add_with_world(
                 Some(&game.world),
                 options,
                 at,
@@ -74,7 +74,7 @@ impl ClientGame<'_> {
         state: BlockStateId,
         face: Direction,
     ) -> Result<bool, LevelWriteError> {
-        if self.common.native_client_level() != Some(level) {
+        if self.native_client_level() != Some(level) {
             return Err(LevelWriteError::Unavailable);
         }
         Ok(self.add_breaking_particle(pos, state, face))
@@ -88,7 +88,7 @@ impl ClientGame<'_> {
         at: [f64; 3],
         velocity: [f64; 3],
     ) -> Result<bool, LevelWriteError> {
-        if self.common.native_client_level() != Some(level) {
+        if self.native_client_level() != Some(level) {
             return Err(LevelWriteError::Unavailable);
         }
         if !at.into_iter().chain(velocity).all(f64::is_finite) {
@@ -129,7 +129,7 @@ impl ClientGame<'_> {
         let camera = self.common.eye_position().unwrap_or(request.at);
         // Without explosions its poofs are added at once, each with the limiter's roll.
         self.with_lent_level_random(|game| {
-            game.side.particles.0.fireworks(
+            game.client.particles.0.fireworks(
                 request.at,
                 request.velocity,
                 explosions,
@@ -181,3 +181,5 @@ mod tests {
         assert!(!finite_options(&bad));
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

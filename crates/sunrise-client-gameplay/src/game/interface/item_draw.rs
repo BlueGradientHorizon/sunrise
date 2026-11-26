@@ -251,7 +251,7 @@ impl ItemEnv for Env<'_, '_> {
     }
     fn grass_color(&self, temperature: f64, downfall: f64) -> i32 {
         self.game
-            .side
+            .client
             .client_pack
             .item_renderer
             .grass_color(temperature, downfall)
@@ -291,7 +291,7 @@ impl ItemEnv for Env<'_, '_> {
                 (self.game.visual_ticks() ^ 0x9e37_79b9).wrapping_mul(0x9e37_79b9_7f4a_7c15);
             return (mixed >> 40) as f32 / (1u64 << 24) as f32;
         }
-        let nanos = self.game.side.started.elapsed().subsec_nanos();
+        let nanos = self.game.client.started.elapsed().subsec_nanos();
         (nanos % 1_000_000) as f32 / 1_000_000.0
     }
 }
@@ -564,7 +564,7 @@ impl crate::game::ClientGame<'_> {
             owner.crossbow_charge_duration = Self::charge_ticks(stack).max(1) as i32;
         }
         owner.fishing_cast_with_this_item = stack
-            .zip(self.common.cast_rod())
+            .zip(self.cast_rod())
             .is_some_and(|(s, rod)| std::ptr::eq(s, rod));
         owner.is_selected = stack.is_some()
             && self
@@ -2016,3 +2016,5 @@ use sunrise_gameplay_common::game::end_common::EndGameExt as _;
 use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

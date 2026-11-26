@@ -71,3 +71,5 @@ fn a_wind_burst_scales_the_dragons_push_by_its_multiplier() {
     assert!(push > 0.0, "Wind Burst did not push the dragon");
     assert!(push > 0.6, "Wind Burst multiplier was not applied: {push}");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

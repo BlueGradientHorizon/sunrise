@@ -417,3 +417,7 @@ fn a_placed_sign_with_a_translated_line_opens_no_editor() {
     );
     assert!(w.opened(A), "a plain placed sign opened no editor");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_lifecycle_common::NativeLifecycleCommonGameExt1 as _;

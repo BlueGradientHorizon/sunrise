@@ -17,7 +17,7 @@ fn map_bundle_error(err: CustomBundleError) -> BundleReadError {
     }
 }
 
-impl CommonGame<'_> {
+pub trait NativeItemBundleGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     fn bundle_accepts(&self, config: &BundleConfig, item: &ItemStack) -> bool {
         if !can_be_in_bundle(&self.loop_context, item) {
             return false;
@@ -32,7 +32,7 @@ impl CommonGame<'_> {
             .is_some_and(|members| members.contains(item.item.as_ref()))
     }
 
-    pub(in crate::game) fn bundle_slots(
+     fn bundle_slots(
         &self,
         stack: &ItemStack,
         config: &BundleConfig,
@@ -48,7 +48,7 @@ impl CommonGame<'_> {
         Ok(Some(contents.items().iter().cloned().map(Some).collect()))
     }
 
-    pub(in crate::game) fn bundle_capacity(
+     fn bundle_capacity(
         &self,
         stack: &ItemStack,
         slot: usize,
@@ -67,7 +67,7 @@ impl CommonGame<'_> {
         Ok(room.unwrap_or(0))
     }
 
-    pub(in crate::game) fn bundle_insert_slot(
+     fn bundle_insert_slot(
         &self,
         stack: &ItemStack,
         slot: usize,
@@ -108,7 +108,7 @@ impl CommonGame<'_> {
         Ok(Some((moved, changed)))
     }
 
-    pub(in crate::game) fn bundle_extract(
+     fn bundle_extract(
         &self,
         stack: &ItemStack,
         slot: usize,
@@ -143,7 +143,7 @@ impl CommonGame<'_> {
         Ok(Some((Some(out), changed)))
     }
 
-    pub(in crate::game) fn bundle_metrics(
+     fn bundle_metrics(
         &self,
         stack: &ItemStack,
         config: &BundleConfig,
@@ -167,7 +167,7 @@ impl CommonGame<'_> {
     }
 
     #[cfg(test)]
-    pub(in crate::game) fn item_bundle_slots(
+     fn item_bundle_slots(
         &self,
         stack: &ItemStack,
     ) -> Option<Vec<Option<ItemStack>>> {
@@ -175,7 +175,7 @@ impl CommonGame<'_> {
     }
 
     #[cfg(test)]
-    pub(in crate::game) fn item_bundle_capacity(
+     fn item_bundle_capacity(
         &self,
         stack: &ItemStack,
         slot: usize,
@@ -186,7 +186,7 @@ impl CommonGame<'_> {
     }
 
     #[cfg(test)]
-    pub(in crate::game) fn item_bundle_insert_slot(
+     fn item_bundle_insert_slot(
         &self,
         stack: &ItemStack,
         slot: usize,
@@ -197,7 +197,7 @@ impl CommonGame<'_> {
     }
 
     #[cfg(test)]
-    pub(in crate::game) fn item_bundle_extract(
+     fn item_bundle_extract(
         &self,
         stack: &ItemStack,
         slot: usize,
@@ -207,5 +207,7 @@ impl CommonGame<'_> {
             .unwrap()
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> NativeItemBundleGameExt1<'__sg> for G {}
+
 
 use crate::game::tables::GameItems as _;

@@ -228,3 +228,5 @@ pub(in sunrise_gameplay::game::server_side) fn run_falling_impacts_wear_the_helm
     assert_eq!(game.player.as_ref().unwrap().health.absorption(), 0.0);
     std::fs::remove_dir_all(scratch).unwrap();
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

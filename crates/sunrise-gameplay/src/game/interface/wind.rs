@@ -209,7 +209,7 @@ impl ServerGame<'_> {
             return Ok(false);
         };
         let (on_ground, pos) = (p.ground.on_ground, p.position);
-        let velocity = self.common.known_player_movement();
+        let velocity = self.known_player_movement();
         let start = Vec3::new(pos.x, eye[1], pos.z);
         let mut proj = Projectile::new(ProjectileKind::WindCharge, start, Some(Who::Player));
         proj.shoot_from_rotation(
@@ -306,7 +306,7 @@ impl ServerGame<'_> {
         };
         // The charge owner is the indirect source of the explosion.
         let owner = match p.owner {
-            Some(Who::Player) => Some(self.common.own_entity_id() as u32),
+            Some(Who::Player) => Some(self.own_entity_id() as u32),
             Some(Who::Mob(id)) => self.common.mobs.iter().any(|m| m.id == id).then_some(id),
             None => None,
         };
@@ -459,7 +459,7 @@ impl ServerGame<'_> {
                 let hurt = victim.damage(
                     crate::game::server_side::entity_server::damage_level_of!(
                         self,
-                        self.side.combat.0.attack(),
+                        self.server.combat.0.attack(),
                         &mut credit,
                         lend
                     ),
@@ -1045,3 +1045,9 @@ pub(in crate::game) mod tests {
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

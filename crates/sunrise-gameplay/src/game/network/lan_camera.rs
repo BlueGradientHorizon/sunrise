@@ -26,13 +26,13 @@ impl crate::game::ServerGame<'_> {
         if let Some(special) = self.camera_extra(id) {
             return Some((special.position, special.rotation));
         }
-        let t = self.common.level_entity(id)?;
+        let t = self.level_entity(id)?;
         if let Target::Mob(m) = t
             && !self.common.mobs.iter().any(|x| x.id == m && x.alive())
         {
             return None;
         }
-        Some((self.target_position(t)?, self.common.target_rotation(t)))
+        Some((self.target_position(t)?, self.target_rotation(t)))
     }
 
     /// The camera targets `Target` does not name: primed TNT and falling
@@ -81,7 +81,7 @@ impl crate::game::ServerGame<'_> {
         if self.camera_extra(id).is_some() {
             return true;
         }
-        match self.common.level_entity(id) {
+        match self.level_entity(id) {
             // Projectile.isPickable: the redirectable projectiles
             // (`#redirectable_projectile`); ShulkerBullet's is `true`.
             Some(t @ Target::Projectile(_)) => matches!(
@@ -98,7 +98,7 @@ impl crate::game::ServerGame<'_> {
             Some(Target::Frame(_) | Target::Painting(_) | Target::Boat(_) | Target::Cart(_))
             | Some(Target::Crystal(_)) => true,
             // Interaction.
-            Some(t @ Target::Other(_)) => self.common.target_type(t) == "minecraft:interaction",
+            Some(t @ Target::Other(_)) => self.target_type(t) == "minecraft:interaction",
             _ => false,
         }
     }
@@ -281,3 +281,5 @@ impl crate::game::ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

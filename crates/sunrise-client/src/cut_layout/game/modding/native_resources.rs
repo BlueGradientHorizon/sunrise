@@ -248,3 +248,4 @@ mod tests {
         });
     }
 }
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

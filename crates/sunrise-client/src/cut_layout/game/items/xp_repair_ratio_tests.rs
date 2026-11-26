@@ -228,3 +228,5 @@ fn a_data_packs_mending_arrives_as_the_ratio() {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::native_server::NativeServerGameExt1 as _;

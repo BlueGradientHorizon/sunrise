@@ -178,3 +178,5 @@ fn a_client_turns_its_painting_with_the_servers_direction() {
         assert_eq!(game.paintings[0].facing, 0);
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -502,13 +502,6 @@ impl crate::game::CommonGame<'_> {
         }
         Ok(())
     }
-    pub fn handle_mob_events(&mut self, mut events: Vec<MobEvent>) -> Result<()> {
-        self.handle_mob_events_reusable(&mut events)
-    }
-
-    pub fn handle_mob_events_reusable(&mut self, events: &mut Vec<MobEvent>) -> Result<()> {
-        self.side_handle_mob_events_reusable(events)
-    }
 
     pub fn apply_setup(&mut self, id: u32, setup: &SpawnSetup) {
         let Some(m) = self.mobs.iter_mut().find(|m| m.id == id) else {
@@ -562,11 +555,6 @@ impl crate::game::CommonGame<'_> {
         tell(self);
         let same = no_spawns && self.creatures.projectiles.stamp() == restored;
         (self.creatures.projectiles.lift(), same)
-    }
-
-    /// `Level.isRainingAt` for arrows.
-    pub fn arrow_rain(&self) -> impl Fn(BlockPos) -> bool + '_ {
-        move |p: BlockPos| self.raining_at(p)
     }
     /// The level as arrows see it, parameterized by side-owned hooks and owner table.
     pub fn arrow_scene_with<'s>(
@@ -629,12 +617,39 @@ impl crate::game::CommonGame<'_> {
         *seen = contact;
         true
     }
+    /// Shared peaceful-mode eligibility for spawn eggs.
+    pub fn spawn_egg_allowed(&self, kind: &str) -> bool {
+        self.ui.difficulty != 0
+            || self
+                .res
+                .mob_types()
+                .get(kind)
+                .is_none_or(|t| t.allowed_in_peaceful())
+    }
+}
+
+pub trait ModGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+     fn handle_mob_events(&mut self, mut events: Vec<MobEvent>) -> Result<()> {
+        self.handle_mob_events_reusable(&mut events)
+    }
+
+     fn handle_mob_events_reusable(
+        &mut self,
+        events: &mut Vec<MobEvent>,
+    ) -> Result<()> {
+        self.side_handle_mob_events_reusable(events)
+    }
+
+    /// `Level.isRainingAt` for arrows.
+     fn arrow_rain(&self) -> impl Fn(BlockPos) -> bool + '_ {
+        move |p: BlockPos| self.raining_at(p)
+    }
 
     /// `AgeableMob.mobInteract`: whether a click with `item` on `m` gets to
     /// the golden dandelion check (`canUseGoldenDandelion`, which a tadpole
     /// calls with `isBaby` true). A panda that is scared or on its back and an
     /// armadillo in its shell answer in their own `mobInteract` first.
-    pub fn age_lock_takes(&self, m: &Mob, item: &str) -> bool {
+     fn age_lock_takes(&self, m: &Mob, item: &str) -> bool {
         let species = m.species();
         let baby = if species == Species::Tadpole {
             true
@@ -660,7 +675,10 @@ impl crate::game::CommonGame<'_> {
     }
     /// The mob a normal interaction can reach: a packet's exact validated ID,
     /// or the crosshair's mob before its blocking shape.
-    pub fn mob_interaction_target(&self, target: Option<InteractTarget>) -> Option<usize> {
+     fn mob_interaction_target(
+        &self,
+        target: Option<InteractTarget>,
+    ) -> Option<usize> {
         let (index, distance, _) = (match target {
             // The id the packet named, under the filters the crosshair pick
             // applies (`mob_hit`): a mob in its death animation is not clicked
@@ -695,16 +713,9 @@ impl crate::game::CommonGame<'_> {
         }
         Some(index)
     }
-    /// Shared peaceful-mode eligibility for spawn eggs.
-    pub fn spawn_egg_allowed(&self, kind: &str) -> bool {
-        self.ui.difficulty != 0
-            || self
-                .res
-                .mob_types()
-                .get(kind)
-                .is_none_or(|t| t.allowed_in_peaceful())
-    }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> ModGameExt1<'__sg> for G {}
+
 /// `ThrownItemRenderer.submit` turns the item by `CameraRenderState.orientation`
 /// (`Camera.setRotation`): the billboard's right and up axes are the camera's.
 /// They stay continuous at pitch ±90, and in third-person front view they are
@@ -989,3 +1000,5 @@ use crate::game::side_ops::presentation::PresentationSideGameExt as _;
 use crate::game::tables::GameItems as _;
 
 use crate::game::weather::WeatherGameExt as _;
+
+use crate::game::pick_ray::PickRayGameExt1 as _;

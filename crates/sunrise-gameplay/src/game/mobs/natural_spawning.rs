@@ -516,7 +516,7 @@ impl<'g> GameLevel<'g, '_> {
     }
     /// The block whose noise cell `BiomeManager.getBiome` reads.
     fn zoomed(&self, x: i32, y: i32, z: i32) -> [i32; 3] {
-        let zoom = self.game.side.streaming.biome_zoom;
+        let zoom = self.game.server.streaming.biome_zoom;
         let [qx, qy, qz] = zoom.quart_at_block(sunrise_core::position::BlockPos::new(x, y, z));
         [qx << 2, qy << 2, qz << 2]
     }
@@ -911,7 +911,7 @@ impl NaturalLevel for GameLevel<'_, '_> {
             .collect()
     }
     fn structure_spawns(&self) -> &StructureSpawns {
-        &self.game.side.structure_spawns
+        &self.game.server.structure_spawns
     }
     fn nearest_player_positions(&self) -> &[[f64; 3]] {
         &self.nearest
@@ -1257,7 +1257,7 @@ impl<'a> crate::game::ServerGame<'a> {
             && self
                 .server
                 .lan_acting
-                .is_none_or(|conn| self.common.command_guest(conn).is_some_and(|g| g.placed))
+                .is_none_or(|conn| self.command_guest(conn).is_some_and(|g| g.placed))
     }
     /// The guests in the level in place, past the acting one: `player_view`
     /// already reads that guest's live body, and its record lags behind it.
@@ -1995,7 +1995,7 @@ mod tests {
                 let used = natural.provisional.get();
                 drop(natural);
                 assert!(
-                    game.side.lent_mobs.0.borrow().is_empty(),
+                    game.server.lent_mobs.0.borrow().is_empty(),
                     "every lend ended"
                 );
                 (
@@ -2066,7 +2066,7 @@ mod tests {
             let tick = |game: &mut crate::game::ServerGame<'_>, extra: Option<(&str, Tag)>| {
                 let (mobs, entities, tracked) = (
                     game.mobs.len(),
-                    game.side.next_entity,
+                    game.server.next_entity,
                     game.persist.uuids.len(),
                 );
                 game.world.random.set_seed(7);
@@ -2083,20 +2083,20 @@ mod tests {
                 game.server_tick_spawner_of(key, &mut spawner, None)
                     .unwrap();
                 assert!(
-                    game.side.lent_mobs.0.borrow().is_empty(),
+                    game.server.lent_mobs.0.borrow().is_empty(),
                     "every lend ended"
                 );
                 let added: Vec<Snap> = game.mobs[mobs..].iter().map(snap).collect();
                 let out = (
                     added,
-                    game.side.next_entity - entities,
+                    game.server.next_entity - entities,
                     game.persist.uuids.len() - tracked,
                     game.world.random.next_int(),
                 );
                 for m in game.mobs.drain(mobs..) {
                     game.persist.uuids.remove(&m.id);
                 }
-                game.side.next_entity = entities;
+                game.server.next_entity = entities;
                 out
             };
             let (unlistened, _) = with_checks(None, Vec::new, || tick(game, None));
@@ -2162,7 +2162,7 @@ mod tests {
             let tick = |game: &mut crate::game::ServerGame<'_>| {
                 let (mobs, entities, tracked) = (
                     game.mobs.len(),
-                    game.side.next_entity,
+                    game.server.next_entity,
                     game.persist.uuids.len(),
                 );
                 game.world.random.set_seed(9);
@@ -2175,20 +2175,20 @@ mod tests {
                 game.server_tick_trial_spawner(key, &mut spawner, TrialState::Active, false)
                     .unwrap();
                 assert!(
-                    game.side.lent_mobs.0.borrow().is_empty(),
+                    game.server.lent_mobs.0.borrow().is_empty(),
                     "every lend ended"
                 );
                 let added: Vec<Snap> = game.mobs[mobs..].iter().map(snap).collect();
                 let out = (
                     added,
-                    game.side.next_entity - entities,
+                    game.server.next_entity - entities,
                     game.persist.uuids.len() - tracked,
                     game.world.random.next_int(),
                 );
                 for m in game.mobs.drain(mobs..) {
                     game.persist.uuids.remove(&m.id);
                 }
-                game.side.next_entity = entities;
+                game.server.next_entity = entities;
                 out
             };
             let (unlistened, _) = with_checks(None, Vec::new, || tick(game));
@@ -2505,3 +2505,9 @@ mod tests {
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

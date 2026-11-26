@@ -26,7 +26,7 @@ impl ServerGame<'_> {
             p.position = top;
             p.velocity = Vec3::ZERO;
         }
-        let _ = self.common.handle_mob_events(vec![up]);
+        let _ = self.handle_mob_events(vec![up]);
     }
     /// `DriedGhastBlock.spawnGhastling`: a ghastling facing the way the block did.
     pub(in crate::game) fn spawn_ghastling(&mut self, pos: [i32; 3], state: BlockStateId) {
@@ -68,3 +68,5 @@ impl ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;

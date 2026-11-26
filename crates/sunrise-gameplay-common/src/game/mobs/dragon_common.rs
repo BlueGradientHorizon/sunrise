@@ -45,45 +45,6 @@ impl crate::game::CommonGame<'_> {
         out
     }
 
-    /// Resolves a crosshair target id (including synthetic dragon-part ids) to its wire entity id.
-    pub fn wire_entity_id(&self, id: u32) -> Option<i32> {
-        if (SPECIAL..SPECIAL + 8).contains(&id) {
-            let dragon = self
-                .dragon
-                .as_ref()
-                .filter(|d| d.id != 0 || self.side_has_remote())?;
-            return Some(dragon_part_wire_id(dragon.id, (id - SPECIAL) as usize));
-        }
-        Some(id as i32)
-    }
-
-    /// The dragon the level holds and the index (`getSubEntities` order) of
-    /// its part with that entity id, while the dragon is there, dying or
-    /// not: a part is an entity for as long as its parent is.
-    pub fn resident_dragon_part(&self, id: u32) -> Option<(&Dragon, usize)> {
-        let part = self.side_resident_dragon_part_index(id)?;
-        Some((self.dragon.as_ref()?, part))
-    }
-
-    /// The box of the dragon part or end crystal guests know as entity `id`
-    /// (`EnderDragonPart`s follow the dragon's id for its tracking lifetime).
-    pub fn tracked_special_box(&self, id: i32) -> Option<Aabb> {
-        let uid = id as u32;
-        if let Some(d) = self
-            .dragon
-            .as_ref()
-            .filter(|d| d.id != 0 || self.side_has_remote())
-            && let Some(part) = dragon_part_index(d.id, uid)
-        {
-            return Some(d.part_box(part));
-        }
-        let id = u32::try_from(id).ok().filter(|&id| id != 0)?;
-        self.crystals
-            .iter()
-            .find(|c| c.id == id)
-            .map(Crystal::bounds)
-    }
-
     /// `getHeightmapPos(MOTION_BLOCKING_NO_LEAVES)`.
     pub fn motion_blocking_no_leaves(&self, x: i32, z: i32) -> i32 {
         (0..256)
@@ -188,36 +149,6 @@ impl crate::game::CommonGame<'_> {
         }
     }
 
-    /// `EndCrystalItem.useOn`'s checks: obsidian or bedrock at `pos`, air
-    /// above it and no entity in the two blocks above (else FAIL).
-    pub fn end_crystal_fits(&self, pos: [i32; 3]) -> bool {
-        let name = &self
-            .res
-            .facts()
-            .get(self.world.block(pos[0], pos[1], pos[2]))
-            .name;
-        if !matches!(&**name, "minecraft:obsidian" | "minecraft:bedrock") {
-            return false;
-        }
-        let above = [pos[0], pos[1] + 1, pos[2]];
-        if !self
-            .res
-            .facts()
-            .is_air(self.world.block(above[0], above[1], above[2]))
-        {
-            return false;
-        }
-        let (x, y, z) = (
-            f64::from(above[0]),
-            f64::from(above[1]),
-            f64::from(above[2]),
-        );
-        !self.side_entity_in(Aabb::new(
-            Vec3::new(x, y, z),
-            Vec3::new(x + 1.0, y + 2.0, z + 1.0),
-        ))
-    }
-
     /// `EnderDragon.checkCrystals`' search: the nearest crystal whose box
     /// meets the dragon's box grown by 32.
     pub fn nearest_crystal_to(&self, p: Vec3) -> Option<usize> {
@@ -249,6 +180,80 @@ impl crate::game::CommonGame<'_> {
             .map(|(i, _)| i)
     }
 }
+
+pub trait DragonCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+
+    /// Resolves a crosshair target id (including synthetic dragon-part ids) to its wire entity id.
+     fn wire_entity_id(&self, id: u32) -> Option<i32> {
+        if (SPECIAL..SPECIAL + 8).contains(&id) {
+            let dragon = self
+                .dragon
+                .as_ref()
+                .filter(|d| d.id != 0 || self.side_has_remote())?;
+            return Some(dragon_part_wire_id(dragon.id, (id - SPECIAL) as usize));
+        }
+        Some(id as i32)
+    }
+
+    /// The dragon the level holds and the index (`getSubEntities` order) of
+    /// its part with that entity id, while the dragon is there, dying or
+    /// not: a part is an entity for as long as its parent is.
+     fn resident_dragon_part(&self, id: u32) -> Option<(&Dragon, usize)> {
+        let part = self.side_resident_dragon_part_index(id)?;
+        Some((self.dragon.as_ref()?, part))
+    }
+
+    /// The box of the dragon part or end crystal guests know as entity `id`
+    /// (`EnderDragonPart`s follow the dragon's id for its tracking lifetime).
+     fn tracked_special_box(&self, id: i32) -> Option<Aabb> {
+        let uid = id as u32;
+        if let Some(d) = self
+            .dragon
+            .as_ref()
+            .filter(|d| d.id != 0 || self.side_has_remote())
+            && let Some(part) = dragon_part_index(d.id, uid)
+        {
+            return Some(d.part_box(part));
+        }
+        let id = u32::try_from(id).ok().filter(|&id| id != 0)?;
+        self.crystals
+            .iter()
+            .find(|c| c.id == id)
+            .map(Crystal::bounds)
+    }
+
+    /// `EndCrystalItem.useOn`'s checks: obsidian or bedrock at `pos`, air
+    /// above it and no entity in the two blocks above (else FAIL).
+     fn end_crystal_fits(&self, pos: [i32; 3]) -> bool {
+        let name = &self
+            .res
+            .facts()
+            .get(self.world.block(pos[0], pos[1], pos[2]))
+            .name;
+        if !matches!(&**name, "minecraft:obsidian" | "minecraft:bedrock") {
+            return false;
+        }
+        let above = [pos[0], pos[1] + 1, pos[2]];
+        if !self
+            .res
+            .facts()
+            .is_air(self.world.block(above[0], above[1], above[2]))
+        {
+            return false;
+        }
+        let (x, y, z) = (
+            f64::from(above[0]),
+            f64::from(above[1]),
+            f64::from(above[2]),
+        );
+        !self.side_entity_in(Aabb::new(
+            Vec3::new(x, y, z),
+            Vec3::new(x + 1.0, y + 2.0, z + 1.0),
+        ))
+    }
+}
+impl<'__sg, G: crate::game::SideGame<'__sg>> DragonCommonGameExt1<'__sg> for G {}
+
 
 /// `EnderDragon.recreateFromPacket`: part `part` (`0..8`) gets wire id `dragon_id + 1 + part`
 /// using Java's wrapping 32-bit integer arithmetic.
@@ -1015,3 +1020,5 @@ impl Breath {
 use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
 
 use crate::game::side_ops::modapi_hooks::ModapiHooksSideGameExt as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

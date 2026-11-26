@@ -9,7 +9,7 @@ impl crate::game::ClientGame<'_> {
     ) -> bool {
         use mod_api::InteractionResult as Answer;
         if answer == Answer::Success {
-            self.common.with_hand(hand, Game::swing_arm);
+            self.with_hand(hand, Game::swing_arm);
         }
         answer.consumes_action() || answer == Answer::Fail
     }
@@ -87,7 +87,7 @@ impl crate::game::ClientGame<'_> {
         {
             // CushionItem.useOn on a client level: SUCCESS once
             // `canBePlacedAt` holds, before the server's own checks.
-            self.common.cushion_spawn(hit).is_some()
+            self.cushion_spawn(hit).is_some()
         } else if &*stack.item == "minecraft:painting" {
             // HangingEntityItem.useOn on a client level: SUCCESS once
             // `Painting.create` finds a surviving variant, before the
@@ -121,7 +121,7 @@ impl crate::game::ClientGame<'_> {
             && self.remote_item_use_aim() == click.aim
         {
             self.with_interaction_swing_scope(|game| {
-                if let Some(remote) = &mut game.side.remote {
+                if let Some(remote) = &mut game.client.remote {
                     remote.interaction_swing = click.swing;
                 }
                 if block_fell_through && click.item_after_block {
@@ -131,7 +131,7 @@ impl crate::game::ClientGame<'_> {
                     };
                     let swings = game.swings_started;
                     let answer = game.remote_item_after_block(&click.hit, click.hand, held);
-                    if let Some(remote) = &mut game.side.remote {
+                    if let Some(remote) = &mut game.client.remote {
                         remote.use_target = Some(click.hit.pos);
                     }
                     let done = if let Some(answer) = answer {
@@ -172,14 +172,14 @@ impl crate::game::ClientGame<'_> {
         hand: Hand,
         held: Option<&ItemStack>,
     ) -> Option<mod_api::InteractionResult> {
-        self.common.use_item_on_block(hit, hand, held, mod_api::UsePhase::ItemAfterBlock)
-            .or_else(|| held.and_then(|stack| self.common.item_on_interaction(hit, hand, stack)))
+        self.use_item_on_block(hit, hand, held, mod_api::UsePhase::ItemAfterBlock)
+            .or_else(|| held.and_then(|stack| self.item_on_interaction(hit, hand, stack)))
     }
     pub(in crate::game::client_side) fn remote_item_use_aim(&self) -> ItemUseAim {
         ItemUseAim {
             rotation: (self.common.yaw, self.common.pitch),
             eye: self.common.eye_position(),
-            ray: self.common.aim(),
+            ray: self.aim(),
             reach: self.common.reach(),
         }
     }
@@ -238,8 +238,8 @@ impl crate::game::ClientGame<'_> {
         // A boat, minecart, item frame, armor stand or painting nearer than
         // any mob: the server uses it (AbstractBoat.interact boards it).
         if let Some(hit) = self.remote_object_hit()
-            && self.common.mob_hit().is_none_or(|(_, d, _)| hit.distance < d)
-            && self.common.before_block(hit.distance)
+            && self.mob_hit().is_none_or(|(_, d, _)| hit.distance < d)
+            && self.before_block(hit.distance)
         {
             // Interaction.interact answers SUCCESS when it responds and
             // CONSUME otherwise: both end the click (nothing behind the box
@@ -249,7 +249,7 @@ impl crate::game::ClientGame<'_> {
             // boats sneaked at or out of control, carts that pass) leave each hand's
             // turn to its item: a crossbow aimed at it shoots.
             let is_painting = self.common.paintings.iter().any(|p| p.id as i32 == hit.id);
-            let held = self.common.with_hand(hand, |g| g.held().cloned());
+            let held = self.with_hand(hand, |g| g.held().cloned());
             let frame_passes = self
                 .common.item_frames
                 .iter()
@@ -267,7 +267,7 @@ impl crate::game::ClientGame<'_> {
                         b.chest,
                         sneaking,
                         b.out_of_control >= 60.0,
-                        self.common.boat_has_room(i),
+                        self.boat_has_room(i),
                     )
                 });
             let (cart_passes, is_rideable_cart) = self
@@ -345,12 +345,12 @@ impl crate::game::ClientGame<'_> {
             // answers SUCCESS there, which swings. Cushion.interact answers
             // CONSUME there too.
             if remote_object_swings(response, is_rideable_cart || is_cushion) {
-                self.common.with_hand(hand, Game::swing_arm);
+                self.with_hand(hand, Game::swing_arm);
             }
             return true;
         }
-        if let Some((i, distance, location)) = self.common.mob_hit()
-            && self.common.before_block(distance)
+        if let Some((i, distance, location)) = self.mob_hit()
+            && self.before_block(distance)
         {
             let id = self.common.mobs[i].id as i32;
             self.send(interact_packet(id, location));
@@ -369,12 +369,12 @@ impl crate::game::ClientGame<'_> {
                 // As for the objects above, only SUCCESS swings the hand: a
                 // CONSUME ends the click without one.
                 if self.remote_mob_swings(i, hand) {
-                    self.common.with_hand(hand, Game::swing_arm);
+                    self.with_hand(hand, Game::swing_arm);
                 }
                 return true;
             }
             if !player
-                && self.common.with_hand(hand, |g| {
+                && self.with_hand(hand, |g| {
                     g.item_interact_mob(Some(sunrise_gameplay_common::game::InteractTarget { id, location }))
                 })
             {
@@ -391,8 +391,8 @@ impl crate::game::ClientGame<'_> {
         attempt: mod_api::InteractionAttempt,
         hit: Option<Hit>,
     ) -> bool {
-        let held = self.common.with_hand(hand, |g| g.held().cloned());
-        if let Some(hit) = hit.or_else(|| self.common.pick()) {
+        let held = self.with_hand(hand, |g| g.held().cloned());
+        if let Some(hit) = hit.or_else(|| self.pick()) {
             use mod_api::InteractionResult as Answer;
             use mod_api::TriState;
             let spectator = self.common.spectator();
@@ -429,7 +429,7 @@ impl crate::game::ClientGame<'_> {
             // both.
             let (mut canceled, mut use_block, mut use_item) =
                 (None, TriState::Default, TriState::Default);
-            match self.common.right_click_block(&hit, hand, held.as_ref()) {
+            match self.right_click_block(&hit, hand, held.as_ref()) {
                 sunrise_gameplay_common::game::native_hooks::BlockClickAnswer::Go {
                     use_block: block,
                     use_item: item,
@@ -448,7 +448,7 @@ impl crate::game::ClientGame<'_> {
                 && let Some(stack) = held.as_ref()
             {
                 canceled = self
-                    .common.use_item_on_block(&hit, hand, Some(stack), mod_api::UsePhase::ItemBeforeBlock)
+                    .use_item_on_block(&hit, hand, Some(stack), mod_api::UsePhase::ItemBeforeBlock)
                     .filter(|answer| *answer != Answer::Pass);
             }
             // Player.isSecondaryUseActive with something in either hand
@@ -459,8 +459,8 @@ impl crate::game::ClientGame<'_> {
             let item_forced = use_item == TriState::True;
             let item_used = canceled.is_none()
                 && use_item.or(true)
-                && (self.common.may_build()
-                    || self.common.with_hand(hand, |g| g.can_place_on_in_adventure(hit.pos)))
+                && (self.may_build()
+                    || self.with_hand(hand, |g| g.can_place_on_in_adventure(hit.pos)))
                 && held
                     .as_ref()
                     .is_none_or(|stack| self.items().get(&stack.item).is_some())
@@ -476,7 +476,7 @@ impl crate::game::ClientGame<'_> {
                         })
                     }));
             let block_answer = if !spectator && block_used {
-                self.common.use_item_on_block(&hit, hand, held.as_ref(), mod_api::UsePhase::Block)
+                self.use_item_on_block(&hit, hand, held.as_ref(), mod_api::UsePhase::Block)
             } else {
                 None
             };
@@ -563,7 +563,7 @@ impl crate::game::ClientGame<'_> {
                 if result.consumes_action() || spectator || !vanilla_block || hand == Hand::Main {
                     result
                 } else {
-                    match self.common.with_hand(hand, |game| game.cauldron_outcome(hit.pos, held.as_ref()))
+                    match self.with_hand(hand, |game| game.cauldron_outcome(hit.pos, held.as_ref()))
                     {
                         sunrise_sim::cauldron::Outcome::Success => InteractionResult::Success,
                         sunrise_sim::cauldron::Outcome::Consume => InteractionResult::Consume,
@@ -585,7 +585,7 @@ impl crate::game::ClientGame<'_> {
                 let snuffs = if name.ends_with("candle_cake") {
                     hit.point[1] - f64::from(hit.pos[1]) > 0.5
                 } else {
-                    name.ends_with("candle") && self.common.may_build()
+                    name.ends_with("candle") && self.may_build()
                 };
                 if held.is_none() && lit && snuffs {
                     self.candle_smoke(hit.pos, state);
@@ -594,7 +594,7 @@ impl crate::game::ClientGame<'_> {
             let result = if !spectator
                 && vanilla_block
                 && !result.consumes_action()
-                && self.common.with_hand(hand, |g| g.predict_campfire_douse(&hit, held.as_ref(), seq))
+                && self.with_hand(hand, |g| g.predict_campfire_douse(&hit, held.as_ref(), seq))
             {
                 InteractionResult::Success
             } else {
@@ -658,7 +658,7 @@ impl crate::game::ClientGame<'_> {
                 // MultiPlayerGameMode.useItemOn: SUCCESS SwingSource.CLIENT
                 // (a chest, barrel, furnace, …). CONSUME does not swing.
                 if result.should_swing() && block_answer != Some(Answer::SuccessServer) {
-                    self.common.with_hand(hand, Game::swing_arm);
+                    self.with_hand(hand, Game::swing_arm);
                 }
                 return true;
             }
@@ -684,33 +684,33 @@ impl crate::game::ClientGame<'_> {
         match &*stack.item {
             "minecraft:debug_stick" => {
                 // The client answers SUCCESS and swings; only the server changes the block.
-                self.common.with_hand(hand, Game::swing_arm);
+                self.with_hand(hand, Game::swing_arm);
                 return true;
             }
             "minecraft:end_crystal" => {
                 // EndCrystalItem.useOn: SUCCESS where the crystal fits (the
                 // server spawns it), FAIL elsewhere. Either ends the click.
-                if self.common.end_crystal_fits(hit.pos) {
-                    self.common.with_hand(hand, Game::swing_arm);
+                if self.end_crystal_fits(hit.pos) {
+                    self.with_hand(hand, Game::swing_arm);
                 }
                 return true;
             }
             "minecraft:brush" => {
                 // BrushItem.useOn starts brushing (CONSUME, no swing); the
                 // server brushes and the dust is this client's own.
-                self.common.with_hand(hand, Game::start_using_item);
+                self.with_hand(hand, Game::start_using_item);
                 return true;
             }
             "minecraft:bone_meal"
-                if self.common.with_hand(hand, |g| g.remote_bone_meal_succeeds(hit, stack)) =>
+                if self.with_hand(hand, |g| g.remote_bone_meal_succeeds(hit, stack)) =>
             {
                 // BoneMealItem.useOn succeeds here; the server grows the plant.
-                self.common.with_hand(hand, Game::swing_arm);
+                self.with_hand(hand, Game::swing_arm);
                 return true;
             }
             "minecraft:armor_stand" if stand_fits => {
                 // ArmorStandItem.useOn succeeds once the stand fits.
-                self.common.with_hand(hand, Game::swing_arm);
+                self.with_hand(hand, Game::swing_arm);
                 return true;
             }
             item if item.ends_with("_spawn_egg") => {
@@ -719,13 +719,13 @@ impl crate::game::ClientGame<'_> {
                 if sunrise_sim::block_entity_item::item_entity_data(stack, self.common.res.items())
                     .is_some_and(|data| self.common.spawn_egg_allowed(&data.kind))
                 {
-                    self.common.with_hand(hand, Game::swing_arm);
+                    self.with_hand(hand, Game::swing_arm);
                 }
                 return true;
             }
             "minecraft:flint_and_steel" | "minecraft:fire_charge" => {
                 if self.predict_fire_starter(stack, hit, hand, seq) {
-                    self.common.with_hand(hand, Game::swing_arm);
+                    self.with_hand(hand, Game::swing_arm);
                 }
                 return true;
             }
@@ -736,8 +736,8 @@ impl crate::game::ClientGame<'_> {
                         "minecraft:convertible_to_mud",
                         &self.block_name(hit.pos),
                     )
-                    && (self.common.may_build()
-                        || self.common.with_hand(hand, |g| g.can_place_on_in_adventure(hit.pos))) =>
+                    && (self.may_build()
+                        || self.with_hand(hand, |g| g.can_place_on_in_adventure(hit.pos))) =>
             {
                 // PotionItem.useOn pours out the bottle and turns the block to
                 // mud locally; sounds and splash particles come from the server.
@@ -746,18 +746,18 @@ impl crate::game::ClientGame<'_> {
                         sunrise_core::position::BlockPos::new(hit.pos[0], hit.pos[1], hit.pos[2]);
                     self.predict_blocks(&[(pos, mud)], seq);
                 }
-                self.common.with_hand(hand, |g| {
+                self.with_hand(hand, |g| {
                     g.filled_result(ItemStack::new("minecraft:glass_bottle", 1))
                 });
-                self.common.with_hand(hand, Game::swing_arm);
+                self.with_hand(hand, Game::swing_arm);
                 return true;
             }
             _ => {}
         }
-        if self.common.with_hand(hand, |g| g.predict_item_on_block(stack, hit))
+        if self.with_hand(hand, |g| g.predict_item_on_block(stack, hit))
             || self.predict_map_on_banner(stack, hit)
         {
-            self.common.with_hand(hand, Game::swing_arm);
+            self.with_hand(hand, Game::swing_arm);
             return true;
         }
         if let Some(info) = self
@@ -771,15 +771,15 @@ impl crate::game::ClientGame<'_> {
             // the server does for this same packet. A full player's FAIL still
             // ends the click. Adventure leaves the placing to the server.
             if placed.is_none()
-                && self.common.may_build()
+                && self.may_build()
                 && let Some(info) = &consumable
             {
-                self.common.with_hand(hand, |g| g.client_start_eating(info));
+                self.with_hand(hand, |g| g.client_start_eating(info));
             }
             if let Some(placed) = placed {
                 self.predict_place(&placed, stack, seq);
-                self.common.with_hand(hand, |g| g.consume_placed(stack));
-                self.common.with_hand(hand, Game::swing_arm);
+                self.with_hand(hand, |g| g.consume_placed(stack));
+                self.with_hand(hand, Game::swing_arm);
             }
             // BlockItem.place's FAIL also ends the click.
             return true;
@@ -811,8 +811,8 @@ impl crate::game::ClientGame<'_> {
             return Some(([[lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z]], [p.x, p.y, p.z]));
         }
         Some((
-            self.common.entity_bounding_box(entity)?,
-            self.common.entity_position(entity)?,
+            self.entity_bounding_box(entity)?,
+            self.entity_position(entity)?,
         ))
     }
 }
@@ -820,3 +820,25 @@ impl crate::game::ClientGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_common::EntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::SharedGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::use_item_hand::UseItemHandGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

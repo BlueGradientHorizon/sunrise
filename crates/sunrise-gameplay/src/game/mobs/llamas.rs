@@ -59,7 +59,7 @@ impl ServerGame<'_> {
             self.mob_event_particles(id, 18);
         }
         self.llama_sound(index, "entity.llama.eat", 1.0);
-        self.common.consume_held();
+        self.consume_held();
         true
     }
     pub(in crate::game::server_side) fn is_led_by_trader(&self, index: usize) -> bool {
@@ -92,13 +92,13 @@ impl ServerGame<'_> {
             if !tamed {
                 let mut events = Vec::new();
                 equine::make_mad(&mut self.common.mobs[index], &mut events);
-                let _ = self.common.handle_mob_events(events);
+                let _ = self.handle_mob_events(events);
                 return true;
             }
             if !self.common.mobs[index].extra.chested && item == "minecraft:chest" {
                 self.common.mobs[index].extra.chested = true;
                 self.llama_sound(index, "entity.llama.chest", 1.0);
-                self.common.consume_held();
+                self.consume_held();
                 return true;
             }
         }
@@ -133,7 +133,7 @@ impl ServerGame<'_> {
                 });
                 self.common.mobs[index].extra.set_body_stack(held);
                 self.llama_sound(index, "entity.llama.swag", 1.0);
-                self.common.consume_held();
+                self.consume_held();
                 let id = self.common.mobs[index].id;
                 let pos = self.common.mobs[index].position;
                 self.mob_equip_event(id, [pos.x, pos.y, pos.z], true);
@@ -169,3 +169,7 @@ impl ServerGame<'_> {
         self.server_play_sound(&format!("minecraft:{sound}"), at, volume, pitch);
     }
 }
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

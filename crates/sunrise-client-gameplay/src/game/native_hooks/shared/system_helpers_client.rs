@@ -51,8 +51,11 @@ impl crate::game::ClientGame<'_> {
     }
     /// The areas the game itself draws beside the open screen's window: the
     /// container build's, or the frame's own arithmetic with no build yet.
-    pub(crate) fn screen_own_exclusion(&self, batch: &HudBatch) -> Vec<[f32; 4]> {
-        if !matches!(self.side.screen, Screen::Inventory | Screen::Creative) {
+    pub(in crate::game::client_side) fn screen_own_exclusion(
+        &self,
+        batch: &HudBatch,
+    ) -> Vec<[f32; 4]> {
+        if !matches!(self.client.screen, Screen::Inventory | Screen::Creative) {
             return Vec::new();
         }
         match self.built_container(batch) {

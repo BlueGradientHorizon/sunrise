@@ -178,3 +178,5 @@ fn a_tnt_body_taken_off_this_tick_still_primes_with_its_cached_fuse() {
     step(&mut game);
     assert_eq!(fuse(&game), 119);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

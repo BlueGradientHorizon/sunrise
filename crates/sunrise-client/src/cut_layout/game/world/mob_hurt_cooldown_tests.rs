@@ -117,3 +117,5 @@ fn the_hurt_cooldown_compares_the_incoming_damage_before_its_reductions() {
         assert!(failures.is_empty(), "hurt cooldown: {failures:#?}");
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -89,7 +89,7 @@ impl ServerGame<'_> {
             .ok_or("menu state: no server")?
             .owner;
         self.in_owner_level(|g| {
-            let host = g.side.lan.as_ref().ok_or("menu state: no hub")?;
+            let host = g.server.lan.as_ref().ok_or("menu state: no hub")?;
             let guest = host
                 .hub
                 .guests
@@ -134,7 +134,7 @@ impl ServerGame<'_> {
                 true,
             );
             Ok((
-                g.side
+                g.server
                     .lan_acting
                     .ok_or("command harness: no acting owner")?,
                 plan,
@@ -143,7 +143,7 @@ impl ServerGame<'_> {
         // Start travel after the turn restores the owner's body to the hub.
         // Otherwise the turn would overwrite the hub record updated by change_level.
         self.in_owner_level(|g| {
-            if g.side.lan.is_none() {
+            if g.server.lan.is_none() {
                 return Err("command harness: no hub".into());
             }
             g.start_server_trip(conn, plan.dim, Some(plan));
@@ -197,9 +197,9 @@ impl ServerGame<'_> {
                 eprintln!(
                     "settle: player {:?} center {:?} chunks {} pending {}",
                     self.player.as_ref().map(|p| p.position),
-                    self.side.streaming.center,
+                    self.server.streaming.center,
                     self.world.chunks.len(),
-                    self.side.streaming.pending()
+                    self.server.streaming.pending()
                 );
             }
             if Instant::now() > deadline {
@@ -260,11 +260,11 @@ impl ServerGame<'_> {
                     let earlier = self.common.adv.announced.len();
                     self.server.cmds.0.broadcast_announced = earlier;
                     self.harness_owner(|g| {
-                        let previous = g.side.command_source;
+                        let previous = g.server.command_source;
                         if op["source"].as_str() == Some("console") {
                             // Actual server source; permission-only `as_console`
                             // otherwise keeps the connected owner's entity.
-                            g.side.command_source = Some(super::commands::execute::Source {
+                            g.server.command_source = Some(super::commands::execute::Source {
                                 silent: false,
                                 ..g.server_source()
                             });
@@ -272,7 +272,7 @@ impl ServerGame<'_> {
                         g.as_console(|g| {
                             g.run_command(command.strip_prefix('/').unwrap_or(command))
                         });
-                        g.side.command_source = previous;
+                        g.server.command_source = previous;
                         Ok(())
                     })?;
                     // What the command's own `broadcastChanges` earned is announced
@@ -330,7 +330,7 @@ impl ServerGame<'_> {
                             .replace('-', ""),
                         16,
                     )?;
-                    let Some(super::commands::Target::Mob(id)) = self.common.target_by_uuid(uuid) else {
+                    let Some(super::commands::Target::Mob(id)) = self.target_by_uuid(uuid) else {
                         return Err("mob damage state: missing loaded mob".into());
                     };
                     if !op["start_sleeping"].is_null() {
@@ -433,7 +433,7 @@ impl ServerGame<'_> {
                             return Err("anger state: wrong actor type".into());
                         }
                         let hub = &g
-                            .side
+                            .server
                             .lan
                             .as_ref()
                             .ok_or("anger state: no connected hub")?
@@ -470,7 +470,7 @@ impl ServerGame<'_> {
                 }
                 "server_distances" => {
                     let state = self.harness_owner(|g| {
-                        let hub = &g.side.lan.as_ref().ok_or("no connected hub")?.hub;
+                        let hub = &g.server.lan.as_ref().ok_or("no connected hub")?.hub;
                         Ok([hub.config.view_distance, hub.config.simulation_distance])
                     })?;
                     out.push_str(
@@ -487,7 +487,7 @@ impl ServerGame<'_> {
                         let resident = g.world.chunks.contains_key(&(x, z));
                         Ok([
                             resident,
-                            g.side.streaming.is_lit(x, z),
+                            g.server.streaming.is_lit(x, z),
                             resident
                                 && !g
                                     .world
@@ -525,7 +525,7 @@ impl ServerGame<'_> {
                             g.spawn_loaded_entities();
                             if targets.iter().all(|&(x, z)| {
                                 g.world.chunks.contains_key(&(x, z))
-                                    && g.side.streaming.is_lit(x, z)
+                                    && g.server.streaming.is_lit(x, z)
                                     && !g
                                         .world
                                         .loaded_entities
@@ -693,7 +693,7 @@ impl ServerGame<'_> {
                         .owner;
                     self.in_owner_level(|g| -> Result<()> {
                         let conn = g
-                            .side
+                            .server
                             .lan
                             .as_ref()
                             .and_then(|h| {
@@ -715,7 +715,7 @@ impl ServerGame<'_> {
                                 },
                             ),
                         );
-                        let ack = g.side.lan.as_ref().is_some_and(|host| {
+                        let ack = g.server.lan.as_ref().is_some_and(|host| {
                             host.hub
                                 .guest(conn)
                                 .is_some_and(|guest| guest.ack_up_to.get() >= sequence)
@@ -741,13 +741,13 @@ impl ServerGame<'_> {
                             .boat_by_uuid(sunrise_sim::lan::playerdata::uuid_ints(uuid))
                             .ok_or("boat click: missing live boat")?;
                         let owner = g
-                            .side
+                            .server
                             .serving
                             .as_ref()
                             .ok_or("boat click: no server")?
                             .owner;
                         let conn = g
-                            .side
+                            .server
                             .lan
                             .as_ref()
                             .and_then(|h| {
@@ -786,9 +786,9 @@ impl ServerGame<'_> {
                             .mob_by_uuid(sunrise_sim::lan::playerdata::uuid_ints(uuid))
                             .filter(|id| g.mobs.iter().any(|m| m.id == *id && !m.removed))
                             .ok_or("mob click: missing live mob")?;
-                        let owner = g.side.serving.as_ref().ok_or("mob click: no server")?.owner;
+                        let owner = g.server.serving.as_ref().ok_or("mob click: no server")?.owner;
                         let conn = g
-                            .side
+                            .server
                             .lan
                             .as_ref()
                             .and_then(|h| {
@@ -830,7 +830,7 @@ impl ServerGame<'_> {
                         .owner;
                     self.in_owner_level(|g| -> Result<()> {
                         let (conn, id) = g
-                            .side
+                            .server
                             .lan
                             .as_ref()
                             .and_then(|h| {
@@ -841,7 +841,7 @@ impl ServerGame<'_> {
                                     .map(|p| (p.conn, p.entity_id))
                             })
                             .ok_or("player command: owner not connected")?;
-                        g.side.lan.as_ref().ok_or("player command: no hub")?;
+                        g.server.lan.as_ref().ok_or("player command: no hub")?;
                         g.lan_guest_packet(
                             conn,
                             sunrise_protocol::packets::play::Serverbound::PlayerCommand(
@@ -860,7 +860,7 @@ impl ServerGame<'_> {
                         .owner;
                     self.in_owner_level(|g| -> Result<()> {
                         let conn = g
-                            .side
+                            .server
                             .lan
                             .as_ref()
                             .and_then(|h| {
@@ -945,11 +945,11 @@ impl ServerGame<'_> {
                 "craft_menu_click" | "craft_menu_state" | "craft_menu_close" => {
                     let owner = self.server.serving.as_ref().ok_or("no server")?.owner;
                     let state = self.in_owner_level(|g| -> Result<Value> {
-                        let conn = g.side.lan.as_ref().and_then(|h| h.hub.guests.iter()
+                        let conn = g.server.lan.as_ref().and_then(|h| h.hub.guests.iter()
                             .find(|p| p.uuid == owner && p.placed).map(|p| p.conn))
                             .ok_or("craft fixture: no connected owner")?;
                         (|| -> Result<Value> {
-                            let host = g.side.lan.as_ref().ok_or("no hub")?;
+                            let host = g.server.lan.as_ref().ok_or("no hub")?;
                             let (window, revision, _, _) = host.menus.get(&conn)
                                 .and_then(|p| p.crafting.table.as_ref())
                                 .ok_or("craft fixture: crafting menu not open")?;
@@ -1004,7 +1004,7 @@ impl ServerGame<'_> {
                     let state = self.harness_owner(|g| {
                         use sunrise_core::nbt::Tag;
                         g.save_maps();
-                        let directory = g.side.world_root.join("data/minecraft/maps");
+                        let directory = g.server.world_root.join("data/minecraft/maps");
                         let maps: Vec<_> = op["ids"].as_array().ok_or("map IDs")?.iter().map(|id| {
                             let path = directory.join(format!("{}.dat", id.as_i64().unwrap()));
                             sunrise_sim::save::read_dat(&path).map(|root| {
@@ -1084,7 +1084,7 @@ impl ServerGame<'_> {
                         if !g.stats.loaded { return Err("merchant stats not loaded".into()); }
                         g.save_stats();
                         let uuid = g.level.player_uuid.ok_or("merchant stats UUID")?;
-                        let path = super::stats::player_json(&g.side.world_root, "stats", uuid);
+                        let path = super::stats::player_json(&g.server.world_root, "stats", uuid);
                         let raw = std::fs::read_to_string(path)?;
                         let saved: Value = serde_json::from_str(&raw)?;
                         let value = |ty: &str, key: &str| saved["stats"][ty][key].as_i64().unwrap_or(0);
@@ -1107,9 +1107,9 @@ impl ServerGame<'_> {
                 "merchant_action" | "merchant_state" => {
                     let observe = op["op"] == "merchant_state";
                     let state = self.in_owner_level(|g| -> Result<Value> {
-                        let host = g.side.lan.as_ref().ok_or("merchant oracle: no hub")?;
+                        let host = g.server.lan.as_ref().ok_or("merchant oracle: no hub")?;
                         let owner = g
-                            .side.serving
+                            .server.serving
                             .as_ref()
                             .ok_or("merchant oracle: no server")?
                             .owner;
@@ -1227,7 +1227,7 @@ impl ServerGame<'_> {
                         .owner;
                     self.in_owner_level(|g| -> Result<()> {
                         let conn = g
-                            .side
+                            .server
                             .lan
                             .as_ref()
                             .and_then(|h| {
@@ -1253,7 +1253,7 @@ impl ServerGame<'_> {
                             ),
                         );
                         if !g
-                            .side
+                            .server
                             .lan
                             .as_ref()
                             .and_then(|h| h.hub.guest(conn))
@@ -1294,7 +1294,7 @@ impl ServerGame<'_> {
                     );
                     sunrise_level::random_source::set_thread_uniquifier(uniquifier)?;
                     self.harness_owner(|g| {
-                        g.side.next_entity = u32::try_from(entity_id)?;
+                        g.server.next_entity = u32::try_from(entity_id)?;
                         sunrise_core::random::RandomSource::set_seed(
                             &mut g.world.random,
                             level_seed,
@@ -1357,3 +1357,7 @@ impl ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

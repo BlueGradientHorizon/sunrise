@@ -332,3 +332,7 @@ fn guest_pickup_tells_whole_and_partial_pickups_and_keeps_listener_changes() {
         });
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;

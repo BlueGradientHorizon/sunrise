@@ -102,7 +102,7 @@ pub(in crate::game) struct DispenseScope<'a, 'g> {
 
 impl Drop for DispenseScope<'_, '_> {
     fn drop(&mut self) {
-        self.game.side.dispense_source = self.outer.take();
+        self.game.server.dispense_source = self.outer.take();
     }
 }
 
@@ -822,8 +822,8 @@ impl crate::game::ServerGame<'_> {
                 "offhand"
             }
         };
-        self.common.player_equipped(name, Some(one));
-        self.common.apply_equipment();
+        self.player_equipped(name, Some(one));
+        self.apply_equipment();
     }
     /// After `EntityType.spawn` / `MobBucketItem.spawn`: `mob.playAmbientSound()`.
     pub(in crate::game::server_side) fn mob_ambient(&mut self, id: u32) -> Result<()> {
@@ -841,7 +841,7 @@ impl crate::game::ServerGame<'_> {
             sunrise_sim::mobs::ai::ambient_sound(&mut m, &w, &mut events);
         }
         self.common.mobs.put_back(i, m);
-        self.common.handle_mob_events(events)
+        self.handle_mob_events(events)
     }
     /// A mob a bucket emptied (`MobBucketItem.spawn`): the bucket's components
     /// and entity data (`loadFromBucketTag`), then `setFromBucket(true)`, which
@@ -1194,14 +1194,14 @@ impl crate::game::ServerGame<'_> {
             c[2] + f64::from(s[2]) * 1.125,
         );
         let front = offset(pos, facing);
-        let y_offset = if let Some(rail) = self.common.rail(None, front.0, front.1, front.2) {
+        let y_offset = if let Some(rail) = self.rail(None, front.0, front.1, front.2) {
             if rail.shape.is_slope() { 0.6 } else { 0.1 }
         } else {
             if !self.common.res.facts().is_air(self.block_at(front)) {
                 return (self.dispense_default_in_level(pos, facing, stack), CLICK);
             }
             let below = (front.0, front.1 - 1, front.2);
-            let Some(rail) = self.common.rail(None, below.0, below.1, below.2) else {
+            let Some(rail) = self.rail(None, below.0, below.1, below.2) else {
                 return (self.dispense_default_in_level(pos, facing, stack), CLICK);
             };
             if facing != Direction::Down && rail.shape.is_slope() {
@@ -1305,7 +1305,7 @@ impl crate::game::ServerGame<'_> {
                 let (at, id) = (m.position, m.id);
                 let mut events = Vec::new();
                 m.voice("entity.tnt.primed", &mut events);
-                self.common.handle_mob_events(events)?;
+                self.handle_mob_events(events)?;
                 let ctx = self.who_context(Some(sunrise_sim::mobs::Who::Mob(id)), None);
                 self.post_game_event("minecraft:prime_fuse", [at.x, at.y, at.z], ctx);
             }
@@ -1332,7 +1332,7 @@ impl crate::game::ServerGame<'_> {
                 None,
                 None,
             );
-        } else if self.common.can_light(state, &name) {
+        } else if self.can_light(state, &name) {
             if let Some(lit) = self.common.with_props(state, &[("lit", "true")]) {
                 self.common.level_set([target.0, target.1, target.2], lit)?;
             }
@@ -1372,7 +1372,7 @@ impl crate::game::ServerGame<'_> {
     ) -> Result<Dispensed> {
         let target = offset(pos, facing);
         let target_pos = Self::pos_of(target);
-        let ask = self.common.bonemeal(target_pos, false, &mut stack);
+        let ask = self.bonemeal(target_pos, false, &mut stack);
         let grown = self.common.with_level(|b, level, ticks| {
             ask.crop
                 .unwrap_or_else(|| b.grow_crop(level, ticks, target_pos, ask.check))
@@ -1933,8 +1933,7 @@ impl crate::game::ServerGame<'_> {
         let prepared = self.common.equip_stack(stack);
         let allows = |entity: u32, id: &str| {
             let data = equippable.allows(id);
-            self.common
-                .can_equip(&prepared, equippable.slot, entity, id, data)
+            self.can_equip(&prepared, equippable.slot, entity, id, data)
         };
         // LivingEntity.canEquipWithDispenser: alive, the slot usable, the
         // item's allowed entities, the slot empty and the dispenser rule.
@@ -1942,7 +1941,7 @@ impl crate::game::ServerGame<'_> {
             // Player.canUseSlot: every slot; the armour and the off hand are
             // the ones an equippable item can reach.
             Target::Player => {
-                allows(self.common.own_entity_id() as u32, "minecraft:player")
+                allows(self.own_entity_id() as u32, "minecraft:player")
                     && match slot {
                         Slot::OffHand => self.common.offhand.is_none(),
                         _ => slot
@@ -2525,3 +2524,23 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1 as _;
+
+use sunrise_gameplay_common::game::cart_rails::CartRailsGameExt1 as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::equip_answers::EquipAnswersGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_equip::PlayerEquipGameExt2 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

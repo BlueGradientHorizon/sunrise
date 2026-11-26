@@ -334,7 +334,7 @@ impl crate::game::ServerGame<'_> {
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
         used_portal: bool,
     ) {
-        if uuid.is_some_and(|u| self.common.target_with_uuid(u).is_some()) {
+        if uuid.is_some_and(|u| self.target_with_uuid(u).is_some()) {
             return;
         }
         let mut tag = tag;
@@ -392,7 +392,7 @@ impl crate::game::ServerGame<'_> {
         // A runtime transfer owns a distinct live object: like a Mob, the copy
         // refused residency stays below the passengers admitted before it.
         // A disk copy with a taken UUID is still not constructed.
-        if transferred.is_none() && uuid.is_some_and(|u| self.common.target_with_uuid(u).is_some()) {
+        if transferred.is_none() && uuid.is_some_and(|u| self.target_with_uuid(u).is_some()) {
             return None;
         }
         let refused = transferred.is_some() && self.uuid_admission_refused(uuid);
@@ -446,7 +446,7 @@ impl crate::game::ServerGame<'_> {
         transferred: Option<crate::game::entity_initialization::TransferredEntityState>,
     ) -> Option<u32> {
         // As `load_boat_transferred`: only a runtime transfer retains a refused copy.
-        if transferred.is_none() && uuid.is_some_and(|u| self.common.target_with_uuid(u).is_some()) {
+        if transferred.is_none() && uuid.is_some_and(|u| self.target_with_uuid(u).is_some()) {
             return None;
         }
         let refused = transferred.is_some() && self.uuid_admission_refused(uuid);
@@ -482,7 +482,7 @@ impl crate::game::ServerGame<'_> {
         uuid: Option<[i32; 4]>,
     ) -> bool {
         uuid.is_some_and(|uuid| {
-            self.common.target_with_uuid(uuid)
+            self.target_with_uuid(uuid)
                 .is_some_and(|target| target != crate::game::commands::Target::Player)
         })
     }
@@ -1046,3 +1046,9 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

@@ -63,7 +63,7 @@ impl crate::game::ServerGame<'_> {
         if !navigation_move_accepts(at, speed) {
             return false;
         }
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         let Some(index) = self.common.mobs.iter().position(|m| m.id == id) else {
@@ -100,7 +100,7 @@ impl crate::game::ServerGame<'_> {
         if !supplied_path_accepts(&nodes, speed) {
             return Err(MoveToPathError::NotFinite);
         }
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return Err(MoveToPathError::Unavailable);
         };
         let Some(index) = self.common.mobs.iter().position(|m| m.id == id) else {
@@ -122,7 +122,7 @@ impl crate::game::ServerGame<'_> {
     /// `PathNavigation.stop`. False for a stale or unavailable mob, or on a
     /// client, and for the dragon (no navigation).
     pub(in crate::game) fn mob_stop(&mut self, mob: MobRef) -> bool {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         let Some(mob) = self.common.mobs.iter_mut().find(|m| m.id == id) else {
@@ -135,7 +135,7 @@ impl crate::game::ServerGame<'_> {
     /// `PathNavigation.isDone`; None for a stale or unavailable mob, or on a
     /// client, and for the dragon (no navigation).
     pub(in crate::game) fn mob_is_done(&self, mob: MobRef) -> Option<bool> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         Some(self.common.mobs.iter().find(|m| m.id == id)?.ai.nav.is_done())
@@ -146,7 +146,7 @@ impl crate::game::ServerGame<'_> {
     /// one). This is not the mob's movement-speed attribute. None for a
     /// stale or unavailable mob, or on a client, and for the dragon.
     pub(in crate::game) fn mob_navigation_speed(&self, mob: MobRef) -> Option<f64> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         Some(self.common.mobs.iter().find(|m| m.id == id)?.ai.nav.speed_modifier)
@@ -154,7 +154,7 @@ impl crate::game::ServerGame<'_> {
 
     /// The live supported navigation's `can_open_doors` flag; unavailable mobs refuse.
     pub(in crate::game) fn mob_can_open_doors(&self, mob: MobRef) -> Option<bool> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         let mob = self.common.mobs.iter().find(|m| m.id == id && !m.removed)?;
@@ -163,7 +163,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `PathNavigation.setCanOpenDoors`; leaves the current path intact.
     pub(in crate::game) fn mob_set_can_open_doors(&mut self, mob: MobRef, value: bool) -> bool {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         let Some(mob) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
@@ -178,7 +178,7 @@ impl crate::game::ServerGame<'_> {
 
     /// The live supported navigation's `can_pass_doors` flag; unavailable mobs refuse.
     pub(in crate::game) fn mob_can_pass_doors(&self, mob: MobRef) -> Option<bool> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         let mob = self.common.mobs.iter().find(|m| m.id == id && !m.removed)?;
@@ -187,7 +187,7 @@ impl crate::game::ServerGame<'_> {
 
     /// Sets the pass-door navigation wish; leaves the current path intact.
     pub(in crate::game) fn mob_set_can_pass_doors(&mut self, mob: MobRef, value: bool) -> bool {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         let Some(mob) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
@@ -202,7 +202,7 @@ impl crate::game::ServerGame<'_> {
 
     /// The live supported navigation's `can_float` flag; unavailable mobs refuse.
     pub(in crate::game) fn mob_can_float(&self, mob: MobRef) -> Option<bool> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         let mob = self.common.mobs.iter().find(|m| m.id == id && !m.removed)?;
@@ -211,7 +211,7 @@ impl crate::game::ServerGame<'_> {
 
     /// `PathNavigation.setCanFloat`; leaves the current path intact.
     pub(in crate::game) fn mob_set_can_float(&mut self, mob: MobRef, value: bool) -> bool {
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         let Some(mob) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
@@ -233,7 +233,7 @@ impl crate::game::ServerGame<'_> {
         mob: MobRef,
         kind: PathType,
     ) -> Option<f32> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         Some(
@@ -258,7 +258,7 @@ impl crate::game::ServerGame<'_> {
         if !malus.is_finite() {
             return false;
         }
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         self.common.mobs
@@ -277,7 +277,7 @@ impl crate::game::ServerGame<'_> {
         if !speed.is_finite() {
             return false;
         }
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return false;
         };
         self.common.mobs
@@ -287,3 +287,7 @@ impl crate::game::ServerGame<'_> {
             .is_some()
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

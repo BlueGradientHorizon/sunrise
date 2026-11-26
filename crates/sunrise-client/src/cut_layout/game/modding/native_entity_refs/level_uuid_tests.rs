@@ -173,3 +173,7 @@ fn a_parked_levels_uuid_lookup_finds_its_entity_until_removed_or_unloaded() {
 }
 
 use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

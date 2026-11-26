@@ -908,3 +908,5 @@ pub(in crate::game) fn assert_sword_credit_reached_the_push(heard: &Heard, pushe
         "pushed with {pushed:?}, not the halved strength"
     );
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

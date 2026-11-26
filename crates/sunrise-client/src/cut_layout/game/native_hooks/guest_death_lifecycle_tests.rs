@@ -147,3 +147,7 @@ fn listener_healed_guest_stays_visible_through_player_tick_teleport() {
         || lifecycle(true),
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

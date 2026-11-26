@@ -178,11 +178,11 @@ impl crate::game::ServerGame<'_> {
             Some(("minecraft:player".to_owned(), g.position))
         } else {
             // The mod hooks hear no natural fence knot (#13036).
-            self.common.level_entity(id)
+            self.level_entity(id)
                 .filter(|t| !matches!(t, crate::game::commands::Target::Knot(_)))
                 .map(|t| {
                     (
-                        self.common.target_type(t),
+                        self.target_type(t),
                         self.target_position(t).unwrap_or_default(),
                     )
                 })
@@ -384,7 +384,7 @@ impl crate::game::ServerGame<'_> {
                 .as_guest_at(gi, conn, |g| {
                     let swings = g.swings_started;
                     let consumed = g.with_hand(hand, |g| g.use_knot(knot, true));
-                    reset_use_attack_strength(&mut g.side.attack_ticks, swings, g.swings_started);
+                    reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.swings_started);
                     (g.swings_started != swings, consumed)
                 })
                 .ok();
@@ -401,14 +401,14 @@ impl crate::game::ServerGame<'_> {
         let target = InteractTarget { id, location };
         let used = self
             .as_guest_at(gi, conn, |g| {
-                let saved = g.side.guest_use;
-                let failed = std::mem::replace(&mut g.side.use_failed, false);
-                g.side.guest_use = Some(GuestUse::Entity(hand, target));
+                let saved = g.server.guest_use;
+                let failed = std::mem::replace(&mut g.server.use_failed, false);
+                g.server.guest_use = Some(GuestUse::Entity(hand, target));
                 let swings = g.swings_started;
-                let consumed = matches!(g.use_item(), Ok(Some(_))) && !g.side.use_failed;
-                g.side.guest_use = saved;
-                g.side.use_failed = failed;
-                reset_use_attack_strength(&mut g.side.attack_ticks, swings, g.swings_started);
+                let consumed = matches!(g.use_item(), Ok(Some(_))) && !g.server.use_failed;
+                g.server.guest_use = saved;
+                g.server.use_failed = failed;
+                reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.swings_started);
                 (g.swings_started != swings, consumed)
             })
             .ok();
@@ -430,12 +430,12 @@ impl crate::game::ServerGame<'_> {
         let players = self.stab_players_for(conn);
         let sound = self
             .guest_hit_by(conn, |g| {
-                if g.cannot_attack_with_item(g.side.attack_ticks as i32, 5) {
+                if g.cannot_attack_with_item(g.server.attack_ticks as i32, 5) {
                     None
                 } else {
-                    let outer = std::mem::replace(&mut g.side.stab_players, players);
+                    let outer = std::mem::replace(&mut g.server.stab_players, players);
                     let sound = g.jab();
-                    g.side.stab_players = outer;
+                    g.server.stab_players = outer;
                     sound
                 }
             })
@@ -467,7 +467,7 @@ impl crate::game::ServerGame<'_> {
                 Vec3::new(hi[0], hi[1], hi[2]),
             ));
         }
-        if let Some(b) = self.common.tracked_special_box(id) {
+        if let Some(b) = self.tracked_special_box(id) {
             return Some(b);
         }
         if let Some(knot) = self.knot_at_id(id) {
@@ -575,12 +575,12 @@ impl crate::game::ServerGame<'_> {
                     let held = g.held()?;
                     g.res.items().instrument(held).map(|i| i.sound)
                 });
-                let saved = g.side.guest_use;
-                g.side.guest_use = Some(GuestUse::Item(hand));
+                let saved = g.server.guest_use;
+                g.server.guest_use = Some(GuestUse::Item(hand));
                 let swings = g.swings_started;
                 let consumed = matches!(g.use_item(), Ok(Some(_)));
-                g.side.guest_use = saved;
-                reset_use_attack_strength(&mut g.side.attack_ticks, swings, g.swings_started);
+                g.server.guest_use = saved;
+                reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.swings_started);
                 (g.swings_started != swings, horn, consumed)
             })
             .ok();
@@ -610,7 +610,7 @@ impl crate::game::ServerGame<'_> {
         use super::super::cauldron_prediction::{UseOnOutcome, use_result};
 
         let reply = |game: &Self, outcome| {
-            if let (Some(receipt), Some(host)) = (receipt, &game.side.lan) {
+            if let (Some(receipt), Some(host)) = (receipt, &game.server.lan) {
                 host.hub.send_to(conn, &use_result(receipt, outcome));
             }
         };
@@ -677,29 +677,29 @@ impl crate::game::ServerGame<'_> {
             let heard = self.server.pending_sounds.len();
             let used = self.as_guest_at(gi, conn, |g| {
                 let attempt = g.was_block_placement_attempt(hand);
-                let saved = (g.side.forced_hit, g.side.guest_use);
-                g.side.forced_hit = Some(hit);
-                g.side.guest_use = Some(GuestUse::on_block(hand));
+                let saved = (g.server.forced_hit, g.server.guest_use);
+                g.server.forced_hit = Some(hit);
+                g.server.guest_use = Some(GuestUse::on_block(hand));
                 let swings = g.swings_started;
-                let predicted = g.side.predicted_swings;
+                let predicted = g.server.predicted_swings;
                 let result = g.with_block_use_original(hand, |g| {
                     let result = g.use_item();
-                    if matches!(result, Ok(Some(_))) && !g.side.use_failed {
+                    if matches!(result, Ok(Some(_))) && !g.server.use_failed {
                         g.finish_block_use(hit.pos, hand);
                     }
                     result
                 });
                 let fell_through = matches!(
-                    g.side.guest_use,
+                    g.server.guest_use,
                     Some(GuestUse::OnBlock {
                         block_fell_through: true,
                         ..
                     })
                 );
-                (g.side.forced_hit, g.side.guest_use) = saved;
-                reset_use_attack_strength(&mut g.side.attack_ticks, swings, g.swings_started);
+                (g.server.forced_hit, g.server.guest_use) = saved;
+                reset_use_attack_strength(&mut g.server.attack_ticks, swings, g.swings_started);
                 (
-                    g.swings_started != swings && g.side.predicted_swings == predicted,
+                    g.swings_started != swings && g.server.predicted_swings == predicted,
                     result.map(|used| used.is_some()),
                     attempt,
                     fell_through,
@@ -820,7 +820,7 @@ impl crate::game::ServerGame<'_> {
             None if self.server_object_target(id).is_some() => object()?,
             // A dragon part or an end crystal (game/mobs/dragon.rs).
             None => {
-                let b = self.common.tracked_special_box(id)?;
+                let b = self.tracked_special_box(id)?;
                 let (lo, hi) = (b.min_position(), b.max_position());
                 [
                     (lo.x + hi.x) / 2.0,
@@ -844,3 +844,13 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::spear::SpearGameExt1 as _;

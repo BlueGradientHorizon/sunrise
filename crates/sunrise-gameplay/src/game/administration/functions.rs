@@ -208,7 +208,7 @@ impl crate::game::ServerGame<'_> {
     ) -> Result<PackStack, ReloadStageError> {
         // Function admission parses commands immediately, including block arguments.
         // Populate static registries on first open; admission synchronizes pack IDs.
-        self.common.build_registries();
+        self.build_registries();
         self.reload_datapacks(false, enabled_features)
     }
 
@@ -300,7 +300,7 @@ impl crate::game::ServerGame<'_> {
             self.common.pack.mod_layers = root.mod_layers().clone();
             self.common.mods.data_switched = true;
         }
-        self.common.install_loop_context(context);
+        self.install_loop_context(context);
         if opening_world {
             self.server.fns.0 = Default::default();
         }
@@ -353,13 +353,13 @@ impl crate::game::ServerGame<'_> {
             store.predicates = copy(tables.loot.predicates());
             store.item_modifiers = copy(tables.loot.item_modifiers());
         }
-        self.common.sync_enchantment_registries();
+        self.sync_enchantment_registries();
         // A function's `loot ... loot <id>` names the reloaded packs' tables.
-        self.common.sync_loot_table_ids();
+        self.sync_loot_table_ids();
         // `ReloadableServerRegistries.reload` binds the packs' tags before
         // `ServerFunctionLibrary` compiles its functions: an item or block
         // argument's `#tag` resolves against them.
-        self.common.sync_pack_tag_ids();
+        self.sync_pack_tag_ids();
         let mut registries = self.common.ui.registries.clone();
         registries.permission = self.server.fns.0.command_level();
         registries.functions = store.functions.keys().cloned().collect();
@@ -420,12 +420,12 @@ impl crate::game::ServerGame<'_> {
             .filter(|p| !self.server.fns.0.enabled.contains(&p.id))
             .map(|p| &p.id)
             .collect();
-        let json = serde_json::json!({"enabled": self.side.fns.0.enabled, "disabled": disabled});
+        let json = serde_json::json!({"enabled": self.server.fns.0.enabled, "disabled": disabled});
         let _ = std::fs::write(self.datapack_settings_path(), json.to_string());
     }
     pub(in crate::game::server_side) fn sync_function_registries(&mut self, stack: &PackStack) {
         self.sync_schedule_registry();
-        self.common.sync_enchantment_registries();
+        self.sync_enchantment_registries();
         let reg = &mut self.common.ui.registries;
         reg.functions = self.server.fns.0.store.functions.keys().cloned().collect();
         reg.function_tags = self
@@ -686,7 +686,7 @@ impl crate::game::ServerGame<'_> {
         // execute's position, rotation, output sink or store callback.
         let source = Source {
             pos,
-            rot: self.common.target_rotation(Target::Player),
+            rot: self.target_rotation(Target::Player),
             silent: true,
             ..self.player_source()
         };
@@ -1307,7 +1307,7 @@ impl crate::game::ServerGame<'_> {
             .collect();
         available.sort_by(|a, b| datapack::compare_ids(a, b));
         let known =
-            |g: &Self, n: &str| n == "vanilla" || g.side.fns.0.packs.iter().any(|p| p.id == n);
+            |g: &Self, n: &str| n == "vanilla" || g.server.fns.0.packs.iter().any(|p| p.id == n);
         match id {
             "datapack.create" => self.create_pack(ctx),
             "datapack.list" => {
@@ -1516,7 +1516,7 @@ impl crate::game::ServerGame<'_> {
             }
         };
         prepared.bind_loot(&world);
-        self.common.install_loop_context(context);
+        self.install_loop_context(context);
         self.server.fns.0.packs = stack.packs.clone();
         self.server.fns.0.enabled = stack.enabled.clone();
         self.common.pack.additional_data = additional.into();
@@ -1758,14 +1758,14 @@ mod tests {
                 g: &mut crate::game::ServerGame<'_>,
                 line: &str,
             ) -> (Vec<String>, Vec<(bool, i32)>) {
-                g.side.chat_capture = Some(Vec::new());
-                g.side.cmds.0.results = Some(Vec::new());
+                g.server.chat_capture = Some(Vec::new());
+                g.server.cmds.0.results = Some(Vec::new());
                 assert!(g.run_command(line));
-                let texts = g.side.chat_capture.take().unwrap();
-                let callbacks = g.side.cmds.0.results.take().unwrap();
+                let texts = g.server.chat_capture.take().unwrap();
+                let callbacks = g.server.cmds.0.results.take().unwrap();
                 println!("causal raw {line}: {texts:?} callbacks={callbacks:?}");
                 assert!(
-                    g.side.exec.0.prepared_function.is_none(),
+                    g.server.exec.0.prepared_function.is_none(),
                     "no prepared call after command/error/return"
                 );
                 (
@@ -2470,4 +2470,15 @@ include!("functions/typed_state_range_tests.rs");
 #[path = "functions/pack_tag_tests.rs"]
 mod pack_tag_tests;
 
+
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::command_registries::CommandRegistriesGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::mods::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_world_read_common::NativeWorldReadGameExt1 as _;

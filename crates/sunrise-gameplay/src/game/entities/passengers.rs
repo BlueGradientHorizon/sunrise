@@ -106,7 +106,7 @@ impl ServerGame<'_> {
             || !self.common.persist.removed_vehicles.is_empty()
         {
             self.sync_retained_riders();
-            self.common.position_riders();
+            self.position_riders();
             if !self.common.persist.removed_vehicles.is_empty()
                 || self
                     .common
@@ -180,7 +180,7 @@ impl ServerGame<'_> {
         for m in &mut self.common.mobs {
             m.extra.rider = riding.get(&m.id).map(|&(_, id)| id);
         }
-        self.common.position_riders();
+        self.position_riders();
     }
     pub(in crate::game::server_side) fn sync_retained_riders(&mut self) {
         let invalid: Vec<_> = self
@@ -715,3 +715,11 @@ pub(in crate::game) mod trap_scatter_tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;

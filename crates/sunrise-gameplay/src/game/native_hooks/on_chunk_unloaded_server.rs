@@ -9,7 +9,7 @@ impl crate::game::ServerGame<'_> {
     /// Server-side.
     pub(in crate::game) fn native_chunk_unload(&mut self, dimension: &str, chunk: [i32; 2]) {
         self.fire_chunk_unload(dimension, chunk);
-        if let Some(level) = self.common.level(dimension) {
+        if let Some(level) = self.level(dimension) {
             self.forget_composter_chunk(level.dimension(), chunk);
         }
     }
@@ -21,7 +21,7 @@ impl crate::game::ServerGame<'_> {
         chunk: [i32; 2],
     ) {
         if mod_api::__private::has_part_hook(mod_api::HookId::OnChunkUnloaded)
-            && let Some(level) = self.common.level(dimension)
+            && let Some(level) = self.level(dimension)
         {
             self.common.notify_chunk_block_entities_unloaded(level, (chunk[0], chunk[1]));
         }
@@ -30,3 +30,5 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

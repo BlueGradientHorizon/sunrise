@@ -191,3 +191,5 @@ fn a_clone_refuses_a_box_that_spans_an_unloaded_column() {
     );
     assert!(run(&mut game, "execute if block 16 200 0 stone").0);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

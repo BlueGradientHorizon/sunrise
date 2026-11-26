@@ -279,7 +279,7 @@ impl crate::game::ClientGame<'_> {
             distant_terrain: self.client.lod.0.is_some() && self.overworld_skybox(),
             cloud_range_chunks: self.client.settings.cloud_range,
             camera_y: camera.y,
-            min_y: self.common.level_min_y(),
+            min_y: self.level_min_y(),
             flat: self.level_flat(),
             forward,
             rain,
@@ -290,7 +290,7 @@ impl crate::game::ClientGame<'_> {
             boss_world_fog: self.client.boss_overlay.should_create_world_fog(),
             spectator: cam
                 .as_ref()
-                .map_or_else(|| self.common.own_player_is_spectator(), |c| c.is_spectator),
+                .map_or_else(|| self.own_player_is_spectator(), |c| c.is_spectator),
             fire_resistance,
             full_water_vision: !is_local || self.pvp_clear_fluids().1,
             night_vision,
@@ -392,7 +392,7 @@ impl crate::game::ClientGame<'_> {
             return false;
         };
         let sunrise = if self.level_flat() {
-            f64::from(self.common.level_min_y())
+            f64::from(self.level_min_y())
         } else {
             f64::from(self.client.client_pack.polytone_colors.env.horizon_height)
         };
@@ -616,7 +616,7 @@ impl crate::game::ClientGame<'_> {
             }
         }
         let first_person =
-            self.client.camera_type.is_first_person() && !self.common.own_player_is_spectator();
+            self.client.camera_type.is_first_person() && !self.own_player_is_spectator();
         let water = first_person && {
             // LevelExtractor uses the player's tick-sampled eye state, not camera fog geometry.
             // Keep the existing mod override explicit, applied to that answer at the eye.
@@ -1459,3 +1459,7 @@ use sunrise_gameplay_common::game::end_common::EndGameExt as _;
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

@@ -93,3 +93,5 @@ fn a_silent_rocket_bursts_without_blast_or_twinkle() {
         twinkling(),
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

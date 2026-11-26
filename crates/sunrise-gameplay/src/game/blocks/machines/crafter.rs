@@ -135,7 +135,7 @@ impl crate::game::ServerGame<'_> {
         let remainders = self
             .recipes()
             .remainders(&self.common.loop_context, &recipe, &grid, 3, &|s| {
-                self.common.crafting_remainder(s)
+                self.crafting_remainder(s)
             });
         self.crafter_eject(key, facing, result, &recipe);
         for rest in remainders.into_iter().flatten() {
@@ -471,3 +471,5 @@ pub(in crate::game) mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::native_block_states::NativeBlockStatesGameExt1 as _;

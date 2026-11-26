@@ -704,3 +704,5 @@ pub(in crate::game) mod loot_location_shape_tests {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

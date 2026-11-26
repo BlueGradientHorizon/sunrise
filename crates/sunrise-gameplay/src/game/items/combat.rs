@@ -636,13 +636,13 @@ impl crate::game::ServerGame<'_> {
         if let Some(g) = sunrise_sim::mobs::gear::gear(m) {
             stack.data_mut().enchantments = g.slots[sunrise_sim::mobs::gear::MAIN].clone();
         }
-        Some(self.common.stack_display_name(&stack))
+        Some(self.stack_display_name(&stack))
     }
     /// `getMainHandItem().getDisplayName()` of the player in place, when the
     /// stack has a custom name.
     pub(in crate::game::server_side) fn main_hand_custom_name(&self) -> Option<Text> {
         let stack = self.common.inventory.get(self.common.selected)?.as_ref()?;
-        has_custom_name(stack).then(|| self.common.stack_display_name(stack))
+        has_custom_name(stack).then(|| self.stack_display_name(stack))
     }
     /// `main_hand_custom_name` of a player who is not in place: the guest
     /// `conn` between turns, or none for the host while a guest acts (their
@@ -656,7 +656,7 @@ impl crate::game::ServerGame<'_> {
         }
         let g = self.server.lan.as_ref()?.hub.guest(player?)?;
         let stack = g.inventory.get(g.selected)?.as_ref()?;
-        has_custom_name(stack).then(|| self.common.stack_display_name(stack))
+        has_custom_name(stack).then(|| self.stack_display_name(stack))
     }
     /// The killer's item for `getLocalizedDeathMessage` and
     /// `getMessageForAssistedFall`: a player's as recorded, a mob's now.
@@ -819,13 +819,10 @@ impl crate::game::ServerGame<'_> {
         // The player behind a `Who::Player` hit: the last one to hurt it, or
         // the one in place (a server with nobody acting has none).
         let player = match killer {
-            Some(Some(conn)) => Some((
-                u32::MAX - 1 - conn,
-                self.common.target_name(Target::Guest(conn)),
-            )),
-            Some(None) => Some((u32::MAX, self.common.target_name(Target::Player))),
+            Some(Some(conn)) => Some((u32::MAX - 1 - conn, self.target_name(Target::Guest(conn)))),
+            Some(None) => Some((u32::MAX, self.target_name(Target::Player))),
             None if self.common.player.is_some() || self.server.lan_acting.is_some() => {
-                Some((u32::MAX, self.common.target_name(Target::Player)))
+                Some((u32::MAX, self.target_name(Target::Player)))
             }
             None => None,
         };
@@ -842,7 +839,7 @@ impl crate::game::ServerGame<'_> {
             Who::Mob(id) => g
                 .mob_display_name(id)
                 .or_else(|| {
-                    g.side
+                    g.server
                         .combat
                         .0
                         .exploded
@@ -1293,3 +1290,7 @@ pub(in crate::game) mod kill_credit_tests {
 pub mod bee_sting_tests;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

@@ -111,3 +111,7 @@ fn a_command_putting_the_apple_back_keeps_the_use() {
     });
     assert!(lines.is_empty(), "{lines:?}");
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

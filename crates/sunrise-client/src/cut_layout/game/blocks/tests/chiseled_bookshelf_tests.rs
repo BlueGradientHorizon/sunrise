@@ -178,3 +178,5 @@ fn an_empty_slot_clicked_as_occupied_still_plays_the_pickup() {
         vec![("minecraft:block_change", CENTRE, Some(Who::Player))]
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

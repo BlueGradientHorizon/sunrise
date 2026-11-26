@@ -191,3 +191,7 @@ fn the_hurt_cooldown_and_invulnerable_time_are_separate_fields() {
         "#bypasses_invulnerability"
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

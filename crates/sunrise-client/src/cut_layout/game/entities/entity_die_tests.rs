@@ -365,3 +365,5 @@ fn unknown_painting_variant_keeps_the_default_one() {
         assert_ne!(&*variant.id, "minecraft:nosuch");
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

@@ -101,7 +101,7 @@ impl crate::game::ServerGame<'_> {
         pos: [f64; 3],
         rotation: Option<[f32; 2]>,
     ) -> Option<Target> {
-        let t = self.common.native_entity_target(entity)?;
+        let t = self.native_entity_target(entity)?;
         if !in_bounds(pos)
             || matches!(
                 t,
@@ -137,7 +137,7 @@ impl crate::game::ServerGame<'_> {
             return None;
         }
         let mover = sunrise_sim::move_gate::mover_of(cause)?;
-        let t = self.common.native_entity_target(entity)?;
+        let t = self.native_entity_target(entity)?;
         if matches!(t, Target::Player | Target::Guest(_)) {
             let conn = match t {
                 Target::Player => self.server.lan_acting?,
@@ -164,7 +164,7 @@ impl crate::game::ServerGame<'_> {
         yaw: f32,
         pitch: f32,
     ) -> bool {
-        let Some(t) = self.common.native_entity_target(entity) else {
+        let Some(t) = self.native_entity_target(entity) else {
             return false;
         };
         if !yaw.is_finite() || !pitch.is_finite() {
@@ -214,8 +214,8 @@ impl crate::game::ServerGame<'_> {
     /// The yaw of the entity's head (`Entity.getYHeadRot`): a mob's or a
     /// player's own, zero for the kinds without a head.
     pub(in crate::game) fn entity_head_yaw(&self, entity: EntityRef) -> Option<f32> {
-        let t = self.common.native_entity_target(entity)?;
-        if let Some(g) = self.common.native_target_guest(t) {
+        let t = self.native_entity_target(entity)?;
+        if let Some(g) = self.native_target_guest(t) {
             return Some(g.head_yaw);
         }
         if let Target::Mob(id) = t {
@@ -227,7 +227,7 @@ impl crate::game::ServerGame<'_> {
     /// vanilla keeps it, not normalized: mobs only, None for players and every
     /// other kind, and for a stale handle.
     pub(in crate::game) fn entity_body_yaw(&self, entity: EntityRef) -> Option<f32> {
-        match self.common.native_entity_target(entity)? {
+        match self.native_entity_target(entity)? {
             Target::Mob(id) => Some(self.common.mobs.iter().find(|m| m.id == id)?.body_yaw),
             // The dragon's flight yaw also drives its body and part poses.
             Target::Dragon(_) => Some(self.native_dragon(entity)?.yaw),
@@ -241,7 +241,7 @@ impl crate::game::ServerGame<'_> {
         if !yaw.is_finite() {
             return false;
         }
-        match self.common.native_entity_target(entity) {
+        match self.native_entity_target(entity) {
             Some(Target::Mob(id)) => match self.common.mobs.iter_mut().find(|m| m.id == id) {
                 Some(m) => {
                     m.head_yaw = yaw;
@@ -271,13 +271,13 @@ impl crate::game::ServerGame<'_> {
     /// The horizontal direction the entity faces (`Entity.getDirection`):
     /// `north`, `south`, `east` or `west`.
     pub(in crate::game) fn entity_direction(&self, entity: EntityRef) -> Option<&'static str> {
-        let t = self.common.native_entity_target(entity)?;
-        Some(facing(self.common.target_rotation(t)[0]))
+        let t = self.native_entity_target(entity)?;
+        Some(facing(self.target_rotation(t)[0]))
     }
     /// The entity's width and height (`Entity.getBbWidth`, `getBbHeight`):
     /// its box's, so a baby's or a scaled entity's own.
     pub(in crate::game) fn entity_dimensions(&self, entity: EntityRef) -> Option<[f64; 2]> {
-        let [min, max] = self.common.entity_bounding_box(entity)?;
+        let [min, max] = self.entity_bounding_box(entity)?;
         Some([max[0] - min[0], max[1] - min[1]])
     }
     /// Adds `delta` to the entity's velocity (`Entity.push`,
@@ -287,7 +287,7 @@ impl crate::game::ServerGame<'_> {
         if !delta.iter().all(|v| v.is_finite()) {
             return false;
         }
-        let Some(target) = self.common.native_entity_target(entity) else {
+        let Some(target) = self.native_entity_target(entity) else {
             return false;
         };
         if matches!(target, Target::Player | Target::Guest(_)) {
@@ -381,7 +381,7 @@ impl crate::game::ServerGame<'_> {
         } else {
             MoveWho::Guest(conn)
         };
-        let gate = self.common.entity_move(who, mover, Vec3::new(delta[0], delta[1], delta[2]));
+        let gate = self.entity_move(who, mover, Vec3::new(delta[0], delta[1], delta[2]));
         if gate.skipped() {
             return Some([0.0; 3]);
         }
@@ -403,7 +403,7 @@ impl crate::game::ServerGame<'_> {
             to
         } else {
             // The solid entities (boats, shulkers, a still happy ghast) the player may meet.
-            let entities = self.common.entity_collisions(Mover::PlayerAt { feet_y: from[1] });
+            let entities = self.entity_collisions(Mover::PlayerAt { feet_y: from[1] });
             self.server.lan.as_ref()?.hub.settle_conn(
                 conn,
                 from,
@@ -597,3 +597,15 @@ pub(in crate::game) mod tests {
         }
     }
 }
+
+use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::move_gate::MoveGateGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_motion_values::NativeEntityMotionValuesGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

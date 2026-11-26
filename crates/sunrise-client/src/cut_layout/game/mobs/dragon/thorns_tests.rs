@@ -230,3 +230,5 @@ fn a_still_guardian_spikes_the_player_who_hit_it() {
         }
     });
 }
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;

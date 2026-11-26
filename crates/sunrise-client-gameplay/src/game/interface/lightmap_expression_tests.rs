@@ -155,7 +155,7 @@ fn a_packs_lightmap_draws_its_expression_uniform() {
         context.dimension = String::with_capacity(64);
         context.biome = String::with_capacity(64);
         let buffers = |game: &crate::game::ClientGame<'_>| {
-            let context = &game.side.expression_frame;
+            let context = &game.client.expression_frame;
             [&context.dimension, &context.biome].map(|s| (s.as_ptr(), s.capacity()))
         };
         let before = buffers(game);

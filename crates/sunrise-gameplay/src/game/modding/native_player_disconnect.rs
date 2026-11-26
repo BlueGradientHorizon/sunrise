@@ -32,3 +32,5 @@ impl ServerGame<'_> {
         .then_some(guest.conn)
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

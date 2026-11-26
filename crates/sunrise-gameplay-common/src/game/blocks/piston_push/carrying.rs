@@ -47,12 +47,14 @@ pub fn support_of(start: &Prepared, bounds: Aabb, id: u32) -> Option<u32> {
     best.map(|(_, support)| support)
 }
 
-impl crate::game::CommonGame<'_> {
+pub trait CarryingGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// Carries bodies on colliders that moved this tick, then shoves bodies in the path of a
     /// translating collider. `start` is the colliders as the tick began. Dispatched by role.
-    pub fn carry_pass(&mut self, start: &Prepared) {
+     fn carry_pass(&mut self, start: &Prepared) {
         self.side_carry_pass(start);
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> CarryingGameExt1<'__sg> for G {}
+
 
 use crate::game::side_ops::blocks::BlocksSideGameExt as _;

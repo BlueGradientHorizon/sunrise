@@ -40,7 +40,7 @@ impl crate::game::ServerGame<'_> {
         gi: usize,
         s: &ItemStack,
     ) -> bool {
-        let size = self.common.stack_max_size(s);
+        let size = self.stack_max_size(s);
         let max = creative_count_bound(size);
         let Some(host) = self.server.lan.as_mut() else {
             return false;
@@ -153,7 +153,7 @@ impl crate::game::ServerGame<'_> {
             return;
         };
         let at = self.target_position(target);
-        let [yaw, pitch] = self.common.target_rotation(target);
+        let [yaw, pitch] = self.target_rotation(target);
         if let Some(back) = back
             && self.enter_level(back).is_err()
         {
@@ -1221,9 +1221,9 @@ impl crate::game::ServerGame<'_> {
                     .and_then(|index| sunrise_command::args::GameMode::ALL.get(index))
                 {
                     let lines = self.as_guest(conn, |g| {
-                        g.side.chat_capture = Some(Vec::new());
+                        g.server.chat_capture = Some(Vec::new());
                         g.server_change_game_mode(*mode);
-                        g.side
+                        g.server
                             .chat_capture
                             .take()
                             .unwrap_or_default()
@@ -1395,7 +1395,7 @@ impl crate::game::ServerGame<'_> {
                 .as_guest(player, |g| g.command_target_nbt(Target::Player))
                 .flatten()?,
             None => {
-                let target = self.common.level_entity(id)?;
+                let target = self.level_entity(id)?;
                 self.command_target_nbt(target)?
             }
         };
@@ -1448,7 +1448,7 @@ impl crate::game::ServerGame<'_> {
     /// `ServerGamePacketListenerImpl.wasBlockPlacementAttempt`: a block item,
     /// or a bucket with something in it, that is not cooling down.
     pub(in crate::game::server_side) fn was_block_placement_attempt(&mut self, hand: Hand) -> bool {
-        let Some(stack) = self.common.with_hand(hand, |g| g.held().cloned()) else {
+        let Some(stack) = self.with_hand(hand, |g| g.held().cloned()) else {
             return false;
         };
         let Some(info) = self.items().get(&stack.item).cloned() else {
@@ -1470,3 +1470,21 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::block_items::BlockItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_menu_refs_common::NativeMenuRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_entity_common::PickEntityCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_equip::PlayerEquipGameExt1 as _;

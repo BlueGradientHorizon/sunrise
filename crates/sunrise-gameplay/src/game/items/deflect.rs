@@ -35,16 +35,16 @@ pub(in crate::game::server_side) fn aim_deflect(
 impl ServerGame<'_> {
     /// The pickable projectile under the crosshair within entity reach.
     pub(in crate::game::server_side) fn redirectable_hit(&self) -> Option<(usize, f64)> {
-        let (eye, dir) = self.common.aim()?;
+        let (eye, dir) = self.aim()?;
         let reach = self.common.entity_reach;
         let (from, to) = super::pick_ray::pick_ray_segment(eye, dir, reach);
         let mut pick = super::pick_ray::PickAccumulator::new(reach * reach);
         let mut best = None;
         for (i, p) in self.common.creatures.projectiles.iter().enumerate() {
-            if !self.common.projectile_is_pickable(p) {
+            if !self.projectile_is_pickable(p) {
                 continue;
             }
-            let radius = self.common.projectile_pick_radius(p);
+            let radius = self.projectile_pick_radius(p);
             let bb = if radius == 0.0 {
                 p.bounds()
             } else {
@@ -66,10 +66,10 @@ impl ServerGame<'_> {
         let Some((i, t)) = self.redirectable_hit() else {
             return false;
         };
-        if self.common.mob_hit().is_some_and(|(_, d, _)| d < t) {
+        if self.mob_hit().is_some_and(|(_, d, _)| d < t) {
             return false;
         }
-        if !self.common.before_block(t) {
+        if !self.before_block(t) {
             return false;
         }
         if matches!(
@@ -98,7 +98,7 @@ impl ServerGame<'_> {
         if admitted {
             self.remember_player_target(None);
         }
-        self.common.reset_attack_strength();
+        self.reset_attack_strength();
         self.swing_arm();
     }
 
@@ -209,7 +209,7 @@ impl ServerGame<'_> {
     /// not take: `hurtOrSimulate` fails and `PLAYER_ATTACK_NODAMAGE` plays,
     /// the same sound. Either way the swing follows. True when it turned.
     pub(in crate::game) fn deflect(&mut self, i: usize) -> bool {
-        self.common.reset_attack_strength();
+        self.reset_attack_strength();
         let turned = self.turn_projectile(i);
         self.swing_arm();
         let from = self
@@ -367,3 +367,7 @@ pub(in crate::game) mod tests {
 }
 
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

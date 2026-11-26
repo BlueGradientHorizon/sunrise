@@ -163,3 +163,6 @@ fn owner_launch_applies_the_supplied_stacks_effects() {
         }
     });
 }
+
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

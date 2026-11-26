@@ -53,7 +53,7 @@ impl BoatModels {
 }
 impl crate::game::ClientGame<'_> {
     pub(in crate::game) fn record_boat_lid_movement(&mut self, i: usize, delta: Vec3) {
-        if self.common.record_driven_boat_lid_movement(i, delta) {
+        if self.record_driven_boat_lid_movement(i, delta) {
             return;
         }
         let boat = &self.common.boats[i];
@@ -66,7 +66,7 @@ impl crate::game::ClientGame<'_> {
         {
             let [x, y, z] = lerp.target;
             let to = Vec3::new(x, y, z).add_vector(delta);
-            if self.common.boat_lerp_target_fits(boat, to) {
+            if self.boat_lerp_target_fits(boat, to) {
                 self.client
                     .remote
                     .as_mut()
@@ -455,7 +455,7 @@ impl crate::game::ClientGame<'_> {
                                 false,
                             ]
                         });
-                        let boat = self.common.tick_boat(self.common.boats[0].clone(), true);
+                        let boat = self.tick_boat(self.common.boats[0].clone(), true);
                         self.common.store_boat_back(0, boat);
                     }
                     self.tick_remote_boat_bubbles();
@@ -475,7 +475,7 @@ impl crate::game::ClientGame<'_> {
                 self.common.riding = owned.then_some(1);
                 if owned {
                     let boat = self.common.boats.remove(0);
-                    let boat = self.common.tick_boat(boat, true);
+                    let boat = self.tick_boat(boat, true);
                     self.common.boats.push(boat);
                 }
                 self.tick_remote_boat_bubbles();
@@ -494,3 +494,5 @@ impl crate::game::ClientGame<'_> {
         Ok(())
     }
 }
+
+use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;

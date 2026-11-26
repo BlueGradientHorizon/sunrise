@@ -163,7 +163,7 @@ impl crate::game::ClientGame<'_> {
     }
     /// Whether this window's own player was canceled this frame.
     pub(in crate::game) fn own_render_canceled(&self) -> bool {
-        u32::try_from(self.common.own_entity_id()).is_ok_and(|id| self.render_canceled(id))
+        u32::try_from(self.own_entity_id()).is_ok_and(|id| self.render_canceled(id))
     }
     /// The mods' pre hooks for `mob`, before any of its model is drawn, lit by `light` (packed as
     /// the entity pass packs it): `render_player_pre` for a player (`who`: its name, and whether
@@ -227,7 +227,7 @@ impl crate::game::ClientGame<'_> {
             }
             return true;
         }
-        let id = render_id(mob.id, local, self.common.own_entity_id());
+        let id = render_id(mob.id, local, self.own_entity_id());
         FRAME.with_borrow_mut(|frame| frame.canceled.insert(id));
         false
     }
@@ -280,7 +280,7 @@ impl crate::game::ClientGame<'_> {
     ) {
         if let Some(layers) = layers {
             let local = who.as_ref().is_some_and(|who| who.local);
-            let id = render_id(mob.id, local, self.common.own_entity_id());
+            let id = render_id(mob.id, local, self.own_entity_id());
             self.registered_layer_geometry(mob, id, &layers, model, partial, camera, light, out);
         }
     }
@@ -327,7 +327,7 @@ impl crate::game::ClientGame<'_> {
         out: &mut Vec<Vertex>,
         hook: impl FnOnce(&MobRender<'_>, &mut BlockEntityDraw),
     ) {
-        let render = mob_render(mob, render_id(mob.id, local, self.common.own_entity_id()), partial);
+        let render = mob_render(mob, render_id(mob.id, local, self.own_entity_id()), partial);
         let a = f64::from(partial);
         let feet = mob.previous.lerp(mob.position, a);
         let feet = DVec3::new(feet.x, feet.y, feet.z);
@@ -395,3 +395,5 @@ mod tests {
         assert!(close(pose.transform_point3(Vec3::ZERO), at.as_vec3()));
     }
 }
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

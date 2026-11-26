@@ -359,8 +359,8 @@ impl ClientGame<'_> {
             })
             .collect();
         self.open_screen_overlay("dialog", |game| {
-            game.side.dialogs.0.revision = game.side.dialogs.0.revision.wrapping_add(1);
-            game.side.dialogs.0.open = Some(Open {
+            game.client.dialogs.0.revision = game.client.dialogs.0.revision.wrapping_add(1);
+            game.client.dialogs.0.open = Some(Open {
                 dialog,
                 configuration,
                 values,
@@ -370,9 +370,9 @@ impl ClientGame<'_> {
                 dragging: None,
                 selecting: None,
             });
-            game.side.dialogs.0.waiting = None;
+            game.client.dialogs.0.waiting = None;
             game.clear_device_keys();
-            game.side.physical_keys.clear();
+            game.client.physical_keys.clear();
             game.set_mapping_held("key.attack", false);
             game.set_mapping_held("key.use", false);
             game.capture(false);
@@ -418,9 +418,9 @@ impl ClientGame<'_> {
     /// The confirmation's no: the dialog again, with what was typed in it.
     pub(in crate::game::client_side) fn reopen_dialog(&mut self, dialog: ClosedDialog) {
         self.open_screen_overlay("dialog", |game| {
-            game.side.dialogs.0.revision = game.side.dialogs.0.revision.wrapping_add(1);
-            game.side.dialogs.0.open = Some(*dialog.0);
-            game.side.dialogs.0.waiting = None;
+            game.client.dialogs.0.revision = game.client.dialogs.0.revision.wrapping_add(1);
+            game.client.dialogs.0.open = Some(*dialog.0);
+            game.client.dialogs.0.waiting = None;
         });
     }
 
@@ -522,8 +522,8 @@ impl ClientGame<'_> {
         }
         if wait {
             let start_waiting = |game: &mut Self| {
-                game.side.dialogs.0.open = None;
-                game.side.dialogs.0.waiting = Some(Instant::now());
+                game.client.dialogs.0.open = None;
+                game.client.dialogs.0.waiting = Some(Instant::now());
             };
             if self.client.command_prompt.0.is_some() || self.client.link_prompt.is_some() {
                 // The confirmation already became the receiver. Stage only
@@ -949,7 +949,7 @@ impl ClientGame<'_> {
     /// `DialogScreen.WarningScreen`: Back opens its return dialog if still live.
     fn return_from_dialog_warning(&mut self) {
         if self.client.dialogs.0.open.is_some() || self.client.dialogs.0.waiting.is_some() {
-            self.open_screen_overlay("dialog", |game| game.side.dialogs.0.warning = false);
+            self.open_screen_overlay("dialog", |game| game.client.dialogs.0.warning = false);
         } else {
             self.client.dialogs.0.warning = false;
             self.dialog_receiver_changed();
@@ -1003,7 +1003,7 @@ impl ClientGame<'_> {
         let [wx, wy, ww, wh] = layout.warning;
         if ui::hovered(cursor, wx, wy, ww, wh) {
             self.client.audio.0.play_button_click();
-            self.open_screen_overlay("dialog", |game| game.side.dialogs.0.warning = true);
+            self.open_screen_overlay("dialog", |game| game.client.dialogs.0.warning = true);
             return Ok(true);
         }
         let shift = self.client.modifiers.shift_key();

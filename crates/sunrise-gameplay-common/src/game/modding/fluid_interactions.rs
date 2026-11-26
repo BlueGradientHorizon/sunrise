@@ -88,7 +88,7 @@ pub(in crate::game) fn declared(
     })
 }
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// [`Self::install_fluid_interactions`] against `items`' tags.
     pub fn install_fluid_interactions_from(
         &self,

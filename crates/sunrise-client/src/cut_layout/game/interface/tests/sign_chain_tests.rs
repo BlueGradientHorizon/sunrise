@@ -209,3 +209,5 @@ fn a_ceiling_hanging_sign_without_a_command_chains_below() {
     };
     assert_chained(&click, "minecraft:oak_hanging_sign", [0.5, 69.5, 0.5]);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

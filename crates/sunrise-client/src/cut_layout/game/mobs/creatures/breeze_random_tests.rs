@@ -61,3 +61,5 @@ fn breeze_deflection_does_not_draw_from_level_random() {
         assert_eq!(game.world.random.state(), before);
     });
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

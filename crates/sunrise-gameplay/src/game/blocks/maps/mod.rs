@@ -371,7 +371,7 @@ impl ServerGame<'_> {
         } else if stack.count == 1 {
             *self.common.held_mut() = Some(filled);
         } else {
-            self.common.consume_held();
+            self.consume_held();
             self.give_or_drop_stack(filled);
         }
         // EmptyMapItem.use: consumed, then counted.
@@ -415,7 +415,7 @@ impl ServerGame<'_> {
         let Some(id) = map_id(stack) else {
             return false;
         };
-        if !self.common.may_build() && !self.common.can_place_on_in_adventure(hit.pos) {
+        if !self.may_build() && !self.can_place_on_in_adventure(hit.pos) {
             return false;
         }
         let [x, y, z] = hit.pos;
@@ -447,7 +447,7 @@ impl ServerGame<'_> {
         }
     }
     pub(in crate::game::server_side) fn give_or_drop_stack(&mut self, stack: ItemStack) {
-        if let Some(rest) = self.common.add_stack_to_inventory(stack)
+        if let Some(rest) = self.add_stack_to_inventory(stack)
             && let Some(eye) = self.common.eye_position()
         {
             self.spawn_item(rest, [eye[0], eye[1] - 0.3, eye[2]], [0.0, 0.1, 0.0], 40);
@@ -855,7 +855,7 @@ impl ServerGame<'_> {
             locked
                 .data_mut()
                 .set_other("minecraft:lodestone_tracker", Some(target));
-            self.common.consume_held();
+            self.consume_held();
             self.give_or_drop_stack(locked);
         }
         self.award_stat("used", &stack.item, 1);
@@ -1023,3 +1023,9 @@ use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameE
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;

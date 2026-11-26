@@ -50,7 +50,7 @@ fn a_frozen_level_eases_the_vignette_as_vanillas_does() {
         game.side.streaming.insert_remote(&mut game.world, chunk);
         let ticking = |frozen| C::TickingState(play::TickingState { rate: 20.0, frozen });
         let bits =
-            |game: &crate::game::ClientGame<'_>| game.side.screen_fx.vignette_brightness.to_bits();
+            |game: &crate::game::ClientGame<'_>| game.client.screen_fx.vignette_brightness.to_bits();
 
         game.side.screen_fx.vignette_brightness = f32::from_bits(JAVA_FREEZING[0]);
         game.handle_packet(ticking(true)).unwrap();

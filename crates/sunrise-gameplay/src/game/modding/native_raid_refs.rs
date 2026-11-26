@@ -13,7 +13,7 @@ impl crate::game::ServerGame<'_> {
     // Diverges from upstream: handles resolve the requested server level without
     // swapping it into place, including during hooks for another level.
     fn native_level_raid_collections(&self, level: LevelRef) -> Option<(&Raids, &[Mob])> {
-        self.common.native_level_world(level)?;
+        self.native_level_world(level)?;
         if level.dimension() == self.common.dim.key() {
             Some((self.raids_in_place()?, &self.common.mobs))
         } else {
@@ -22,7 +22,7 @@ impl crate::game::ServerGame<'_> {
         }
     }
     fn native_level_raids_mut(&mut self, level: LevelRef) -> Option<&mut Raids> {
-        self.common.native_level_world(level)?;
+        self.native_level_world(level)?;
         if level.dimension() == self.common.dim.key() {
             self.server.raiding.0.raids_mut(level.dimension_id())
         } else {
@@ -76,12 +76,12 @@ impl crate::game::ServerGame<'_> {
     /// `Raider.getCurrentRaid`: the raid a raider belongs to, even a stopped
     /// one. None for a mob that is no raider or in no raid.
     pub(in crate::game) fn mob_raid(&self, mob: MobRef) -> Option<RaidRef> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         let raider = self.common.mobs.iter().find(|m| m.id == id && !m.removed)?;
         let id = sunrise_sim::mobs::raider::state(raider)?.raid_id?;
-        let level = self.common.entity_level(mob.entity())?;
+        let level = self.entity_level(mob.entity())?;
         self.level_raid(level, id)
     }
 
@@ -213,3 +213,9 @@ impl crate::game::ServerGame<'_> {
         true
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

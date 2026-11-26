@@ -241,10 +241,8 @@ impl crate::game::ServerGame<'_> {
         held: Option<&ItemStack>,
     ) -> Vec<ItemStack> {
         let dynamic = self.common.pending.dynamic(pos);
-        let place = self
-            .common
-            .loot_place_at(pos.map(|v| f64::from(v) + 0.5), None);
-        let (_, entity) = self.common.native_clicker();
+        let place = self.common.loot_place_at(pos.map(|v| f64::from(v) + 0.5), None);
+        let (_, entity) = self.native_clicker();
         let mut drops = sunrise_world::loot::with_native_loot_place(place, || {
             let roll = sunrise_items::items::BlockLootRoll {
                 held,
@@ -254,7 +252,7 @@ impl crate::game::ServerGame<'_> {
             };
             self.roll_block_loot(pos, state, Some(entity as u32), roll)
         });
-        let player = self.common.native_acting_id();
+        let player = self.native_acting_id();
         self.native_block_loot(pos, state, Some(player), held, None, &mut drops);
         drops
     }
@@ -488,7 +486,7 @@ impl crate::game::ServerGame<'_> {
         if let Some(row) = self.common.resident_entities.general.row(id) {
             return Some(entity::Entity::bounds(row));
         }
-        self.common.tracked_special_box(id as i32)
+        self.tracked_special_box(id as i32)
     }
 
     pub(in crate::game) fn save_game(&mut self) -> Result<()> {
@@ -575,3 +573,7 @@ use sunrise_gameplay_common::game::side_ops::events::EventsSideGameExt as _;
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::dragon_common::DragonCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

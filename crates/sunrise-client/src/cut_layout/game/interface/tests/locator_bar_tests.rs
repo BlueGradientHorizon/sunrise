@@ -337,3 +337,5 @@ fn block_waypoints_use_live_non_player_eyes_within_manhattan_three() {
         },
     );
 }
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

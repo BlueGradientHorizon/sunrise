@@ -712,7 +712,7 @@ impl crate::game::ClientGame<'_> {
     /// `Entity.isCurrentlyGlowing`, `Entity.isVehicle` and `Entity.isInWaterOrRain` of the
     /// window's player, as a client answers them, read without changing anything.
     pub(in crate::game::client_side) fn pack_player_booleans(&self) -> (bool, bool, bool) {
-        let id = self.common.own_entity_id() as u32;
+        let id = self.own_entity_id() as u32;
         // `Entity.isCurrentlyGlowing` on a client: shared flag 6 from a server, else the
         // Glowing effect `LivingEntity.isCurrentlyGlowing` sets it from.
         let glowing = self
@@ -1595,3 +1595,5 @@ pub(in crate::game) mod toggle_tests {
 }
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

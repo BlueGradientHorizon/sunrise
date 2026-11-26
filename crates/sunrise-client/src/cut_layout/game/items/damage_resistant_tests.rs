@@ -320,3 +320,7 @@ fn dropped_item_hurt_uses_default_and_stack_fire_resistance() {
         }
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_components::NativeComponentsGameExt1 as _;

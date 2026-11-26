@@ -13,7 +13,7 @@ impl crate::game::ClientGame<'_> {
         if !block_listens(mod_api::HookId::AddHitEffects, state) {
             return None;
         }
-        let level = self.common.native_client_level()?;
+        let level = self.native_client_level()?;
         let mut cancel = false;
         self.lend_client_level_random(|game, random| {
             game.native_add_hit_effects(super::fire::AddHitEffectsCall {
@@ -36,7 +36,7 @@ impl crate::game::ClientGame<'_> {
         if !block_listens(mod_api::HookId::AddDestroyEffects, state) {
             return None;
         }
-        let level = self.common.native_client_level()?;
+        let level = self.native_client_level()?;
         let mut cancel = false;
         self.lend_client_level_random(|game, random| {
             game.native_add_destroy_effects(super::fire::AddDestroyEffectsCall {
@@ -64,3 +64,4 @@ impl crate::game::ClientGame<'_> {
         self.fire_add_destroy_effects(call);
     }
 }
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

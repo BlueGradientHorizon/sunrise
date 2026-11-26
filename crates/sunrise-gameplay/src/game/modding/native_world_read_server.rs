@@ -27,7 +27,7 @@ impl crate::game::ServerGame<'_> {
         level: LevelRef,
         pos: [i32; 3],
     ) -> Option<FluidState> {
-        let state = self.common.level_block_state(level, pos)?;
+        let state = self.level_block_state(level, pos)?;
         self.common.state_fluid_state(state)
     }
 
@@ -43,7 +43,7 @@ impl crate::game::ServerGame<'_> {
         pos: [i32; 3],
     ) -> Option<i32> {
         let [x, y, z] = pos;
-        if !self.common.level_in_place(level) || !self.common.world.is_loaded_at(x, y, z) {
+        if !self.level_in_place(level) || !self.common.world.is_loaded_at(x, y, z) {
             return None;
         }
         let kind = engine_fluid_kind(fluid)?;
@@ -106,3 +106,7 @@ pub fn read_block(
         .cloned()
         .ok_or(NativeBlockReadError::InvalidState)
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

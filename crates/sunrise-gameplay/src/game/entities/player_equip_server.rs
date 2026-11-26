@@ -3,7 +3,7 @@ use crate::game::ServerGame;
 impl ServerGame<'_> {
     pub(in crate::game) fn put_equipment_modifiers(&mut self) {
         let mut applied = std::mem::take(&mut self.server.applied_modifiers);
-        let ran = self.common.apply_equipment_modifiers_with(&mut applied);
+        let ran = self.apply_equipment_modifiers_with(&mut applied);
         self.server.applied_modifiers = applied;
         if !ran {
             return;
@@ -14,3 +14,5 @@ impl ServerGame<'_> {
         self.apply_enchantment_attributes();
     }
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

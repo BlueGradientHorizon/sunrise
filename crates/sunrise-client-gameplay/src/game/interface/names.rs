@@ -153,7 +153,7 @@ impl crate::game::ClientGame<'_> {
             return None;
         }
         let m = self.client.player_model.as_ref()?;
-        Some((m, self.common.own_profile_name()))
+        Some((m, self.own_profile_name()))
     }
     /// The names the name tags show this frame (the control socket's status).
     pub(in crate::game) fn shown_name_tags(&self, camera: glam::DVec3) -> Vec<String> {
@@ -185,7 +185,7 @@ impl crate::game::ClientGame<'_> {
         hooks: bool,
         frustum: Option<&sunrise_client::gfx::JoinedFrusta>,
     ) -> Vec<NameTag> {
-        let target = self.common.mob_hit().map(|(i, _, _)| self.common.mobs[i].id);
+        let target = self.mob_hit().map(|(i, _, _)| self.common.mobs[i].id);
         // Asked once a frame: a mod loaded without this hook costs the tags nothing.
         let name_format = hooks && mod_api::__private::listened(mod_api::HookId::PlayerNameFormat);
         let viewer = self.client_player_team();
@@ -267,7 +267,7 @@ impl crate::game::ClientGame<'_> {
             let invisible = sb::invisible_to(
                 team,
                 viewer,
-                self.common.own_player_is_spectator(),
+                self.own_player_is_spectator(),
                 m.is_invisible(),
             );
             // Entity.isDiscrete: a crouching player.
@@ -480,10 +480,10 @@ impl crate::game::ClientGame<'_> {
         // ItemFrameRenderer.shouldShowName/getNameTag: only the targeted
         // frame's custom-named item, with the HUD visible (also glow frames).
         let targeted_frame = (hooks || !self.client.chat_ui.hide_gui)
-            .then(|| self.common.frame_hit())
+            .then(|| self.frame_hit())
             .flatten()
             .filter(|(_, distance)| {
-                self.common.before_block(*distance) && self.common.mob_hit().is_none_or(|(_, d, _)| d > *distance)
+                self.before_block(*distance) && self.mob_hit().is_none_or(|(_, d, _)| d > *distance)
             })
             .map(|(index, _)| index);
         let frames = if hooks {
@@ -1280,3 +1280,9 @@ pub(in crate::game) mod tests {
         );
     }
 }
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

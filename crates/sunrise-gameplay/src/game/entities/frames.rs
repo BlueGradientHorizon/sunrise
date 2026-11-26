@@ -179,7 +179,7 @@ impl crate::game::ServerGame<'_> {
         self.common.persist.raw.insert(frame.id, raw);
         self.common.item_frames.push(frame);
         if !self.common.creative {
-            self.common.consume_held();
+            self.consume_held();
         }
         self.award_stat("used", &stack.item, 1);
         true
@@ -193,12 +193,12 @@ impl crate::game::ServerGame<'_> {
         let Some((i, d)) = (match target {
             Some(t) => sunrise_gameplay_common::game::item_actions::named_entity(&self.common.item_frames, t.id, |f| f.id)
                 .map(|i| (i, 0.0)),
-            None => self.common.frame_hit(),
+            None => self.frame_hit(),
         }) else {
             return false;
         };
         // Only a client's own pick is stopped by a block: the range check passed.
-        if (target.is_none() && !self.common.before_block(d)) || self.common.item_frames[i].fixed {
+        if (target.is_none() && !self.before_block(d)) || self.common.item_frames[i].fixed {
             return false;
         }
         let at = center(&self.common.item_frames[i]);
@@ -233,7 +233,7 @@ impl crate::game::ServerGame<'_> {
         let ctx = self.who_context(Some(sunrise_sim::mobs::Who::Player), None);
         self.post_game_event("minecraft:block_change", at, ctx);
         if action == "put" && !self.common.creative {
-            self.common.consume_held();
+            self.consume_held();
         }
         if let (Some(player), Some(name)) =
             (self.server.lan_acting_uuid, self.server.lan_acting_name.clone())
@@ -257,10 +257,10 @@ impl crate::game::ServerGame<'_> {
     }
     /// `ItemFrame.hurtServer` from the player: the item comes out first.
     pub(in crate::game::server_side) fn attack_frame(&mut self) -> bool {
-        let Some((i, d)) = self.common.frame_hit() else {
+        let Some((i, d)) = self.frame_hit() else {
             return false;
         };
-        if !self.common.before_block(d) || self.common.mob_hit().is_some_and(|m| m.1 < d) {
+        if !self.before_block(d) || self.mob_hit().is_some_and(|m| m.1 < d) {
             return false;
         }
         if self.common.item_frames[i].fixed {
@@ -387,7 +387,7 @@ impl crate::game::ServerGame<'_> {
             }
             Some(super::commands::Target::Guest(conn)) => {
                 let who = self
-                    .common.command_guest(conn)
+                    .command_guest(conn)
                     .map(|g| sunrise_sim::mobs::Who::Mob(g.entity_id as u32))
                     .or(Some(sunrise_sim::mobs::Who::Player));
                 self.who_context(who, None)
@@ -467,7 +467,7 @@ impl crate::game::ServerGame<'_> {
         }
         if by_player && !drops.is_empty() {
             let tool = self.common.held().cloned();
-            let player = Some(self.common.native_acting_id());
+            let player = Some(self.native_acting_id());
             self.native_use_drops(
                 "",
                 c,
@@ -623,3 +623,13 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::side_ops::presentation::PresentationSideGameExt as _;
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::item_use_stacks::ItemUseStacksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

@@ -210,6 +210,8 @@ pub(in crate::game) mod query_feedback_tests {
 #[cfg(test)]
 #[path = "incoming_tests/knot_identity_server.rs"]
 pub(in crate::game) mod knot_identity_tests;
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
 #[path = "world_cmds_server.rs"]
 pub(in crate::game) mod world_cmds;
 

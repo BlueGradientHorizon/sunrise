@@ -91,3 +91,7 @@ pub(in crate::game) fn teleport_player(
         game.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
     }
 }
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

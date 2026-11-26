@@ -104,3 +104,4 @@ pub(in crate::game) mod tests {
         );
     }
 }
+use sunrise_gameplay_common::game::pick_entity_common::PickEntityCommonGameExt1 as _;

@@ -54,7 +54,7 @@ impl crate::game::ServerGame<'_> {
         level: LevelRef,
         uuid: mod_api::EntityUuid,
     ) -> Option<EntityRef> {
-        self.common.native_level_world(level)?;
+        self.native_level_world(level)?;
         let dimension = level.dimension();
         let uuid = sunrise_sim::lan::playerdata::uuid_ints(uuid.0);
         let mut after = None;
@@ -67,12 +67,8 @@ impl crate::game::ServerGame<'_> {
                 .level_uuid_candidate(dimension, uuid, after)?;
             let entity = EntityRef::new(level.epoch(), id.get());
             if self
-                .common
                 .native_entity_target_in(entity, dimension)
-                .is_some_and(|(target, _)| {
-                    self.common
-                        .resident_source_target_visible(dimension, target)
-                })
+                .is_some_and(|(target, _)| self.resident_source_target_visible(dimension, target))
             {
                 return Some(entity);
             }
@@ -87,7 +83,7 @@ impl crate::game::ServerGame<'_> {
         }
         self.loaded_dims()
             .into_iter()
-            .filter_map(|dim| self.common.level(dim.id()))
+            .filter_map(|dim| self.level(dim.id()))
             .collect()
     }
     pub(in crate::game::server_side) fn level_entity_candidates(
@@ -127,7 +123,7 @@ impl crate::game::ServerGame<'_> {
         if !self.common.is_logical_server() {
             return Err(LevelReadError::Unavailable);
         }
-        if !self.common.level_handle_current(level) {
+        if !self.level_handle_current(level) {
             return Err(LevelReadError::Stale);
         }
         if level.dimension() != self.common.dim.key() {
@@ -135,7 +131,7 @@ impl crate::game::ServerGame<'_> {
         }
 
         for entity in self.level_entity_candidates(level) {
-            if self.common.native_entity_target(entity).is_some() && visit(entity).is_break() {
+            if self.native_entity_target(entity).is_some() && visit(entity).is_break() {
                 return Ok(ControlFlow::Break(()));
             }
         }
@@ -150,7 +146,6 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<Vec<EntityRef>> {
         let mut entities = Vec::new();
         let _ = self
-            .common
             .level_visit_entities_in(level, min, max, &mut |entity| {
                 entities.push(entity);
                 ControlFlow::Continue(())
@@ -189,7 +184,7 @@ impl crate::game::ServerGame<'_> {
         max: [f64; 3],
         visit: &mut dyn FnMut(EntityRef) -> ControlFlow<()>,
     ) -> Result<ControlFlow<()>, LevelReadError> {
-        if !self.common.level_handle_current(level) {
+        if !self.level_handle_current(level) {
             return Err(LevelReadError::Stale);
         }
         if !min.iter().chain(&max).all(|v| v.is_finite())
@@ -215,7 +210,7 @@ impl crate::game::ServerGame<'_> {
             after = Some(key);
             let (_, (_, id)) = key;
             let entity = EntityRef::new(level.epoch(), id.get());
-            if let Some((target, Some(at))) = self.common.native_entity_target_with_location(entity)
+            if let Some((target, Some(at))) = self.native_entity_target_with_location(entity)
                 && self
                     .query_body(target, at.join, true)
                     .is_some_and(|body| bounds.intersects(body))
@@ -226,7 +221,7 @@ impl crate::game::ServerGame<'_> {
         }
         Ok(self.visit_dragon_query_parts(bounds, &mut |id| {
             let entity = EntityRef::new(level.epoch(), id);
-            if self.common.native_entity_target(entity).is_some() {
+            if self.native_entity_target(entity).is_some() {
                 visit(entity)
             } else {
                 ControlFlow::Continue(())
@@ -263,7 +258,7 @@ impl crate::game::ServerGame<'_> {
             let Some(id) = next else { break };
             after = Some(id);
             let entity = EntityRef::new(level.epoch(), id.get());
-            if let Some(target) = self.common.native_entity_target(entity)
+            if let Some(target) = self.native_entity_target(entity)
                 && let Some(position) = self.target_position(target)
             {
                 table.borrow_mut().file_section_member(id, position);
@@ -279,14 +274,13 @@ impl crate::game::ServerGame<'_> {
     ) -> Option<Aabb> {
         match target {
             Target::Player if self.common.mode_id() != 3 => {
-                let guest = self.common.native_target_guest(target)?;
+                let guest = self.native_target_guest(target)?;
                 if !guest.participates_in_player_simulation() || !guest.placed {
                     return None;
                 }
                 self.common.player.as_ref().map(|p| p.bounds())
             }
             Target::Guest(conn) => self
-                .common
                 .command_guest(conn)
                 .filter(|guest| {
                     guest.participates_in_player_simulation()
@@ -341,17 +335,16 @@ impl crate::game::ServerGame<'_> {
         exclude: Option<EntityRef>,
     ) -> Option<Vec<EntityRayHit>> {
         let mut hits = Vec::new();
-        self.common
-            .visit_entity_ray_hits(
-                level,
-                from,
-                to,
-                margin,
-                exclude,
-                |_| true,
-                |hit, _| hits.push(hit),
-            )
-            .ok()?;
+        self.visit_entity_ray_hits(
+            level,
+            from,
+            to,
+            margin,
+            exclude,
+            |_| true,
+            |hit, _| hits.push(hit),
+        )
+        .ok()?;
         hits.sort_by(|a, b| a.distance.total_cmp(&b.distance));
         Some(hits)
     }
@@ -376,7 +369,7 @@ impl crate::game::ServerGame<'_> {
             return None;
         }
         if let Some(entity) = entity {
-            self.common.native_entity_target(entity)?;
+            self.native_entity_target(entity)?;
         }
         let state = self.common.world.block(pos[0], pos[1], pos[2]);
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
@@ -399,7 +392,7 @@ impl crate::game::ServerGame<'_> {
         entity: Option<EntityRef>,
     ) -> Option<Vec<ItemStack>> {
         if !self.common.is_logical_server()
-            || !self.common.level_handle_current(level)
+            || !self.level_handle_current(level)
             || self.common.dim.key() != level.dimension()
             || !world_items!(self).has_loot_table(table)
         {
@@ -407,7 +400,7 @@ impl crate::game::ServerGame<'_> {
         }
         let this = match entity {
             Some(entity) => {
-                let target = self.common.native_entity_target(entity)?;
+                let target = self.native_entity_target(entity)?;
                 Some(self.target_loot_entity(target))
             }
             None => None,
@@ -604,7 +597,7 @@ impl crate::game::ServerGame<'_> {
         }
         let at = sunrise_core::position::BlockPos::new(pos[0], pos[1], pos[2]);
         let mut stack = sunrise_items::items::ItemStack::new("minecraft:bone_meal", 1);
-        let ask = self.common.bonemeal(at, false, &mut stack);
+        let ask = self.bonemeal(at, false, &mut stack);
         let grown = self.common.with_level(|b, level, ticks| {
             ask.crop
                 .unwrap_or_else(|| b.grow_crop(level, ticks, at, ask.check))
@@ -644,7 +637,7 @@ impl crate::game::ServerGame<'_> {
         level: LevelRef,
         pos: [i32; 3],
     ) -> Result<bool, mod_api::LevelWriteError> {
-        let world = self.common.native_level_world_result(level)?;
+        let world = self.native_level_world_result(level)?;
         if self.common.dim.key() != level.dimension() {
             return Err(mod_api::LevelWriteError::Unavailable);
         }
@@ -657,7 +650,7 @@ impl crate::game::ServerGame<'_> {
         // through the level gate refuses while the operation runs.
         !self.common.world.carrier_fences.locks_cell(&pos)
             && self.common.is_logical_server()
-            && self.common.level_handle_current(level)
+            && self.level_handle_current(level)
             && self.common.world.loaded(pos[0], pos[2])
             && self.common.world.shape.contains_y(pos[1])
     }
@@ -667,11 +660,11 @@ impl crate::game::ServerGame<'_> {
         &self,
         entity: EntityRef,
     ) -> Option<mod_api::EntityTypeKey> {
-        match self.common.native_entity_read_target(entity) {
-            Some(target) => self.common.native_entity_kind_key(target),
+        match self.native_entity_read_target(entity) {
+            Some(target) => self.native_entity_kind_key(target),
             None => {
                 if self.common.native_lifecycle.epoch() == Some(entity.epoch())
-                    && let Some((_, mob)) = self.common.mob_in_other_level(entity.id())
+                    && let Some((_, mob)) = self.mob_in_other_level(entity.id())
                 {
                     return mob.kind.type_key;
                 }
@@ -685,7 +678,7 @@ impl crate::game::ServerGame<'_> {
     /// profile's). API 373.
     pub(in crate::game) fn entity_uuid(&mut self, entity: EntityRef) -> Option<u128> {
         if self.common.native_lifecycle.epoch() == Some(entity.epoch())
-            && self.common.mob_in_other_level(entity.id()).is_some()
+            && self.mob_in_other_level(entity.id()).is_some()
         {
             return self
                 .common
@@ -695,24 +688,24 @@ impl crate::game::ServerGame<'_> {
                 .resident_uuid(entity.id())
                 .map(uuid_from_words);
         }
-        let words = match self.common.native_entity_target(entity)? {
+        let words = match self.native_entity_target(entity)? {
             Target::Player => {
                 let dimension = self.current_player_resident_location()?.owner.dimension;
                 return self
                     .known_resident_entity_uuid_at(dimension, entity.id())
                     .map(uuid_from_words);
             }
-            Target::Guest(conn) => return self.common.command_guest(conn).map(|g| g.uuid),
+            Target::Guest(conn) => return self.command_guest(conn).map(|g| g.uuid),
             _ => self.uuid_for(entity.id()),
         };
         Some(uuid_from_words(words))
     }
     /// The level the entity is in on the server (`Entity.level`).
     pub(in crate::game) fn server_entity_level(&self, entity: EntityRef) -> Option<LevelRef> {
-        let key = match self.common.native_entity_target(entity) {
+        let key = match self.native_entity_target(entity) {
             Some(t) => self.target_level(t).key(),
             None if self.common.native_lifecycle.epoch() == Some(entity.epoch()) => {
-                self.common.mob_in_other_level(entity.id())?.0.key()
+                self.mob_in_other_level(entity.id())?.0.key()
             }
             None => return None,
         };
@@ -814,3 +807,19 @@ pub(in crate::game) mod ray_tests {
 }
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::GameGameExt2 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_motion_values::NativeEntityMotionValuesGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt4 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

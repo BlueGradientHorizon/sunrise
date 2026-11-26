@@ -1,7 +1,7 @@
 //! Complete residency journals on both logical-server and remote-client ticks.
 use crate::game::CommonGame;
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     pub fn with_residency_tick(
         &mut self,
         tick: impl FnOnce(&mut Self) -> super::Result<()>,

@@ -52,7 +52,7 @@ impl crate::game::ServerGame<'_> {
     /// The display's kind and entity id, or None for a stale handle, a client,
     /// or an entity that isn't a display.
     fn display_entity(&self, display: DisplayRef) -> Option<(DisplayKind, u32)> {
-        let Target::Other(id) = self.common.native_entity_target(display.entity())? else {
+        let Target::Other(id) = self.native_entity_target(display.entity())? else {
             return None;
         };
         let kind = self
@@ -616,3 +616,7 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

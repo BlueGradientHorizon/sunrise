@@ -1,9 +1,8 @@
-use crate::game::CommonGame;
 
-impl CommonGame<'_> {
+pub trait GeneralGameExt1<'__sg>: crate::game::SideGame<'__sg> {
     /// The declared type key of general row `id`: the level's own row, or on a client the
     /// one its server shows it.
-    pub(in crate::game) fn general_kind(&self, id: u32) -> Option<&'static str> {
+     fn general_kind(&self, id: u32) -> Option<&'static str> {
         let slot = match self.resident_entities.general.row(id) {
             Some(row) => row.type_slot,
             None => self.side_remote_general_type_slot(id)?,
@@ -11,6 +10,8 @@ impl CommonGame<'_> {
         Some(crate::game::general::general_type_catalog().key(slot))
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> GeneralGameExt1<'__sg> for G {}
+
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod tests {
@@ -125,3 +126,7 @@ pub(in crate::game) struct Declare;
 }
 
 use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use crate::game::passengers_common::PassengersCommonGameExt1 as _;

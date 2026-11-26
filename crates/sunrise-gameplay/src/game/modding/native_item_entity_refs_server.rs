@@ -12,9 +12,8 @@ impl crate::game::ServerGame<'_> {
         item: ItemEntityRef,
         hint: Option<usize>,
     ) -> Option<usize> {
-        let (Target::Item(_), Some(location)) = self
-            .common
-            .native_entity_target_with_location(item.entity())?
+        let (Target::Item(_), Some(location)) =
+            self.native_entity_target_with_location(item.entity())?
         else {
             return None;
         };
@@ -146,11 +145,17 @@ impl crate::game::ServerGame<'_> {
             .dropped
             .get(self.native_item_entity_index(item, None)?)?
             .thrower?;
-        let target = self.common.target_by_uuid(ints_uuid(uuid))?;
+        let target = self.target_by_uuid(ints_uuid(uuid))?;
         if self.target_level(target) != self.common.dim {
             return None;
         }
         let id = u32::try_from(self.network_entity_id(target)?).ok()?;
-        self.common.entity(id)
+        self.entity(id)
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

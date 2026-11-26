@@ -240,7 +240,7 @@ impl crate::game::ServerGame<'_> {
         }
         let bar = self.bar_checked(ctx)?;
         let shown = |g: &Self| {
-            g.side
+            g.server
                 .bosses
                 .bars
                 .get(&bar)
@@ -313,7 +313,7 @@ impl crate::game::ServerGame<'_> {
         last: &str,
     ) -> R<i32> {
         let shown = |g: &Self| {
-            g.side
+            g.server
                 .bosses
                 .bars
                 .get(bar)
@@ -430,7 +430,7 @@ impl crate::game::ServerGame<'_> {
                     };
                     if !uuids.contains(&uuid) {
                         uuids.push(uuid);
-                        names.push(self.common.target_name(*t));
+                        names.push(self.target_name(*t));
                     }
                 }
                 let b = self.server.bosses.bars.get_mut(bar).expect("checked");
@@ -488,7 +488,7 @@ impl crate::game::ServerGame<'_> {
     pub(in crate::game::server_side) fn known_boss_players(&self) -> Vec<([i32; 4], Text)> {
         let mut out = Vec::new();
         if self.common.player.is_some() && !self.server.lan_acting_fake {
-            out.push((self.acting_uuid(), self.common.target_name(Target::Player)));
+            out.push((self.acting_uuid(), self.target_name(Target::Player)));
         }
         if let Some(host) = &self.server.lan {
             for g in host
@@ -838,7 +838,7 @@ pub mod audience_tests {
             config,
         )
         .unwrap();
-        let host = game.side.lan.as_mut().unwrap();
+        let host = game.server.lan.as_mut().unwrap();
         let conn = host.hub.lan.shared.next_id().unwrap();
         let (tx, _rx) = std::sync::mpsc::channel();
         let mut real = Guest::new(
@@ -861,10 +861,10 @@ pub mod audience_tests {
         real.placed = true;
         host.hub.guests.push(real);
         // The real guest took entity id 1: the fake made next takes the one after it.
-        game.side.next_entity = game.side.next_entity.max(1);
+        game.server.next_entity = game.server.next_entity.max(1);
         let level = game.level(game.dim.id()).unwrap();
         game.fake_player(level, 2, "fake").unwrap();
-        let guests = &mut game.side.lan.as_mut().unwrap().hub.guests;
+        let guests = &mut game.server.lan.as_mut().unwrap().hub.guests;
         let index = guests.iter().position(|g| g.uuid == 2).unwrap();
         guests.update(index, |g| g.position = [0.0, 100.0, 0.0]);
     }
@@ -930,3 +930,7 @@ pub(in crate::game) mod listing_tests {
         assert_eq!(ids(&state), ["audit:second", "audit:test"]);
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

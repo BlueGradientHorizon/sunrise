@@ -272,3 +272,5 @@ fn a_panicking_provider_answers_no_suggestion_and_the_rest_of_the_line_still_com
     );
     assert_eq!(texts(&suggestions), ["creative"]);
 }
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -229,11 +229,11 @@ impl crate::game::ServerGame<'_> {
                 let hub_generation = host.hub.guest(conn).expect("planned guest").menu_generation;
                 // The shared pickup decision checks its journal epoch as well as these stacks.
                 let (same, resolved_slot, primary) = (frozen.clone(), frozen.slot, frozen.primary);
-                if self.common.stacked_pickup(
+                if self.stacked_pickup(
                     route,
                     frozen,
                     |game| {
-                        let host = game.side.lan.as_ref()?;
+                        let host = game.server.lan.as_ref()?;
                         let guest = host.hub.guest(conn)?;
                         let gm = host.menus.get(&conn)?.merchant.as_ref()?;
                         (game.guest_actor(conn) == Some(identity.actor)
@@ -473,7 +473,7 @@ pub(in crate::game) fn rollback_trade_journal(
             unlocked,
             book,
         } = *kept;
-        if let Some(host) = game.side.lan.as_mut() {
+        if let Some(host) = game.server.lan.as_mut() {
             host.menus
                 .entry(conn)
                 .or_default()
@@ -498,7 +498,7 @@ pub(in crate::game) fn rollback_trade_journal(
             heard,
             owned,
         } = kept;
-        if let Some(host) = game.side.lan.as_mut() {
+        if let Some(host) = game.server.lan.as_mut() {
             host.hub.guests.update_connection(conn, window);
             let menus = host.menus.entry(conn).or_default();
             menus.menu_heard = heard;
@@ -528,13 +528,16 @@ pub(in crate::game) fn rollback_trade_journal(
         }
     }
     if let Some(sequences) = journal.sequences {
-        game.side.rand_sequences = sequences;
+        game.server.rand_sequences = sequences;
     }
 }
 
 impl TakeReads {
-    pub(in crate::game) fn fresh(&self, game: &crate::game::ServerGame<'_>) -> bool {
-        let Some(host) = game.side.lan.as_ref() else {
+    pub(in crate::game) fn fresh(
+        &self,
+        game: &crate::game::ServerGame<'_>,
+    ) -> bool {
+        let Some(host) = game.server.lan.as_ref() else {
             return false;
         };
         let Some(guest) = host.hub.guest(self.conn) else {
@@ -562,3 +565,5 @@ impl TakeReads {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::stacked_on_other::StackedOnOtherGameExt1 as _;

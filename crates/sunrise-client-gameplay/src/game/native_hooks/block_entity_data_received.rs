@@ -73,7 +73,7 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         let key = (pos[0], pos[1], pos[2]);
-        let Some(level) = self.common.native_client_level() else {
+        let Some(level) = self.native_client_level() else {
             return;
         };
         let (Some(BlockEntity::Mod(_)), Some(generation)) = (
@@ -99,3 +99,5 @@ pub(in crate::game) fn native_block_entity_data_received(
 ) {
     crate::game::native_hooks::fire::fire_block_entity_data_received(subject, source, tag);
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

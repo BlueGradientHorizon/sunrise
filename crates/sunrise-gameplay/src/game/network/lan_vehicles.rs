@@ -113,8 +113,8 @@ impl crate::game::ServerGame<'_> {
             if now != w.at {
                 let from = std::mem::replace(&mut w.at, now);
                 w.still = 0;
-                let kind = self.common.target_type(
-                    self.common.level_entity(w.id as i32)
+                let kind = self.target_type(
+                    self.level_entity(w.id as i32)
                         .unwrap_or(super::commands::Target::Boat(w.id)),
                 );
                 moved.push((rider.map(|r| (r.1, r.2)), kind, from, now));
@@ -312,7 +312,7 @@ impl crate::game::ServerGame<'_> {
             .common.boats
             .iter()
             .position(|b| b.id == vehicle)
-            .map(|i| (self.common.boats[i].position, self.common.player_boat_seat(i)))
+            .map(|i| (self.common.boats[i].position, self.player_boat_seat(i)))
             .or_else(|| {
                 self.common.carts
                     .iter()
@@ -637,7 +637,7 @@ impl crate::game::ServerGame<'_> {
                 }
                 resume = Some(pause);
             }
-            let _ = self.common.handle_mob_events(events);
+            let _ = self.handle_mob_events(events);
             return;
         }
         let Some(i) = boat else {
@@ -668,7 +668,7 @@ impl crate::game::ServerGame<'_> {
             self.common.boat_fall(&self.common.boats[i], resolved.y)
         };
         self.common.boats.update(i, |b| b.fall_distance = fall);
-        let seat = self.common.player_boat_seat(i);
+        let seat = self.player_boat_seat(i);
         let Some(host) = self.server.lan.as_mut() else {
             return;
         };
@@ -731,3 +731,11 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::boats_common::BoatsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::mounts_common::MountsCommonGameExt1 as _;

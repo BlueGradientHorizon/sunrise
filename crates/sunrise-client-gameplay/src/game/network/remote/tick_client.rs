@@ -258,7 +258,7 @@ impl crate::game::ClientGame<'_> {
         }
         // The server sends no passenger's position: they sit where their
         // vehicles are now.
-        self.common.position_riders();
+        self.position_riders();
         // Entity.getFluidInteractionBox asks the vehicle: a boat afloat shelters
         // its passenger's eyes (AbstractBoat.modifyPassengerFluidInteractionBox).
         let boat = self
@@ -285,18 +285,18 @@ impl crate::game::ClientGame<'_> {
         self.common.sync_player_body();
         self.sync_remote_player_game_mode();
         let sleeping = self.common.sleeping;
-        if let Some(at) = sleeping.and_then(|head| self.common.sleeping_position(head))
+        if let Some(at) = sleeping.and_then(|head| self.sleeping_position(head))
             && let Some(player) = self.common.player.as_mut()
         {
             let from = std::mem::replace(&mut player.position, at);
             if from != at
-                && let Ok(id) = u32::try_from(self.common.own_entity_id())
+                && let Ok(id) = u32::try_from(self.own_entity_id())
             {
                 self.remote_entity_section_step(id, from, at);
             }
         }
         let walks = self.can_move_local_player();
-        let section_scope = self.common.player_section_scope();
+        let section_scope = self.player_section_scope();
         let swim_listener = self.common.has_swim_eligibility_listener();
         // Release the field borrows for the read-only Game host, then resume the same body.
         macro_rules! motion_world {
@@ -558,7 +558,7 @@ impl crate::game::ClientGame<'_> {
             .as_ref()
             .is_some_and(|r| r.has_passengers(r.entity_id as u32))
         {
-            self.common.position_riders();
+            self.position_riders();
         }
         // The server owns health and hunger.
         self.apply_remote_health();
@@ -609,7 +609,7 @@ impl crate::game::ClientGame<'_> {
             .common.player
             .as_ref()
             .is_some_and(|p| p.is_eye_in_fluid(sunrise_sim::motion::WATER));
-        self.client.fog.tick(in_water, self.common.own_player_is_spectator());
+        self.client.fog.tick(in_water, self.own_player_is_spectator());
     }
     /// One client tick while connected (Minecraft.tick with a ClientLevel).
     pub(in crate::game) fn tick_remote(&mut self) -> Result<()> {
@@ -647,7 +647,7 @@ impl crate::game::ClientGame<'_> {
                 let animation = (m.extra.using_item > 0)
                     .then(|| m.extra.slot_stack(slot))
                     .flatten()
-                    .map_or_else(Default::default, |stack| self.common.item_use_animation(stack));
+                    .map_or_else(Default::default, |stack| self.item_use_animation(stack));
                 self.common.mobs[i].extra.use_animation = animation;
             }
             let m = &self.common.mobs[i];
@@ -676,7 +676,7 @@ impl crate::game::ClientGame<'_> {
             b.client_tick_block_entities(level, ticks);
         });
         let pushes = std::mem::take(&mut self.common.block_ticks.piston_pushes);
-        self.common.push_piston_entities(pushes);
+        self.push_piston_entities(pushes);
         self.common.sync_moving_pistons();
     }
     /// `ClientLevel.tickEntities`: the section index takes each crossing at its entity's turn.
@@ -747,7 +747,7 @@ impl crate::game::ClientGame<'_> {
         // EntityTickEvent.Pre for the mobs and players this client ticks, once for the family
         // before their tick, and the Post after it (below). A canceled one keeps its state. One
         // of a type a mod named is told alone, right before and right after its own turn below.
-        let mut round = self.common.native_tick_round();
+        let mut round = self.native_tick_round();
         // The mount this client moves ticks in `remote_ride` instead, as its
         // authoritative side (LivingEntity.tick with travelRidden).
         let driven = self.driven_mount().map(|m| m.id);
@@ -779,7 +779,7 @@ impl crate::game::ClientGame<'_> {
                     }
                 }
             }
-            self.common.native_tick_pre_batch(&mut round);
+            self.native_tick_pre_batch(&mut round);
         }
         // EntityFluidInteraction.update for the entities this window only displays: the
         // server never sends the fluid contact, and the renderers read it (cod, salmon and
@@ -1014,7 +1014,7 @@ impl crate::game::ClientGame<'_> {
             };
             if let Some(kind) = &alone {
                 let stamp = self.common.mobs.stamp();
-                let ticks = self.common.native_tick_pre_one(&mut round, id, kind.id());
+                let ticks = self.native_tick_pre_one(&mut round, id, kind.id());
                 if self.common.mobs.stamp() != stamp {
                     places = Some(sunrise_gameplay_common::game::native_ticks::places_of(
                         self.common.mobs.iter().map(|m| m.id),
@@ -1045,7 +1045,7 @@ impl crate::game::ClientGame<'_> {
                 };
                 extra
                     .slot_stack(slot)
-                    .map_or_else(Default::default, |stack| self.common.item_use_animation(stack))
+                    .map_or_else(Default::default, |stack| self.item_use_animation(stack))
             } else {
                 Default::default()
             };
@@ -1308,7 +1308,7 @@ impl crate::game::ClientGame<'_> {
             // Its own Post, right after its turn.
             if let Some(kind) = &alone {
                 let stamp = self.common.mobs.stamp();
-                self.common.native_tick_post_one(&round, id, kind.id());
+                self.native_tick_post_one(&round, id, kind.id());
                 if self.common.mobs.stamp() != stamp {
                     places = Some(sunrise_gameplay_common::game::native_ticks::places_of(
                         self.common.mobs.iter().map(|m| m.id),
@@ -1316,7 +1316,7 @@ impl crate::game::ClientGame<'_> {
                 }
             }
         }
-        self.common.native_tick_post_batch(round);
+        self.native_tick_post_batch(round);
         // ExperienceOrb.tick runs on a client too (all but the merges and the
         // push out of a block, which are the server's): gravity, buoyancy,
         // collisions and the pull of the nearest player between the server's
@@ -1423,9 +1423,9 @@ impl crate::game::ClientGame<'_> {
         // the bubbles and splashes. ClientLevel.playSeededSound drops
         // Entity.playSound, so the sound stays the server's.
         for splash in entered {
-            self.common.apply_item_splash(splash);
+            self.apply_item_splash(splash);
         }
-        let _ = self.common.handle_mob_events_reusable(&mut mob_fx);
+        let _ = self.handle_mob_events_reusable(&mut mob_fx);
         if let Some(r) = self.client.remote.as_mut() {
             r.tick_fluids = fluids;
             r.tick_rain = rain;
@@ -1627,14 +1627,14 @@ impl crate::game::ClientGame<'_> {
             return Ok(None);
         }
         self.client.drop_spam_throttler.tick();
-        let entity_collisions = self.common.entity_collisions(Mover::Player);
+        let entity_collisions = self.entity_collisions(Mover::Player);
         // Those added before it tick before it: their pushes reach this move.
         let pushed = self.remote_pushes(true);
         let sprint_window = self.client.settings.sprint_window;
         // The hook endpoints bracket Player.tick only, not the level pass before it.
         let player = (mod_api::__private::listened(mod_api::HookId::PlayerTickPre)
             || mod_api::__private::listened(mod_api::HookId::PlayerTickPost))
-        .then(|| self.common.local_player())
+        .then(|| self.local_player())
         .flatten();
         // The entities that tick before the player pushed it before its tick began, so
         // before Pre.
@@ -1730,7 +1730,7 @@ impl crate::game::ClientGame<'_> {
         // Like the block-entity push above, collider displacement belongs in this tick's
         // LocalPlayer.sendChanges, before the client closes the tick on the wire.
         let start = sunrise_world::moving_colliders::Scope::placed();
-        self.common.carry_pass(&start);
+        self.carry_pass(&start);
         self.observe_carry_age(&start);
         if let Some(input) = input {
             self.remote_send_state(input);
@@ -1742,3 +1742,25 @@ impl crate::game::ClientGame<'_> {
 use sunrise_gameplay_common::game::native_hooks::base::GameHooks as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::block_props::BlockPropsGameExt1 as _;
+
+use sunrise_gameplay_common::game::collision_source::CollisionSourceGameExt1 as _;
+
+use sunrise_gameplay_common::game::creatures::ModGameExt1 as _;
+
+use sunrise_gameplay_common::game::entity_sections::player::PlayerGameExt1 as _;
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::piston_push::PistonPushGameExt1 as _;
+
+use sunrise_gameplay_common::game::piston_push::carrying::CarryingGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

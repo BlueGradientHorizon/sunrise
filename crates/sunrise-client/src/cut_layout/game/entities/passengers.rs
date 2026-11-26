@@ -1472,3 +1472,5 @@ use super::*;
         assert_eq!(game.world.random.next_long(), seeded().next_long());
     }
 }
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;

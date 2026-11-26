@@ -206,3 +206,5 @@ fn test_pos_refuses_other_sources_and_restores_the_views() {
     assert_eq!((g.position, g.pitch), ([22.5, 101.0, 9.5], -90.0));
     assert_eq!(game.dim, Dim::Overworld);
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

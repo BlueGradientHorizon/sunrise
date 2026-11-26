@@ -259,3 +259,7 @@ fn swim_entry_reads_each_authoritative_guests_own_equipment() {
         },
     );
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

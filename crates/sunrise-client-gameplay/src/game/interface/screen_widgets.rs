@@ -1133,7 +1133,7 @@ impl crate::game::ClientGame<'_> {
                 if !*active || !*visible {
                     return false;
                 }
-                edit_box.drag_to(&game.side.gui.atlas, mouse[0]);
+                edit_box.drag_to(&game.client.gui.atlas, mouse[0]);
                 true
             }
             MountedWidgetKind::Custom(widget) => call_owner(
@@ -1173,7 +1173,7 @@ impl crate::game::ClientGame<'_> {
                 return false;
             }
             let is_custom = matches!(
-                self.side.screen_state.0
+                self.client.screen_state.0
                     .widgets
                     .inner
                     .borrow()
@@ -1248,7 +1248,7 @@ impl crate::game::ClientGame<'_> {
                 {
                     return false;
                 }
-                game.side.audio.0.play_button_click();
+                game.client.audio.0.play_button_click();
                 entry.press_button(game);
                 true
             }
@@ -1292,7 +1292,7 @@ impl crate::game::ClientGame<'_> {
                         _ => None,
                     };
                     if let Some(shortcut) = shortcut {
-                        let changed = edit_box.shortcut(shortcut, &mut game.side.clipboard.0);
+                        let changed = edit_box.shortcut(shortcut, &mut game.client.clipboard.0);
                         if changed && let Some(callback) = on_change.as_mut() {
                             let value = edit_box.value.as_str();
                             call_owner(

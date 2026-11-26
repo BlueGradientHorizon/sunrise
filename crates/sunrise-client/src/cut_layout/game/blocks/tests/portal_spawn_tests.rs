@@ -90,3 +90,5 @@ fn a_portal_over_glowstone_or_bedrock_spawns_no_piglin() {
         );
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

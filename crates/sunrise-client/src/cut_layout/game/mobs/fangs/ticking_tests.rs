@@ -412,3 +412,5 @@ pub(in sunrise_gameplay::game::server_side) fn run_fangs_and_an_ominous_item_spa
         }
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

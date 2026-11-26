@@ -110,7 +110,7 @@ impl ServerGame<'_> {
         };
         // No world opens here: the command tree's registries and the console's rights come
         // from the resources, as a world's opening sets them.
-        self.common.build_registries();
+        self.build_registries();
         self.common.ui.registries.permission = 4;
         // The levels' handles, which a world's opening publishes to mods.
         self.reset_entity_residency();
@@ -131,3 +131,5 @@ impl ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

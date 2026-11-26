@@ -13,22 +13,20 @@ use sunrise_gameplay_common::game::native_rain_read::{rain_at, weather_flags, we
 impl crate::game::ServerGame<'_> {
     /// The sea level the game uses for the level (`Dim::sea_level`). None as the host call says.
     pub(in crate::game) fn level_sea_level(&self, level: LevelRef) -> Option<i32> {
-        self.common.native_level_world(level)?;
+        self.native_level_world(level)?;
         Some(Dim::sea_level_of_id(level.dimension_id()))
     }
 
     /// The world's seed (`WorldOptions.seed`), as `/seed` shows it.
     pub(in crate::game) fn level_seed(&self, level: LevelRef) -> Option<i64> {
-        self.common.native_level_world(level)?;
+        self.native_level_world(level)?;
         Some(self.common.level.seed)
     }
     /// The difficulty (`Level.getDifficulty`): `peaceful`, `easy`, `normal`
     /// or `hard`, as `/difficulty` names it.
     pub(in crate::game) fn level_difficulty(&self, level: LevelRef) -> Option<&'static str> {
-        self.common.native_level_world(level)?;
-        DIFFICULTIES
-            .get(usize::from(self.common.ui.difficulty))
-            .copied()
+        self.native_level_world(level)?;
+        DIFFICULTIES.get(usize::from(self.common.ui.difficulty)).copied()
     }
     /// `ServerLevel.getCurrentDifficultyAt(pos)` in the level the handle names, in place or
     /// parked.
@@ -37,7 +35,7 @@ impl crate::game::ServerGame<'_> {
         level: LevelRef,
         pos: [i32; 3],
     ) -> Option<mod_api::Difficulty> {
-        let world = self.common.native_level_world(level)?;
+        let world = self.native_level_world(level)?;
         let at = pos.map(f64::from);
         Some(sunrise_gameplay_common::game::creatures::local_difficulty_in(world, at).into())
     }
@@ -47,9 +45,8 @@ impl crate::game::ServerGame<'_> {
         level: LevelRef,
         key: BoolGameRuleKey,
     ) -> Option<bool> {
-        self.common.native_level_world(level)?;
-        self.common
-            .ui
+        self.native_level_world(level)?;
+        self.common.ui
             .rules
             .bool_slot(mod_api::__private::game_rule_bool_slot(key)?)
     }
@@ -59,9 +56,8 @@ impl crate::game::ServerGame<'_> {
         level: LevelRef,
         key: mod_api::IntGameRuleKey,
     ) -> Option<i32> {
-        self.common.native_level_world(level)?;
-        self.common
-            .ui
+        self.native_level_world(level)?;
+        self.common.ui
             .rules
             .int_slot(mod_api::__private::game_rule_int_slot(key)?)
     }
@@ -72,7 +68,7 @@ impl crate::game::ServerGame<'_> {
         level: LevelRef,
         rule: &str,
     ) -> Result<Option<GameRuleValue>, LevelReadError> {
-        self.common.native_level_world_result(level)?;
+        self.native_level_world_result(level)?;
         Ok(self.common.ui.rules.get(rule))
     }
     /// `/gamerule <rule> <value>` from a mod: the world's rule changes, `game_rule_changed`
@@ -84,7 +80,7 @@ impl crate::game::ServerGame<'_> {
         rule: &str,
         value: GameRuleValue,
     ) -> bool {
-        if self.common.native_level_world(level).is_none() {
+        if self.native_level_world(level).is_none() {
             return false;
         }
         let Some(rule) = self.common.ui.rules.rule(rule).cloned() else {
@@ -103,7 +99,7 @@ impl crate::game::ServerGame<'_> {
     /// `/time set <time>` in the level a handle names, on its default clock: `time_skip`
     /// (cause `mod`) may keep the old time; the clock's partial tick restarts.
     pub(in crate::game) fn level_set_clock_time(&mut self, level: LevelRef, time: i64) -> bool {
-        if time < 0 || self.common.native_level_world(level).is_none() {
+        if time < 0 || self.native_level_world(level).is_none() {
             return false;
         }
         let dim = Dim::from_id(level.dimension_id());
@@ -132,7 +128,7 @@ impl crate::game::ServerGame<'_> {
     /// The `minecraft:world_clock` id a clock handle names now: its level's default clock.
     fn world_clock_name(&self, clock: mod_api::WorldClockRef) -> Option<String> {
         let level = clock.level();
-        self.common.native_level_world(level)?;
+        self.native_level_world(level)?;
         let dim = Dim::from_id(level.dimension_id());
         self.common.dimension_type_of(dim).default_clock.clone()
     }
@@ -147,7 +143,7 @@ impl crate::game::ServerGame<'_> {
         };
         self.common.set_command_clock_time(&name, ticks);
         self.common.command_clock_state(&name).partial = 0.0;
-        self.common.sync_hub_clocks();
+        self.sync_hub_clocks();
         true
     }
     /// `ServerClockManager.setRate`.
@@ -163,7 +159,7 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         self.common.command_clock_state(&name).rate = rate;
-        self.common.sync_hub_clocks();
+        self.sync_hub_clocks();
         true
     }
     /// `ServerClockManager.setPaused`.
@@ -176,7 +172,7 @@ impl crate::game::ServerGame<'_> {
             return false;
         };
         self.common.command_clock_state(&name).paused = paused;
-        self.common.sync_hub_clocks();
+        self.sync_hub_clocks();
         true
     }
     /// Every game rule the world has (`GameRules`) with its current value, by `minecraft:` id
@@ -186,7 +182,7 @@ impl crate::game::ServerGame<'_> {
         &self,
         level: LevelRef,
     ) -> Result<Vec<(String, GameRuleValue)>, LevelReadError> {
-        self.common.native_level_world_result(level)?;
+        self.native_level_world_result(level)?;
         let rules = &self.common.ui.rules;
         Ok(rules
             .available_rules()
@@ -195,7 +191,7 @@ impl crate::game::ServerGame<'_> {
     }
     /// Whether it rains (`Level.isRaining`: a rain level above 0.2).
     pub(in crate::game) fn level_is_raining(&self, level: LevelRef) -> Option<bool> {
-        let world = self.common.native_level_world(level)?;
+        let world = self.native_level_world(level)?;
         Some(
             weather_flags(weather_for_world(
                 world,
@@ -213,7 +209,7 @@ impl crate::game::ServerGame<'_> {
         level: LevelRef,
         pos: [i32; 3],
     ) -> Option<bool> {
-        let world = self.common.native_level_world(level)?;
+        let world = self.native_level_world(level)?;
         if !world.is_loaded_at(pos[0], pos[1], pos[2]) {
             return None;
         }
@@ -230,12 +226,12 @@ impl crate::game::ServerGame<'_> {
     /// `LevelReader.enabledFeatures` of the level a handle names. Every level of a world shares
     /// the world's flags. None for a stale handle and on a client.
     pub(in crate::game) fn level_enabled_features(&self, level: LevelRef) -> Option<FeatureFlags> {
-        self.common.native_level_world(level)?;
+        self.native_level_world(level)?;
         Some(FeatureFlags::new(self.enabled_feature_ids().clone()))
     }
     /// Whether it thunders (`Level.isThundering`: a thunder level above 0.9).
     pub(in crate::game) fn level_is_thundering(&self, level: LevelRef) -> Option<bool> {
-        let world = self.common.native_level_world(level)?;
+        let world = self.native_level_world(level)?;
         Some(
             weather_flags(weather_for_world(
                 world,
@@ -247,3 +243,9 @@ impl crate::game::ServerGame<'_> {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::clocks::ClocksGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

@@ -196,7 +196,7 @@ impl crate::game::ClientGame<'_> {
             if !self.consume_mapping_click(name) {
                 continue;
             }
-            if self.common.own_player_is_spectator() {
+            if self.own_player_is_spectator() {
                 self.spectator_hotbar_key(slot as i32);
                 continue;
             }
@@ -214,8 +214,8 @@ impl crate::game::ClientGame<'_> {
     ) -> f64 {
         self.common.active_attack_range()
             .map_or(self.common.entity_reach, |range| {
-                (f64::from(attack_reach(&range, self.common.own_player_is_creative()).1)
-                    + self.common.known_player_movement().dot(v3(direction)).max(0.0))
+                (f64::from(attack_reach(&range, self.own_player_is_creative()).1)
+                    + self.known_player_movement().dot(v3(direction)).max(0.0))
                 .max(self.common.entity_reach)
             })
     }
@@ -231,14 +231,14 @@ impl crate::game::ClientGame<'_> {
         use super::pick_accumulator::PickCandidate;
         use super::pick_entity::AttackRangePickResult;
 
-        let Some((partial_eye_arr, look_arr)) = self.common.aim() else {
+        let Some((partial_eye_arr, look_arr)) = self.aim() else {
             return AttackRangePickResult::Miss;
         };
         let partial_eye = v3(partial_eye_arr);
         let look = v3(look_arr);
         let eye = self.camera_eye_position().map(v3).unwrap_or(partial_eye);
-        let (min, max, margin) = attack_reach(range, self.common.own_player_is_creative());
-        let movement = self.common.known_player_movement();
+        let (min, max, margin) = attack_reach(range, self.own_player_is_creative());
+        let movement = self.known_player_movement();
         let from = eye.add_vector(look.scale(f64::from(min)));
         let max_len = f64::from(max) + movement.dot(look).max(0.0);
         let mut to = eye.add_vector(look.scale(max_len));
@@ -366,7 +366,7 @@ impl crate::game::ClientGame<'_> {
         let changed = self.client.hand_strength.main_hand_changed(&held);
         let _ = self.client.hand_strength.tick(held);
         if changed {
-            self.common.apply_equipment();
+            self.apply_equipment();
         }
         let next = [(self.common.selected, main), (OFFHAND, self.common.offhand.clone())];
         let mut changed = [false; 2];
@@ -380,7 +380,7 @@ impl crate::game::ClientGame<'_> {
             }
             changed[h] = !same;
         }
-        let speed = self.common.main_hand_attack_speed();
+        let speed = self.main_hand_attack_speed();
         let replace = self.client.heights.tick_with(
             self.hands_busy(),
             self.client.hand_strength.swap_scale(1.0, speed),
@@ -462,7 +462,7 @@ impl crate::game::ClientGame<'_> {
                 return None;
             }
             if self.common.active_attack_range().is_some_and(|range| {
-                !attack_range_contains(&range, distance, self.common.own_player_is_creative())
+                !attack_range_contains(&range, distance, self.own_player_is_creative())
             }) {
                 return None;
             }
@@ -476,7 +476,7 @@ impl crate::game::ClientGame<'_> {
         let spear = range.as_ref().and_then(|r| {
             let eye = self.common.eye_position()?;
             let look = super::view_vector(self.common.yaw, self.common.pitch);
-            let reach = attack_reach(r, self.common.own_player_is_creative());
+            let reach = attack_reach(r, self.own_player_is_creative());
             let boxes = self.common.hittable_mob_boxes();
             let clip = |from: Vec3, to: Vec3| {
                 let length = from.distance_squared(to).sqrt();
@@ -486,7 +486,7 @@ impl crate::game::ClientGame<'_> {
                     .flatten()
                     .map(|hit| Vec3::new(hit.point[0], hit.point[1], hit.point[2]))
             };
-            let movement = self.common.known_player_movement();
+            let movement = self.known_player_movement();
             reach_pick(&boxes, v3(eye), v3(look), movement, reach, clip)
         });
         let living = match spear {
@@ -504,7 +504,7 @@ impl crate::game::ClientGame<'_> {
         };
         // Hud.extractCrosshair: with an attack range, the hit must be in it.
         if let Some(range) = &range
-            && !attack_range_contains(range, living, self.common.own_player_is_creative())
+            && !attack_range_contains(range, living, self.own_player_is_creative())
         {
             return None;
         }
@@ -518,7 +518,7 @@ impl crate::game::ClientGame<'_> {
                 c.id as i32 == hit.id && matches!(c.kind, CartKind::Chest | CartKind::Hopper)
             }) || self.common.boats.iter().any(|b| b.id as i32 == hit.id && b.chest);
         }
-        self.common.pick()
+        self.pick()
             .is_some_and(|hit| self.block_interactable_for_spectator(&hit))
     }
     /// `BlockBehaviour.showAsInteractableInSpectatorMode`: a block with a menu, or a portal.
@@ -749,3 +749,9 @@ pub(in crate::game) mod tests {
         }
     }
 }
+
+use sunrise_gameplay_common::game::game_mode_common::GameModeCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

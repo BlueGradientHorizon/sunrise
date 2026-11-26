@@ -103,7 +103,7 @@ impl ClientGame<'_> {
         };
         let (mut source_now, mut volume_now, mut pitch_now, mut cancel) =
             (source, volume, pitch, false);
-        let entity = emitter.and_then(|id| self.common.entity(id));
+        let entity = emitter.and_then(|id| self.entity(id));
         // A missing client emitter must not become an AtPosition request.
         if emitter.is_some() && entity.is_none() {
             return None;
@@ -178,3 +178,5 @@ impl ClientGame<'_> {
         self.play_client_local_sound(sound);
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

@@ -113,7 +113,7 @@ impl RaidLevel for Lvl<'_, '_> {
         self.has_chunk_at(p)
             && self
                 .game
-                .side
+                .server
                 .tickets
                 .0
                 .levels()
@@ -486,7 +486,7 @@ impl crate::game::ServerGame<'_> {
         if triggered {
             self.award_custom_stat("raid_trigger", 1);
             self.trigger_player("minecraft:voluntary_exile");
-            if let Some(level) = self.common.level(self.common.dim.id()) {
+            if let Some(level) = self.level(self.common.dim.id()) {
                 self.native_raid_state_change(
                     mod_api::RaidRef::new(level, id),
                     center,
@@ -518,7 +518,7 @@ impl crate::game::ServerGame<'_> {
     }
     pub(in crate::game) fn raid_command_stop(&mut self, id: i32) {
         if let Some(center) = self.server.raiding.0.raids.stop(id)
-            && let Some(level) = self.common.level(self.common.dim.id())
+            && let Some(level) = self.level(self.common.dim.id())
         {
             self.native_raid_state_change(mod_api::RaidRef::new(level, id), center, "stopped");
         }
@@ -698,7 +698,7 @@ impl crate::game::ServerGame<'_> {
         for (id, (old, _)) in old_states {
             if let Some(r) = self.server.raiding.0.raids.get(id)
                 && r.status != old
-                && let Some(level) = self.common.level(self.common.dim.id())
+                && let Some(level) = self.level(self.common.dim.id())
             {
                 self.native_raid_state_change(
                     mod_api::RaidRef::new(level, id),
@@ -1582,7 +1582,7 @@ impl crate::game::ServerGame<'_> {
     ) -> sunrise_game_data::Result<serde_json::Value> {
         use serde_json::json;
         let id = op["id"].as_i64().ok_or("raid observation: missing id")? as i32;
-        let mut state = json!({"id":id,"present":self.side.raiding.0.raids.get(id).is_some()});
+        let mut state = json!({"id":id,"present":self.server.raiding.0.raids.get(id).is_some()});
         if let Some(r) = self.server.raiding.0.raids.get(id) {
             state["status"] = json!(r.status.name());
             state["started"] = json!(r.started);
@@ -1632,7 +1632,7 @@ impl crate::game::ServerGame<'_> {
                     .replace('-', ""),
                 16,
             )?;
-            let Some(super::commands::Target::Mob(id)) = self.common.target_by_uuid(uuid) else {
+            let Some(super::commands::Target::Mob(id)) = self.target_by_uuid(uuid) else {
                 return Err("raid observation: villager UUID missing/wrong type".into());
             };
             let m = self
@@ -1656,7 +1656,7 @@ impl crate::game::ServerGame<'_> {
             "raid input raw: {}",
             json!({"label":op["label"],"id":id,"loaded":loaded,
             "live_poi":live_poi,"claimed_pois":self.village_pois(),
-            "raid_nbt":sunrise_game_data::snbt::to_snbt(&self.side.raiding.0.raids.to_nbt()),
+            "raid_nbt":sunrise_game_data::snbt::to_snbt(&self.server.raiding.0.raids.to_nbt()),
             "actors":actors,"villagers":villagers})
         );
         Ok(state)
@@ -1668,3 +1668,7 @@ use sunrise_gameplay_common::game::tables::GameItems as _;
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::weather::WeatherGameExt as _;
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

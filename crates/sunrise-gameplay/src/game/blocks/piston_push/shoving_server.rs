@@ -92,14 +92,16 @@ impl crate::game::ServerGame<'_> {
                     if current.placed().any(|p| p.exempt.contains(&selected.id)) {
                         // This body owns a collider, or is the vehicle of a holder. Its
                         // new pose is an obstacle to later shoves, not another sweep.
-                        self.common.position_riders();
+                        self.position_riders();
                         current = self.placed_moving_colliders();
                     }
                 }
             }
         }
         if shoved {
-            self.common.position_riders();
+            self.position_riders();
         }
     }
 }
+
+use sunrise_gameplay_common::game::passengers_common::PassengersCommonGameExt1 as _;

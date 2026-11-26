@@ -135,3 +135,5 @@ fn the_dragon_boss_bar_takes_the_dragons_custom_name() {
     assert_eq!(still.name.plain(), "Bob");
     game.side.lan = None;
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

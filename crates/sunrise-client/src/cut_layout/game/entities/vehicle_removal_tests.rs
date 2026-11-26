@@ -332,3 +332,11 @@ pub(in sunrise_gameplay::game::server_side) fn run_mob_removal_order_witness() {
         std::fs::write(path, trace.join("\n") + "\n").unwrap();
     }
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_ticks::NativeTicksGameExt1 as _;

@@ -99,12 +99,12 @@ impl crate::game::ServerGame<'_> {
         }
         if listening {
             let level = self
-                .common.level(self.common.dim.id())
+                .level(self.common.dim.id())
                 .ok_or("benchmark level is not open")?;
             let handles = positions
                 .iter()
                 .map(|&(x, y, z)| {
-                    self.common.block_entity(level, [x, y, z])
+                    self.block_entity(level, [x, y, z])
                         .ok_or("benchmark subject did not become resident")
                 })
                 .collect::<std::result::Result<_, _>>()?;
@@ -172,3 +172,7 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_block_entity_read::NativeBlockEntityReadGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

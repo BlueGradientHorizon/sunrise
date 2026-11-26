@@ -197,3 +197,5 @@ fn a_creative_player_hurts_an_invulnerable_mob() {
         "a creative player's hit on an Invulnerable pig"
     );
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

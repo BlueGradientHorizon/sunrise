@@ -257,7 +257,7 @@ impl crate::game::ServerGame<'_> {
         &self,
         vehicle: u32,
     ) -> Option<[f64; 3]> {
-        if let Some(target) = self.common.level_entity(vehicle as i32) {
+        if let Some(target) = self.level_entity(vehicle as i32) {
             return self.target_position(target);
         }
         self.common.player
@@ -348,7 +348,7 @@ impl crate::game::ServerGame<'_> {
             }
             let mount = self.common.bolts[i].mount;
             let mount_gone = mount.is_some_and(|vehicle| {
-                self.common.level_entity(vehicle as i32).is_none()
+                self.level_entity(vehicle as i32).is_none()
                     && !self
                         .common.player
                         .as_ref()
@@ -1036,3 +1036,7 @@ impl crate::game::ServerGame<'_> {
         self.server.spawn_scratch = scratch;
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

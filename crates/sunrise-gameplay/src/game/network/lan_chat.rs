@@ -189,7 +189,7 @@ impl crate::game::ServerGame<'_> {
         let hidden = self.chat_hidden_from(|game| {
             let sender = match game.source_entity() {
                 Some(Target::Player) => {
-                    game.side.lan_acting_uuid.unwrap_or_else(|| game.own_uuid())
+                    game.server.lan_acting_uuid.unwrap_or_else(|| game.own_uuid())
                 }
                 Some(Target::Guest(conn)) => game.command_guest(conn).map_or(0, |guest| guest.uuid),
                 _ => 0, // PlayerChatMessage.system uses the nil UUID.
@@ -226,7 +226,7 @@ impl crate::game::ServerGame<'_> {
         let hidden = self.chat_hidden_from(|game| {
             let sender = match game.source_entity() {
                 Some(Target::Player) => {
-                    game.side.lan_acting_uuid.unwrap_or_else(|| game.own_uuid())
+                    game.server.lan_acting_uuid.unwrap_or_else(|| game.own_uuid())
                 }
                 Some(Target::Guest(conn)) => game.command_guest(conn).map_or(0, |guest| guest.uuid),
                 _ => 0,
@@ -364,3 +364,7 @@ impl crate::game::ServerGame<'_> {
         true
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

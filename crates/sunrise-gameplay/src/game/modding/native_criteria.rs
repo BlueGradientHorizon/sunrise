@@ -71,7 +71,7 @@ impl crate::game::ServerGame<'_> {
         }
         let target = self
             .player_handle_read(player)
-            .and_then(|_| self.common.native_entity_target(player.entity()))
+            .and_then(|_| self.native_entity_target(player.entity()))
             .ok_or(TriggerCriterionError::PlayerUnavailable)?;
         // In their level: the predicates read where they are, and a reward
         // that doesn't fit drops there. Reuse the existing player swap and
@@ -116,7 +116,7 @@ impl crate::game::ServerGame<'_> {
         }
         let target = self
             .player_handle_read(player)
-            .and_then(|_| self.common.native_entity_target(player.entity()))
+            .and_then(|_| self.native_entity_target(player.entity()))
             .ok_or(TriggerCriterionError::PlayerUnavailable)?;
         self.for_player(target, |g| g.trigger_item("minecraft:consume_item", stack))
             .ok_or(TriggerCriterionError::PlayerUnavailable)
@@ -135,7 +135,7 @@ impl crate::game::ServerGame<'_> {
         }
         let target = self
             .player_handle_read(player)
-            .and_then(|_| self.common.native_entity_target(player.entity()))
+            .and_then(|_| self.native_entity_target(player.entity()))
             .ok_or(TriggerCriterionError::PlayerUnavailable)?;
         self.for_player(target, |g| {
             if !g.world.chunks.contains_key(&(pos[0] >> 4, pos[2] >> 4)) {
@@ -354,3 +354,7 @@ mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

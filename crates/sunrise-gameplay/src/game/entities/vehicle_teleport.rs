@@ -310,7 +310,7 @@ impl ServerGame<'_> {
             // Entity.teleport's stopRiding(): a targeted rider leaves its vehicle first.
             if self.common.dim != destination
                 && self.common.general_row(id).is_some_and(|row| row.mount.is_some())
-                && let Some(entity) = self.common.entity(id)
+                && let Some(entity) = self.entity(id)
             {
                 self.entity_stop_riding(entity);
             }
@@ -405,7 +405,7 @@ impl ServerGame<'_> {
             game.enter_level(destination)?;
             game.enter_level(source)?;
             let cooldown = game
-                .side
+                .server
                 .portals
                 .entities
                 .get(&id)
@@ -554,7 +554,7 @@ impl ServerGame<'_> {
             let mut players = Vec::new();
             // A command runs with its source player swapped out of the hub.
             if game.riding.is_some_and(|id| tree.contains(&id))
-                && let (Some(conn), Some(player)) = (game.side.lan_acting, game.player.as_ref())
+                && let (Some(conn), Some(player)) = (game.server.lan_acting, game.player.as_ref())
             {
                 players.push((
                     conn,
@@ -563,9 +563,9 @@ impl ServerGame<'_> {
                     game.riding.unwrap(),
                 ));
             }
-            if let Some(host) = game.side.lan.as_ref() {
+            if let Some(host) = game.server.lan.as_ref() {
                 for guest in &host.hub.guests {
-                    if Some(guest.conn) != game.side.lan_acting
+                    if Some(guest.conn) != game.server.lan_acting
                         && guest.vehicle.is_some_and(|id| tree.contains(&id))
                     {
                         players.push((
@@ -611,7 +611,7 @@ impl ServerGame<'_> {
                 }
             }
             for (conn, at, rotation, mount) in players {
-                game.side
+                game.server
                     .level_teleports
                     .push(super::server_travel::LevelTeleport {
                         conn,
@@ -671,7 +671,7 @@ impl ServerGame<'_> {
         };
         let from = Pose {
             position: Vec3::new(at[0], at[1], at[2]),
-            rotation: self.common.target_rotation(t),
+            rotation: self.target_rotation(t),
         };
         self.teleport_passengers(
             id,
@@ -775,7 +775,7 @@ impl ServerGame<'_> {
             carried = Some((from, row.position));
         }
         if let Some((from, to)) = carried {
-            self.common.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+            self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
         }
     }
 
@@ -805,9 +805,9 @@ impl ServerGame<'_> {
             p.teleported = true;
             p.teleported_delta = transition.delta;
             self.common.previous_position = p.position;
-            let (to, own) = (p.position, self.common.own_entity_id());
+            let (to, own) = (p.position, self.own_entity_id());
             if let Ok(own) = u32::try_from(own) {
-                self.common.entity_section_step(own, [before.x, before.y, before.z], [to.x, to.y, to.z]);
+                self.entity_section_step(own, [before.x, before.y, before.z], [to.x, to.y, to.z]);
             }
             if let Some([yaw, pitch]) = transition.rotation_for([self.common.yaw, self.common.pitch]) {
                 self.common.yaw = yaw;
@@ -866,7 +866,7 @@ impl ServerGame<'_> {
             steps.push((id, before, at));
         }
         for (id, from, to) in steps {
-            self.common.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
+            self.entity_section_step(id, [from.x, from.y, from.z], [to.x, to.y, to.z]);
         }
     }
 
@@ -875,7 +875,7 @@ impl ServerGame<'_> {
         let Some(id) = vehicle_id(t) else {
             return;
         };
-        let (Some(at), [yaw, pitch]) = (self.target_position(t), self.common.target_rotation(t)) else {
+        let (Some(at), [yaw, pitch]) = (self.target_position(t), self.target_rotation(t)) else {
             return;
         };
         let delta = self.transition_motion(t).unwrap_or(Vec3::ZERO);
@@ -994,3 +994,11 @@ impl ServerGame<'_> {
         }
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::entity_sections::EntitySectionsGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

@@ -425,3 +425,5 @@ fn a_failing_layer_is_dropped_until_a_resource_reload_adds_it_again() {
         },
     );
 }
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

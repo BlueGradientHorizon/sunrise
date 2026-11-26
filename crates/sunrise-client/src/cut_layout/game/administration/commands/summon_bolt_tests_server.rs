@@ -159,3 +159,5 @@ pub(in crate::game) fn run_a_bolt_summoned_with_nbt_strikes_and_goes() {
         );
     });
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

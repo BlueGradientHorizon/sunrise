@@ -124,3 +124,5 @@ fn zombie_ai_melee_armor_hurt_retains_the_real_source() {
         },
     );
 }
+
+use sunrise_gameplay_common::game::held_items::HeldItemsGameExt1 as _;

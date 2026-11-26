@@ -15,7 +15,7 @@ impl crate::game::ServerGame<'_> {
         if !speed.is_finite() {
             return Err(WantedPositionError::NonFiniteSpeed);
         }
-        let Some(Target::Mob(id)) = self.common.native_entity_target(mob.entity()) else {
+        let Some(Target::Mob(id)) = self.native_entity_target(mob.entity()) else {
             return Ok(false);
         };
         let Some(mob) = self.common.mobs.iter_mut().find(|m| m.id == id && !m.removed) else {
@@ -26,7 +26,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game) fn mob_wanted_position(&self, mob: MobRef) -> Option<[f64; 3]> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         Some(
@@ -40,7 +40,7 @@ impl crate::game::ServerGame<'_> {
     }
 
     pub(in crate::game) fn mob_speed_modifier(&self, mob: MobRef) -> Option<f64> {
-        let Target::Mob(id) = self.common.native_entity_target(mob.entity())? else {
+        let Target::Mob(id) = self.native_entity_target(mob.entity())? else {
             return None;
         };
         Some(
@@ -53,3 +53,7 @@ impl crate::game::ServerGame<'_> {
         )
     }
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

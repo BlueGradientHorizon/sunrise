@@ -970,3 +970,7 @@ mod visual_tests {
         }
     }
 }
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use crate::game::native_level_refs_common::NativeLevelRefsCommonGameExt1 as _;

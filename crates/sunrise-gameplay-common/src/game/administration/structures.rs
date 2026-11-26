@@ -5,7 +5,7 @@ use crate::game::CommonGame;
 
 pub(in crate::game) use sunrise_gameplay_common::structures::structures_reaching_in;
 
-impl CommonGame<'_> {
+impl crate::game::CommonGame<'_> {
     /// Structures reaching `pos`: (id, inside a piece). `getStructureAt`
     /// tests the start's whole box, `getStructureWithPieceAt` a piece's.
     pub(super) fn structures_reaching(&self, pos: [i32; 3]) -> Vec<(String, bool)> {

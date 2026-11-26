@@ -20,10 +20,12 @@ impl crate::game::ClientGame<'_> {
             .chunk
             .light
             .dynamic_cells(chunk, |s| sections.contains(&s));
-        let dimension = self.common.current_light_emission_dimension();
+        let dimension = self.current_light_emission_dimension();
         for (cell, [x, y, z], state) in cells {
             let emission = self.common.ask_light_emission(dimension, x, y, z, state);
             self.common.store_light_emission(key, cell, emission);
         }
     }
 }
+
+use sunrise_gameplay_common::game::light_emission::LightEmissionGameExt1 as _;

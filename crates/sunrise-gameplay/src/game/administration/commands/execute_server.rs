@@ -165,7 +165,7 @@ impl crate::game::ServerGame<'_> {
                     .find(|m| m.id == id)
                     .and_then(|m| m.extra.owner)
                     // A guest owner too, not only the player in place.
-                    .and_then(|u| self.common.target_by_uuid(sunrise_sim::lan::playerdata::ints_uuid(u)))
+                    .and_then(|u| self.target_by_uuid(sunrise_sim::lan::playerdata::ints_uuid(u)))
                     .filter(|owner| {
                         matches!(
                             owner,
@@ -200,7 +200,7 @@ impl crate::game::ServerGame<'_> {
                         // The player who tied it (the host's when unrecorded).
                         sunrise_sim::mobs::leash::Holder::Player => {
                             let uuid = player.or(self.common.level.player_uuid)?;
-                            self.common.target_by_uuid(sunrise_sim::lan::playerdata::ints_uuid(uuid))
+                            self.target_by_uuid(sunrise_sim::lan::playerdata::ints_uuid(uuid))
                         }
                         sunrise_sim::mobs::leash::Holder::Mob(i) => Some(Target::Mob(i)),
                         sunrise_sim::mobs::leash::Holder::Boat(_)
@@ -222,7 +222,7 @@ impl crate::game::ServerGame<'_> {
                         // including loaded owners that cannot be a Who.
                         let Some(owner) = p.owner else {
                             return p.owner_uuid.and_then(|uuid| {
-                                self.common.target_by_uuid(sunrise_sim::lan::playerdata::ints_uuid(uuid))
+                                self.target_by_uuid(sunrise_sim::lan::playerdata::ints_uuid(uuid))
                             });
                         };
                         match (owner, p.guest) {
@@ -250,7 +250,7 @@ impl crate::game::ServerGame<'_> {
                         let uuid = words
                             .iter()
                             .fold(0u128, |all, w| all << 32 | u128::from(*w as u32));
-                        self.common.target_by_uuid(uuid)
+                        self.target_by_uuid(uuid)
                     })
                     .into_iter()
                     .collect(),
@@ -331,7 +331,7 @@ impl crate::game::ServerGame<'_> {
                                     )
                                 }
                                 Who::Mob(i) if attacker => Some(Target::Mob(i)),
-                                Who::Mob(i) => self.common.level_entity(i as i32),
+                                Who::Mob(i) => self.level_entity(i as i32),
                             }
                         })
                         .into_iter()
@@ -446,7 +446,7 @@ impl crate::game::ServerGame<'_> {
             .int_at(sunrise_game_data::gamerules::vanilla::MAX_COMMAND_FORKS)
             as usize;
         let mut sources = vec![
-            self.side
+            self.server
                 .command_source
                 .unwrap_or_else(|| self.player_source()),
         ];
@@ -702,18 +702,18 @@ pub mod terminal_fork_tests {
         game: &mut crate::game::ServerGame<'_>,
         command: &str,
     ) -> (Vec<String>, Vec<(bool, i32)>) {
-        game.side.chat_capture = Some(Vec::new());
-        game.side.cmds.0.results = Some(Vec::new());
+        game.server.chat_capture = Some(Vec::new());
+        game.server.cmds.0.results = Some(Vec::new());
         game.as_console(|g| g.run_command(command));
         let messages = game
-            .side
+            .server
             .chat_capture
             .take()
             .unwrap()
             .iter()
             .map(|t| t.plain())
             .collect();
-        (messages, game.side.cmds.0.results.take().unwrap())
+        (messages, game.server.cmds.0.results.take().unwrap())
     }
 }
 
@@ -724,9 +724,9 @@ pub mod score_condition_tests {
         game: &mut crate::game::ServerGame<'_>,
         command: &str,
     ) -> (bool, Vec<String>) {
-        game.side.chat_capture = Some(Vec::new());
+        game.server.chat_capture = Some(Vec::new());
         let ok = game.run_command(command);
-        let said = game.side.chat_capture.take().unwrap_or_default();
+        let said = game.server.chat_capture.take().unwrap_or_default();
         (
             ok,
             said.iter()
@@ -735,3 +735,5 @@ pub mod score_condition_tests {
         )
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

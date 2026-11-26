@@ -96,7 +96,7 @@ impl crate::game::ServerGame<'_> {
     ) -> bool {
         self.native_as_player_handle(player, |game| {
             // A local counter loads lazily; guest turns already own their counter.
-            if game.side.lan_acting.is_none() {
+            if game.server.lan_acting.is_none() {
                 game.load_stats();
             }
             game.stats.replace_values(values);
@@ -241,3 +241,5 @@ impl crate::game::ServerGame<'_> {
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::transactions::TransactionsGameExt as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

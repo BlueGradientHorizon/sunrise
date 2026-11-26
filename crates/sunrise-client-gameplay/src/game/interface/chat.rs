@@ -413,7 +413,7 @@ impl crate::game::ClientGame<'_> {
         let hit = if self.pick_entity_hit().is_some() {
             None
         } else {
-            self.common.pick()
+            self.pick()
         };
         self.common.ui.registries.target_block = hit.as_ref().map(|h| h.pos);
         self.common.ui.registries.target_point =
@@ -1051,7 +1051,7 @@ impl crate::game::ClientGame<'_> {
             return;
         }
         if self.client.settings.chat_links_prompt {
-            self.open_screen_overlay("link_prompt", |game| game.side.link_prompt = Some(url));
+            self.open_screen_overlay("link_prompt", |game| game.client.link_prompt = Some(url));
         } else {
             super::packs::open_uri(&url);
         }
@@ -2218,3 +2218,7 @@ pub(in crate::game) mod enchantment_snapshot_tests {}
 pub(in crate::game) mod damage_type_registry_tests {}
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;

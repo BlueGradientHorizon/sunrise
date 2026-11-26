@@ -332,3 +332,5 @@ use sunrise_gameplay::game::server_side::commands::items::registered_slot_source
 use sunrise_gameplay_common::game::tables::GameItems as _;
 
 use sunrise_gameplay_common::game::tables::WorldTablesExt as _;
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

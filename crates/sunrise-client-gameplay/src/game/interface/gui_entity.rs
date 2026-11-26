@@ -200,7 +200,7 @@ impl ClientGame<'_> {
     /// One copy of the client's entity `handle`, as vanilla's `createRenderState` makes one a
     /// frame.
     fn existing_gui_entity(&self, handle: mod_api::EntityRef) -> Result<Mob, GuiEntityError> {
-        let found = match self.common.native_entity_read_target(handle) {
+        let found = match self.native_entity_read_target(handle) {
             Some(Target::Mob(id)) => self.common.mobs.iter().find(|m| m.id == id && !m.removed),
             Some(Target::Player) => self.client.player_model.as_ref(),
             _ => None,
@@ -435,3 +435,5 @@ use sunrise_gameplay_common::game::client_side::gui_entity::tests::face;
 
     
 }
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;

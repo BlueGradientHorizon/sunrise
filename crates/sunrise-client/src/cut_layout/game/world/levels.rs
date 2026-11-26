@@ -314,7 +314,7 @@ use super::*;
                 let world = if dim == game.dim {
                     &game.world
                 } else {
-                    &game.side.levels.0.parked[&dim].world
+                    &game.server.levels.0.parked[&dim].world
                 };
                 sunrise_gameplay_common::game::ticking_chunk(world, x, z)
             };
@@ -711,7 +711,7 @@ use super::*;
             assert!(game.run_command("execute in minecraft:overworld run worldborder get"));
             assert!(game.run_command("execute in minecraft:the_nether run worldborder get"));
             assert!(game.run_command("execute in minecraft:the_end run worldborder get"));
-            let parked = |d| game.side.levels.0.parked_border(d).map(|b| b.size());
+            let parked = |d| game.server.levels.0.parked_border(d).map(|b| b.size());
             let size = |d: Dim| {
                 if game.dim == d {
                     Some(game.border.size())

@@ -103,11 +103,11 @@ impl crate::game::ServerGame<'_> {
             frozen.primary,
         );
         let mut probe = copy.clone();
-        let pickup = self.common.stacked_pickup(
+        let pickup = self.stacked_pickup(
             route,
             frozen,
             move |game| {
-                let now = game.side.lan.as_ref()?.hub.guests.get(gi)?.carried.clone();
+                let now = game.server.lan.as_ref()?.hub.guests.get(gi)?.carried.clone();
                 (now == carried).then(|| same.clone())
             },
             move |game, carried, clicked| {
@@ -163,3 +163,5 @@ impl crate::game::ServerGame<'_> {
         )
     }
 }
+
+use sunrise_gameplay_common::game::stacked_on_other::StackedOnOtherGameExt1 as _;

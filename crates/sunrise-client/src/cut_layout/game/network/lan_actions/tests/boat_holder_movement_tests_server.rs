@@ -86,3 +86,5 @@ pub(in crate::game) fn scene<'a>(
     g.side.ticked_entities_through = g.side.next_entity;
     (g, rx)
 }
+
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

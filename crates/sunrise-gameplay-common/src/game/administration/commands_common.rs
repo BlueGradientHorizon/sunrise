@@ -335,37 +335,6 @@ pub fn num(n: impl std::fmt::Display) -> Text {
 }
 
 impl crate::game::CommonGame<'_> {
-    /// `ItemStack.getDisplayName`: hover name in brackets, coloured and carrying show_item hover.
-    pub fn stack_display_name(&self, s: &ItemStack) -> Text {
-        let item = &*s.item;
-        let empty = item == "minecraft:air" || s.count == 0;
-        let custom = s.data().and_then(|data| data.custom_name.as_ref());
-        let hover = self.stack_hover_name_text(s);
-        // Component.empty().append(getHoverName()), italic for a custom name.
-        let mut name = Text::empty().append(hover);
-        if custom.is_some() {
-            name = name.italic();
-        }
-        let wrapped = Text::translate("chat.square_brackets", &[name]);
-        if empty {
-            return wrapped;
-        }
-
-        // HoverEvent.ShowItem: the count only when it is not one.
-        let mut shown = serde_json::json!({"action": "show_item", "id": item});
-        if s.count != 1 {
-            shown["count"] = s.count.into();
-        }
-        // ItemStackTemplate.fromNonEmptyStack keeps the stack's component patch.
-        if let Some(patch) = sunrise_items::item_data::encode_components(s, self.items())
-            && let Ok(components) = sunrise_core::json_nbt::tag_to_json(&patch)
-        {
-            shown["components"] = components;
-        }
-        wrapped
-            .with_color(self.stack_rarity_color(s))
-            .with_component_fields(vec![("hover_event".into(), shown)])
-    }
 
     /// `EntityType.getDimensions().eyeHeight()` from `entity-types.json`, cached once.
     pub fn type_eye_height(&self, ty: &str) -> f64 {
@@ -457,14 +426,6 @@ impl crate::game::CommonGame<'_> {
         shown
     }
 
-    /// `ItemStack.getMaxStackSize`: the `max_stack_size` component, else the item's.
-    pub fn stack_max_size(&self, s: &ItemStack) -> u32 {
-        if let Some(Tag::Int(n)) = s.data().and_then(|d| d.other("minecraft:max_stack_size")) {
-            return (*n).clamp(1, 99) as u32;
-        }
-        self.items().get(&s.item).map_or(64, |i| i.max_stack)
-    }
-
     /// The player's movement collides with the border as it is now (`CollisionGetter.borderCollision`).
     pub fn player_border(&mut self) {
         if let Some(p) = self.player.as_mut() {
@@ -481,6 +442,50 @@ impl crate::game::CommonGame<'_> {
             .map_or_else(|| "minecraft:air".into(), |s| s.name.to_string())
     }
 }
+
+pub trait CommandsCommonGameExt1<'__sg>: crate::game::SideGame<'__sg> {
+    /// `ItemStack.getDisplayName`: hover name in brackets, coloured and carrying show_item hover.
+     fn stack_display_name(&self, s: &ItemStack) -> Text {
+        let item = &*s.item;
+        let empty = item == "minecraft:air" || s.count == 0;
+        let custom = s.data().and_then(|data| data.custom_name.as_ref());
+        let hover = self.stack_hover_name_text(s);
+        // Component.empty().append(getHoverName()), italic for a custom name.
+        let mut name = Text::empty().append(hover);
+        if custom.is_some() {
+            name = name.italic();
+        }
+        let wrapped = Text::translate("chat.square_brackets", &[name]);
+        if empty {
+            return wrapped;
+        }
+
+        // HoverEvent.ShowItem: the count only when it is not one.
+        let mut shown = serde_json::json!({"action": "show_item", "id": item});
+        if s.count != 1 {
+            shown["count"] = s.count.into();
+        }
+        // ItemStackTemplate.fromNonEmptyStack keeps the stack's component patch.
+        if let Some(patch) = sunrise_items::item_data::encode_components(s, self.items())
+            && let Ok(components) = sunrise_core::json_nbt::tag_to_json(&patch)
+        {
+            shown["components"] = components;
+        }
+        wrapped
+            .with_color(self.stack_rarity_color(s))
+            .with_component_fields(vec![("hover_event".into(), shown)])
+    }
+
+    /// `ItemStack.getMaxStackSize`: the `max_stack_size` component, else the item's.
+     fn stack_max_size(&self, s: &ItemStack) -> u32 {
+        if let Some(Tag::Int(n)) = s.data().and_then(|d| d.other("minecraft:max_stack_size")) {
+            return (*n).clamp(1, 99) as u32;
+        }
+        self.items().get(&s.item).map_or(64, |i| i.max_stack)
+    }
+}
+impl<'__sg, G: crate::game::SideGame<'__sg>> CommandsCommonGameExt1<'__sg> for G {}
+
 
 /// Whether `uuid` is the player in place (`Target::Player`): during a guest's turn that is the guest, not the
 /// level's own player (the world owner), whom `Level.getEntity(UUID)` finds only while they are in the level.
@@ -647,14 +652,80 @@ impl Component {
     }
 }
 
-impl<__Side: crate::game::Side> Game<'_, __Side> {
+impl crate::game::CommonGame<'_> {
+
+    pub(in crate::game) fn decorate_entity_display_name_with_uuid(
+        kind: &str,
+        uuid: Option<[i32; 4]>,
+        team: Option<&sunrise_game_data::scoreboard::Team>,
+        name: Text,
+    ) -> Text {
+        let shown = match team {
+            Some(team) => team.formatted_name(name.clone()),
+            None => name.clone(),
+        };
+        let Some(uuid) = uuid else {
+            return shown;
+        };
+        let uuid = sunrise_sim::save::uuid_text(uuid);
+        let kind = sunrise_command::args::normalize(kind);
+        shown.set_component_fields(vec![
+            (
+                "hover_event".into(),
+                serde_json::json!({
+                    "action": "show_entity",
+                    "id": kind,
+                    "uuid": uuid,
+                    "name": name.component(),
+                }),
+            ),
+            ("insertion".into(), uuid.into()),
+        ])
+    }
+
+    /// Decoded `CustomName` with `Entity.removeAction` applied, or `None` when
+    /// absent or invalid under vanilla's `ComponentSerialization.CODEC`.
+    fn custom_name_of(&self, id: u32) -> Option<Text> {
+        let raw = self.persist_raw(id)?.get("CustomName")?;
+        let decoded = sunrise_sim::entity_nbt::decode_custom_name_text(raw)?;
+        Some(sunrise_game_data::scoreboard::remove_click_events(&decoded))
+    }
+
+    pub(in crate::game) fn bolt_plain_name(&self, id: u32) -> Text {
+        if let Some(name) = self
+            .bolts
+            .iter()
+            .find(|b| b.id == id)
+            .and_then(|b| b.custom_name.as_ref())
+            .and_then(sunrise_sim::entity_nbt::decode_custom_name_text)
+        {
+            return sunrise_game_data::scoreboard::remove_click_events(&name);
+        }
+        Text::translate("entity.minecraft.lightning_bolt", &[])
+    }
+
+    /// Shared `Entity.getDisplayName` decoration: `PlayerTeam.formatNameForTeam`
+    /// of `getName()`, then `withHoverEvent(createHoverEvent())` (a `ShowEntity`
+    /// of the type, UUID and name) and `withInsertion(getStringUUID())`.
+    fn decorate_entity_display_name(
+        &self,
+        id: u32,
+        kind: &str,
+        team: Option<&sunrise_game_data::scoreboard::Team>,
+        name: Text,
+    ) -> Text {
+        Self::decorate_entity_display_name_with_uuid(kind, self.persist.uuid_of(id), team, name)
+    }
+}
+
+pub trait CommandsCommonGameExt2<'__sg>: crate::game::SideGame<'__sg> {
     /// The guest `conn` of the server’s LAN hub.
-    pub fn command_guest(&self, conn: u32) -> Option<&Guest> {
-        crate::game::side_ops::player::SideOps::side_command_guest(&self.side, conn)
+     fn command_guest(&self, conn: u32) -> Option<&Guest> {
+        crate::game::side_ops::player::SideOps::side_command_guest(self.side_state(), conn)
     }
 
     /// `Entity.getYRot` and `getXRot`: the entity's angles, not the direction its model faces.
-    pub fn target_rotation(&self, t: Target) -> [f32; 2] {
+     fn target_rotation(&self, t: Target) -> [f32; 2] {
         use crate::game::entity::Entity;
         use sunrise_sim::entity_nbt::loaded_rotation;
         let saved_rotation = |id| self.persist.raw.get(&id).map_or([0.0; 2], loaded_rotation);
@@ -765,13 +836,13 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 .and_then(|a| a.raw.as_deref())
                 .map_or([0.0; 2], sunrise_sim::entity_nbt::rotation),
             Target::Hook(id) => {
-                <__Side as crate::game::side_ops::items::SideOps>::side_command_hook_rotation(
+                <Self::State as crate::game::side_ops::items::SideOps>::side_command_hook_rotation(
                     self, id,
                 )
                 .unwrap_or([0.0; 2])
             }
             Target::Other(id) => {
-                crate::game::side_ops::player::SideOps::side_other_entity_rotation(&self.side, id)
+                crate::game::side_ops::player::SideOps::side_other_entity_rotation(self.side_state(), id)
                     .unwrap_or([0.0; 2])
             }
             Target::General(id) => self
@@ -781,7 +852,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 .map(|row| row.rotation)
                 .or_else(|| {
                     crate::game::side_ops::mobs_rest::SideOps::side_remote_general_rotation(
-                        &self.side, id,
+                        self.side_state(), id,
                     )
                 })
                 .unwrap_or([0.0; 2]),
@@ -794,14 +865,14 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     /// only mobs (displays, armor stands, items...). The map is keyed by id,
     /// so a killed entity and a later summon of the same UUID can both be
     /// in it; the one the level still holds is the entity.
-    pub fn target_with_uuid(&self, uuid: [i32; 4]) -> Option<Target> {
+     fn target_with_uuid(&self, uuid: [i32; 4]) -> Option<Target> {
         if is_player_in_place(
             uuid,
-            crate::game::Side::lan_acting_uuid(&self.side),
+            crate::game::Side::lan_acting_uuid(self.side_state()),
             self.level.player_uuid,
         ) {
-            if crate::game::Side::native_command_filter(&self.side) {
-                return <__Side as crate::game::side_ops::player::SideOps>::side_filtered_command_player_target(self, uuid);
+            if crate::game::Side::native_command_filter(self.side_state()) {
+                return <Self::State as crate::game::side_ops::player::SideOps>::side_filtered_command_player_target(self, uuid);
             }
             return Some(Target::Player);
         }
@@ -815,9 +886,9 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     /// `Level.getEntity`: the entity of the level in place with a network
     /// id, players aside.
-    pub fn level_entity(&self, id: i32) -> Option<Target> {
+     fn level_entity(&self, id: i32) -> Option<Target> {
         let id = id as u32;
-        match <__Side as crate::game::side_ops::world::SideOps>::side_server_resident_entity(
+        match <Self::State as crate::game::side_ops::world::SideOps>::side_server_resident_entity(
             self, id,
         ) {
             sunrise_sim::join_seq::residency::table::EntityLookup::Found { location, value }
@@ -833,29 +904,29 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             }
             // A client's own copy of a row its server shows it.
             _ => crate::game::side_ops::mobs_rest::SideOps::side_remote_general_type_slot(
-                &self.side, id,
+                self.side_state(), id,
             )
             .map(|_| Target::General(id)),
         }
     }
 
-    pub fn entity_tag_matches(&self, tag: &str, ty: &str) -> bool {
+     fn entity_tag_matches(&self, tag: &str, ty: &str) -> bool {
         let tag = sunrise_command::args::normalized(tag);
         self.items().entity_type_tags.contains(&tag, ty)
     }
 
     /// The name of the player the game acts for: a guest's own while their
     /// command or action runs (`Player.getName`).
-    pub fn acting_player_name(&self) -> &str {
-        crate::game::Side::lan_acting_name(&self.side).unwrap_or(PLAYER_NAME)
+     fn acting_player_name(&self) -> &str {
+        crate::game::Side::lan_acting_name(self.side_state()).unwrap_or(PLAYER_NAME)
     }
 
     /// Entity.getDisplayName.
-    pub fn target_name(&self, t: Target) -> Text {
+     fn target_name(&self, t: Target) -> Text {
         match t {
             Target::Player => {
                 let name = self.acting_player_name();
-                if let Some(uuid) = crate::game::Side::lan_acting_uuid(&self.side) {
+                if let Some(uuid) = crate::game::Side::lan_acting_uuid(self.side_state()) {
                     return self.player_text(name, uuid);
                 }
                 match self.score.board.players_team(name) {
@@ -875,23 +946,23 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
 
     /// `PlayerList.getPlayers` but the player in place: the guests who
     /// joined the world.
-    pub fn command_players(&self) -> impl Iterator<Item = &Guest> {
-        let acting = crate::game::Side::lan_acting(&self.side);
-        crate::game::side_ops::lan::SideOps::side_command_players(&self.side)
+     fn command_players(&self) -> impl Iterator<Item = &Guest> {
+        let acting = crate::game::Side::lan_acting(self.side_state());
+        crate::game::side_ops::lan::SideOps::side_command_players(self.side_state())
             .filter(move |g| Some(g.conn) != acting && self.native_command_player_available(g))
     }
 
     /// Native console calls cannot reach an outer turn's displaced player.
     /// Ordinary command resolution is unchanged, including nested turns.
-    pub fn native_command_player_available(&self, guest: &Guest) -> bool {
-        !crate::game::Side::native_command_filter(&self.side)
+     fn native_command_player_available(&self, guest: &Guest) -> bool {
+        !crate::game::Side::native_command_filter(self.side_state())
             || self.entity(guest.entity_id as u32).is_some()
     }
 
     /// `EntitySelector.findEntities` with a UUID: the player with it, else
     /// the entity.
-    pub fn target_by_uuid(&self, uuid: u128) -> Option<Target> {
-        let own = crate::game::Side::lan_acting_uuid(&self.side).or_else(|| {
+     fn target_by_uuid(&self, uuid: u128) -> Option<Target> {
+        let own = crate::game::Side::lan_acting_uuid(self.side_state()).or_else(|| {
             self.level.player_uuid.map(|[a, b, c, d]| {
                 (u128::from(a as u32) << 96)
                     | (u128::from(b as u32) << 64)
@@ -900,7 +971,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
             })
         });
         if self.player.is_some() && own == Some(uuid) {
-            return (!crate::game::Side::lan_acting_fake(&self.side)).then_some(Target::Player);
+            return (!crate::game::Side::lan_acting_fake(self.side_state())).then_some(Target::Player);
         }
         if let Some(g) = self.command_players().find(|g| g.uuid == uuid) {
             return Some(Target::Guest(g.conn));
@@ -909,7 +980,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         self.target_with_uuid(words)
     }
 
-    pub fn target_type(&self, t: Target) -> String {
+     fn target_type(&self, t: Target) -> String {
         match t {
             Target::Player | Target::Guest(_) => "minecraft:player".into(),
             Target::Mob(id) => self
@@ -950,7 +1021,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
                 .find(|c| c.id == id)
                 .map_or_else(|| "minecraft:minecart".into(), |c| c.kind.id().into()),
             Target::Other(id) => {
-                crate::game::side_ops::player::SideOps::side_other_entity_kind(&self.side, id)
+                crate::game::side_ops::player::SideOps::side_other_entity_kind(self.side_state(), id)
                     .map_or_else(String::new, str::to_owned)
             }
             Target::Crystal(_) => "minecraft:end_crystal".into(),
@@ -970,46 +1041,9 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
     }
 
-    pub(in crate::game) fn decorate_entity_display_name_with_uuid(
-        kind: &str,
-        uuid: Option<[i32; 4]>,
-        team: Option<&sunrise_game_data::scoreboard::Team>,
-        name: Text,
-    ) -> Text {
-        let shown = match team {
-            Some(team) => team.formatted_name(name.clone()),
-            None => name.clone(),
-        };
-        let Some(uuid) = uuid else {
-            return shown;
-        };
-        let uuid = sunrise_sim::save::uuid_text(uuid);
-        let kind = sunrise_command::args::normalize(kind);
-        shown.set_component_fields(vec![
-            (
-                "hover_event".into(),
-                serde_json::json!({
-                    "action": "show_entity",
-                    "id": kind,
-                    "uuid": uuid,
-                    "name": name.component(),
-                }),
-            ),
-            ("insertion".into(), uuid.into()),
-        ])
-    }
-
-    /// Decoded `CustomName` with `Entity.removeAction` applied, or `None` when
-    /// absent or invalid under vanilla's `ComponentSerialization.CODEC`.
-    fn custom_name_of(&self, id: u32) -> Option<Text> {
-        let raw = self.persist_raw(id)?.get("CustomName")?;
-        let decoded = sunrise_sim::entity_nbt::decode_custom_name_text(raw)?;
-        Some(sunrise_game_data::scoreboard::remove_click_events(&decoded))
-    }
-
     /// `Entity.getName`: the decoded `CustomName` with click actions removed,
     /// else the entity's type name, free of team formatting, hover or insertion.
-    pub fn target_base_name(&self, t: Target) -> Text {
+     fn target_base_name(&self, t: Target) -> Text {
         match t {
             Target::Player => Text::literal(self.acting_player_name()),
             Target::Guest(conn) => self
@@ -1068,34 +1102,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         }
     }
 
-    pub(in crate::game) fn bolt_plain_name(&self, id: u32) -> Text {
-        if let Some(name) = self
-            .bolts
-            .iter()
-            .find(|b| b.id == id)
-            .and_then(|b| b.custom_name.as_ref())
-            .and_then(sunrise_sim::entity_nbt::decode_custom_name_text)
-        {
-            return sunrise_game_data::scoreboard::remove_click_events(&name);
-        }
-        Text::translate("entity.minecraft.lightning_bolt", &[])
-    }
-
-    /// Shared `Entity.getDisplayName` decoration: `PlayerTeam.formatNameForTeam`
-    /// of `getName()`, then `withHoverEvent(createHoverEvent())` (a `ShowEntity`
-    /// of the type, UUID and name) and `withInsertion(getStringUUID())`.
-    fn decorate_entity_display_name(
-        &self,
-        id: u32,
-        kind: &str,
-        team: Option<&sunrise_game_data::scoreboard::Team>,
-        name: Text,
-    ) -> Text {
-        Self::decorate_entity_display_name_with_uuid(kind, self.persist.uuid_of(id), team, name)
-    }
-
     /// `Entity.getDisplayName` for the mob `id`.
-    pub(in crate::game) fn mob_command_name(&self, id: u32) -> Text {
+     fn mob_command_name(&self, id: u32) -> Text {
         let Some(m) = self.mobs.iter().find(|m| m.id == id) else {
             return Text::translate("entity.", &[]);
         };
@@ -1103,7 +1111,7 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
     }
 
     /// `Entity.getDisplayName` for any non-player, non-mob target.
-    pub(in crate::game) fn entity_display_name(&self, t: Target) -> Text {
+     fn entity_display_name(&self, t: Target) -> Text {
         let name = self.target_base_name(t);
         let Some(id) = crate::game::commands_common::target_id(t) else {
             return name;
@@ -1112,6 +1120,8 @@ impl<__Side: crate::game::Side> Game<'_, __Side> {
         self.decorate_entity_display_name(id, &kind, self.entity_team(id), name)
     }
 }
+impl<'__sg, G: crate::game::SideGame<'__sg>> CommandsCommonGameExt2<'__sg> for G {}
+
 
 use crate::game::side_ops::mobs_rest::MobsRestSideGameExt as _;
 
@@ -1120,3 +1130,11 @@ use crate::game::side_ops::player::PlayerSideGameExt as _;
 use crate::game::side_ops::world::WorldSideGameExt as _;
 
 use crate::game::tables::GameItems as _;
+
+use crate::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use crate::game::remote::general::GeneralGameExt1 as _;
+
+use crate::game::scoreboard_common::CommonGameExt1 as _;
+
+use crate::game::stack_names::StackNamesGameExt1 as _;

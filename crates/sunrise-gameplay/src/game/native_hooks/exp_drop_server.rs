@@ -10,15 +10,14 @@ impl crate::game::ServerGame<'_> {
         block_entity: BlockDropEntity<'_>,
         drops: Vec<ItemStack>,
     ) -> BlockDrops {
-        let breaker = if sunrise_gameplay_common::game::api_values::block_state::block_listens(
-            mod_api::HookId::ExpDrop,
-            state,
-        ) || mod_api::__private::listened(mod_api::HookId::BlockDrops)
-        {
-            breaker.and_then(|id| self.common.entity(id))
-        } else {
-            None
-        };
+        let breaker =
+            if sunrise_gameplay_common::game::api_values::block_state::block_listens(mod_api::HookId::ExpDrop, state)
+                || mod_api::__private::listened(mod_api::HookId::BlockDrops)
+            {
+                breaker.and_then(|id| self.entity(id))
+            } else {
+                None
+            };
         self.common.with_level(|_, level, _| {
             let pos = BlockPos::new(pos[0], pos[1], pos[2]);
             // with_level rebuilds GameLevel with both fields None on every call.
@@ -84,7 +83,7 @@ impl crate::game::ServerGame<'_> {
             return;
         }
         let tool = self.common.held().cloned();
-        let breaker = Some(self.common.native_acting_id());
+        let breaker = Some(self.native_acting_id());
         *experience = self.common.with_level(|_, level, _| {
             let pos = BlockPos::new(pos[0], pos[1], pos[2]);
             let block_entity = level.resident_block_entity(pos);
@@ -117,3 +116,7 @@ impl crate::game::ServerGame<'_> {
 /// clears from the level.
 pub(in crate::game) type LiveBlockEntity =
     (sunrise_level::containers::BlockEntity, Option<Compound>);
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_hooks::ModGameExt1 as _;

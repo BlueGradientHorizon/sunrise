@@ -13,7 +13,7 @@ impl crate::game::ServerGame<'_> {
         let target = self.native_living_target(living)?;
         let motion = match target {
             Target::Player => self.common.player.as_ref(),
-            Target::Guest(conn) => self.common.command_guest(conn)?.motion.as_deref(),
+            Target::Guest(conn) => self.command_guest(conn)?.motion.as_deref(),
             _ => None,
         };
         if let Some(player) = motion.filter(|player| player.auto_spin_attack_ticks > 0)
@@ -27,3 +27,5 @@ impl crate::game::ServerGame<'_> {
         )
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;

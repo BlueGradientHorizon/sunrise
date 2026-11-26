@@ -186,3 +186,4 @@ pub(in crate::game) use sunrise_gameplay::game::server_side::commands_server::ex
         }
     }
 }
+use sunrise_gameplay_common::game::chat_common::ChatCommonGameExt1 as _;

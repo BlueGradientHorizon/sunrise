@@ -31,7 +31,7 @@ impl crate::game::ClientGame<'_> {
         self.common.player.as_ref()?;
         let id = self
             .remote_camera_id()
-            .unwrap_or_else(|| self.common.own_entity_id() as u32);
+            .unwrap_or_else(|| self.own_entity_id() as u32);
         Some(EntityRef::new(self.common.native_lifecycle.epoch()?, id))
     }
     /// `GameRenderer.projectPointToScreen` against this frame's camera; None behind the camera,
@@ -50,3 +50,5 @@ impl crate::game::ClientGame<'_> {
         )
     }
 }
+
+use sunrise_gameplay_common::game::player_identity::PlayerIdentityGameExt1 as _;

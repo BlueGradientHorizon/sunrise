@@ -24,9 +24,9 @@ impl crate::game::ServerGame<'_> {
     /// on load, so it keeps a written value only until then; a kind Sunrise
     /// does not simulate keeps it in its saved compound.
     pub(in crate::game) fn entity_no_physics(&self, entity: EntityRef) -> Option<bool> {
-        match self.common.native_entity_target(entity)? {
+        match self.native_entity_target(entity)? {
             Target::Player => Some(self.common.player.as_ref()?.spectator),
-            Target::Guest(conn) => Some(self.common.command_guest(conn)?.motion.as_deref()?.spectator),
+            Target::Guest(conn) => Some(self.command_guest(conn)?.motion.as_deref()?.spectator),
             Target::Mob(id) => Some(self.common.mobs.iter().find(|m| m.id == id)?.no_physics),
             Target::Dragon(id) | Target::Cloud(id) | Target::Spawner(id) | Target::Bolt(id) => {
                 Some(self.stored_no_physics(id))
@@ -78,7 +78,7 @@ impl crate::game::ServerGame<'_> {
         if !self.common.is_logical_server() {
             return false;
         }
-        match self.common.native_entity_target(entity) {
+        match self.native_entity_target(entity) {
             Some(Target::Mob(id)) => {
                 let Some(mob) = self.common.mobs.iter_mut().find(|m| m.id == id) else {
                     return false;
@@ -788,3 +788,9 @@ mod tests {
         });
     }
 }
+
+use sunrise_gameplay_common::game::commands_common::CommandsCommonGameExt2 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt1 as _;
+
+use sunrise_gameplay_common::game::native_entity_refs_common::NativeEntityRefsCommonGameExt5 as _;

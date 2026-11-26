@@ -519,14 +519,14 @@ impl crate::game::ClientGame<'_> {
         let Some(eye) = self.common.eye_position() else {
             return Value::Null;
         };
-        let block = self.common.pick().map(|hit| {
+        let block = self.pick().map(|hit| {
             let mut v = self.block_json(hit.pos);
             v["face"] = json!(face_name(hit.face));
             v["point"] = json!(hit.point);
             v["distance"] = json!(dist(eye, hit.point));
             v
         });
-        let entity = self.common.mob_hit().map(|(i, d, _)| {
+        let entity = self.mob_hit().map(|(i, d, _)| {
             let m = &self.common.mobs[i];
             json!({ "id": m.id, "type": m.kind.id, "health": m.health, "distance": d,
                     "pos": [m.position.x, m.position.y, m.position.z] })
@@ -554,7 +554,7 @@ impl crate::game::ClientGame<'_> {
                 "fall_flying": p.fall_flying,
                 "sneaking": self.held_mapping(Action::Sneak),
                 "sprinting": p.sprinting,
-                "fov_modifier": self.side.view.fov_modifier,
+                "fov_modifier": self.client.view.fov_modifier,
                 "health": p.health.health(),
                 "absorption": p.health.absorption(),
                 // The hurt animation's ticks left (the camera's hurt tilt).
@@ -563,11 +563,11 @@ impl crate::game::ClientGame<'_> {
                 "death_time": self.death_time(),
                 "air": p.air,
                 // LocalPlayer.portalEffectIntensity: the Nether portal overlay.
-                "portal_effect": self.side.screen_fx.portal,
+                "portal_effect": self.client.screen_fx.portal,
                 "food": p.health.food.food,
                 "saturation": p.health.food.saturation,
                 "shield_cooldown": self
-                    .side.integrated
+                    .client.integrated
                     .as_ref()
                     .and_then(|server| {
                         server.ask(|reply| {
@@ -588,8 +588,8 @@ impl crate::game::ClientGame<'_> {
         let mut state = json!({
             "dialog": self.dialog_status(),
             "screen": self.screen_label(),
-            "menu": self.side.title.0.is_some().then(|| self.title_value()),
-            "world": (self.side.title.0.is_none()).then(|| match &self.side.integrated {
+            "menu": self.client.title.0.is_some().then(|| self.title_value()),
+            "world": (self.client.title.0.is_none()).then(|| match &self.client.integrated {
                 Some(server) => server.world_name.clone(),
                 None => self.level.name.clone(),
             }),
@@ -608,12 +608,12 @@ impl crate::game::ClientGame<'_> {
             "paused": self.pause,
             // Mouse movement turns the camera (`apply_mouse_look`): the real
             // pointer is grabbed, or an agent's `mouse-move` stands in for it.
-            "pointer_grabbed": self.side.captured || self.side.agent_pointer,
+            "pointer_grabbed": self.client.captured || self.client.agent_pointer,
             "player": player,
             "selected": self.selected + 1,
             "held": self.held().map(|s| self.stack_value(s)),
             "looking_at": self.looking_at(),
-            "busy": self.side.agent.task.as_ref().map(|t| t.name),
+            "busy": self.client.agent.task.as_ref().map(|t| t.name),
             "ticks": self.ticks,
         });
         // Who caused the input, and whether a repro recording runs.
@@ -913,10 +913,10 @@ impl crate::game::ClientGame<'_> {
     pub(in crate::game::client_side) fn messages_value(&self, n: usize) -> Value {
         let titles = &self.client.titles;
         json!({
-            "chat": self.remote_chat(n).unwrap_or_else(|| self.side.chat_ui.chat.recent_lines(n)),
+            "chat": self.remote_chat(n).unwrap_or_else(|| self.client.chat_ui.chat.recent_lines(n)),
             "order": "newest first",
             // The chat lines as drawn: colours, click and hover events.
-            "styled": self.side.chat_ui.chat.recent_components(n),
+            "styled": self.client.chat_ui.chat.recent_components(n),
             "title": (titles.time > 0).then(|| titles.title.as_ref().map(|t| t.plain())).flatten(),
             "subtitle": (titles.time > 0).then(|| titles.subtitle.as_ref().map(|t| t.plain())).flatten(),
             "actionbar": (titles.overlay_time > 0).then(|| titles.overlay.as_ref().map(|t| t.plain())).flatten(),
@@ -1455,7 +1455,7 @@ impl crate::game::ClientGame<'_> {
                     );
                 }
                 let target = self
-                    .common.mob_hit()
+                    .mob_hit()
                     .map(|(i, _, _)| (self.common.mobs[i].id, self.common.mobs[i].health));
                 self.agent_mouse(MouseButton::Left, true)?;
                 self.agent_mouse(MouseButton::Left, false)?;
@@ -1819,7 +1819,7 @@ impl crate::game::ClientGame<'_> {
                 // server's console cannot run a client mod's command.
                 if self.client_mod_command(text) {
                     return ok(
-                        json!({ "ok": true, "chat": self.side.chat_ui.chat.recent_lines(5) }),
+                        json!({ "ok": true, "chat": self.client.chat_ui.chat.recent_lines(5) }),
                     );
                 }
                 let command = format!("/{text}");
@@ -2016,7 +2016,7 @@ impl crate::game::ClientGame<'_> {
             *ahead -= 1;
             return false;
         }
-        let picked = self.common.mob_hit().map(|(i, _, _)| self.common.mobs[i].id);
+        let picked = self.mob_hit().map(|(i, _, _)| self.common.mobs[i].id);
         let Some(Task {
             kind: TaskKind::Attack { id, aimed, .. },
             ..
@@ -2273,7 +2273,7 @@ impl crate::game::ClientGame<'_> {
                     }
                     let ahead = self.remote_attack_clicks_queued();
                     *aimed = Some(AttackAim::Clicked { ahead });
-                    let target = self.common.mob_hit().map(|(i, _, _)| &self.common.mobs[i]);
+                    let target = self.mob_hit().map(|(i, _, _)| &self.common.mobs[i]);
                     if target.map(|m| m.id) != *id {
                         return Some(
                             json!({ "error": "that entity is out of reach or hidden; get closer" }),
@@ -2469,7 +2469,7 @@ impl crate::game::ClientGame<'_> {
                 );
             } else {
                 // Keep the crosshair on the block (the player may drift).
-                if self.common.pick().is_none_or(|h| h.pos != b.pos)
+                if self.pick().is_none_or(|h| h.pos != b.pos)
                     && let Err(e) = self.aim_block(b.pos, None)
                 {
                     let _ = self.agent_mouse(MouseButton::Left, false);
@@ -2614,3 +2614,5 @@ pub(in crate::game) mod tests {
 }
 
 use sunrise_gameplay_common::game::tables::GameItems as _;
+
+use sunrise_gameplay_common::game::pick_ray::PickRayGameExt1 as _;
