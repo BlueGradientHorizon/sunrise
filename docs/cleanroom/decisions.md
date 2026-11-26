@@ -106,15 +106,16 @@ the full list.
   `gfx::pack_post::normalized_image_tests::an_rgba8_image_of_a_float_buffer_still_refuses_its_program`
   (`sunrise-client-render`).
 
-## D-4: native terrain quads of block entities and entities under a pack
+## D-4: native terrain quads of block entities, entities and the hand under a pack
 
 - **Open point:** spec rev 1, 2.3 (line 294) gives `gbuffers_block` "block entities, sign text" and `gbuffers_entities`
   "entities", and 6.1.4 sends a program's outputs to the buffers its `RENDERTARGETS`/`DRAWBUFFERS` list names.
   Sunrise's mods can draw, inside a block entity's or an entity's run, terrain-sheet geometry that Sunrise draws
   natively from its sprite arrays: still fluids and terrain models (`FLUID_OVERLAY`, `TERRAIN_MODEL_*_OVERLAY`; a
-  block entity's renderer, a mod's model copies, and a mod's entity renderer or layer all draw through the same
-  context). The spec has no such geometry, so it does not say which program draws it, which texture it reads, which
-  maps its `normals` and `specular` are, or in what order its translucent quads draw.
+  block entity's renderer, a mod's model copies, a mod's entity renderer or layer, and a mod's `render_hand` listener
+  in the first-person hand all draw through the same context). The spec has no such geometry, so it does not say which
+  program draws it, which texture it reads, which maps its `normals` and `specular` are, or in what order its
+  translucent quads draw.
 - **Decision:** the program of its run draws it, as the rest of that block entity or entity: `gbuffers_block` or
   `gbuffers_entities`, and for the translucent kinds (a still fluid, a translucent terrain model) that program's
   translucent one (`gbuffers_block_translucent`, `gbuffers_entities_translucent`) when the pack has it, with the run's
@@ -128,19 +129,30 @@ the full list.
   parts cast nothing, as its other translucent parts). A quad whose sprite the block atlas lacks (a layer past the
   atlas's table, or a fluid layer below 0, NaN or infinite), a pack without the run's program (even one with a shadow
   program: nothing casts the quad then, as before), or one without a block atlas leaves the quad to Sunrise.
+  - In the first-person hand, `gbuffers_hand` draws them as the hand's other geometry, and the translucent kinds
+    `gbuffers_hand_water` (or its fallback) after deferred, with the hand's other translucent quads; each hand run's
+    translucent ones together after its other translucent quads, far to near as above. They sample the block atlas
+    with the same stand-in maps. Sunrise draws nothing of a hand that a pack's `gbuffers_hand` draws, so a quad the
+    block atlas lacks (or every one of them, without a block atlas) is not drawn there: its UVs and layer mean
+    nothing in the shared atlas either.
 - **Reason:** 2.3's programs for block entities and entities are the only ones the spec ties to this geometry, and
   6.1.4 then puts it in the buffers the pack's `final` reads; drawn natively, it reached only `colortex0`. The block
   atlas already holds every terrain sprite, as the pack's terrain reads them, so no texture is copied; the renderer
   has no table from a terrain sprite layer to its place in the shared atlas. Paged-map reads of the block atlas's UVs
   would return another texture's material. Sunrise's own draw sorts these translucent kinds on upload, across every
-  run; the pack's draws sort each run, since one draw carries one `blockEntityId` or `entityId`.
+  run; the pack's draws sort each run, since one draw carries one `blockEntityId` or `entityId`. In the hand, 2.3
+  (lines 301 and 304) gives `gbuffers_hand` "the hand and opaque held objects" and `gbuffers_hand_water` "translucent
+  held objects", drawn after deferred.
 - **Tests:** `pack_entities::material_route_tests::native_terrain_quads_take_the_runs_program_where_the_block_atlas_holds_them`
   and `pack_entities::material_route_tests::the_block_atlas_places_native_terrain_quads` (`sunrise-render-shaderpack`);
   the daily `pack_entities::gpu_span_tests::native_terrain_quads_draw_in_the_pack_programs_from_the_block_atlas`,
   `pack_entities::gpu_span_tests::a_runs_translucent_native_quads_draw_once_far_to_near` and
   `pack_entities::gpu_span_tests::an_entitys_native_terrain_quads_draw_in_the_entity_programs`
   (`sunrise-render-shaderpack`), and `pack_block_entity_runs` and
-  `gfx::pack_post::block_atlas_group_tests::a_resize_drops_the_portal_and_block_atlas_groups` (`sunrise-client-render`).
+  `gfx::pack_post::block_atlas_group_tests::a_resize_drops_the_portal_and_block_atlas_groups` (`sunrise-client-render`);
+  for the hand, `pack_hand::tests::native_terrain_quads_take_the_block_atlas` and
+  `pack_hand::tests::without_a_block_atlas_native_terrain_quads_are_not_drawn` (`sunrise-render-shaderpack`) and the
+  daily `pack_hand_terrain_quads` (`sunrise-client-render`).
 
 ## D-5: which faces a `layer.*` rule moves, and what wins
 
